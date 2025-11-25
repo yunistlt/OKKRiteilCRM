@@ -1,3 +1,4 @@
+// api/okk-daily-sync.js
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -7,11 +8,15 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
+if (!RETAILCRM_API_KEY || !RETAILCRM_BASE_URL || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn('Missing required environment variables for okk-daily-sync function');
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Универсальная функция синка одного заказа
+// --- Универсальная функция синка одного заказа ---
 async function syncSingleOrder(order) {
   let managerId = null;
 
@@ -51,7 +56,9 @@ async function syncSingleOrder(order) {
       order.payments.some((p) => p.status === 'paid'));
 
   const paymentType =
-    (Array.isArray(order.payments) && order.payments[0] && order.payments[0].type) ||
+    (Array.isArray(order.payments) &&
+      order.payments[0] &&
+      order.payments[0].type) ||
     order.paymentType ||
     null;
 
@@ -64,7 +71,8 @@ async function syncSingleOrder(order) {
     retailcrm_order_id: order.id,
     number: order.number || String(order.id),
     created_at_crm: order.createdAt,
-    status_updated_at_crm: order.statusUpdatedAt || order.updatedAt || order.createdAt,
+    status_updated_at_crm:
+      order.statusUpdatedAt || order.updatedAt || order.createdAt,
     current_status: order.status,
     summ,
     purchase_summ: purchaseSumm,
@@ -84,16 +92,17 @@ async function syncSingleOrder(order) {
     .select('id')
     .single();
 
+  // --- История заказа ---
   const historyUrl =
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
     `&filter[orders][]=${encodeURIComponent(order.id)}` +
-    `&limit=100`;
+    `&limit=200`;
 
   const historyResp = await fetch(historyUrl);
   const historyData = await historyResp.json();
 
-  if (historyData.success) {
+  if (historyData.success && Array.isArray(historyData.history)) {
     const rows = historyData.history.map((h) => ({
       order_id: okkOrder.id,
       retailcrm_order_id: order.id,
@@ -123,31 +132,40 @@ async function syncSingleOrder(order) {
   return okkOrder.id;
 }
 
+// --- Ежедневный синк всех заказов в контролируемых статусах ---
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Use GET' });
     return;
   }
 
-  // 1) Получаем статусы, отмеченные как is_controlled
-  const { data: statuses } = await supabase
+  // 1) Берём статусы, помеченные как контролируемые
+  const { data: statuses, error: statusErr } = await supabase
     .from('okk_sla_status')
     .select('status')
     .eq('is_controlled', true);
 
-  const statusList = statuses?.map((s) => s.status) || [];
-
-  if (statusList.length === 0) {
-    res.status(200).json({ success: true, message: 'No controlled statuses' });
+  if (statusErr) {
+    console.error('Error loading okk_sla_status:', statusErr);
+    res.status(500).json({ error: 'DB error loading statuses' });
     return;
   }
 
-   // 2) Тянем заказы по этим статусам с пагинацией
+  const statusList = statuses?.map((s) => s.status) || [];
+
+  if (statusList.length === 0) {
+    res
+      .status(200)
+      .json({ success: true, message: 'No controlled statuses configured' });
+    return;
+  }
+
+  // 2) Готовим query по статусам
   const statusQuery = statusList
     .map((s) => `statuses[]=${encodeURIComponent(s)}`)
     .join('&');
 
-  const LIMIT = 100;
+  const LIMIT = 100; // допустимое значение для RetailCRM
   let page = 1;
   let totalPages = 1;
   let synced = 0;
@@ -165,6 +183,7 @@ export default async function handler(req, res) {
     const data = await resp.json();
 
     if (!data.success) {
+      console.error('RetailCRM error on page', page, data);
       res.status(500).json({ error: 'RetailCRM error', raw: data });
       return;
     }
@@ -175,7 +194,7 @@ export default async function handler(req, res) {
 
     for (const order of data.orders || []) {
       await syncSingleOrder(order);
-      synced++;
+      synced += 1;
     }
 
     page += 1;
@@ -188,3 +207,4 @@ export default async function handler(req, res) {
     synced,
     pagesProcessed: totalPages,
   });
+}
