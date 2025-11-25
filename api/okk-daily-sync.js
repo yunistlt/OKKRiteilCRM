@@ -8,53 +8,45 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
+if (!RETAILCRM_API_KEY || !RETAILCRM_BASE_URL || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('[okk-daily-sync] Missing required env vars');
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Универсальная функция синка одного заказа
+// ---- вспомогалки ----
+
+function formatDateForRetail(date) {
+  // YYYY-MM-DD HH:MM:SS
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+// Синк одного заказа + истории (аккуратно перенесено из retailcrm-sync)
 async function syncSingleOrder(order) {
-  let managerId = null;
+  const summ = typeof order.summ === 'number' ? order.summ : null;
+  const purchaseSumm = typeof order.purchaseSumm === 'number' ? order.purchaseSumm : null;
 
   const managerRetailId =
-    order.managerId ||
-    (order.manager && (order.manager.id || order.manager.externalId));
+    order.manager && (order.manager.id || order.manager.externalId || null);
 
+  let managerId = null;
   if (managerRetailId) {
-    const managerFullName =
-      (order.manager &&
-        `${order.manager.firstName || ''} ${order.manager.lastName || ''}`.trim()) ||
-      `User ${managerRetailId}`;
-
-    const { data: userRow } = await supabase
-      .from('okk_users')
-      .upsert(
-        {
-          retailcrm_user_id: managerRetailId,
-          full_name: managerFullName,
-          role: 'manager',
-        },
-        { onConflict: 'retailcrm_user_id' }
-      )
+    const { data: managerData } = await supabase
+      .from('okk_managers')
       .select('id')
-      .single();
-
-    managerId = userRow?.id || null;
+      .eq('retailcrm_user_id', managerRetailId)
+      .maybeSingle();
+    managerId = managerData?.id || null;
   }
 
-  const summ = order.totalSumm ?? order.summ ?? 0;
-  const purchaseSumm = order.purchaseSumm ?? 0;
-
   const paid =
-    !!order.paid ||
-    !!order.fullPaidAt ||
-    (Array.isArray(order.payments) &&
-      order.payments.some((p) => p.status === 'paid'));
+    typeof order.paid === 'boolean'
+      ? order.paid
+      : order.paymentStatus === 'paid' || order.paymentStatus === 'complete';
 
-  const paymentType =
-    (Array.isArray(order.payments) && order.payments[0] && order.payments[0].type) ||
-    order.paymentType ||
-    null;
+  const paymentType = order.payments?.[0]?.type || null;
 
   const deliveryType =
     order.delivery &&
@@ -79,50 +71,58 @@ async function syncSingleOrder(order) {
     items: order.items || [],
   };
 
-  const { data: okkOrder } = await supabase
+  const { data: okkOrder, error: upsertError } = await supabase
     .from('okk_orders')
     .upsert(payloadOrder, { onConflict: 'retailcrm_order_id' })
     .select('id')
     .single();
 
+  if (upsertError) {
+    console.error('[okk-daily-sync] Supabase upsert okk_orders error:', upsertError);
+    throw upsertError;
+  }
+
+  const okkOrderId = okkOrder.id;
+
+  // История по одному заказу
   const historyUrl =
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&filter[orders][]=${encodeURIComponent(order.id)}` +
-    `&limit=200`;
+    `&filter[orderNumber]=${encodeURIComponent(order.number || String(order.id))}` +
+    `&limit=100`;
 
   const historyResp = await fetch(historyUrl);
-  const historyData = await historyResp.json();
+  const historyJson = await historyResp.json();
 
-  if (historyData.success) {
-    const rows = historyData.history.map((h) => ({
-      order_id: okkOrder.id,
-      retailcrm_order_id: order.id,
-      changed_at: h.createdAt || h.createdAtIso || h.createdAtUtc,
-      changer_retailcrm_user_id:
-        h.user && (h.user.id || h.user.externalId || h.user.id_external),
-      change_type:
-        h.field === 'status'
-          ? 'status_change'
-          : h.field === 'manager'
-          ? 'manager_change'
-          : h.field === 'comment'
-          ? 'comment_change'
-          : 'field_change',
-      field_name: h.field,
-      old_value: h.oldValue != null ? String(h.oldValue) : null,
-      new_value: h.newValue != null ? String(h.newValue) : null,
-      comment: h.comment || null,
-      raw_payload: h,
-    }));
-
-    if (rows.length > 0) {
-      await supabase.from('okk_order_history').insert(rows);
-    }
+  if (!historyJson.success) {
+    console.error('[okk-daily-sync] RetailCRM history error:', historyJson);
+    throw new Error('RetailCRM history error');
   }
 
-  return okkOrder.id;
+  const histories = historyJson.history || [];
+
+  if (histories.length > 0) {
+    const historyPayload = histories.map((h) => ({
+      okk_order_id: okkOrderId,
+      retailcrm_order_id: order.id,
+      created_at_crm: h.createdAt,
+      new_status: h.newValue?.status || null,
+      old_status: h.oldValue?.status || null,
+      raw: h,
+    }));
+
+    const { error: historyError } = await supabase
+      .from('okk_order_history')
+      .upsert(historyPayload, { onConflict: 'okk_order_id,created_at_crm' });
+
+    if (historyError) {
+      console.error('[okk-daily-sync] Supabase okk_order_history error:', historyError);
+      throw historyError;
+    }
+  }
 }
+
+// ---- основной handler ----
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -130,26 +130,35 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 1) Получаем статусы, отмеченные как is_controlled
+  const startTime = Date.now();
+
+  // days – за сколько дней назад тянем обновления статусов (по умолчанию 1 день)
+  const days = req.query.days ? Number(req.query.days) : 1;
+  const MAX_PAGES = req.query.maxPages ? Number(req.query.maxPages) : 3;
+
+  // 1) Берём контролируемые статусы
   const { data: statuses, error: statusesError } = await supabase
     .from('okk_sla_status')
     .select('status')
     .eq('is_controlled', true);
 
   if (statusesError) {
-    console.error('Supabase error (okk_sla_status):', statusesError);
+    console.error('[okk-daily-sync] Supabase okk_sla_status error:', statusesError);
     res.status(500).json({ error: 'Supabase error', details: statusesError.message });
     return;
   }
 
-  const statusList = statuses?.map((s) => s.status) || [];
+  const statusList = statuses?.map((s) => s.status).filter(Boolean) || [];
 
   if (statusList.length === 0) {
     res.status(200).json({ success: true, message: 'No controlled statuses' });
     return;
   }
 
-  // 2) Тянем заказы по этим статусам с пагинацией
+  // 2) Формируем фильтр: только за последние N дней по statusUpdatedAtFrom
+  const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const fromStr = formatDateForRetail(fromDate);
+
   const statusQuery = statusList
     .map((s) => `statuses[]=${encodeURIComponent(s)}`)
     .join('&');
@@ -162,44 +171,63 @@ export default async function handler(req, res) {
 
   try {
     do {
+      // защита по времени – если прошло больше 240 секунд, выходим
+      if (Date.now() - startTime > 240_000) {
+        console.warn('[okk-daily-sync] Time limit reached, finishing early');
+        break;
+      }
+
       const url =
         `${RETAILCRM_BASE_URL}/api/v5/orders` +
         `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
         `&${statusQuery}` +
+        `&filter[statusUpdatedAtFrom]=${encodeURIComponent(fromStr)}` +
         `&limit=${LIMIT}` +
         `&page=${page}`;
 
-      const resp = await fetch(url);
-      const data = await resp.json();
+      console.log('[okk-daily-sync] Fetch page', page, 'url:', url);
 
-      if (!data.success) {
-        console.error('RetailCRM error:', data);
-        res.status(500).json({ error: 'RetailCRM error', raw: data });
+      const resp = await fetch(url);
+      const json = await resp.json();
+
+      if (!json.success) {
+        console.error('[okk-daily-sync] RetailCRM orders error:', json);
+        res.status(502).json({ error: 'RetailCRM error', details: json.errorMsg || json });
         return;
       }
 
-      const pagination = data.pagination || {};
-      totalPages = pagination.totalPageCount || 1;
-      totalOrders = pagination.totalCount || (data.orders?.length || 0);
+      const orders = json.orders || [];
+      totalPages = json.pagination?.totalPageCount || 1;
+      totalOrders = json.pagination?.totalCount || 0;
 
-      for (const order of data.orders || []) {
-        await syncSingleOrder(order);
-        synced++;
+      console.log(
+        `[okk-daily-sync] page ${page}/${totalPages}, orders on page: ${orders.length}`
+      );
+
+      for (const order of orders) {
+        try {
+          await syncSingleOrder(order);
+          synced += 1;
+        } catch (orderErr) {
+          console.error('[okk-daily-sync] Error syncing order', order.id, orderErr);
+          // здесь не роняем весь процесс, просто логируем
+        }
       }
 
       page += 1;
-    } while (page <= totalPages);
+    } while (page <= totalPages && page <= MAX_PAGES);
+
+    res.status(200).json({
+      success: true,
+      message: 'Daily sync completed (possibly partial if time/page limit hit)',
+      statuses: statusList,
+      days,
+      totalOrders,
+      synced,
+      pagesProcessed: Math.min(totalPages, MAX_PAGES, page - 1),
+    });
   } catch (err) {
     console.error('okk-daily-sync fatal error:', err);
     res.status(500).json({ error: 'Internal error', details: String(err) });
-    return;
   }
-
-  res.status(200).json({
-    success: true,
-    statuses: statusList,
-    totalOrders,
-    synced,
-    pagesProcessed: totalPages,
-  });
 }
