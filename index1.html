@@ -1,0 +1,296 @@
+// /index.html
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Электронный ОКК — рабочая воронка</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/styles/okk-main.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div class="layout">
+        <!-- Левая навигационная область (30%) -->
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <div class="app-mark">ОКК</div>
+            <div class="app-title-block">
+              <div class="app-title">Электронный ОКК</div>
+              <div class="app-subtitle">Контроль воронки и KPI</div>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Профиль</div>
+            <div class="sidebar-item sidebar-item_active">
+              <span class="sidebar-item-label">Артур — Коммерческий директор</span>
+              <span class="sidebar-item-note">Основная панель</span>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Навигация</div>
+            <div class="sidebar-item">
+              <span class="sidebar-item-label">Рабочая воронка</span>
+              <span class="sidebar-item-note">Все заказы в 12 статусах</span>
+            </div>
+            <div class="sidebar-item sidebar-item_disabled">
+              <span class="sidebar-item-label">KPI менеджеров</span>
+              <span class="sidebar-item-note">Скоро</span>
+            </div>
+            <div class="sidebar-item sidebar-item_disabled">
+              <span class="sidebar-item-label">Нарушения и штрафы</span>
+              <span class="sidebar-item-note">Скоро</span>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="sidebar-section-title">Настройки</div>
+            <div class="sidebar-pill-row">
+              <span class="sidebar-pill">Рабочие статусы</span>
+              <span class="sidebar-pill">SLA</span>
+              <span class="sidebar-pill">KPI-модель</span>
+            </div>
+            <div class="sidebar-hint">
+              Здесь потом будет интерфейс для настройки
+              воронки, SLA и правил мотивации без программиста.
+            </div>
+          </div>
+        </aside>
+
+        <!-- Правая рабочая область (70%) -->
+        <main class="main">
+          <header class="main-header">
+            <div>
+              <h1 class="main-title">Рабочая воронка</h1>
+              <p class="main-subtitle">
+                Заказы в 12 рабочих статусах. Данные: RetailCRM → Supabase.
+              </p>
+            </div>
+            <div class="main-header-right">
+              <span class="badge" id="status-badge">
+                Статусы: загружается…
+              </span>
+              <span class="pill" id="orders-count-pill">Заказы: —</span>
+              <button id="reload-btn" class="btn-primary">Обновить</button>
+            </div>
+          </header>
+
+          <section id="messages"></section>
+
+          <section class="table-wrapper">
+            <div class="table-scroll">
+              <table id="orders-table">
+                <thead>
+                  <tr>
+                    <th>№</th>
+                    <th>Статус</th>
+                    <th class="hide-md">Менеджер (CRM)</th>
+                    <th class="right hide-sm">Сумма</th>
+                    <th class="hide-sm">Оплата</th>
+                    <th class="hide-md">Создан</th>
+                    <th>В статусе, ч</th>
+                  </tr>
+                </thead>
+                <tbody id="orders-tbody">
+                  <tr>
+                    <td colspan="7" class="table-placeholder">
+                      Загрузка данных…
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module">
+      const messagesEl = document.getElementById("messages");
+      const tbody = document.getElementById("orders-tbody");
+      const statusBadge = document.getElementById("status-badge");
+      const ordersCountPill = document.getElementById("orders-count-pill");
+      const reloadBtn = document.getElementById("reload-btn");
+
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      function setMessage(type, text) {
+        messagesEl.innerHTML = "";
+        if (!text) return;
+        const div = document.createElement("div");
+        div.className = type === "error" ? "msg msg_error" : "msg msg_info";
+        div.textContent = text;
+        messagesEl.appendChild(div);
+      }
+
+      function formatDateTime(str) {
+        if (!str) return "—";
+        const d = new Date(str);
+        if (Number.isNaN(d.getTime())) return str;
+        return d.toLocaleString("ru-RU", {
+          year: "2-digit",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      function calcAgeHours(statusUpdatedAt) {
+        const t = new Date(statusUpdatedAt).getTime();
+        if (Number.isNaN(t)) return null;
+        const diffMs = Date.now() - t;
+        return Math.floor(diffMs / (1000 * 60 * 60));
+      }
+
+      function ageClass(ageHours, slaMinutes) {
+        if (ageHours == null) return "";
+        if (!slaMinutes) return "";
+        const slaHours = slaMinutes / 60;
+        if (ageHours <= slaHours * 0.5) return "age-ok";
+        if (ageHours <= slaHours) return "age-warn";
+        if (ageHours <= slaHours * 2) return "age-bad";
+        return "age-crit";
+      }
+
+      async function loadOrders() {
+        try {
+          setMessage("info", "Загрузка конфигурации и данных…");
+
+          // 1. Конфиг Supabase
+          const configResp = await fetch("/api/okk-frontend-config");
+          const configJson = await configResp.json();
+
+          if (!configJson.success) {
+            throw new Error(
+              "Конфиг Supabase не получен: " +
+                (configJson.error || "неизвестная ошибка")
+            );
+          }
+
+          const { supabaseUrl, supabaseAnonKey } = configJson;
+          if (!supabaseUrl || !supabaseAnonKey) {
+            throw new Error("Не заданы SUPABASE_URL / SUPABASE_ANON_KEY");
+          }
+
+          // 2. Инициализация Supabase (через CDN)
+          const { createClient } = await import(
+            "https://esm.run/@supabase/supabase-js@2"
+          );
+          const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+          // 3. Рабочие статусы
+          const { data: statuses, error: statusesError } = await supabase
+            .from("okk_sla_status")
+            .select("status, sla_minutes")
+            .eq("is_controlled", true);
+
+          if (statusesError) throw statusesError;
+
+          const statusList = (statuses || []).map((s) => s.status);
+          const slaByStatus = {};
+          (statuses || []).forEach((s) => {
+            slaByStatus[s.status] = s.sla_minutes;
+          });
+
+          if (!statusList.length) {
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="7" class="table-placeholder">
+                  Нет настроенных рабочих статусов (okk_sla_status.is_controlled = true).
+                </td>
+              </tr>
+            `;
+            statusBadge.textContent = "Статусы: нет настроенных";
+            ordersCountPill.textContent = "Заказы: 0";
+            setMessage(null, "");
+            return;
+          }
+
+          statusBadge.textContent = `Статусы: ${statusList.length}`;
+
+          // 4. Заказы
+          const { data: orders, error: ordersError } = await supabase
+            .from("okk_orders")
+            .select(
+              "id, retailcrm_order_id, number, current_status, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
+            )
+            .in("current_status", statusList)
+            .order("status_updated_at_crm", { ascending: true })
+            .limit(500);
+
+          if (ordersError) throw ordersError;
+
+          if (!orders || !orders.length) {
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="7" class="table-placeholder">
+                  В рабочих статусах сейчас нет заказов.
+                </td>
+              </tr>
+            `;
+            ordersCountPill.textContent = "Заказы: 0";
+            setMessage(null, "");
+            return;
+          }
+
+          ordersCountPill.textContent = `Заказы: ${orders.length}`;
+
+          // 5. Рендер таблицы
+          tbody.innerHTML = "";
+          for (const o of orders) {
+            const tr = document.createElement("tr");
+
+            const ageHours = calcAgeHours(o.status_updated_at_crm);
+            const slaMinutes = slaByStatus[o.current_status];
+            const ageCls = ageClass(ageHours, slaMinutes);
+
+            tr.innerHTML = `
+              <td class="nowrap">${o.number}</td>
+              <td class="status-cell nowrap">${o.current_status}</td>
+              <td class="hide-md nowrap">
+                ${
+                  o.manager_retailcrm_id
+                    ? `<span class="tag">ID ${o.manager_retailcrm_id}</span>`
+                    : "—"
+                }
+              </td>
+              <td class="right hide-sm">
+                ${o.summ != null ? o.summ.toLocaleString("ru-RU") : "—"}
+              </td>
+              <td class="hide-sm nowrap">${o.paid ? "Оплачен" : "Не оплачен"}</td>
+              <td class="hide-md nowrap">${formatDateTime(
+                o.created_at_crm
+              )}</td>
+              <td class="nowrap ${ageCls}">
+                ${ageHours != null ? ageHours.toString() : "—"}
+              </td>
+            `;
+
+            tbody.appendChild(tr);
+          }
+
+          setMessage(null, "");
+        } catch (err) {
+          console.error(err);
+          setMessage("error", String(err.message || err));
+        }
+      }
+
+      reloadBtn.addEventListener("click", async () => {
+        reloadBtn.disabled = true;
+        reloadBtn.textContent = "Обновляю…";
+        try {
+          await loadOrders();
+        } finally {
+          await sleep(300);
+          reloadBtn.disabled = false;
+          reloadBtn.textContent = "Обновить";
+        }
+      });
+
+      loadOrders();
+    </script>
+  </body>
+</html>
