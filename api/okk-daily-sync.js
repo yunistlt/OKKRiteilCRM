@@ -142,32 +142,49 @@ export default async function handler(req, res) {
     return;
   }
 
-  // 2) Тянем заказы по этим статусам
-  const statusQuery = statusList.map((s) => `statuses[]=${encodeURIComponent(s)}`).join('&');
+   // 2) Тянем заказы по этим статусам с пагинацией
+  const statusQuery = statusList
+    .map((s) => `statuses[]=${encodeURIComponent(s)}`)
+    .join('&');
 
-  const url =
-    `${RETAILCRM_BASE_URL}/api/v5/orders` +
-    `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&${statusQuery}` +
-    `&limit=200`;
-
-  const resp = await fetch(url);
-  const data = await resp.json();
-
-  if (!data.success) {
-    res.status(500).json({ error: 'RetailCRM error', raw: data });
-    return;
-  }
-
+  const LIMIT = 100;
+  let page = 1;
+  let totalPages = 1;
   let synced = 0;
-  for (const order of data.orders || []) {
-    await syncSingleOrder(order);
-    synced++;
-  }
+  let totalOrders = 0;
+
+  do {
+    const url =
+      `${RETAILCRM_BASE_URL}/api/v5/orders` +
+      `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
+      `&${statusQuery}` +
+      `&limit=${LIMIT}` +
+      `&page=${page}`;
+
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (!data.success) {
+      res.status(500).json({ error: 'RetailCRM error', raw: data });
+      return;
+    }
+
+    const pagination = data.pagination || {};
+    totalPages = pagination.totalPageCount || 1;
+    totalOrders = pagination.totalCount || (data.orders?.length || 0);
+
+    for (const order of data.orders || []) {
+      await syncSingleOrder(order);
+      synced++;
+    }
+
+    page += 1;
+  } while (page <= totalPages);
 
   res.status(200).json({
     success: true,
-    synced,
     statuses: statusList,
+    totalOrders,
+    synced,
+    pagesProcessed: totalPages,
   });
-}
