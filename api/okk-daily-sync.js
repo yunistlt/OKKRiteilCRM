@@ -88,7 +88,7 @@ async function syncSingleOrder(order) {
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
     `&filter[orders][]=${encodeURIComponent(order.id)}` +
-    `&limit=200`;
+    `&limit=100`;
 
   const historyResp = await fetch(historyUrl);
   const historyData = await historyResp.json();
