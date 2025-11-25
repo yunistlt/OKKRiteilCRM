@@ -1,9 +1,22 @@
+// /vercel.json
 {
   "version": 2,
   "builds": [
-    { "src": "api/**/*.js", "use": "@vercel/node" }
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
+    }
   ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1.js" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1.js"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/okk-initial-sync-chunk",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }
