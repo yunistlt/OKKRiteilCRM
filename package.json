@@ -1,0 +1,15 @@
+{
+  "name": "okk-retailcrm",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"no build\"",
+    "start": "node api/retailcrm-sync.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
