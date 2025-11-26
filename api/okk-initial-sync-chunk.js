@@ -1,4 +1,5 @@
 // OKKRiteilCRM/api/okk-initial-sync-chunk.js
+
 import { createClient } from "@supabase/supabase-js";
 
 const {
@@ -20,21 +21,30 @@ function formatDate(date) {
 }
 
 // ---------------------------------------------------------------------
-// Main handler — один чанк первичной загрузки
+// Main handler — one chunk of initial sync
 // ---------------------------------------------------------------------
 export default async function handler(req, res) {
   try {
     // 1. Получаем/создаём состояние синка
-    const { data: stateRows } = await supabase
+    const { data: stateRows, error: stateError } = await supabase
       .from("okk_sync_state")
       .select("*")
       .eq("sync_type", "initial_orders")
       .limit(1);
 
+    if (stateError) {
+      console.error("Error loading sync state:", stateError);
+      res.status(500).json({
+        success: false,
+        error: "Failed to load sync state from DB",
+      });
+      return;
+    }
+
     let state = stateRows?.[0];
 
     if (!state) {
-      const { data: newState } = await supabase
+      const { data: newState, error: insertStateError } = await supabase
         .from("okk_sync_state")
         .insert({
           sync_type: "initial_orders",
@@ -43,6 +53,15 @@ export default async function handler(req, res) {
         })
         .select()
         .single();
+
+      if (insertStateError) {
+        console.error("Error creating sync state:", insertStateError);
+        res.status(500).json({
+          success: false,
+          error: "Failed to create sync state in DB",
+        });
+        return;
+      }
 
       state = newState;
     }
@@ -55,16 +74,16 @@ export default async function handler(req, res) {
       return;
     }
 
-    const CURRENT_PAGE = state.last_page;
+    const CURRENT_PAGE = state.last_page || 1;
 
-    // 2. Берём список КОНТРОЛИРУЕМЫХ статусов (рабочие статусы)
+    // 2. Получаем рабочие статусы (по флагу is_controlled = true)
     const { data: statuses, error: statusesError } = await supabase
       .from("okk_sla_status")
-      .select("status")
+      .select("status, status_code")
       .eq("is_controlled", true);
 
     if (statusesError) {
-      console.error("Error loading statuses:", statusesError);
+      console.error("Error loading controlled statuses:", statusesError);
       res.status(500).json({
         success: false,
         error: "Failed to load controlled statuses from DB",
@@ -72,15 +91,30 @@ export default async function handler(req, res) {
       return;
     }
 
-    const statusList = statuses?.map((s) => s.status) || [];
+    const statusCodeList =
+      statuses
+        ?.map((s) => s.status_code || s.status)
+        .filter(Boolean) || [];
 
-    // 3. Собираем запрос в RetailCRM:
-    //    filter[extendedStatus][] = <код статуса>
-    //    → это именно заказы, которые СЕЙЧАС в этих статусах
+    if (!statusCodeList.length) {
+      res.status(200).json({
+        success: true,
+        message:
+          "No controlled statuses configured in okk_sla_status (status_code/status). Nothing to sync.",
+        working_status_codes: [],
+        total_orders: 0,
+        total_pages: 0,
+      });
+      return;
+    }
+
+    // 3. Фильтр по ТЕКУЩЕМУ extendedStatus заказа (кодовые статусы)
     const LIMIT = 100;
 
-    const statusQuery = statusList
-      .map((s) => `filter[extendedStatus][]=${encodeURIComponent(s)}`)
+    const statusQuery = statusCodeList
+      .map(
+        (code) => `filter[extendedStatus][]=${encodeURIComponent(code)}`
+      )
       .join("&");
 
     const url =
@@ -90,11 +124,12 @@ export default async function handler(req, res) {
       `&limit=${LIMIT}` +
       `&page=${CURRENT_PAGE}`;
 
+    // 4. Запрашиваем заказы из RetailCRM
     const response = await fetch(url);
     const json = await response.json();
 
     if (!json.success) {
-      console.error("RetailCRM error:", json);
+      console.error("RetailCRM error (initial-sync-chunk):", json);
       res.status(502).json({
         success: false,
         error: "RetailCRM error",
@@ -107,17 +142,25 @@ export default async function handler(req, res) {
     const totalPages = json.pagination?.totalPageCount || 1;
     const totalOrders = json.pagination?.totalCount || 0;
 
-    // 4. Сохраняем заказы (без истории, чтобы быстрее)
+    // 5. Сохраняем заказы в okk_orders
     for (const order of orders) {
       try {
         const managerRetailId =
           order.manager?.id || order.manager?.externalId || null;
 
-        const { data: managerData } = await supabase
+        const { data: managerData, error: managerError } = await supabase
           .from("okk_managers")
           .select("id")
           .eq("retailcrm_user_id", managerRetailId)
           .maybeSingle();
+
+        if (managerError) {
+          console.error(
+            "Error loading manager for order",
+            order.id,
+            managerError
+          );
+        }
 
         const managerId = managerData?.id || null;
 
@@ -125,31 +168,38 @@ export default async function handler(req, res) {
           {
             retailcrm_order_id: order.id,
             number: order.number || String(order.id),
+
             created_at_crm: order.createdAt,
             status_updated_at_crm:
               order.statusUpdatedAt || order.updatedAt || order.createdAt,
+
+            // Человеческое название статуса (как было)
             current_status: order.status,
-            summ:
-              typeof order.summ === "number"
-                ? order.summ
-                : typeof order.totalSumm === "number"
-                ? order.totalSumm
-                : null,
+
+            // КОДОВОЕ название текущего статуса (extendedStatus)
+            current_status_code: order.extendedStatus || order.status || null,
+
+            summ: typeof order.summ === "number" ? order.summ : null,
             purchase_summ:
               typeof order.purchaseSumm === "number"
                 ? order.purchaseSumm
                 : null,
+
             manager_retailcrm_id: managerRetailId,
             manager_id: managerId,
+
             paid:
               typeof order.paid === "boolean"
                 ? order.paid
                 : order.paymentStatus === "paid" ||
                   order.paymentStatus === "complete",
+
             payment_type: order.payments?.[0]?.type || null,
             shipped: !!order.shipped,
+
             delivery_type:
               order.delivery?.code || order.delivery?.service?.code || null,
+
             custom_fields: order.customFields || {},
             items: order.items || [],
           },
@@ -160,31 +210,41 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5. Обновляем состояние синка
-    let newState;
+    // 6. Обновляем состояние синка
+    let newStateFields;
     if (CURRENT_PAGE < totalPages) {
-      newState = { last_page: CURRENT_PAGE + 1 };
+      newStateFields = {
+        last_page: CURRENT_PAGE + 1,
+      };
     } else {
-      newState = { last_page: CURRENT_PAGE, is_completed: true };
+      newStateFields = {
+        last_page: CURRENT_PAGE,
+        is_completed: true,
+      };
     }
 
-    await supabase
+    const { error: updateStateError } = await supabase
       .from("okk_sync_state")
-      .update(newState)
+      .update(newStateFields)
       .eq("sync_type", "initial_orders");
+
+    if (updateStateError) {
+      console.error("Error updating sync state:", updateStateError);
+    }
 
     res.status(200).json({
       success: true,
-      message: "Chunk processed",
+      message:
+        "Chunk processed (only orders currently in working extended statuses by status_code).",
+      working_status_codes: statusCodeList,
       page_processed: CURRENT_PAGE,
       total_pages: totalPages,
       orders_on_page: orders.length,
       total_orders: totalOrders,
-      next_page:
-        CURRENT_PAGE < totalPages ? CURRENT_PAGE + 1 : "COMPLETED",
+      next_page: CURRENT_PAGE < totalPages ? CURRENT_PAGE + 1 : "COMPLETED",
     });
   } catch (error) {
-    console.error("Fatal error:", error);
+    console.error("Fatal error in okk-initial-sync-chunk:", error);
     res.status(500).json({
       success: false,
       error: error.message,
