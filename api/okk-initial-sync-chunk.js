@@ -20,7 +20,7 @@ function formatDate(date) {
 }
 
 // ---------------------------------------------------------------------
-// Main handler — one chunk of initial sync
+// Main handler — один чанк первичной загрузки
 // ---------------------------------------------------------------------
 export default async function handler(req, res) {
   try {
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
 
     const CURRENT_PAGE = state.last_page;
 
-    // 2. Получаем рабочие статусы (12 штук)
+    // 2. Берём список КОНТРОЛИРУЕМЫХ статусов (рабочие статусы)
     const { data: statuses, error: statusesError } = await supabase
       .from("okk_sla_status")
       .select("status")
@@ -67,19 +67,20 @@ export default async function handler(req, res) {
       console.error("Error loading statuses:", statusesError);
       res.status(500).json({
         success: false,
-        error: "Failed to load controlled statuses",
+        error: "Failed to load controlled statuses from DB",
       });
       return;
     }
 
     const statusList = statuses?.map((s) => s.status) || [];
-    const workingStatusesSet = new Set(statusList);
 
+    // 3. Собираем запрос в RetailCRM:
+    //    filter[extendedStatus][] = <код статуса>
+    //    → это именно заказы, которые СЕЙЧАС в этих статусах
     const LIMIT = 100;
 
-    // Пытаемся подсказать RetailCRM статусы, но основная фильтрация — на нашей стороне
     const statusQuery = statusList
-      .map((s) => `filter[statuses][]=${encodeURIComponent(s)}`)
+      .map((s) => `filter[extendedStatus][]=${encodeURIComponent(s)}`)
       .join("&");
 
     const url =
@@ -106,18 +107,9 @@ export default async function handler(req, res) {
     const totalPages = json.pagination?.totalPageCount || 1;
     const totalOrders = json.pagination?.totalCount || 0;
 
-    // 4. Сохраняем ТОЛЬКО заказы в наших рабочих статусах
-    let filteredCount = 0;
-
+    // 4. Сохраняем заказы (без истории, чтобы быстрее)
     for (const order of orders) {
       try {
-        // пропускаем всё, что не в рабочих статусах
-        if (!workingStatusesSet.has(order.status)) {
-          continue;
-        }
-
-        filteredCount += 1;
-
         const managerRetailId =
           order.manager?.id || order.manager?.externalId || null;
 
@@ -137,7 +129,12 @@ export default async function handler(req, res) {
             status_updated_at_crm:
               order.statusUpdatedAt || order.updatedAt || order.createdAt,
             current_status: order.status,
-            summ: typeof order.summ === "number" ? order.summ : null,
+            summ:
+              typeof order.summ === "number"
+                ? order.summ
+                : typeof order.totalSumm === "number"
+                ? order.totalSumm
+                : null,
             purchase_summ:
               typeof order.purchaseSumm === "number"
                 ? order.purchaseSumm
@@ -164,16 +161,11 @@ export default async function handler(req, res) {
     }
 
     // 5. Обновляем состояние синка
-    let newState = {};
+    let newState;
     if (CURRENT_PAGE < totalPages) {
-      newState = {
-        last_page: CURRENT_PAGE + 1,
-      };
+      newState = { last_page: CURRENT_PAGE + 1 };
     } else {
-      newState = {
-        last_page: CURRENT_PAGE,
-        is_completed: true,
-      };
+      newState = { last_page: CURRENT_PAGE, is_completed: true };
     }
 
     await supabase
@@ -187,7 +179,6 @@ export default async function handler(req, res) {
       page_processed: CURRENT_PAGE,
       total_pages: totalPages,
       orders_on_page: orders.length,
-      filtered_orders_on_page: filteredCount,
       total_orders: totalOrders,
       next_page:
         CURRENT_PAGE < totalPages ? CURRENT_PAGE + 1 : "COMPLETED",
