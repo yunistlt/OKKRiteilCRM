@@ -1,4 +1,3 @@
-// /index.html
 <!DOCTYPE html>
 <html lang="ru">
   <head>
@@ -180,21 +179,21 @@
           );
           const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-          // 3. Рабочие статусы
+          // 3. Рабочие статусы (используем только кодовые названия)
           const { data: statuses, error: statusesError } = await supabase
             .from("okk_sla_status")
-            .select("status, sla_minutes")
+            .select("status_code, sla_minutes")
             .eq("is_controlled", true);
 
           if (statusesError) throw statusesError;
 
-          const statusList = (statuses || []).map((s) => s.status);
-          const slaByStatus = {};
+          const statusCodes = (statuses || []).map((s) => s.status_code);
+          const slaByStatusCode = {};
           (statuses || []).forEach((s) => {
-            slaByStatus[s.status] = s.sla_minutes;
+            slaByStatusCode[s.status_code] = s.sla_minutes;
           });
 
-          if (!statusList.length) {
+          if (!statusCodes.length) {
             tbody.innerHTML = `
               <tr>
                 <td colspan="7" class="table-placeholder">
@@ -208,15 +207,15 @@
             return;
           }
 
-          statusBadge.textContent = `Статусы: ${statusList.length}`;
+          statusBadge.textContent = `Статусы: ${statusCodes.length}`;
 
-          // 4. Заказы
+          // 4. Заказы — фильтр по current_status_code
           const { data: orders, error: ordersError } = await supabase
             .from("okk_orders")
             .select(
-              "id, retailcrm_order_id, number, current_status, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
+              "id, retailcrm_order_id, number, current_status, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
             )
-            .in("current_status", statusList)
+            .in("current_status_code", statusCodes)
             .order("status_updated_at_crm", { ascending: true })
             .limit(500);
 
@@ -243,12 +242,14 @@
             const tr = document.createElement("tr");
 
             const ageHours = calcAgeHours(o.status_updated_at_crm);
-            const slaMinutes = slaByStatus[o.current_status];
+            const slaMinutes = slaByStatusCode[o.current_status_code];
             const ageCls = ageClass(ageHours, slaMinutes);
 
             tr.innerHTML = `
               <td class="nowrap">${o.number}</td>
-              <td class="status-cell nowrap">${o.current_status}</td>
+              <td class="status-cell nowrap">${
+                o.current_status_code || o.current_status || "—"
+              }</td>
               <td class="hide-md nowrap">
                 ${
                   o.manager_retailcrm_id
@@ -257,7 +258,7 @@
                 }
               </td>
               <td class="right hide-sm">
-                ${o.summ != null ? o.summ.toLocaleString("ru-RU") : "—"}
+                ${o.summ != null ? Number(o.summ).toLocaleString("ru-RU") : "—"}
               </td>
               <td class="hide-sm nowrap">${o.paid ? "Оплачен" : "Не оплачен"}</td>
               <td class="hide-md nowrap">${formatDateTime(
