@@ -1,4 +1,4 @@
-//OKKRiteilCRM/api/
+// OKKRiteilCRM/api/okk-initial-sync-chunk.js
 import { createClient } from "@supabase/supabase-js";
 
 const {
@@ -13,14 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // ---------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------
-function formatDate(date) {
-  return date.toISOString().slice(0, 19).replace("T", " ");
-}
-
-// ---------------------------------------------------------------------
-// Main handler — one chunk of initial sync
+// Main handler — один чанк начальной синхронизации
 // ---------------------------------------------------------------------
 export default async function handler(req, res) {
   try {
@@ -57,29 +50,41 @@ export default async function handler(req, res) {
 
     const CURRENT_PAGE = state.last_page;
 
-    // 2. Получаем рабочие статусы (12 штук)
-    const { data: statuses } = await supabase
+    // 2. Получаем рабочие статусы (is_controlled = true)
+    const { data: statuses, error: statusesError } = await supabase
       .from("okk_sla_status")
       .select("status")
       .eq("is_controlled", true);
 
+    if (statusesError) {
+      console.error("Error loading statuses:", statusesError);
+      res.status(500).json({
+        success: false,
+        error: "Failed to load controlled statuses",
+      });
+      return;
+    }
+
     const statusList = statuses?.map((s) => s.status) || [];
 
-    // 3. Фильтр по всей истории — тянем всё
-    const fromStr = "2015-01-01 00:00:00";
+    // 3. Собираем запрос в RetailCRM — только ТЕКУЩИЕ рабочие статусы
     const LIMIT = 100;
 
-// только текущие рабочие статусы
-const statusQuery = statusList
-  .map((s) => `filter[statuses][]=${encodeURIComponent(s)}`)
-  .join("&");
+    const extendedStatusQuery =
+      statusList.length > 0
+        ? statusList
+            .map(
+              (s) => `filter[extendedStatus][]=${encodeURIComponent(s)}`
+            )
+            .join("&")
+        : "";
 
-const url =
-  `${RETAILCRM_BASE_URL}/api/v5/orders` +
-  `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-  (statusQuery ? `&${statusQuery}` : "") +
-  `&limit=${LIMIT}` +
-  `&page=${CURRENT_PAGE}`;
+    const url =
+      `${RETAILCRM_BASE_URL}/api/v5/orders` +
+      `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
+      (extendedStatusQuery ? `&${extendedStatusQuery}` : "") +
+      `&limit=${LIMIT}` +
+      `&page=${CURRENT_PAGE}`;
 
     const response = await fetch(url);
     const json = await response.json();
@@ -147,17 +152,11 @@ const url =
     }
 
     // 5. Обновляем состояние синка
-    let newState = {};
+    let newState;
     if (CURRENT_PAGE < totalPages) {
-      // продолжаем
-      newState = {
-        last_page: CURRENT_PAGE + 1,
-      };
+      newState = { last_page: CURRENT_PAGE + 1 };
     } else {
-      newState = {
-        last_page: CURRENT_PAGE,
-        is_completed: true,
-      };
+      newState = { last_page: CURRENT_PAGE, is_completed: true };
     }
 
     await supabase
