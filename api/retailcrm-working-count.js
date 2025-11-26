@@ -22,8 +22,8 @@ export default async function handler(req, res) {
     const statusList = statuses.map(s => s.status);
 
     // 2. Правильный фильтр — только filter[status][]
-   const statusQuery = statusList
-  .map((s) => `filter[extendedStatus][]=${encodeURIComponent(s)}`)
+const statusQuery = statusList
+  .map((s) => `filter[status][]=${encodeURIComponent(s)}`)
   .join("&");
 
     // 3. Минимальный тест: limit=1 но pagination отдаёт totalCount
