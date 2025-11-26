@@ -69,17 +69,17 @@ export default async function handler(req, res) {
     const fromStr = "2015-01-01 00:00:00";
     const LIMIT = 100;
 
-    const statusQuery = statusList
-      .map((s) => `statuses[]=${encodeURIComponent(s)}`)
-      .join("&");
+// только текущие рабочие статусы
+const statusQuery = statusList
+  .map((s) => `filter[statuses][]=${encodeURIComponent(s)}`)
+  .join("&");
 
-    const url =
-      `${RETAILCRM_BASE_URL}/api/v5/orders` +
-      `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-      `&${statusQuery}` +
-      `&filter[statusUpdatedAtFrom]=${encodeURIComponent(fromStr)}` +
-      `&limit=${LIMIT}` +
-      `&page=${CURRENT_PAGE}`;
+const url =
+  `${RETAILCRM_BASE_URL}/api/v5/orders` +
+  `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
+  (statusQuery ? `&${statusQuery}` : "") +
+  `&limit=${LIMIT}` +
+  `&page=${CURRENT_PAGE}`;
 
     const response = await fetch(url);
     const json = await response.json();
