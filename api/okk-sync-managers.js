@@ -23,7 +23,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Тянем всех пользователей из RetailCRM (их немного)
     const LIMIT = 100;
     let page = 1;
     let totalPages = 1;
@@ -67,24 +66,19 @@ export default async function handler(req, res) {
       return;
     }
 
-    // 2. Готовим payload для okk_users
+    // под таблицу okk_users: retailcrm_user_id, full_name, role, is_active
     const payload = allUsers.map((u) => {
       const fio =
         [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ') || null;
 
       return {
-        // ключ из RetailCRM
         retailcrm_user_id: u.id,
-        // человекочитаемое имя
-        name: fio || u.fio || u.login || null,
-        email: u.email || null,
-        is_active: u.isDeleted ? false : true,
+        full_name: fio || u.fio || u.login || null,
         role: u.role || u.groupName || null,
-        raw: u,
+        is_active: u.isDeleted ? false : true,
       };
     });
 
-    // 3. upsert в okk_users по retailcrm_user_id
     const { error: upsertError } = await supabase
       .from('okk_users')
       .upsert(payload, { onConflict: 'retailcrm_user_id' });
@@ -98,7 +92,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // 4. Обновляем okk_sync_state для типа "managers"
     const { error: syncStateError } = await supabase.from('okk_sync_state').upsert(
       {
         sync_type: 'managers',
@@ -110,7 +103,6 @@ export default async function handler(req, res) {
 
     if (syncStateError) {
       console.error('[okk-sync-managers] Supabase upsert okk_sync_state error:', syncStateError);
-      // это не критично для самих данных, поэтому не роняю ответ
     }
 
     res.status(200).json({
