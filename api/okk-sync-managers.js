@@ -72,12 +72,13 @@ export default async function handler(req, res) {
         [u.lastName, u.firstName, u.middleName].filter(Boolean).join(' ') || null;
 
       return {
-        retailcrm_user_id: u.id,
-        full_name: fio || u.fio || u.login || null,
-        role: u.role || u.groupName || null,
-        is_active: u.isDeleted ? false : true,
-      };
-    });
+    retailcrm_user_id: u.id,
+    full_name: fio || u.fio || u.login || null,
+    is_active: u.isDeleted ? false : true,
+    // 🔽 вот тут гарантируем не-null
+    role: u.role || u.groupName || 'manager',
+  };
+});
 
     const { error: upsertError } = await supabase
       .from('okk_users')
