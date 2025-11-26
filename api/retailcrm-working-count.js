@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       `${RETAILCRM_BASE_URL}/api/v5/orders` +
       `?apiKey=${RETAILCRM_API_KEY}` +
       `&${statusQuery}` +
-      `&limit=1&page=1`;
+      `&limit=20&page=1`;
 
     const r = await fetch(url);
     const json = await r.json();
