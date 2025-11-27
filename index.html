@@ -75,97 +75,91 @@
             </div>
           </header>
 
-<!-- Панель контроля качества -->
-<section class="panel panel-quality" id="quality-panel">
-  <header class="panel-header">
-    <div>
-      <h1 class="panel-title">Контроль качества</h1>
-      <p class="panel-subtitle">
-        Нарушения воронки, комментариев и отмен заказов
-      </p>
-    </div>
-    <button class="btn btn-primary" id="runQualityCheckBtn">
-      Запустить проверку заказов
-    </button>
-  </header>
+          <!-- Панель КОНТРОЛЯ КАЧЕСТВА -->
+          <section class="panel panel-quality" id="quality-panel">
+            <header class="panel-header">
+              <div>
+                <h1 class="panel-title">Контроль качества</h1>
+                <p class="panel-subtitle">
+                  Нарушения воронки, комментариев и отмен заказов
+                </p>
+              </div>
+              <button class="btn btn-primary" id="runQualityCheckBtn">
+                Запустить проверку заказов
+              </button>
+            </header>
 
-  <!-- Верхняя строка с цифрами -->
-  <div class="panel-summary" id="qualitySummary">
-    <div class="summary-card">
-      <div class="summary-label">Всего нарушений</div>
-      <div class="summary-value" id="summaryTotal">—</div>
-    </div>
-    <div class="summary-card">
-      <div class="summary-label">Нет коммент. при смене статуса</div>
-      <div class="summary-value" id="summaryNoComment">—</div>
-    </div>
-    <div class="summary-card">
-      <div class="summary-label">Фейковые квалификации</div>
-      <div class="summary-value" id="summaryFakeQual">—</div>
-    </div>
-    <div class="summary-card">
-      <div class="summary-label">Незаконные отмены</div>
-      <div class="summary-value" id="summaryIllegalCancel">—</div>
-    </div>
-  </div>
+            <div class="panel-summary" id="qualitySummary">
+              <div class="summary-card">
+                <div class="summary-label">Всего нарушений</div>
+                <div class="summary-value" id="summaryTotal">—</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Нет комментариев</div>
+                <div class="summary-value" id="summaryNoComment">—</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Фейковые квалификации</div>
+                <div class="summary-value" id="summaryFakeQual">—</div>
+              </div>
+              <div class="summary-card">
+                <div class="summary-label">Незаконные отмены</div>
+                <div class="summary-value" id="summaryIllegalCancel">—</div>
+              </div>
+            </div>
 
-  <!-- Панель фильтров -->
-  <div class="panel-toolbar">
-    <div class="toolbar-group">
-      <label class="toolbar-label" for="filterViolationCode">Тип нарушения</label>
-      <select id="filterViolationCode" class="toolbar-select">
-        <option value="">Все</option>
-        <option value="NO_COMMENT_ON_STATUS_CHANGE">Нет комментария</option>
-        <option value="FAKE_QUALIFICATION">Фейковая квалификация</option>
-        <option value="ILLEGAL_CANCEL_FROM_NEW">Незаконная отмена из Нового</option>
-      </select>
-    </div>
+            <div class="panel-toolbar">
+              <div class="toolbar-group">
+                <label class="toolbar-label" for="filterViolationCode">Тип нарушения</label>
+                <select id="filterViolationCode" class="toolbar-select">
+                  <option value="">Все</option>
+                  <option value="NO_COMMENT_ON_STATUS_CHANGE">Нет комментария</option>
+                  <option value="FAKE_QUALIFICATION">Фейковая квалификация</option>
+                  <option value="ILLEGAL_CANCEL_FROM_NEW">Незаконная отмена из Нового</option>
+                </select>
+              </div>
 
-    <div class="toolbar-group">
-      <label class="toolbar-label" for="filterManager">ID менеджера</label>
-      <select id="filterManager" class="toolbar-select">
-        <option value="">Все</option>
-        <!-- менеджеры подставятся из данных -->
-      </select>
-    </div>
+              <div class="toolbar-group">
+                <label class="toolbar-label" for="filterManager">ID менеджера</label>
+                <select id="filterManager" class="toolbar-select">
+                  <option value="">Все</option>
+                </select>
+              </div>
 
-    <div class="toolbar-group toolbar-group-wide">
-      <label class="toolbar-label" for="filterSearch">Поиск</label>
-      <input
-        id="filterSearch"
-        class="toolbar-input"
-        type="text"
-        placeholder="Найти по ID заказа или тексту детали..."
-      />
-    </div>
-  </div>
+              <div class="toolbar-group toolbar-group-wide">
+                <label class="toolbar-label" for="filterSearch">Поиск</label>
+                <input
+                  id="filterSearch"
+                  class="toolbar-input"
+                  type="text"
+                  placeholder="Найти по ID заказа или тексту детали..."
+                />
+              </div>
+            </div>
 
-  <!-- Таблица нарушений -->
-  <div class="panel-table-wrapper">
-    <table class="quality-table">
-      <thead>
-        <tr>
-          <th>Время</th>
-          <th>ID заказа</th>
-          <th>ID менеджера</th>
-          <th>Тип нарушения</th>
-          <th>Детали</th>
-        </tr>
-      </thead>
-      <tbody id="qualityTableBody">
-        <tr>
-          <td colspan="5" class="table-placeholder">
-            Загрузка нарушений...
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</section>
+            <div class="panel-table-wrapper">
+              <table class="quality-table">
+                <thead>
+                  <tr>
+                    <th>Время</th>
+                    <th>ID заказа</th>
+                    <th>ID менеджера</th>
+                    <th>Тип нарушения</th>
+                    <th>Детали</th>
+                  </tr>
+                </thead>
+                <tbody id="qualityTableBody">
+                  <tr>
+                    <td colspan="5" class="table-placeholder">
+                      Загрузка нарушений...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <!-- Конец панели КОНТРОЛЯ КАЧЕСТВА -->
 
-<!-- Подключаем JS панели -->
-<script type="module" src="/scripts/okk-quality-panel.js"></script>
-          
           <section id="messages"></section>
 
           <section class="table-wrapper">
@@ -382,5 +376,7 @@
 
       loadOrders();
     </script>
+
+    <script type="module" src="/scripts/okk-quality-panel.js"></script>
   </body>
 </html>
