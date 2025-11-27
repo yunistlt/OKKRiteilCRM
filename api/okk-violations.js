@@ -11,36 +11,30 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', 'GET');
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
+  }
+
   try {
-    const { violation_code, manager_id } = req.query;
-
-    let query = supabase
+    const { data, error } = await supabase
       .from('okk_violations')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(500);
+      .select(
+        'id, order_id, manager_id, violation_type, severity, detected_at, details'
+      )
+      .order('detected_at', { ascending: false })
+      .limit(1000);
 
-    if (violation_code) {
-      query = query.eq('violation_code', violation_code);
-    }
-
-    if (manager_id) {
-      query = query.eq('manager_id', manager_id);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error('OKK VIOLATIONS API ERROR:', error);
-      return res.status(500).json({ ok: false, error: error.message });
-    }
+    if (error) throw error;
 
     return res.status(200).json({
-      ok: true,
+      success: true,
       violations: data || [],
     });
-  } catch (e) {
-    console.error('OKK VIOLATIONS API ERROR:', e);
-    return res.status(500).json({ ok: false, error: e.toString() });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, error: String(err.message || err) });
   }
 }
