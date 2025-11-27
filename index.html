@@ -216,8 +216,7 @@
               "id, retailcrm_order_id, number, current_status, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
             )
             .in("current_status_code", statusCodes)
-            .order("status_updated_at_crm", { ascending: true })
-            .limit(500);
+            .order("status_updated_at_crm", { ascending: true });
 
           if (ordersError) throw ordersError;
 
@@ -233,8 +232,7 @@
             setMessage(null, "");
             return;
           }
-
-          ordersCountPill.textContent = `Заказы: ${orders.length}`;
+          ordersCountPill.textContent = `Заказы: ${count ?? orders.length}`;
 
           // 5. Рендер таблицы
           tbody.innerHTML = "";
