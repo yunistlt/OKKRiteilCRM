@@ -1,163 +1,174 @@
-// scripts/okk-quality-panel.js
-
-const qualityTableBody = document.getElementById('qualityTableBody');
-const runQualityCheckBtn = document.getElementById('runQualityCheckBtn');
-const filterViolationCode = document.getElementById('filterViolationCode');
-const filterManager = document.getElementById('filterManager');
-const filterSearch = document.getElementById('filterSearch');
-
-const summaryTotal = document.getElementById('summaryTotal');
-const summaryNoComment = document.getElementById('summaryNoComment');
-const summaryFakeQual = document.getElementById('summaryFakeQual');
-const summaryIllegalCancel = document.getElementById('summaryIllegalCancel');
+// /scripts/okk-quality-panel.js
 
 let allViolations = [];
 
 // ---------- helpers ----------
 
-function formatDateTime(str) {
-  if (!str) return '—';
-  const d = new Date(str);
-  if (Number.isNaN(d.getTime())) return str;
+function formatDate(dateString) {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  if (Number.isNaN(d.getTime())) return dateString;
   return d.toLocaleString('ru-RU', {
-    year: '2-digit',
-    month: '2-digit',
     day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
   });
 }
 
 function renderSummary(violations) {
-  summaryTotal.textContent = violations.length || '—';
+  const total = violations.length;
+  const noComment = violations.filter(
+    (v) => v.violation_code === 'NO_COMMENT_ON_STATUS_CHANGE',
+  ).length;
+  const fakeQual = violations.filter(
+    (v) => v.violation_code === 'FAKE_QUALIFICATION',
+  ).length;
+  const illegalCancel = violations.filter(
+    (v) => v.violation_code === 'ILLEGAL_CANCEL_FROM_NEW',
+  ).length;
 
-  const byType = violations.reduce(
-    (acc, v) => {
-      acc[v.violation_type] = (acc[v.violation_type] || 0) + 1;
-      return acc;
-    },
-    {}
-  );
-
-  summaryNoComment.textContent =
-    byType.NO_COMMENT_ON_STATUS_CHANGE || '—';
-  summaryFakeQual.textContent = byType.FAKE_QUALIFICATION || '—';
-  summaryIllegalCancel.textContent = byType.ILLEGAL_CANCEL_FROM_NEW || '—';
+  document.getElementById('summaryTotal').textContent = total || '—';
+  document.getElementById('summaryNoComment').textContent = noComment || '—';
+  document.getElementById('summaryFakeQual').textContent = fakeQual || '—';
+  document.getElementById('summaryIllegalCancel').textContent =
+    illegalCancel || '—';
 }
 
 function renderManagersFilter(violations) {
-  const managers = new Set();
-  violations.forEach((v) => {
-    if (v.manager_id) managers.add(v.manager_id);
+  const select = document.getElementById('filterManager');
+  const managers = Array.from(
+    new Set(violations.map((v) => v.manager_id).filter(Boolean)),
+  ).sort((a, b) => {
+    const na = Number(a);
+    const nb = Number(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b), 'ru-RU');
   });
 
-  // очистить кроме "Все"
-  while (filterManager.options.length > 1) {
-    filterManager.remove(1);
+  // очищаем всё, кроме первого "Все"
+  while (select.options.length > 1) {
+    select.remove(1);
   }
 
-  Array.from(managers).forEach((id) => {
+  managers.forEach((id) => {
     const opt = document.createElement('option');
     opt.value = id;
-    opt.textContent = id; // пока просто UUID, потом сделаем ФИО/ID CRM
-    filterManager.appendChild(opt);
+    opt.textContent = id;
+    select.appendChild(opt);
   });
-}
-
-function renderTable(violations) {
-  if (!violations.length) {
-    qualityTableBody.innerHTML = `
-      <tr>
-        <td colspan="5" class="table-placeholder">
-          Нарушений не найдено.
-        </td>
-      </tr>
-    `;
-    return;
-  }
-
-  qualityTableBody.innerHTML = '';
-
-  for (const v of violations) {
-    const tr = document.createElement('tr');
-
-    const details = v.details || {};
-    const orderId = details.retailcrm_order_id || details.order_number || '—';
-    const shortDetails =
-      (details.comment && details.comment.slice(0, 120)) || '';
-
-    tr.innerHTML = `
-      <td class="nowrap">${formatDateTime(v.detected_at)}</td>
-      <td class="nowrap">${orderId}</td>
-      <td class="nowrap">${v.manager_id || '—'}</td>
-      <td class="nowrap">${v.violation_type}</td>
-      <td>${shortDetails}</td>
-    `;
-
-    qualityTableBody.appendChild(tr);
-  }
 }
 
 function applyFilters() {
+  const codeValue = document.getElementById('filterViolationCode').value;
+  const managerValue = document.getElementById('filterManager').value;
+  const searchValue = document
+    .getElementById('filterSearch')
+    .value.trim()
+    .toLowerCase();
+
   let filtered = [...allViolations];
 
-  const code = filterViolationCode.value;
-  const managerId = filterManager.value;
-  const search = filterSearch.value.trim().toLowerCase();
-
-  if (code) {
-    filtered = filtered.filter((v) => v.violation_type === code);
+  if (codeValue) {
+    filtered = filtered.filter((v) => v.violation_code === codeValue);
   }
 
-  if (managerId) {
-    filtered = filtered.filter((v) => v.manager_id === managerId);
+  if (managerValue) {
+    filtered = filtered.filter(
+      (v) => String(v.manager_id) === String(managerValue),
+    );
   }
 
-  if (search) {
+  if (searchValue) {
     filtered = filtered.filter((v) => {
-      const d = v.details || {};
-      const haystack = JSON.stringify({
-        order_id: d.retailcrm_order_id,
-        number: d.order_number,
-        comment: d.comment,
-      }).toLowerCase();
-      return haystack.includes(search);
+      const orderId = String(v.order_id || '');
+      const details = String(v.details || '').toLowerCase();
+      return orderId.includes(searchValue) || details.includes(searchValue);
     });
   }
 
-  renderSummary(filtered);
   renderTable(filtered);
+  renderSummary(filtered);
 }
 
-// ---------- API calls ----------
+function renderTable(violations) {
+  const tbody = document.getElementById('qualityTableBody');
+  tbody.innerHTML = '';
+
+  if (!violations.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.className = 'table-placeholder';
+    td.textContent = 'Нарушений по выбранным фильтрам нет';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  violations.forEach((v) => {
+    const tr = document.createElement('tr');
+
+    const tdDate = document.createElement('td');
+    tdDate.textContent = formatDate(v.created_at);
+    tr.appendChild(tdDate);
+
+    const tdOrder = document.createElement('td');
+    tdOrder.textContent = v.order_id ?? '—';
+    tr.appendChild(tdOrder);
+
+    const tdManager = document.createElement('td');
+    tdManager.textContent = v.manager_id ?? '—';
+    tr.appendChild(tdManager);
+
+    const tdCode = document.createElement('td');
+    tdCode.textContent = v.violation_code;
+    tdCode.className = `violation-chip violation-${v.violation_code}`;
+    tr.appendChild(tdCode);
+
+    const tdDetails = document.createElement('td');
+    tdDetails.textContent = v.details || '';
+    tr.appendChild(tdDetails);
+
+    tbody.appendChild(tr);
+  });
+}
 
 async function loadViolations() {
+  const tbody = document.getElementById('qualityTableBody');
+  tbody.innerHTML = `
+    <tr>
+      <td colspan="5" class="table-placeholder">
+        Загружаем нарушения...
+      </td>
+    </tr>
+  `;
+
   try {
-    qualityTableBody.innerHTML = `
-      <tr>
-        <td colspan="5" class="table-placeholder">
-          Загрузка нарушений...
-        </td>
-      </tr>
-    `;
+    const res = await fetch('/api/okk-violations');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
-    const resp = await fetch('/api/okk-violations');
-    const json = await resp.json();
+    const json = await res.json();
 
+    // API отдаёт { success: true, violations: [...] }
     if (!json.success) {
-      throw new Error(json.error || 'Ошибка загрузки нарушений');
+      throw new Error(json.error || 'Ошибка API');
     }
 
     allViolations = json.violations || [];
 
     renderManagersFilter(allViolations);
-    applyFilters();
+    renderTable(allViolations);
+    renderSummary(allViolations);
   } catch (err) {
-    console.error(err);
-    qualityTableBody.innerHTML = `
+    console.error('LOAD VIOLATIONS ERROR:', err);
+    tbody.innerHTML = `
       <tr>
-        <td colspan="5" class="table-placeholder table-placeholder_error">
-          ${String(err.message || err)}
+        <td colspan="5" class="table-placeholder table-error">
+          Ошибка при загрузке нарушений: ${err.message || err}
         </td>
       </tr>
     `;
@@ -165,43 +176,63 @@ async function loadViolations() {
 }
 
 async function runQualityCheck() {
-  try {
-    runQualityCheckBtn.disabled = true;
-    runQualityCheckBtn.textContent = 'Проверяю…';
+  const btn = document.getElementById('runQualityCheckBtn');
+  if (!btn) return;
 
-    const resp = await fetch('/api/okk-check-orders', {
+  btn.disabled = true;
+  btn.textContent = 'Проверяем...';
+
+  try {
+    const res = await fetch('/api/okk-check-orders', {
       method: 'POST',
     });
 
-    const json = await resp.json();
-
-    if (!json.success) {
-      throw new Error(json.error || 'Ошибка проверки заказов');
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    // после успешной проверки — перезагружаем нарушения
+    const json = await res.json();
+
+    if (!json.success) {
+      throw new Error(json.error || 'Ошибка API');
+    }
+
+    // после пересчёта нарушений перезагружаем таблицу
     await loadViolations();
+
+    const checked = json.checked ?? 0;
+    const inserted = json.inserted ?? 0;
+    btn.textContent = `Проверка выполнена (проверено ${checked}, новых ${inserted})`;
   } catch (err) {
-    alert('Ошибка: ' + (err.message || err));
+    console.error('QUALITY CHECK ERROR:', err);
+    btn.textContent = 'Ошибка проверки';
   } finally {
-    runQualityCheckBtn.disabled = false;
-    runQualityCheckBtn.textContent = 'Запустить проверку заказов';
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = 'Запустить проверку заказов';
+    }, 2000);
   }
 }
 
-// ---------- wires ----------
+document.addEventListener('DOMContentLoaded', () => {
+  // Загрузка нарушений при открытии
+  loadViolations();
 
-if (runQualityCheckBtn) {
-  runQualityCheckBtn.addEventListener('click', runQualityCheck);
-}
-if (filterViolationCode) {
-  filterViolationCode.addEventListener('change', applyFilters);
-}
-if (filterManager) {
-  filterManager.addEventListener('change', applyFilters);
-}
-if (filterSearch) {
-  filterSearch.addEventListener('input', applyFilters);
-}
+  // Слушаем фильтры
+  document
+    .getElementById('filterViolationCode')
+    .addEventListener('change', applyFilters);
 
-loadViolations();
+  document
+    .getElementById('filterManager')
+    .addEventListener('change', applyFilters);
+
+  document
+    .getElementById('filterSearch')
+    .addEventListener('input', applyFilters);
+
+  // Кнопка проверки
+  document
+    .getElementById('runQualityCheckBtn')
+    .addEventListener('click', runQualityCheck);
+});
