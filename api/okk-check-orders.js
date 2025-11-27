@@ -81,7 +81,7 @@ export default async function handler(req, res) {
     const violationsToInsert = [];
 
     for (const h of history) {
-      if (!isStatusField(h.field_name)) continue;
+     // if (!isStatusField(h.field_name)) continue;
 
       if (isBadComment(h.comment)) {
         violationsToInsert.push({
