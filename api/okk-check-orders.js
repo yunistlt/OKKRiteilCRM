@@ -6,137 +6,130 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn('No SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in env');
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// --- вспомогательная функция ---
-async function logViolation(orderId, managerId, code, details) {
-  await supabase
-    .from('okk_violations')
-    .insert({
-      order_id: orderId,
-      manager_id: managerId || null,
-      violation_code: code,
-      details,
-      created_at: new Date().toISOString(),
-    });
+const STOP_COMMENTS = [
+  '-',
+  'ок',
+  'ок.',
+  'ok',
+  '.',
+  '...',
+  'жду',
+  'звонок',
+  'созвон',
+  'перезвон',
+  'перезвонить',
+];
+
+function isBadComment(comment) {
+  if (!comment) return true;
+  const t = comment.trim();
+  if (!t) return true;
+  if (t.length < 15) return true;
+  if (STOP_COMMENTS.includes(t.toLowerCase())) return true;
+  return false;
+}
+
+function isStatusField(fieldName) {
+  if (!fieldName) return false;
+  const f = fieldName.toLowerCase();
+  return (
+    f === 'status' ||
+    f === 'status_code' ||
+    f === 'order_status' ||
+    f === 'statusid' ||
+    f === 'statuscode'
+  );
 }
 
 export default async function handler(req, res) {
-  try {
-    // 1. Грузим все заказы
-    const { data: orders } = await supabase
-      .from('okk_orders')
-      .select('*');
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    res.setHeader('Allow', 'POST, GET');
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
+  }
 
-    if (!orders || orders.length === 0) {
-      return res.status(200).json({ ok: true, msg: 'Нет заказов для проверки' });
+  try {
+    // пока берём последние 90 дней истории
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - 90);
+
+    const { data: history, error: historyError } = await supabase
+      .from('okk_order_history')
+      .select(
+        'id, order_id, retailcrm_order_id, changed_at, changer_retailcrm_user_id, changer_id, field_name, comment'
+      )
+      .gte('changed_at', fromDate.toISOString());
+
+    if (historyError) throw historyError;
+
+    if (!history || !history.length) {
+      return res.status(200).json({
+        success: true,
+        checked: 0,
+        inserted: 0,
+        note: 'Нет записей истории за период, нарушений не найдено',
+      });
     }
 
-    // 2. Грузим историю статусов всех заказов
-    const { data: histories } = await supabase
-      .from('okk_order_history')
-      .select('*');
+    const violationsToInsert = [];
 
-    // Группируем историю по заказам
-    const historyByOrder = {};
-    histories.forEach(h => {
-      if (!historyByOrder[h.order_id]) historyByOrder[h.order_id] = [];
-      historyByOrder[h.order_id].push(h);
-    });
+    for (const h of history) {
+      if (!isStatusField(h.field_name)) continue;
 
-    let violationsCount = 0;
-
-    // 3. Прогоняем каждый заказ через правила
-    for (const order of orders) {
-      const orderHistory = historyByOrder[order.id] || [];
-      const managerId = order.manager_id || null;
-
-      // --- RULE 1 ---
-      // Проверка комментариев на переходах
-      for (const h of orderHistory) {
-        if (h.action_type === 'status_change') {
-          const hasComment = h.comment && h.comment.trim().length >= 15;
-          const notStop = !['-', 'ок', '.', '...', 'жду', 'звонок'].includes(
-            (h.comment || '').toLowerCase().trim()
-          );
-
-          if (!hasComment || !notStop) {
-            await logViolation(
-              order.id,
-              managerId,
-              'NO_COMMENT_ON_STATUS_CHANGE',
-              `Нет валидного комментария при переходе ${h.from_status} → ${h.to_status}`
-            );
-            violationsCount++;
-          }
-        }
+      if (isBadComment(h.comment)) {
+        violationsToInsert.push({
+          order_id: h.order_id,
+          manager_id: h.changer_id || null,
+          violation_type: 'NO_COMMENT_ON_STATUS_CHANGE',
+          severity: 1,
+          detected_at: new Date().toISOString(),
+          details: {
+            history_id: h.id,
+            retailcrm_order_id: h.retailcrm_order_id,
+            changer_retailcrm_user_id: h.changer_retailcrm_user_id,
+            changed_at: h.changed_at,
+            comment: h.comment,
+          },
+        });
       }
+    }
 
-      // --- RULE 2 ---
-      // Переход Новый → Квалифицирован (FAKE_QUALIFICATION)
-      const qualChange = orderHistory.find(
-        h =>
-          h.from_status === 'Новый' &&
-          h.to_status === 'Заявка квалифицирована'
-      );
+    // очищаем старые нарушения этого типа, чтобы не плодить дубли
+    const { error: deleteError } = await supabase
+      .from('okk_violations')
+      .delete()
+      .eq('violation_type', 'NO_COMMENT_ON_STATUS_CHANGE');
 
-      if (qualChange) {
-        const comment = qualChange.comment || '';
-        const isRealContact =
-          comment.toLowerCase().includes('разговор') ||
-          comment.toLowerCase().includes('созвон') ||
-          comment.toLowerCase().includes('контакт') ||
-          comment.toLowerCase().length > 20;
+    if (deleteError) throw deleteError;
 
-        if (!isRealContact) {
-          await logViolation(
-            order.id,
-            managerId,
-            'FAKE_QUALIFICATION',
-            'Квалификация без реального контакта'
-          );
-          violationsCount++;
-        }
-      }
+    let insertedCount = 0;
 
-      // --- RULE 3 ---
-      // Незаконная отмена из Нового
-      const cancelHistory = orderHistory.find(h => h.to_status?.includes('отмена'));
+    if (violationsToInsert.length) {
+      const { error: insertError } = await supabase
+        .from('okk_violations')
+        .insert(violationsToInsert);
 
-      if (cancelHistory && cancelHistory.from_status === 'Новый') {
-        const conditions = {
-          enoughCalls: order.calls_made >= 5,
-          enoughEmails: order.emails_sent >= 2,
-          enoughDays: order.days_in_status >= 3,
-          hasComment: cancelHistory.comment && cancelHistory.comment.trim().length >= 10,
-        };
+      if (insertError) throw insertError;
 
-        const legal =
-          conditions.enoughCalls &&
-          conditions.enoughEmails &&
-          conditions.enoughDays &&
-          conditions.hasComment;
-
-        if (!legal) {
-          await logViolation(
-            order.id,
-            managerId,
-            'ILLEGAL_CANCEL_FROM_NEW',
-            'Отмена из статуса Новый без выполнения условий'
-          );
-          violationsCount++;
-        }
-      }
+      insertedCount = violationsToInsert.length;
     }
 
     return res.status(200).json({
-      ok: true,
-      violations: violationsCount,
+      success: true,
+      checked: history.length,
+      inserted: insertedCount,
     });
-  } catch (e) {
-    console.error('OKK CHECK ERROR:', e);
-    return res.status(500).json({ ok: false, error: e.toString() });
+  } catch (err) {
+    console.error(err);
+    return res
+      .status(500)
+      .json({ success: false, error: String(err.message || err) });
   }
 }
