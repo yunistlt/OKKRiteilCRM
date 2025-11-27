@@ -62,7 +62,6 @@ export default function OkkOrdersDashboard() {
           )
           .in('current_status', statusList)
           .order('status_updated_at_crm', { ascending: true })
-          .limit(500)
 
         if (ordersError) {
           throw ordersError
