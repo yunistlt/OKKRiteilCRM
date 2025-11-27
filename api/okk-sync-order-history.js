@@ -95,7 +95,7 @@ async function loadOrdersMap(retailOrderIds) {
   if (error) throw error;
 
   const map = new Map();
-  for (const row of (data || [])) {
+  for (const row of data || []) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
   return map;
@@ -117,16 +117,6 @@ function mapHistoryToRows(history, ordersMap) {
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
 
-    // ВАЖНО: если заказа нет в okk_orders — пропускаем событие,
-    // иначе прилетает null в order_id и рушит NOT NULL.
-    if (!orderId) {
-      console.log(
-        'skip history row: order not found in okk_orders for retailcrm_order_id =',
-        retailOrderId
-      );
-      continue;
-    }
-
     const fieldName = h.fieldName || h.field || null;
     const oldValue =
       h.oldValue !== undefined ? JSON.stringify(h.oldValue) : null;
@@ -140,7 +130,7 @@ function mapHistoryToRows(history, ordersMap) {
       null;
 
     const row = {
-      order_id: orderId,
+      order_id: orderId, // теперь может быть null
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
@@ -180,7 +170,7 @@ export default async function handler(req, res) {
     }
 
     let sinceId = await getLastSinceId();
-    const sinceIdStart = sinceId; // для отчёта
+    const sinceIdStart = sinceId;
     let maxSeenId = sinceId;
     let totalInserted = 0;
     let totalPages = 0;
