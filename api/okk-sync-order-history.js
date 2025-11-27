@@ -12,36 +12,23 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const HISTORY_SYNC_KEY = 'orders_history_since_id';
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // максимум 1000 событий за один вызов, чтобы не упереться в таймаут
+const MAX_PAGES_PER_RUN = 10; // максимум 1000 событий за запуск
 
+// Берём последний id истории прямо из okk_order_history
 async function getLastSinceId() {
   const { data, error } = await supabase
-    .from('okk_sync_state')
-    .select('last_value')
-    .eq('key', HISTORY_SYNC_KEY)
+    .from('okk_order_history')
+    .select('max((raw_payload->>id)::bigint) as max_id')
     .maybeSingle();
 
   if (error) throw error;
-  if (!data || !data.last_value) return 0;
 
-  const parsed = parseInt(data.last_value, 10);
+  const maxId = data?.max_id;
+  if (!maxId) return 0;
+
+  const parsed = parseInt(maxId, 10);
   return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-async function saveLastSinceId(sinceId) {
-  const { error } = await supabase
-    .from('okk_sync_state')
-    .upsert(
-      {
-        key: HISTORY_SYNC_KEY,
-        last_value: String(sinceId),
-      },
-      { onConflict: 'key' }
-    );
-
-  if (error) throw error;
 }
 
 async function fetchHistoryPage(sinceId) {
@@ -113,10 +100,7 @@ function mapHistoryToRows(history, ordersMap) {
       h.order_id ??
       null;
 
-    if (!retailOrderId) {
-      // изменения без привязки к заказу нам неинтересны
-      continue;
-    }
+    if (!retailOrderId) continue;
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
 
@@ -137,7 +121,7 @@ function mapHistoryToRows(history, ordersMap) {
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
-      changer_id: null, // потом сможем связать с okk_users по таблице соответствий
+      changer_id: null, // потом свяжем с okk_users
       change_type: h.source || h.action || null,
       field_name: fieldName,
       old_value: oldValue,
@@ -184,7 +168,6 @@ export default async function handler(req, res) {
 
       totalPages += 1;
 
-      // max id в этой пачке
       for (const h of history) {
         if (typeof h.id === 'number' && h.id > maxSeenId) {
           maxSeenId = h.id;
@@ -196,34 +179,26 @@ export default async function handler(req, res) {
       const rows = mapHistoryToRows(history, ordersMap);
 
       if (rows.length) {
-        const { error } = await supabase
-          .from('okk_order_history')
-          .insert(rows);
-
+        const { error } = await supabase.from('okk_order_history').insert(rows);
         if (error) throw error;
         totalInserted += rows.length;
       }
 
-      // для следующей страницы берём последний id
       sinceId = maxSeenId;
-      if (history.length < PAGE_LIMIT) break; // последняя страница
-    }
-
-    if (maxSeenId > (await getLastSinceId())) {
-      await saveLastSinceId(maxSeenId);
+      if (history.length < PAGE_LIMIT) break;
     }
 
     res.status(200).json({
       success: true,
       inserted: totalInserted,
       pages: totalPages,
-      newSinceId: maxSeenId,
+      sinceIdStart: await getLastSinceId(), // после вставки это уже max id
+      lastSeenId: maxSeenId,
     });
   } catch (err) {
     console.error('okk-sync-order-history error', err);
-    res.status(500).json({
-      success: false,
-      error: err.message || String(err),
-    });
+    res
+      .status(500)
+      .json({ success: false, error: err.message || String(err) });
   }
 }
