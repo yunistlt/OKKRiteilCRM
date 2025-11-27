@@ -232,8 +232,8 @@
             setMessage(null, "");
             return;
           }
-          ordersCountPill.textContent = `Заказы: ${count ?? orders.length}`;
-
+          ordersCountPill.textContent = `Заказы: ${orders.length}`;
+         
           // 5. Рендер таблицы
           tbody.innerHTML = "";
           for (const o of orders) {
