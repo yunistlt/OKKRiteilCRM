@@ -19,5 +19,9 @@
       "path": "/api/okk-sync-managers",
       "schedule": "0 20 * * *"
     }
+    {
+      "path": "/api/okk-sync-order-history",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }
