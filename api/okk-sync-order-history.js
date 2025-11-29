@@ -13,42 +13,45 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // максимум 1000 событий за запуск
 
-// Берём последний id истории прямо из okk_order_history
-async function getLastSinceId() {
+// Получаем коды рабочих статусов из okk_sla_status
+async function getWorkingStatusCodes() {
   const { data, error } = await supabase
-    .from('okk_order_history')
-    .select('raw_payload')
-    .order('id', { ascending: false })
-    .limit(100);
+    .from('okk_sla_status')
+    .select('status_code')
+    .eq('is_active', true)
+    .eq('is_controlled', true);
 
   if (error) throw error;
-  if (!data || data.length === 0) return 0;
-
-  let maxId = 0;
-
-  for (const row of data) {
-    if (!row.raw_payload) continue;
-
-    const raw = row.raw_payload;
-    const idStr = raw?.id ?? raw?.historyId ?? null;
-    if (!idStr) continue;
-
-    const parsed = parseInt(idStr, 10);
-    if (!Number.isNaN(parsed) && parsed > maxId) {
-      maxId = parsed;
-    }
-  }
-
-  return maxId || 0;
+  return (data || []).map((row) => row.status_code).filter(Boolean);
 }
 
-async function fetchHistoryPage(sinceId) {
+// Получаем retailcrm_order_id заказов в рабочих статусах
+async function getWorkingRetailOrderIds() {
+  const statusCodes = await getWorkingStatusCodes();
+  if (!statusCodes.length) return [];
+
+  const { data, error } = await supabase
+    .from('okk_orders')
+    .select('retailcrm_order_id')
+    .in('current_status_code', statusCodes);
+
+  if (error) throw error;
+
+  return (data || [])
+    .map((row) => Number(row.retailcrm_order_id))
+    .filter((id) => Number.isFinite(id));
+}
+
+// Тянем историю только по указанным заказам
+async function fetchHistoryPage(orderIds) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', String(PAGE_LIMIT));
-  url.searchParams.set('filter[sinceId]', String(sinceId));
+
+  for (const id of orderIds) {
+    url.searchParams.append('filter[orderIds][]', String(id));
+  }
 
   const resp = await fetch(url.toString());
   if (!resp.ok) {
@@ -67,21 +70,6 @@ async function fetchHistoryPage(sinceId) {
 
   const history = Array.isArray(json.history) ? json.history : [];
   return history;
-}
-
-function extractOrdersIdsFromHistory(history) {
-  const ids = new Set();
-  for (const h of history) {
-    const orderId =
-      h.order?.id ??
-      h.order?.externalId ??
-      h.order?.number ??
-      h.orderId ??
-      h.order_id ??
-      null;
-    if (orderId) ids.add(Number(orderId));
-  }
-  return Array.from(ids);
 }
 
 async function loadOrdersMap(retailOrderIds) {
@@ -116,10 +104,8 @@ function mapHistoryToRows(history, ordersMap) {
     if (!retailOrderId) continue;
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
-    if (!orderId) {
-        continue;
-     }
-    
+    if (!orderId) continue;
+
     const fieldName = h.fieldName || h.field || null;
     const oldValue =
       h.oldValue !== undefined ? JSON.stringify(h.oldValue) : null;
@@ -172,26 +158,32 @@ export default async function handler(req, res) {
       return;
     }
 
-    let sinceId = await getLastSinceId();
-    const sinceIdStart = sinceId;
-    let maxSeenId = sinceId;
+    // Берём только заказы в рабочих статусах
+    const workingRetailIds = await getWorkingRetailOrderIds();
+    if (!workingRetailIds.length) {
+      res.status(200).json({
+        success: true,
+        inserted: 0,
+        pages: 0,
+        sinceIdStart: 0,
+        lastSeenId: 0,
+      });
+      return;
+    }
+
+    const chunkSize = 50;
     let totalInserted = 0;
     let totalPages = 0;
 
-    for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
-      const history = await fetchHistoryPage(sinceId);
-      if (!history.length) break;
+    for (let i = 0; i < workingRetailIds.length; i += chunkSize) {
+      const chunk = workingRetailIds.slice(i, i + chunkSize);
+
+      const history = await fetchHistoryPage(chunk);
+      if (!history.length) continue;
 
       totalPages += 1;
 
-      for (const h of history) {
-        if (typeof h.id === 'number' && h.id > maxSeenId) {
-          maxSeenId = h.id;
-        }
-      }
-
-      const retailOrderIds = extractOrdersIdsFromHistory(history);
-      const ordersMap = await loadOrdersMap(retailOrderIds);
+      const ordersMap = await loadOrdersMap(chunk);
       const rows = mapHistoryToRows(history, ordersMap);
 
       if (rows.length) {
@@ -199,17 +191,14 @@ export default async function handler(req, res) {
         if (error) throw error;
         totalInserted += rows.length;
       }
-
-      sinceId = maxSeenId;
-      if (history.length < PAGE_LIMIT) break;
     }
 
     res.status(200).json({
       success: true,
       inserted: totalInserted,
       pages: totalPages,
-      sinceIdStart,
-      lastSeenId: maxSeenId,
+      sinceIdStart: 0,
+      lastSeenId: 0,
     });
   } catch (err) {
     console.error('okk-sync-order-history error', err);
