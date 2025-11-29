@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 30; // максимум 10 страниц истории за один запуск
+const MAX_PAGES_PER_RUN = 30; // не больше 30 страниц истории за один запуск
 const SYNC_KEY = 'order_history_since_id';
 
 // --------- работа с okk_sync_state (только sinceId) ---------
@@ -179,7 +179,7 @@ function mapHistoryToRows(history, ordersMap) {
       null;
 
     rows.push({
-      order_id: orderId, // может быть null — это нормально
+      order_id: orderId, // может быть null — это нормально для старых/отсутствующих заказов
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
