@@ -17,7 +17,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 // helper
 // -----------------------------------------------------
 function formatDate(date) {
-  return date.toISOString().slice(0, 19).replace("T", " ");
+  return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
 // -----------------------------------------------------
@@ -30,19 +30,19 @@ async function syncSingleOrder(order) {
   let managerId = null;
   if (managerRetailId) {
     const { data: managerData } = await supabase
-      .from("okk_managers")
-      .select("id")
-      .eq("retailcrm_user_id", managerRetailId)
+      .from('okk_managers')
+      .select('id')
+      .eq('retailcrm_user_id', managerRetailId)
       .maybeSingle();
 
     managerId = managerData?.id || null;
   }
 
   const paid =
-    typeof order.paid === "boolean"
+    typeof order.paid === 'boolean'
       ? order.paid
-      : order.paymentStatus === "paid" ||
-        order.paymentStatus === "complete";
+      : order.paymentStatus === 'paid' ||
+        order.paymentStatus === 'complete';
 
   const payloadOrder = {
     retailcrm_order_id: order.id,
@@ -52,9 +52,9 @@ async function syncSingleOrder(order) {
       order.statusUpdatedAt || order.updatedAt || order.createdAt,
     current_status: order.status,
     current_status_code: order.status,
-    summ: typeof order.summ === "number" ? order.summ : null,
+    summ: typeof order.summ === 'number' ? order.summ : null,
     purchase_summ:
-      typeof order.purchaseSumm === "number" ? order.purchaseSumm : null,
+      typeof order.purchaseSumm === 'number' ? order.purchaseSumm : null,
     manager_retailcrm_id: managerRetailId,
     manager_id: managerId,
     paid,
@@ -67,18 +67,20 @@ async function syncSingleOrder(order) {
   };
 
   const { data: okkOrder } = await supabase
-    .from("okk_orders")
-    .upsert(payloadOrder, { onConflict: "retailcrm_order_id" })
-    .select("id")
+    .from('okk_orders')
+    .upsert(payloadOrder, { onConflict: 'retailcrm_order_id' })
+    .select('id')
     .single();
 
   const okkOrderId = okkOrder.id;
 
-  // HISTORY
+  // HISTORY по конкретному заказу
   const histUrl =
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&filter[orderNumber]=${encodeURIComponent(order.number || String(order.id))}` +
+    `&filter[orderNumber]=${encodeURIComponent(
+      order.number || String(order.id),
+    )}` +
     `&limit=200`;
 
   const hr = await fetch(histUrl);
@@ -95,8 +97,8 @@ async function syncSingleOrder(order) {
 
   if (rows.length > 0) {
     await supabase
-      .from("okk_order_history")
-      .upsert(rows, { onConflict: "okk_order_id,created_at_crm" });
+      .from('okk_order_history')
+      .upsert(rows, { onConflict: 'okk_order_id,created_at_crm' });
   }
 }
 
@@ -105,36 +107,33 @@ async function syncSingleOrder(order) {
 // -----------------------------------------------------
 export default async function handler(req, res) {
   try {
-    // controlled statuses
-    const { data: statuses } = await supabase
-      .from("okk_sla_status")
-      .select("status_code")
-      .eq("is_controlled", true);
-
-    const statusCodes = statuses.map((s) => s.status_code);
-
-    // base query — only orders NOW in these statuses
-    const statusQuery = statusCodes
-      .map((c) => `filter[extendedStatus][]=${encodeURIComponent(c)}`)
-      .join("&");
-
     let page = 1;
     let totalPages = 1;
     let totalOrders = 0;
     let synced = 0;
 
+    // БЕЗ фильтра по статусам — тянем все заказы страницами
     do {
       const url =
         `${RETAILCRM_BASE_URL}/api/v5/orders` +
         `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-        `&${statusQuery}` +
         `&limit=100` +
         `&page=${page}`;
 
       const r = await fetch(url);
-      const json = await r.json();
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(
+          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 300)}`,
+        );
+      }
 
-      if (!json.success) break;
+      const json = await r.json();
+      if (!json.success) {
+        throw new Error(
+          `RetailCRM orders error: ${json.error || 'unknown error'}`,
+        );
+      }
 
       totalPages = json.pagination?.totalPageCount || 1;
       totalOrders = json.pagination?.totalCount || 0;
@@ -143,7 +142,9 @@ export default async function handler(req, res) {
         try {
           await syncSingleOrder(order);
           synced++;
-        } catch (_) {}
+        } catch (e) {
+          console.error('syncSingleOrder error', e);
+        }
       }
 
       page++;
@@ -156,6 +157,7 @@ export default async function handler(req, res) {
       totalPages,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('okk-daily-sync error', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 }
