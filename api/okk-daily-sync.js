@@ -8,16 +8,13 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
-// ограничение количества страниц за один запуск
 const MAX_PAGES_PER_RUN = 10;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// -----------------------------------------------------
-// Синхронизация одного заказа (без истории)
-// -----------------------------------------------------
+// Синк 1 заказа
 async function syncSingleOrder(order) {
   const managerRetailId =
     order.manager?.id || order.manager?.externalId || null;
@@ -68,109 +65,87 @@ async function syncSingleOrder(order) {
   if (error) throw error;
 }
 
-// -----------------------------------------------------
-// MAIN
-// -----------------------------------------------------
+// MAIN handler
 export default async function handler(req, res) {
   try {
     if (req.method !== "GET") {
-      res.status(405).json({ success: false, error: "Method not allowed" });
-      return;
+      return res.status(405).json({ success: false, error: "Method not allowed" });
     }
 
-    // ---- читаем состояние синка заказов из okk_sync_state ----
-    let page = 1;
-    try {
-      const { data: stateRow, error: stateError } = await supabase
-        .from("okk_sync_state")
-        .select("last_page, is_completed")
-        .eq("sync_type", "orders")
-        .maybeSingle();
+    // 1) читаем состояние синка
+    const { data: stateRow } = await supabase
+      .from("okk_sync_state")
+      .select("*")
+      .eq("sync_type", "orders")
+      .maybeSingle();
 
-      if (stateError) {
-        console.warn("okk-daily-sync: error reading okk_sync_state", stateError);
-      } else if (stateRow?.last_page && Number.isInteger(stateRow.last_page)) {
-        page = stateRow.last_page;
-      }
-    } catch (e) {
-      console.warn("okk-daily-sync: cannot read okk_sync_state", e);
-      page = 1;
+    let page = stateRow?.last_page || 1;
+    let isCompleted = stateRow?.is_completed || false;
+
+    if (isCompleted) {
+      return res.status(200).json({
+        success: true,
+        message: "Initial sync already completed",
+      });
     }
 
     let totalPages = 1;
     let totalOrders = 0;
     let synced = 0;
+
+    // 2) Перебор страниц
     let pagesProcessed = 0;
 
-    // ---- качаем страницы, начиная с сохранённой ----
-    do {
+    while (pagesProcessed < MAX_PAGES_PER_RUN) {
       const url =
         `${RETAILCRM_BASE_URL}/api/v5/orders` +
         `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
         `&limit=100&page=${page}`;
 
       const r = await fetch(url);
-      if (!r.ok) {
-        const text = await r.text();
-        throw new Error(
-          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 200)}`
-        );
-      }
-
       const json = await r.json();
+
       if (!json.success) {
-        throw new Error(
-          `RetailCRM orders error: ${json.error || "unknown error"}`
-        );
+        throw new Error(json.error || "RetailCRM error");
       }
 
       totalPages = json.pagination?.totalPageCount || 1;
       totalOrders = json.pagination?.totalCount || 0;
 
-      for (const order of (json.orders || [])) {
+      for (const order of json.orders || []) {
         await syncSingleOrder(order);
         synced++;
       }
 
-      page++;
+      // завершили страницу
       pagesProcessed++;
-    } while (page <= totalPages && pagesProcessed < MAX_PAGES_PER_RUN);
+      page++;
 
-    // ---- считаем, с какой страницы продолжать в следующий раз ----
-    let nextPage = page;
-    let isCompleted = false;
-
-    if (nextPage > totalPages) {
-      nextPage = 1;
-      isCompleted = true; // прошли все страницы один раз
-    }
-
-    // ---- сохраняем состояние синка ----
-    try {
-      const { error: upsertError } = await supabase
-        .from("okk_sync_state")
-        .upsert(
-          {
-            sync_type: "orders",
-            last_page: nextPage,
-            is_completed: isCompleted,
-          },
-          { onConflict: "sync_type" }
-        );
-
-      if (upsertError) {
-        console.warn("okk-daily-sync: cannot update okk_sync_state", upsertError);
+      // если дошли до конца
+      if (page > totalPages) {
+        isCompleted = true;
+        break;
       }
-    } catch (e) {
-      console.warn("okk-daily-sync: exception updating okk_sync_state", e);
     }
+
+    // 3) сохраняем состояние синка
+    await supabase
+      .from("okk_sync_state")
+      .upsert({
+        sync_type: "orders",
+        last_page: page,
+        is_completed: isCompleted,
+      }, {
+        onConflict: "sync_type",
+      });
 
     res.status(200).json({
       success: true,
       synced,
       totalOrders,
       totalPages,
-      nextPage,
+      nextPage: page,
+      isCompleted,
     });
   } catch (e) {
     console.error("okk-daily-sync error", e);
