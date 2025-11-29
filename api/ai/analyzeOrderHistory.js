@@ -9,12 +9,29 @@ const supabase = createClient(
   { auth: { persistSession: false } }
 );
 
+// Рабочая воронка (12 статусов)
+const WORKING_STATUSES = [
+  'Новый',
+  'Заявка квалифицирована',
+  'Ожидание ТЗ',
+  'В просчёте',
+  'Согласование параметров заказа',
+  'Договор на согласовании',
+  'Отложено',
+  'Тендер',
+  'Ожидание выхода тендера',
+  'Дубль на тендер',
+  'Договор СОГЛАСОВАН',
+  'Счет на оплате',
+];
+
 export default async function handler(req, res) {
   try {
-    // 1. Берём свежую историю заказов (ограничим объём)
+    // 1. Берём историю ТОЛЬКО по рабочим статусам
     const { data: historyRows, error } = await supabase
       .from('okk_order_history')
       .select('*')
+      .in('status', WORKING_STATUSES)      // ← вот главный фильтр
       .order('order_id', { ascending: true })
       .order('changed_at', { ascending: true })
       .limit(500);
@@ -28,7 +45,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ processedOrders: 0, message: 'No history rows' });
     }
 
-    // 2. Группируем историю по order_id
     const byOrder = new Map();
 
     for (const row of historyRows) {
@@ -38,18 +54,12 @@ export default async function handler(req, res) {
       byOrder.get(row.order_id).push(row);
     }
 
-    // Ограничим число заказов за один прогон (чтоб не жечь токены)
     const ordersToProcess = Array.from(byOrder.keys()).slice(0, 10);
-
     const results = [];
 
     for (const orderId of ordersToProcess) {
       const history = byOrder.get(orderId) || [];
-
-      // Если по заказу один статус – анализ не нужен
-      if (history.length < 2) {
-        continue;
-      }
+      if (history.length < 2) continue;
 
       const historyText = history
         .map(h =>
@@ -60,16 +70,18 @@ export default async function handler(req, res) {
       const prompt = `
 Ты — система контроля качества продаж.
 
-У тебя есть хронологическая история изменения статусов одного заказа в CRM.
+У тебя есть хронологическая история изменения СТАТУСОВ ТОЛЬКО ВНУТРИ РАБОЧЕЙ ВОРОНКИ
+(производство, доставка и отмена уже отфильтрованы).
+
 Твоя задача — найти нарушения логики работы с воронкой и вернуть СТРОГО JSON.
 
 Возможные типы нарушений:
 - "TIMER_RESET_ATTEMPT" — попытка сбросить таймер (туда-сюда между статусами за короткое время)
 - "FAKE_QUALIFICATION" — ложная квалификация из статуса "Новый" без реальных оснований
-- "ILLEGAL_CANCEL_FROM_NEW" — отмена из "Новый" без выполнения регламента
+- "ILLEGAL_CANCEL_FROM_NEW" — (для будущего, если увидим отмену из "Новый")
 - "WEIRD_STATUS_LOOP" — нелогичные петли по статусам
 
-История статусов (по времени, сверху вниз):
+История статусов внутри рабочей воронки:
 ${historyText}
 
 Верни JSON строго в формате:
@@ -109,7 +121,6 @@ ${historyText}
         continue;
       }
 
-      // 3. Записываем нарушения в okk_violations
       const rowsToInsert = violations.map(v => ({
         order_id: orderId,
         violation_type: v.type || null,
