@@ -13,149 +13,254 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// -----------------------------------------------------
-// helper
-// -----------------------------------------------------
-function formatDate(date) {
-  return date.toISOString().slice(0, 19).replace("T", " ");
+const PAGE_LIMIT = 100;
+const SYNC_KEY = 'orders_since_id';
+
+// ==========================
+// helpers for sync state
+// ==========================
+
+async function loadSinceIdFromState() {
+  const { data, error } = await supabase
+    .from('okk_sync_state')
+    .select('value')
+    .eq('key', SYNC_KEY)
+    .order('id', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('loadSinceIdFromState error', error);
+    return 0;
+  }
+
+  if (!data || data.length === 0) return 0;
+
+  const raw = data[0]?.value;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : 0;
 }
 
-// -----------------------------------------------------
-// sync 1 order + write history
-// -----------------------------------------------------
-async function syncSingleOrder(order) {
+async function saveSinceIdToState(lastSeenId) {
+  const { error } = await supabase.from('okk_sync_state').insert({
+    key: SYNC_KEY,
+    value: String(lastSeenId),
+  });
+
+  if (error) {
+    console.error('saveSinceIdToState error', error);
+  }
+}
+
+// если в sync_state ничего нет — берём максимум из уже загруженных заказов
+async function getLastSinceId() {
+  const fromState = await loadSinceIdFromState();
+  if (fromState > 0) return fromState;
+
+  const { data, error } = await supabase
+    .from('okk_orders')
+    .select('retailcrm_order_id')
+    .order('retailcrm_order_id', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error('getLastSinceId from okk_orders error', error);
+    return 0;
+  }
+
+  if (!data || data.length === 0) return 0;
+
+  const maxId = Number(data[0].retailcrm_order_id);
+  return Number.isFinite(maxId) ? maxId : 0;
+}
+
+// ==========================
+// managers map (okk_users)
+// ==========================
+
+async function loadManagersMap() {
+  const { data, error } = await supabase
+    .from('okk_users')
+    .select('id, retailcrm_user_id');
+
+  if (error) {
+    console.error('loadManagersMap error', error);
+    return new Map();
+  }
+
+  const map = new Map();
+  for (const row of data || []) {
+    if (row.retailcrm_user_id != null) {
+      map.set(Number(row.retailcrm_user_id), row.id);
+    }
+  }
+  return map;
+}
+
+// ==========================
+// sync single order
+// ==========================
+
+async function syncSingleOrder(order, managersMap) {
   const managerRetailId =
     order.manager?.id || order.manager?.externalId || null;
 
-  let managerId = null;
-  if (managerRetailId) {
-    const { data: managerData } = await supabase
-      .from("okk_managers")
-      .select("id")
-      .eq("retailcrm_user_id", managerRetailId)
-      .maybeSingle();
-
-    managerId = managerData?.id || null;
-  }
+  const managerId =
+    managerRetailId != null
+      ? managersMap.get(Number(managerRetailId)) || null
+      : null;
 
   const paid =
-    typeof order.paid === "boolean"
+    typeof order.paid === 'boolean'
       ? order.paid
-      : order.paymentStatus === "paid" ||
-        order.paymentStatus === "complete";
+      : order.paymentStatus === 'paid' || order.paymentStatus === 'complete';
 
   const payloadOrder = {
     retailcrm_order_id: order.id,
     number: order.number || String(order.id),
-    created_at_crm: order.createdAt,
+    created_at_crm: order.createdAt || null,
     status_updated_at_crm:
-      order.statusUpdatedAt || order.updatedAt || order.createdAt,
-    current_status: order.status,
-    current_status_code: order.status,
-    summ: typeof order.summ === "number" ? order.summ : null,
+      order.statusUpdatedAt || order.updatedAt || order.createdAt || null,
+    current_status: order.status || null,
+    current_status_code: order.status || null,
+    summ: typeof order.summ === 'number' ? order.summ : null,
     purchase_summ:
-      typeof order.purchaseSumm === "number" ? order.purchaseSumm : null,
-    manager_retailcrm_id: managerRetailId,
+      typeof order.purchaseSumm === 'number' ? order.purchaseSumm : null,
+    // margin оставляем null, будем тянуть отдельно из ЦУ
+    margin: null,
+    manager_retailcrm_id: managerRetailId || null,
     manager_id: managerId,
     paid,
     payment_type: order.payments?.[0]?.type || null,
     shipped: !!order.shipped,
     delivery_type:
       order.delivery?.code || order.delivery?.service?.code || null,
+    customer_type: order.customer?.type || null,
     custom_fields: order.customFields || {},
     items: order.items || [],
+    last_synced_at: new Date().toISOString(),
   };
 
-  const { data: okkOrder } = await supabase
-    .from("okk_orders")
-    .upsert(payloadOrder, { onConflict: "retailcrm_order_id" })
-    .select("id")
+  const { data, error } = await supabase
+    .from('okk_orders')
+    .upsert(payloadOrder, { onConflict: 'retailcrm_order_id' })
+    .select('id')
     .single();
 
-  const okkOrderId = okkOrder.id;
-
-  // HISTORY
-  const histUrl =
-    `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
-    `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&filter[orderNumber]=${encodeURIComponent(order.number || String(order.id))}` +
-    `&limit=200`;
-
-  const hr = await fetch(histUrl);
-  const hjson = await hr.json();
-
-  const rows = (hjson.history || []).map((h) => ({
-    okk_order_id: okkOrderId,
-    retailcrm_order_id: order.id,
-    created_at_crm: h.createdAt,
-    new_status: h.newValue?.status || null,
-    old_status: h.oldValue?.status || null,
-    raw: h,
-  }));
-
-  if (rows.length > 0) {
-    await supabase
-      .from("okk_order_history")
-      .upsert(rows, { onConflict: "okk_order_id,created_at_crm" });
+  if (error) {
+    console.error('syncSingleOrder upsert error', error, { orderId: order.id });
+    throw error;
   }
+
+  return data?.id || null;
 }
 
-// -----------------------------------------------------
-// MAIN
-// -----------------------------------------------------
+// ==========================
+// fetch page from RetailCRM
+// ==========================
+
+async function fetchOrdersPage(sinceId) {
+  const url = new URL('/api/v5/orders', RETAILCRM_BASE_URL);
+  url.searchParams.set('apiKey', RETAILCRM_API_KEY);
+  url.searchParams.set('limit', String(PAGE_LIMIT));
+  if (sinceId > 0) {
+    url.searchParams.set('filter[sinceId]', String(sinceId));
+  }
+
+  const resp = await fetch(url.toString());
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(
+      `RetailCRM orders HTTP ${resp.status}: ${text.slice(0, 300)}`
+    );
+  }
+
+  const json = await resp.json();
+  if (!json.success) {
+    throw new Error(
+      `RetailCRM orders error: ${json.error || 'unknown error'}`
+    );
+  }
+
+  const orders = Array.isArray(json.orders) ? json.orders : [];
+  return orders;
+}
+
+// ==========================
+// handler
+// ==========================
+
 export default async function handler(req, res) {
   try {
-    // controlled statuses
-    const { data: statuses } = await supabase
-      .from("okk_sla_status")
-      .select("status_code")
-      .eq("is_controlled", true);
+    if (req.method !== 'GET') {
+      res.status(405).json({ success: false, error: 'Method not allowed' });
+      return;
+    }
 
-    const statusCodes = statuses.map((s) => s.status_code);
+    if (
+      !RETAILCRM_API_KEY ||
+      !RETAILCRM_BASE_URL ||
+      !SUPABASE_URL ||
+      !SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      res.status(500).json({
+        success: false,
+        error: 'Missing required environment variables',
+      });
+      return;
+    }
 
-    // base query — only orders NOW in these statuses
-    const statusQuery = statusCodes
-      .map((c) => `filter[extendedStatus][]=${encodeURIComponent(c)}`)
-      .join("&");
+    const managersMap = await loadManagersMap();
 
-    let page = 1;
-    let totalPages = 1;
-    let totalOrders = 0;
-    let synced = 0;
+    let sinceId = await getLastSinceId();
+    const sinceIdStart = sinceId;
+    let maxSeenId = sinceId;
+    let totalSynced = 0;
+    let totalPages = 0;
 
-    do {
-      const url =
-        `${RETAILCRM_BASE_URL}/api/v5/orders` +
-        `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-        `&${statusQuery}` +
-        `&limit=100` +
-        `&page=${page}`;
+    while (true) {
+      const orders = await fetchOrdersPage(sinceId);
+      if (!orders.length) break;
 
-      const r = await fetch(url);
-      const json = await r.json();
+      totalPages += 1;
 
-      if (!json.success) break;
+      for (const order of orders) {
+        const oid = Number(order.id);
+        if (Number.isFinite(oid) && oid > maxSeenId) {
+          maxSeenId = oid;
+        }
 
-      totalPages = json.pagination?.totalPageCount || 1;
-      totalOrders = json.pagination?.totalCount || 0;
-
-      for (const order of json.orders || []) {
         try {
-          await syncSingleOrder(order);
-          synced++;
-        } catch (_) {}
+          await syncSingleOrder(order, managersMap);
+          totalSynced += 1;
+        } catch (err) {
+          // логируем, но не падаем на одной ошибке
+          console.error('syncSingleOrder error', err, {
+            retailcrm_order_id: order.id,
+          });
+        }
       }
 
-      page++;
-    } while (page <= totalPages);
+      sinceId = maxSeenId;
+
+      if (orders.length < PAGE_LIMIT) {
+        // дошли до конца
+        break;
+      }
+    }
+
+    if (maxSeenId > sinceIdStart) {
+      await saveSinceIdToState(maxSeenId);
+    }
 
     res.status(200).json({
       success: true,
-      synced,
-      totalOrders,
-      totalPages,
+      synced: totalSynced,
+      pages: totalPages,
+      sinceIdStart,
+      lastSeenId: maxSeenId,
     });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error('okk-daily-sync error', e);
+    res.status(500).json({ success: false, error: e.message });
   }
 }
