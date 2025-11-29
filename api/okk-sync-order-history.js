@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 20; // максимум 2000 событий на один запуск на одну пачку заказов
+const MAX_PAGES_PER_RUN = 10; // максимум 1000 событий за запуск
 
 // Получаем коды рабочих статусов из okk_sla_status
 async function getWorkingStatusCodes() {
@@ -27,23 +27,36 @@ async function getWorkingStatusCodes() {
   return (data || []).map((row) => row.status_code).filter(Boolean);
 }
 
-// Получаем retailcrm_order_id заказов в рабочих статусах
-async function getWorkingRetailOrderIds() {
-  const statusCodes = await getWorkingStatusCodes();
-  if (!statusCodes.length) return [];
-
+// Берём последний id истории прямо из okk_order_history
+async function getLastSinceId() {
   const { data, error } = await supabase
-    .from('okk_orders')
-    .select('retailcrm_order_id')
-    .in('current_status_code', statusCodes);
+    .from('okk_order_history')
+    .select('raw_payload')
+    .order('id', { ascending: false })
+    .limit(100);
 
   if (error) throw error;
+  if (!data || data.length === 0) return 0;
 
-  return (data || [])
-    .map((row) => Number(row.retailcrm_order_id))
-    .filter((id) => Number.isFinite(id));
+  let maxId = 0;
+
+  for (const row of data) {
+    if (!row.raw_payload) continue;
+
+    const raw = row.raw_payload;
+    const idStr = raw?.id ?? raw?.historyId ?? null;
+    if (!idStr) continue;
+
+    const parsed = parseInt(idStr, 10);
+    if (!Number.isNaN(parsed) && parsed > maxId) {
+      maxId = parsed;
+    }
+  }
+
+  return maxId || 0;
 }
 
+// Тянем страницу истории по sinceId
 async function fetchHistoryPage(sinceId) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
@@ -69,32 +82,42 @@ async function fetchHistoryPage(sinceId) {
 
   return Array.isArray(json.history) ? json.history : [];
 }
-  const json = await resp.json();
-  if (!json.success) {
-    throw new Error(
-      `RetailCRM history error: ${json.error || 'unknown error'}`
-    );
-  }
 
-  const history = Array.isArray(json.history) ? json.history : [];
-  return history;
-}
-
+// Загружаем карту заказов ТОЛЬКО в рабочих статусах
 async function loadOrdersMap(retailOrderIds) {
   if (!retailOrderIds.length) return new Map();
+
+  const statusCodes = await getWorkingStatusCodes();
+  if (!statusCodes.length) return new Map();
 
   const { data, error } = await supabase
     .from('okk_orders')
     .select('id, retailcrm_order_id')
-    .in('retailcrm_order_id', retailOrderIds);
+    .in('retailcrm_order_id', retailOrderIds)
+    .in('current_status_code', statusCodes);
 
   if (error) throw error;
 
   const map = new Map();
-  for (const row of (data || [])) {
+  for (const row of data || []) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
   return map;
+}
+
+function extractOrdersIdsFromHistory(history) {
+  const ids = new Set();
+  for (const h of history) {
+    const orderId =
+      h.order?.id ??
+      h.order?.externalId ??
+      h.order?.number ??
+      h.orderId ??
+      h.order_id ??
+      null;
+    if (orderId) ids.add(Number(orderId));
+  }
+  return Array.from(ids);
 }
 
 function mapHistoryToRows(history, ordersMap) {
@@ -112,7 +135,7 @@ function mapHistoryToRows(history, ordersMap) {
     if (!retailOrderId) continue;
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
-    if (!orderId) continue;
+    if (!orderId) continue; // не в рабочей воронке — пропускаем
 
     const fieldName = h.fieldName || h.field || null;
     const oldValue =
@@ -166,54 +189,47 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Берём только заказы в рабочих статусах
-    const workingRetailIds = await getWorkingRetailOrderIds();
-    if (!workingRetailIds.length) {
-      res.status(200).json({
-        success: true,
-        inserted: 0,
-        pages: 0,
-        sinceIdStart: 0,
-        lastSeenId: 0,
-      });
-      return;
-    }
-
-    const chunkSize = 50;
+    let sinceId = await getLastSinceId();
+    const sinceIdStart = sinceId;
+    let maxSeenId = sinceId;
     let totalInserted = 0;
     let totalPages = 0;
 
-    for (let i = 0; i < workingRetailIds.length; i += chunkSize) {
-      const chunk = workingRetailIds.slice(i, i + chunkSize);
+    // крутимся, пока CRM отдаёт полные страницы
+    while (true) {
+      const history = await fetchHistoryPage(sinceId);
+      if (!history.length) break;
 
-      // Загружаем историю по этой пачке заказов по всем страницам
-      for (let page = 1; page <= MAX_PAGES_PER_RUN; page++) {
-        const history = await fetchHistoryPage(chunk, page);
-        if (!history.length) break;
+      totalPages += 1;
 
-        totalPages += 1;
-
-        const ordersMap = await loadOrdersMap(chunk);
-        const rows = mapHistoryToRows(history, ordersMap);
-
-        if (rows.length) {
-          const { error } = await supabase
-            .from('okk_order_history')
-            .insert(rows);
-          if (error) throw error;
-          totalInserted += rows.length;
+      for (const h of history) {
+        if (typeof h.id === 'number' && h.id > maxSeenId) {
+          maxSeenId = h.id;
         }
-
-        if (history.length < PAGE_LIMIT) break;
       }
-    }
 
+      const retailOrderIds = extractOrdersIdsFromHistory(history);
+      const ordersMap = await loadOrdersMap(retailOrderIds);
+      const rows = mapHistoryToRows(history, ordersMap);
+
+      if (rows.length) {
+        const { error } = await supabase
+          .from('okk_order_history')
+          .insert(rows);
+        if (error) throw error;
+        totalInserted += rows.length;
+      }
+
+      sinceId = maxSeenId;
+      if (history.length < PAGE_LIMIT) break; 
+    }
+    
     res.status(200).json({
       success: true,
       inserted: totalInserted,
       pages: totalPages,
-      sinceIdStart: 0,
-      lastSeenId: 0,
+      sinceIdStart,
+      lastSeenId: maxSeenId,
     });
   } catch (err) {
     console.error('okk-sync-order-history error', err);
