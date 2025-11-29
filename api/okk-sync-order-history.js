@@ -116,7 +116,10 @@ function mapHistoryToRows(history, ordersMap) {
     if (!retailOrderId) continue;
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
-
+    if (!orderId) {
+        continue;
+     }
+    
     const fieldName = h.fieldName || h.field || null;
     const oldValue =
       h.oldValue !== undefined ? JSON.stringify(h.oldValue) : null;
@@ -130,7 +133,7 @@ function mapHistoryToRows(history, ordersMap) {
       null;
 
     const row = {
-      order_id: orderId, // теперь может быть null
+      order_id: orderId,
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
