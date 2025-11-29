@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // максимум 10 страниц истории за один запуск
+const MAX_PAGES_PER_RUN = 20; // максимум 10 страниц истории за один запуск
 const SYNC_KEY = 'order_history_since_id';
 
 // --------- работа с okk_sync_state (только sinceId) ---------
