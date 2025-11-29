@@ -12,7 +12,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const PAGE_LIMIT = 300;
+const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_RUN = 30; // максимум 10 страниц истории за один запуск
 const SYNC_KEY = 'order_history_since_id';
 
