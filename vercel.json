@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/okk-daily-sync",
-      "schedule": "*/1 * * * *"
+      "schedule": "*/20 * * * * *"
     },
     {
       "path": "/api/okk-sync-managers",
