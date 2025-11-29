@@ -1,11 +1,11 @@
 {
   "version": 2,
- "builds": [
-  { "src": "api/**/*.js", "use": "@vercel/node" },
-  { "src": "index.html", "use": "@vercel/static" },
-  { "src": "styles/**/*.css", "use": "@vercel/static" },
-  { "src": "scripts/**/*.js", "use": "@vercel/static" }
-],
+  "builds": [
+    { "src": "api/**/*.js", "use": "@vercel/node" },
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "styles/**/*.css", "use": "@vercel/static" },
+    { "src": "scripts/**/*.js", "use": "@vercel/static" }
+  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
     { "handle": "filesystem" },
@@ -13,14 +13,14 @@
   ],
   "crons": [
     {
-  "path": "/api/okk-daily-sync",
-  "schedule": "*/1 * * * *"
-},
+      "path": "/api/okk-daily-sync",
+      "schedule": "*/1 * * * *"
+    },
     {
       "path": "/api/okk-sync-managers",
       "schedule": "0 20 * * *"
     },
-     {
+    {
       "path": "/api/okk-sync-order-history",
       "schedule": "*/1 * * * *"
     }
