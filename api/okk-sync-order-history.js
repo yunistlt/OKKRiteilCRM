@@ -44,15 +44,12 @@ async function getWorkingRetailOrderIds() {
     .filter((id) => Number.isFinite(id));
 }
 
-// Тянем историю только по указанным заказам и конкретной странице
-async function fetchHistoryPage(orderIds, page) {
+async function fetchHistoryPage(sinceId) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', String(PAGE_LIMIT));
-  url.searchParams.set('page', String(page));
-
-  for (const id of orderIds) {
-    url.searchParams.append('filter[orderIds][]', String(id));
+  if (sinceId > 0) {
+    url.searchParams.set('filter[sinceId]', String(sinceId));
   }
 
   const resp = await fetch(url.toString());
@@ -63,6 +60,15 @@ async function fetchHistoryPage(orderIds, page) {
     );
   }
 
+  const json = await resp.json();
+  if (!json.success) {
+    throw new Error(
+      `RetailCRM history error: ${json.error || 'unknown error'}`
+    );
+  }
+
+  return Array.isArray(json.history) ? json.history : [];
+}
   const json = await resp.json();
   if (!json.success) {
     throw new Error(
