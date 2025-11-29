@@ -78,7 +78,9 @@ async function syncSingleOrder(order) {
   const histUrl =
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&filter[orderNumber]=${encodeURIComponent(order.number || String(order.id))}` +
+    `&filter[orderNumber]=${encodeURIComponent(
+      order.number || String(order.id),
+    )}` +
     `&limit=200`;
 
   const hr = await fetch(histUrl);
@@ -105,48 +107,16 @@ async function syncSingleOrder(order) {
 // -----------------------------------------------------
 export default async function handler(req, res) {
   try {
-    if (req.method !== 'GET') {
-      res
-        .status(405)
-        .json({ success: false, error: 'Method not allowed' });
-      return;
-    }
-
-    if (
-      !RETAILCRM_API_KEY ||
-      !RETAILCRM_BASE_URL ||
-      !SUPABASE_URL ||
-      !SUPABASE_SERVICE_ROLE_KEY
-    ) {
-      res.status(500).json({
-        success: false,
-        error: 'Missing required environment variables',
-      });
-      return;
-    }
-
-    // controlled statuses
-    const { data: statuses } = await supabase
-      .from('okk_sla_status')
-      .select('status_code')
-      .eq('is_controlled', true);
-
-    const statusCodes = (statuses || []).map((s) => s.status_code);
-
-    const statusQuery = statusCodes
-      .map((c) => `filter[extendedStatus][]=${encodeURIComponent(c)}`)
-      .join('&');
-
     let page = 1;
     let totalPages = 1;
     let totalOrders = 0;
     let synced = 0;
 
+    // БЕЗ фильтра по статусам — тянем все заказы страницами
     do {
       const url =
         `${RETAILCRM_BASE_URL}/api/v5/orders` +
         `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-        (statusQuery ? `&${statusQuery}` : '') +
         `&limit=100` +
         `&page=${page}`;
 
@@ -154,14 +124,14 @@ export default async function handler(req, res) {
       if (!r.ok) {
         const text = await r.text();
         throw new Error(
-          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 300)}`
+          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 300)}`,
         );
       }
 
       const json = await r.json();
       if (!json.success) {
         throw new Error(
-          `RetailCRM orders error: ${json.error || 'unknown error'}`
+          `RetailCRM orders error: ${json.error || 'unknown error'}`,
         );
       }
 
