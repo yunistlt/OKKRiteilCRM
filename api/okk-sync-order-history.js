@@ -13,8 +13,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // не больше 10 страниц за один запуск
-const CREATED_AT_FROM = '2021-01-01 00:00:00'; // не берём события старше 2021 года
+const MAX_PAGES_PER_RUN = 10; // не больше 10 страниц истории за один запуск
+const CUTOFF_CREATED_AT = '2021-01-01 00:00:00'; // не сохраняем события старше этой даты
 
 // Коды рабочих статусов из okk_sla_status
 async function getWorkingStatusCodes() {
@@ -56,15 +56,13 @@ async function getLastSinceId() {
   return maxId || 0;
 }
 
-// Тянем страницу общей истории с 01.01.2021 и дальше, начиная от sinceId
+// Тянем ОДНУ страницу общей истории по sinceId
 async function fetchHistoryPage(sinceId) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', String(PAGE_LIMIT));
 
-  // фильтр по дате — не берём историю старше 2021-01-01
-  url.searchParams.set('filter[createdAtFrom]', CREATED_AT_FROM);
-
+  // единственный допустимый фильтр — sinceId
   if (sinceId > 0) {
     url.searchParams.set('filter[sinceId]', String(sinceId));
   }
@@ -128,6 +126,11 @@ function mapHistoryToRows(history, ordersMap) {
   const rows = [];
 
   for (const h of history) {
+    // игнорируем события до 01.01.2021
+    if (h.createdAt && h.createdAt < CUTOFF_CREATED_AT) {
+      continue;
+    }
+
     const retailOrderId =
       h.order?.id ??
       h.order?.externalId ??
