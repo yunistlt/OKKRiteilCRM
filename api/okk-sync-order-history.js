@@ -13,23 +13,20 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // не больше 10 страниц истории за один запуск
-const CUTOFF_CREATED_AT = '2021-01-01 00:00:00'; // не сохраняем события старше этой даты
+const MAX_PAGES_PER_RUN = 10; // максимум 10 страниц истории за один запуск
 const SYNC_KEY = 'order_history_since_id';
 
-// ---------- вспомогалки синка sinceId через okk_sync_state ----------
+// --------- работа с okk_sync_state (только sinceId) ---------
 
-// читаем последний sinceId из okk_sync_state
 async function loadSinceIdFromState() {
   const { data, error } = await supabase
     .from('okk_sync_state')
     .select('value')
     .eq('key', SYNC_KEY)
-    .order('updated_at', { ascending: false })
+    .order('id', { ascending: false })
     .limit(1);
 
   if (error) {
-    // если таблица пустая/нет ключа — просто начнём с 0
     console.error('loadSinceIdFromState error', error);
     return 0;
   }
@@ -41,51 +38,36 @@ async function loadSinceIdFromState() {
   return Number.isFinite(num) ? num : 0;
 }
 
-// сохраняем новый sinceId в okk_sync_state
 async function saveSinceIdToState(lastSeenId) {
-  const { error } = await supabase
-    .from('okk_sync_state')
-    .upsert(
-      {
-        key: SYNC_KEY,
-        value: String(lastSeenId),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'key' }
-    );
+  const { error } = await supabase.from('okk_sync_state').insert({
+    key: SYNC_KEY,
+    value: String(lastSeenId),
+  });
 
   if (error) {
     console.error('saveSinceIdToState error', error);
   }
 }
 
-// Коды рабочих статусов из okk_sla_status
-async function getWorkingStatusCodes() {
-  const { data, error } = await supabase
-    .from('okk_sla_status')
-    .select('status_code')
-    .eq('is_active', true)
-    .eq('is_controlled', true);
+// --------- sinceId из истории / состояния ---------
 
-  if (error) throw error;
-  return (data || []).map((row) => row.status_code).filter(Boolean);
-}
-
-// Берём последний id истории: сначала из okk_sync_state, если нет — из okk_order_history
 async function getLastSinceId() {
+  // 1) сначала пытаемся взять из okk_sync_state
   const fromState = await loadSinceIdFromState();
-  if (fromState > 0) {
-    return fromState;
-  }
+  if (fromState > 0) return fromState;
 
-  // fallback на таблицу истории, если ключа ещё нет
+  // 2) если состояния ещё нет — пытаемся взять по уже сохранённой истории
   const { data, error } = await supabase
     .from('okk_order_history')
     .select('raw_payload')
     .order('id', { ascending: false })
     .limit(100);
 
-  if (error) throw error;
+  if (error) {
+    console.error('getLastSinceId from history error', error);
+    return 0;
+  }
+
   if (!data || data.length === 0) return 0;
 
   let maxId = 0;
@@ -105,7 +87,8 @@ async function getLastSinceId() {
   return maxId || 0;
 }
 
-// Тянем ОДНУ страницу общей истории по sinceId
+// --------- запрос истории из RetailCRM ---------
+
 async function fetchHistoryPage(sinceId) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
@@ -133,18 +116,14 @@ async function fetchHistoryPage(sinceId) {
   return Array.isArray(json.history) ? json.history : [];
 }
 
-// Загружаем карту заказов ТОЛЬКО в рабочих статусах
+// карта okk_orders по retailcrm_order_id (без фильтра по статусам)
 async function loadOrdersMap(retailOrderIds) {
   if (!retailOrderIds.length) return new Map();
-
-  const statusCodes = await getWorkingStatusCodes();
-  if (!statusCodes.length) return new Map();
 
   const { data, error } = await supabase
     .from('okk_orders')
     .select('id, retailcrm_order_id')
-    .in('retailcrm_order_id', retailOrderIds)
-    .in('current_status_code', statusCodes);
+    .in('retailcrm_order_id', retailOrderIds);
 
   if (error) throw error;
 
@@ -170,15 +149,11 @@ function extractOrdersIdsFromHistory(history) {
   return Array.from(ids);
 }
 
+// маппим ВСЮ историю, даже если заказ не найден в okk_orders
 function mapHistoryToRows(history, ordersMap) {
   const rows = [];
 
   for (const h of history) {
-    // отсекаем события до 01.01.2021
-    if (h.createdAt && h.createdAt < CUTOFF_CREATED_AT) {
-      continue;
-    }
-
     const retailOrderId =
       h.order?.id ??
       h.order?.externalId ??
@@ -190,7 +165,6 @@ function mapHistoryToRows(history, ordersMap) {
     if (!retailOrderId) continue;
 
     const orderId = ordersMap.get(Number(retailOrderId)) || null;
-    if (!orderId) continue; // не в рабочей воронке — пропускаем
 
     const fieldName = h.fieldName || h.field || null;
     const oldValue =
@@ -204,8 +178,8 @@ function mapHistoryToRows(history, ordersMap) {
       (typeof h.newValue === 'object' && h.newValue?.comment) ||
       null;
 
-    const row = {
-      order_id: orderId,
+    rows.push({
+      order_id: orderId, // может быть null — это нормально
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
@@ -216,13 +190,13 @@ function mapHistoryToRows(history, ordersMap) {
       new_value: newValue,
       comment,
       raw_payload: h,
-    };
-
-    rows.push(row);
+    });
   }
 
   return rows;
 }
+
+// --------- handler ---------
 
 export default async function handler(req, res) {
   try {
@@ -278,7 +252,7 @@ export default async function handler(req, res) {
       if (history.length < PAGE_LIMIT) break;
     }
 
-    // сохраняем новый lastSeenId даже если вставок не было
+    // запоминаем прогресс, даже если вставок было мало
     if (maxSeenId > sinceIdStart) {
       await saveSinceIdToState(maxSeenId);
     }
