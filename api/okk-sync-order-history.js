@@ -15,6 +15,49 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_RUN = 10; // не больше 10 страниц истории за один запуск
 const CUTOFF_CREATED_AT = '2021-01-01 00:00:00'; // не сохраняем события старше этой даты
+const SYNC_KEY = 'order_history_since_id';
+
+// ---------- вспомогалки синка sinceId через okk_sync_state ----------
+
+// читаем последний sinceId из okk_sync_state
+async function loadSinceIdFromState() {
+  const { data, error } = await supabase
+    .from('okk_sync_state')
+    .select('value')
+    .eq('key', SYNC_KEY)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  if (error) {
+    // если таблица пустая/нет ключа — просто начнём с 0
+    console.error('loadSinceIdFromState error', error);
+    return 0;
+  }
+
+  if (!data || data.length === 0) return 0;
+
+  const raw = data[0]?.value;
+  const num = Number(raw);
+  return Number.isFinite(num) ? num : 0;
+}
+
+// сохраняем новый sinceId в okk_sync_state
+async function saveSinceIdToState(lastSeenId) {
+  const { error } = await supabase
+    .from('okk_sync_state')
+    .upsert(
+      {
+        key: SYNC_KEY,
+        value: String(lastSeenId),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'key' }
+    );
+
+  if (error) {
+    console.error('saveSinceIdToState error', error);
+  }
+}
 
 // Коды рабочих статусов из okk_sla_status
 async function getWorkingStatusCodes() {
@@ -28,8 +71,14 @@ async function getWorkingStatusCodes() {
   return (data || []).map((row) => row.status_code).filter(Boolean);
 }
 
-// Берём последний id истории прямо из okk_order_history (history.id из raw_payload)
+// Берём последний id истории: сначала из okk_sync_state, если нет — из okk_order_history
 async function getLastSinceId() {
+  const fromState = await loadSinceIdFromState();
+  if (fromState > 0) {
+    return fromState;
+  }
+
+  // fallback на таблицу истории, если ключа ещё нет
   const { data, error } = await supabase
     .from('okk_order_history')
     .select('raw_payload')
@@ -62,7 +111,6 @@ async function fetchHistoryPage(sinceId) {
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', String(PAGE_LIMIT));
 
-  // единственный допустимый фильтр — sinceId
   if (sinceId > 0) {
     url.searchParams.set('filter[sinceId]', String(sinceId));
   }
@@ -126,7 +174,7 @@ function mapHistoryToRows(history, ordersMap) {
   const rows = [];
 
   for (const h of history) {
-    // игнорируем события до 01.01.2021
+    // отсекаем события до 01.01.2021
     if (h.createdAt && h.createdAt < CUTOFF_CREATED_AT) {
       continue;
     }
@@ -202,7 +250,6 @@ export default async function handler(req, res) {
     let totalInserted = 0;
     let totalPages = 0;
 
-    // крутимся, но не больше 10 страниц за запуск
     while (totalPages < MAX_PAGES_PER_RUN) {
       const history = await fetchHistoryPage(sinceId);
       if (!history.length) break;
@@ -229,6 +276,11 @@ export default async function handler(req, res) {
 
       sinceId = maxSeenId;
       if (history.length < PAGE_LIMIT) break;
+    }
+
+    // сохраняем новый lastSeenId даже если вставок не было
+    if (maxSeenId > sinceIdStart) {
+      await saveSinceIdToState(maxSeenId);
     }
 
     res.status(200).json({
