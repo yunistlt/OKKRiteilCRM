@@ -22,7 +22,7 @@
     },
      {
       "path": "/api/okk-sync-order-history",
-      "schedule": "*/10 * * * *"
+      "schedule": "*/1 * * * *"
     }
   ]
 }
