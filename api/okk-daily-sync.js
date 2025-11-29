@@ -9,7 +9,7 @@ const {
 } = process.env;
 
 // ограничение количества страниц за один запуск
-const MAX_PAGES_PER_RUN = 15;
+const MAX_PAGES_PER_RUN = 10;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
