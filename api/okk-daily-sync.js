@@ -1,5 +1,4 @@
 // api/okk-daily-sync.js
-
 import { createClient } from "@supabase/supabase-js";
 
 const {
@@ -9,9 +8,11 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
+// ограничение количества страниц за один запуск
+const MAX_PAGES_PER_RUN = 3;
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
-  const MAX_PAGES_PER_RUN = 3; // сколько страниц тянем за один запуск
 });
 
 // -----------------------------------------------------
@@ -112,7 +113,7 @@ export default async function handler(req, res) {
       }
 
       page++;
-    }  while (page <= totalPages && page <= MAX_PAGES_PER_RUN);
+    } while (page <= totalPages && page <= MAX_PAGES_PER_RUN);
 
     res.status(200).json({
       success: true,
