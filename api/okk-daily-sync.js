@@ -14,14 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // -----------------------------------------------------
-// helper
-// -----------------------------------------------------
-function formatDate(date) {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
-}
-
-// -----------------------------------------------------
-// sync 1 order + write history
+// sync 1 order  (Только okk_orders, БЕЗ истории)
 // -----------------------------------------------------
 async function syncSingleOrder(order) {
   const managerRetailId =
@@ -29,13 +22,16 @@ async function syncSingleOrder(order) {
 
   let managerId = null;
   if (managerRetailId) {
-    const { data: managerData } = await supabase
-      .from('okk_managers')
+    // Ищем менеджера в okk_users (а не okk_managers)
+    const { data: managerData, error: managerError } = await supabase
+      .from('okk_users')
       .select('id')
       .eq('retailcrm_user_id', managerRetailId)
       .maybeSingle();
 
-    managerId = managerData?.id || null;
+    if (!managerError && managerData) {
+      managerId = managerData.id;
+    }
   }
 
   const paid =
@@ -51,7 +47,7 @@ async function syncSingleOrder(order) {
     status_updated_at_crm:
       order.statusUpdatedAt || order.updatedAt || order.createdAt,
     current_status: order.status,
-    current_status_code: order.status,
+    current_status_code: order.status, // как в исходном варианте
     summ: typeof order.summ === 'number' ? order.summ : null,
     purchase_summ:
       typeof order.purchaseSumm === 'number' ? order.purchaseSumm : null,
@@ -66,39 +62,12 @@ async function syncSingleOrder(order) {
     items: order.items || [],
   };
 
-  const { data: okkOrder } = await supabase
+  const { error: upsertError } = await supabase
     .from('okk_orders')
-    .upsert(payloadOrder, { onConflict: 'retailcrm_order_id' })
-    .select('id')
-    .single();
+    .upsert(payloadOrder, { onConflict: 'retailcrm_order_id' });
 
-  const okkOrderId = okkOrder.id;
-
-  // HISTORY по конкретному заказу
-  const histUrl =
-    `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
-    `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&filter[orderNumber]=${encodeURIComponent(
-      order.number || String(order.id),
-    )}` +
-    `&limit=200`;
-
-  const hr = await fetch(histUrl);
-  const hjson = await hr.json();
-
-  const rows = (hjson.history || []).map((h) => ({
-    okk_order_id: okkOrderId,
-    retailcrm_order_id: order.id,
-    created_at_crm: h.createdAt,
-    new_status: h.newValue?.status || null,
-    old_status: h.oldValue?.status || null,
-    raw: h,
-  }));
-
-  if (rows.length > 0) {
-    await supabase
-      .from('okk_order_history')
-      .upsert(rows, { onConflict: 'okk_order_id,created_at_crm' });
+  if (upsertError) {
+    throw upsertError;
   }
 }
 
@@ -107,16 +76,63 @@ async function syncSingleOrder(order) {
 // -----------------------------------------------------
 export default async function handler(req, res) {
   try {
+    if (req.method !== 'GET') {
+      res
+        .status(405)
+        .json({ success: false, error: 'Method not allowed' });
+      return;
+    }
+
+    if (
+      !RETAILCRM_API_KEY ||
+      !RETAILCRM_BASE_URL ||
+      !SUPABASE_URL ||
+      !SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      res.status(500).json({
+        success: false,
+        error: 'Missing required environment variables',
+      });
+      return;
+    }
+
+    // controlled statuses (как было)
+    const { data: statuses, error: statusErr } = await supabase
+      .from('okk_sla_status')
+      .select('status_code')
+      .eq('is_controlled', true);
+
+    if (statusErr) {
+      throw statusErr;
+    }
+
+    const statusCodes = (statuses || []).map((s) => s.status_code);
+
+    if (!statusCodes.length) {
+      res.status(200).json({
+        success: true,
+        synced: 0,
+        totalOrders: 0,
+        totalPages: 0,
+      });
+      return;
+    }
+
+    // base query — только заказы СЕЙЧАС в этих статусах
+    const statusQuery = statusCodes
+      .map((c) => `filter[extendedStatus][]=${encodeURIComponent(c)}`)
+      .join('&');
+
     let page = 1;
     let totalPages = 1;
     let totalOrders = 0;
     let synced = 0;
 
-    // БЕЗ фильтра по статусам — тянем все заказы страницами
     do {
       const url =
         `${RETAILCRM_BASE_URL}/api/v5/orders` +
         `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
+        `&${statusQuery}` +
         `&limit=100` +
         `&page=${page}`;
 
@@ -124,14 +140,14 @@ export default async function handler(req, res) {
       if (!r.ok) {
         const text = await r.text();
         throw new Error(
-          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 300)}`,
+          `RetailCRM orders HTTP ${r.status}: ${text.slice(0, 300)}`
         );
       }
 
       const json = await r.json();
       if (!json.success) {
         throw new Error(
-          `RetailCRM orders error: ${json.error || 'unknown error'}`,
+          `RetailCRM orders error: ${json.error || 'unknown error'}`
         );
       }
 
@@ -142,8 +158,8 @@ export default async function handler(req, res) {
         try {
           await syncSingleOrder(order);
           synced++;
-        } catch (e) {
-          console.error('syncSingleOrder error', e);
+        } catch (err) {
+          console.error('syncSingleOrder error', err);
         }
       }
 
