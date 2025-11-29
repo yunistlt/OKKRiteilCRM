@@ -78,10 +78,27 @@ export default async function handler(req, res) {
       return;
     }
 
+    // читаем, с какой страницы продолжать
     let page = 1;
+    try {
+      const { data: stateRow } = await supabase
+        .from("okk_sync_state")
+        .select("value")
+        .eq("key", "orders_last_page")
+        .maybeSingle();
+
+      if (stateRow?.value?.page && Number.isInteger(stateRow.value.page)) {
+        page = stateRow.value.page;
+      }
+    } catch (e) {
+      console.warn("okk-daily-sync: cannot read okk_sync_state", e);
+      page = 1;
+    }
+
     let totalPages = 1;
     let totalOrders = 0;
     let synced = 0;
+    let pagesProcessed = 0;
 
     do {
       const url =
@@ -113,13 +130,35 @@ export default async function handler(req, res) {
       }
 
       page++;
-    } while (page <= totalPages && page <= MAX_PAGES_PER_RUN);
+      pagesProcessed++;
+    } while (page <= totalPages && pagesProcessed < MAX_PAGES_PER_RUN);
+
+    // вычисляем, с какой страницы продолжать в следующий запуск
+    let nextPage = page;
+    if (nextPage > totalPages) {
+      nextPage = 1;
+    }
+
+    try {
+      await supabase
+        .from("okk_sync_state")
+        .upsert(
+          {
+            key: "orders_last_page",
+            value: { page: nextPage },
+          },
+          { onConflict: "key" }
+        );
+    } catch (e) {
+      console.warn("okk-daily-sync: cannot update okk_sync_state", e);
+    }
 
     res.status(200).json({
       success: true,
       synced,
       totalOrders,
       totalPages,
+      nextPage,
     });
   } catch (e) {
     console.error("okk-daily-sync error", e);
