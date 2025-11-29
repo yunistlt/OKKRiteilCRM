@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 10; // максимум 1000 событий за запуск
+const MAX_PAGES_PER_RUN = 10; // за один запуск тянем не больше 10 страниц истории
 
 // Получаем коды рабочих статусов из okk_sla_status
 async function getWorkingStatusCodes() {
@@ -195,13 +195,14 @@ export default async function handler(req, res) {
     let totalInserted = 0;
     let totalPages = 0;
 
-    // крутимся, пока CRM отдаёт полные страницы
-    while (true) {
+    // За один запуск — максимум MAX_PAGES_PER_RUN "страниц" истории
+    for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
       const history = await fetchHistoryPage(sinceId);
       if (!history.length) break;
 
       totalPages += 1;
 
+      // обновляем maxSeenId
       for (const h of history) {
         if (typeof h.id === 'number' && h.id > maxSeenId) {
           maxSeenId = h.id;
@@ -221,9 +222,11 @@ export default async function handler(req, res) {
       }
 
       sinceId = maxSeenId;
-      if (history.length < PAGE_LIMIT) break; 
+
+      // если страница неполная — истории дальше нет
+      if (history.length < PAGE_LIMIT) break;
     }
-    
+
     res.status(200).json({
       success: true,
       inserted: totalInserted,
