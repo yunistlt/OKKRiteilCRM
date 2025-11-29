@@ -13,6 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
+const MAX_PAGES_PER_RUN = 20; // максимум 2000 событий на один запуск на одну пачку заказов
 
 // Получаем коды рабочих статусов из okk_sla_status
 async function getWorkingStatusCodes() {
@@ -43,11 +44,12 @@ async function getWorkingRetailOrderIds() {
     .filter((id) => Number.isFinite(id));
 }
 
-// Тянем историю только по указанным заказам
-async function fetchHistoryPage(orderIds) {
+// Тянем историю только по указанным заказам и конкретной странице
+async function fetchHistoryPage(orderIds, page) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', String(PAGE_LIMIT));
+  url.searchParams.set('page', String(page));
 
   for (const id of orderIds) {
     url.searchParams.append('filter[orderIds][]', String(id));
@@ -83,7 +85,7 @@ async function loadOrdersMap(retailOrderIds) {
   if (error) throw error;
 
   const map = new Map();
-  for (const row of data || []) {
+  for (const row of (data || [])) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
   return map;
@@ -178,18 +180,25 @@ export default async function handler(req, res) {
     for (let i = 0; i < workingRetailIds.length; i += chunkSize) {
       const chunk = workingRetailIds.slice(i, i + chunkSize);
 
-      const history = await fetchHistoryPage(chunk);
-      if (!history.length) continue;
+      // Загружаем историю по этой пачке заказов по всем страницам
+      for (let page = 1; page <= MAX_PAGES_PER_RUN; page++) {
+        const history = await fetchHistoryPage(chunk, page);
+        if (!history.length) break;
 
-      totalPages += 1;
+        totalPages += 1;
 
-      const ordersMap = await loadOrdersMap(chunk);
-      const rows = mapHistoryToRows(history, ordersMap);
+        const ordersMap = await loadOrdersMap(chunk);
+        const rows = mapHistoryToRows(history, ordersMap);
 
-      if (rows.length) {
-        const { error } = await supabase.from('okk_order_history').insert(rows);
-        if (error) throw error;
-        totalInserted += rows.length;
+        if (rows.length) {
+          const { error } = await supabase
+            .from('okk_order_history')
+            .insert(rows);
+          if (error) throw error;
+          totalInserted += rows.length;
+        }
+
+        if (history.length < PAGE_LIMIT) break;
       }
     }
 
