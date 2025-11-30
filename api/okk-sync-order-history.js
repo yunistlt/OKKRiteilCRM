@@ -14,7 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const PAGE_LIMIT = 100;
-const MAX_PAGES_PER_RUN = 70;
+const MAX_PAGES_PER_RUN = 100;
 const SYNC_KEY = 'order_history_since_id';
 
 // --------- optional workingHistory helper ---------
