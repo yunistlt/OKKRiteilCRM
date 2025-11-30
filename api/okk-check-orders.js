@@ -1,4 +1,4 @@
-// api/okk-check-orders.js
+// /api/okk-check-orders.js
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -6,130 +6,117 @@ const {
   SUPABASE_SERVICE_ROLE_KEY,
 } = process.env;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn('No SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in env');
-}
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const STOP_COMMENTS = [
-  '-',
-  'ок',
-  'ок.',
-  'ok',
-  '.',
-  '...',
-  'жду',
-  'звонок',
-  'созвон',
-  'перезвон',
-  'перезвонить',
-];
-
-function isBadComment(comment) {
-  if (!comment) return true;
-  const t = comment.trim();
-  if (!t) return true;
-  if (t.length < 15) return true;
-  if (STOP_COMMENTS.includes(t.toLowerCase())) return true;
-  return false;
-}
-
-function isStatusField(fieldName) {
-  if (!fieldName) return false;
-  const f = fieldName.toLowerCase();
-  return (
-    f === 'status' ||
-    f === 'status_code' ||
-    f === 'order_status' ||
-    f === 'statusid' ||
-    f === 'statuscode'
-  );
+// Простая утилита, чтобы лог не падал, а фронт получал ответ
+function safeLogError(prefix, error) {
+  console.error(prefix, error?.message || error);
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    res.setHeader('Allow', 'POST, GET');
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    // пока берём последние 90 дней истории
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - 90);
+    // 1. Опционально чистим старые нарушения от этого правила
+    // Если в схеме нет поля source — просто закомментируй этот блок.
+    try {
+      const { error: delErr } = await supabase
+        .from('okk_violations')
+        .delete()
+        .eq('source', 'RULE_CHECK_NO_COMMENT');
 
-    const { data: history, error: historyError } = await supabase
+      if (delErr) {
+        safeLogError('okk-check-orders: delete old RULE_CHECK_NO_COMMENT failed', delErr);
+      }
+    } catch (e) {
+      safeLogError('okk-check-orders: delete block threw', e);
+    }
+
+    // 2. Берём историю с пустыми / плохими комментариями
+    // ⚠️ Список полей подгони под свою фактическую схему okk_order_history
+    const { data: historyRows, error: historyErr } = await supabase
       .from('okk_order_history')
       .select(
-        'id, order_id, retailcrm_order_id, changed_at, changer_retailcrm_user_id, changer_id, field_name, comment'
+        `
+        id,
+        order_id,
+        manager_id,
+        retailcrm_order_id,
+        retailcrm_order_number,
+        comment,
+        changed_at,
+        history_id
+      `,
       )
-      .gte('changed_at', fromDate.toISOString());
+      .is('comment', null)
+      .limit(2000); // пока ограничимся разумным количеством
 
-    if (historyError) throw historyError;
+    if (historyErr) {
+      safeLogError('okk-check-orders: load history error', historyErr);
+      return res.status(500).json({ error: 'Failed to load order history' });
+    }
 
-    if (!history || !history.length) {
+    if (!historyRows || !historyRows.length) {
       return res.status(200).json({
         success: true,
         checked: 0,
         inserted: 0,
-        note: 'Нет записей истории за период, нарушений не найдено',
+        message: 'Подходящих записей истории без комментария не найдено',
       });
     }
 
-    const violationsToInsert = [];
+    // 3. Готовим нарушения
+    const violations = historyRows.map((row) => {
+      const orderId =
+        row.order_id ||
+        row.retailcrm_order_id ||
+        null;
 
-    for (const h of history) {
-     // if (!isStatusField(h.field_name)) continue;
+      const managerId = row.manager_id || null;
 
-      if (isBadComment(h.comment)) {
-        violationsToInsert.push({
-          order_id: h.order_id,
-          manager_id: h.changer_id || null,
-          violation_type: 'NO_COMMENT_ON_STATUS_CHANGE',
-          severity: 1,
-          detected_at: new Date().toISOString(),
-          details: {
-            history_id: h.id,
-            retailcrm_order_id: h.retailcrm_order_id,
-            changer_retailcrm_user_id: h.changer_retailcrm_user_id,
-            changed_at: h.changed_at,
-            comment: h.comment,
-          },
-        });
-      }
-    }
+      const humanMessage =
+        'Смена статуса или перенос следующего контакта без осмысленного комментария оператора. ' +
+        'Требуется комментарий в течение 5 минут после изменения.';
 
-    // очищаем старые нарушения этого типа, чтобы не плодить дубли
-    const { error: deleteError } = await supabase
+      return {
+        order_id: orderId,
+        manager_id: managerId,
+        violation_code: 'NO_COMMENT_ON_STATUS_CHANGE', // для фильтров и аналитики
+        type: 'NO_COMMENT_ON_STATUS_CHANGE', // на всякий случай — если на фронте читается type
+        source: 'RULE_CHECK_NO_COMMENT',
+        details: {
+          message: humanMessage,
+          comment: row.comment,
+          changed_at: row.changed_at,
+          history_id: row.history_id,
+          retailcrm_order_id: row.retailcrm_order_id,
+          retailcrm_order_number: row.retailcrm_order_number,
+        },
+      };
+    });
+
+    // 4. Пишем в okk_violations
+    const { error: insErr } = await supabase
       .from('okk_violations')
-      .delete()
-      .eq('violation_type', 'NO_COMMENT_ON_STATUS_CHANGE');
+      .insert(violations);
 
-    if (deleteError) throw deleteError;
-
-    let insertedCount = 0;
-
-    if (violationsToInsert.length) {
-      const { error: insertError } = await supabase
-        .from('okk_violations')
-        .insert(violationsToInsert);
-
-      if (insertError) throw insertError;
-
-      insertedCount = violationsToInsert.length;
+    if (insErr) {
+      safeLogError('okk-check-orders: insert violations error', insErr);
+      return res.status(500).json({ error: 'Failed to insert violations' });
     }
 
     return res.status(200).json({
       success: true,
-      checked: history.length,
-      inserted: insertedCount,
+      checked: historyRows.length,
+      inserted: violations.length,
     });
-  } catch (err) {
-    console.error(err);
-    return res
-      .status(500)
-      .json({ success: false, error: String(err.message || err) });
+  } catch (e) {
+    safeLogError('okk-check-orders: fatal', e);
+    return res.status(500).json({ error: 'Unexpected error' });
   }
 }
