@@ -15,7 +15,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_RUN = 50;
-// вместо sinceId теперь храним "до какой даты истории дошли"
+// храним "до какой даты истории дошли"
 const SYNC_KEY = 'order_history_date_to';
 
 // --------- optional workingHistory helper ---------
@@ -78,15 +78,17 @@ async function saveDateToState(dateTo) {
 
 // --------- формат даты для RetailCRM (Y-m-d H:i:s) ---------
 
-function formatRetailDateTime(date) {
-  const pad = (n) => String(n).padStart(2, '0');
+function pad2(n) {
+  return String(n).padStart(2, '0');
+}
 
+function formatRetailDateTime(date) {
   const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  const seconds = pad(date.getSeconds());
+  const month = pad2(date.getMonth() + 1);
+  const day = pad2(date.getDate());
+  const hours = pad2(date.getHours());
+  const minutes = pad2(date.getMinutes());
+  const seconds = pad2(date.getSeconds());
 
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
@@ -96,8 +98,7 @@ function formatRetailDateTime(date) {
 function getDateWindow(dateTo) {
   const to = new Date(dateTo.getTime());
   const from = new Date(dateTo.getTime());
-  // шаг – один месяц назад
-  from.setMonth(from.getMonth() - 1);
+  from.setMonth(from.getMonth() - 1); // шаг – один месяц назад
 
   return { from, to };
 }
@@ -171,10 +172,27 @@ function extractOrdersIdsFromHistory(history) {
   return [...ids];
 }
 
-// --------- map CRM history → db rows ---------
+// --------- map CRM history → db rows + статус-апдейты ---------
 
-function mapHistoryToRows(history, ordersMap) {
+function extractStatusCodeFromHistoryRecord(h) {
+  // RetailCRM может отдавать статус по-разному, пытаемся выжать код
+  const nv = h.newValue;
+
+  if (!nv) return null;
+
+  if (typeof nv === 'string') return nv;
+  if (typeof nv === 'object') {
+    if (nv.code && typeof nv.code === 'string') return nv.code;
+    if (nv.status && typeof nv.status === 'string') return nv.status;
+    if (nv.value && typeof nv.value === 'string') return nv.value;
+  }
+
+  return null;
+}
+
+function mapHistoryToRowsAndStatusUpdates(history, ordersMap) {
   const rows = [];
+  const statusUpdateMap = new Map(); // order_id -> status_code
 
   for (const h of history) {
     const retailOrderId =
@@ -188,8 +206,16 @@ function mapHistoryToRows(history, ordersMap) {
     if (!retailOrderId) continue;
 
     const dbOrderId = ordersMap.get(Number(retailOrderId)) || null;
-
     const fieldName = h.fieldName || h.field || null;
+
+    let statusCode = null;
+    if (fieldName === 'status') {
+      statusCode = extractStatusCodeFromHistoryRecord(h);
+      if (dbOrderId && statusCode) {
+        // запоминаем последний статус для этого заказа
+        statusUpdateMap.set(dbOrderId, statusCode);
+      }
+    }
 
     rows.push({
       order_id: dbOrderId,
@@ -209,11 +235,17 @@ function mapHistoryToRows(history, ordersMap) {
         (typeof h.newValue === 'object' && h.newValue?.comment) ||
         null,
 
-      raw_payload: h,
+      status_code: statusCode, // <---- новый столбец в истории
+      raw_payload: h, // <---- вся сырая инфа по событию, как ты и хочешь
     });
   }
 
-  return rows;
+  const statusUpdates = [];
+  for (const [orderId, statusCode] of statusUpdateMap.entries()) {
+    statusUpdates.push({ order_id: orderId, status_code: statusCode });
+  }
+
+  return { rows, statusUpdates };
 }
 
 // --------- handler ---------
@@ -250,6 +282,7 @@ export default async function handler(req, res) {
 
     let totalInserted = 0;
     let totalPages = 0;
+    let totalStatusUpdates = 0;
 
     // 2) Грузим историю по окну дат, постранично
     for (let page = 1; page <= MAX_PAGES_PER_RUN; page++) {
@@ -266,7 +299,10 @@ export default async function handler(req, res) {
       const retailOrderIds = extractOrdersIdsFromHistory(history);
       const ordersMap = await loadOrdersMap(retailOrderIds);
 
-      const rows = mapHistoryToRows(history, ordersMap);
+      const { rows, statusUpdates } = mapHistoryToRowsAndStatusUpdates(
+        history,
+        ordersMap
+      );
 
       if (rows.length) {
         const { error } = await supabase.from('okk_order_history').insert(rows);
@@ -283,6 +319,29 @@ export default async function handler(req, res) {
         }
       }
 
+      // обновляем статус заказов по событиям поля "status"
+      if (statusUpdates.length) {
+        const latestByOrder = new Map();
+        for (const su of statusUpdates) {
+          latestByOrder.set(su.order_id, su.status_code);
+        }
+
+        const updates = [];
+        for (const [orderId, statusCode] of latestByOrder.entries()) {
+          updates.push(
+            supabase
+              .from('okk_orders')
+              .update({ status_code: statusCode })
+              .eq('id', orderId)
+          );
+        }
+
+        if (updates.length) {
+          await Promise.all(updates);
+          totalStatusUpdates += updates.length;
+        }
+      }
+
       if (history.length < PAGE_LIMIT) break;
     }
 
@@ -293,6 +352,7 @@ export default async function handler(req, res) {
       success: true,
       inserted: totalInserted,
       pages: totalPages,
+      statusUpdates: totalStatusUpdates,
       window: {
         from: formatRetailDateTime(dateFrom),
         to: formatRetailDateTime(dateWindowTo),
