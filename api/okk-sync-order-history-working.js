@@ -20,7 +20,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const HISTORY_LIMIT = 200;
+const HISTORY_LIMIT = 100;
 
 // ---------------------------------------------------------
 // Helpers
