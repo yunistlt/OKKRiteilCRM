@@ -6,7 +6,7 @@ type OkkOrder = {
   id: string
   retailcrm_order_id: number
   number: string
-  current_status: string
+  status_code: string
   created_at_crm: string
   status_updated_at_crm: string
   summ: number | null
@@ -58,7 +58,7 @@ export default function OkkOrdersDashboard() {
         const { data: ordersData, error: ordersError } = await supabase
           .from<OkkOrder>('okk_orders')
           .select(
-            'id, retailcrm_order_id, number, current_status, created_at_crm, status_updated_at_crm, summ, manager_id, manager_retailcrm_id, paid'
+            'id, retailcrm_order_id, number, status_code, created_at_crm, status_updated_at_crm, summ, manager_id, manager_retailcrm_id, paid'
           )
           .in('current_status', statusList)
           .order('status_updated_at_crm', { ascending: true })
