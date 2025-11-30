@@ -15,7 +15,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_RUN = 50;
-// храним "до какой даты истории дошли"
 const SYNC_KEY = 'order_history_date_to';
 
 // --------- optional workingHistory helper ---------
@@ -93,17 +92,16 @@ function formatRetailDateTime(date) {
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-// --------- расчёт окна дат: идём от "to" на месяц назад ---------
+// --------- расчёт окна дат ---------
 
 function getDateWindow(dateTo) {
   const to = new Date(dateTo.getTime());
   const from = new Date(dateTo.getTime());
-  from.setMonth(from.getMonth() - 1); // шаг – один месяц назад
-
+  from.setMonth(from.getMonth() - 1);
   return { from, to };
 }
 
-// --------- fetch RetailCRM history по окну дат и странице ---------
+// --------- fetch RetailCRM history ---------
 
 async function fetchHistoryPageByDateRange({ from, to, page }) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
@@ -111,19 +109,13 @@ async function fetchHistoryPageByDateRange({ from, to, page }) {
   url.searchParams.set('limit', PAGE_LIMIT.toString());
   url.searchParams.set('page', page.toString());
 
-  if (from) {
-    url.searchParams.set('filter[startDate]', formatRetailDateTime(from));
-  }
-  if (to) {
-    url.searchParams.set('filter[endDate]', formatRetailDateTime(to));
-  }
+  if (from) url.searchParams.set('filter[startDate]', formatRetailDateTime(from));
+  if (to) url.searchParams.set('filter[endDate]', formatRetailDateTime(to));
 
   const resp = await fetch(url.toString());
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(
-      `RetailCRM history HTTP ${resp.status}: ${text.slice(0, 200)}`
-    );
+    throw new Error(`RetailCRM history HTTP ${resp.status}: ${text.slice(0, 200)}`);
   }
 
   const json = await resp.json();
@@ -159,8 +151,6 @@ function extractOrdersIdsFromHistory(history) {
 
   for (const h of history) {
     const id =
-      h.order?.id ??
-      h.order?.externalId ??
       h.order?.number ??
       h.orderId ??
       h.order_id ??
@@ -172,34 +162,32 @@ function extractOrdersIdsFromHistory(history) {
   return [...ids];
 }
 
-// --------- map CRM history → db rows + статус-апдейты ---------
+// --------- helpers: status code ---------
 
 function extractStatusCodeFromHistoryRecord(h) {
-  // RetailCRM может отдавать статус по-разному, пытаемся выжать код
   const nv = h.newValue;
-
   if (!nv) return null;
 
   if (typeof nv === 'string') return nv;
+
   if (typeof nv === 'object') {
     if (nv.code && typeof nv.code === 'string') return nv.code;
     if (nv.status && typeof nv.status === 'string') return nv.status;
     if (nv.value && typeof nv.value === 'string') return nv.value;
   }
-
   return null;
 }
 
 function mapHistoryToRowsAndStatusUpdates(history, ordersMap) {
   const rows = [];
-  const statusUpdateMap = new Map(); // order_id -> status_code
+  const statusUpdateMap = new Map();
 
   for (const h of history) {
     const retailOrderId =
-  h.order?.number ??
-  h.orderId ??
-  h.order_id ??
-  null;
+      h.order?.number ??
+      h.orderId ??
+      h.order_id ??
+      null;
 
     if (!retailOrderId) continue;
 
@@ -210,7 +198,6 @@ function mapHistoryToRowsAndStatusUpdates(history, ordersMap) {
     if (fieldName === 'status') {
       statusCode = extractStatusCodeFromHistoryRecord(h);
       if (dbOrderId && statusCode) {
-        // запоминаем последний статус для этого заказа
         statusUpdateMap.set(dbOrderId, statusCode);
       }
     }
@@ -233,8 +220,8 @@ function mapHistoryToRowsAndStatusUpdates(history, ordersMap) {
         (typeof h.newValue === 'object' && h.newValue?.comment) ||
         null,
 
-      status_code: statusCode, // <---- новый столбец в истории
-      raw_payload: h, // <---- вся сырая инфа по событию, как ты и хочешь
+      status_code: statusCode,
+      raw_payload: h,
     });
   }
 
@@ -270,10 +257,9 @@ export default async function handler(req, res) {
 
     await ensureWorkingHistoryUtilLoaded();
 
-    // 1) Берём "до какой даты" мы уже дошли; если нет — стартуем с сегодняшнего дня
     let dateTo = await loadDateToFromState();
     if (!dateTo) {
-      dateTo = new Date(); // первый запуск – от сегодняшнего дня
+      dateTo = new Date();
     }
 
     const { from: dateFrom, to: dateWindowTo } = getDateWindow(dateTo);
@@ -282,7 +268,6 @@ export default async function handler(req, res) {
     let totalPages = 0;
     let totalStatusUpdates = 0;
 
-    // 2) Грузим историю по окну дат, постранично
     for (let page = 1; page <= MAX_PAGES_PER_RUN; page++) {
       const history = await fetchHistoryPageByDateRange({
         from: dateFrom,
@@ -317,7 +302,6 @@ export default async function handler(req, res) {
         }
       }
 
-      // обновляем статус заказов по событиям поля "status"
       if (statusUpdates.length) {
         const latestByOrder = new Map();
         for (const su of statusUpdates) {
@@ -343,7 +327,6 @@ export default async function handler(req, res) {
       if (history.length < PAGE_LIMIT) break;
     }
 
-    // 3) Сдвигаем окно назад: следующий запуск пойдёт ещё на месяц глубже
     await saveDateToState(dateFrom);
 
     res.status(200).json({
