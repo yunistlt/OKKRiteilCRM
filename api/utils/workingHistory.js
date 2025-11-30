@@ -3,7 +3,8 @@
 let workingStatusCodesCache = null;
 
 /**
- * Загружаем список кодов рабочих статусов из okk_sla_status
+ * Загружаем список кодов рабочих статусов (status_code)
+ * из okk_sla_status (is_active = TRUE)
  */
 async function loadWorkingStatusCodes(supabase) {
   if (workingStatusCodesCache) return workingStatusCodesCache;
@@ -14,7 +15,7 @@ async function loadWorkingStatusCodes(supabase) {
     .eq('is_active', true);
 
   if (error) {
-    console.error('loadWorkingStatusCodes error', error);
+    console.error('loadWorkingStatusCodes error:', error);
     throw error;
   }
 
@@ -26,46 +27,56 @@ async function loadWorkingStatusCodes(supabase) {
 }
 
 /**
- * Достаём код статуса из new_value (там лежит JSON-строка)
+ * new_value в истории RetailCRM приходит в разных форматах:
+ * - строка ("novyi-1")
+ * - JSON-строка ("{\"code\":\"novyi-1\"}")
+ * - объект { code: "novyi-1", ... }
+ * Эта функция приводит всё к одному: чистый статус-код.
  */
 function extractStatusCodeFromNewValue(raw) {
   if (!raw) return null;
 
-  // пробуем распарсить JSON
-  try {
-    const parsed = JSON.parse(raw);
-
-    if (typeof parsed === 'string') {
-      return parsed;
-    }
-
-    if (parsed && typeof parsed === 'object') {
-      // самые типичные варианты
-      if (typeof parsed.code === 'string') return parsed.code;
-      if (typeof parsed.status === 'string') return parsed.status;
-      if (typeof parsed.id === 'string') return parsed.id;
-    }
-  } catch {
-    // не JSON — идём дальше
+  // Если пришел чистый код: "novyi-1"
+  if (typeof raw === 'string' && /^[a-z0-9-]+$/i.test(raw)) {
+    return raw;
   }
 
+  // Если строка — возможно это JSON
   if (typeof raw === 'string') {
-    // срезаем лишние кавычки, если вдруг есть
-    return raw.replace(/^"+|"+$/g, '');
+    try {
+      const parsed = JSON.parse(raw);
+
+      // если JSON-строка → строка
+      if (typeof parsed === 'string') return parsed;
+
+      // если объект → достаём поле code
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.code === 'string') return parsed.code;
+        if (typeof parsed.status === 'string') return parsed.status;
+      }
+    } catch {
+      // строка не JSON
+      return raw.replace(/^"+|"+$/g, '');
+    }
+  }
+
+  // Если неожиданно прилетел object
+  if (typeof raw === 'object') {
+    if (typeof raw.code === 'string') return raw.code;
+    if (typeof raw.status === 'string') return raw.status;
   }
 
   return null;
 }
 
 /**
- * Копируем строки по рабочим статусам в okk_order_history_working
- * (контрольный механизм к триггеру)
+ * Записываем строки (только рабочие статусы) в okk_order_history_working.
+ * Это контрольный механизм на случай, если триггер не сработает.
  */
 export async function copyWorkingHistoryRows(supabase, historyRows) {
   if (!historyRows?.length) return;
 
   const workingCodes = await loadWorkingStatusCodes(supabase);
-
   const rowsToInsert = [];
 
   for (const row of historyRows) {
@@ -77,7 +88,7 @@ export async function copyWorkingHistoryRows(supabase, historyRows) {
     if (!workingCodes.includes(statusCode)) continue;
 
     rowsToInsert.push({
-      // id не задаём — пусть БД сама генерит uuid по default
+      // id генерируется БД автоматически (default uuid)
       order_id: row.order_id ?? null,
       retailcrm_order_id: row.retailcrm_order_id ?? null,
       changed_at: row.changed_at ?? null,
@@ -99,14 +110,14 @@ export async function copyWorkingHistoryRows(supabase, historyRows) {
     .insert(rowsToInsert);
 
   if (error) {
-    console.error('copyWorkingHistoryRows insert error', error);
+    console.error('copyWorkingHistoryRows insert error:', error);
     throw error;
   }
 }
 
 /**
- * Удаляем историю по заказу из рабочей таблицы,
- * когда он вышел из рабочих статусов (вызывать из синка заказов)
+ * Очищаем рабочую историю, когда заказ выходит из рабочей воронки.
+ * Вызывается из окк-sync-orders.js
  */
 export async function clearWorkingHistoryForOrder(supabase, orderId) {
   if (!orderId) return;
@@ -117,7 +128,7 @@ export async function clearWorkingHistoryForOrder(supabase, orderId) {
     .eq('order_id', orderId);
 
   if (error) {
-    console.error('clearWorkingHistoryForOrder error', error);
+    console.error('clearWorkingHistoryForOrder error:', error);
     throw error;
   }
 }
