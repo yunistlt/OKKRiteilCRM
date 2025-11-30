@@ -23,7 +23,7 @@ export default async function handler(req, res) {
         'id, order_id, manager_id, violation_type, severity, detected_at, details'
       )
       .order('detected_at', { ascending: false })
-      .limit(1000);
+      .limit(3000);
 
     if (error) throw error;
 
