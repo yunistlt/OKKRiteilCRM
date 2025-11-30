@@ -30,24 +30,22 @@ export default async function handler(req, res) {
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 90);
 
-    const { data: history, error: historyError } = await supabase
-      .from('okk_order_history')
-      .select(
-        `
-        id,
-        order_id,
-        retailcrm_order_id,
-        changed_at,
-        changer_id,
-        changer_retailcrm_user_id,
-        field_name,
-        comment,
-        change_type,
-        old_value,
-        new_value
-      `,
-      )
-      .gte('changed_at', fromDate.toISOString());
+  // временно убери фильтр по дате и проверь
+const { data: history, error: historyError } = await supabase
+  .from('okk_order_history')
+  .select(`
+    id,
+    order_id,
+    retailcrm_order_id,
+    changed_at,
+    changer_id,
+    changer_retailcrm_user_id,
+    field_name,
+    comment,
+    change_type,
+    old_value,
+    new_value
+  `);
 
     if (historyError) {
       console.error('okk-check-orders: historyError', historyError);
