@@ -1,5 +1,6 @@
 // api/okk-sync-order-history.js
 import { createClient } from '@supabase/supabase-js';
+import { copyWorkingHistoryRows } from '../utils/workingHistory';
 
 const {
   RETAILCRM_API_KEY,
@@ -128,7 +129,7 @@ async function loadOrdersMap(retailOrderIds) {
   if (error) throw error;
 
   const map = new Map();
-  for (const row of data || []) {
+  for (const row of (data || [])) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
   return map;
@@ -244,11 +245,20 @@ export default async function handler(req, res) {
         const { error } = await supabase
           .from('okk_order_history')
           .insert(rows);
+
         if (error) throw error;
         totalInserted += rows.length;
+
+        // контрольный механизм: продублировать рабочие статусы в okk_order_history_working
+        try {
+          await copyWorkingHistoryRows(supabase, rows);
+        } catch (e) {
+          console.error('copyWorkingHistoryRows error', e);
+        }
       }
 
       sinceId = maxSeenId;
+
       if (history.length < PAGE_LIMIT) break;
     }
 
