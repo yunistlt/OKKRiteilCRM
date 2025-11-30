@@ -196,12 +196,10 @@ function mapHistoryToRowsAndStatusUpdates(history, ordersMap) {
 
   for (const h of history) {
     const retailOrderId =
-      h.order?.id ??
-      h.order?.externalId ??
-      h.order?.number ??
-      h.orderId ??
-      h.order_id ??
-      null;
+  h.order?.number ??
+  h.orderId ??
+  h.order_id ??
+  null;
 
     if (!retailOrderId) continue;
 
