@@ -86,7 +86,7 @@ async function syncSingleOrderFromObject(order) {
 
     created_at_crm: order.createdAt,
     status_updated_at_crm: order.statusUpdatedAt || order.updatedAt || order.createdAt,
-    current_status: order.status,
+    status_code: order.status,
 
     summ,
     purchase_summ: purchaseSumm,
