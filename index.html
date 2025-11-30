@@ -303,7 +303,7 @@
             const { data: ordersChunk, error: ordersErrorChunk } = await supabase
               .from("okk_orders")
               .select(
-                "id, retailcrm_order_id, number, current_status, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
+                "id, retailcrm_order_id, number, status_code, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
               )
               .in("current_status_code", statusCodes)
               .order("status_updated_at_crm", { ascending: true })
@@ -353,7 +353,7 @@
             tr.innerHTML = `
               <td class="nowrap">${o.number}</td>
               <td class="status-cell nowrap">${
-                o.current_status_code || o.current_status || "—"
+                o.current_status_code || o.status_code || "—"
               }</td>
               <td class="hide-md nowrap">
                 ${
