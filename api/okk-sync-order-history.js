@@ -1,7 +1,6 @@
 // api/okk-sync-order-history.js
 
 import { createClient } from '@supabase/supabase-js';
-import { copyWorkingHistoryRows } from '../utils/workingHistory';
 
 const {
   RETAILCRM_API_KEY,
@@ -17,6 +16,30 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const PAGE_LIMIT = 100;
 const MAX_PAGES_PER_RUN = 30;
 const SYNC_KEY = 'order_history_since_id';
+
+// --------- optional workingHistory helper ---------
+
+let copyWorkingHistoryRows = null;
+
+async function ensureWorkingHistoryUtilLoaded() {
+  if (copyWorkingHistoryRows) return;
+
+  try {
+    const mod = await import('../utils/workingHistory.js');
+    if (typeof mod.copyWorkingHistoryRows === 'function') {
+      copyWorkingHistoryRows = mod.copyWorkingHistoryRows;
+    } else {
+      console.warn(
+        'copyWorkingHistoryRows not found in ../utils/workingHistory.js, skipping working history copy'
+      );
+    }
+  } catch (err) {
+    console.warn(
+      'utils/workingHistory.js not available, working history copy will be skipped',
+      err
+    );
+  }
+}
 
 // --------- okk_sync_state ---------
 
@@ -114,7 +137,7 @@ async function loadOrdersMap(retailOrderIds) {
   if (error) throw error;
 
   const map = new Map();
-  for (const row of data || []) {
+  for (const row of (data || [])) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
 
@@ -199,11 +222,15 @@ export default async function handler(req, res) {
       !SUPABASE_URL ||
       !SUPABASE_SERVICE_ROLE_KEY
     ) {
-      res
-        .status(500)
-        .json({ success: false, error: 'Missing required environment variables' });
+      res.status(500).json({
+        success: false,
+        error: 'Missing required environment variables',
+      });
       return;
     }
+
+    // подгружаем helper, если он есть; если нет — просто логируем и идём дальше
+    await ensureWorkingHistoryUtilLoaded();
 
     let sinceId = await getLastSinceId();
     const startId = sinceId;
@@ -235,11 +262,13 @@ export default async function handler(req, res) {
 
         totalInserted += rows.length;
 
-        // ---- контрольная запись в рабочую историю ----
-        try {
-          await copyWorkingHistoryRows(supabase, rows);
-        } catch (err) {
-          console.error('copyWorkingHistoryRows error', err);
+        // ---- контрольная запись в рабочую историю, если helper доступен ----
+        if (copyWorkingHistoryRows) {
+          try {
+            await copyWorkingHistoryRows(supabase, rows);
+          } catch (err) {
+            console.error('copyWorkingHistoryRows error', err);
+          }
         }
       }
 
