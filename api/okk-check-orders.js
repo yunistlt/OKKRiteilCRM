@@ -1,5 +1,7 @@
-// /api/okk-check-orders.js
+// api/okk-check-orders.js
 import { createClient } from '@supabase/supabase-js';
+import { detectNoCommentViolations } from './rules/noComment.js';
+import { detectIllegalCancelFromNewViolations } from './rules/illegalCancelFromNew.js';
 
 const {
   SUPABASE_URL,
@@ -10,113 +12,130 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Простая утилита, чтобы лог не падал, а фронт получал ответ
-function safeLogError(prefix, error) {
-  console.error(prefix, error?.message || error);
-}
-
+/**
+ * Общий обработчик:
+ * 1) грузим историю
+ * 2) прогоняем через все правила
+ * 3) чистим старые нарушения этих типов
+ * 4) пишем новые в okk_violations
+ */
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST' && req.method !== 'GET') {
+    res.setHeader('Allow', 'POST, GET');
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   try {
-    // 1. Опционально чистим старые нарушения от этого правила
-    // Если в схеме нет поля source — просто закомментируй этот блок.
-    try {
-      const { error: delErr } = await supabase
-        .from('okk_violations')
-        .delete()
-        .eq('source', 'RULE_CHECK_NO_COMMENT');
+    // история за последние 90 дней
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - 90);
 
-      if (delErr) {
-        safeLogError('okk-check-orders: delete old RULE_CHECK_NO_COMMENT failed', delErr);
-      }
-    } catch (e) {
-      safeLogError('okk-check-orders: delete block threw', e);
-    }
-
-    // 2. Берём историю с пустыми / плохими комментариями
-    // ⚠️ Список полей подгони под свою фактическую схему okk_order_history
-    const { data: historyRows, error: historyErr } = await supabase
+    const { data: history, error: historyError } = await supabase
       .from('okk_order_history')
       .select(
         `
         id,
         order_id,
-        manager_id,
         retailcrm_order_id,
-        retailcrm_order_number,
-        comment,
         changed_at,
-        history_id
+        changer_id,
+        changer_retailcrm_user_id,
+        field_name,
+        comment,
+        change_type,
+        old_value,
+        new_value
       `,
       )
-      .is('comment', null)
-      .limit(2000); // пока ограничимся разумным количеством
+      .gte('changed_at', fromDate.toISOString());
 
-    if (historyErr) {
-      safeLogError('okk-check-orders: load history error', historyErr);
-      return res.status(500).json({ error: 'Failed to load order history' });
+    if (historyError) {
+      console.error('okk-check-orders: historyError', historyError);
+      throw historyError;
     }
 
-    if (!historyRows || !historyRows.length) {
+    if (!history || !history.length) {
       return res.status(200).json({
         success: true,
         checked: 0,
         inserted: 0,
-        message: 'Подходящих записей истории без комментария не найдено',
+        note: 'Нет записей истории за период',
       });
     }
 
-    // 3. Готовим нарушения
-    const violations = historyRows.map((row) => {
-      const orderId =
-        row.order_id ||
-        row.retailcrm_order_id ||
-        null;
+    const nowIso = new Date().toISOString();
 
-      const managerId = row.manager_id || null;
+    // общая конфигурация для правил
+    const config = {
+      nowIso,
+      // КОД статуса "Новый" (подставь свой реальный из status_code)
+      NEW_STATUS_CODE: 'novyy', // TODO: заменить на реальный
+      // Коды всех отменных статусов (status_code)
+      CANCEL_STATUS_CODES: [
+        // TODO: сюда подставишь свои коды отмен, сейчас правило работать не будет
+        // 'soglasovanie-otmeny',
+        // 'ne-proshli-po-cene',
+        // ...
+      ],
+    };
 
-      const humanMessage =
-        'Смена статуса или перенос следующего контакта без осмысленного комментария оператора. ' +
-        'Требуется комментарий в течение 5 минут после изменения.';
+    // 1) правило "нет комментария при смене статуса"
+    const noCommentViolations = detectNoCommentViolations(history, config);
 
-      return {
-        order_id: orderId,
-        manager_id: managerId,
-        violation_code: 'NO_COMMENT_ON_STATUS_CHANGE', // для фильтров и аналитики
-        type: 'NO_COMMENT_ON_STATUS_CHANGE', // на всякий случай — если на фронте читается type
-        source: 'RULE_CHECK_NO_COMMENT',
-        details: {
-          message: humanMessage,
-          comment: row.comment,
-          changed_at: row.changed_at,
-          history_id: row.history_id,
-          retailcrm_order_id: row.retailcrm_order_id,
-          retailcrm_order_number: row.retailcrm_order_number,
-        },
-      };
-    });
+    // 2) правило "незаконная отмена из Нового"
+    const illegalCancelViolations = detectIllegalCancelFromNewViolations(history, config);
 
-    // 4. Пишем в okk_violations
-    const { error: insErr } = await supabase
+    const allViolations = [
+      ...noCommentViolations,
+      ...illegalCancelViolations,
+    ];
+
+    // Если ни одно правило ничего не нашло
+    if (!allViolations.length) {
+      return res.status(200).json({
+        success: true,
+        checked: history.length,
+        inserted: 0,
+        note: 'Правила не нашли нарушений',
+      });
+    }
+
+    // Какие типы нарушений мы сейчас пересчитываем
+    const violationTypes = Array.from(
+      new Set(allViolations.map((v) => v.violation_type)),
+    );
+
+    // Сначала чистим старые нарушения этих типов
+    const { error: deleteError } = await supabase
       .from('okk_violations')
-      .insert(violations);
+      .delete()
+      .in('violation_type', violationTypes);
 
-    if (insErr) {
-      safeLogError('okk-check-orders: insert violations error', insErr);
-      return res.status(500).json({ error: 'Failed to insert violations' });
+    if (deleteError) {
+      console.error('okk-check-orders: deleteError', deleteError);
+      throw deleteError;
+    }
+
+    // Потом вставляем новые
+    const { error: insertError } = await supabase
+      .from('okk_violations')
+      .insert(allViolations);
+
+    if (insertError) {
+      console.error('okk-check-orders: insertError', insertError);
+      throw insertError;
     }
 
     return res.status(200).json({
       success: true,
-      checked: historyRows.length,
-      inserted: violations.length,
+      checked: history.length,
+      inserted: allViolations.length,
+      types: violationTypes,
     });
-  } catch (e) {
-    safeLogError('okk-check-orders: fatal', e);
-    return res.status(500).json({ error: 'Unexpected error' });
+  } catch (err) {
+    console.error('okk-check-orders: fatal', err);
+    return res
+      .status(500)
+      .json({ success: false, error: String(err.message || err) });
   }
 }
