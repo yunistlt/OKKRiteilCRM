@@ -4,7 +4,8 @@
     { "src": "api/**/*.js", "use": "@vercel/node" },
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "styles/**/*.css", "use": "@vercel/static" },
-    { "src": "scripts/**/*.js", "use": "@vercel/static" }
+    { "src": "scripts/**/*.js", "use": "@vercel/static" },
+    { "src": "public/**/*", "use": "@vercel/static" }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1.js" },
@@ -14,7 +15,7 @@
   "crons": [
     {
       "path": "/api/okk-daily-sync",
-      "schedule": "*/1 * * * *"
+      "schedule": "0 23 * * *"
     },
     {
       "path": "/api/okk-sync-managers",
@@ -25,8 +26,8 @@
       "schedule": "*/1 * * * *"
     },
     {
-  "path": "/api/ai/analyzeOrderHistory",
-  "schedule": "0 23 * * *"
-}
+      "path": "/api/okk-sync-orders",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }
