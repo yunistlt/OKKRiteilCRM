@@ -24,10 +24,6 @@
     {
       "path": "/api/okk-sync-order-history",
       "schedule": "*/1 * * * *"
-    },
-    {
-      "path": "/api/okk-sync-orders",
-      "schedule": "*/5 * * * *"
     }
   ]
 }
