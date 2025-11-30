@@ -60,7 +60,7 @@ export default function OkkOrdersDashboard() {
           .select(
             'id, retailcrm_order_id, number, status_code, created_at_crm, status_updated_at_crm, summ, manager_id, manager_retailcrm_id, paid'
           )
-          .in('current_status', statusList)
+          .in('status_code', statusList)
           .order('status_updated_at_crm', { ascending: true })
 
         if (ordersError) {
@@ -126,7 +126,7 @@ export default function OkkOrdersDashboard() {
             return (
               <tr key={o.id}>
                 <td style={td}>{o.number}</td>
-                <td style={td}>{o.current_status}</td>
+                <td style={td}>{o.status_code}</td>
                 <td style={td}>{o.summ ?? '—'}</td>
                 <td style={td}>{o.paid ? 'Да' : 'Нет'}</td>
                 <td style={td}>{o.manager_retailcrm_id ?? '—'}</td>
