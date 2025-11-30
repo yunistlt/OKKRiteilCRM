@@ -1,4 +1,7 @@
 // api/okk-sync-order-history-working.js
+// Тянет историю из RetailCRM ТОЛЬКО по указанным заказам (рабочие статусы)
+// и пишет её в okk_order_history_working.
+// Добавлена расширенная диагностика RetailCRM 400.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -19,30 +22,36 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const HISTORY_LIMIT = 200;
 
-// ------- helpers -------
+// ---------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------
 
 function normalizeOrderIds(param) {
   if (!param) return [];
 
   const arr = Array.isArray(param) ? param : [param];
-
   const ids = new Set();
 
   for (const part of arr) {
     if (!part) continue;
+
     const pieces = String(part)
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
 
     for (const p of pieces) {
-      const n = parseInt(p, 10);
-      if (Number.isFinite(n) && n > 0) ids.add(n);
+      const num = parseInt(p, 10);
+      if (Number.isFinite(num) && num > 0) ids.add(num);
     }
   }
 
   return [...ids];
 }
+
+// ---------------------------------------------------------
+// Тянем историю из RetailCRM по одному orderId
+// ---------------------------------------------------------
 
 async function fetchHistoryFromRetail(orderId) {
   const url =
@@ -52,21 +61,33 @@ async function fetchHistoryFromRetail(orderId) {
     `&limit=${HISTORY_LIMIT}`;
 
   const resp = await fetch(url);
+  const text = await resp.text(); // важно — читаем тело полностью
+
   if (!resp.ok) {
-    throw new Error(`[okk-sync-order-history-working] RetailCRM HTTP ${resp.status} (order ${orderId})`);
+    throw new Error(
+      `[okk-sync-order-history-working] RetailCRM HTTP ${resp.status} (order ${orderId}): ${text.slice(0, 300)}`
+    );
   }
 
-  const json = await resp.json();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(
+      `[okk-sync-order-history-working] RetailCRM invalid JSON (order ${orderId}): ${text.slice(0, 300)}`
+    );
+  }
+
   if (!json.success) {
     throw new Error(
-      `[okk-sync-order-history-working] RetailCRM error for order ${orderId}: ${
-        json.errorMsg || json.error || 'unknown'
-      }`,
+      `[okk-sync-order-history-working] RetailCRM logical error (order ${orderId}): ${json.errorMsg || json.error || text.slice(0,300)}`
     );
   }
 
   return Array.isArray(json.history) ? json.history : [];
 }
+
+// ---------------------------------------------------------
 
 async function loadOrderDbId(retailOrderId) {
   const { data, error } = await supabase
@@ -114,7 +135,9 @@ function mapHistoryToRows(history, orderDbId, retailOrderId) {
   });
 }
 
-// ------- handler -------
+// ---------------------------------------------------------
+// Handler
+// ---------------------------------------------------------
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -142,6 +165,7 @@ export default async function handler(req, res) {
       try {
         const orderDbId = await loadOrderDbId(retailOrderId);
 
+        // 👉 Тянем историю из RetailCRM (здесь и вылетает 400)
         const history = await fetchHistoryFromRetail(retailOrderId);
 
         if (!history.length) {
@@ -162,6 +186,7 @@ export default async function handler(req, res) {
           if (error) throw error;
 
           totalInserted += rows.length;
+
           perOrder.push({
             retailcrm_order_id: retailOrderId,
             inserted: rows.length,
@@ -173,6 +198,7 @@ export default async function handler(req, res) {
           retailOrderId,
           e,
         );
+
         errors.push({
           retailcrm_order_id: retailOrderId,
           error: String(e.message || e),
@@ -188,7 +214,7 @@ export default async function handler(req, res) {
       errors,
     });
   } catch (err) {
-    console.error('[okk-sync-order-history-working] fatal error', err);
+    console.error('[okk-sync-order-history-working] fatal', err);
     return res.status(500).json({
       success: false,
       error: String(err.message || err),
