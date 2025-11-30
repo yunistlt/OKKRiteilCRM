@@ -33,6 +33,7 @@ async function loadSinceIdFromState() {
 
   const raw = data[0].value;
   const num = Number(raw);
+
   return Number.isFinite(num) ? num : 0;
 }
 
@@ -73,25 +74,34 @@ async function getLastSinceId() {
   return maxId || 0;
 }
 
-// --------- RetailCRM history fetch ---------
+// --------- fetch RetailCRM history ---------
 
 async function fetchHistoryPage(sinceId) {
   const url = new URL('/api/v5/orders/history', RETAILCRM_BASE_URL);
   url.searchParams.set('apiKey', RETAILCRM_API_KEY);
   url.searchParams.set('limit', PAGE_LIMIT.toString());
 
-  if (sinceId > 0) url.searchParams.set('filter[sinceId]', sinceId.toString());
+  if (sinceId > 0) {
+    url.searchParams.set('filter[sinceId]', sinceId.toString());
+  }
 
   const resp = await fetch(url.toString());
-  if (!resp.ok) throw new Error(`RetailCRM HTTP ${resp.status}`);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(
+      `RetailCRM history HTTP ${resp.status}: ${text.slice(0, 200)}`
+    );
+  }
 
   const json = await resp.json();
-  if (!json.success) throw new Error(`RetailCRM: ${json.error || 'unknown error'}`);
+  if (!json.success) {
+    throw new Error(json.error || 'RetailCRM unknown error');
+  }
 
   return Array.isArray(json.history) ? json.history : [];
 }
 
-// --------- load orders mapping ---------
+// --------- orders map ---------
 
 async function loadOrdersMap(retailOrderIds) {
   if (!retailOrderIds.length) return new Map();
@@ -107,13 +117,15 @@ async function loadOrdersMap(retailOrderIds) {
   for (const row of data || []) {
     map.set(Number(row.retailcrm_order_id), row.id);
   }
+
   return map;
 }
 
 function extractOrdersIdsFromHistory(history) {
   const ids = new Set();
+
   for (const h of history) {
-    const orderId =
+    const id =
       h.order?.id ??
       h.order?.externalId ??
       h.order?.number ??
@@ -121,12 +133,13 @@ function extractOrdersIdsFromHistory(history) {
       h.order_id ??
       null;
 
-    if (orderId) ids.add(Number(orderId));
+    if (id) ids.add(Number(id));
   }
+
   return [...ids];
 }
 
-// --------- map RetailCRM → DB rows ---------
+// --------- map CRM history → db rows ---------
 
 function mapHistoryToRows(history, ordersMap) {
   const rows = [];
@@ -142,32 +155,28 @@ function mapHistoryToRows(history, ordersMap) {
 
     if (!retailOrderId) continue;
 
-    const orderId = ordersMap.get(Number(retailOrderId)) || null;
+    const dbOrderId = ordersMap.get(Number(retailOrderId)) || null;
 
     const fieldName = h.fieldName || h.field || null;
 
-    const oldValue =
-      h.oldValue !== undefined ? JSON.stringify(h.oldValue) : null;
-    const newValue =
-      h.newValue !== undefined ? JSON.stringify(h.newValue) : null;
-
-    const comment =
-      h.comment ||
-      h.statusComment ||
-      (typeof h.newValue === 'object' && h.newValue?.comment) ||
-      null;
-
     rows.push({
-      order_id: orderId,
+      order_id: dbOrderId,
       retailcrm_order_id: Number(retailOrderId),
       changed_at: h.createdAt ? new Date(h.createdAt).toISOString() : null,
       changer_retailcrm_user_id: h.user?.id ?? null,
       changer_id: null,
       change_type: h.source || h.action || null,
+
       field_name: fieldName,
-      old_value: oldValue,
-      new_value: newValue,
-      comment,
+      old_value: h.oldValue !== undefined ? JSON.stringify(h.oldValue) : null,
+      new_value: h.newValue !== undefined ? JSON.stringify(h.newValue) : null,
+
+      comment:
+        h.comment ||
+        h.statusComment ||
+        (typeof h.newValue === 'object' && h.newValue?.comment) ||
+        null,
+
       raw_payload: h,
     });
   }
@@ -184,13 +193,20 @@ export default async function handler(req, res) {
       return;
     }
 
-    if (!RETAILCRM_API_KEY || !RETAILCRM_BASE_URL || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-      res.status(500).json({ success: false, error: 'Missing env variables' });
+    if (
+      !RETAILCRM_API_KEY ||
+      !RETAILCRM_BASE_URL ||
+      !SUPABASE_URL ||
+      !SUPABASE_SERVICE_ROLE_KEY
+    ) {
+      res
+        .status(500)
+        .json({ success: false, error: 'Missing required environment variables' });
       return;
     }
 
     let sinceId = await getLastSinceId();
-    const sinceIdStart = sinceId;
+    const startId = sinceId;
     let maxSeenId = sinceId;
 
     let totalInserted = 0;
@@ -214,19 +230,16 @@ export default async function handler(req, res) {
       const rows = mapHistoryToRows(history, ordersMap);
 
       if (rows.length) {
-        const { error } = await supabase
-          .from('okk_order_history')
-          .insert(rows);
-
+        const { error } = await supabase.from('okk_order_history').insert(rows);
         if (error) throw error;
 
         totalInserted += rows.length;
 
-        // ---- контрольный механизм: дублируем рабочие статусы ----
+        // ---- контрольная запись в рабочую историю ----
         try {
           await copyWorkingHistoryRows(supabase, rows);
-        } catch (e) {
-          console.error('copyWorkingHistoryRows error', e);
+        } catch (err) {
+          console.error('copyWorkingHistoryRows error', err);
         }
       }
 
@@ -235,7 +248,7 @@ export default async function handler(req, res) {
       if (history.length < PAGE_LIMIT) break;
     }
 
-    if (maxSeenId > sinceIdStart) {
+    if (maxSeenId > startId) {
       await saveSinceIdToState(maxSeenId);
     }
 
@@ -243,7 +256,7 @@ export default async function handler(req, res) {
       success: true,
       inserted: totalInserted,
       pages: totalPages,
-      sinceIdStart,
+      sinceIdStart: startId,
       lastSeenId: maxSeenId,
     });
   } catch (err) {
