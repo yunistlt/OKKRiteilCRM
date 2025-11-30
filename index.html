@@ -294,17 +294,37 @@
 
           statusBadge.textContent = `Статусы: ${statusCodes.length}`;
 
-          // 4. Заказы — фильтр по current_status_code
-          const { data: orders, error: ordersError } = await supabase
-            .from("okk_orders")
-            .select(
-              "id, retailcrm_order_id, number, current_status, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
-            )
-            .in("current_status_code", statusCodes)
-            .order("status_updated_at_crm", { ascending: true })
-            .range(0, 2999);
+          // 4. Заказы — фильтр по current_status_code, тянем чанками по 1000
+          const CHUNK_SIZE = 1000;
+          let from = 0;
+          let allOrders = [];
 
-          if (ordersError) throw ordersError;
+          while (true) {
+            const { data: ordersChunk, error: ordersErrorChunk } = await supabase
+              .from("okk_orders")
+              .select(
+                "id, retailcrm_order_id, number, current_status, current_status_code, created_at_crm, status_updated_at_crm, summ, manager_retailcrm_id, paid"
+              )
+              .in("current_status_code", statusCodes)
+              .order("status_updated_at_crm", { ascending: true })
+              .range(from, from + CHUNK_SIZE - 1);
+
+            if (ordersErrorChunk) throw ordersErrorChunk;
+
+            if (!ordersChunk || !ordersChunk.length) {
+              break;
+            }
+
+            allOrders = allOrders.concat(ordersChunk);
+
+            if (ordersChunk.length < CHUNK_SIZE) {
+              break; // дошли до конца выборки
+            }
+
+            from += CHUNK_SIZE;
+          }
+
+          const orders = allOrders;
 
           if (!orders || !orders.length) {
             tbody.innerHTML = `
@@ -318,8 +338,9 @@
             setMessage(null, "");
             return;
           }
+
           ordersCountPill.textContent = `Заказы: ${orders.length}`;
-         
+
           // 5. Рендер таблицы
           tbody.innerHTML = "";
           for (const o of orders) {
