@@ -123,7 +123,7 @@ export default async function handler(req, res) {
             created_at_crm: order.createdAt,
             status_updated_at_crm:
               order.statusUpdatedAt || order.updatedAt || order.createdAt,
-            current_status: order.status,        // код статуса
+            status_code: order.status,        // код статуса
             current_status_code: order.status,   // код для наших выборок
             summ: typeof order.summ === "number" ? order.summ : null,
             purchase_summ:
