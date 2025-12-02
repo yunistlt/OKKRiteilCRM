@@ -97,7 +97,7 @@ export function detectIllegalCancelFromNewViolations(history, config) {
       ) {
         violations.push({
           order_id: row.order_id ?? null,
-          manager_id: row.changer_id ?? null,
+          manager_id: row.changer_id ?? null, // финально будет перезаписан через changer_retailcrm_user_id
           violation_type: 'ILLEGAL_CANCEL_FROM_NEW',
           severity: 2,
           detected_at: detectedAt,
@@ -109,6 +109,8 @@ export function detectIllegalCancelFromNewViolations(history, config) {
             prev_changed_at: prevRow?.changed_at ?? null,
             cancel_changed_at: row.changed_at ?? null,
             retailcrm_order_id: row.retailcrm_order_id ?? null,
+            history_id: row.id,
+            changer_retailcrm_user_id: row.changer_retailcrm_user_id ?? null,
           },
         });
       }
