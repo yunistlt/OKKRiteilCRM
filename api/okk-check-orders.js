@@ -26,13 +26,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // история за последние 90 дней (пока без фильтра по дате)
+    // история за последние 90 дней (переменная пока не используется, оставляем на будущее фильтрацию)
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 90);
 
-    // временно убери фильтр по дате и проверь
+    // Берём историю ТОЛЬКО по рабочим статусам
     const { data: history, error: historyError } = await supabase
-      .from('okk_order_history')
+      .from('okk_order_history_working')
       .select(`
         id,
         order_id,
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
       ...illegalCancelViolations,
     ];
 
-    // ----- НОВОЕ: подтягиваем manager_id по changer_retailcrm_user_id -----
+    // ----- подтягиваем manager_id по changer_retailcrm_user_id -----
     if (allViolations.length) {
       const retailUserIds = Array.from(
         new Set(
