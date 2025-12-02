@@ -26,26 +26,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    // история за последние 90 дней
+    // история за последние 90 дней (пока без фильтра по дате)
     const fromDate = new Date();
     fromDate.setDate(fromDate.getDate() - 90);
 
-  // временно убери фильтр по дате и проверь
-const { data: history, error: historyError } = await supabase
-  .from('okk_order_history')
-  .select(`
-    id,
-    order_id,
-    retailcrm_order_id,
-    changed_at,
-    changer_id,
-    changer_retailcrm_user_id,
-    field_name,
-    comment,
-    change_type,
-    old_value,
-    new_value
-  `);
+    // временно убери фильтр по дате и проверь
+    const { data: history, error: historyError } = await supabase
+      .from('okk_order_history')
+      .select(`
+        id,
+        order_id,
+        retailcrm_order_id,
+        changed_at,
+        changer_id,
+        changer_retailcrm_user_id,
+        field_name,
+        comment,
+        change_type,
+        old_value,
+        new_value
+      `);
 
     if (historyError) {
       console.error('okk-check-orders: historyError', historyError);
@@ -81,12 +81,61 @@ const { data: history, error: historyError } = await supabase
     const noCommentViolations = detectNoCommentViolations(history, config);
 
     // 2) правило "незаконная отмена из Нового"
-    const illegalCancelViolations = detectIllegalCancelFromNewViolations(history, config);
+    const illegalCancelViolations =
+      detectIllegalCancelFromNewViolations(history, config);
 
-    const allViolations = [
+    let allViolations = [
       ...noCommentViolations,
       ...illegalCancelViolations,
     ];
+
+    // ----- НОВОЕ: подтягиваем manager_id по changer_retailcrm_user_id -----
+    if (allViolations.length) {
+      const retailUserIds = Array.from(
+        new Set(
+          allViolations
+            .map((v) => v?.details?.changer_retailcrm_user_id)
+            .filter(
+              (id) =>
+                id !== null &&
+                id !== undefined &&
+                (typeof id === 'number' || typeof id === 'string'),
+            ),
+        ),
+      );
+
+      let managersMap = new Map();
+
+      if (retailUserIds.length) {
+        const { data: users, error: usersError } = await supabase
+          .from('okk_users')
+          .select('id, retailcrm_user_id')
+          .in('retailcrm_user_id', retailUserIds);
+
+        if (usersError) {
+          console.error('okk-check-orders: users lookup error', usersError);
+        } else if (Array.isArray(users)) {
+          managersMap = new Map(
+            users.map((u) => [u.retailcrm_user_id, u.id]),
+          );
+        }
+      }
+
+      allViolations = allViolations.map((v) => {
+        let managerId = v.manager_id || null;
+        const changerRetailId = v?.details?.changer_retailcrm_user_id;
+
+        if (!managerId && changerRetailId && managersMap.has(changerRetailId)) {
+          managerId = managersMap.get(changerRetailId);
+        }
+
+        return {
+          ...v,
+          manager_id: managerId,
+        };
+      });
+    }
+    // ----- конец блока manager_id -----
 
     // Если ни одно правило ничего не нашло
     if (!allViolations.length) {
