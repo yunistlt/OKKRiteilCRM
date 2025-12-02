@@ -1,6 +1,15 @@
 // /scripts/okk-quality-panel.js
 
+import { renderQualityFilters } from './components/filters.js';
+
 let allViolations = [];
+
+// фильтры шапки (дата + менеджер)
+let headerFilters = {
+  date_from: null,
+  date_to: null,
+  manager_id: null,
+};
 
 // ---------- helpers ----------
 
@@ -70,6 +79,20 @@ function formatDetails(details) {
   } catch (e) {
     return String(details);
   }
+}
+
+// вытащить уникальные ID менеджеров из нарушений
+function extractManagerIds(violations) {
+  const managers = Array.from(
+    new Set(
+      violations
+        .map((v) => getManagerId(v))
+        .filter((id) => id !== null && id !== undefined && String(id).trim()),
+    ),
+  );
+
+  managers.sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+  return managers;
 }
 
 // ---------- рендер ----------
@@ -149,15 +172,7 @@ function fillManagerFilter(violations) {
   select.innerHTML = '';
   if (first) select.appendChild(first);
 
-  const managers = Array.from(
-    new Set(
-      violations
-        .map((v) => getManagerId(v))
-        .filter((id) => id !== null && id !== undefined && String(id).trim()),
-    ),
-  );
-
-  managers.sort((a, b) => String(a).localeCompare(String(b), 'ru'));
+  const managers = extractManagerIds(violations);
 
   managers.forEach((id) => {
     const opt = document.createElement('option');
@@ -170,14 +185,54 @@ function fillManagerFilter(violations) {
 // ---------- загрузка + фильтры ----------
 
 function applyFilters() {
+  // фильтры из шапки
+  const dateFromStr = headerFilters.date_from;
+  const dateToStr = headerFilters.date_to;
+  const headerManager = headerFilters.manager_id;
+
+  let filtered = [...allViolations];
+
+  // фильтр по дате (шапка)
+  if (dateFromStr) {
+    const from = new Date(`${dateFromStr}T00:00:00`);
+    filtered = filtered.filter((v) => {
+      const t = getViolationTime(v);
+      if (!t) return false;
+      const dv = new Date(t);
+      if (Number.isNaN(dv.getTime()) || Number.isNaN(from.getTime())) {
+        return false;
+      }
+      return dv >= from;
+    });
+  }
+
+  if (dateToStr) {
+    const to = new Date(`${dateToStr}T23:59:59`);
+    filtered = filtered.filter((v) => {
+      const t = getViolationTime(v);
+      if (!t) return false;
+      const dv = new Date(t);
+      if (Number.isNaN(dv.getTime()) || Number.isNaN(to.getTime())) {
+        return false;
+      }
+      return dv <= to;
+    });
+  }
+
+  // фильтр по менеджеру из шапки
+  if (headerManager) {
+    filtered = filtered.filter(
+      (v) => String(getManagerId(v)) === String(headerManager),
+    );
+  }
+
+  // фильтры тулбара
   const codeFilter = document.getElementById('filterViolationCode').value;
   const managerFilter = document.getElementById('filterManager').value;
   const searchValue = document
     .getElementById('filterSearch')
     .value.trim()
     .toLowerCase();
-
-  let filtered = [...allViolations];
 
   if (codeFilter) {
     filtered = filtered.filter(
@@ -223,7 +278,31 @@ async function loadViolations() {
 
     allViolations = violations;
 
+    // менеджеры для селекта в тулбаре
     fillManagerFilter(allViolations);
+
+    // менеджеры для фильтров в шапке
+    const managers = extractManagerIds(allViolations).map((id) => ({
+      id,
+      name: id,
+    }));
+    const headerContainer = document.getElementById('qualityHeaderFilters');
+    if (headerContainer) {
+      headerContainer.innerHTML = '';
+      const filtersNode = renderQualityFilters({
+        managers,
+        onChange: (filters) => {
+          headerFilters = filters || {
+            date_from: null,
+            date_to: null,
+            manager_id: null,
+          };
+          applyFilters();
+        },
+      });
+      headerContainer.appendChild(filtersNode);
+    }
+
     applyFilters();
   } catch (err) {
     console.error('loadViolations error', err);
