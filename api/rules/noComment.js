@@ -37,7 +37,7 @@ function isStatusField(fieldName) {
 
 /**
  * Правило: NO_COMMENT_ON_STATUS_CHANGE
- * На вход: полная history (как из okk_order_history)
+ * На вход: полная history (как из okk_order_history_working)
  * На выход: массив нарушений для вставки в okk_violations
  */
 export function detectNoCommentViolations(history, config) {
@@ -50,6 +50,7 @@ export function detectNoCommentViolations(history, config) {
     if (isBadComment(h.comment)) {
       violations.push({
         order_id: h.order_id ?? null,
+        // временно можем оставить, но основной manager_id потом проставится в окк-check-orders по changer_retailcrm_user_id
         manager_id: h.changer_id ?? null,
         violation_type: 'NO_COMMENT_ON_STATUS_CHANGE',
         severity: 1,
