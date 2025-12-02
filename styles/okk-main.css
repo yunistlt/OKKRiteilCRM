@@ -535,4 +535,9 @@ tbody tr:nth-child(odd) {
   background: rgba(248, 113, 113, 0.2);
   color: #7f1d1d;
 }
+  /* Фильтры в шапке панели качества */
+.panel-toolbar-header {
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
 }
