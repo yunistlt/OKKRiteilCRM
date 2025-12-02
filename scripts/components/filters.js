@@ -1,28 +1,25 @@
 // /scripts/components/filters.js
 
-// Универсальный модуль фильтров для панели качества.
-// Сейчас: дата-от, дата-до, менеджер.
-// Позже можно добавлять новые фильтры без переписи логики.
+// Фильтры в шапке панели качества:
+// Дата с / Дата по / Менеджер
+// Верстка максимально повторяет .panel-toolbar внизу.
 
 export function renderQualityFilters({ managers = [], onChange }) {
   const container = document.createElement('div');
-  container.className = 'quality-filters';
+  // Используем те же стили, что и нижний тулбар
+  container.className = 'panel-toolbar panel-toolbar-header';
 
-  // ---------- DATE FROM ----------
+  // --------- элементы ---------
   const dateFrom = document.createElement('input');
   dateFrom.type = 'date';
-  dateFrom.className = 'filter-input';
-  dateFrom.addEventListener('change', () => emitChange());
+  dateFrom.className = 'toolbar-input';
 
-  // ---------- DATE TO ----------
   const dateTo = document.createElement('input');
   dateTo.type = 'date';
-  dateTo.className = 'filter-input';
-  dateTo.addEventListener('change', () => emitChange());
+  dateTo.className = 'toolbar-input';
 
-  // ---------- MANAGER SELECT ----------
   const managerSelect = document.createElement('select');
-  managerSelect.className = 'filter-input';
+  managerSelect.className = 'toolbar-select';
 
   const optAll = document.createElement('option');
   optAll.value = '';
@@ -32,13 +29,34 @@ export function renderQualityFilters({ managers = [], onChange }) {
   managers.forEach((m) => {
     const opt = document.createElement('option');
     opt.value = m.id;
-    opt.textContent = m.name;
+    opt.textContent = m.name || m.id;
     managerSelect.appendChild(opt);
   });
 
-  managerSelect.addEventListener('change', () => emitChange());
+  // --------- хелпер для групп ---------
+  function makeGroup(labelText, controlEl) {
+    const group = document.createElement('div');
+    group.className = 'toolbar-group';
 
-  // ---------- COLLECT AND EMIT ----------
+    const label = document.createElement('label');
+    label.className = 'toolbar-label';
+    label.textContent = labelText;
+
+    group.appendChild(label);
+    group.appendChild(controlEl);
+    return group;
+  }
+
+  // --------- сборка ---------
+  const groupDateFrom = makeGroup('Дата с', dateFrom);
+  const groupDateTo = makeGroup('Дата по', dateTo);
+  const groupManager = makeGroup('Менеджер', managerSelect);
+
+  container.appendChild(groupDateFrom);
+  container.appendChild(groupDateTo);
+  container.appendChild(groupManager);
+
+  // --------- отдача фильтров наверх ---------
   function emitChange() {
     const filters = {
       date_from: dateFrom.value || null,
@@ -51,15 +69,9 @@ export function renderQualityFilters({ managers = [], onChange }) {
     }
   }
 
-  // ---------- RENDER BLOCK ----------
-  const block = document.createElement('div');
-  block.className = 'filters-block';
-
-  block.appendChild(dateFrom);
-  block.appendChild(dateTo);
-  block.appendChild(managerSelect);
-
-  container.appendChild(block);
+  dateFrom.addEventListener('change', emitChange);
+  dateTo.addEventListener('change', emitChange);
+  managerSelect.addEventListener('change', emitChange);
 
   return container;
 }
