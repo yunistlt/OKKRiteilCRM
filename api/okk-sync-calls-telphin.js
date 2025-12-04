@@ -36,7 +36,7 @@ async function getTelphinToken() {
     client_id: TELPHIN_CLIENT_ID,
     client_secret: TELPHIN_CLIENT_SECRET,
     // scope может отличаться, в доках Телфина обычно "call_api"
-    scope: 'call_api',
+    scope: 'all',
   });
 
   const resp = await fetch(`${TELPHIN_API_BASE}/oauth/token`, {
