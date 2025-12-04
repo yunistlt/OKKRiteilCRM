@@ -29,13 +29,13 @@ function formatTelphinDate(date) {
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
 }
 
-// Получаем access_token по OAuth2 (client_credentials / Trusted app)
+// Получаем access_token по OAuth2 (trusted app → client_credentials)
 async function getTelphinToken() {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: TELPHIN_CLIENT_ID,
     client_secret: TELPHIN_CLIENT_SECRET,
-    // scope может отличаться, в доках Телфина обычно "call_api"
+    // в доке для public-приложения scope=all — оставляем так же
     scope: 'all',
   });
 
@@ -52,21 +52,19 @@ async function getTelphinToken() {
     );
   }
 
-  return resp.json(); // { access_token, token_type, expires_in, scope, user: {...} }
+  return resp.json(); // { access_token, token_type, expires_in, scope, ... }
 }
 
-// TODO: endpoint и поля нужно будет сверить в интерфейсе
-// https://apiproxy.telphin.ru (client_api_explorer)
-// Здесь я использую сигнатуру по мотивам Go-SDK Telphin (GetRecordList).
+// Получение списка записей разговоров по ВНУТРЕННЕМУ номеру (extension_id)
+// Документация: GET /extension/{extension_id}/record/
 async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
   const params = new URLSearchParams({
-    extension_id: String(extensionId),
-    start_date: formatTelphinDate(from),
-    end_date: formatTelphinDate(to),
-    order: 'asc',
+    start_datetime: formatTelphinDate(from),
+    end_datetime: formatTelphinDate(to),
+    order: 'asc', // или desc, если нужно
   });
 
-  const url = `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/record/list?${params.toString()}`;
+  const url = `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/extension/${extensionId}/record/?${params.toString()}`;
 
   const resp = await fetch(url, {
     headers: {
@@ -81,7 +79,7 @@ async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
     );
   }
 
-  // Ожидаем массив объектов RecordList (см. Telphin SDK)
+  // ожидаем массив записей
   return resp.json();
 }
 
@@ -89,12 +87,14 @@ async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
 export default async function handler(req, res) {
   try {
     if (!TELPHIN_CLIENT_ID || !TELPHIN_CLIENT_SECRET) {
-      return res
-        .status(500)
-        .json({ error: 'TELPHIN_CLIENT_ID / TELPHIN_CLIENT_SECRET not set' });
+      return res.status(500).json({
+        error: 'TELPHIN_ENV_NOT_SET',
+        message: 'TELPHIN_CLIENT_ID / TELPHIN_CLIENT_SECRET not set',
+      });
     }
 
-    // extensionId можно передавать через query: /api/okk-sync-calls-telphin?extensionId=101
+    // extensionId можно передавать через query:
+    // /api/okk-sync-calls-telphin?extensionId=301
     const { extensionId } = req.query;
     if (!extensionId) {
       return res.status(400).json({ error: 'extensionId is required' });
@@ -115,44 +115,66 @@ export default async function handler(req, res) {
       return res.status(200).json({ imported: 0 });
     }
 
-    // Маппим в структуру нашей таблицы
-    const rows = records.map((r) => ({
-      record_uuid: r.RecordUUID || r.record_uuid || null,
-      extension_id: r.ExtensionId || r.ExtensionID || r.extension_id || null,
-      client_id: r.ClientId || r.ClientID || null,
-      rec_id: r.RecID || r.rec_id || null,
+    // Маппим в структуру нашей таблицы (на будущее оставляем гибко, по именам из разных версий)
+    const rows = records
+      .map((r) => ({
+        record_uuid: r.record_uuid || r.RecordUUID || r.record_id || null,
+        extension_id:
+          r.extension_id || r.ExtensionId || r.ExtensionID || null,
+        client_id: r.client_id || r.ClientId || r.ClientID || null,
 
-      started_at:
-        r.CreateDate || r.StartTime || r.start_time
-          ? new Date(r.CreateDate || r.StartTime || r.start_time).toISOString()
+        // время начала разговора
+        started_at: (r.init_time_gmt || r.create_date || r.CreateDate)
+          ? new Date(
+              r.init_time_gmt || r.create_date || r.CreateDate,
+            ).toISOString()
           : null,
 
-      duration_sec:
-        typeof r.Duration === 'number'
-          ? Math.round(r.Duration / 1_000_000) // если в микросекундах
-          : r.DurationSec || r.duration_sec || null,
+        // длительность (пока просто duration, потом уточним по реальным данным)
+        duration_sec:
+          r.duration_sec ||
+          r.DurationSec ||
+          (typeof r.duration === 'number' ? r.duration : null),
 
-      direction: r.Direction || r.direction || null,
-      from_number:
-        r.CallerIDNum || r.caller_id_num || r.FromNumber || r.from_number || null,
-      to_number:
-        r.RemoteNumber ||
-        r.remote_number ||
-        r.CalledNumber ||
-        r.called_number ||
-        null,
-      call_status: r.CallStatus || r.call_status || null,
+        direction: r.direction || r.Direction || null,
+        from_number:
+          r.from_number ||
+          r.FromNumber ||
+          r.caller_id_num ||
+          r.CallerIDNum ||
+          null,
+        to_number:
+          r.to_number ||
+          r.ToNumber ||
+          r.remote_number ||
+          r.RemoteNumber ||
+          null,
+        call_status: r.call_status || r.CallStatus || null,
 
-      // URL до записи, если выдаёт API (часто отдельным методом)
-      storage_url:
-        r.StorageUrl || r.storage_url || r.RecordUrl || r.record_url || null,
-      has_record: !!(r.RecordUUID || r.RecID || r.RecordUrl || r.StorageUrl),
+        // URL до файла записи (если есть)
+        storage_url:
+          r.record_url ||
+          r.RecordUrl ||
+          r.storage_url ||
+          r.StorageUrl ||
+          null,
 
-      raw_payload: r,
-    })).filter((row) => row.record_uuid); // без record_uuid не пишем
+        has_record: !!(
+          r.record_uuid ||
+          r.RecordUUID ||
+          r.record_url ||
+          r.RecordUrl
+        ),
+
+        raw_payload: r,
+      }))
+      // без record_uuid в базу не пишем
+      .filter((row) => row.record_uuid);
 
     if (!rows.length) {
-      return res.status(200).json({ imported: 0, note: 'no record_uuid in payload' });
+      return res
+        .status(200)
+        .json({ imported: 0, note: 'no record_uuid in payload' });
     }
 
     const { error } = await supabase
