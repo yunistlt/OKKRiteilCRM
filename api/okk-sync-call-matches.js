@@ -24,15 +24,15 @@ export default async function handler(req, res) {
 
     if (statusErr) throw statusErr;
 
-    const WORKING_STATUS_CODES = statusRows.map(r => r.status_code);
+    const WORKING_STATUS_CODES = statusRows.map((r) => r.status_code);
 
     //
     // 1) Берём все заказы в рабочих статусах
     //
     const { data: orders, error: ordersErr } = await supabase
       .from('okk_orders')
-      .select('id, retailcrm_order_id, status_code, client_phone_norm')
-      .in('status_code', WORKING_STATUS_CODES);
+      .select('id, retailcrm_order_id, current_status_code')
+      .in('current_status_code', WORKING_STATUS_CODES);
 
     if (ordersErr) throw ordersErr;
 
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
         const fromTime = new Date(ev.call_time);
         const toTime = new Date(ev.call_time);
 
-        // ищем звонки за последние 10 минут до call_time
+        // ищем звонки за 10 минут до call_time и до самого call_time
         fromTime.setMinutes(fromTime.getMinutes() - 10);
 
         const { data: rawList, error: rawErr } = await supabase
