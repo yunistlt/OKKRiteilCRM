@@ -37,98 +37,137 @@ export default async function handler(req, res) {
     if (ordersErr) throw ordersErr;
 
     if (!orders || orders.length === 0) {
-      return res.status(200).json({ message: 'no working orders' });
+      return res.status(200).json({
+        message: 'no working orders',
+        calls_created: 0,
+        queued_for_transcription: 0,
+      });
+    }
+
+    // мапа retailcrm_order_id → заказ
+    const orderByRetailId = new Map();
+    const retailIds = [];
+    for (const o of orders) {
+      if (o.retailcrm_order_id) {
+        orderByRetailId.set(Number(o.retailcrm_order_id), o);
+        retailIds.push(Number(o.retailcrm_order_id));
+      }
+    }
+
+    if (retailIds.length === 0) {
+      return res.status(200).json({
+        message: 'no retail ids for working orders',
+        calls_created: 0,
+        queued_for_transcription: 0,
+      });
+    }
+
+    //
+    // 2) Берём все события звонков по этим заказам
+    //
+    const { data: events, error: eventsErr } = await supabase
+      .from('okk_history_call_events')
+      .select('*')
+      .in('retailcrm_order_id', retailIds);
+
+    if (eventsErr) throw eventsErr;
+    if (!events || events.length === 0) {
+      return res.status(200).json({
+        message: 'no call events for working orders',
+        calls_created: 0,
+        queued_for_transcription: 0,
+      });
     }
 
     let createdCalls = 0;
     let createdQueue = 0;
 
     //
-    // 2) Идём по каждому заказу
+    // 3) Матчим каждое событие с Telphin RAW по телефону + времени
     //
-    for (const o of orders) {
-      const { data: events, error: eventsErr } = await supabase
-        .from('okk_history_call_events')
+    for (const ev of events) {
+      if (!ev.call_time || !ev.client_phone_norm) continue;
+
+      const order = orderByRetailId.get(Number(ev.retailcrm_order_id));
+      if (!order) continue;
+
+      // окно: 10 минут до и 10 минут после call_time
+      const fromTime = new Date(ev.call_time);
+      const toTime = new Date(ev.call_time);
+      fromTime.setMinutes(fromTime.getMinutes() - 10);
+      toTime.setMinutes(toTime.getMinutes() + 10);
+
+      const phonePlain = ev.client_phone_norm;            // 7963...
+      const phonePlus = phonePlain.startsWith('+')
+        ? phonePlain
+        : `+${phonePlain}`;                               // +7963...
+
+      const { data: rawList, error: rawErr } = await supabase
+        .from('okk_calls_telphin_raw')
         .select('*')
-        .eq('retailcrm_order_id', o.retailcrm_order_id);
+        .gte('started_at', fromTime.toISOString())
+        .lte('started_at', toTime.toISOString())
+        .or(
+          [
+            `from_number.eq.${phonePlain}`,
+            `from_number.eq.${phonePlus}`,
+            `to_number.eq.${phonePlain}`,
+            `to_number.eq.${phonePlus}`,
+          ].join(',')
+        );
 
-      if (eventsErr) throw eventsErr;
-      if (!events || events.length === 0) continue;
+      if (rawErr) throw rawErr;
+      if (!rawList || rawList.length === 0) continue;
+
+      const raw = rawList[0];
 
       //
-      // 3) Матчим каждое событие с Telphin RAW
+      // 4) Создаём / обновляем запись в okk_calls
       //
-      for (const ev of events) {
-        if (!ev.call_time || !ev.client_phone_norm) continue;
+      const callId = raw.id || crypto.randomUUID();
 
-        const fromTime = new Date(ev.call_time);
-        const toTime = new Date(ev.call_time);
+      const insertCall = {
+        id: callId,
+        order_id: order.id,
+        manager_id: ev.manager_id || null,
+        call_started_at: raw.started_at,
+        duration_sec: raw.duration_sec,
+        direction: raw.direction,
+        phone: ev.client_phone_norm,
+        result_code: raw.call_status,
+        record_url: raw.storage_url,
+        raw_payload: raw,
+        transcript_status: 'pending',
+      };
 
-        // ищем звонки за 10 минут до call_time и до самого call_time
-        fromTime.setMinutes(fromTime.getMinutes() - 10);
+      const { error: callErr } = await supabase
+        .from('okk_calls')
+        .upsert(insertCall, { onConflict: 'id' });
 
-        const { data: rawList, error: rawErr } = await supabase
-          .from('okk_calls_telphin_raw')
-          .select('*')
-          .gte('started_at', fromTime.toISOString())
-          .lte('started_at', toTime.toISOString())
-          .or(
-            `from_number.eq.${ev.client_phone_norm},to_number.eq.${ev.client_phone_norm}`
-          );
+      if (callErr) throw callErr;
+      createdCalls++;
 
-        if (rawErr) throw rawErr;
-        if (!rawList || rawList.length === 0) continue;
+      //
+      // 5) Кладём задачу в очередь транскрибации
+      //
+      if (raw.storage_url) {
+        const { error: qErr } = await supabase
+          .from('okk_calls_transcribe_queue')
+          .insert({
+            call_id: callId,
+            recording_url: raw.storage_url,
+            status: 'pending',
+            call_started_at: raw.started_at,
+            duration_sec: raw.duration_sec,
+            direction: raw.direction,
+            order_id: order.id,
+            manager_id: ev.manager_id,
+            phone: ev.client_phone_norm,
+            raw_payload: raw,
+          });
 
-        const raw = rawList[0];
-
-        //
-        // 4) Создаём запись в okk_calls
-        //
-        const callId = raw.id || crypto.randomUUID();
-
-        const insertCall = {
-          id: callId,
-          order_id: o.id,
-          manager_id: ev.manager_id || null,
-          call_started_at: raw.started_at,
-          duration_sec: raw.duration_sec,
-          direction: raw.direction,
-          phone: ev.client_phone_norm,
-          result_code: raw.call_status,
-          record_url: raw.storage_url,
-          raw_payload: raw,
-          transcript_status: 'pending',
-        };
-
-        const { error: callErr } = await supabase
-          .from('okk_calls')
-          .upsert(insertCall, { onConflict: 'id' });
-
-        if (callErr) throw callErr;
-        createdCalls++;
-
-        //
-        // 5) Кладём задачу в транскрибацию
-        //
-        if (raw.storage_url) {
-          const { error: qErr } = await supabase
-            .from('okk_calls_transcribe_queue')
-            .insert({
-              call_id: callId,
-              recording_url: raw.storage_url,
-              status: 'pending',
-              call_started_at: raw.started_at,
-              duration_sec: raw.duration_sec,
-              direction: raw.direction,
-              order_id: o.id,
-              manager_id: ev.manager_id,
-              phone: ev.client_phone_norm,
-              raw_payload: raw,
-            });
-
-          if (qErr) throw qErr;
-          createdQueue++;
-        }
+        if (qErr) throw qErr;
+        createdQueue++;
       }
     }
 
