@@ -50,7 +50,7 @@ export default async function handler(req, res) {
       const { data: events, error: eventsErr } = await supabase
         .from('okk_history_call_events')
         .select('*')
-        .eq('order_id', o.id);
+        .eq('retailcrm_order_id', o.retailcrm_order_id);
 
       if (eventsErr) throw eventsErr;
       if (!events || events.length === 0) continue;
