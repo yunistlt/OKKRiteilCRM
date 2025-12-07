@@ -14,7 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 export default async function handler(req, res) {
   try {
     //
-    // 0) Берём рабочие статусы из справочника
+    // 0) Рабочие статусы из справочника
     //
     const { data: statusRows, error: statusErr } = await supabase
       .from('okk_sla_status')
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
     const WORKING_STATUS_CODES = statusRows.map((r) => r.status_code);
 
     //
-    // 1) Берём все заказы в рабочих статусах
+    // 1) Заказы в рабочих статусах
     //
     const { data: orders, error: ordersErr } = await supabase
       .from('okk_orders')
@@ -37,137 +37,95 @@ export default async function handler(req, res) {
     if (ordersErr) throw ordersErr;
 
     if (!orders || orders.length === 0) {
-      return res.status(200).json({
-        message: 'no working orders',
-        calls_created: 0,
-        queued_for_transcription: 0,
-      });
-    }
-
-    // мапа retailcrm_order_id → заказ
-    const orderByRetailId = new Map();
-    const retailIds = [];
-    for (const o of orders) {
-      if (o.retailcrm_order_id) {
-        orderByRetailId.set(Number(o.retailcrm_order_id), o);
-        retailIds.push(Number(o.retailcrm_order_id));
-      }
-    }
-
-    if (retailIds.length === 0) {
-      return res.status(200).json({
-        message: 'no retail ids for working orders',
-        calls_created: 0,
-        queued_for_transcription: 0,
-      });
-    }
-
-    //
-    // 2) Берём все события звонков по этим заказам
-    //
-    const { data: events, error: eventsErr } = await supabase
-      .from('okk_history_call_events')
-      .select('*')
-      .in('retailcrm_order_id', retailIds);
-
-    if (eventsErr) throw eventsErr;
-    if (!events || events.length === 0) {
-      return res.status(200).json({
-        message: 'no call events for working orders',
-        calls_created: 0,
-        queued_for_transcription: 0,
-      });
+      return res.status(200).json({ message: 'no working orders' });
     }
 
     let createdCalls = 0;
     let createdQueue = 0;
 
     //
-    // 3) Матчим каждое событие с Telphin RAW по телефону + времени
+    // 2) Проходим по заказам
     //
-    for (const ev of events) {
-      if (!ev.call_time || !ev.client_phone_norm) continue;
-
-      const order = orderByRetailId.get(Number(ev.retailcrm_order_id));
-      if (!order) continue;
-
-      // окно: 10 минут до и 10 минут после call_time
-      const fromTime = new Date(ev.call_time);
-      const toTime = new Date(ev.call_time);
-      fromTime.setMinutes(fromTime.getMinutes() - 10);
-      toTime.setMinutes(toTime.getMinutes() + 10);
-
-      const phonePlain = ev.client_phone_norm;            // 7963...
-      const phonePlus = phonePlain.startsWith('+')
-        ? phonePlain
-        : `+${phonePlain}`;                               // +7963...
-
-      const { data: rawList, error: rawErr } = await supabase
-        .from('okk_calls_telphin_raw')
+    for (const o of orders) {
+      const { data: events, error: eventsErr } = await supabase
+        .from('okk_history_call_events')
         .select('*')
-        .gte('started_at', fromTime.toISOString())
-        .lte('started_at', toTime.toISOString())
-        .or(
-          [
-            `from_number.eq.${phonePlain}`,
-            `from_number.eq.${phonePlus}`,
-            `to_number.eq.${phonePlain}`,
-            `to_number.eq.${phonePlus}`,
-          ].join(',')
-        );
+        .eq('retailcrm_order_id', o.retailcrm_order_id);
 
-      if (rawErr) throw rawErr;
-      if (!rawList || rawList.length === 0) continue;
-
-      const raw = rawList[0];
+      if (eventsErr) throw eventsErr;
+      if (!events || events.length === 0) continue;
 
       //
-      // 4) Создаём / обновляем запись в okk_calls
+      // 3) Матчинг каждого события с Telphin RAW ПО ТЕЛЕФОНУ
       //
-      const callId = raw.id || crypto.randomUUID();
+      for (const ev of events) {
+        if (!ev.client_phone_norm) continue;
 
-      const insertCall = {
-        id: callId,
-        order_id: order.id,
-        manager_id: ev.manager_id || null,
-        call_started_at: raw.started_at,
-        duration_sec: raw.duration_sec,
-        direction: raw.direction,
-        phone: ev.client_phone_norm,
-        result_code: raw.call_status,
-        record_url: raw.storage_url,
-        raw_payload: raw,
-        transcript_status: 'pending',
-      };
+        const phone = ev.client_phone_norm;
 
-      const { error: callErr } = await supabase
-        .from('okk_calls')
-        .upsert(insertCall, { onConflict: 'id' });
+        // Ищем последний звонок, где номер клиента встречается
+        const { data: rawList, error: rawErr } = await supabase
+          .from('okk_calls_telphin_raw')
+          .select('*')
+          .or(
+            `from_number.like.%${phone},to_number.like.%${phone}`
+          )
+          .order('started_at', { ascending: false })
+          .limit(1);
 
-      if (callErr) throw callErr;
-      createdCalls++;
+        if (rawErr) throw rawErr;
+        if (!rawList || rawList.length === 0) continue;
 
-      //
-      // 5) Кладём задачу в очередь транскрибации
-      //
-      if (raw.storage_url) {
-        const { error: qErr } = await supabase
-          .from('okk_calls_transcribe_queue')
-          .insert({
-            call_id: callId,
-            recording_url: raw.storage_url,
-            status: 'pending',
-            call_started_at: raw.started_at,
-            duration_sec: raw.duration_sec,
-            direction: raw.direction,
-            order_id: order.id,
-            manager_id: ev.manager_id,
-            phone: ev.client_phone_norm,
-            raw_payload: raw,
-          });
+        const raw = rawList[0];
 
-        if (qErr) throw qErr;
-        createdQueue++;
+        //
+        // 4) Запись в okk_calls
+        //
+        const callId = raw.id || crypto.randomUUID();
+
+        const insertCall = {
+          id: callId,
+          order_id: o.id,
+          manager_id: ev.manager_id || null,
+          call_started_at: raw.started_at,
+          duration_sec: raw.duration_sec,
+          direction: raw.direction,
+          phone: phone,
+          result_code: raw.call_status,
+          record_url: raw.storage_url,
+          raw_payload: raw,
+          transcript_status: 'pending',
+        };
+
+        const { error: callErr } = await supabase
+          .from('okk_calls')
+          .upsert(insertCall, { onConflict: 'id' });
+
+        if (callErr) throw callErr;
+        createdCalls++;
+
+        //
+        // 5) Очередь на транскрибацию
+        //
+        if (raw.storage_url) {
+          const { error: qErr } = await supabase
+            .from('okk_calls_transcribe_queue')
+            .insert({
+              call_id: callId,
+              recording_url: raw.storage_url,
+              status: 'pending',
+              call_started_at: raw.started_at,
+              duration_sec: raw.duration_sec,
+              direction: raw.direction,
+              order_id: o.id,
+              manager_id: ev.manager_id,
+              phone: phone,
+              raw_payload: raw,
+            });
+
+          if (qErr) throw qErr;
+          createdQueue++;
+        }
       }
     }
 
