@@ -1,11 +1,12 @@
 // api/okk-transcribe-worker.js
 import { createClient } from '@supabase/supabase-js';
 import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
-  OPENAI_API_KEY, // или твой AI
+  OPENAI_API_KEY,
 } = process.env;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
@@ -14,40 +15,45 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 export default async function handler(req, res) {
   try {
-    // 1. Берём пачку задач из очереди
+    //
+    // 1. Берём задачи из очереди
+    //
     const { data: jobs, error: jobsError } = await supabase
       .from('okk_calls_transcribe_queue')
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(10);
+      .limit(5);
 
     if (jobsError) throw jobsError;
+
     if (!jobs || jobs.length === 0) {
-      return res.status(200).json({ message: 'no jobs' });
+      return res.status(200).json({ message: 'no pending jobs' });
     }
 
     for (const job of jobs) {
       try {
-        // помечаем как processing
+        //
+        // Помечаем задачу как processing
+        //
         await supabase
           .from('okk_calls_transcribe_queue')
           .update({ status: 'processing' })
           .eq('id', job.id);
 
-        // 2. качаем аудио по ссылке
+        //
+        // 2. Скачиваем аудио по ссылке Telphin
+        //
         const audioResp = await fetch(job.recording_url);
-        if (!audioResp.ok) throw new Error('cannot download audio');
-        const audioBuffer = await audioResp.arrayBuffer();
-        const audioFile = Buffer.from(audioBuffer);
+        if (!audioResp.ok) throw new Error('Failed to download audio file');
 
-        // 3. отправляем в AI (пример с OpenAI Whisper)
+        const audioBuffer = Buffer.from(await audioResp.arrayBuffer());
+
+        //
+        // 3. Отправляем аудио в модель gpt-4o-mini-transcribe
+        //
         const formData = new FormData();
-        formData.append(
-          'file',
-          new Blob([audioFile]),
-          'call.mp3'
-        );
+        formData.append('file', audioBuffer, { filename: 'call.mp3' });
         formData.append('model', 'gpt-4o-mini-transcribe');
 
         const aiResp = await fetch(
@@ -62,28 +68,40 @@ export default async function handler(req, res) {
         );
 
         if (!aiResp.ok) {
-          throw new Error('AI error ' + (await aiResp.text()));
+          const txt = await aiResp.text();
+          throw new Error('AI error: ' + txt);
         }
 
         const aiJson = await aiResp.json();
         const transcriptText = aiJson.text || '';
 
-        // 4. сохраняем транскрибацию в okk_calls
+        //
+        // 4. Сохраняем результат в таблицу okk_calls
+        //
         await supabase
           .from('okk_calls')
           .update({
-            transcript: transcriptText,
+            transcript_text: transcriptText,
             transcript_status: 'done',
+            transcript_provider: 'gpt-4o-mini-transcribe',
+            transcript_raw: aiJson,
           })
           .eq('id', job.call_id);
 
-        // 5. помечаем задачу как done
+        //
+        // 5. Обновляем статус задачи
+        //
         await supabase
           .from('okk_calls_transcribe_queue')
-          .update({ status: 'done', error_message: null })
+          .update({
+            status: 'done',
+            error_message: null,
+          })
           .eq('id', job.id);
       } catch (e) {
-        // фиксируем ошибку по конкретной задаче
+        //
+        // Любая ошибка → помечаем задачу как error
+        //
         await supabase
           .from('okk_calls_transcribe_queue')
           .update({
@@ -94,14 +112,19 @@ export default async function handler(req, res) {
 
         await supabase
           .from('okk_calls')
-          .update({ transcript_status: 'error' })
+          .update({
+            transcript_status: 'error',
+          })
           .eq('id', job.call_id);
       }
     }
 
-    res.status(200).json({ message: 'ok', processed: jobs.length });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: String(e.message || e) });
+    res.status(200).json({
+      message: 'processed',
+      count: jobs.length,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
   }
 }
