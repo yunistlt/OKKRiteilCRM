@@ -1,3 +1,4 @@
+//api/okk-sync-calls-telphin-all.js
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -25,6 +26,12 @@ function formatTelphinDate(date) {
   const mm = pad(date.getMinutes());
   const ss = pad(date.getSeconds());
   return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+}
+
+// Нормализация телефона: оставляем только цифры и плюс
+function normalizePhone(val) {
+  if (!val) return null;
+  return String(val).replace(/[^\d+]/g, '');
 }
 
 // OAuth — 100% копия твоего рабочего файла
@@ -86,7 +93,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Ты дал мне полный список внутренних номеров → вставляем как есть:
+    // Полный список внутренних номеров
     const EXTENSIONS = [
       94413, 94415, 145748, 349957, 349963, 351106, 469589,
       533987, 555997, 562946, 643886, 660848, 669428, 718843,
@@ -117,22 +124,75 @@ export default async function handler(req, res) {
         }
 
         const rows = records
-          .map((r) => ({
-            record_uuid: r.record_uuid || r.RecordUUID || null,
-            extension_id: r.extension_id || r.ExtensionId || null,
-            client_id: r.client_id || null,
-            started_at: r.init_time_gmt
-              ? new Date(r.init_time_gmt).toISOString()
-              : null,
-            duration_sec: r.duration || null,
-            direction: r.direction || null,
-            from_number: r.from_number || null,
-            to_number: r.to_number || null,
-            call_status: r.call_status || null,
-            storage_url: r.record_url || r.storage_url || null,
-            has_record: !!(r.record_url || r.storage_url),
-            raw_payload: r,
-          }))
+          .map((r) => {
+            const flow = r.flow || r.direction || null;
+
+            // Определяем кто кому звонит
+            let fromNumber = null;
+            let toNumber = null;
+
+            if (flow === 'out') {
+              // исходящий: наш номер → клиент
+              fromNumber =
+                r.ani_number ||
+                r.from_number ||
+                r.from_username ||
+                null;
+              toNumber =
+                r.dest_number ||
+                r.to_number ||
+                r.to_username ||
+                null;
+            } else if (flow === 'in') {
+              // входящий: клиент → наш номер
+              fromNumber =
+                r.ani_number ||
+                r.from_number ||
+                r.from_username ||
+                null;
+              toNumber =
+                r.dest_number ||
+                r.to_number ||
+                r.to_username ||
+                null;
+            } else {
+              // запасной вариант
+              fromNumber =
+                r.from_number ||
+                r.ani_number ||
+                r.from_username ||
+                null;
+              toNumber =
+                r.to_number ||
+                r.dest_number ||
+                r.to_username ||
+                null;
+            }
+
+            const fromNorm = normalizePhone(fromNumber);
+            const toNorm = normalizePhone(toNumber);
+
+            const startedRaw = r.start_time_gmt || r.init_time_gmt;
+
+            return {
+              record_uuid: r.record_uuid || r.RecordUUID || null,
+              extension_id: r.extension_id || r.ExtensionId || null,
+              client_id: r.client_owner_id || r.client_id || null,
+              rec_id: r.call_uuid || null,
+              started_at: startedRaw
+                ? new Date(startedRaw + 'Z').toISOString()
+                : null,
+              duration_sec: r.duration || null,
+              direction: flow,
+              from_number: fromNorm,
+              to_number: toNorm,
+              call_status:
+                r.result || r.call_status || r.hangup_cause || null,
+              storage_url: r.storage_url || r.record_url || null,
+              has_record: !!(r.storage_url || r.record_url),
+              raw_payload: r,
+            };
+          })
           .filter((x) => x.record_uuid);
 
         if (rows.length) {
