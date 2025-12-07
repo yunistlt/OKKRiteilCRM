@@ -28,6 +28,10 @@
     {
       "path": "/api/okk-sync-calls-telphin-all",
       "schedule": "*/5 8-20 * * 1-5"
-    }
+    },
+    {
+  "path": "/api/okk-transcribe-worker",
+  "schedule": "*/5 * * * *"
+}
   ]
 }
