@@ -105,7 +105,7 @@ export default async function handler(req, res) {
     const { access_token } = await getTelphinToken();
 
     const now = new Date();
-    const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     let total = 0;
     const perExt = [];
