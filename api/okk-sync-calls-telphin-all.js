@@ -1,4 +1,4 @@
-//api/okk-sync-calls-telphin-all.js
+// api/okk-sync-calls-telphin-all.js
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -12,29 +12,31 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Те же параметры, что и в рабочем файле:
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
-// Формат даты строго как в рабочем файле
 function formatTelphinDate(date) {
   const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const mm = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
-  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  return (
+    date.getFullYear() +
+    '-' +
+    pad(date.getMonth() + 1) +
+    '-' +
+    pad(date.getDate()) +
+    ' ' +
+    pad(date.getHours()) +
+    ':' +
+    pad(date.getMinutes()) +
+    ':' +
+    pad(date.getSeconds())
+  );
 }
 
-// Нормализация телефона: оставляем только цифры и плюс
 function normalizePhone(val) {
   if (!val) return null;
   return String(val).replace(/[^\d+]/g, '');
 }
 
-// OAuth — 100% копия твоего рабочего файла
 async function getTelphinToken() {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
@@ -49,17 +51,12 @@ async function getTelphinToken() {
     body,
   });
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(
-      `Telphin OAuth error: ${resp.status} ${resp.statusText} ${text}`,
-    );
-  }
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(JSON.stringify(json));
 
-  return resp.json();
+  return json;
 }
 
-// Получение звонков по одному внутреннему номеру
 async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
   const params = new URLSearchParams({
     start_datetime: formatTelphinDate(from),
@@ -67,33 +64,19 @@ async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
     order: 'asc',
   });
 
-  const url = `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/extension/${extensionId}/record/?${params.toString()}`;
+  const resp = await fetch(
+    `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/extension/${extensionId}/record/?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
 
-  const resp = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(JSON.stringify(json));
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => '');
-    throw new Error(
-      `Telphin record list error: ${resp.status} ${resp.statusText} ${text}`,
-    );
-  }
-
-  return resp.json();
+  return json;
 }
 
-// Главный хендлер: тянем все extension
 export default async function handler(req, res) {
   try {
-    if (!TELPHIN_CLIENT_ID || !TELPHIN_CLIENT_SECRET) {
-      return res.status(500).json({
-        error: 'TELPHIN_ENV_NOT_SET',
-        message: 'TELPHIN_CLIENT_ID / TELPHIN_CLIENT_SECRET not set',
-      });
-    }
-
-    // Полный список внутренних номеров
     const EXTENSIONS = [
       94413, 94415, 145748, 349957, 349963, 351106, 469589,
       533987, 555997, 562946, 643886, 660848, 669428, 718843,
@@ -105,126 +88,98 @@ export default async function handler(req, res) {
     const { access_token } = await getTelphinToken();
 
     const now = new Date();
-    const from = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const from = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
 
     let total = 0;
-    const perExt = [];
 
     for (const extensionId of EXTENSIONS) {
+      let records;
+
       try {
-        const records = await fetchTelphinRecords(access_token, {
+        records = await fetchTelphinRecords(access_token, {
           extensionId,
           from,
           to: now,
         });
-
-        if (!records || !records.length) {
-          perExt.push({ extensionId, imported: 0 });
-          continue;
-        }
-
-        const rows = records
-          .map((r) => {
-            const flow = r.flow || r.direction || null;
-
-            // Определяем кто кому звонит
-            let fromNumber = null;
-            let toNumber = null;
-
-            if (flow === 'out') {
-              // исходящий: наш номер → клиент
-              fromNumber =
-                r.ani_number ||
-                r.from_number ||
-                r.from_username ||
-                null;
-              toNumber =
-                r.dest_number ||
-                r.to_number ||
-                r.to_username ||
-                null;
-            } else if (flow === 'in') {
-              // входящий: клиент → наш номер
-              fromNumber =
-                r.ani_number ||
-                r.from_number ||
-                r.from_username ||
-                null;
-              toNumber =
-                r.dest_number ||
-                r.to_number ||
-                r.to_username ||
-                null;
-            } else {
-              // запасной вариант
-              fromNumber =
-                r.from_number ||
-                r.ani_number ||
-                r.from_username ||
-                null;
-              toNumber =
-                r.to_number ||
-                r.dest_number ||
-                r.to_username ||
-                null;
-            }
-
-            const fromNorm = normalizePhone(fromNumber);
-            const toNorm = normalizePhone(toNumber);
-
-            const startedRaw = r.start_time_gmt || r.init_time_gmt;
-
-            return {
-              record_uuid: r.record_uuid || r.RecordUUID || null,
-              extension_id: r.extension_id || r.ExtensionId || null,
-              client_id: r.client_owner_id || r.client_id || null,
-              rec_id: r.call_uuid || null,
-              started_at: startedRaw
-                ? new Date(startedRaw + 'Z').toISOString()
-                : null,
-              duration_sec: r.duration || null,
-              direction: flow,
-              from_number: fromNorm,
-              to_number: toNorm,
-              call_status:
-                r.result || r.call_status || r.hangup_cause || null,
-              storage_url: r.storage_url || r.record_url || null,
-              has_record: !!(r.storage_url || r.record_url),
-              raw_payload: r,
-            };
-          })
-          .filter((x) => x.record_uuid);
-
-        if (rows.length) {
-          const { error } = await supabase
-            .from('okk_calls_telphin_raw')
-            .upsert(rows, { onConflict: 'record_uuid' });
-
-          if (error) throw error;
-
-          total += rows.length;
-          perExt.push({ extensionId, imported: rows.length });
-        } else {
-          perExt.push({ extensionId, imported: 0 });
-        }
       } catch (err) {
-        perExt.push({
-          extensionId,
-          imported: 0,
-          error: err.message,
-        });
+        continue;
+      }
+
+      for (const r of records) {
+        const record_uuid = r.record_uuid || r.RecordUUID;
+        if (!record_uuid) continue;
+
+        const flow = r.flow || r.direction;
+        const startedRaw = r.start_time_gmt || r.init_time_gmt;
+
+        let fromNumber = null;
+        let toNumber = null;
+
+        if (flow === 'out') {
+          fromNumber = r.ani_number || r.from_number;
+          toNumber = r.dest_number || r.to_number;
+        } else if (flow === 'in') {
+          fromNumber = r.ani_number || r.from_number;
+          toNumber = r.dest_number || r.to_number;
+        } else {
+          fromNumber = r.from_number || r.ani_number;
+          toNumber = r.to_number || r.dest_number;
+        }
+
+        const fromNorm = normalizePhone(fromNumber);
+        const toNorm = normalizePhone(toNumber);
+        const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
+
+        //
+        // 1️⃣ Сохраняем архивный raw в okk_calls_telphin_raw
+        //
+        await supabase.from('okk_calls_telphin_raw').upsert(
+          {
+            record_uuid,
+            extension_id: r.extension_id || extensionId,
+            client_id: r.client_id || null,
+            rec_id: r.call_uuid || null,
+            started_at: callDate ? callDate.toISOString() : null,
+            duration_sec: r.duration || null,
+            direction: flow || null,
+            from_number: fromNorm,
+            to_number: toNorm,
+            call_status:
+              r.result || r.call_status || r.hangup_cause || null,
+            storage_url: r.storage_url || r.record_url || null,
+            has_record: !!(r.storage_url || r.record_url),
+            raw_payload: r,
+          },
+          { onConflict: 'record_uuid' }
+        );
+
+        //
+        // 2️⃣ Создаём задачу в очереди транскрибации, если есть запись
+        //
+        if (r.storage_url || r.record_url) {
+          await supabase.from('okk_calls_transcribe_queue').upsert(
+            {
+              id: record_uuid, // уникальность = запись
+              status: 'pending',
+              recording_url: r.storage_url || r.record_url,
+              phone: flow === 'in' ? fromNorm : toNorm,
+              direction: flow,
+              call_started_at: callDate ? callDate.toISOString() : null,
+              duration_sec: r.duration || null,
+              extension_id: r.extension_id || extensionId,
+              raw_payload: r,
+            },
+            { onConflict: 'id' }
+          );
+        }
+
+        total++;
       }
     }
 
-    return res.status(200).json({
-      total_imported: total,
-      extensions: perExt,
-    });
+    res.status(200).json({ imported: total });
   } catch (err) {
-    console.error('okk-sync-calls-telphin-all FAILED:', err);
-    return res.status(500).json({
-      error: 'telphin_all_failed',
-      message: err.message,
-    });
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
   }
 }
