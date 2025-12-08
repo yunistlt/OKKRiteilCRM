@@ -1,4 +1,4 @@
-// api/okk-sync-calls-telphin.js
+// api/okk-sync-calls-telphin-all.js
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -53,6 +53,7 @@ async function getTelphinToken() {
 
   const json = await resp.json();
   if (!resp.ok) throw new Error(JSON.stringify(json));
+
   return json;
 }
 
@@ -89,20 +90,18 @@ export default async function handler(req, res) {
     const now = new Date();
     const from = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
 
-    let imported = 0;
-    let errors = [];
+    let total = 0;
 
-    for (const ext of EXTENSIONS) {
+    for (const extensionId of EXTENSIONS) {
       let records;
 
       try {
         records = await fetchTelphinRecords(access_token, {
-          extensionId: ext,
+          extensionId,
           from,
           to: now,
         });
-      } catch (e) {
-        errors.push({ extension: ext, error: e.message });
+      } catch (err) {
         continue;
       }
 
@@ -112,22 +111,32 @@ export default async function handler(req, res) {
 
         const flow = r.flow || r.direction;
         const startedRaw = r.start_time_gmt || r.init_time_gmt;
-        const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
 
-        let fromNumber =
-          r.ani_number || r.from_number || r.fromUsername || null;
+        let fromNumber = null;
+        let toNumber = null;
 
-        let toNumber =
-          r.dest_number || r.to_number || r.toUsername || null;
+        if (flow === 'out') {
+          fromNumber = r.ani_number || r.from_number;
+          toNumber = r.dest_number || r.to_number;
+        } else if (flow === 'in') {
+          fromNumber = r.ani_number || r.from_number;
+          toNumber = r.dest_number || r.to_number;
+        } else {
+          fromNumber = r.from_number || r.ani_number;
+          toNumber = r.to_number || r.dest_number;
+        }
 
         const fromNorm = normalizePhone(fromNumber);
         const toNorm = normalizePhone(toNumber);
+        const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
 
-        // 1️⃣ Сохраняем RAW
+        //
+        // 1️⃣ Сохраняем архивный raw в okk_calls_telphin_raw
+        //
         await supabase.from('okk_calls_telphin_raw').upsert(
           {
             record_uuid,
-            extension_id: ext,
+            extension_id: r.extension_id || extensionId,
             client_id: r.client_id || null,
             rec_id: r.call_uuid || null,
             started_at: callDate ? callDate.toISOString() : null,
@@ -144,34 +153,33 @@ export default async function handler(req, res) {
           { onConflict: 'record_uuid' }
         );
 
-        // 2️⃣ Если есть запись — кладём в очередь транскрибации
+        //
+        // 2️⃣ Создаём задачу в очереди транскрибации, если есть запись
+        //
         if (r.storage_url || r.record_url) {
           await supabase.from('okk_calls_transcribe_queue').upsert(
             {
-              id: record_uuid,
+              id: record_uuid, // уникальность = запись
               status: 'pending',
               recording_url: r.storage_url || r.record_url,
               phone: flow === 'in' ? fromNorm : toNorm,
               direction: flow,
               call_started_at: callDate ? callDate.toISOString() : null,
               duration_sec: r.duration || null,
-              extension_id: ext,
+              extension_id: r.extension_id || extensionId,
               raw_payload: r,
             },
             { onConflict: 'id' }
           );
         }
 
-        imported++;
+        total++;
       }
     }
 
-    return res.status(200).json({
-      imported,
-      errors,
-      status: 'ok',
-    });
+    res.status(200).json({ imported: total });
   } catch (err) {
-    return res.status(500).json({ error: err.message || String(err) });
+    console.error(err);
+    res.status(500).json({ error: String(err.message || err) });
   }
 }
