@@ -1,5 +1,4 @@
 // api/okk-sync-calls-telphin.js
-
 import { createClient } from '@supabase/supabase-js';
 
 const {
@@ -13,38 +12,29 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-// Основной API-хост Телфина
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
-// Формат даты как в примере SDK Телфина: "2006-01-02 15:04:05"
 function formatTelphinDate(date) {
   const pad = (n) => String(n).padStart(2, '0');
-  const y = date.getFullYear();
-  const m = pad(date.getMonth() + 1);
-  const d = pad(date.getDate());
-  const hh = pad(date.getHours());
-  const mm = pad(date.getMinutes());
-  const ss = pad(date.getSeconds());
-  return `${y}-${m}-${d} ${hh}:${mm}:${ss}`;
+  return (
+    date.getFullYear() +
+    '-' +
+    pad(date.getMonth() + 1) +
+    '-' +
+    pad(date.getDate()) +
+    ' ' +
+    pad(date.getHours()) +
+    ':' +
+    pad(date.getMinutes()) +
+    ':' +
+    pad(date.getSeconds())
+  );
 }
 
-function normalizePhone(raw) {
-  if (!raw) return null;
-  let s = String(raw).trim();
-  // убираем всё, кроме цифр и +
-  s = s.replace(/[^0-9+]/g, '');
-  // убираем ведущий +
-  if (s.startsWith('+')) s = s.slice(1);
-  // если 11 цифр и начинается с 8 — меняем на 7 (РФ)
-  if (s.length === 11 && s.startsWith('8')) {
-    s = '7' + s.slice(1);
-  }
-  // если 10 цифр — добавим 7
-  if (s.length === 10) {
-    s = '7' + s;
-  }
-  return s || null;
+function normalizePhone(val) {
+  if (!val) return null;
+  return String(val).replace(/[^\d+]/g, '');
 }
 
 async function getTelphinToken() {
@@ -61,194 +51,127 @@ async function getTelphinToken() {
     body,
   });
 
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Telphin token error: ${resp.status} ${txt}`);
-  }
-
-  const data = await resp.json();
-  if (!data.access_token) {
-    throw new Error('Telphin token error: no access_token');
-  }
-
-  return data.access_token;
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(JSON.stringify(json));
+  return json;
 }
 
-async function fetchTelphinRecords({ accessToken, extensionId, dateFrom, dateTo }) {
+async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
   const params = new URLSearchParams({
-    extension: String(extensionId),
-    date_from: formatTelphinDate(dateFrom),
-    date_to: formatTelphinDate(dateTo),
-    withRecords: 'true',
+    start_datetime: formatTelphinDate(from),
+    end_datetime: formatTelphinDate(to),
+    order: 'asc',
   });
 
-  const url = `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/statistics/records?${params.toString()}`;
+  const resp = await fetch(
+    `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/extension/${extensionId}/record/?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
 
-  const resp = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json',
-    },
-  });
+  const json = await resp.json();
+  if (!resp.ok) throw new Error(JSON.stringify(json));
 
-  if (!resp.ok) {
-    const txt = await resp.text().catch(() => '');
-    throw new Error(`Telphin records error: ${resp.status} ${txt}`);
-  }
-
-  const data = await resp.json();
-  // Telphin обычно возвращает массив
-  return Array.isArray(data) ? data : data.data || [];
+  return json;
 }
 
 export default async function handler(req, res) {
   try {
-    if (!TELPHIN_CLIENT_ID || !TELPHIN_CLIENT_SECRET) {
-      return res.status(500).json({
-        error: 'TELPHIN_ENV_NOT_SET',
-        message: 'TELPHIN_CLIENT_ID / TELPHIN_CLIENT_SECRET not set',
-      });
-    }
+    const EXTENSIONS = [
+      94413, 94415, 145748, 349957, 349963, 351106, 469589,
+      533987, 555997, 562946, 643886, 660848, 669428, 718843,
+      765119, 768698, 775235, 775238, 805250, 809876, 813743,
+      828290, 839939, 855176, 858926, 858929, 858932, 858935,
+      911927, 946706, 968099, 969008, 982610, 995756, 1015712,
+    ];
 
-    const { extensionId, from, to } = req.query;
-    if (!extensionId) {
-      return res.status(400).json({ error: 'extensionId is required' });
-    }
+    const { access_token } = await getTelphinToken();
 
-    // период: по умолчанию последние 24 часа
     const now = new Date();
-    const dateTo = to ? new Date(to) : now;
-    const dateFrom = from
-      ? new Date(from)
-      : new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const from = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
 
-    const accessToken = await getTelphinToken();
-    const records = await fetchTelphinRecords({
-      accessToken,
-      extensionId,
-      dateFrom,
-      dateTo,
-    });
+    let imported = 0;
+    let errors = [];
 
-    if (!records.length) {
-      return res.status(200).json({
-        imported_raw: 0,
-        queued_for_transcribe: 0,
-      });
-    }
+    for (const ext of EXTENSIONS) {
+      let records;
 
-    let importedRaw = 0;
-    let queued = 0;
-
-    for (const r of records) {
-      const recordUuid = r.record_uuid || r.RecordUUID;
-      if (!recordUuid) continue;
-
-      const flow = r.flow || r.direction || null;
-
-      // from / to
-      let fromNumber = null;
-      let toNumber = null;
-
-      if (flow === 'out') {
-        fromNumber = r.ani_number || r.from_number;
-        toNumber = r.dest_number || r.to_number;
-      } else if (flow === 'in') {
-        fromNumber = r.ani_number || r.from_number;
-        toNumber = r.from_number || r.to_number || r.dest_number;
-      } else {
-        // fallback, если вдруг flow не определён
-        fromNumber = r.ani_number || r.from_number || null;
-        toNumber = r.dest_number || r.to_number || null;
+      try {
+        records = await fetchTelphinRecords(access_token, {
+          extensionId: ext,
+          from,
+          to: now,
+        });
+      } catch (e) {
+        errors.push({ extension: ext, error: e.message });
+        continue;
       }
 
-      const fromNorm = normalizePhone(fromNumber);
-      const toNorm = normalizePhone(toNumber);
+      for (const r of records) {
+        const record_uuid = r.record_uuid || r.RecordUUID;
+        if (!record_uuid) continue;
 
-      const startRaw = r.start_time_gmt || r.init_time_gmt || r.started_at;
-      const callDate = startRaw ? new Date(`${startRaw}Z`) : null;
+        const flow = r.flow || r.direction;
+        const startedRaw = r.start_time_gmt || r.init_time_gmt;
+        const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
 
-      const storageUrl =
-        r.storage_url || r.record_url || r.StorageUrl || r.RecordUrl || null;
+        let fromNumber =
+          r.ani_number || r.from_number || r.fromUsername || null;
 
-      //
-      // 1) okk_calls_telphin_raw — полный дамп
-      //
-      const { error: rawError } = await supabase
-        .from('okk_calls_telphin_raw')
-        .upsert(
+        let toNumber =
+          r.dest_number || r.to_number || r.toUsername || null;
+
+        const fromNorm = normalizePhone(fromNumber);
+        const toNorm = normalizePhone(toNumber);
+
+        // 1️⃣ Сохраняем RAW
+        await supabase.from('okk_calls_telphin_raw').upsert(
           {
-            record_uuid: recordUuid,
-            extension_id: r.extension_id || extensionId,
+            record_uuid,
+            extension_id: ext,
             client_id: r.client_id || null,
             rec_id: r.call_uuid || null,
             started_at: callDate ? callDate.toISOString() : null,
             duration_sec: r.duration || null,
-            direction: flow,
+            direction: flow || null,
             from_number: fromNorm,
             to_number: toNorm,
             call_status:
-              r.result || r.call_status || r.hangup_cause || r.callStatus || null,
-            storage_url: storageUrl,
-            has_record: !!storageUrl,
+              r.result || r.call_status || r.hangup_cause || null,
+            storage_url: r.storage_url || r.record_url || null,
+            has_record: !!(r.storage_url || r.record_url),
             raw_payload: r,
           },
-          { onConflict: 'record_uuid' },
+          { onConflict: 'record_uuid' }
         );
 
-      if (rawError) {
-        console.error('upsert okk_calls_telphin_raw error:', rawError);
-        continue;
-      }
-
-      importedRaw += 1;
-
-      //
-      // 2) okk_calls_transcribe_queue — очередь на транскрибацию
-      //
-      if (storageUrl) {
-        const phone =
-          flow === 'in'
-            ? fromNorm || toNorm || null
-            : toNorm || fromNorm || null;
-
-        const { error: qError } = await supabase
-          .from('okk_calls_transcribe_queue')
-          .upsert(
+        // 2️⃣ Если есть запись — кладём в очередь транскрибации
+        if (r.storage_url || r.record_url) {
+          await supabase.from('okk_calls_transcribe_queue').upsert(
             {
-              id: recordUuid,
+              id: record_uuid,
               status: 'pending',
-              recording_url: storageUrl,
-              phone,
+              recording_url: r.storage_url || r.record_url,
+              phone: flow === 'in' ? fromNorm : toNorm,
               direction: flow,
               call_started_at: callDate ? callDate.toISOString() : null,
               duration_sec: r.duration || null,
-              extension_id: r.extension_id || extensionId,
+              extension_id: ext,
               raw_payload: r,
             },
-            { onConflict: 'id' },
+            { onConflict: 'id' }
           );
-
-        if (qError) {
-          console.error(
-            'upsert okk_calls_transcribe_queue error:',
-            qError,
-          );
-        } else {
-          queued += 1;
         }
+
+        imported++;
       }
     }
 
     return res.status(200).json({
-      imported_raw: importedRaw,
-      queued_for_transcribe: queued,
+      imported,
+      errors,
+      status: 'ok',
     });
   } catch (err) {
-    console.error('okk-sync-calls-telphin error:', err);
-    return res
-      .status(500)
-      .json({ error: String(err.message || err) });
+    return res.status(500).json({ error: err.message || String(err) });
   }
 }
