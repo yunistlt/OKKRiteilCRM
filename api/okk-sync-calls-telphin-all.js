@@ -152,34 +152,30 @@ export default async function handler(req, res) {
           },
           { onConflict: 'record_uuid' }
         );
+        
+// 2️⃣ Создаём задачу в очереди транскрибации, если есть запись
+if (r.storage_url || r.record_url) {
+  await supabase.from('okk_calls_transcribe_queue').upsert(
+    {
+      id: record_uuid,
+      status: 'pending',
 
-        //
-        // 2️⃣ Создаём задачу в очереди транскрибации, если есть запись
-        //
-        if (r.storage_url || r.record_url) {
-          await supabase.from('okk_calls_transcribe_queue').upsert(
-            {
-              id: record_uuid, // уникальность = запись
-              status: 'pending',
-              recording_url: r.storage_url || r.record_url,
-              phone: flow === 'in' ? fromNorm : toNorm,
-              direction: flow,
-              call_started_at: callDate ? callDate.toISOString() : null,
-              duration_sec: r.duration || null,
-              extension_id: r.extension_id || extensionId,
-              raw_payload: r,
-            },
-            { onConflict: 'id' }
-          );
-        }
+      // основные данные для транскрибации
+      recording_url: r.storage_url || r.record_url,
 
-        total++;
-      }
-    }
+      // детальные метаданные, чтобы потом собрать полноценный okk_calls
+      phone: flow === 'in' ? fromNorm : toNorm,
+      from_number: fromNorm,
+      to_number: toNorm,
+      direction: flow,
+      call_status: r.result || r.call_status || r.hangup_cause || null,
+      call_started_at: callDate ? callDate.toISOString() : null,
+      duration_sec: r.duration || null,
+      extension_id: extensionId,
 
-    res.status(200).json({ imported: total });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: String(err.message || err) });
-  }
+      // ВСЁ сырьё от Телфина
+      raw_payload: r,
+    },
+    { onConflict: 'id' }
+  );
 }
