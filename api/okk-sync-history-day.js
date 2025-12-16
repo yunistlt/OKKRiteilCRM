@@ -13,7 +13,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
 
-const PAGE_LIMIT = 100;
+const LIMIT = 100;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -24,23 +24,22 @@ export default async function handler(req, res) {
   const dayParam = req.query.day; // YYYY-MM-DD
   const baseDate = dayParam ? new Date(dayParam) : new Date();
 
-  const since = new Date(baseDate);
-  since.setHours(0, 0, 0, 0);
+  const sinceDate = new Date(baseDate);
+  sinceDate.setHours(0, 0, 0, 0);
 
-  const until = new Date(baseDate);
-  until.setHours(23, 59, 59, 999);
+  const untilDate = new Date(baseDate);
+  untilDate.setHours(23, 59, 59, 999);
 
-  let page = 1;
-  let totalPages = 1;
+  let sinceId = 0;
   let inserted = 0;
   let skipped = 0;
 
-  while (page <= totalPages) {
+  while (true) {
     const url =
       `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
       `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-      `&page=${page}` +
-      `&limit=${PAGE_LIMIT}`;
+      `&filter[sinceId]=${sinceId}` +
+      `&limit=${LIMIT}`;
 
     const resp = await fetch(url);
     const data = await resp.json();
@@ -50,16 +49,19 @@ export default async function handler(req, res) {
       return;
     }
 
-    totalPages = data.pagination?.totalPageCount || 1;
+    const history = data.history || [];
+    if (history.length === 0) break;
 
-    for (const h of data.history || []) {
+    for (const h of history) {
+      sinceId = Math.max(sinceId, h.id);
+
       if (!h.createdAt) {
         skipped += 1;
         continue;
       }
 
-      const eventTime = new Date(h.createdAt);
-      if (eventTime < since || eventTime > until) {
+      const t = new Date(h.createdAt);
+      if (t < sinceDate || t > untilDate) {
         skipped += 1;
         continue;
       }
@@ -90,13 +92,11 @@ export default async function handler(req, res) {
 
       inserted += 1;
     }
-
-    page += 1;
   }
 
   res.status(200).json({
     success: true,
-    day: since.toISOString().slice(0, 10),
+    day: sinceDate.toISOString().slice(0, 10),
     inserted,
     skipped,
   });
