@@ -17,7 +17,7 @@ export default async function handler(req, res) {
   const url =
     `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
     `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-    `&limit=10`;
+    `&limit=50`;
 
   const r = await fetch(url);
   const j = await r.json();
