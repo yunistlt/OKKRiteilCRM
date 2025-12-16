@@ -1,4 +1,5 @@
-// api/okk-sync-history-today.js
+// api/okk-sync-history-24h.js
+// Берёт ТОЛЬКО события за последние 24 часа (без UTC-сдвига)
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -15,21 +16,13 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const LIMIT = 100;
 const MAX_BATCHES = 5;
-const SYNC_TYPE = 'orders_history_today';
+const SYNC_TYPE = 'orders_history_24h';
 
-function parseRetailDateUtc(s) {
+// ВАЖНО: парсим как ЛОКАЛЬНОЕ время CRM (БЕЗ Z)
+function parseRetailLocal(s) {
   if (!s) return null;
-  const d = new Date(s.replace(' ', 'T') + 'Z');
+  const d = new Date(s.replace(' ', 'T'));
   return isNaN(d) ? null : d;
-}
-
-function startOfTodayUtc() {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), 0, 0, 0));
-}
-function endOfTodayUtc() {
-  const n = new Date();
-  return new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate(), 23, 59, 59, 999));
 }
 
 async function getState() {
@@ -55,7 +48,7 @@ export default async function handler(req, res) {
 
   const state = await getState();
 
-  /* ===== INIT MODE (ОДИН РАЗ) ===== */
+  // INIT: поставить курсор на "сейчас", чтобы не листать старьё
   if (req.query.init === '1') {
     const r = await fetch(
       `${RETAILCRM_BASE_URL}/api/v5/orders/history?apiKey=${RETAILCRM_API_KEY}&limit=1`
@@ -70,11 +63,10 @@ export default async function handler(req, res) {
 
     return res.json({ init: true, last_page: lastId });
   }
-  /* ===== END INIT ===== */
 
   let sinceId = state.last_page;
-  const dayStart = startOfTodayUtc();
-  const dayEnd = endOfTodayUtc();
+  const now = new Date();
+  const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
   let inserted = 0;
   let skipped = 0;
@@ -93,8 +85,9 @@ export default async function handler(req, res) {
 
     for (const h of j.history) {
       if (h.id > maxId) maxId = h.id;
-      const t = parseRetailDateUtc(h.createdAt);
-      if (!t || t < dayStart || t > dayEnd) {
+
+      const t = parseRetailLocal(h.createdAt);
+      if (!t || t < from24h || t > now) {
         skipped++;
         continue;
       }
