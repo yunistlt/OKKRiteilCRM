@@ -14,6 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 const LIMIT = 100;
+const MAX_BATCHES = 5; // <= КЛЮЧ: ограничение на один вызов
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -30,11 +31,12 @@ export default async function handler(req, res) {
   const untilDate = new Date(baseDate);
   untilDate.setHours(23, 59, 59, 999);
 
-  let sinceId = 0;
+  let sinceId = Number(req.query.sinceId || 0);
   let inserted = 0;
   let skipped = 0;
+  let batches = 0;
 
-  while (true) {
+  while (batches < MAX_BATCHES) {
     const url =
       `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
       `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
@@ -56,13 +58,13 @@ export default async function handler(req, res) {
       sinceId = Math.max(sinceId, h.id);
 
       if (!h.createdAt) {
-        skipped += 1;
+        skipped++;
         continue;
       }
 
       const t = new Date(h.createdAt);
       if (t < sinceDate || t > untilDate) {
-        skipped += 1;
+        skipped++;
         continue;
       }
 
@@ -90,8 +92,10 @@ export default async function handler(req, res) {
         return;
       }
 
-      inserted += 1;
+      inserted++;
     }
+
+    batches++;
   }
 
   res.status(200).json({
@@ -99,5 +103,7 @@ export default async function handler(req, res) {
     day: sinceDate.toISOString().slice(0, 10),
     inserted,
     skipped,
+    last_since_id: sinceId,
+    batches,
   });
 }
