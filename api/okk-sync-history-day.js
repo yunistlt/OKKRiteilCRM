@@ -131,6 +131,19 @@ export default async function handler(req, res) {
       }
 
       const history = data.history || [];
+
+      const first = history[0];
+const last = history[history.length - 1];
+
+return res.status(200).json({
+  debug: true,
+  first_createdAt: first?.createdAt || null,
+  last_createdAt: last?.createdAt || null,
+  first_id: first?.id || null,
+  last_id: last?.id || null,
+});
+
+      
       if (history.length === 0) {
         // истории дальше нет — считаем завершённым на текущий момент
         await updateState({ id: state.id, is_completed: true });
