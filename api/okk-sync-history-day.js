@@ -15,10 +15,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const PAGE_LIMIT = 100;
 
-function formatDate(date) {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
-}
-
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Use GET' });
@@ -37,13 +33,12 @@ export default async function handler(req, res) {
   let page = 1;
   let totalPages = 1;
   let inserted = 0;
+  let skipped = 0;
 
   while (page <= totalPages) {
     const url =
       `${RETAILCRM_BASE_URL}/api/v5/orders/history` +
       `?apiKey=${encodeURIComponent(RETAILCRM_API_KEY)}` +
-      `&filter[since]=${encodeURIComponent(formatDate(since))}` +
-      `&filter[until]=${encodeURIComponent(formatDate(until))}` +
       `&page=${page}` +
       `&limit=${PAGE_LIMIT}`;
 
@@ -57,32 +52,43 @@ export default async function handler(req, res) {
 
     totalPages = data.pagination?.totalPageCount || 1;
 
-    const rows = (data.history || []).map((h) => ({
-      order_id: h.order?.id ?? null,
-      retailcrm_order_id: h.order?.id ?? null,
-      changed_at: h.createdAt ?? null,
-      changer_retailcrm_user_id: h.user?.id ?? null,
-      changer_id: null,
-      change_type: h.source ?? null,
-      field_name: h.field ?? null,
-      old_value: h.oldValue ?? null,
-      new_value: h.newValue ?? null,
-      comment: h.comment ?? null,
-      raw_payload: h,
-      status_code: h.order?.status ?? null,
-    }));
+    for (const h of data.history || []) {
+      if (!h.createdAt) {
+        skipped += 1;
+        continue;
+      }
 
-    if (rows.length > 0) {
+      const eventTime = new Date(h.createdAt);
+      if (eventTime < since || eventTime > until) {
+        skipped += 1;
+        continue;
+      }
+
+      const row = {
+        order_id: h.order?.id ?? null,
+        retailcrm_order_id: h.order?.id ?? null,
+        changed_at: h.createdAt,
+        changer_retailcrm_user_id: h.user?.id ?? null,
+        changer_id: null,
+        change_type: h.source ?? null,
+        field_name: h.field ?? null,
+        old_value: h.oldValue ?? null,
+        new_value: h.newValue ?? null,
+        comment: h.comment ?? null,
+        raw_payload: h,
+        status_code: h.order?.status ?? null,
+      };
+
       const { error } = await supabase
         .from('okk_order_history')
-        .insert(rows);
+        .insert(row);
 
       if (error) {
         res.status(500).json({ error: 'DB insert error', details: error });
         return;
       }
 
-      inserted += rows.length;
+      inserted += 1;
     }
 
     page += 1;
@@ -92,5 +98,6 @@ export default async function handler(req, res) {
     success: true,
     day: since.toISOString().slice(0, 10),
     inserted,
+    skipped,
   });
 }
