@@ -130,26 +130,24 @@ export default async function handler(req, res) {
         return;
       }
 
-      const history = data.history || [];
-
-      const first = history[0];
-const last = history[history.length - 1];
-
-return res.status(200).json({
-  debug: true,
-  first_createdAt: first?.createdAt || null,
-  last_createdAt: last?.createdAt || null,
-  first_id: first?.id || null,
-  last_id: last?.id || null,
-});
-
-      
+      const history = data.history || []; 
       if (history.length === 0) {
         // истории дальше нет — считаем завершённым на текущий момент
         await updateState({ id: state.id, is_completed: true });
         state.is_completed = true;
         break;
       }
+
+      const first = history[0];
+const last = history[history.length - 1];
+
+return res.status(200).json({
+  debug: true,
+  first_createdAt: first?.createdAt,
+  last_createdAt: last?.createdAt,
+  first_id: first?.id,
+  last_id: last?.id,
+});
 
       // максимум id в батче — новый курсор
       let maxId = sinceId;
