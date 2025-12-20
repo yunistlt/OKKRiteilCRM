@@ -16,7 +16,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
-// ВСЕ внутренние номера
+// ВСЕ ВНУТРЕННИЕ НОМЕРА
 const EXTENSIONS = [
   94413,94415,145748,349957,349963,351106,469589,
   533987,555997,562946,643886,660848,669428,718843,
@@ -25,17 +25,14 @@ const EXTENSIONS = [
   911927,946706,968099,969008,982610,995756,1015712,
 ];
 
-const START_FROM = new Date('2024-12-18T00:00:00Z');
-const CHUNK_HOURS = 24 * 30; // 30 дней (безопасно для Telphin)
+const MAX_RANGE_HOURS = 24 * 30; // < 2 месяца
 
-// ---------- utils ----------
-
-function formatTelphinDate(d) {
+function fmt(d) {
   const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth()+1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
 
-async function getTelphinToken() {
+async function getToken() {
   const body = new URLSearchParams({
     grant_type: 'client_credentials',
     client_id: TELPHIN_CLIENT_ID,
@@ -53,10 +50,10 @@ async function getTelphinToken() {
   return (await r.json()).access_token;
 }
 
-async function fetchRecords(token, extensionId, from, to) {
+async function fetchCalls(token, extensionId, from, to) {
   const q = new URLSearchParams({
-    start_datetime: formatTelphinDate(from),
-    end_datetime: formatTelphinDate(to),
+    start_datetime: fmt(from),
+    end_datetime: fmt(to),
     order: 'asc',
   });
 
@@ -66,90 +63,82 @@ async function fetchRecords(token, extensionId, from, to) {
   );
 
   if (!r.ok) throw new Error(await r.text());
-  const j = await r.json();
-  return Array.isArray(j) ? j : [];
+  return await r.json();
 }
 
-async function getLastStartedAt(extensionId) {
-  const { data } = await supabase
-    .from('okk_calls_telphin_raw')
-    .select('started_at')
-    .eq('extension_id', extensionId)
-    .order('started_at', { ascending: false })
-    .limit(1);
-
-  return data?.[0]?.started_at
-    ? new Date(data[0].started_at)
-    : null;
-}
-
-// ---------- handler ----------
-
+// 👉 ГЛАВНЫЙ АЛГОРИТМ
 export default async function handler(req, res) {
   try {
-    const token = await getTelphinToken();
-    const now = new Date();
+    const token = await getToken();
+
+    // 1. Узнаём, до какого момента уже скачали
+    const { data: maxRow } = await supabase
+      .from('okk_calls_telphin_raw')
+      .select('started_at')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // если база пустая — стартуем с 18.12
+    let from = maxRow?.started_at
+      ? new Date(maxRow.started_at)
+      : new Date('2025-12-18T00:00:00Z');
 
     let totalImported = 0;
+    const now = new Date();
 
-    for (const extensionId of EXTENSIONS) {
-      let from =
-        (await getLastStartedAt(extensionId)) || START_FROM;
+    while (from < now) {
+      const to = new Date(
+        Math.min(
+          from.getTime() + MAX_RANGE_HOURS * 3600 * 1000,
+          now.getTime(),
+        ),
+      );
 
-      while (from < now) {
-        const to = new Date(
-          Math.min(
-            from.getTime() + CHUNK_HOURS * 60 * 60 * 1000,
-            now.getTime()
-          )
-        );
+      for (const extensionId of EXTENSIONS) {
+        const records = await fetchCalls(token, extensionId, from, to);
+        if (!Array.isArray(records) || !records.length) continue;
 
-        const records = await fetchRecords(token, extensionId, from, to);
+        const rows = records
+          .filter((r) => r.record_uuid)
+          .map((r) => ({
+            record_uuid: r.record_uuid,
+            extension_id: r.extension_id,
+            client_id: r.client_owner_id ?? null,
+            rec_id: r.call_uuid ?? null,
+            started_at: r.start_time_gmt
+              ? new Date(r.start_time_gmt + 'Z').toISOString()
+              : null,
+            duration_sec: typeof r.duration === 'number' ? r.duration : null,
+            direction: r.flow ?? null,
+            from_number: r.ani_number ?? null,
+            to_number: r.dest_number ?? null,
+            call_status: r.result ?? null,
+            storage_url: r.storage_url ?? null,
+            has_record: !!r.storage_url,
+            raw_payload: r,
+          }));
 
-        if (records.length) {
-          const rows = records
-            .map((r) => ({
-              record_uuid: r.record_uuid || r.RecordUUID,
-              extension_id: extensionId,
-              started_at: r.init_time_gmt
-                ? new Date(r.init_time_gmt + 'Z').toISOString()
-                : null,
-              duration_sec: r.duration || null,
-              direction: r.direction || r.flow || null,
-              from_number: r.from_number || r.ani_number || null,
-              to_number: r.to_number || r.dest_number || null,
-              storage_url: r.record_url || r.storage_url || null,
-              has_record: !!(r.record_url || r.storage_url),
-              raw_payload: r,
-            }))
-            .filter(r => r.record_uuid);
+        if (rows.length) {
+          const { error } = await supabase
+            .from('okk_calls_telphin_raw')
+            .upsert(rows, { onConflict: 'record_uuid' });
 
-          if (rows.length) {
-            const { error } = await supabase
-              .from('okk_calls_telphin_raw')
-              .upsert(rows, { onConflict: 'record_uuid' });
-
-            if (error) throw error;
-
-            totalImported += rows.length;
-          }
+          if (error) throw error;
+          totalImported += rows.length;
         }
-
-        from = to;
       }
+
+      from = new Date(to.getTime() + 1000); // сдвигаемся дальше
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       status: 'ok',
       imported: totalImported,
-      now: now.toISOString(),
+      up_to: now.toISOString(),
     });
-  } catch (err) {
-  console.error('TELPHIN ERROR:', err);
-
-  return res.status(500).json({
-    error: err.message || String(err),
-    raw: JSON.stringify(err, Object.getOwnPropertyNames(err)),
-  });
-}
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
 }
