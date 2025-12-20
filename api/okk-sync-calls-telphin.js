@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     const token = await getTelphinToken();
 
     const now = new Date();
-    const from = new Date('2024-12-08T00:00:00Z');
+    const from = new Date('2025-12-08T00:00:00Z');
 
     const records = await fetchRecords(token, extensionId, from, now);
 
