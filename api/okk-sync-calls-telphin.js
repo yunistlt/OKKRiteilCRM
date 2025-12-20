@@ -34,7 +34,7 @@ async function getLastCallTime() {
 }
 
 async function fetchCalls(fromDate, page) {
-  const url = `${BASE_URL}${API_VER}/statistic/calls?from=${formatTelphinDate(fromDate)}&limit=${PAGE_LIMIT}&page=${page}`;
+  const url = `${BASE_URL}${API_VER}/statistic/calls/cdr?from=${formatTelphinDate(fromDate)}&limit=${PAGE_LIMIT}&page=${page}`;
   const res = await fetch(url, {
     headers: {
       Authorization:
