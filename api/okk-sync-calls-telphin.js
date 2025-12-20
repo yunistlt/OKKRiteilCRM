@@ -14,7 +14,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
-const MAX_EXTENSIONS_PER_RUN = 20; // защита от таймаута
+const MAX_EXTENSIONS_PER_RUN = 5; // защита от таймаута
 
 function formatTelphinDate(date) {
   const pad = (n) => String(n).padStart(2, '0');
