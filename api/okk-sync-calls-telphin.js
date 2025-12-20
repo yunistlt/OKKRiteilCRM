@@ -90,7 +90,7 @@ export default async function handler(req, res) {
     let totalImported = 0;
 
     for (const extensionId of uniqueExtensions) {
-      await sleep(800); // <<< ВАЖНО
+      await sleep(2000); // <<< ВАЖНО
 
       const { data: last } = await supabase
         .from('okk_calls_telphin_raw')
