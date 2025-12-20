@@ -15,12 +15,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 const MAX_EXTENSIONS_PER_RUN = 5; // защита от таймаута
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 function formatTelphinDate(date) {
   const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds(),
+  )}`;
 }
+
+// пауза между запросами — защита от 429
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function getTelphinToken() {
   const body = new URLSearchParams({
@@ -71,8 +77,9 @@ export default async function handler(req, res) {
       .not('extension_id', 'is', null)
       .limit(1000);
 
-    const uniqueExtensions = [...new Set(extensions.map(e => e.extension_id))]
-      .slice(0, MAX_EXTENSIONS_PER_RUN);
+    const uniqueExtensions = [
+      ...new Set(extensions.map((e) => e.extension_id)),
+    ].slice(0, MAX_EXTENSIONS_PER_RUN);
 
     if (!uniqueExtensions.length) {
       return res.status(200).json({ ok: true, imported: 0 });
@@ -83,7 +90,8 @@ export default async function handler(req, res) {
     let totalImported = 0;
 
     for (const extensionId of uniqueExtensions) {
-      await sleep(800);
+      await sleep(800); // <<< ВАЖНО
+
       const { data: last } = await supabase
         .from('okk_calls_telphin_raw')
         .select('started_at')
@@ -96,11 +104,17 @@ export default async function handler(req, res) {
         ? new Date(last.started_at)
         : new Date(now.getTime() - 1000 * 60 * 60 * 24 * 30);
 
-      const records = await fetchRecords(access_token, extensionId, from, now);
+      const records = await fetchRecords(
+        access_token,
+        extensionId,
+        from,
+        now,
+      );
+
       if (!Array.isArray(records) || !records.length) continue;
 
       const rows = records
-        .map(r => ({
+        .map((r) => ({
           record_uuid: r.record_uuid,
           extension_id: extensionId,
           client_id: r.client_owner_id || null,
@@ -114,7 +128,7 @@ export default async function handler(req, res) {
           has_record: !!r.storage_url,
           raw_payload: r,
         }))
-        .filter(r => r.record_uuid);
+        .filter((r) => r.record_uuid);
 
       if (!rows.length) continue;
 
