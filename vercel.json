@@ -25,10 +25,6 @@
       "path": "/api/okk-sync-order-history",
       "schedule": "*/10 * * * *"
     },
-   {
-  "path": "/api/okk-sync-calls-telphin",
-  "schedule": "*/0 * * * *"
-},
     {
   "path": "/api/okk-transcribe-worker",
   "schedule": "*/5 * * * *"
