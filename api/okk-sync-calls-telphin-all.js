@@ -60,6 +60,7 @@ async function fetchRecords(token, extensionId, from, to) {
   );
 
   const j = await r.json();
+  console.log('TELPHIN_RESPONSE', JSON.stringify(j));
 
   // ⬅️ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
   if (Array.isArray(j)) return j;
