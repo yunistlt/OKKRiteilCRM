@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     const token = await getToken();
 
     // ❗ качаем ВСЁ, как раньше
-    const from = new Date('2015-01-01T00:00:00Z');
+    const from = new Date('2025-01-12T00:00:00Z');
     const to   = new Date();
 
     const records = await fetchRecords(token, extensionId, from, to);
