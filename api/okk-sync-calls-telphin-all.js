@@ -96,11 +96,6 @@ export default async function handler(req, res) {
       from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     }
 
-    // ограничение окна — 60 минут
-    if (to - from > 60 * 60 * 1000) {
-      from = new Date(to.getTime() - 60 * 60 * 1000);
-    }
-
     const EXTENSIONS = [
       94413, 94415, 145748, 349957, 349963, 351106, 469589,
       533987, 555997, 562946, 643886, 660848, 669428, 718843,
