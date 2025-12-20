@@ -75,10 +75,10 @@ export default async function handler(req, res) {
     const token = await getTelphinToken();
 
     const now = new Date();
-    const from = new Date('2025-12-08T00:00:00Z');
+   const from = new Date('2025-12-08T00:00:00Z');
+const to   = new Date('2025-12-15T23:59:59Z');
 
-    const records = await fetchRecords(token, extensionId, from, now);
-
+const records = await fetchRecords(token, extensionId, from, to);
     let imported = 0;
 
     for (const r of records) {
