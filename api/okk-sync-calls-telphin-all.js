@@ -16,7 +16,7 @@ const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
 const WINDOW_MINUTES = 10;
-const MAX_WINDOWS = 60;
+const MAX_WINDOWS = 200;
 const EXT_BATCH = 5;
 
 function formatTelphinDate(d) {
