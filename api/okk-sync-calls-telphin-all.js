@@ -60,8 +60,13 @@ async function fetchRecords(token, extensionId, from, to) {
   );
 
   const j = await r.json();
-  if (!r.ok) throw new Error(JSON.stringify(j));
-  return Array.isArray(j) ? j : [];
+
+  // ⬅️ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+  if (Array.isArray(j)) return j;
+  if (Array.isArray(j.items)) return j.items;
+
+  console.log('TELPHIN_RAW_RESPONSE_KEYS', Object.keys(j || {}));
+  return [];
 }
 
 export default async function handler(req, res) {
@@ -69,7 +74,7 @@ export default async function handler(req, res) {
   let total = 0;
 
   try {
-    // ⬅️ ВАЖНО: принудительно стартуем с последних 24 часов
+    // принудительно последние 24 часа
     let from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const EXTENSIONS = [
