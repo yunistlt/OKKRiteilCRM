@@ -15,6 +15,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
+const WINDOW_MINUTES = 10;      // одно окно
+const MAX_WINDOWS = 6;          // максимум 60 минут за запуск
+
 function formatTelphinDate(date) {
   const pad = (n) => String(n).padStart(2, '0');
   return (
@@ -75,26 +78,22 @@ async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
 
 export default async function handler(req, res) {
   const now = new Date();
-  let from;
-  const to = now;
   let total = 0;
 
   try {
-    // ✅ берём последнюю реально сохранённую запись
-    const { data: lastCall, error: lastErr } = await supabase
+    // старт — от последнего сохранённого звонка
+    const { data: lastCall, error } = await supabase
       .from('okk_calls_telphin_raw')
       .select('started_at')
       .order('started_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (lastErr && lastErr.code !== 'PGRST116') throw lastErr;
+    if (error && error.code !== 'PGRST116') throw error;
 
-    if (lastCall?.started_at) {
-      from = new Date(lastCall.started_at);
-    } else {
-      from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-    }
+    let from = lastCall?.started_at
+      ? new Date(lastCall.started_at)
+      : new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     const EXTENSIONS = [
       94413, 94415, 145748, 349957, 349963, 351106, 469589,
@@ -106,80 +105,84 @@ export default async function handler(req, res) {
 
     const { access_token } = await getTelphinToken();
 
-    for (const extensionId of EXTENSIONS) {
-      let records;
-      try {
-        records = await fetchTelphinRecords(access_token, {
-          extensionId,
-          from,
-          to,
-        });
-      } catch {
-        continue;
-      }
+    for (let w = 0; w < MAX_WINDOWS; w++) {
+      const to = new Date(from.getTime() + WINDOW_MINUTES * 60 * 1000);
+      if (to > now) break;
 
-      for (const r of records) {
-        const record_uuid = r.record_uuid || r.RecordUUID;
-        if (!record_uuid) continue;
-
-        const flow = r.flow || r.direction;
-        const startedRaw = r.start_time_gmt || r.init_time_gmt;
-
-        const fromNorm = normalizePhone(r.ani_number || r.from_number);
-        const toNorm = normalizePhone(r.dest_number || r.to_number);
-        const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
-
-        await supabase.from('okk_calls_telphin_raw').upsert(
-          {
-            record_uuid,
-            extension_id: r.extension_id || extensionId,
-            client_id: r.client_id || null,
-            rec_id: r.call_uuid || null,
-            started_at: callDate ? callDate.toISOString() : null,
-            duration_sec: r.duration || null,
-            direction: flow || null,
-            from_number: fromNorm,
-            to_number: toNorm,
-            call_status:
-              r.result || r.call_status || r.hangup_cause || null,
-            storage_url: r.storage_url || r.record_url || null,
-            has_record: !!(r.storage_url || r.record_url),
-            raw_payload: r,
-          },
-          { onConflict: 'record_uuid' }
-        );
-
-        if (r.storage_url || r.record_url) {
-          await supabase.from('okk_calls_transcribe_queue').upsert(
-            {
-              id: record_uuid,
-              status: 'pending',
-              recording_url: r.storage_url || r.record_url,
-              phone: flow === 'in' ? fromNorm : toNorm,
-              from_number: fromNorm,
-              to_number: toNorm,
-              direction: flow,
-              call_status:
-                r.result || r.call_status || r.hangup_cause || null,
-              call_started_at: callDate
-                ? callDate.toISOString()
-                : null,
-              duration_sec: r.duration || null,
-              extension_id: extensionId,
-              raw_payload: r,
-            },
-            { onConflict: 'id' }
-          );
+      for (const extensionId of EXTENSIONS) {
+        let records;
+        try {
+          records = await fetchTelphinRecords(access_token, {
+            extensionId,
+            from,
+            to,
+          });
+        } catch {
+          continue;
         }
 
-        total++;
+        for (const r of records) {
+          const record_uuid = r.record_uuid || r.RecordUUID;
+          if (!record_uuid) continue;
+
+          const startedRaw = r.start_time_gmt || r.init_time_gmt;
+          const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
+
+          const fromNorm = normalizePhone(r.ani_number || r.from_number);
+          const toNorm = normalizePhone(r.dest_number || r.to_number);
+
+          await supabase.from('okk_calls_telphin_raw').upsert(
+            {
+              record_uuid,
+              extension_id: r.extension_id || extensionId,
+              client_id: r.client_id || null,
+              rec_id: r.call_uuid || null,
+              started_at: callDate ? callDate.toISOString() : null,
+              duration_sec: r.duration || null,
+              direction: r.flow || r.direction || null,
+              from_number: fromNorm,
+              to_number: toNorm,
+              call_status:
+                r.result || r.call_status || r.hangup_cause || null,
+              storage_url: r.storage_url || r.record_url || null,
+              has_record: !!(r.storage_url || r.record_url),
+              raw_payload: r,
+            },
+            { onConflict: 'record_uuid' }
+          );
+
+          if (r.storage_url || r.record_url) {
+            await supabase.from('okk_calls_transcribe_queue').upsert(
+              {
+                id: record_uuid,
+                status: 'pending',
+                recording_url: r.storage_url || r.record_url,
+                phone: fromNorm,
+                from_number: fromNorm,
+                to_number: toNorm,
+                direction: r.flow || r.direction || null,
+                call_status:
+                  r.result || r.call_status || r.hangup_cause || null,
+                call_started_at: callDate
+                  ? callDate.toISOString()
+                  : null,
+                duration_sec: r.duration || null,
+                extension_id: extensionId,
+                raw_payload: r,
+              },
+              { onConflict: 'id' }
+            );
+          }
+
+          total++;
+        }
       }
+
+      from = to; // двигаем окно
     }
 
     return res.status(200).json({
       status: 'ok',
-      from: from.toISOString(),
-      to: to.toISOString(),
       total,
     });
   } catch (e) {
