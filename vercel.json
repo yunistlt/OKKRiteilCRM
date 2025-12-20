@@ -27,7 +27,7 @@
     },
    {
   "path": "/api/okk-sync-calls-telphin",
-  "schedule": "*/4 * * * *"
+  "schedule": "*/0 * * * *"
 },
     {
   "path": "/api/okk-transcribe-worker",
