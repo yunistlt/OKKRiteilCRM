@@ -65,7 +65,6 @@ async function fetchRecords(token, extensionId, from, to) {
 
 export default async function handler(req, res) {
   try {
-    // 👉 индекс extension (0,1,2...)
     const idx = Number(req.query.i || 0);
     const extensionId = EXTENSIONS[idx];
 
@@ -86,25 +85,32 @@ export default async function handler(req, res) {
       const uuid = r.record_uuid || r.RecordUUID;
       if (!uuid) continue;
 
-      await supabase.from('okk_calls_telphin_raw').upsert(
-        {
-          record_uuid: uuid,
-          extension_id: extensionId,
-          started_at: r.init_time_gmt
-            ? new Date(r.init_time_gmt + 'Z').toISOString()
-            : null,
-          duration_sec: r.duration || null,
-          direction: r.direction || r.flow || null,
-          from_number: r.from_number || r.ani_number || null,
-          to_number: r.to_number || r.dest_number || null,
-          storage_url: r.record_url || r.storage_url || null,
-          has_record: !!(r.record_url || r.storage_url),
-          raw_payload: r,
-        },
-        { onConflict: 'record_uuid' }
-      );
+      const payload = {
+        record_uuid: uuid,
+        extension_id: extensionId,
+        started_at: r.init_time_gmt
+          ? new Date(r.init_time_gmt + 'Z').toISOString()
+          : null,
+        duration_sec: r.duration || null,
+        direction: r.direction || r.flow || null,
+        from_number: r.from_number || r.ani_number || null,
+        to_number: r.to_number || r.dest_number || null,
+        storage_url: r.record_url || r.storage_url || null,
+        has_record: !!(r.record_url || r.storage_url),
+        raw_payload: r,
+      };
 
-      imported++;
+      const { data, error } = await supabase
+        .from('okk_calls_telphin_raw')
+        .upsert(payload, { onConflict: 'record_uuid' })
+        .select('record_uuid');
+
+      if (error) {
+        console.error('UPSERT ERROR', error);
+        continue;
+      }
+
+      if (data?.length) imported++;
     }
 
     return res.status(200).json({
