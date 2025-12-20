@@ -15,14 +15,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 const TELPHIN_API_BASE = 'https://apiproxy.telphin.ru';
 const TELPHIN_API_VERSION = '/api/ver1.0';
 
-const EXTENSIONS = [
-  94413,94415,145748,349957,349963,351106,469589,
-  533987,555997,562946,643886,660848,669428,718843,
-  765119,768698,775235,775238,805250,809876,813743,
-  828290,839939,855176,858926,858929,858932,858935,
-  911927,946706,968099,969008,982610,995756,1015712,
-];
-
 function formatTelphinDate(d) {
   const p = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
@@ -46,77 +38,72 @@ async function getTelphinToken() {
   return (await r.json()).access_token;
 }
 
-async function fetchRecords(token, extensionId, from, to) {
+async function fetchCalls(token, from, to, page = 1) {
   const q = new URLSearchParams({
     start_datetime: formatTelphinDate(from),
     end_datetime: formatTelphinDate(to),
+    page: String(page),
+    per_page: '100',
     order: 'asc',
   });
 
   const r = await fetch(
-    `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/extension/${extensionId}/record/?${q}`,
+    `${TELPHIN_API_BASE}${TELPHIN_API_VERSION}/calls/?${q}`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
 
   if (!r.ok) throw new Error(await r.text());
-  const j = await r.json();
-  return Array.isArray(j) ? j : [];
+  return r.json();
 }
 
 export default async function handler(req, res) {
   try {
-    const idx = Number(req.query.i || 0);
-    const extensionId = EXTENSIONS[idx];
-
-    if (!extensionId) {
-      return res.status(200).json({ status: 'done' });
-    }
+    const page = Number(req.query.page || 1);
 
     const token = await getTelphinToken();
 
-    const now = new Date();
-   const from = new Date('2025-12-08T00:00:00Z');
-const to   = new Date('2025-12-15T23:59:59Z');
+    const from = new Date('2025-12-08T00:00:00Z');
+    const to   = new Date('2025-12-19T23:59:59Z');
 
-const records = await fetchRecords(token, extensionId, from, to);
+    const result = await fetchCalls(token, from, to, page);
+    const calls = Array.isArray(result?.data) ? result.data : [];
+
     let imported = 0;
 
-    for (const r of records) {
-      const uuid = r.record_uuid || r.RecordUUID;
+    for (const c of calls) {
+      const uuid = c.call_uuid || c.uuid;
       if (!uuid) continue;
 
       const payload = {
-        record_uuid: uuid,
-        extension_id: extensionId,
-        started_at: r.init_time_gmt
-          ? new Date(r.init_time_gmt + 'Z').toISOString()
+        call_uuid: uuid,
+        extension_id: c.extension_id || null,
+        started_at: c.start_time_gmt
+          ? new Date(c.start_time_gmt + 'Z').toISOString()
           : null,
-        duration_sec: r.duration || null,
-        direction: r.direction || r.flow || null,
-        from_number: r.from_number || r.ani_number || null,
-        to_number: r.to_number || r.dest_number || null,
-        storage_url: r.record_url || r.storage_url || null,
-        has_record: !!(r.record_url || r.storage_url),
-        raw_payload: r,
+        duration_sec: c.duration || null,
+        direction: c.flow || null,
+        from_number: c.ani_number || null,
+        to_number: c.dest_number || null,
+        call_status: c.result || null,
+        has_record: !!c.record_uuid,
+        record_uuid: c.record_uuid || null,
+        raw_payload: c,
       };
 
-      const { data, error } = await supabase
+      const { error, data } = await supabase
         .from('okk_calls_telphin_raw')
-        .upsert(payload, { onConflict: 'record_uuid' })
-        .select('record_uuid');
+        .upsert(payload, { onConflict: 'call_uuid' })
+        .select('call_uuid');
 
-      if (error) {
-        console.error('UPSERT ERROR', error);
-        continue;
-      }
-
-      if (data?.length) imported++;
+      if (!error && data?.length) imported++;
     }
 
+    const hasNext = calls.length === 100;
+
     return res.status(200).json({
-      extensionId,
+      page,
       imported,
-      next: `/api/okk-sync-calls-telphin?i=${idx + 1}`,
+      next: hasNext ? `/api/okk-sync-calls-telphin?page=${page + 1}` : null,
     });
   } catch (e) {
     console.error(e);
