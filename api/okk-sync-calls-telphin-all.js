@@ -53,7 +53,6 @@ async function getTelphinToken() {
 
   const json = await resp.json();
   if (!resp.ok) throw new Error(JSON.stringify(json));
-
   return json;
 }
 
@@ -71,36 +70,33 @@ async function fetchTelphinRecords(accessToken, { extensionId, from, to }) {
 
   const json = await resp.json();
   if (!resp.ok) throw new Error(JSON.stringify(json));
-
   return json;
 }
 
 export default async function handler(req, res) {
   const now = new Date();
   let from;
-  let to = now;
+  const to = now;
   let total = 0;
 
-  const { data: lastCall, error: lastCallErr } = await supabase
-  .from('okk_calls_telphin_raw')
-  .select('started_at')
-  .order('started_at', { ascending: false })
-  .limit(1)
-  .single();
-
-if (lastCallErr && lastCallErr.code !== 'PGRST116') {
-  throw lastCallErr;
-}
-
-if (lastCall?.started_at) {
-  from = new Date(lastCall.started_at);
-} else {
-  from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // первый запуск
-}
-
   try {
- 
-    // ограничение окна 60 минут
+    // ✅ берём последнюю реально сохранённую запись
+    const { data: lastCall, error: lastErr } = await supabase
+      .from('okk_calls_telphin_raw')
+      .select('started_at')
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (lastErr && lastErr.code !== 'PGRST116') throw lastErr;
+
+    if (lastCall?.started_at) {
+      from = new Date(lastCall.started_at);
+    } else {
+      from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    // ограничение окна — 60 минут
     if (to - from > 60 * 60 * 1000) {
       from = new Date(to.getTime() - 60 * 60 * 1000);
     }
@@ -134,11 +130,8 @@ if (lastCall?.started_at) {
         const flow = r.flow || r.direction;
         const startedRaw = r.start_time_gmt || r.init_time_gmt;
 
-        const fromNumber = r.ani_number || r.from_number || null;
-        const toNumber = r.dest_number || r.to_number || null;
-
-        const fromNorm = normalizePhone(fromNumber);
-        const toNorm = normalizePhone(toNumber);
+        const fromNorm = normalizePhone(r.ani_number || r.from_number);
+        const toNorm = normalizePhone(r.dest_number || r.to_number);
         const callDate = startedRaw ? new Date(startedRaw + 'Z') : null;
 
         await supabase.from('okk_calls_telphin_raw').upsert(
@@ -187,6 +180,7 @@ if (lastCall?.started_at) {
         total++;
       }
     }
+
     return res.status(200).json({
       status: 'ok',
       from: from.toISOString(),
