@@ -144,8 +144,12 @@ export default async function handler(req, res) {
       imported: totalImported,
       now: now.toISOString(),
     });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: String(e) });
-  }
+  } catch (err) {
+  console.error('TELPHIN ERROR:', err);
+
+  return res.status(500).json({
+    error: err.message || String(err),
+    raw: JSON.stringify(err, Object.getOwnPropertyNames(err)),
+  });
+}
 }
