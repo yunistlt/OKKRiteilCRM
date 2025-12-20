@@ -142,7 +142,7 @@ export default async function handler(req, res) {
                   id: uuid,
                   status: 'pending',
                   recording_url: r.storage_url || r.record_url,
-                  phone: fromN,
+                  phone: (r.flow || r.direction) === 'in' ? fromN : toN,
                   from_number: fromN,
                   to_number: toN,
                   direction: r.flow || r.direction || null,
