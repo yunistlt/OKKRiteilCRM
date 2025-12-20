@@ -81,22 +81,25 @@ export default async function handler(req, res) {
   let to = now;
   let total = 0;
 
+  const { data: lastCall, error: lastCallErr } = await supabase
+  .from('okk_calls_telphin_raw')
+  .select('started_at')
+  .order('started_at', { ascending: false })
+  .limit(1)
+  .single();
+
+if (lastCallErr && lastCallErr.code !== 'PGRST116') {
+  throw lastCallErr;
+}
+
+if (lastCall?.started_at) {
+  from = new Date(lastCall.started_at);
+} else {
+  from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // первый запуск
+}
+
   try {
-    // --- читаем состояние синка ---
-    const { data: state, error: stateErr } = await supabase
-      .from('okk_sync_state')
-      .select('updated_at, is_completed')
-      .eq('sync_type', 'telphin_calls')
-      .single();
-
-    if (stateErr) throw stateErr;
-
-    if (!state.is_completed || !state.updated_at) {
-      from = new Date(now.getTime() - 15 * 60 * 1000);
-    } else {
-      from = new Date(state.updated_at);
-    }
-
+ 
     // ограничение окна 60 минут
     if (to - from > 60 * 60 * 1000) {
       from = new Date(to.getTime() - 60 * 60 * 1000);
@@ -184,16 +187,6 @@ export default async function handler(req, res) {
         total++;
       }
     }
-
-    // --- фиксируем состояние ---
-    await supabase
-      .from('okk_sync_state')
-      .update({
-        is_completed: true,
-        updated_at: to.toISOString(),
-      })
-      .eq('sync_type', 'telphin_calls');
-
     return res.status(200).json({
       status: 'ok',
       from: from.toISOString(),
