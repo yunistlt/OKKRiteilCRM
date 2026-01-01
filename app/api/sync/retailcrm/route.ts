@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
         // 5. Upsert via RPC (Bypass Schema Cache Issues)
         if (eventsToUpsert.length > 0) {
-            const { error } = await supabase.rpc('upsert_orders', {
+            const { error } = await supabase.rpc('upsert_orders_v2', {
                 orders_data: eventsToUpsert
             });
 

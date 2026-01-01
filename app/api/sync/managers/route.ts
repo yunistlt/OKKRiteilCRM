@@ -36,7 +36,7 @@ export async function GET() {
 
         if (upsertData.length > 0) {
             // Use RPC to bypass potential schema cache/permission issues
-            const { error } = await supabase.rpc('upsert_managers', {
+            const { error } = await supabase.rpc('upsert_managers_v2', {
                 managers_data: upsertData
             });
 
