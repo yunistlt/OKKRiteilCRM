@@ -7,8 +7,8 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 export const maxDuration = 300;
 
 // Helper to normalize phone numbers
-function cleanPhone(val: any) {
-    if (!val) return null;
+function cleanPhone(val: any): string {
+    if (!val) return '';
     return String(val).replace(/[^\d+]/g, '');
 }
 
@@ -40,8 +40,6 @@ export async function GET(request: Request) {
         }
 
         // 2. Build URL for "Orders List" (Reverse Sync)
-        // STRATEGY: Fetch all orders from 2023-01-01 onwards using the standard list endpoint.
-        // This avoids iterating through years of empty history.
         const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
         const limit = 100;
         const filterDateFrom = '2023-01-01 00:00:00';
@@ -51,12 +49,6 @@ export async function GET(request: Request) {
         params.append('limit', String(limit));
         params.append('page', String(page));
         params.append('filter[createdAtFrom]', filterDateFrom);
-        // We want newest orders? Or oldest first? 
-        // If we want to catch up history, 'createdAt' ASC (default?) is safer.
-        // But if we want *immediate* results on the dashboard, maybe DESC?
-        // Let's stick to default (usually ID/Created ASC) to allow proper pagination forward.
-
-        // Ensure we get phone numbers
         params.append('paginator', 'page');
 
         const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
@@ -78,40 +70,40 @@ export async function GET(request: Request) {
         for (const order of orders) {
             // Extract phones
             const phones = new Set<string>();
-            if (order.phone) phones.add(cleanPhone(order.phone));
-            if (order.additionalPhone) phones.add(cleanPhone(order.additionalPhone));
+
+            const p1 = cleanPhone(order.phone);
+            if (p1) phones.add(p1);
+
+            const p2 = cleanPhone(order.additionalPhone);
+            if (p2) phones.add(p2);
 
             if (order.customer && order.customer.phones) {
-                order.customer.phones.forEach((p: any) => phones.add(cleanPhone(p.number)));
+                order.customer.phones.forEach((p: any) => {
+                    const cp = cleanPhone(p.number);
+                    if (cp) phones.add(cp);
+                });
             }
             if (order.contact && order.contact.phones) {
-                order.contact.phones.forEach((p: any) => phones.add(cleanPhone(p.number)));
+                order.contact.phones.forEach((p: any) => {
+                    const cp = cleanPhone(p.number);
+                    if (cp) phones.add(cp);
+                });
             }
 
             // Create "Event" (Snapshot of current order state)
             eventsToUpsert.push({
-                // For the main orders table, we want unique Order ID.
-                // If the table 'orders' has PK = 'id' (Event ID), this might conflict if we assume 1:1 map.
-                // BUT in our new schema, 'id' is bigInt PK.
-                // Let's use the CRM Order ID as the Event ID for this initial sync to ensure uniqueness per order.
-                // OR let Supabase generate UUID?
-                // The schema has 'id bigint'. Let's use order.id.
                 id: order.id,
                 order_id: order.id,
-
                 created_at: order.createdAt,
                 updated_at: new Date().toISOString(),
-
                 number: order.number || String(order.id),
                 status: order.status,
-                event_type: 'snapshot', // Mark as full snapshot
-
+                event_type: 'snapshot',
                 manager_id: order.managerId ? String(order.managerId) : null,
-                phone: cleanPhone(order.phone),
+                phone: cleanPhone(order.phone) || null,
                 customer_phones: Array.from(phones),
                 totalsumm: order.totalSumm || 0,
-
-                raw_payload: order // Store full payload
+                raw_payload: order
             });
         }
 
@@ -135,12 +127,6 @@ export async function GET(request: Request) {
                 value: String(nextPage),
                 updated_at: new Date().toISOString()
             });
-        } else {
-            // Finished all pages? Or loop just for this cron run?
-            // If we finished, maybe reset to 1 (to re-scan for updates later)? 
-            // With this logic, we scan once. 
-            // Ideally for updates we switch back to 'history'.
-            // But for now, let's just paginate until done.
         }
 
         return NextResponse.json({
