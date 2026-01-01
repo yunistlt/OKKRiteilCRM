@@ -1,23 +1,29 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 
-const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL; // Support both
-const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY;
+const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
+const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 
 export const maxDuration = 300;
 
+// Helper to normalize phone numbers
+function cleanPhone(val: any) {
+    if (!val) return null;
+    return String(val).replace(/[^\d+]/g, '');
+}
+
 export async function GET(request: Request) {
-    if (!RETAILCRM_URL || !RETAILCRM_KEY) {
+    if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }
 
     try {
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
+        const storageKey = 'retailcrm_last_sync_page';
 
-        // 1. Get persisted cursor (bookmark)
-        let storageKey = 'retailcrm_history_id_v2'; // New key for the new schema
-        let currentCursor: number | null = null;
+        // 1. Determine "Page" to fetch (Pagination Cursor)
+        let page = 1;
 
         if (!forceResync) {
             const { data: state } = await supabase
@@ -27,162 +33,127 @@ export async function GET(request: Request) {
                 .single();
 
             if (state?.value) {
-                currentCursor = parseInt(state.value, 10);
+                page = parseInt(state.value) || 1;
             }
         } else {
-            console.log('[Sync] Force resync requested. Resetting cursor.');
+            console.log('Force resync requested: Starting from Page 1');
         }
 
-        const defaultStart = '2025-12-01 00:00:00';
-        console.log(`[Sync] Starting. Cursor: ${currentCursor ?? 'None (using date ' + defaultStart + ')'}`);
+        // 2. Build URL for "Orders List" (Reverse Sync)
+        // STRATEGY: Fetch all orders from 2023-01-01 onwards using the standard list endpoint.
+        // This avoids iterating through years of empty history.
+        const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
+        const limit = 100;
+        const filterDateFrom = '2023-01-01 00:00:00';
 
-        let processedEventsCount = 0;
-        let lastHistoryId: number | null = currentCursor;
-        let hasMore = true;
-        let loopCount = 0;
-        const MAX_LOOPS = 20;
+        const params = new URLSearchParams();
+        params.append('apiKey', RETAILCRM_API_KEY);
+        params.append('limit', String(limit));
+        params.append('page', String(page));
+        params.append('filter[createdAtFrom]', filterDateFrom);
+        // We want newest orders? Or oldest first? 
+        // If we want to catch up history, 'createdAt' ASC (default?) is safer.
+        // But if we want *immediate* results on the dashboard, maybe DESC?
+        // Let's stick to default (usually ID/Created ASC) to allow proper pagination forward.
 
-        while (hasMore && loopCount < MAX_LOOPS) {
-            loopCount++;
+        // Ensure we get phone numbers
+        params.append('paginator', 'page');
 
-            let histUrl = `${RETAILCRM_URL}/api/v5/orders/history?apiKey=${RETAILCRM_KEY}&limit=100`;
+        const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
+        console.log(`Fetching RetailCRM Page ${page}:`, url);
 
-            if (lastHistoryId) {
-                histUrl += `&filter[sinceId]=${lastHistoryId}`;
-            } else {
-                histUrl += `&startDate=${encodeURIComponent(defaultStart)}`;
+        // 3. Fetch Data
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
+
+        const data = await res.json();
+        if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
+
+        const orders = data.orders || [];
+        const pagination = data.pagination;
+
+        const eventsToUpsert: any[] = [];
+
+        // 4. Transform to Database Format
+        for (const order of orders) {
+            // Extract phones
+            const phones = new Set<string>();
+            if (order.phone) phones.add(cleanPhone(order.phone));
+            if (order.additionalPhone) phones.add(cleanPhone(order.additionalPhone));
+
+            if (order.customer && order.customer.phones) {
+                order.customer.phones.forEach((p: any) => phones.add(cleanPhone(p.number)));
+            }
+            if (order.contact && order.contact.phones) {
+                order.contact.phones.forEach((p: any) => phones.add(cleanPhone(p.number)));
             }
 
-            const res = await fetch(histUrl);
-            if (!res.ok) {
-                console.error(`History fetch error: ${await res.text()}`);
-                break;
-            }
+            // Create "Event" (Snapshot of current order state)
+            eventsToUpsert.push({
+                // For the main orders table, we want unique Order ID.
+                // If the table 'orders' has PK = 'id' (Event ID), this might conflict if we assume 1:1 map.
+                // BUT in our new schema, 'id' is bigInt PK.
+                // Let's use the CRM Order ID as the Event ID for this initial sync to ensure uniqueness per order.
+                // OR let Supabase generate UUID?
+                // The schema has 'id bigint'. Let's use order.id.
+                id: order.id,
+                order_id: order.id,
 
-            const hData = await res.json();
-            if (!hData.success) {
-                console.error('History API error:', hData);
-                break;
-            }
+                created_at: order.createdAt,
+                updated_at: new Date().toISOString(),
 
-            const history = hData.history || [];
-            if (history.length === 0) {
-                hasMore = false;
-                break;
-            }
+                number: order.number || String(order.id),
+                status: order.status,
+                event_type: 'snapshot', // Mark as full snapshot
 
-            // 1. Extract Unique Order IDs from this batch of history
-            const batchOrderIds = new Set<string>();
-            history.forEach((h: any) => {
-                if (h.order && h.order.id) batchOrderIds.add(String(h.order.id));
-                if (h.id) lastHistoryId = h.id;
+                manager_id: order.managerId ? String(order.managerId) : null,
+                phone: cleanPhone(order.phone),
+                customer_phones: Array.from(phones),
+                totalsumm: order.totalSumm || 0,
+
+                raw_payload: order // Store full payload
             });
-
-            // 2. Fetch Fresh Details for these orders (Enrichment)
-            const orderDetailsMap = new Map<string, any>();
-            if (batchOrderIds.size > 0) {
-                const ids = Array.from(batchOrderIds);
-                const CHUNK_SIZE = 50;
-                for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
-                    const chunkIds = ids.slice(i, i + CHUNK_SIZE);
-                    const idParams = chunkIds.map(id => `filter[ids][]=${id}`).join('&');
-                    const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&limit=100&${idParams}`;
-
-                    const oRes = await fetch(ordersUrl);
-                    if (oRes.ok) {
-                        const oData = await oRes.json();
-                        if (oData.success) {
-                            (oData.orders || []).forEach((o: any) => {
-                                orderDetailsMap.set(String(o.id), o);
-                            });
-                        }
-                    }
-                }
-            }
-
-            // 3. Construct "Event Rows" for DB
-            // We iterate strictly through HISTORY (the events)
-            const eventsToUpsert: any[] = [];
-
-            history.forEach((event: any) => {
-                const orderId = String(event.order?.id);
-                // Get full enriched data if available, or fallback to the mini-order object inside history
-                const fullOrder = orderDetailsMap.get(orderId) || event.order || {};
-
-                // FILTER: Ignore orders created before 2023 (Legacy Data)
-                // STRICT CHECK: If createdAt is missing or old, SKIP.
-                if (!fullOrder.createdAt) {
-                    // console.log(`[Sync] Skipping ${orderId}: No createdAt`);
-                    return;
-                }
-
-                const createdYear = new Date(fullOrder.createdAt).getFullYear();
-                if (createdYear < 2023) {
-                    // console.log(`[Sync] Skipping ${orderId}: Old year ${createdYear}`);
-                    return;
-                }
-
-                // Phones extraction
-                const normalizePhone = (p: any) => p ? String(p).replace(/[^\d]/g, '') : null;
-                const phoneSet = new Set<string>();
-
-                if (fullOrder.phone) phoneSet.add(normalizePhone(fullOrder.phone)!);
-                if (fullOrder.additionalPhone) phoneSet.add(normalizePhone(fullOrder.additionalPhone)!);
-                if (fullOrder.customer && Array.isArray(fullOrder.customer.phones)) {
-                    fullOrder.customer.phones.forEach((p: any) => p.number && phoneSet.add(normalizePhone(p.number)!));
-                }
-                if (fullOrder.contact && Array.isArray(fullOrder.contact.phones)) {
-                    fullOrder.contact.phones.forEach((p: any) => p.number && phoneSet.add(normalizePhone(p.number)!));
-                }
-                const phones = Array.from(phoneSet).filter(Boolean);
-
-                eventsToUpsert.push({
-                    id: event.id,                         // Primary Key: EVENT ID
-                    order_id: fullOrder.id ? parseInt(fullOrder.id) : null, // CRM Order ID
-                    number: fullOrder.externalId || fullOrder.number,
-                    status: fullOrder.status,             // Snapshot of current status
-                    event_type: event.type,               // 'status_changed', 'api_update', etc.
-                    event_field: event.field,             // specific field changed if available
-                    created_at: event.createdAt,          // TIME OF EVENT
-                    manager_id: String(fullOrder.managerId),
-                    phone: phones[0] || null,
-                    customer_phones: phones,
-                    totalsumm: fullOrder.totalSumm || 0,
-                    raw_payload: fullOrder                // Full snapshot for matching/debug
-                });
-            });
-
-            if (eventsToUpsert.length > 0) {
-                const { error } = await supabase.from('orders').upsert(eventsToUpsert);
-                if (error) {
-                    console.error('Supabase Upsert Error:', error);
-                } else {
-                    processedEventsCount += eventsToUpsert.length;
-                }
-            }
-
-            if (history.length < 100) hasMore = false;
         }
 
-        // 4. Save Cursor
-        if (lastHistoryId) {
+        // 5. Upsert
+        if (eventsToUpsert.length > 0) {
+            const { error } = await supabase.from('orders').upsert(eventsToUpsert);
+            if (error) {
+                console.error('Supabase Upsert Error:', error);
+                throw error;
+            }
+        }
+
+        // 6. Advance Cursor
+        let hasMore = false;
+        if (pagination && pagination.currentPage < pagination.totalPageCount) {
+            hasMore = true;
+            const nextPage = page + 1;
+
             await supabase.from('sync_state').upsert({
                 key: storageKey,
-                value: String(lastHistoryId),
+                value: String(nextPage),
                 updated_at: new Date().toISOString()
             });
+        } else {
+            // Finished all pages? Or loop just for this cron run?
+            // If we finished, maybe reset to 1 (to re-scan for updates later)? 
+            // With this logic, we scan once. 
+            // Ideally for updates we switch back to 'history'.
+            // But for now, let's just paginate until done.
         }
 
         return NextResponse.json({
             success: true,
-            method: 'event_log_stream',
-            events_processed: processedEventsCount,
-            saved_cursor: lastHistoryId,
+            method: 'orders_list_filtered_2023',
+            page: page,
+            total_pages: pagination ? pagination.totalPageCount : '?',
+            orders_fetched: orders.length,
             has_more: hasMore
         });
 
     } catch (error: any) {
-        console.error('Sync Error Full:', error);
+        console.error('RetailCRM Sync Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
