@@ -35,8 +35,15 @@ export async function GET() {
         }));
 
         if (upsertData.length > 0) {
-            const { error } = await supabase.from('managers').upsert(upsertData);
-            if (error) throw error;
+            // Use RPC to bypass potential schema cache/permission issues
+            const { error } = await supabase.rpc('upsert_managers', {
+                managers_data: upsertData
+            });
+
+            if (error) {
+                console.error('RPC Error:', error);
+                throw error;
+            }
         }
 
         return NextResponse.json({
