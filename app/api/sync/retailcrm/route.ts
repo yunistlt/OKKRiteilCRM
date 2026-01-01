@@ -107,11 +107,14 @@ export async function GET(request: Request) {
             });
         }
 
-        // 5. Upsert
+        // 5. Upsert via RPC (Bypass Schema Cache Issues)
         if (eventsToUpsert.length > 0) {
-            const { error } = await supabase.from('orders').upsert(eventsToUpsert);
+            const { error } = await supabase.rpc('upsert_orders', {
+                orders_data: eventsToUpsert
+            });
+
             if (error) {
-                console.error('Supabase Upsert Error:', error);
+                console.error('RPC Upsert Error:', error);
                 throw error;
             }
         }
