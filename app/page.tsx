@@ -17,14 +17,20 @@ export default function Dashboard() {
         // For now we simulate or assume client-side logic possible if RLS allows, 
         // but better to fetch from /api/analysis
 
-        // Mocking fetch for visual demonstration since API route for analysis isn't built yet
-        setTimeout(() => {
-            setViolations([
-                { managerId: 'mngr_1', type: 'MISSED_CALL', details: 'Client +7900...', timestamp: new Date().toISOString() },
-                { managerId: 'mngr_2', type: 'LATE_ORDER_PROCESSING', details: 'Order #123456', timestamp: new Date().toISOString() }
-            ]);
-            setLoading(false);
-        }, 1000);
+        async function loadData() {
+            try {
+                const res = await fetch('/api/analysis');
+                if (!res.ok) throw new Error('Failed to fetch analysis');
+                const data = await res.json();
+                setViolations(data.violations || []);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        loadData();
     }, []);
 
     return (

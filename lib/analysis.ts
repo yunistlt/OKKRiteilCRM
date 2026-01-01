@@ -39,7 +39,7 @@ export async function analyzeViolations(): Promise<Violation[]> {
     if (stuckOrders) {
         stuckOrders.forEach(order => {
             violations.push({
-                managerId: order.managerId || 'UNKNOWN',
+                managerId: order.managerid || 'UNKNOWN', // postgres: managerid
                 type: 'LATE_ORDER_PROCESSING',
                 details: `Order ${order.number} has not been updated in 24h`,
                 timestamp: new Date().toISOString()
