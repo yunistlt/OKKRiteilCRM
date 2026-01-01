@@ -14,7 +14,7 @@ export async function GET(request: Request) {
         const orderQuery = supabase
             .from('orders')
             .select('*')
-            .order('createdat', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(100); // Process in batches
 
         if (!force) {
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
             // Logic: call.client_number IN order.customer_phones OR call.driver_number IN order.customer_phones
             // And time window: let's say +/- 24 hours around order creation
 
-            const orderDate = new Date(order.createdat);
+            const orderDate = new Date(order.created_at);
             const timeWindow = 24 * 60 * 60 * 1000; // 24 hours
             const minDate = new Date(orderDate.getTime() - timeWindow).toISOString();
             const maxDate = new Date(orderDate.getTime() + timeWindow).toISOString();
@@ -85,8 +85,7 @@ export async function GET(request: Request) {
                 await supabase.from('matches').insert({
                     order_id: order.order_id, // The CRM ID (e.g. 12345)
                     call_id: matchedCall.id,  // The Call UUID
-                    score: 1.0,               // High confidence (exact/fuzzy match)
-                    event_id: order.id        // The specific event we found the match on (optional context)
+                    score: 1.0                // High confidence (exact/fuzzy match)
                 });
 
                 matches.push({
