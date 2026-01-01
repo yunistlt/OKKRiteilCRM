@@ -77,25 +77,27 @@ export async function GET(request: Request) {
         const forceResync = searchParams.get('force') === 'true';
 
         const token = await getTelphinToken();
-
-        // Determine Start Date
-        const { data: lastCall } = await supabase
-            .from('calls')
-            .select('timestamp')
-            .order('timestamp', { ascending: false })
-            .limit(1)
-            .single();
-
         const now = new Date();
-        // User requested to start from Dec 1st, 2025 if DB is empty
-        const defaultStart = new Date('2025-12-01T00:00:00Z');
+        const storageKey = 'telphin_last_sync_time';
 
-        let start = defaultStart;
-        if (!forceResync && lastCall?.timestamp) {
-            console.log('Incremental sync from:', lastCall.timestamp);
-            start = new Date(lastCall.timestamp);
+        // 1. Get Start Date from Persistent Cursor (Sync State)
+        let start = new Date('2025-12-01T00:00:00Z'); // Default
+
+        if (!forceResync) {
+            const { data: state } = await supabase
+                .from('sync_state')
+                .select('value')
+                .eq('key', storageKey)
+                .single();
+
+            if (state?.value) {
+                start = new Date(state.value);
+                console.log('Incremental sync from state:', start.toISOString());
+            } else {
+                console.log('No state found, starting from default:', start.toISOString());
+            }
         } else {
-            console.log('Force/Full sync (30 days)');
+            console.log('Force/Full sync requested, starting from default.');
         }
 
         const fromStr = formatTelphinDate(start);
@@ -177,12 +179,22 @@ export async function GET(request: Request) {
             if (error) console.error('Supabase Upsert Error:', error);
         }
 
+        // Save Cursor (Current 'NOW' becomes next start time)
+        if (mappedCalls.length > 0) {
+            await supabase.from('sync_state').upsert({
+                key: storageKey,
+                value: now.toISOString(),
+                updated_at: new Date().toISOString()
+            });
+        }
+
         return NextResponse.json({
             success: true,
             count: mappedCalls.length,
             extensions_scanned: EXTENSIONS.length,
             debug_sample: mappedCalls[0],
-            debug_last_url: debugLastUrl
+            debug_last_url: debugLastUrl,
+            time_window: { from: fromStr, to: toStr }
         });
 
     } catch (error: any) {
