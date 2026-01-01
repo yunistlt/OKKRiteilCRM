@@ -110,10 +110,16 @@ export async function GET(request: Request) {
                 const fullOrder = orderDetailsMap.get(orderId) || event.order || {};
 
                 // FILTER: Ignore orders created before 2023 (Legacy Data)
-                if (fullOrder.createdAt) {
-                    const createdYear = new Date(fullOrder.createdAt).getFullYear();
-                    // Careful check to allow late 2022 if needed, but sticking to 2023 as requested
-                    if (createdYear < 2023) return;
+                // STRICT CHECK: If createdAt is missing or old, SKIP.
+                if (!fullOrder.createdAt) {
+                    // console.log(`[Sync] Skipping ${orderId}: No createdAt`);
+                    return;
+                }
+
+                const createdYear = new Date(fullOrder.createdAt).getFullYear();
+                if (createdYear < 2023) {
+                    // console.log(`[Sync] Skipping ${orderId}: Old year ${createdYear}`);
+                    return;
                 }
 
                 // Phones extraction

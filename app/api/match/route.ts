@@ -78,23 +78,20 @@ export async function GET(request: Request) {
             });
 
             if (matchedCall) {
-                // UPDATE LINK
-                // 1. Update Order
-                await supabase
-                    .from('orders')
-                    .update({ call_id: matchedCall.id }) // Assuming call has UUID id? Or we use Telphin ID? 
-                    // Wait, supabase 'calls' table usually has its own UUID or we use the Telphin extraction ID.
-                    // Let's check schema. Assuming 'id' column exists.
-                    .eq('id', order.id);
+                // INSERT MATCH
+                // We link the Call to the Order (conceptually), not just one event.
+                // But we use the order_id from the current event.
 
-                // 2. Update Call
-                await supabase
-                    .from('calls')
-                    .update({ order_id: order.id })
-                    .eq('id', matchedCall.id);
+                await supabase.from('matches').insert({
+                    order_id: order.order_id, // The CRM ID (e.g. 12345)
+                    call_id: matchedCall.id,  // The Call UUID
+                    score: 1.0,               // High confidence (exact/fuzzy match)
+                    event_id: order.id        // The specific event we found the match on (optional context)
+                });
 
                 matches.push({
-                    order: order.number,
+                    order_number: order.number,
+                    order_id: order.order_id,
                     call: matchedCall.id,
                     phone: matchedCall.client_number
                 });
