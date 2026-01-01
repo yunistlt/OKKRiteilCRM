@@ -1,0 +1,17 @@
+{
+    "framework": "nextjs",
+    "crons": [
+        {
+            "path": "/api/sync/retailcrm",
+            "schedule": "*/10 * * * *"
+        },
+        {
+            "path": "/api/sync/telphin",
+            "schedule": "*/10 * * * *"
+        },
+        {
+            "path": "/api/match",
+            "schedule": "*/15 * * * *"
+        }
+    ]
+}
