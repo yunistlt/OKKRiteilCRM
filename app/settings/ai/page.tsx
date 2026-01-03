@@ -1,0 +1,356 @@
+
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export default function AIPrimitivizationPage() {
+    const [prompt, setPrompt] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [testing, setTesting] = useState(false);
+    const [testResult, setTestResult] = useState<any>(null);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+
+    // Save Example Modal State
+    const [showSaveModal, setShowSaveModal] = useState(false);
+    const [saveColor, setSaveColor] = useState<'red' | 'yellow' | 'green'>('green');
+    const [saveReasoning, setSaveReasoning] = useState('');
+    const [savingExample, setSavingExample] = useState(false);
+
+    useEffect(() => {
+        fetchPrompt();
+    }, []);
+
+    async function fetchPrompt() {
+        try {
+            const res = await fetch('/api/settings/prompts');
+            const data = await res.json();
+            // Assuming we want 'order_analysis_main'
+            const main = data.find((p: any) => p.key === 'order_analysis_main');
+            if (main) setPrompt(main.content);
+        } catch (e) {
+            setError('Failed to fetch prompt');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleSave() {
+        setSaving(true);
+        setError('');
+        setSuccess('');
+        try {
+            const res = await fetch('/api/settings/prompts', {
+                method: 'POST',
+                body: JSON.stringify({
+                    key: 'order_analysis_main',
+                    content: prompt,
+                    description: 'Main Traffic Light Prompt'
+                })
+            });
+            if (!res.ok) throw new Error('Save failed');
+            setSuccess('Prompt saved successfully!');
+        } catch (e) {
+            setError('Failed to save prompt');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function handleTest() {
+        setTesting(true);
+        setTestResult(null);
+        try {
+            const res = await fetch('/api/analysis/test-prompt', {
+                method: 'POST',
+                body: JSON.stringify({ prompt })
+                // user can provide orderId if we add input
+            });
+            const data = await res.json();
+            if (data.error) throw new Error(data.error);
+            setTestResult(data);
+        } catch (e: any) {
+            setTestResult({ error: e.message });
+        } finally {
+            setTesting(false);
+        }
+    }
+
+    function openSaveModal() {
+        if (!testResult?.result || !testResult?.order) return;
+        setSaveColor(testResult.result.traffic_light);
+        setSaveReasoning(testResult.result.short_reason || '');
+        setShowSaveModal(true);
+    }
+
+    async function handleSaveAsExample() {
+        if (!testResult?.order || !saveReasoning.trim()) {
+            alert('Введите обоснование');
+            return;
+        }
+
+        setSavingExample(true);
+        try {
+            const res = await fetch('/api/settings/training-examples', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId: testResult.order.id,
+                    orderNumber: testResult.order.number,
+                    trafficLight: saveColor,
+                    userReasoning: saveReasoning,
+                    orderContext: testResult.order,
+                    createdBy: 'test_prompt'
+                })
+            });
+
+            if (!res.ok) throw new Error('Failed to save');
+
+            alert('✅ Пример сохранен!');
+            setShowSaveModal(false);
+        } catch (e) {
+            alert('Ошибка сохранения примера');
+        } finally {
+            setSavingExample(false);
+        }
+    }
+
+    if (loading) return <div className="p-8">Loading...</div>;
+
+    return (
+        <div className="p-8 max-w-6xl mx-auto">
+            <h1 className="text-2xl font-bold mb-6">Обучение ИИ (Настройка Промта)</h1>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Editor */}
+                <div className="space-y-4">
+                    <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+                        <label className="block text-sm font-medium mb-2">System Prompt Template</label>
+                        <p className="text-xs text-gray-500 mb-2">
+                            Используйте <code>{'{{transcript}}'}</code>, <code>{'{{days}}'}</code>, <code>{'{{sum}}'}</code>, <code>{'{{status}}'}</code> как плейсхолдеры.
+                        </p>
+                        <textarea
+                            className="w-full h-[600px] p-4 text-sm font-mono border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                            value={prompt}
+                            onChange={e => setPrompt(e.target.value)}
+                        />
+                        <div className="flex justify-between mt-4">
+                            <button
+                                onClick={handleTest}
+                                disabled={testing}
+                                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                            >
+                                {testing ? 'Тестируем...' : '🧪 Тестировать (Случайный заказ)'}
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                            >
+                                {saving ? 'Сохраняем...' : '💾 Сохранить'}
+                            </button>
+                        </div>
+                        {error && <div className="mt-2 text-red-500 text-sm">{error}</div>}
+                        {success && <div className="mt-2 text-green-500 text-sm">{success}</div>}
+                    </div>
+                </div>
+
+                {/* Test Result */}
+                <div className="space-y-4">
+                    <h2 className="text-lg font-semibold">Результат Теста</h2>
+                    {testResult ? (
+                        testResult.error ? (
+                            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                                <strong>Ошибка:</strong> {testResult.error}
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                {/* AI Result Card */}
+                                <div className={`p-4 rounded-lg border-2 ${testResult.result?.traffic_light === 'red' ? 'bg-red-50 border-red-300' :
+                                    testResult.result?.traffic_light === 'yellow' ? 'bg-yellow-50 border-yellow-300' :
+                                        'bg-green-50 border-green-300'
+                                    }`}>
+                                    <div className="flex items-center gap-3 mb-2">
+                                        <span className="text-3xl">
+                                            {testResult.result?.traffic_light === 'red' ? '🔴' :
+                                                testResult.result?.traffic_light === 'yellow' ? '🟡' : '🟢'}
+                                        </span>
+                                        <div>
+                                            <h3 className="font-bold text-lg">Оценка ИИ</h3>
+                                            <p className="text-sm text-gray-600">{testResult.result?.short_reason}</p>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 p-3 bg-white rounded border border-gray-200">
+                                        <strong>Рекомендация:</strong> {testResult.result?.recommended_action}
+                                    </div>
+
+                                    {/* Save as Example Button */}
+                                    <div className="mt-3">
+                                        <button
+                                            onClick={openSaveModal}
+                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                                        >
+                                            💾 Сохранить как пример обучения
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Order Info Card */}
+                                {testResult.order && (
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
+                                        <h3 className="font-bold text-md border-b pb-2">📦 Информация о заказе</h3>
+
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div>
+                                                <span className="text-gray-500">Номер:</span>
+                                                <p className="font-mono font-bold">#{testResult.order.number}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-500">Сумма:</span>
+                                                <p className="font-bold">{testResult.order.totalSum.toLocaleString('ru-RU')} ₽</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-500">Менеджер:</span>
+                                                <p className="font-medium">{testResult.order.managerName}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-500">Статус:</span>
+                                                <p className="font-medium">{testResult.order.status}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-500">Категория товара:</span>
+                                                <p>{testResult.order.productCategory}</p>
+                                            </div>
+                                            <div>
+                                                <span className="text-gray-500">Категория клиента:</span>
+                                                <p>{testResult.order.clientCategory}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t">
+                                            <span className="text-gray-500 text-sm">Дней без обновления:</span>
+                                            <p className="font-bold text-orange-600">{testResult.order.daysSinceUpdate}</p>
+                                        </div>
+
+                                        {testResult.order.lastCall && (
+                                            <div className="pt-2 border-t">
+                                                <h4 className="font-semibold text-sm mb-2">📞 Последний звонок</h4>
+                                                <div className="text-xs text-gray-600 mb-1">
+                                                    {new Date(testResult.order.lastCall.timestamp).toLocaleString('ru-RU')}
+                                                    {' '}({testResult.order.lastCall.duration}с)
+                                                </div>
+                                                <div className="bg-gray-50 p-3 rounded text-sm max-h-32 overflow-y-auto">
+                                                    {testResult.order.lastCall.transcript || 'Нет транскрипта'}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {testResult.order.comments !== 'Нет комментариев' && (
+                                            <div className="pt-2 border-t">
+                                                <h4 className="font-semibold text-sm mb-2">💬 Комментарии</h4>
+                                                <div className="bg-gray-50 p-3 rounded text-sm">
+                                                    {testResult.order.comments}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    ) : (
+                        <div className="bg-gray-50 text-gray-500 italic p-8 rounded-lg text-center h-[600px] flex items-center justify-center">
+                            Нажмите "Тестировать" чтобы увидеть как ИИ оценит заказ с вашим промтом
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Save Example Modal */}
+            {showSaveModal && testResult?.order && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-xl font-bold">Сохранить как пример обучения</h2>
+                            <button
+                                onClick={() => setShowSaveModal(false)}
+                                className="text-gray-500 hover:text-gray-700 text-2xl"
+                            >
+                                ×
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="bg-gray-50 p-3 rounded">
+                                <strong>Заказ:</strong> #{testResult.order.number}
+                            </div>
+
+                            {/* Color Selection */}
+                            <div>
+                                <label className="block font-medium mb-2">Оценка:</label>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setSaveColor('red')}
+                                        className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'red'
+                                                ? 'bg-red-100 border-red-500'
+                                                : 'bg-white border-gray-200'
+                                            }`}
+                                    >
+                                        🔴 Критичный
+                                    </button>
+                                    <button
+                                        onClick={() => setSaveColor('yellow')}
+                                        className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'yellow'
+                                                ? 'bg-yellow-100 border-yellow-500'
+                                                : 'bg-white border-gray-200'
+                                            }`}
+                                    >
+                                        🟡 Внимание
+                                    </button>
+                                    <button
+                                        onClick={() => setSaveColor('green')}
+                                        className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'green'
+                                                ? 'bg-green-100 border-green-500'
+                                                : 'bg-white border-gray-200'
+                                            }`}
+                                    >
+                                        🟢 Норма
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Reasoning */}
+                            <div>
+                                <label className="block font-medium mb-2">Обоснование:</label>
+                                <textarea
+                                    value={saveReasoning}
+                                    onChange={(e) => setSaveReasoning(e.target.value)}
+                                    className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                    rows={4}
+                                    placeholder="Почему эта оценка правильная?"
+                                />
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setShowSaveModal(false)}
+                                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                                >
+                                    Отмена
+                                </button>
+                                <button
+                                    onClick={handleSaveAsExample}
+                                    disabled={savingExample || !saveReasoning.trim()}
+                                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    {savingExample ? 'Сохранение...' : '💾 Сохранить'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

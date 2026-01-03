@@ -1,0 +1,568 @@
+[dotenv@17.2.3] injecting env (7) from .env.local -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+--- CUSTOM FIELDS ---
+[
+  {
+    "name": "Адрес сайта",
+    "code": "site",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "customer",
+    "ordering": 50,
+    "displayArea": "main_data",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "На основание чего имеет право подписи",
+    "code": "osnovanie_podpisi",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "dictionary",
+    "entity": "order",
+    "default": "5",
+    "ordering": 55,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable",
+    "dictionary": "osnovanie_dlya_podpisi",
+    "defaultTyped": "ustav"
+  },
+  {
+    "name": "Номер и дата доверенности",
+    "code": "data_nomer_doverenosti",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "text",
+    "entity": "order",
+    "ordering": 60,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Должность подписывающего договор в РОДИТЕЛЬНОМ ПАДЕЖЕ",
+    "code": "position",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "dictionary",
+    "entity": "order",
+    "ordering": 50,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable",
+    "dictionary": "dolgnost_litsa_podpisivayushchego_dogovor"
+  },
+  {
+    "name": "Приоритет",
+    "code": "prioriry_number",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "integer",
+    "entity": "order",
+    "default": "0",
+    "ordering": 60,
+    "displayArea": "customer",
+    "viewMode": "miss",
+    "viewModeMobile": "miss"
+  },
+  {
+    "name": "запуск рассылки по тригеры",
+    "code": "start_send",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "boolean",
+    "entity": "order",
+    "ordering": 50,
+    "displayArea": "payment",
+    "viewMode": "miss",
+    "viewModeMobile": "miss"
+  },
+  {
+    "name": "Комментарий логиста",
+    "code": "komment_diveleri",
+    "required": false,
+    "inFilter": false,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "text",
+    "entity": "order",
+    "ordering": 50,
+    "displayArea": "delivery",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Email Склада",
+    "code": "warehouse_email",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "order",
+    "ordering": 50,
+    "displayArea": "shipment",
+    "viewMode": "not_editable",
+    "viewModeMobile": "not_editable"
+  },
+  {
+    "name": "Примечание по отгрузке",
+    "code": "primecanie_po_otgruzke",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "order",
+    "ordering": 20,
+    "displayArea": "shipment",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Дата составления отгрузочных документов",
+    "code": "date_upd",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "date",
+    "entity": "order",
+    "ordering": 30,
+    "displayArea": "shipment",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Телефон Склада",
+    "code": "warehouse_phone",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "order",
+    "ordering": 40,
+    "displayArea": "shipment",
+    "viewMode": "not_editable",
+    "viewModeMobile": "not_editable"
+  },
+  {
+    "name": "Yandex Client ID",
+    "code": "ycid",
+    "required": false,
+    "inFilter": false,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "customer",
+    "ordering": 50,
+    "displayArea": "main_data",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Google Client ID",
+    "code": "gcid",
+    "required": false,
+    "inFilter": false,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "customer",
+    "ordering": 50,
+    "displayArea": "main_data",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Наименование грузополучателя",
+    "code": "consignee",
+    "required": false,
+    "inFilter": false,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "text",
+    "entity": "order",
+    "ordering": 1,
+    "displayArea": "delivery",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Должность подписывающего договор в ИМЕНИТЕЛЬНОМ ПАДЕЖЕ",
+    "code": "fio",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": true,
+    "type": "text",
+    "entity": "order",
+    "ordering": 50,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Пункты договора к бланку разногласий",
+    "code": "blank_raznoglasi",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "text",
+    "entity": "order",
+    "ordering": 54,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Пункты замечаний к бланку разногласий",
+    "code": "blank_raznoglasi_zamechania",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "text",
+    "entity": "order",
+    "ordering": 55,
+    "displayArea": "legal_details",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  },
+  {
+    "name": "Данные менеджера для тригера",
+    "code": "change_name_manager",
+    "required": false,
+    "inFilter": false,
+    "inList": false,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "order",
+    "ordering": 50,
+    "viewMode": "miss",
+    "viewModeMobile": "miss"
+  },
+  {
+    "name": "roistat",
+    "code": "roistat",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": false,
+    "type": "string",
+    "entity": "order",
+    "ordering": 50,
+    "viewMode": "not_editable",
+    "viewModeMobile": "not_editable"
+  },
+  {
+    "name": "Документооборот через ЭДО",
+    "code": "dokumentooborot_cherez_edo",
+    "required": false,
+    "inFilter": true,
+    "inList": true,
+    "inGroupActions": true,
+    "type": "boolean",
+    "entity": "order",
+    "default": "false",
+    "ordering": 72,
+    "displayArea": "customer",
+    "viewMode": "editable",
+    "viewModeMobile": "editable"
+  }
+]
+
+--- ORDER METHODS ---
+{
+  "success": true,
+  "orderMethods": {
+    "one-click": {
+      "name": "В один клик",
+      "code": "one-click",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "landing-page": {
+      "name": "Заявка с посадочной страницы",
+      "code": "landing-page",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "teplota-klienta-spravocnik": {
+      "name": "Теплота клиента",
+      "code": "teplota-klienta-spravocnik",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "price-decrease-request": {
+      "name": "Запрос каталога с сайта",
+      "code": "price-decrease-request",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "app": {
+      "name": "На электронную почту",
+      "code": "app",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "wantresult": {
+      "name": "Wantresult",
+      "code": "wantresult",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "instagram": {
+      "name": "Instagram",
+      "code": "instagram",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "reanimatsiia-vozvrat-bazy": {
+      "name": "Реанимация / возврат базы",
+      "code": "reanimatsiia-vozvrat-bazy",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "shopping-cart": {
+      "name": "Через корзину",
+      "code": "shopping-cart",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": true
+    },
+    "postojany": {
+      "name": "постоянный клиент",
+      "code": "postojany",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "baza": {
+      "name": "Наша база",
+      "code": "baza",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "obzvon": {
+      "name": "Холод обзвон",
+      "code": "obzvon",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "offline": {
+      "name": "Пришел в офис",
+      "code": "offline",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "live-chat": {
+      "name": "Онлайн-консультант на сайте EnvyBox",
+      "code": "live-chat",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "vkontakte": {
+      "name": "ВКонтакте",
+      "code": "vkontakte",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "odnoklassniki": {
+      "name": "Одноклассники",
+      "code": "odnoklassniki",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "messenger": {
+      "name": "Мессенджеры",
+      "code": "messenger",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "carrotquest": {
+      "name": "CarrotQuest",
+      "code": "carrotquest",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "phone": {
+      "name": "По телефону НОВЫЙ",
+      "code": "phone",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "na-elektronnuyu-pochtu-teplozavod24": {
+      "name": "На электронную почту Теплозавод24",
+      "code": "na-elektronnuyu-pochtu-teplozavod24",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "missed-call": {
+      "name": "Заказ обратного звонка с сайта",
+      "code": "missed-call",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "marquiz": {
+      "name": "MarQuiz",
+      "code": "marquiz",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "avito": {
+      "name": "Авито",
+      "code": "avito",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "pulstsen": {
+      "name": "ПульсЦен",
+      "code": "pulstsen",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "call-center": {
+      "name": "Колл центр",
+      "code": "call-center",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "baza-call-tsentra": {
+      "name": "База Call-центра",
+      "code": "baza-call-tsentra",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "baza-pobeditelej-tenderov": {
+      "name": "База победителей тендеров",
+      "code": "baza-pobeditelej-tenderov",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "diler": {
+      "name": "Дилер",
+      "code": "diler",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "pobediteli-tenderov": {
+      "name": "Победители тендеров",
+      "code": "pobediteli-tenderov",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "avtoobzvon": {
+      "name": "Автообзвон",
+      "code": "avtoobzvon",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "facebook-novamarket": {
+      "name": "Facebook Nova Market",
+      "code": "facebook-novamarket",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "facebook-emtarget": {
+      "name": "Facebook Emtarget",
+      "code": "facebook-emtarget",
+      "active": false,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "facebook-kz": {
+      "name": "Facebook KZ",
+      "code": "facebook-kz",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "sposob-oformleniia-kh-z": {
+      "name": "Способ оформления Х З",
+      "code": "sposob-oformleniia-kh-z",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "telefoniia-mangoofis": {
+      "name": "Телефония МангоОфис",
+      "code": "telefoniia-mangoofis",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "iz-email-rassylki-iz-sendpulse-cherez-zapier": {
+      "name": "Из email-рассылки из SendPulse через Zapier",
+      "code": "iz-email-rassylki-iz-sendpulse-cherez-zapier",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "gtsk": {
+      "name": "ГЦК",
+      "code": "gtsk",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "cross-sell": {
+      "name": "CROSS-SELL",
+      "code": "cross-sell",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    },
+    "doski-i-marketpleisy": {
+      "name": "Доски и маркетплейсы",
+      "code": "doski-i-marketpleisy",
+      "active": true,
+      "defaultForCrm": false,
+      "defaultForApi": false
+    }
+  }
+}

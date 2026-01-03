@@ -1,0 +1,272 @@
+[dotenv@17.2.3] injecting env (7) from .env.local -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+{
+  "success": true,
+  "pagination": {
+    "limit": 20,
+    "totalCount": 1,
+    "currentPage": 1,
+    "totalPageCount": 1
+  },
+  "orders": [
+    {
+      "slug": 46831,
+      "bonusesCreditTotal": 0,
+      "bonusesChargeTotal": 0,
+      "id": 46831,
+      "number": "46831",
+      "orderType": "eshop-legal",
+      "orderMethod": "postojany",
+      "privilegeType": "none",
+      "countryIso": "RU",
+      "createdAt": "2025-05-23 16:09:54",
+      "statusUpdatedAt": "2026-01-03 02:16:11",
+      "summ": 971100,
+      "totalSumm": 971100,
+      "prepaySum": 0,
+      "purchaseSumm": 442017,
+      "markDatetime": "2025-05-23 16:09:54",
+      "lastName": "Стешин",
+      "firstName": "Николай",
+      "phone": "+79296355198",
+      "email": "steshin@proftexcorp.ru",
+      "call": false,
+      "expired": false,
+      "customerComment": "заявка ООО ППК\r\nДобрый день.\r\n Прошу сообщить возможность поставки и дать ценовое предложение на следующие шкафы\r\n     Шкаф сушильный RANGER 9.1 ЗМК Комфорт\r\n \t  \t  RANGER 9.1 ЗМК Комфорт\r\n \t  4кВт 220В 1900х620х1900мм, поставляется в разобранном виде, номинальная мощность нагревательного элемента отделения для одежды 2кВт, номинальная мощность нагревательного элемента отделения для обуви 2кВт, режим сушки 40-60С, с проветриванием, классзащиты II,цвет RAL7035, одна полка, на 9 комплектов одежды и 9 пар обуви, защита от перегрева \r\n \t  ПОБТ, РОССИЯ, г.Тольятти\r\n \t  ШТ\r\n \t  9\r\n\r\n С уважением,\r\n ООО «ППК»\r\n Стешин Николай\r\n +79296355198",
+      "managerComment": "23.05\r\nдубль Заказ 46465, Норильск (46539,  46465)- \r\nКсения-привет, Женя! Насчет 4 кВт можно сделать, но шкаф нужно будет подключать напрямую в автомат, то есть будет поставляться без вилки.\r\nRAL 7035 должен быть обязательно МУАР  -  это комм для инженера!!!!\r\nпо цене нужно прибавить 1540 руб к сбс одного шкафа (прибавила)\r\n\r\nнбт, голосовое. Дозвонилась. отправила КП, паспорт, тр габ. Получил, отправляет на согласование. Закупка осенью примерно\r\n12.08. взял заказ 46539, уже вышел из производства. Отмена",
+      "managerId": 98,
+      "customer": {
+        "type": "customer_corporate",
+        "id": 66355,
+        "createdAt": "2025-05-23 16:21:37",
+        "managerId": 98,
+        "vip": false,
+        "bad": false,
+        "site": "zmktlt-ru",
+        "tags": [],
+        "customFields": {
+          "kategoria_klienta_po_vidu": "yang_scool"
+        },
+        "personalDiscount": 0,
+        "marginSumm": 0,
+        "totalSumm": 0,
+        "averageSumm": 0,
+        "ordersCount": 0,
+        "costSumm": 0,
+        "mainCustomerContact": {
+          "id": 30646,
+          "customer": {
+            "id": 66353
+          },
+          "companies": []
+        },
+        "nickName": "ООО «ППК»"
+      },
+      "contact": {
+        "type": "customer",
+        "id": 66353,
+        "isContact": false,
+        "createdAt": "2025-05-23 16:08:14",
+        "managerId": 287,
+        "vip": false,
+        "bad": false,
+        "contragent": {
+          "contragentType": "individual"
+        },
+        "tags": [],
+        "customFields": {
+          "kategoria_klienta_po_vidu": "yang_scool"
+        },
+        "personalDiscount": 0,
+        "marginSumm": 0,
+        "totalSumm": 0,
+        "averageSumm": 0,
+        "ordersCount": 0,
+        "costSumm": 0,
+        "segments": [
+          {
+            "id": 85,
+            "code": "aktivnie",
+            "name": "Активные",
+            "createdAt": "2023-12-26 10:33:00",
+            "isDynamic": true,
+            "customersCount": 33126,
+            "active": true
+          },
+          {
+            "id": 86,
+            "code": "bolshe-1-pisma",
+            "name": "Больше 1 письма",
+            "createdAt": "2023-12-26 17:03:52",
+            "isDynamic": true,
+            "customersCount": 28151,
+            "active": true
+          }
+        ],
+        "firstName": "Николай",
+        "lastName": "Стешин",
+        "presumableSex": "male",
+        "email": "steshin@proftexcorp.ru",
+        "customerSubscriptions": [
+          {
+            "subscription": {
+              "id": 2,
+              "channel": "email",
+              "name": "Без тематики",
+              "code": "default_marketing",
+              "active": true,
+              "autoSubscribe": true,
+              "ordering": 1
+            },
+            "subscribed": true
+          },
+          {
+            "subscription": {
+              "id": 3,
+              "channel": "sms",
+              "name": "Без тематики",
+              "code": "default_marketing",
+              "active": true,
+              "autoSubscribe": true,
+              "ordering": 1
+            },
+            "subscribed": true
+          },
+          {
+            "subscription": {
+              "id": 4,
+              "channel": "waba",
+              "name": "Без тематики",
+              "code": "default_marketing",
+              "active": true,
+              "autoSubscribe": true,
+              "ordering": 1
+            },
+            "subscribed": true
+          }
+        ],
+        "phones": [
+          {
+            "number": "+79296355198"
+          }
+        ],
+        "mgCustomers": []
+      },
+      "contragent": {
+        "contragentType": "legal-entity"
+      },
+      "delivery": {
+        "code": "self-delivery",
+        "cost": 0,
+        "netCost": 0,
+        "address": {
+          "index": "445043",
+          "countryIso": "RU",
+          "region": "Самарская область",
+          "regionId": 32,
+          "city": "Тольятти",
+          "cityId": 4338,
+          "cityType": "г.",
+          "street": "Коммунальная",
+          "streetId": 1621191,
+          "streetType": "ул.",
+          "building": "16",
+          "housing": "Б",
+          "notes": "(шкафы разобранные, без разгрузки).Транспортные габариты на 1 шкаф:\r\n1) 0,45*0,70,35=60 кг                                                                              2) 1,35*0,7*0,35=60 кг                                                                                 3) 0,6*0,45*1,75=60 кг",
+          "text": "ул. Коммунальная, д. 16, корп. Б, (шкафы разобранные, без разгрузки).Транспортные габариты на 1 шкаф:\r\n1) 0,45*0,70,35=60 кг                                                                              2) 1,35*0,7*0,35=60 кг                                                                                 3) 0,6*0,45*1,75=60 кг"
+        },
+        "vatRate": "5.00"
+      },
+      "site": "zmktlt-ru",
+      "status": "tender-s-dubliruyuschimi-zayavkami",
+      "statusComment": "",
+      "items": [
+        {
+          "bonusesChargeTotal": 0,
+          "bonusesCreditTotal": 0,
+          "id": 95461,
+          "priceType": {
+            "code": "base"
+          },
+          "initialPrice": 118958,
+          "discounts": [
+            {
+              "type": "manual_product",
+              "amount": 99522
+            }
+          ],
+          "discountTotal": 11058,
+          "prices": [
+            {
+              "price": 107900,
+              "quantity": 9
+            }
+          ],
+          "vatRate": "0.00",
+          "createdAt": "2025-05-23 16:21:37",
+          "quantity": 9,
+          "status": "new",
+          "offer": {
+            "displayName": "Шкаф сушильный Guard 9.1 ЗМК Комфорт  (Шкаф сушильный Guard 9.1 (1900x1900x620 мм) разобранный (комплект) )",
+            "id": 32241,
+            "externalId": "34789",
+            "xmlId": "825babe5-69e7-4782-ac25-4f18ebb493e1",
+            "name": "Шкаф сушильный Guard 9.1 ЗМК Комфорт",
+            "article": "СШR.9.1.1900.1900.620",
+            "vatRate": "0.00",
+            "properties": {
+              "width": "620 мм",
+              "height": "1900 мм",
+              "length": "1900 мм"
+            },
+            "unit": {
+              "code": "pc",
+              "name": "Штука",
+              "sym": "шт."
+            }
+          },
+          "properties": [],
+          "purchasePrice": 49113,
+          "ordering": 0
+        }
+      ],
+      "payments": {
+        "45788": {
+          "id": 45788,
+          "type": "invoicejur",
+          "amount": 971100
+        }
+      },
+      "fromApi": true,
+      "weight": 1620000,
+      "length": 0,
+      "width": 0,
+      "height": 0,
+      "shipped": false,
+      "customFields": {
+        "control": false,
+        "roistat": "1236109",
+        "dolzhnost": "менеджер",
+        "adres_fakt": "117449, г.Москва,ВН.ТЕР.Г. МУНИЦИПАЛЬНЫЙ\r\nОКРУГ АКАДЕМИЧЕСКИЙ, УЛ КАРЬЕР Д.2А, СТР.1 ОФ.136, КОМ 5",
+        "srok_izgot": 30,
+        "typ_castomer": "sush_ranger",
+        "data_kontakta": "2030-08-01",
+        "sebestoimost2": 54445,
+        "chasovoi_poias": "zero_0",
+        "prioriry_number": 0,
+        "osnovanie_podpisi": "ustav",
+        "platnoe_khranenie": false,
+        "data_otmeny_zakaza": "2025-08-12",
+        "sfera_deiatelnosti": "prdazha-promyshlennogo-oborudovaniia",
+        "change_name_manager": "Андрей Теренков",
+        "typ_customer_margin": "dlya-zakazchika-rasschityvaem-tender",
+        "dokumentooborot_cherez_edo": false,
+        "gorod_dostavki_menedzheram_op": "Норильск, Норникель",
+        "schiot_deistvitelen_v_techenie_dnei": "5",
+        "vy_dlya_sebya_ili_dlya_zakazchika_priobretaete": "заказчик Норникель Норильск",
+        "kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo": "25 год, пока расценка",
+        "kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoialo_pole_dlia_daty": "2026-01-03"
+      },
+      "currency": "RUB"
+    }
+  ]
+}

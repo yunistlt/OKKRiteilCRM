@@ -1,24 +1,35 @@
 #!/bin/bash
 
-# Base URL for local Next.js server
-BASE_URL="http://localhost:3000"
+# Configuration
+API_URL="http://localhost:3000/api/sync"
 
-# Current Timestamp for logging
-NOW=$(date +"%Y-%m-%d %H:%M:%S")
+echo "[$(date)] Starting Sync Cron Job..."
 
-echo "[$NOW] Starting Sync..."
+# 1. Sync Statuses (Foundation)
+echo "Syncing Statuses..."
+curl -s "$API_URL/statuses" > /dev/null
 
-# 1. Sync RetailCRM (Incremental/Partial)
-# No 'force' param ensures it continues from where it left off (pagination)
-echo "Syncing RetailCRM..."
-curl -s "$BASE_URL/api/sync/retailcrm" > /dev/null
+# 2. Sync Managers (Dependencies)
+echo "Syncing Managers..."
+curl -s "$API_URL/managers" > /dev/null
 
-# 2. Sync Telphin
-echo "Syncing Telphin..."
-curl -s "$BASE_URL/api/sync/telphin" > /dev/null
+# 3. Sync Full History (The Heavy Lifting)
+echo "Syncing Order History..."
+curl -s "$API_URL/history" > /dev/null
 
-# 3. Runs Matcher
-echo "Running Matcher..."
-curl -s "$BASE_URL/api/match" > /dev/null
+# 4. Apply RetailCRM Orders Backfill (Batched)
+echo "Syncing RetailCRM Orders (Backfill)..."
+curl -s "$API_URL/retailcrm" > /dev/null
 
-echo "[$NOW] Sync Cycle Complete."
+# 5. Telphin Calls (Communication)
+echo "Syncing Calls..."
+curl -s "http://localhost:3000/api/sync/telphin" > /dev/null
+
+# 6. Matching & AI Audit (The Intelligence)
+echo "Matching Calls to Orders & Triggering AI..."
+curl -s "http://localhost:3000/api/match" > /dev/null
+
+echo "Processing AMD Stragglers..."
+curl -s "http://localhost:3000/api/analysis/amd/process?limit=10" > /dev/null
+
+echo "[$(date)] Sync Completed."

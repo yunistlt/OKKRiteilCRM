@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-
-// Environment variables
-const TELPHIN_KEY = process.env.TELPHIN_APP_KEY;
-const TELPHIN_SECRET = process.env.TELPHIN_APP_SECRET;
+import { getTelphinToken } from '@/lib/telphin';
 
 // Hardcoded extensions list from user snippet (proven to work)
 const EXTENSIONS = [
@@ -38,33 +35,10 @@ function normalizePhone(val: any) {
     return String(val).replace(/[^\d+]/g, '');
 }
 
-async function getTelphinToken() {
-    console.log(`Debug Auth: Key=${TELPHIN_KEY?.substring(0, 5)}... Secret=${TELPHIN_SECRET?.substring(0, 5)}...`);
-
-    const params = new URLSearchParams();
-    params.append('grant_type', 'client_credentials');
-    params.append('client_id', TELPHIN_KEY!);
-    params.append('client_secret', TELPHIN_SECRET!);
-    params.append('scope', 'all'); // Added scope as per user snippet
-
-    const res = await fetch('https://apiproxy.telphin.ru/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
-    });
-
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Telphin Auth Failed: ${res.status} ${text}`);
-    }
-
-    const data = await res.json();
-    return data.access_token;
-}
-
 const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
 const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
+export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function GET(request: Request) {
@@ -114,8 +88,6 @@ export async function GET(request: Request) {
                 order: 'asc',
             });
 
-            // Note: User snippet uses /extension/{id}/record/ instead of call_history
-            // This is a DIFFERENT endpoint causing the difference!
             const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
             if (!debugLastUrl) debugLastUrl = url;
 
@@ -170,13 +142,18 @@ export async function GET(request: Request) {
                 duration: r.duration || 0,
                 status: r.result || r.call_status || r.hangup_cause || 'unknown',
                 manager_id: String(r.extension_id || 'unknown'),
-                timestamp: callDate.toISOString()
+                timestamp: callDate.toISOString(),
+                record_url: r.record_url || r.storage_url || r.url || null,
+                raw_data: r
             };
         });
 
         if (mappedCalls.length > 0) {
             const { error } = await supabase.from('calls').upsert(mappedCalls);
-            if (error) console.error('Supabase Upsert Error:', error);
+            if (error) {
+                console.error('Supabase Upsert Error:', error);
+                throw error;
+            }
         }
 
         // Save Cursor (Current 'NOW' becomes next start time)

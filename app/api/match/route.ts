@@ -1,107 +1,119 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { getTelphinToken } from '@/lib/telphin';
+import { processCallTranscription } from '@/lib/transcription';
+
+export const maxDuration = 300;
 
 // Helper to normalize phone numbers just in case
-const cleanPhone = (p: string) => p.replace(/[^\d]/g, '');
+const normalizePhone = (p: string | null | undefined): string | null => {
+    // ... (rest of normalizePhone stays the same)
+    if (!p) return null;
+    const clean = p.replace(/[^\d]/g, '');
+    if (clean.length === 0) return null;
+    if (clean.length === 11 && (clean.startsWith('7') || clean.startsWith('8'))) {
+        return clean.slice(1);
+    }
+    return clean;
+};
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
-    const force = searchParams.get('force') === 'true'; // Re-check all if true
+    const limit = parseInt(searchParams.get('limit') || '20'); // Reduced default for safety
+    const offset = parseInt(searchParams.get('offset') || '0');
 
     try {
-        // 1. Fetch Orders that need matching (or all if force)
-        // We look for orders created recently or unlinked
-        const orderQuery = supabase
-            .from('orders')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(100); // Process in batches
+        // 0. Fetch Working Statuses
+        const { data: workingSettings } = await supabase.from('status_settings').select('code').eq('is_working', true);
+        const workingCodes = new Set((workingSettings || []).map(s => s.code));
 
-        if (!force) {
-            // Optimization: only look at orders without call_id
-            // Note: If you want to match OLD orders, remove this filter or use force
-            // orderQuery.is('call_id', null); 
+        // 1. Get IDs of already matched calls to exclude them
+        const { data: matchedRows } = await supabase.from('matches').select('call_id');
+        const matchedCallIds = new Set((matchedRows || []).map(m => m.call_id));
+
+        // 2. Fetch Sync of Calls
+        const { data: calls, error: cError } = await supabase
+            .from('calls')
+            .select('*')
+            .order('timestamp', { ascending: false })
+            .range(offset, offset + (limit * 4));
+
+        if (cError) throw cError;
+        if (!calls || calls.length === 0) return NextResponse.json({ message: 'No calls found' });
+
+        const callsToProcess = calls.filter(c => !matchedCallIds.has(c.id)).slice(0, limit);
+        if (callsToProcess.length === 0) {
+            return NextResponse.json({ message: 'No unmatched calls', processed: 0 });
         }
 
-        const { data: orders, error: oError } = await orderQuery;
-
-        if (oError) throw oError;
-        if (!orders || orders.length === 0) return NextResponse.json({ message: 'No orders to match' });
-
+        const telphinToken = await getTelphinToken();
         let matchCount = 0;
-        const matches = [];
+        const results = [];
 
-        // 2. Iterate orders and find calls
-        for (const order of orders) {
-            if (!order.customer_phones || order.customer_phones.length === 0) continue;
+        // 3. Process each call
+        for (const call of callsToProcess) {
+            // ... (Potential numbers extraction remains the same)
+            const potentialNumbers = new Set<string>();
+            if (call.client_number) { const n = normalizePhone(call.client_number); if (n) potentialNumbers.add(n); }
+            if (call.driver_number) { const n = normalizePhone(call.driver_number); if (n) potentialNumbers.add(n); }
+            if (call.raw_data) {
+                try {
+                    const raw = typeof call.raw_data === 'string' ? JSON.parse(call.raw_data) : call.raw_data;
+                    ['from_username', 'to_username', 'ani_number', 'dest_number'].forEach(f => {
+                        const n = normalizePhone(raw[f]); if (n) potentialNumbers.add(n);
+                    });
+                } catch (e) { }
+            }
+            if (potentialNumbers.size === 0) continue;
 
-            // Search for calls that match ANY of the customer's phones
-            // Logic: call.client_number IN order.customer_phones OR call.driver_number IN order.customer_phones
-            // And time window: let's say +/- 24 hours around order creation
+            const expandedPhones = Array.from(potentialNumbers).flatMap(p => [p, `7${p}`, `8${p}`]);
 
-            const orderDate = new Date(order.created_at);
-            const timeWindow = 24 * 60 * 60 * 1000; // 24 hours
-            const minDate = new Date(orderDate.getTime() - timeWindow).toISOString();
-            const maxDate = new Date(orderDate.getTime() + timeWindow).toISOString();
+            // 4. Find Order
+            const { data: foundOrders } = await supabase
+                .from('orders')
+                .select('order_id, number, created_at, customer_phones, status')
+                .overlaps('customer_phones', expandedPhones)
+                .order('created_at', { ascending: false })
+                .limit(1);
 
-            // Postgres query for overlap is tricky with arrays on both sides.
-            // Simpler approach: Fetch calls in time window, then filter in JS or use 'in' filter
+            if (foundOrders && foundOrders.length > 0) {
+                const bestOrder = foundOrders[0];
 
-            const { data: candidateCalls } = await supabase
-                .from('calls')
-                .select('*')
-                .gte('timestamp', minDate)
-                .lte('timestamp', maxDate);
+                // 5. Create Match
+                const { error: insertError } = await supabase.from('matches').insert({
+                    order_id: bestOrder.order_id,
+                    call_id: call.id,
+                    score: 1.0
+                });
 
-            if (!candidateCalls) continue;
+                if (!insertError) {
+                    matchCount++;
+                    let amdResult = null;
 
-            // Find best match with fuzzy logic for RU numbers (7 vs 8)
-            const normalizeForMatch = (p: string) => {
-                if (!p) return '';
-                let clean = p.replace(/[^\d]/g, '');
-                // If 11 digits and starts with 7 or 8, remove it to compare last 10
-                if (clean.length === 11 && (clean.startsWith('7') || clean.startsWith('8'))) {
-                    return clean.slice(1);
+                    // 6. AUTO-TRANSCRIPTION: If status is working, process AMD
+                    if (workingCodes.has(bestOrder.status)) {
+                        console.log(`[AutoAMD] Triggering for call ${call.id} (Order ${bestOrder.number})`);
+                        if (call.record_url) {
+                            amdResult = await processCallTranscription(call.id, call.record_url, telphinToken);
+                        }
+                    }
+
+                    results.push({
+                        call_id: call.id,
+                        order_number: bestOrder.number,
+                        status: bestOrder.status,
+                        transcribed: !!amdResult?.success,
+                        is_answering_machine: amdResult?.isAnsweringMachine
+                    });
                 }
-                return clean;
-            };
-
-            const matchedCall = candidateCalls.find(call => {
-                if (!call.client_number) return false;
-
-                const callNum = normalizeForMatch(call.client_number);
-
-                // Check against all customer phones
-                return order.customer_phones.some((orderPhone: string) => {
-                    return normalizeForMatch(orderPhone) === callNum;
-                });
-            });
-
-            if (matchedCall) {
-                // INSERT MATCH
-                // We link the Call to the Order (conceptually), not just one event.
-                // But we use the order_id from the current event.
-
-                await supabase.from('matches').insert({
-                    order_id: order.order_id, // The CRM ID (e.g. 12345)
-                    call_id: matchedCall.id,  // The Call UUID
-                    score: 1.0                // High confidence (exact/fuzzy match)
-                });
-
-                matches.push({
-                    order_number: order.number,
-                    order_id: order.order_id,
-                    call: matchedCall.id,
-                    phone: matchedCall.client_number
-                });
-                matchCount++;
             }
         }
 
         return NextResponse.json({
             success: true,
+            processed_calls: callsToProcess.length,
             matches_found: matchCount,
-            details: matches
+            details: results
         });
 
     } catch (error: any) {

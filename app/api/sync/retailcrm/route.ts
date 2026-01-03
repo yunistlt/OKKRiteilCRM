@@ -4,6 +4,8 @@ import { supabase } from '@/utils/supabase';
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 
+export const dynamic = 'force-dynamic';
+
 export const maxDuration = 300;
 
 // Helper to normalize phone numbers
@@ -21,6 +23,9 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
         const storageKey = 'retailcrm_last_sync_page';
+        const startTime = Date.now();
+        const maxTimeMs = 20000; // 20 seconds limit per request
+        const maxPagesPerRun = 5; // Fetch up to 500 orders per request
 
         // 1. Determine "Page" to fetch (Pagination Cursor)
         let page = 1;
@@ -39,105 +44,122 @@ export async function GET(request: Request) {
             console.log('Force resync requested: Starting from Page 1');
         }
 
-        // 2. Build URL for "Orders List" (Reverse Sync)
-        const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
-        const limit = 100;
-        const filterDateFrom = '2023-01-01 00:00:00';
+        let pagesProcessed = 0;
+        let totalOrdersFetched = 0;
+        let hasMore = true;
+        let finalPagination = null;
 
-        const params = new URLSearchParams();
-        params.append('apiKey', RETAILCRM_API_KEY);
-        params.append('limit', String(limit));
-        params.append('page', String(page));
-        params.append('filter[createdAtFrom]', filterDateFrom);
-        params.append('paginator', 'page');
+        while (hasMore && pagesProcessed < maxPagesPerRun && (Date.now() - startTime) < maxTimeMs) {
 
-        const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
-        console.log(`Fetching RetailCRM Page ${page}:`, url);
+            // 2. Build URL for "Orders List" (Reverse Sync)
+            const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
+            const limit = 100;
+            const filterDateFrom = '2023-01-01 00:00:00';
 
-        // 3. Fetch Data
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
+            const params = new URLSearchParams();
+            params.append('apiKey', RETAILCRM_API_KEY);
+            params.append('limit', String(limit));
+            params.append('page', String(page));
+            params.append('filter[createdAtFrom]', filterDateFrom);
+            params.append('paginator', 'page');
 
-        const data = await res.json();
-        if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
+            const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
+            console.log(`Fetching RetailCRM Page ${page}:`, url);
 
-        const orders = data.orders || [];
-        const pagination = data.pagination;
+            // 3. Fetch Data
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
 
-        const eventsToUpsert: any[] = [];
+            const data = await res.json();
+            if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
 
-        // 4. Transform to Database Format
-        for (const order of orders) {
-            // Extract phones
-            const phones = new Set<string>();
+            const orders = data.orders || [];
+            finalPagination = data.pagination;
 
-            const p1 = cleanPhone(order.phone);
-            if (p1) phones.add(p1);
+            if (orders.length === 0) {
+                hasMore = false;
+                break;
+            }
 
-            const p2 = cleanPhone(order.additionalPhone);
-            if (p2) phones.add(p2);
+            const eventsToUpsert: any[] = [];
 
-            if (order.customer && order.customer.phones) {
-                order.customer.phones.forEach((p: any) => {
-                    const cp = cleanPhone(p.number);
-                    if (cp) phones.add(cp);
+            // 4. Transform to Database Format
+            for (const order of orders) {
+                // Extract phones
+                const phones = new Set<string>();
+
+                const p1 = cleanPhone(order.phone);
+                if (p1) phones.add(p1);
+
+                const p2 = cleanPhone(order.additionalPhone);
+                if (p2) phones.add(p2);
+
+                if (order.customer && order.customer.phones) {
+                    order.customer.phones.forEach((p: any) => {
+                        const cp = cleanPhone(p.number);
+                        if (cp) phones.add(cp);
+                    });
+                }
+                if (order.contact && order.contact.phones) {
+                    order.contact.phones.forEach((p: any) => {
+                        const cp = cleanPhone(p.number);
+                        if (cp) phones.add(cp);
+                    });
+                }
+
+                // Create "Event" (Snapshot of current order state)
+                eventsToUpsert.push({
+                    id: order.id,
+                    order_id: order.id,
+                    created_at: order.createdAt,
+                    updated_at: new Date().toISOString(),
+                    number: order.number || String(order.id),
+                    status: order.status,
+                    event_type: 'snapshot',
+                    manager_id: order.managerId ? String(order.managerId) : null,
+                    phone: cleanPhone(order.phone) || null,
+                    customer_phones: Array.from(phones),
+                    totalsumm: order.totalSumm || 0,
+                    raw_payload: order
                 });
             }
-            if (order.contact && order.contact.phones) {
-                order.contact.phones.forEach((p: any) => {
-                    const cp = cleanPhone(p.number);
-                    if (cp) phones.add(cp);
+
+            // 5. Upsert via RPC (Bypass Schema Cache Issues)
+            if (eventsToUpsert.length > 0) {
+                const { error } = await supabase.rpc('upsert_orders_v2', {
+                    orders_data: eventsToUpsert
                 });
+
+                if (error) {
+                    console.error('RPC Upsert Error:', error);
+                    throw error;
+                }
             }
 
-            // Create "Event" (Snapshot of current order state)
-            eventsToUpsert.push({
-                id: order.id,
-                order_id: order.id,
-                created_at: order.createdAt,
-                updated_at: new Date().toISOString(),
-                number: order.number || String(order.id),
-                status: order.status,
-                event_type: 'snapshot',
-                manager_id: order.managerId ? String(order.managerId) : null,
-                phone: cleanPhone(order.phone) || null,
-                customer_phones: Array.from(phones),
-                totalsumm: order.totalSumm || 0,
-                raw_payload: order
-            });
-        }
+            totalOrdersFetched += orders.length;
+            pagesProcessed++;
 
-        // 5. Upsert via RPC (Bypass Schema Cache Issues)
-        if (eventsToUpsert.length > 0) {
-            const { error } = await supabase.rpc('upsert_orders_v2', {
-                orders_data: eventsToUpsert
-            });
-
-            if (error) {
-                console.error('RPC Upsert Error:', error);
-                throw error;
+            // 6. Advance Cursor
+            if (finalPagination && finalPagination.currentPage < finalPagination.totalPageCount) {
+                page++;
+                // Save progress
+                await supabase.from('sync_state').upsert({
+                    key: storageKey,
+                    value: String(page),
+                    updated_at: new Date().toISOString()
+                });
+            } else {
+                hasMore = false;
             }
-        }
-
-        // 6. Advance Cursor
-        let hasMore = false;
-        if (pagination && pagination.currentPage < pagination.totalPageCount) {
-            hasMore = true;
-            const nextPage = page + 1;
-
-            await supabase.from('sync_state').upsert({
-                key: storageKey,
-                value: String(nextPage),
-                updated_at: new Date().toISOString()
-            });
         }
 
         return NextResponse.json({
             success: true,
             method: 'orders_list_filtered_2023',
-            page: page,
-            total_pages: pagination ? pagination.totalPageCount : '?',
-            orders_fetched: orders.length,
+            last_page_processed: page - 1,
+            pages_processed: pagesProcessed,
+            total_orders_fetched: totalOrdersFetched,
+            total_pages_in_crm: finalPagination ? finalPagination.totalPageCount : '?',
             has_more: hasMore
         });
 

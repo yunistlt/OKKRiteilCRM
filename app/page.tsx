@@ -1,101 +1,265 @@
-"use client";
-import React, { useEffect, useState } from 'react';
+'use client';
 
-interface Violation {
-    managerId: string;
-    type: string;
-    details: string;
-    timestamp: string;
-}
+import { Suspense, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
-export default function Dashboard() {
-    const [violations, setViolations] = useState<Violation[]>([]);
+function PriorityWidget() {
+    const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<'red' | 'yellow' | 'green' | 'black'>('red');
 
     useEffect(() => {
-        // In a real app, you'd fetch this from an API route that uses lib/analysis.ts
-        // For now we simulate or assume client-side logic possible if RLS allows, 
-        // but better to fetch from /api/analysis
-
-        async function loadData() {
-            try {
-                const res = await fetch('/api/analysis');
-                if (!res.ok) throw new Error('Failed to fetch analysis');
-                const data = await res.json();
-                setViolations(data.violations || []);
-            } catch (e) {
-                console.error(e);
-            } finally {
+        fetch('/api/analysis/priorities')
+            .then(res => res.json())
+            .then(data => {
+                if (data.ok) {
+                    setOrders(data.priorities);
+                }
                 setLoading(false);
-            }
-        }
-
-        loadData();
+            })
+            .catch(e => setLoading(false));
     }, []);
 
+    const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
+
+    if (loading) return (
+        <div className="w-full max-w-5xl mb-12 bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
+            <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>
+            <div className="flex gap-4 mb-6">
+                <div className="h-20 bg-gray-50 flex-1 rounded-2xl"></div>
+                <div className="h-20 bg-gray-50 flex-1 rounded-2xl"></div>
+                <div className="h-20 bg-gray-50 flex-1 rounded-2xl"></div>
+                <div className="h-20 bg-gray-50 flex-1 rounded-2xl"></div>
+            </div>
+        </div>
+    );
+
+    if (orders.length === 0) return null;
+
+    const stats = {
+        red: {
+            count: orders.filter(o => o.level === 'red').length,
+            sum: orders.filter(o => o.level === 'red').reduce((a, b) => a + b.totalSum, 0)
+        },
+        yellow: {
+            count: orders.filter(o => o.level === 'yellow').length,
+            sum: orders.filter(o => o.level === 'yellow').reduce((a, b) => a + b.totalSum, 0)
+        },
+        green: {
+            count: orders.filter(o => o.level === 'green').length,
+            sum: orders.filter(o => o.level === 'green').reduce((a, b) => a + b.totalSum, 0)
+        },
+        black: {
+            count: orders.filter(o => o.level === 'black').length,
+            sum: orders.filter(o => o.level === 'black').reduce((a, b) => a + b.totalSum, 0)
+        }
+    };
+
+    const filteredOrders = orders.filter(o => o.level === activeTab);
+
     return (
-        <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-            <header style={{ marginBottom: '2rem', borderBottom: '1px solid #eee', paddingBottom: '1rem' }}>
-                <h1 style={{ fontSize: '2rem', margin: 0 }}>OKK Dashboard</h1>
-                <p style={{ color: '#666' }}>Quality Control & Monitoring</p>
-            </header>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
-
-                {/* Stats Card */}
-                <div style={{ padding: '1.5rem', borderRadius: '12px', background: '#f8f9fa', border: '1px solid #e9ecef' }}>
-                    <h3>Total Violations (24h)</h3>
-                    <p style={{ fontSize: '3rem', fontWeight: 'bold', color: '#dc3545', margin: '0' }}>{violations.length}</p>
-                </div>
-
-                {/* Sync Status Card */}
-                <div style={{ padding: '1.5rem', borderRadius: '12px', background: '#f8f9fa', border: '1px solid #e9ecef' }}>
-                    <h3>System Status</h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#28a745' }}></span>
-                        <span>RetailCRM Connected</span>
+        <div className="w-full max-w-5xl mb-12 bg-white rounded-[40px] p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
+            <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gray-900 text-white rounded-2xl flex items-center justify-center text-2xl shadow-lg">
+                        🚦
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#28a745' }}></span>
-                        <span>Telphin Connected</span>
+                    <div>
+                        <h2 className="text-2xl font-black text-gray-900 tracking-tight">Приоритеты</h2>
+                        <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">
+                            AI-анализ состояния сделок ({orders.length} всего)
+                        </p>
                     </div>
                 </div>
-
             </div>
 
-            <h2 style={{ marginTop: '3rem' }}>Violation Feed</h2>
-            {loading ? (
-                <p>Loading analysis...</p>
-            ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
-                    <thead>
-                        <tr style={{ textAlign: 'left', borderBottom: '2px solid #eee' }}>
-                            <th style={{ padding: '1rem' }}>Type</th>
-                            <th style={{ padding: '1rem' }}>Manager</th>
-                            <th style={{ padding: '1rem' }}>Details</th>
-                            <th style={{ padding: '1rem' }}>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {violations.map((v, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                                <td style={{ padding: '1rem' }}>
-                                    <span style={{
-                                        background: v.type === 'MISSED_CALL' ? '#ffebe9' : '#fff8c5',
-                                        color: v.type === 'MISSED_CALL' ? '#cf222e' : '#9a6700',
-                                        padding: '4px 8px', borderRadius: '6px', fontSize: '0.9rem', fontWeight: '500'
-                                    }}>
-                                        {v.type.replace(/_/g, ' ')}
-                                    </span>
-                                </td>
-                                <td style={{ padding: '1rem' }}>{v.managerId}</td>
-                                <td style={{ padding: '1rem' }}>{v.details}</td>
-                                <td style={{ padding: '1rem', color: '#666' }}>{new Date(v.timestamp).toLocaleString()}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            )}
+            {/* Tabs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {/* Red Tab */}
+                <button
+                    onClick={() => setActiveTab('red')}
+                    className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'red'
+                        ? 'bg-red-50 border-red-200 shadow-lg shadow-red-100'
+                        : 'bg-white border-gray-100 hover:border-red-100 hover:bg-red-50/50'
+                        }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-black uppercase tracking-widest ${activeTab === 'red' ? 'text-red-600' : 'text-gray-400 group-hover:text-red-500'}`}>Критичные</span>
+                        <div className={`w-2 h-2 rounded-full ${activeTab === 'red' ? 'bg-red-500 animate-pulse' : 'bg-red-200'}`}></div>
+                    </div>
+                    <div className="text-3xl font-black text-gray-900 mb-1">{stats.red.count}</div>
+                    <div className="text-xs font-medium text-gray-500">{formatMoney(stats.red.sum)}</div>
+                </button>
+
+                {/* Yellow Tab */}
+                <button
+                    onClick={() => setActiveTab('yellow')}
+                    className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'yellow'
+                        ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100'
+                        : 'bg-white border-gray-100 hover:border-yellow-100 hover:bg-yellow-50/50'
+                        }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-black uppercase tracking-widest ${activeTab === 'yellow' ? 'text-yellow-600' : 'text-gray-400 group-hover:text-yellow-500'}`}>Внимание</span>
+                        <div className={`w-2 h-2 rounded-full ${activeTab === 'yellow' ? 'bg-yellow-400' : 'bg-yellow-200'}`}></div>
+                    </div>
+                    <div className="text-3xl font-black text-gray-900 mb-1">{stats.yellow.count}</div>
+                    <div className="text-xs font-medium text-gray-500">{formatMoney(stats.yellow.sum)}</div>
+                </button>
+
+                {/* Green Tab */}
+                <button
+                    onClick={() => setActiveTab('green')}
+                    className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'green'
+                        ? 'bg-green-50 border-green-200 shadow-lg shadow-green-100'
+                        : 'bg-white border-gray-100 hover:border-green-100 hover:bg-green-50/50'
+                        }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-black uppercase tracking-widest ${activeTab === 'green' ? 'text-green-600' : 'text-gray-400 group-hover:text-green-500'}`}>В работе</span>
+                        <div className={`w-2 h-2 rounded-full ${activeTab === 'green' ? 'bg-green-500' : 'bg-green-200'}`}></div>
+                    </div>
+                    <div className="text-3xl font-black text-gray-900 mb-1">{stats.green.count}</div>
+                    <div className="text-xs font-medium text-gray-500">{formatMoney(stats.green.sum)}</div>
+                </button>
+
+                {/* Black Tab */}
+                <button
+                    onClick={() => setActiveTab('black')}
+                    className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'black'
+                        ? 'bg-gray-900 border-gray-700 shadow-lg shadow-gray-400'
+                        : 'bg-white border-gray-100 hover:border-gray-400 hover:bg-gray-50'
+                        }`}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <span className={`text-xs font-black uppercase tracking-widest ${activeTab === 'black' ? 'text-gray-200' : 'text-gray-400 group-hover:text-gray-600'}`}>Нераспред.</span>
+                        <div className={`w-2 h-2 rounded-full ${activeTab === 'black' ? 'bg-gray-200' : 'bg-gray-300'}`}></div>
+                    </div>
+                    <div className={`text-3xl font-black mb-1 ${activeTab === 'black' ? 'text-white' : 'text-gray-900'}`}>{stats.black.count}</div>
+                    <div className={`text-xs font-medium ${activeTab === 'black' ? 'text-gray-400' : 'text-gray-500'}`}>{formatMoney(stats.black.sum)}</div>
+                </button>
+            </div>
+
+            {/* List */}
+            <div className="space-y-3 min-h-[200px]">
+                {filteredOrders.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full py-10 text-center">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-2xl text-gray-300">
+                            ✨
+                        </div>
+                        <p className="text-gray-400 font-medium">Нет сделок в этой категории</p>
+                    </div>
+                ) : (
+                    filteredOrders.map((order) => (
+                        <div key={order.orderId} className="group p-5 rounded-3xl border border-gray-100 hover:border-blue-200 bg-gray-50/30 hover:bg-white transition-all duration-300 hover:shadow-lg cursor-pointer">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-2 h-12 rounded-full ${order.level === 'red' ? 'bg-red-500' :
+                                            order.level === 'yellow' ? 'bg-yellow-400' :
+                                                order.level === 'green' ? 'bg-green-500' : 'bg-gray-800'
+                                        }`}></div>
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <span className="font-black text-gray-900 text-lg">#{order.orderNumber}</span>
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white px-2 py-1 rounded-lg border border-gray-100">
+                                                {order.managerName}
+                                            </span>
+                                        </div>
+                                        <div className="text-sm font-medium text-gray-500">
+                                            {formatMoney(order.totalSum)}
+                                            {order.summary !== 'Ожидание анализа' && <span className="mx-2 text-gray-300">|</span>}
+                                            {order.summary !== 'Ожидание анализа' && <span className="italic text-gray-600">"{order.summary}"</span>}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="text-right">
+                                    <div className="flex flex-col items-end gap-1">
+                                        {order.reasons.map((r: string, i: number) => (
+                                            <div key={i} className={`text-[10px] font-bold px-2 py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
+                                                    order.level === 'yellow' ? 'text-yellow-600 bg-yellow-50' :
+                                                        order.level === 'green' ? 'text-green-500 bg-green-50' :
+                                                            'text-gray-500 bg-gray-100'
+                                                }`}>
+                                                {r}
+                                            </div>
+                                        ))}
+                                        {order.reasons.length === 0 && (
+                                            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">...</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Action Recommendation */}
+                            {order.recommendedAction && (
+                                <div className="mt-4 pt-3 border-t border-gray-100 flex items-start gap-3">
+                                    <span className="text-lg">💡</span>
+                                    <div>
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Рекомендация AI</p>
+                                        <p className="text-sm font-medium text-gray-700">{order.recommendedAction}</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))
+                )}
+            </div>
         </div>
+    );
+}
+
+function HomeContent() {
+    const searchParams = useSearchParams();
+    const q = searchParams.toString();
+    const suffix = q ? `?${q}` : '';
+
+    return (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] py-20">
+            <h1 className="text-5xl font-black text-gray-900 mb-2 tracking-tight">Центр Управления</h1>
+            <p className="text-gray-400 font-bold uppercase text-xs tracking-[0.2em] mb-12">OKKRiteilCRM v1.3 + AI</p>
+
+            <PriorityWidget />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
+
+                {/* Settings Card */}
+                <Link href="/settings"
+                    className="group relative block p-10 bg-white border border-gray-100 rounded-[40px] shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
+                >
+                    <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 text-blue-600 group-hover:scale-110 transition-transform">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-black text-gray-900 mb-3 tracking-tight">Настройки</h2>
+                    <p className="text-gray-400 font-medium leading-relaxed">Управление статусами, системные настройки и интеграции.</p>
+                </Link>
+
+                {/* Analytics Card */}
+                <Link href={`/analytics${suffix}`}
+                    className="group relative block p-10 bg-gray-900 rounded-[40px] shadow-2xl shadow-gray-900/20 hover:bg-blue-600 transition-all duration-300 transform hover:-translate-y-1"
+                >
+                    <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
+                        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                    </div>
+                    <h2 className="text-2xl font-black text-white mb-3 tracking-tight">Аналитика</h2>
+                    <p className="text-white/40 font-medium leading-relaxed">Отчеты по эффективности, нарушениям и контроль качества.</p>
+                </Link>
+
+            </div>
+        </div>
+    );
+}
+
+export default function HomePage() {
+    return (
+        <Suspense fallback={<div>Загрузка...</div>}>
+            <HomeContent />
+        </Suspense>
     );
 }
