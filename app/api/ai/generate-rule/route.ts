@@ -31,10 +31,10 @@ JOINED CONTEXT (Available for SQL filtering):
 
 Task:
 Convert the User's Natural Language requirements into a Rule Definition.
-USE `om.full_order_context` for ANY field not in top-level columns.
-- Use `->> ` for text extraction.
-- Use `-> ` for object navigation.
-- Cast values if needed `(om.full_order_context ->> 'totalSumm'):: numeric`.
+USE \`om.full_order_context\` for ANY field not in top-level columns.
+- Use \`->>\` for text extraction.
+- Use \`->\` for object navigation.
+- Cast values if needed \`(om.full_order_context->>'totalSumm')::numeric\`.
 
 Examples:
 1. User: "Only VIP clients"
