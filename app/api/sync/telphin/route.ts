@@ -92,7 +92,7 @@ export async function GET(request: Request) {
                 order: 'asc',
             });
             const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
-            if (!debugLastUrl) debugLastUrl = url;
+
 
             try {
                 const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
