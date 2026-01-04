@@ -34,11 +34,16 @@ BEGIN
     END IF;
 
     -- Construct Dynamic Query
-    -- We force the time range index usage for performance.
+    -- We JOIN with order_metrics to allow filtering by order context.
+    -- Aliases: 
+    --   c = raw_telphin_calls
+    --   om = order_metrics
     query := format(
-        'SELECT event_id, telphin_call_id, started_at, duration_sec, from_number_normalized, to_number_normalized
-         FROM public.raw_telphin_calls
-         WHERE started_at >= %L AND started_at <= %L AND (%s)',
+        'SELECT c.event_id, c.telphin_call_id, c.started_at, c.duration_sec, c.from_number_normalized, c.to_number_normalized
+         FROM public.raw_telphin_calls c
+         LEFT JOIN public.call_order_matches com ON com.telphin_call_id = c.telphin_call_id
+         LEFT JOIN public.order_metrics om ON om.retailcrm_order_id = com.retailcrm_order_id
+         WHERE c.started_at >= %L AND c.started_at <= %L AND (%s)',
         start_time,
         end_time,
         condition_sql
@@ -47,8 +52,8 @@ BEGIN
     -- Execute
     RETURN QUERY EXECUTE query;
 EXCEPTION WHEN OTHERS THEN
-    -- If user writes bad SQL (e.g. "duration_sec < 'abc'"), capture error
-    RAISE NOTICE 'Rule Evaluation Error: %', SQLERRM;
+    -- If user writes bad SQL (e.g. "duration_sec < ''abc''"), capture error
+    RAISE NOTICE 'Rule Evaluation Error: %, Query: %', SQLERRM, query;
     RETURN;
 END;
 $$;

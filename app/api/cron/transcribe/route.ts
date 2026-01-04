@@ -46,11 +46,27 @@ export async function GET(req: Request) {
                 await transcribeCall(call.event_id, call.recording_url);
                 results.push({ id: call.event_id, status: 'success' });
 
-                // Trigger Rule Engine for this specific call?
-                // Or let the global rule engine interval pick it up?
-                // For "Semantic Rules", we need to run them NOW because they depend on text.
-                // TODO: Trigger Semantic Analysis here.
+                // Trigger Semantic Analysis immediately
+                // Fetch active semantic rules
+                const { data: rules } = await supabase
+                    .from('okk_rules')
+                    .select('*')
+                    .eq('is_active', true)
+                    .eq('rule_type', 'semantic');
+
+                if (rules && rules.length > 0) {
+                    console.log(`[Cron] Triggering ${rules.length} semantic rules for call ${call.event_id}`);
+                    const { runRuleEngine } = await import('@/lib/rule-engine');
+
+                    // We define a narrow window around the call to ensure it's picked up by the engine's query logic
+                    // The Rule Engine query uses: started_at >= start AND started_at <= end
+                    // So passing the exact time is safe.
+                    await runRuleEngine(call.started_at, call.started_at);
+                }
+
+                results.push({ id: call.event_id, status: 'success' });
             } catch (e: any) {
+                console.error(`[Cron] Transcribe/Analyze failed for ${call.event_id}:`, e);
                 results.push({ id: call.event_id, status: 'error', error: e.message });
             }
         }

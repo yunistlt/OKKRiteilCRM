@@ -96,7 +96,26 @@ async function recalcMetrics() {
                 }
             }
 
-            // D. Calculate Days Without Contact
+            // D. Get Full Context (Universal JSON)
+            // We fetch the latest 'raw_order_events' for this order to get the full JSON state.
+            const { data: rawEvents } = await supabase
+                .from('raw_order_events')
+                .select('raw_payload')
+                .eq('retailcrm_order_id', orderId)
+                .order('occurred_at', { ascending: false })
+                .limit(1);
+
+            let fullContext = {};
+            if (rawEvents && rawEvents.length > 0) {
+                // The raw_payload from 'order_history' usually has { order: { ... }, field: '...' }
+                // or sometimes just the order object depending on the event source.
+                // Based on debug, it seems to be { order: { ... }, ... }
+                // We want the 'order' object which is the most complete representation.
+                const payload = rawEvents[0].raw_payload as any;
+                fullContext = payload.order || payload; // Fallback to full payload if 'order' key missing
+            }
+
+            // E. Calculate Days Without Contact
             const now = new Date();
             const orderUpdate = new Date(order.created_at); // Should be updated_at, but taking created for safety
 
@@ -118,6 +137,7 @@ async function recalcMetrics() {
                 last_contact_at: lastContact.toISOString(),
                 days_without_contact: parseFloat(daysWithoutContact.toFixed(2)),
                 order_amount: order.totalsumm,
+                full_order_context: fullContext,
                 computed_at: new Date().toISOString()
             });
         }

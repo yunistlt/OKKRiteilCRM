@@ -23,24 +23,28 @@ Schema:
 - status (text) ('success', 'missed')
 - transcript (text) (Full text of the call)
 
+JOINED CONTEXT (Available for SQL filtering):
+- om.current_status (text) (Order Status)
+- om.order_amount (numeric) (Order Total Sum)
+- om.manager_id (int) (Manager ID)
+- om.full_order_context (JSONB) (Universal Context: Full Order Data)
+
 Task:
 Convert the User's Natural Language requirements into a Rule Definition.
-Decide if the rule requires verifying the *content* of the conversation (Semantic) or just metadata (SQL).
-
-Output JSON Structure:
-{
-  "type": "sql" | "semantic",
-  "sql": "string", // WHERE clause (Postgres syntax). For Semantic, use this to filter CANDIDATES (e.g. only outgoing calls).
-  "semantic_prompt": "string" | null, // If type=semantic, write a prompt for an LLM to check the transcript.
-  "explanation": "string" // Explanation for the user
-}
+USE `om.full_order_context` for ANY field not in top-level columns.
+- Use `->> ` for text extraction.
+- Use `-> ` for object navigation.
+- Cast values if needed `(om.full_order_context ->> 'totalSumm'):: numeric`.
 
 Examples:
+1. User: "Only VIP clients"
+   SQL: "om.full_order_context->'customer'->>'vip' = 'true'"
 
-1. User: "Short calls under 10s"
-   Output: { "type": "sql", "sql": "duration_sec < 10", "explanation": "Checks duration metadata." }
+2. User: "If purchased iPhone"
+   SQL: "om.full_order_context->'items' @> '[{\"offer\": {\"name\": \"iPhone\"}}]'" (Use JSONB containment or text search)
+   Alternative (Simpler): "om.full_order_context::text ILIKE '%iPhone%'"
 
-2. User: "Did the manager mention the price?"
+3. User: "Did the manager mention the price?"
    Output: { 
      "type": "semantic", 
      "sql": "duration_sec > 30 AND call_type = 'outgoing'", // Filter short calls/incoming

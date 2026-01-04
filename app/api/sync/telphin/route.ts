@@ -192,19 +192,27 @@ export async function GET(request: Request) {
 
             // 2. RAW Layer Write (raw_telphin_calls)
             // Map legacy structure to RAW structure
-            const rawCalls = mappedCalls.map(c => ({
-                telphin_call_id: c.id,
-                direction: c.raw_data.flow || c.raw_data.direction || 'unknown',
-                from_number: c.raw_data.from_number || c.raw_data.ani_number || 'unknown',
-                to_number: c.raw_data.to_number || c.raw_data.dest_number || 'unknown',
-                from_number_normalized: c.driver_number,
-                to_number_normalized: c.client_number,
-                started_at: c.timestamp,
-                duration_sec: c.duration,
-                recording_url: c.record_url,
-                raw_payload: c.raw_data,
-                ingested_at: new Date().toISOString()
-            }));
+            const rawCalls = mappedCalls.map(c => {
+                const rawFlow = c.raw_data.flow || c.raw_data.direction;
+                let direction = 'unknown';
+                if (rawFlow === 'out') direction = 'outgoing';
+                else if (rawFlow === 'in') direction = 'incoming';
+                else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
+
+                return {
+                    telphin_call_id: c.id,
+                    direction: direction,
+                    from_number: c.raw_data.from_number || c.raw_data.ani_number || 'unknown',
+                    to_number: c.raw_data.to_number || c.raw_data.dest_number || 'unknown',
+                    from_number_normalized: c.driver_number,
+                    to_number_normalized: c.client_number,
+                    started_at: c.timestamp,
+                    duration_sec: c.duration,
+                    recording_url: c.record_url,
+                    raw_payload: c.raw_data,
+                    ingested_at: new Date().toISOString()
+                };
+            });
 
             const { error: rawError } = await supabase.from('raw_telphin_calls')
                 .upsert(rawCalls, { onConflict: 'telphin_call_id' });
