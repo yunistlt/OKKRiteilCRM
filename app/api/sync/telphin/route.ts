@@ -229,6 +229,7 @@ export async function GET(request: Request) {
             extensions_scanned: EXTENSIONS.length,
             debug_sample: mappedCalls[0],
             debug_last_url: debugLastUrl,
+            debug_key_prefix: (process.env.TELPHIN_APP_KEY || '').substring(0, 5) + '...',
             time_window: { from: start.toISOString(), to: now.toISOString() }
         });
 
