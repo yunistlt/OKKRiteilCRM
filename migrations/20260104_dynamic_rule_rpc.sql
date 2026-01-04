@@ -7,12 +7,15 @@
 -- Accepts a partial WHERE clause (e.g. "duration_sec < 10")
 -- Returns matching calls in the time range.
 
+DROP FUNCTION IF EXISTS public.evaluate_call_rule(text, timestamptz, timestamptz);
+
 CREATE OR REPLACE FUNCTION public.evaluate_call_rule(
     condition_sql text,
     start_time timestamptz,
     end_time timestamptz
 )
 RETURNS TABLE (
+    event_id bigint,
     telphin_call_id bigint,
     started_at timestamptz,
     duration_sec int,
@@ -33,7 +36,7 @@ BEGIN
     -- Construct Dynamic Query
     -- We force the time range index usage for performance.
     query := format(
-        'SELECT telphin_call_id, started_at, duration_sec, from_number_normalized, to_number_normalized
+        'SELECT event_id, telphin_call_id, started_at, duration_sec, from_number_normalized, to_number_normalized
          FROM public.raw_telphin_calls
          WHERE started_at >= %L AND started_at <= %L AND (%s)',
         start_time,

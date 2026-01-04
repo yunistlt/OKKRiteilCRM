@@ -69,3 +69,13 @@ export async function createRule(ruleData: any) {
     if (error) throw new Error(error.message);
     revalidatePath('/settings/rules');
 }
+
+export async function deleteRule(code: string) {
+    const { error } = await supabase
+        .from('okk_rules')
+        .delete()
+        .eq('code', code);
+
+    if (error) throw new Error(error.message);
+    revalidatePath('/settings/rules');
+}

@@ -10,37 +10,43 @@ const openai = new OpenAI({
 });
 
 const SYSTEM_PROMPT = `
-You are a SQL Expert for a PostgreSQL database.
-Your target table is 'raw_telphin_calls' (VoIP Calls).
+You are a SQL Expert AND a Semantic Analyst for a Call Center.
+Target table: 'raw_telphin_calls' (VoIP Calls).
 
 Schema:
-- telphin_call_id (bigint)
 - started_at (timestamp)
-- duration_sec (int) - Duration of the call in seconds
-- from_number_normalized (text) - Caller phone (E.164)
-- to_number_normalized (text) - Callee phone (E.164)
-- extension (text) - Employee Extension
-- call_type (text) - 'incoming', 'outgoing'
-- status (text) - 'success', 'missed', 'cancelled'
+- duration_sec (int)
+- from_number_normalized (text) (Caller)
+- to_number_normalized (text) (Callee)
+- extension (text) (Manager Extension)
+- call_type (text) ('incoming', 'outgoing')
+- status (text) ('success', 'missed')
+- transcript (text) (Full text of the call)
 
 Task:
-Convert the User's Natural Language requirements into a valid SQL WHERE clause fragment.
-Do not include "WHERE". Do not include "SELECT * FROM ...".
-Only return the condition.
+Convert the User's Natural Language requirements into a Rule Definition.
+Decide if the rule requires verifying the *content* of the conversation (Semantic) or just metadata (SQL).
 
-Example 1:
-User: "Calls shorter than 10 seconds"
-Output: duration_sec < 10
+Output JSON Structure:
+{
+  "type": "sql" | "semantic",
+  "sql": "string", // WHERE clause (Postgres syntax). For Semantic, use this to filter CANDIDATES (e.g. only outgoing calls).
+  "semantic_prompt": "string" | null, // If type=semantic, write a prompt for an LLM to check the transcript.
+  "explanation": "string" // Explanation for the user
+}
 
-Example 2:
-User: "Missed incoming calls"
-Output: status = 'missed' AND call_type = 'incoming'
+Examples:
 
-Example 3:
-User: "Calls from 7999..."
-Output: from_number_normalized LIKE '7999%'
+1. User: "Short calls under 10s"
+   Output: { "type": "sql", "sql": "duration_sec < 10", "explanation": "Checks duration metadata." }
 
-Return simplified JSON: { "sql": "string", "explanation": "string" }
+2. User: "Did the manager mention the price?"
+   Output: { 
+     "type": "semantic", 
+     "sql": "duration_sec > 30 AND call_type = 'outgoing'", // Filter short calls/incoming
+     "semantic_prompt": "Check if the manager explicitly mentioned the price or cost of services.",
+     "explanation": "I will listen to all outgoing calls >30s and check for price discussions."
+   }
 `;
 
 export async function POST(req: Request) {
@@ -52,13 +58,13 @@ export async function POST(req: Request) {
         }
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4-turbo-preview", // Or gpt-3.5-turbo if cost concern, but 4 is safer for SQL
+            model: "gpt-4-turbo-preview",
             messages: [
                 { role: "system", content: SYSTEM_PROMPT },
                 { role: "user", content: prompt }
             ],
             response_format: { type: "json_object" },
-            temperature: 0.2, // Deterministic
+            temperature: 0.1,
         });
 
         const content = completion.choices[0].message.content;

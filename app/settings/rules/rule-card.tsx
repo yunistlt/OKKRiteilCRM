@@ -82,17 +82,31 @@ export default function RuleCard({ rule }: { rule: any }) {
                     </h3>
                     <p className="mt-1 text-sm text-gray-500 max-w-xl">{rule.description}</p>
                 </div>
-                <button
-                    onClick={handleToggle}
-                    disabled={isLoading}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${rule.is_active ? 'bg-green-600' : 'bg-gray-200'}`}
-                >
-                    <span className="sr-only">Use setting</span>
-                    <span
-                        aria-hidden="true"
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${rule.is_active ? 'translate-x-5' : 'translate-x-0'}`}
-                    />
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={async () => {
+                            if (confirm('Вы уверены? Правило будет удалено навсегда.')) {
+                                await import('@/app/actions/rules').then(m => m.deleteRule(rule.code));
+                            }
+                        }}
+                        className="text-gray-400 hover:text-red-500 p-1"
+                        title="Удалить правило"
+                    >
+                        🗑️
+                    </button>
+
+                    <button
+                        onClick={handleToggle}
+                        disabled={isLoading}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${rule.is_active ? 'bg-green-600' : 'bg-gray-200'}`}
+                    >
+                        <span className="sr-only">Use setting</span>
+                        <span
+                            aria-hidden="true"
+                            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${rule.is_active ? 'translate-x-5' : 'translate-x-0'}`}
+                        />
+                    </button>
+                </div>
             </div>
 
             {rule.is_active && (
