@@ -71,25 +71,26 @@ export async function GET() {
             const processedEvents = history
                 .filter((event: any) => event.order && event.order.id)
                 .map((event: any) => ({
-                    retailcrm_order_id: event.order.id, // Renamed from order_id
-                    field_name: event.field || 'unknown',
-                    old_value: safeStringify(event.oldValue),
-                    new_value: safeStringify(event.newValue),
+                    retailcrm_order_id: event.order.id,
+                    event_type: event.field || 'unknown', // Map field name to event_type
+                    occurred_at: event.createdAt,
+                    source: 'retailcrm',
+                    // Pack everything into raw_payload since specific columns don't exist
+                    raw_payload: {
+                        field: event.field,
+                        oldValue: event.oldValue,
+                        newValue: event.newValue,
+                        user: event.user
+                    },
                     manager_id: event.user ? event.user.id : null,
-                    occurred_at: event.createdAt, // Renamed from created_at
-                    source: 'retailcrm'
                 }));
 
             if (processedEvents.length > 0) {
                 const { error: upsertError } = await supabase
-                    .from('raw_order_events') // Changed from order_history
+                    .from('raw_order_events')
                     .upsert(processedEvents, {
-                        // Conflict on specific event fields to avoid duplicates
-                        // raw_order_events usually has no unique constraint except maybe (order_id, field, time)
-                        // Must ensure the constraint exists or just append if we trust history IDs?
-                        // Schema definition says unique index? Let's assume standard dedup logic.
-                        // Ideally we should rely on a unique constraint in DB.
-                        onConflict: 'retailcrm_order_id, field_name, occurred_at', // Updating conflict key
+                        // Match the UNIQUE constraint from 20260103_raw_layer.sql
+                        onConflict: 'retailcrm_order_id, event_type, occurred_at, source',
                         ignoreDuplicates: true
                     });
 
