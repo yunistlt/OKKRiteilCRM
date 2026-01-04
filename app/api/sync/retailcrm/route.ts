@@ -22,39 +22,43 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
-        const storageKey = 'retailcrm_last_sync_page';
         const startTime = Date.now();
-        const maxTimeMs = 20000; // 20 seconds limit per request
-        const maxPagesPerRun = 5; // Fetch up to 500 orders per request
+        const maxTimeMs = 50000; // 50 seconds limit (Vercel hobby is 10s or 60s depending on plan, safe buffer)
+        const maxPagesPerRun = 20; // Safe limit
 
-        // 1. Determine "Page" to fetch (Pagination Cursor)
-        let page = 1;
+        // 1. Determine Start Date (Time-based sync)
+        let filterDateFrom = '2023-01-01 00:00:00';
 
         if (!forceResync) {
-            const { data: state } = await supabase
-                .from('sync_state')
-                .select('value')
-                .eq('key', storageKey)
+            const { data: lastOrder } = await supabase
+                .from('orders')
+                .select('created_at')
+                .order('created_at', { ascending: false })
+                .limit(1)
                 .single();
 
-            if (state?.value) {
-                page = parseInt(state.value) || 1;
+            if (lastOrder && lastOrder.created_at) {
+                const d = new Date(lastOrder.created_at);
+                d.setDate(d.getDate() - 1); // Go back 1 day to be safe (timezones, lateness)
+                filterDateFrom = d.toISOString().slice(0, 19).replace('T', ' ');
+                console.log(`[Orders Sync] Found recent order (${lastOrder.created_at}). Syncing from: ${filterDateFrom}`);
+            } else {
+                console.log('[Orders Sync] No recent orders found. Full sync from 2023.');
             }
         } else {
-            console.log('Force resync requested: Starting from Page 1');
+            console.log('[Orders Sync] Force resync requested. Syncing from 2023.');
         }
 
+        let page = 1;
         let pagesProcessed = 0;
         let totalOrdersFetched = 0;
         let hasMore = true;
         let finalPagination = null;
 
+        // 2. Loop Pages
         while (hasMore && pagesProcessed < maxPagesPerRun && (Date.now() - startTime) < maxTimeMs) {
-
-            // 2. Build URL for "Orders List" (Reverse Sync)
             const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
             const limit = 100;
-            const filterDateFrom = '2023-01-01 00:00:00';
 
             const params = new URLSearchParams();
             params.append('apiKey', RETAILCRM_API_KEY);
@@ -63,10 +67,12 @@ export async function GET(request: Request) {
             params.append('filter[createdAtFrom]', filterDateFrom);
             params.append('paginator', 'page');
 
-            const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
-            console.log(`Fetching RetailCRM Page ${page}:`, url);
+            // To ensure we get everything cleanly, we let standard ordering apply (usually by ID or CreatedAt desc)
+            // Since we filter by date, eventually we will exhaust the list.
 
-            // 3. Fetch Data
+            const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
+            console.log(`[Orders Sync] Fetching Page ${page}:`, url);
+
             const res = await fetch(url);
             if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
 
@@ -83,16 +89,11 @@ export async function GET(request: Request) {
 
             const eventsToUpsert: any[] = [];
 
-            // 4. Transform to Database Format
+            // 3. Transform
             for (const order of orders) {
-                // Extract phones
                 const phones = new Set<string>();
-
-                const p1 = cleanPhone(order.phone);
-                if (p1) phones.add(p1);
-
-                const p2 = cleanPhone(order.additionalPhone);
-                if (p2) phones.add(p2);
+                const p1 = cleanPhone(order.phone); if (p1) phones.add(p1);
+                const p2 = cleanPhone(order.additionalPhone); if (p2) phones.add(p2);
 
                 if (order.customer && order.customer.phones) {
                     order.customer.phones.forEach((p: any) => {
@@ -107,7 +108,6 @@ export async function GET(request: Request) {
                     });
                 }
 
-                // Create "Event" (Snapshot of current order state)
                 eventsToUpsert.push({
                     id: order.id,
                     order_id: order.id,
@@ -120,11 +120,11 @@ export async function GET(request: Request) {
                     phone: cleanPhone(order.phone) || null,
                     customer_phones: Array.from(phones),
                     totalsumm: order.totalSumm || 0,
-                    raw_payload: order
+                    raw_payload: order // Keep it full for now, ensure DB column is large enough or JSONB
                 });
             }
 
-            // 5. Upsert via RPC (Bypass Schema Cache Issues)
+            // 4. Upsert
             if (eventsToUpsert.length > 0) {
                 const { error } = await supabase.rpc('upsert_orders_v2', {
                     orders_data: eventsToUpsert
@@ -139,15 +139,9 @@ export async function GET(request: Request) {
             totalOrdersFetched += orders.length;
             pagesProcessed++;
 
-            // 6. Advance Cursor
+            // 5. Next Page or Stop
             if (finalPagination && finalPagination.currentPage < finalPagination.totalPageCount) {
                 page++;
-                // Save progress
-                await supabase.from('sync_state').upsert({
-                    key: storageKey,
-                    value: String(page),
-                    updated_at: new Date().toISOString()
-                });
             } else {
                 hasMore = false;
             }
@@ -155,11 +149,12 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
             success: true,
-            method: 'orders_list_filtered_2023',
-            last_page_processed: page - 1,
+            method: 'orders_time_window_sync',
+            filter_date_from: filterDateFrom,
+            last_page_processed: page,
             pages_processed: pagesProcessed,
             total_orders_fetched: totalOrdersFetched,
-            total_pages_in_crm: finalPagination ? finalPagination.totalPageCount : '?',
+            total_pages_in_window: finalPagination ? finalPagination.totalPageCount : '?',
             has_more: hasMore
         });
 
