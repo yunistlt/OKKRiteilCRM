@@ -125,13 +125,16 @@ export async function GET(request: Request) {
         console.log(`[Backfill] Processing slice: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
         let sliceCalls: any[] = [];
-        const BATCH_SIZE = 10;
+        const BATCH_SIZE = 3; // Reduced from 10 to avoid 429 errors
 
         for (let i = 0; i < EXTENSIONS.length; i += BATCH_SIZE) {
             const chunkExts = EXTENSIONS.slice(i, i + BATCH_SIZE);
             const promises = chunkExts.map(extId => fetchChunk(extId, fromD, toD));
             const results = await Promise.all(promises);
             results.forEach(r => sliceCalls.push(...r));
+
+            // Polite delay between batches
+            await new Promise(r => setTimeout(r, 1000));
         }
 
         let syncedCount = 0;
