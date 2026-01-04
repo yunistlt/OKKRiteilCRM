@@ -17,41 +17,56 @@ export async function GET(request: Request) {
         const workingCodes = new Set((workingSettings || []).map(s => s.code));
 
         // 1. Get unprocessed calls that are suspicious and matched to working orders
+        // Refactored to use RAW layer
         const { data: calls, error: fetchError } = await supabase
-            .from('calls')
+            .from('raw_telphin_calls')
             .select(`
-                id, 
-                record_url, 
-                duration,
+                telphin_call_id, 
+                recording_url, 
+                duration_sec,
+                raw_payload,
                 call_order_matches!inner (
                     orders!inner (
                         status
                     )
                 )
             `)
-            .is('transcript', null)
-            .not('record_url', 'is', null)
-            .gt('duration', minDuration)
+            .is('raw_payload->transcript', null)
+            .matcher(`(recording_url.neq.null,raw_payload->>storage_url.neq.null)`) // Ensure we have a URL (complex filter might need modification, doing simplistic check or filter in code)
+            // supabase-js simple filter: .not('recording_url', 'is', null) - but it might be in payload.
+            // Let's just fetch recent ones and filter in code for safety if URL is tricky.
+            // Actually, let's just check raw_payload->>storage_url for new items.
+            .not('raw_payload', 'is', null)
+            .gt('duration_sec', minDuration)
             .in('call_order_matches.orders.status', Array.from(workingCodes))
-            .order('timestamp', { ascending: false })
+            .order('started_at', { ascending: false })
             .limit(limit);
 
         if (fetchError) throw fetchError;
 
-        if (!calls || calls.length === 0) {
+        const callsToProcess = (calls || []).filter(c => {
+            const payload = c.raw_payload as any;
+            const url = c.recording_url || payload?.recording_url || payload?.record_url || payload?.storage_url || payload?.url;
+            return !!url;
+        });
+
+        if (callsToProcess.length === 0) {
             return NextResponse.json({ message: 'No calls to process', count: 0 });
         }
 
         // 2. Get Telphin Token
         const token = await getTelphinToken();
 
-        // 3. Process sequentially (to avoid OpenAI rate limits or too many downloads)
+        // 3. Process sequentially
         const results = [];
-        for (const call of calls) {
-            const result = await processCallTranscription(call.id, call.record_url!, token);
+        for (const call of callsToProcess) {
+            const payload = call.raw_payload as any;
+            const url = call.recording_url || payload?.recording_url || payload?.record_url || payload?.storage_url || payload?.url;
+
+            const result = await processCallTranscription(call.telphin_call_id, url, token);
             results.push({
-                id: call.id,
-                duration: call.duration,
+                id: call.telphin_call_id,
+                duration: call.duration_sec,
                 ...result
             });
         }

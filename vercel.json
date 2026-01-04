@@ -2,16 +2,8 @@
     "framework": "nextjs",
     "crons": [
         {
-            "path": "/api/sync/retailcrm",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/sync/telphin",
-            "schedule": "*/2 * * * *"
-        },
-        {
-            "path": "/api/match",
-            "schedule": "*/2 * * * *"
+            "path": "/api/cron",
+            "schedule": "*/5 * * * *"
         },
         {
             "path": "/api/sync/managers",

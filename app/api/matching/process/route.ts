@@ -2,32 +2,22 @@ import { NextResponse } from 'next/server';
 import { processUnmatchedCalls } from '@/lib/call-matching';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
-/**
- * API для запуска матчинга звонков с заказами
- * GET /api/matching/process
- */
 export async function GET(request: Request) {
     try {
-        const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '100');
+        console.log('[Matching API] Starting matching process...');
 
-        console.log(`[Matching] Processing up to ${limit} unmatched calls...`);
-
-        const totalMatches = await processUnmatchedCalls(limit);
+        // Use the library function directly for consistency and simplicity
+        const matchesFound = await processUnmatchedCalls(500); // Analyze up to 500 unmatched calls
 
         return NextResponse.json({
             success: true,
-            processed: limit,
-            matches_created: totalMatches,
-            message: `Processed ${limit} calls, created ${totalMatches} matches`
+            matches_found: matchesFound
         });
+
     } catch (error: any) {
-        console.error('[Matching] Error:', error);
-        return NextResponse.json({
-            success: false,
-            error: error.message
-        }, { status: 500 });
+        console.error('[Matching API] Error:', error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

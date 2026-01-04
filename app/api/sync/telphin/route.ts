@@ -55,7 +55,7 @@ export async function GET(request: Request) {
         const storageKey = 'telphin_last_sync_time';
 
         // 1. Get Start Date from Persistent Cursor (Sync State)
-        let start = new Date('2025-12-01T00:00:00Z'); // Default
+        let start = new Date('2025-09-01T00:00:00Z'); // Default set to Sept 1, 2025 per user request
 
         if (!forceResync) {
             const { data: state } = await supabase
@@ -71,34 +71,72 @@ export async function GET(request: Request) {
                 console.log('No state found, starting from default:', start.toISOString());
             }
         } else {
-            console.log('Force/Full sync requested, starting from default.');
+            // Check if user provided specific start date via query param
+            const queryStart = searchParams.get('start_date');
+            if (queryStart) {
+                start = new Date(queryStart);
+                console.log('Force sync requested from custom date:', start.toISOString());
+            } else {
+                console.log('Force/Full sync requested, starting from default:', start.toISOString());
+            }
         }
 
-        const fromStr = formatTelphinDate(start);
-        const toStr = formatTelphinDate(now);
+        const nowTs = now.getTime();
+        const startTs = start.getTime();
 
-        let allCalls: any[] = [];
-        let debugLastUrl = '';
-
-        // Fetch loop over extensions (using Parallel Batches)
-        const fetchExtensionRecords = async (extId: number) => {
+        // Helper to fetch one chunk
+        const fetchChunk = async (extId: number, fromD: Date, toD: Date) => {
             const params = new URLSearchParams({
-                start_datetime: fromStr,
-                end_datetime: toStr,
+                start_datetime: formatTelphinDate(fromD),
+                end_datetime: formatTelphinDate(toD),
                 order: 'asc',
             });
-
             const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
             if (!debugLastUrl) debugLastUrl = url;
 
             try {
                 const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) return [];
+                if (!res.ok) {
+                    console.error(`Fetch failed for ext ${extId}: ${res.status} ${res.statusText}`);
+                    return [];
+                }
                 const data = await res.json();
                 return Array.isArray(data) ? data : [];
             } catch (e) {
+                console.error(`Fetch error for ext ${extId}:`, e);
                 return [];
             }
+        };
+
+        let allCalls: any[] = [];
+        let debugLastUrl = '';
+
+        // Chunking Logic (Split time range into < 1 month chunks)
+        // Telphin limit is ~2 months, we use 30 days to be safe.
+        const CHUNK_MS = 30 * 24 * 60 * 60 * 1000;
+
+        // Fetch loop over extensions (using Parallel Batches)
+        const fetchExtensionRecords = async (extId: number) => {
+            let records: any[] = [];
+            let cursor = startTs;
+
+            while (cursor < nowTs) {
+                let endChunk = cursor + CHUNK_MS;
+                if (endChunk > nowTs) endChunk = nowTs;
+
+                const fromD = new Date(cursor);
+                const toD = new Date(endChunk);
+
+                // Fetch this chunk
+                const chunkData = await fetchChunk(extId, fromD, toD);
+                records.push(...chunkData);
+
+                cursor = endChunk + 1000; // Advance by 1 sec to avoid overlap? Or just accept slight overlap.
+                // Telphin range is inclusive? "start_datetime" usually inclusive.
+                // Ideally we add 1ms or just use same end as next start if precise.
+                // Let's use exact boundaries.
+            }
+            return records;
         };
 
         const BATCH_SIZE = 5;
@@ -149,10 +187,30 @@ export async function GET(request: Request) {
         });
 
         if (mappedCalls.length > 0) {
-            const { error } = await supabase.from('calls').upsert(mappedCalls);
-            if (error) {
-                console.error('Supabase Upsert Error:', error);
-                throw error;
+            // 1. Legacy Write REMOVED
+            // We fully transitioned to RAW layer.
+
+            // 2. RAW Layer Write (raw_telphin_calls)
+            // Map legacy structure to RAW structure
+            const rawCalls = mappedCalls.map(c => ({
+                telphin_call_id: c.id,
+                direction: c.raw_data.flow || c.raw_data.direction || 'unknown',
+                from_number: c.raw_data.from_number || c.raw_data.ani_number || 'unknown',
+                to_number: c.raw_data.to_number || c.raw_data.dest_number || 'unknown',
+                from_number_normalized: c.driver_number,
+                to_number_normalized: c.client_number,
+                started_at: c.timestamp,
+                duration_sec: c.duration,
+                recording_url: c.record_url,
+                raw_payload: c.raw_data,
+                ingested_at: new Date().toISOString()
+            }));
+
+            const { error: rawError } = await supabase.from('raw_telphin_calls')
+                .upsert(rawCalls, { onConflict: 'telphin_call_id' });
+
+            if (rawError) {
+                console.error('Supabase Upsert Error (RAW):', rawError);
             }
         }
 
@@ -171,7 +229,7 @@ export async function GET(request: Request) {
             extensions_scanned: EXTENSIONS.length,
             debug_sample: mappedCalls[0],
             debug_last_url: debugLastUrl,
-            time_window: { from: fromStr, to: toStr }
+            time_window: { from: start.toISOString(), to: now.toISOString() }
         });
 
     } catch (error: any) {

@@ -27,17 +27,11 @@ export async function GET() {
         // 3. Count "Matched Calls" (calls linked to working orders)
         // We use !inner join to filter calls by the related order's status
 
+        // 3. Count "Matched Calls" (TOTAL)
+        // Changed to show ALL matches to verify system performance, not just active ones.
         const { count: matchedCallsCount, error: e2 } = await supabase
-            .from('raw_telphin_calls')
-            .select(`
-                telphin_call_id,
-                call_order_matches!inner (
-                    orders!inner (
-                        status
-                    )
-                )
-            `, { count: 'exact', head: true })
-            .in('call_order_matches.orders.status', workingCodes);
+            .from('call_order_matches')
+            .select('*', { count: 'exact', head: true });
 
         if (e2) throw e2;
 
@@ -76,6 +70,8 @@ export async function GET() {
 
         return NextResponse.json({
             ok: true,
+            version: 'v2-total-count',
+            debug_table: 'call_order_matches',
             stats: {
                 workingOrders: workingOrdersCount || 0,
                 matchedCalls: matchedCallsCount || 0,

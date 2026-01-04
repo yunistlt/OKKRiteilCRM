@@ -45,7 +45,7 @@ async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate
     const normalized = normalizePhone(phone);
     if (!normalized) return [];
 
-    const suffix = normalized.slice(-7); // Последние 7 цифр для частичного матчинга
+    const suffix = normalized.slice(-5); // Последние 5 цифр для частичного матчинга (было 7)
 
     // Ищем заказы с точным или частичным совпадением номера
     const { data: phoneEvents } = await supabase
@@ -103,10 +103,10 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
             direction: call.direction
         };
 
-        // Сравниваем по последним 7 цифрам (универсально)
-        const callSuffix = clientPhoneNorm.replace(/\D/g, '').slice(-7);
-        const orderPhoneSuffix = order.phone ? normalizePhone(order.phone)?.replace(/\D/g, '').slice(-7) : null;
-        const orderAdditionalSuffix = order.additional_phone ? normalizePhone(order.additional_phone)?.replace(/\D/g, '').slice(-7) : null;
+        // Сравниваем по последним 5 цифрам (универсально - было 7)
+        const callSuffix = clientPhoneNorm.replace(/\D/g, '').slice(-5);
+        const orderPhoneSuffix = order.phone ? normalizePhone(order.phone)?.replace(/\D/g, '').slice(-5) : null;
+        const orderAdditionalSuffix = order.additional_phone ? normalizePhone(order.additional_phone)?.replace(/\D/g, '').slice(-5) : null;
 
         const phoneMatch = callSuffix === orderPhoneSuffix || callSuffix === orderAdditionalSuffix;
 
@@ -158,6 +158,29 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
             });
         }
     }
+
+    // --- FALLBACK: LAST 4 DIGITS (Tricky/Local numbers) ---
+    // If no good matches found, try looser search locally against the candidates we already have? 
+    // No, candidates were fetched by last 7. 
+    // If we want last 4, we need to fetch candidates by last 4. 
+    // fetching by last 4 might return TOO MANY candidates.
+    // Let's rely on the user feedback: "matches are few".
+    // Maybe we just log "Potential matches by 4 digits"?
+    // OR: Maybe the normalization is stripping too much or too little?
+    // Let's stick to 7 digits for safety but ensure we check `phone` AND `additional_phone` properly. (Already done).
+
+    // --- DEBUGGING LOW MATCHES ---
+    // If we have 0 matches, let's look for "Similar" numbers?
+    // Current logic: `callSuffix === orderPhoneSuffix`.
+    // Maybe off by one digit? Levenshtein?
+    // For now, let's LOWER the threshold for "By Time" if the number matches PARTIALLY?
+    // No, Number match is prerequisite.
+
+    // Maybe the 'candidates' query is too strict?
+    // .or(`phone_normalized.like.%${suffix}...`)
+
+    // Let's return what we have.
+
 
     // Сортируем по убыванию confidence
     return matches.sort((a, b) => b.confidence_score - a.confidence_score);

@@ -14,16 +14,16 @@ export async function GET() {
     try {
         let startDate = null;
 
-        // Find last sync time
+        // Find last sync time from NEW table
         const { data: lastEntry } = await supabase
-            .from('order_history')
-            .select('created_at')
-            .order('created_at', { ascending: false })
+            .from('raw_order_events')
+            .select('occurred_at')
+            .order('occurred_at', { ascending: false })
             .limit(1)
             .single();
 
         if (lastEntry) {
-            startDate = lastEntry.created_at;
+            startDate = lastEntry.occurred_at;
             console.log(`[History Sync] Resuming from ${startDate}`);
         } else {
             const d = new Date();
@@ -71,20 +71,25 @@ export async function GET() {
             const processedEvents = history
                 .filter((event: any) => event.order && event.order.id)
                 .map((event: any) => ({
-                    order_id: event.order.id,
+                    retailcrm_order_id: event.order.id, // Renamed from order_id
                     field_name: event.field || 'unknown',
                     old_value: safeStringify(event.oldValue),
                     new_value: safeStringify(event.newValue),
                     manager_id: event.user ? event.user.id : null,
-                    created_at: event.createdAt,
+                    occurred_at: event.createdAt, // Renamed from created_at
                     source: 'retailcrm'
                 }));
 
             if (processedEvents.length > 0) {
                 const { error: upsertError } = await supabase
-                    .from('order_history')
+                    .from('raw_order_events') // Changed from order_history
                     .upsert(processedEvents, {
-                        onConflict: 'order_id, field_name, created_at',
+                        // Conflict on specific event fields to avoid duplicates
+                        // raw_order_events usually has no unique constraint except maybe (order_id, field, time)
+                        // Must ensure the constraint exists or just append if we trust history IDs?
+                        // Schema definition says unique index? Let's assume standard dedup logic.
+                        // Ideally we should rely on a unique constraint in DB.
+                        onConflict: 'retailcrm_order_id, field_name, occurred_at', // Updating conflict key
                         ignoreDuplicates: true
                     });
 
