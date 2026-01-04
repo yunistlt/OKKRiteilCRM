@@ -108,137 +108,114 @@ export async function GET(request: Request) {
             }
         };
 
-        let allCalls: any[] = [];
-        let debugLastUrl = '';
+        // 2. TIMEOUT PROTECTION
+        const TIMEOUT_MS = 55 * 1000; // Vercel limit is usually 10s (free) or 60s (pro). Let's be safe.
+        const startTime = Date.now();
 
-        // Chunking Logic (Split time range into < 1 month chunks)
-        // Telphin limit is ~2 months, we use 30 days to be safe.
-        const CHUNK_MS = 30 * 24 * 60 * 60 * 1000;
+        // 3. TIME SLICING LOOP
+        // We move in small chunks (e.g. 6 hours) to save progress frequently.
+        const SLICE_HOURS = 6;
+        const SLICE_MS = SLICE_HOURS * 60 * 60 * 1000;
 
-        // Fetch loop over extensions (using Parallel Batches)
-        const fetchExtensionRecords = async (extId: number) => {
-            let records: any[] = [];
-            let cursor = startTs;
+        let cursorMs = startTs;
+        let totalSynced = 0;
 
-            while (cursor < nowTs) {
-                let endChunk = cursor + CHUNK_MS;
-                if (endChunk > nowTs) endChunk = nowTs;
+        console.log(`🔄 Starting Smart Sync. Window: ${start.toISOString()} -> ${now.toISOString()}`);
 
-                const fromD = new Date(cursor);
-                const toD = new Date(endChunk);
-
-                // Fetch this chunk
-                const chunkData = await fetchChunk(extId, fromD, toD);
-                records.push(...chunkData);
-
-                cursor = endChunk + 1000; // Advance by 1 sec to avoid overlap? Or just accept slight overlap.
-                // Telphin range is inclusive? "start_datetime" usually inclusive.
-                // Ideally we add 1ms or just use same end as next start if precise.
-                // Let's use exact boundaries.
-            }
-            return records;
-        };
-
-        const BATCH_SIZE = 5;
-        for (let i = 0; i < EXTENSIONS.length; i += BATCH_SIZE) {
-            const chunk = EXTENSIONS.slice(i, i + BATCH_SIZE);
-            const promises = chunk.map(id => fetchExtensionRecords(id));
-            const results = await Promise.all(promises);
-            results.forEach(records => allCalls.push(...records));
-        }
-
-        console.log(`Fetched ${allCalls.length} records.`);
-
-        // Process and map to database schema
-        const mappedCalls = allCalls.map((r: any) => {
-            const record_uuid = r.record_uuid || r.RecordUUID || `rec_${Math.random()}`;
-            const flow = r.flow || r.direction;
-            const startedRaw = r.start_time_gmt || r.init_time_gmt;
-
-            let fromNumber = null;
-            let toNumber = null;
-
-            if (flow === 'out') {
-                fromNumber = r.ani_number || r.from_number;
-                toNumber = r.dest_number || r.to_number;
-            } else if (flow === 'in') {
-                fromNumber = r.ani_number || r.from_number;
-                toNumber = r.dest_number || r.to_number;
-            } else {
-                fromNumber = r.from_number || r.ani_number;
-                toNumber = r.to_number || r.dest_number;
+        while (cursorMs < nowTs) {
+            // Check remaining time
+            if (Date.now() - startTime > TIMEOUT_MS) {
+                console.log('⚠️ Time limit reached. Stopping gracefully.');
+                break;
             }
 
-            const fromNorm = normalizePhone(fromNumber);
-            const toNorm = normalizePhone(toNumber);
-            const callDate = startedRaw ? new Date(startedRaw + 'Z') : new Date();
+            let endSliceMs = cursorMs + SLICE_MS;
+            if (endSliceMs > nowTs) endSliceMs = nowTs;
 
-            return {
-                id: record_uuid, // using record_uuid as primary ID
-                driver_number: fromNorm,
-                client_number: toNorm,
-                duration: r.duration || 0,
-                status: r.result || r.call_status || r.hangup_cause || 'unknown',
-                manager_id: String(r.extension_id || 'unknown'),
-                timestamp: callDate.toISOString(),
-                record_url: r.record_url || r.storage_url || r.url || null,
-                raw_data: r
-            };
-        });
+            const fromD = new Date(cursorMs);
+            const toD = new Date(endSliceMs);
 
-        if (mappedCalls.length > 0) {
-            // 1. Legacy Write REMOVED
-            // We fully transitioned to RAW layer.
+            console.log(`  ⏳ Processing Slice: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
-            // 2. RAW Layer Write (raw_telphin_calls)
-            // Map legacy structure to RAW structure
-            const rawCalls = mappedCalls.map(c => {
-                const rawFlow = c.raw_data.flow || c.raw_data.direction;
-                let direction = 'unknown';
-                if (rawFlow === 'out') direction = 'outgoing';
-                else if (rawFlow === 'in') direction = 'incoming';
-                else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
+            let sliceCalls: any[] = [];
 
-                return {
-                    telphin_call_id: c.id,
-                    direction: direction,
-                    from_number: c.raw_data.from_number || c.raw_data.ani_number || 'unknown',
-                    to_number: c.raw_data.to_number || c.raw_data.dest_number || 'unknown',
-                    from_number_normalized: c.driver_number,
-                    to_number_normalized: c.client_number,
-                    started_at: c.timestamp,
-                    duration_sec: c.duration,
-                    recording_url: c.record_url,
-                    raw_payload: c.raw_data,
-                    ingested_at: new Date().toISOString()
-                };
-            });
-
-            const { error: rawError } = await supabase.from('raw_telphin_calls')
-                .upsert(rawCalls, { onConflict: 'telphin_call_id' });
-
-            if (rawError) {
-                console.error('Supabase Upsert Error (RAW):', rawError);
+            // Fetch ALL extensions for this slice
+            // (Parallel execution)
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < EXTENSIONS.length; i += BATCH_SIZE) {
+                const chunkExts = EXTENSIONS.slice(i, i + BATCH_SIZE);
+                const promises = chunkExts.map(extId => fetchChunk(extId, fromD, toD));
+                const results = await Promise.all(promises);
+                results.forEach(r => sliceCalls.push(...r));
             }
-        }
 
-        // Save Cursor (Current 'NOW' becomes next start time)
-        if (mappedCalls.length > 0) {
+            // Upsert this slice
+            if (sliceCalls.length > 0) {
+                const rawCalls = sliceCalls.map((r: any) => {
+                    const record_uuid = r.record_uuid || r.RecordUUID || `rec_${Math.random()}`;
+                    const rawFlow = r.flow || r.direction;
+
+                    let direction = 'unknown';
+                    if (rawFlow === 'out') direction = 'outgoing';
+                    else if (rawFlow === 'in') direction = 'incoming';
+                    else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
+
+                    const startedRaw = r.start_time_gmt || r.init_time_gmt;
+                    const callDate = startedRaw ? new Date(startedRaw + 'Z') : new Date();
+
+                    let fromNumber = r.from_number || r.ani_number;
+                    let toNumber = r.to_number || r.dest_number;
+
+                    // Specific mapping based on flow if needed, but generic fallback is usually ok for RAW
+                    if (rawFlow === 'out') {
+                        fromNumber = r.ani_number || r.from_number;
+                        toNumber = r.dest_number || r.to_number;
+                    }
+
+                    return {
+                        telphin_call_id: record_uuid,
+                        direction: direction,
+                        from_number: fromNumber || 'unknown',
+                        to_number: toNumber || 'unknown',
+                        from_number_normalized: normalizePhone(fromNumber),
+                        to_number_normalized: normalizePhone(toNumber),
+                        started_at: callDate.toISOString(),
+                        duration_sec: r.duration || 0,
+                        recording_url: r.record_url || r.storage_url || r.url || null,
+                        raw_payload: r,
+                        ingested_at: new Date().toISOString()
+                    };
+                });
+
+                const { error: rawError } = await supabase.from('raw_telphin_calls')
+                    .upsert(rawCalls, { onConflict: 'telphin_call_id' });
+
+                if (rawError) console.error('Slice Upsert Error:', rawError);
+                else totalSynced += rawCalls.length;
+            }
+
+            // SAVE CHECKPOINT IMMEDIATELY
+            // If we successfully processed this slice (or it was empty), we advance the cursor.
+            // But we only verify "success" by lack of critical crashes. 
+
+            // Advance cursor
+            cursorMs = endSliceMs + 1000; // +1 sec to avoid overlap
+
+            // Persist state
             await supabase.from('sync_state').upsert({
                 key: storageKey,
-                value: now.toISOString(),
+                value: new Date(cursorMs).toISOString(),
                 updated_at: new Date().toISOString()
             });
         }
 
         return NextResponse.json({
             success: true,
-            count: mappedCalls.length,
+            total_synced: totalSynced,
+            final_cursor: new Date(cursorMs).toISOString(),
+            completed_fully: cursorMs >= nowTs,
             extensions_scanned: EXTENSIONS.length,
-            debug_sample: mappedCalls[0],
-            debug_last_url: debugLastUrl,
-            debug_key_prefix: (process.env.TELPHIN_APP_KEY || '').substring(0, 5) + '...',
-            time_window: { from: start.toISOString(), to: now.toISOString() }
+            debug_key_prefix: (process.env.TELPHIN_APP_KEY || '').substring(0, 5) + '...'
         });
 
     } catch (error: any) {
