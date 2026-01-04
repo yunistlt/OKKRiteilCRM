@@ -32,7 +32,7 @@ export async function GET(request: Request) {
                 )
             `)
             .is('raw_payload->transcript', null)
-            .matcher(`(recording_url.neq.null,raw_payload->>storage_url.neq.null)`) // Ensure we have a URL (complex filter might need modification, doing simplistic check or filter in code)
+            // .matcher removed to fix build error. We filter in code below.
             // supabase-js simple filter: .not('recording_url', 'is', null) - but it might be in payload.
             // Let's just fetch recent ones and filter in code for safety if URL is tricky.
             // Actually, let's just check raw_payload->>storage_url for new items.
