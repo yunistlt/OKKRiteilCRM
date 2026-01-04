@@ -60,3 +60,12 @@ export async function getViolations(limit = 100) {
     }
     return data;
 }
+
+export async function createRule(ruleData: any) {
+    const { error } = await supabase
+        .from('okk_rules')
+        .insert([ruleData]);
+
+    if (error) throw new Error(error.message);
+    revalidatePath('/settings/rules');
+}

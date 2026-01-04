@@ -1,6 +1,7 @@
 
 import { getRules } from '@/app/actions/rules';
 import RuleCard from './rule-card';
+import NewRuleModal from './new-rule-modal';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,7 @@ export default async function RulesSettingsPage() {
                         Изменения применяются к <strong>новым</strong> событиям мгновенно.
                     </p>
                 </div>
+                <NewRuleModal />
             </div>
 
             <div className="space-y-6">
