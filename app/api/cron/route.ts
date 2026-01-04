@@ -1,69 +1,109 @@
 
 import { NextResponse } from 'next/server';
-import { headers } from 'next/headers';
-
-// Import "Handlers" directly if possible, or use fetch if they are isolated.
-// Ideally, we'd refactor logic into generic functions in `lib/` and call them here.
-// But for now, let's use internal fetch to keep "Route" logic isolated or simply call the routes if they export GET.
-// Calling route handlers directly can be tricky with Request objects.
-// Best approach for quick automation: "Orchestrator" via fetch (loopback).
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Max allowed for hobby/pro
+export const maxDuration = 300; // Max 5 minutes for Pro plan
 
 export async function GET(request: Request) {
-    // Basic Auth or Vercel Cron header check
-    const authHeader = request.headers.get('authorization');
-    const cronHeader = request.headers.get('x-vercel-cron');
-
-    // Allow if CRON or if valid secret (add secret later), effectively open for now for dev
-
     const baseUrl = new URL(request.url).origin;
     const report: string[] = [];
+    const startTime = Date.now();
+    // Leave 20s buffer before the hard 300s limit kills us
+    const TIMEOUT_THRESHOLD_MS = 280 * 1000;
+
+    const checkBudget = (stepName: string) => {
+        const elapsed = Date.now() - startTime;
+        if (elapsed > TIMEOUT_THRESHOLD_MS) {
+            console.warn(`[CRON] Skipping ${stepName}: Time budget exceeded (${(elapsed / 1000).toFixed(1)}s elapsed)`);
+            report.push(`Skipped ${stepName}: Timeout`);
+            return false;
+        }
+        return true;
+    };
 
     try {
+        console.log('--- CRON STARTED ---');
+
         // 1. Sync Telphin Calls
-        console.log('--- CRON: Syncing Calls ---');
-        const callsRes = await fetch(`${baseUrl}/api/sync/telphin`, {
-            cache: 'no-store',
-            headers: { 'x-triggered-by': 'cron' }
-        });
-        const callsJson = await callsRes.json();
-        report.push(`Calls: ${callsJson.count || 0} fetched`);
+        if (checkBudget('Telphin Sync')) {
+            console.log('[CRON] Step 1: Telphin Sync');
+            try {
+                const callsRes = await fetch(`${baseUrl}/api/sync/telphin`, {
+                    cache: 'no-store',
+                    headers: { 'x-triggered-by': 'cron' }
+                });
+                const callsJson = await callsRes.json();
+                report.push(`Calls: ${callsJson.count || 0} fetched`);
+            } catch (e: any) {
+                console.error('[CRON] Telphin Error:', e);
+                report.push(`Calls: Error (${e.message})`);
+            }
+        }
 
         // 2a. Sync RetailCRM Orders (State)
-        // This updates phone numbers/amounts for matching
-        console.log('--- CRON: Syncing Orders (State) ---');
-        const ordersRes = await fetch(`${baseUrl}/api/sync/retailcrm`, { cache: 'no-store' });
-        const ordersJson = await ordersRes.json();
-        report.push(`Orders: ${ordersJson.total_orders_fetched || 0} fetched`);
+        if (checkBudget('Orders Sync')) {
+            console.log('[CRON] Step 2: Orders Sync');
+            try {
+                const ordersRes = await fetch(`${baseUrl}/api/sync/retailcrm`, { cache: 'no-store' });
+                const ordersJson = await ordersRes.json();
+                report.push(`Orders: ${ordersJson.total_orders_fetched || 0} fetched`);
+            } catch (e: any) {
+                console.error('[CRON] Orders Error:', e);
+                report.push(`Orders: Error (${e.message})`);
+            }
+        }
 
-        // 2b. Sync Order History (Events)
-        console.log('--- CRON: Syncing History ---');
-        const histRes = await fetch(`${baseUrl}/api/sync/history`, { cache: 'no-store' });
-        const histJson = await histRes.json();
-        report.push(`History: ${histJson.saved_events || 0} saved`);
+        // 2b. Sync Order History
+        if (checkBudget('History Sync')) {
+            console.log('[CRON] Step 3: History Sync');
+            try {
+                const histRes = await fetch(`${baseUrl}/api/sync/history`, { cache: 'no-store' });
+                const histJson = await histRes.json();
+                report.push(`History: ${histJson.saved_events || 0} saved`);
+            } catch (e: any) {
+                console.error('[CRON] History Error:', e);
+                report.push(`History: Error (${e.message})`);
+            }
+        }
 
         // 3. Match Calls
-        console.log('--- CRON: Matching ---');
-        const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
-        const matchJson = await matchRes.json();
-        report.push(`Matches: ${matchJson.matches_found || 0} new`);
+        if (checkBudget('Matching')) {
+            console.log('[CRON] Step 4: Matching');
+            try {
+                const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
+                const matchJson = await matchRes.json();
+                report.push(`Matches: ${matchJson.matches_found || 0} new`);
+            } catch (e: any) {
+                console.error('[CRON] Matching Error:', e);
+                report.push(`Matches: Error (${e.message})`);
+            }
+        }
 
         // 4. Run Rule Engine
-        console.log('--- CRON: Rules ---');
-        const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
-        const rulesJson = await rulesRes.json();
-        report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
+        if (checkBudget('Rules')) {
+            console.log('[CRON] Step 5: Rules');
+            try {
+                const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
+                const rulesJson = await rulesRes.json();
+                report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
+            } catch (e: any) {
+                console.error('[CRON] Rules Error:', e);
+                report.push(`Rules: Error (${e.message})`);
+            }
+        }
+
+        const totalTime = (Date.now() - startTime) / 1000;
+        console.log(`--- CRON FINISHED in ${totalTime.toFixed(1)}s ---`);
 
         return NextResponse.json({
             success: true,
+            elapsed_seconds: totalTime,
             summary: report,
             timestamp: new Date().toISOString()
         });
 
     } catch (error: any) {
-        console.error('CRON Failed:', error);
+        console.error('CRON Fatal Error:', error);
         return NextResponse.json({ success: false, error: error.message, report }, { status: 500 });
     }
 }
