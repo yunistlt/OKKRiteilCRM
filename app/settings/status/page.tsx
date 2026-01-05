@@ -178,7 +178,10 @@ export default function SystemStatusPage() {
         return '⚡️';
     };
 
-    const percent = dbStats && dbStats.matchedCalls ? Math.round((dbStats.transcribedCalls / dbStats.matchedCalls) * 100) : 0;
+    const totalTranscriptionPool = (dbStats?.transcribedCalls || 0) + (dbStats?.pendingCalls || 0);
+    const percent = totalTranscriptionPool > 0
+        ? Math.round(((dbStats?.transcribedCalls || 0) / totalTranscriptionPool) * 100)
+        : 0;
 
     return (
         <div className="max-w-7xl mx-auto py-4">
