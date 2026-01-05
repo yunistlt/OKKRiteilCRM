@@ -16,7 +16,7 @@ export default function ManagerSettingsPage() {
         async function load() {
             try {
                 // 1. Fetch all managers
-                const mRes = await fetch('/api/debug/managers');
+                const mRes = await fetch('/api/managers');
                 const mData = await mRes.json();
 
                 // 2. Fetch controlled settings
