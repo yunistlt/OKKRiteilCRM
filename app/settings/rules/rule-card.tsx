@@ -61,7 +61,8 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
             );
         }
 
-        // Default Key-Value renderer for unknown/other rules
+        if (Object.keys(params).length === 0) return null;
+
         return (
             <div className="mt-4 text-xs text-gray-500 bg-gray-50 p-2 rounded">
                 <pre>{JSON.stringify(params, null, 2)}</pre>
