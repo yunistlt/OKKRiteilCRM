@@ -47,18 +47,24 @@ Task:
 Convert User's requirement into a Rule Definition.
 Determine 'entity_type' based on what we are looking for (Calls vs History Events).
 
+IMPORTANT:
+- OUTPUT MUST BE IN RUSSIAN LANGUAGE (Name and Explanation).
+- Even if the user prompt is in English, translate the explanation to Russian.
+- "name" field should be a short, professional Title in Russian (max 4-5 words).
+
 Examples:
 1. User: "Short calls"
-   Output: { "entity_type": "call", "sql": "duration_sec < 10" }
+   Output: { "entity_type": "call", "sql": "duration_sec < 10", "name": "Короткий звонок", "explanation": "Поиск звонков длительностью менее 10 секунд." }
 
 2. User: "Status changed to Cancelled"
-   Output: { "entity_type": "event", "sql": "field_name = 'status' AND new_value = 'cancel'" }
+   Output: { "entity_type": "event", "sql": "field_name = 'status' AND new_value = 'cancel'", "name": "Смена статуса на Отмена", "explanation": "События изменения статуса заказа на 'Отмена' (cancel)." }
 
 3. User: "Manager comment is empty when status changes"
    Output: { 
      "entity_type": "event", 
      "sql": "field_name = 'status' AND (om.full_order_context->>'manager_comment' IS NULL OR om.full_order_context->>'manager_comment' = '')",
-     "explanation": "Checking events where status changed but manager_comment in current context is empty."
+     "name": "Пустой комментарий при смене статуса",
+     "explanation": "Проверка событий, где происходит смена статуса, но поле 'Комментарий менеджера' в текущем контексте заказа пустое."
    }
 `;
 
