@@ -1,3 +1,5 @@
+'use client';
+
 import { getRules } from '@/app/actions/rules';
 
 import React, { useEffect, useState, useMemo } from 'react';
