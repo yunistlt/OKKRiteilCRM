@@ -102,24 +102,7 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
 
         // --- 1. Hard Rules (Heuristics) ---
 
-        // Rule: Stagnation
-        // Only classify as Red/Yellow if stagnation is significant.
-        const daysSinceUpdate = (now.getTime() - new Date(order.updated_at).getTime()) / (1000 * 3600 * 24);
-        if (daysSinceUpdate > STAGNATION_DAYS) {
-            score += 40;
-            reasons.push(`Заказ висит без движения ${Math.round(daysSinceUpdate)} дней`);
-            level = daysSinceUpdate > 14 ? 'red' : 'yellow';
-        }
-
-        // Rule: New Status SLA
-        if ((order.status.includes('new') || order.status.includes('novy')) && daysSinceUpdate * 24 > CRITICAL_SLA_HOURS) {
-            score += 50;
-            reasons.push('Превышен SLA для нового заказа (>4ч)');
-            level = 'red';
-        }
-
-        // --- 2. AI Analysis (Sentiment & Context) ---
-        // Flatten calls from both legacy and new match tables
+        // Extract and flatten all calls for this order (Legacy matches + New matches)
         const legacyCalls = (order.matches || [])
             .map((m: any) => m.calls)
             .filter((c: any) => c !== null);
@@ -136,8 +119,49 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
             }));
 
         const allCalls = [...legacyCalls, ...rawCalls];
-
         const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+
+        // Collect all possible activity timestamps for "Movement"
+        const movementDates: number[] = [];
+
+        // A. CRM System Update
+        if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
+
+        // B. CRM Creation Date (fallback)
+        if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
+
+        // C. Status Change Date from Payload
+        const statusUpdatedAt = order.raw_payload?.statusUpdatedAt;
+        if (statusUpdatedAt) {
+            const d = new Date(statusUpdatedAt);
+            if (!isNaN(d.getTime())) movementDates.push(d.getTime());
+        }
+
+        // D. Latest Call from matched lists
+        if (lastCall) {
+            movementDates.push(new Date(lastCall.timestamp).getTime());
+        }
+
+        // Calculate "Days Since Last Movement"
+        // If no dates found at all (shouldn't happen with created_at), use created_at or now.
+        const lastMovementTs = movementDates.length > 0 ? Math.max(...movementDates) : now.getTime();
+        const daysSinceUpdate = (now.getTime() - lastMovementTs) / (1000 * 3600 * 24);
+
+        // Rule: Stagnation
+        if (daysSinceUpdate > STAGNATION_DAYS) {
+            score += 40;
+            reasons.push(`Заказ висит без движения ${Math.round(daysSinceUpdate)} дней`);
+            level = daysSinceUpdate > 14 ? 'red' : 'yellow';
+        }
+
+        // Rule: New Status SLA
+        if ((order.status.includes('new') || order.status.includes('novy')) && daysSinceUpdate * 24 > CRITICAL_SLA_HOURS) {
+            score += 50;
+            reasons.push('Превышен SLA для нового заказа (>4ч)');
+            level = 'red';
+        }
+
+        // --- 2. AI Analysis (Sentiment & Context) ---
 
         let aiSummary = "Ожидание анализа";
 
