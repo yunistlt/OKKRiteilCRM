@@ -10,46 +10,47 @@ const openai = new OpenAI({
 });
 
 const SYSTEM_PROMPT = `
-You are a SQL Expert AND a Semantic Analyst for a Call Center.
-Target table: 'raw_telphin_calls' (VoIP Calls).
+You are a SQL Expert AND a Semantic Analyst for a Call Center & CRM.
+Target tables: 
+1. 'raw_telphin_calls' (VoIP Calls) - entity_type: 'call'
+2. 'raw_order_events' (History/Audit) - entity_type: 'event'
 
-Schema:
+Schema 'raw_telphin_calls':
 - started_at (timestamp)
 - duration_sec (int)
-- from_number_normalized (text) (Caller)
-- to_number_normalized (text) (Callee)
-- extension (text) (Manager Extension)
-- call_type (text) ('incoming', 'outgoing')
-- status (text) ('success', 'missed')
-- transcript (text) (Full text of the call)
+- from_number_normalized, to_number_normalized (Caller/Callee)
+- call_type (incoming/outgoing)
+- transcript (text)
 
-JOINED CONTEXT (Available for SQL filtering):
-- om.current_status (text) (Order Status)
-- om.order_amount (numeric) (Order Total Sum)
-- om.manager_id (int) (Manager ID)
-- om.full_order_context (JSONB) (Universal Context: Full Order Data)
+Schema 'raw_order_events':
+- occurred_at (timestamp)
+- field_name (text) (e.g. 'status', 'manager_comment', 'delivery_date')
+- old_value (text)
+- new_value (text)
+- retailcrm_order_id (int)
+
+JOINED CONTEXT (Available for SQL):
+- om.current_status (text)
+- om.order_amount (numeric)
+- om.manager_id (int)
+- om.full_order_context (JSONB)
 
 Task:
-Convert the User's Natural Language requirements into a Rule Definition.
-USE \`om.full_order_context\` for ANY field not in top-level columns.
-- Use \`->>\` for text extraction.
-- Use \`->\` for object navigation.
-- Cast values if needed \`(om.full_order_context->>'totalSumm')::numeric\`.
+Convert User's requirement into a Rule Definition.
+Determine 'entity_type' based on what we are looking for (Calls vs History Events).
 
 Examples:
-1. User: "Only VIP clients"
-   SQL: "om.full_order_context->'customer'->>'vip' = 'true'"
+1. User: "Short calls"
+   Output: { "entity_type": "call", "sql": "duration_sec < 10" }
 
-2. User: "If purchased iPhone"
-   SQL: "om.full_order_context->'items' @> '[{\"offer\": {\"name\": \"iPhone\"}}]'" (Use JSONB containment or text search)
-   Alternative (Simpler): "om.full_order_context::text ILIKE '%iPhone%'"
+2. User: "Status changed to Cancelled"
+   Output: { "entity_type": "event", "sql": "field_name = 'status' AND new_value = 'cancel'" }
 
-3. User: "Did the manager mention the price?"
+3. User: "Manager comment is empty when status changes"
    Output: { 
-     "type": "semantic", 
-     "sql": "duration_sec > 30 AND call_type = 'outgoing'", // Filter short calls/incoming
-     "semantic_prompt": "Check if the manager explicitly mentioned the price or cost of services.",
-     "explanation": "I will listen to all outgoing calls >30s and check for price discussions."
+     "entity_type": "event", 
+     "sql": "field_name = 'status' AND (om.full_order_context->>'manager_comment' IS NULL OR om.full_order_context->>'manager_comment' = '')",
+     "explanation": "Checking events where status changed but manager_comment in current context is empty."
    }
 `;
 
