@@ -61,8 +61,8 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         .from('raw_order_events')
         .select(`
             event_id,
-            field_name,
-            new_value,
+            event_type,
+            raw_payload,
             occurred_at,
             retailcrm_order_id,
             order_metrics!left ( current_status, manager_id, full_order_context )
@@ -100,8 +100,8 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             manager_id: e.order_metrics?.manager_id
         };
         const row = {
-            field_name: e.field_name,
-            new_value: e.new_value,
+            field_name: e.event_type,
+            new_value: e.raw_payload?.newValue,
             occurred_at: e.occurred_at,
             om
         };

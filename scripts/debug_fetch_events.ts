@@ -7,13 +7,13 @@ async function checkEvents() {
         .from('raw_order_events')
         .select(`
             event_id,
-            field_name,
-            new_value,
+            event_type,
+            raw_payload,
             occurred_at,
             retailcrm_order_id,
             order_metrics!left ( current_status, manager_id, full_order_context )
         `)
-        .eq('field_name', 'status')
+        .eq('event_type', 'status')
         .order('occurred_at', { ascending: false })
         .limit(5);
 
@@ -26,7 +26,7 @@ async function checkEvents() {
     events.forEach((e: any) => {
         console.log('--- Event ---');
         console.log(`ID: ${e.event_id}, Time: ${e.occurred_at}`);
-        console.log(`Field: ${e.field_name} -> ${e.new_value}`);
+        console.log(`Field: ${e.event_type} -> ${e.raw_payload?.newValue}`);
         console.log('Order Context:', JSON.stringify(e.order_metrics?.full_order_context, null, 2));
 
         // Check manually
