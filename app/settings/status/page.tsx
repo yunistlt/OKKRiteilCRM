@@ -92,6 +92,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Telphin Backfill')) url = '/api/sync/telphin/backfill';
         if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
         if (serviceName.includes('Matching')) url = '/api/matching/process';
+        if (serviceName.includes('Transcription Backfill')) url = '/api/cron/transcribe-backfill'; // GET is fine for manual cron trigger
 
         if (!url) return;
 
