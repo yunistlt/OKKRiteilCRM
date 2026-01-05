@@ -42,7 +42,8 @@ export async function GET(request: Request) {
         }
         */
 
-        // 2a. Sync RetailCRM Orders (State)
+        // 2a. Sync RetailCRM Orders (State) (DISABLED until Jan 12)
+        /*
         if (checkBudget('Orders Sync')) {
             console.log('[CRON] Step 2: Orders Sync');
             try {
@@ -54,8 +55,10 @@ export async function GET(request: Request) {
                 report.push(`Orders: Error (${e.message})`);
             }
         }
+        */
 
-        // 2b. Sync Order History
+        // 2b. Sync Order History (DISABLED until Jan 12)
+        /*
         if (checkBudget('History Sync')) {
             console.log('[CRON] Step 3: History Sync');
             try {
@@ -67,6 +70,7 @@ export async function GET(request: Request) {
                 report.push(`History: Error (${e.message})`);
             }
         }
+        */
 
         // 3. Match Calls
         if (checkBudget('Matching')) {
