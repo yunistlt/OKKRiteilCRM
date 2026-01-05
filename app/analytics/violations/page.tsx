@@ -30,6 +30,7 @@ import { Suspense } from 'react';
 function ViolationsContent() {
     const searchParams = useSearchParams();
     const [violations, setViolations] = useState<any[]>([]);
+    const [rules, setRules] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState<string>('all');
     const [viewMode, setViewMode] = useState<'list' | 'group'>('group');
@@ -47,10 +48,17 @@ function ViolationsContent() {
                 if (from) url.searchParams.set('start', from);
                 if (to) url.searchParams.set('end', to);
 
-                const res = await fetch(url.toString());
-                const data = await res.json();
-                if (data.violations) {
-                    setViolations(data.violations);
+                // Fetch rules and violations in parallel
+                const [resViolations, activeRules] = await Promise.all([
+                    fetch(url.toString()).then(r => r.json()),
+                    getRules()
+                ]);
+
+                if (resViolations.violations) {
+                    setViolations(resViolations.violations);
+                }
+                if (activeRules) {
+                    setRules(activeRules);
                 }
             } catch (e) {
                 console.error(e);
@@ -131,8 +139,8 @@ function ViolationsContent() {
                         className="bg-white border-0 text-gray-700 text-sm font-bold rounded-xl focus:ring-0 block p-2 outline-none cursor-pointer"
                     >
                         <option value="all">Все нарушения</option>
-                        {availableTypes.map(t => (
-                            <option key={t as string} value={t as string}>{VIOLATION_LABELS[t as string] || t}</option>
+                        {rules.map(r => (
+                            <option key={r.code} value={r.code}>{r.name}</option>
                         ))}
                     </select>
 
