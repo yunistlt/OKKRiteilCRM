@@ -3,8 +3,9 @@
 
 import { useState } from 'react';
 import { updateRuleStatus, updateRuleParams } from '@/app/actions/rules';
+import NewRuleModal from './new-rule-modal';
 
-export default function RuleCard({ rule }: { rule: any }) {
+export default function RuleCard({ rule, violationCount }: { rule: any, violationCount: number }) {
     const [isLoading, setIsLoading] = useState(false);
     const [params, setParams] = useState(rule.parameters);
 
@@ -82,15 +83,33 @@ export default function RuleCard({ rule }: { rule: any }) {
                     </h3>
                     <p className="mt-1 text-sm text-gray-500 max-w-xl">{rule.description}</p>
                 </div>
+
                 <div className="flex items-center gap-2">
+                    {/* Violation Count Badge */}
+                    {violationCount > 0 && (
+                        <div className="mr-4 px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-600 flex items-center gap-1" title="Найдено нарушений по этому правилу">
+                            ⚠️ {violationCount}
+                        </div>
+                    )}
+
+                    {/* Edit As New Version */}
+                    <NewRuleModal
+                        initialPrompt={rule.description}
+                        trigger={
+                            <button className="text-gray-400 hover:text-blue-600 p-1 mr-1" title="Создать новую версию (Edit)">
+                                ✏️
+                            </button>
+                        }
+                    />
+
                     <button
                         onClick={async () => {
-                            if (confirm('Вы уверены? Правило будет удалено навсегда.')) {
-                                await import('@/app/actions/rules').then(m => m.deleteRule(rule.code));
+                            if (confirm('Вы уверены? Правило будет перенесено в архив (выключено).')) {
+                                await updateRuleStatus(rule.code, false);
                             }
                         }}
                         className="text-gray-400 hover:text-red-500 p-1"
-                        title="Удалить правило"
+                        title="Архивировать (Выключить)"
                     >
                         🗑️
                     </button>

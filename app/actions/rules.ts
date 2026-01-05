@@ -17,6 +17,27 @@ export async function getRules() {
     return data;
 }
 
+export async function getRuleStats() {
+    const { data, error } = await supabase
+        .from('okk_violations')
+        .select('rule_code');
+
+    if (error) {
+        console.error('Error fetching rule stats:', error);
+        return {};
+    }
+
+    // Count violations per rule
+    const stats: Record<string, number> = {};
+    data?.forEach((v: any) => {
+        if (v.rule_code) {
+            stats[v.rule_code] = (stats[v.rule_code] || 0) + 1;
+        }
+    });
+
+    return stats;
+}
+
 export async function updateRuleStatus(code: string, isActive: boolean) {
     const { error } = await supabase
         .from('okk_rules')

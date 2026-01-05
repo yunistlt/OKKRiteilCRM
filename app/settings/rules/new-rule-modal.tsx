@@ -4,9 +4,9 @@
 import { useState } from 'react';
 import { createRule } from '@/app/actions/rules';
 
-export default function NewRuleModal() {
+export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt?: string, trigger?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [prompt, setPrompt] = useState('');
+    const [prompt, setPrompt] = useState(initialPrompt || '');
     const [isLoading, setIsLoading] = useState(false);
 
     // Draft State
@@ -15,6 +15,10 @@ export default function NewRuleModal() {
     const [name, setName] = useState('');
     const [severity, setSeverity] = useState('medium');
     const [step, setStep] = useState(1); // 1: Prompt, 2: Review
+
+    // Initialize prompt when opening if provided
+    // Effect not strictly needed if we just use default state, but if initialPrompt changes?
+    // Let's rely on initial state for now.
 
     const handleGenerate = async () => {
         setIsLoading(true);
@@ -61,6 +65,9 @@ export default function NewRuleModal() {
     };
 
     if (!isOpen) {
+        if (trigger) {
+            return <div onClick={() => setIsOpen(true)}>{trigger}</div>;
+        }
         return (
             <button
                 onClick={() => setIsOpen(true)}
