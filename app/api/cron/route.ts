@@ -24,7 +24,8 @@ export async function GET(request: Request) {
     try {
         console.log('--- CRON STARTED ---');
 
-        // 1. Sync Telphin Calls
+        // 1. Sync Telphin Calls (DISABLED until Jan 12 to prioritize Backfill)
+        /*
         if (checkBudget('Telphin Sync')) {
             console.log('[CRON] Step 1: Telphin Sync');
             try {
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
                 report.push(`Calls: Error (${e.message})`);
             }
         }
+        */
 
         // 2a. Sync RetailCRM Orders (State)
         if (checkBudget('Orders Sync')) {
