@@ -82,12 +82,31 @@ export async function getViolations(limit = 100) {
     return data;
 }
 
-export async function createRule(ruleData: any) {
-    const { error } = await supabase
+export async function createRule(ruleData: any, historyDays = 0) {
+    const { error, data } = await supabase
         .from('okk_rules')
-        .insert([ruleData]);
+        .insert([ruleData])
+        .select()
+        .single();
 
     if (error) throw new Error(error.message);
+
+    // If history check requested, trigger background audit
+    if (historyDays > 0 && data) {
+        // We use fetch to fire-and-forget a background check request
+        // Using a dedicated API endpoint for this is safer than calling engine directly in server action (timeout risk)
+        // Adjust URL based on environment (locally localhost:3000, prod Vercel URL)
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        fetch(`${baseUrl}/api/rules/audit-history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                ruleId: data.id,
+                days: historyDays
+            })
+        }).catch(err => console.error('Failed to trigger background audit:', err));
+    }
+
     revalidatePath('/settings/rules');
 }
 

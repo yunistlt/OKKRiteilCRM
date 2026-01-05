@@ -14,6 +14,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [explanation, setExplanation] = useState('');
     const [name, setName] = useState('');
     const [severity, setSeverity] = useState('medium');
+    const [historyDays, setHistoryDays] = useState(0);
     const [step, setStep] = useState(1); // 1: Prompt, 2: Review
 
     // Initialize prompt when opening if provided
@@ -53,7 +54,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 severity,
                 parameters: {}, // Hardcoded (dynamic) rules usually don't have params yet
                 is_active: true
-            });
+            }, historyDays);
             setIsOpen(false);
             setStep(1);
             setPrompt('');
@@ -182,6 +183,29 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                     <option value="critical">CRITICAL (Бордовый)</option>
                                 </select>
                             </div>
+                        </div>
+
+                        <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <label className="block text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
+                                🕰️ Проверить историю?
+                                <span className="text-xs font-normal text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">Beta</span>
+                            </label>
+                            <select
+                                value={historyDays}
+                                onChange={e => setHistoryDays(Number(e.target.value))}
+                                className="w-full border-blue-200 rounded p-2 bg-white text-sm"
+                            >
+                                <option value={0}>Только новые события (с этого момента)</option>
+                                <option value={1}>За последние 24 часа</option>
+                                <option value={7}>За последние 7 дней</option>
+                                <option value={30}>За последние 30 дней</option>
+                                <option value={60}>За последние 60 дней</option>
+                            </select>
+                            <p className="text-xs text-blue-600 mt-2">
+                                {historyDays > 0
+                                    ? `После создания правила мы сразу проверим все события за выбранный период.`
+                                    : `Правило начнет работать только для событий, которые произойдут после создания.`}
+                            </p>
                         </div>
 
                         <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
