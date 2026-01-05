@@ -55,7 +55,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     return totalViolations;
 }
 
-async function executeEventRule(rule: any, startDate: string, endDate: string) {
+async function executeEventRule(rule: any, startDate: string, endDate: string): Promise<number> {
     // Queries raw_order_events (history)
     let query = supabase
         .from('raw_order_events')
@@ -145,7 +145,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string) {
     return 0;
 }
 
-async function executeCallRule(rule: any, startDate: string, endDate: string) {
+async function executeCallRule(rule: any, startDate: string, endDate: string): Promise<number> {
     // 1. Construct Query
     // We need to inject parameters into the SQL or handle them via Supabase filter.
     // Supabase JS .filter() takes a column, operator, and value.
@@ -227,7 +227,7 @@ async function executeCallRule(rule: any, startDate: string, endDate: string) {
     else if (rule.code === 'answering_machine_dialog') {
         // AMD not yet in RAW. Skipping for now to avoid errors.
         console.log('[RuleEngine] Skipping answering_machine_dialog (AMD data not ready)');
-        return;
+        return 0;
     }
     else if (rule.code === 'call_impersonation') {
         query = query
