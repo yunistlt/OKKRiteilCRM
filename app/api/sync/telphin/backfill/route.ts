@@ -166,12 +166,10 @@ export async function GET(request: Request) {
                 nextCursor = lastDate.toISOString();
             }
         } else {
-            // Empy batch? 
-            if (cursorDate.getTime() < BACKFILL_END_DATE.getTime() - 24 * 3600 * 1000) {
-                // Only advance if TRULY empty (0 calls found in 30 days window)
-                console.log(`[Backfill] Empty batch (0 calls in 30d). Advancing to ${endDate.toISOString()}`);
-                nextCursor = endDate.toISOString();
-            }
+            // Empty batch? Meaning 0 calls in the 30-day window.
+            // We MUST advance to the end of the window to avoid infinite loop.
+            console.log(`[Backfill] Empty batch (0 calls). Advancing to ${endDate.toISOString()}`);
+            nextCursor = endDate.toISOString();
         }
 
         // NO FAST-FORWARD HERE. Even if calls < 50, we just advance to the last record.
