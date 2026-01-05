@@ -123,6 +123,22 @@ export async function GET() {
             reason: transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.'
         };
 
+        // --- Matching Backfill ---
+        const matchBackCursorKey = stateMap.get('matching_backfill_cursor');
+        const matchBackCursor = matchBackCursorKey?.value || 'Starts Sept 1';
+        const matchBackLastRun = matchBackCursorKey?.updated_at || null;
+        const matchBackActive = isFresh(matchBackLastRun, 10);
+
+        const matchBackStatus = {
+            service: 'Matching Backfill',
+            // Show only YYYY-MM-DD
+            cursor: matchBackCursor.includes('T') ? matchBackCursor.split('T')[0] : matchBackCursor,
+            last_run: matchBackLastRun,
+            status: matchBackActive ? 'ok' : 'warning',
+            details: matchBackActive ? 'Matching...' : 'Idle / Finished',
+            reason: matchBackActive ? null : 'Скрипт ожидает запуска или завершил работу.'
+        };
+
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
@@ -130,8 +146,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinMain, telphinBackfill, retailStatus, matchStatus, transStatus],
-            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus, transStatus],
+            services: [telphinMain, telphinBackfill, retailStatus, matchStatus, transStatus, matchBackStatus],
+            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus, transStatus, matchBackStatus],
             settings
         });
 
