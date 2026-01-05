@@ -299,8 +299,3 @@ async function updateState(cursorKey: string, cursorValue: string, extIndex: num
     ], { onConflict: 'key' });
 }
 
-    } catch (error: any) {
-    console.error('Telphin Backfill Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-}
-}
