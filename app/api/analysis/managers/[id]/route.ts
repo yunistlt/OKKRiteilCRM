@@ -105,7 +105,7 @@ export async function GET(
                 efficiency_percent: efficiencyPercent,
                 work_time_minutes: workTimeMins
             },
-            violations: managerViolations.slice(0, 50), // Latest 50
+            violations: managerViolations.slice(0, 50),
             calls: formattedCalls || [], // Full history for the audit period (30 days)
         });
 

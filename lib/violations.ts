@@ -51,8 +51,16 @@ export async function detectViolations(startDate: string, endDate: string) {
     const isControlActive = controlledIds.size > 0;
 
     // 2. Fetch all calls in range with Order Match and Order Manager
+    // 1c. Fetch Active Rules
+    const { data: rules } = await supabase
+        .from('okk_rules')
+        .select('*')
+        .eq('is_active', true);
+
+    const activeRules = new Map((rules || []).map(r => [r.code, r]));
+
     // 2. Fetch all calls in range with Order Match and Order Manager
-    const { data: calls } = await supabase
+    const { data: calls, error: fetchError } = await supabase
         .from('raw_telphin_calls')
         .select(`
             id: telphin_call_id,
@@ -67,6 +75,10 @@ export async function detectViolations(startDate: string, endDate: string) {
         `)
         .gte('started_at', startDate)
         .lte('started_at', endDate);
+
+    if (fetchError) {
+        throw new Error(`Violations fetch error: ${fetchError.message}`);
+    }
 
     // 3. Fetch all history events in range
     const { data: history } = await supabase
@@ -92,67 +104,96 @@ export async function detectViolations(startDate: string, endDate: string) {
         historyByOrder[h.order_id].push(h);
     });
 
-    // --- CALL-BASED RULES (NOW STRICTLY MATCHED) ---
+    // --- CALL-BASED RULES (NOW DYNAMIC) ---
     for (const call of callData) {
         // Map raw_payload fields
         const isAnsweringMachine = (call.raw_payload as any)?.is_answering_machine === true;
         const match = call.call_order_matches?.[0]; // Relation name changed
+
+        // DEBUG PROBE
+        if (call.id === '349957-CD02BDDC732441F49C7531F68EFD87FD') {
+            violations.push({
+                call_id: call.id,
+                manager_id: 10, // Force match
+                order_id: null,
+                violation_type: 'short_call',
+                severity: 'low',
+                details: `DEBUG PROBE: Match: ${JSON.stringify(call.call_order_matches)}, Duration: ${call.duration}, ManagerID: ${(match as any)?.orders?.manager_id}`,
+                created_at: call.timestamp
+            });
+        }
+
         if (!match) continue; // RULE 1: Skip if no matching order
 
         const orderId = match.order_id;
-        const managerId = (match as any).orders?.manager_id || null;
+        const managerId = (match as any).orders?.manager_id ? Number((match as any).orders.manager_id) : null;
         const duration = call.duration || 0;
 
-        // RULE: Answering Machine Deception (> 15s but AM)
-        if (duration > 15 && isAnsweringMachine) {
-            violations.push({
-                call_id: call.id,
-                manager_id: managerId,
-                order_id: orderId,
-                violation_type: 'call_impersonation', // We use impersonation or a new type if we want
-                severity: 'high',
-                details: `Разговор с автоответчиком: ${duration} сек (Имитация диалога)`,
-                created_at: call.timestamp
-            });
+        const amdRule = activeRules.get('answering_machine_dialog');
+        if (amdRule) {
+            const threshold = amdRule.parameters?.threshold_sec || 15;
+            if (duration > threshold && isAnsweringMachine) {
+                violations.push({
+                    call_id: call.id,
+                    manager_id: managerId,
+                    order_id: orderId,
+                    violation_type: 'call_impersonation', // Mapping to existing UI type or generic
+                    severity: amdRule.severity as any || 'high',
+                    details: `Разговор с автоответчиком: ${duration} сек > ${threshold} сек (Имитация диалога)`,
+                    created_at: call.timestamp
+                });
+            }
         }
 
-        // RULE 7: CALL_IMPERSONATION (< 5s answered)
-        if (duration > 0 && duration < 5) {
-            violations.push({
-                call_id: call.id,
-                manager_id: managerId,
-                order_id: orderId,
-                violation_type: 'call_impersonation',
-                severity: 'high',
-                details: `Имитация звонка: длительность ${duration} сек`,
-                created_at: call.timestamp
-            });
+        // RULE: Call Impersonation / Fake Dialing (Dynamic: call_impersonation)
+        const impersonationRule = activeRules.get('call_impersonation');
+        if (impersonationRule) {
+            const threshold = impersonationRule.parameters?.threshold_sec || 5;
+            if (duration > 0 && duration < threshold) {
+                violations.push({
+                    call_id: call.id,
+                    manager_id: managerId,
+                    order_id: orderId,
+                    violation_type: 'call_impersonation',
+                    severity: impersonationRule.severity as any || 'high',
+                    details: `Имитация звонка: длительность ${duration} сек < ${threshold} сек`,
+                    created_at: call.timestamp
+                });
+            }
         }
 
-        // RULE: Short Call (< 20s)
-        if (duration >= 5 && duration < 20) {
-            violations.push({
-                call_id: call.id,
-                manager_id: managerId,
-                order_id: orderId,
-                violation_type: 'short_call',
-                severity: 'medium',
-                details: `Короткий звонок: ${duration} сек`,
-                created_at: call.timestamp
-            });
+        // RULE: Short Call (Dynamic: short_call)
+        const shortCallRule = activeRules.get('short_call');
+        if (shortCallRule) {
+            const threshold = shortCallRule.parameters?.threshold_sec || 20;
+            const minDuration = 5; // Fixed min to distinguish from impersonation
+            if (duration >= minDuration && duration < threshold) {
+                violations.push({
+                    call_id: call.id,
+                    manager_id: managerId,
+                    order_id: orderId,
+                    violation_type: 'short_call',
+                    severity: shortCallRule.severity as any || 'medium',
+                    details: `Короткий звонок: ${duration} сек < ${threshold} сек`,
+                    created_at: call.timestamp
+                });
+            }
         }
 
-        // RULE 2: Missed Call
-        if (call.flow === 'incoming' && duration === 0) {
-            violations.push({
-                call_id: call.id,
-                manager_id: managerId,
-                order_id: orderId,
-                violation_type: 'missed_call',
-                severity: 'high',
-                details: `Пропущенный входящий вызов`,
-                created_at: call.timestamp
-            });
+        // RULE: Missed Call (Dynamic: missed_incoming)
+        const missedCallRule = activeRules.get('missed_incoming');
+        if (missedCallRule) {
+            if (call.flow === 'incoming' && duration === 0) {
+                violations.push({
+                    call_id: call.id,
+                    manager_id: managerId,
+                    order_id: orderId,
+                    violation_type: 'missed_call',
+                    severity: missedCallRule.severity as any || 'high',
+                    details: `Пропущенный входящий вызов`,
+                    created_at: call.timestamp
+                });
+            }
         }
     }
 
