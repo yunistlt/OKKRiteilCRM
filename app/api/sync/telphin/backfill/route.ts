@@ -32,7 +32,18 @@ function formatTelphinDate(date: Date) {
     );
 }
 
-// ... (normalizePhone, keys skipped) ... 
+const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
+const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
+
+function normalizePhone(val: any) {
+    if (!val) return null;
+    let s = String(val).replace(/[^\d]/g, '');
+    // Standardize to 10 digits if 11 and starts with 7 or 8
+    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) {
+        s = s.slice(1);
+    }
+    return s.length >= 10 ? s : null;
+}
 
 export async function GET(request: Request) {
     if (!TELPHIN_APP_KEY || !TELPHIN_APP_SECRET) {
