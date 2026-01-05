@@ -93,7 +93,33 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                 placeholder="Например: Звонки короче 10 секунд..."
                                 className="w-full border rounded-lg p-3 h-32 focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
+                            />
                         </div>
+
+                        {/* Tag Cloud */}
+                        <div>
+                            <span className="text-xs text-gray-500 font-medium block mb-2">Нажмите, чтобы добавить поле:</span>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    'поле status', 'поле manager_comment', 'поле total_sum',
+                                    'поле delivery_date', 'поле payment_status', 'поле manager_id',
+                                    'звонки > 30 сек', 'статус Отмена'
+                                ].map(tag => (
+                                    <button
+                                        key={tag}
+                                        onClick={() => setPrompt(prev => prev ? `${prev} ${tag}` : tag)}
+                                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs rounded-full border border-gray-200 transition-colors"
+                                    >
+                                        + {tag}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end gap-2 text-sm text-gray-500 italic">
+                            💡 ИИ понимает контекст лучше, чем строгий SQL.
+                        </div>
+
                         <div className="flex justify-end gap-2">
                             <button onClick={() => setIsOpen(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Отмена</button>
                             <button
