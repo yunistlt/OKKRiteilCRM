@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getTelphinToken } from '@/lib/telphin';
@@ -33,7 +34,12 @@ function formatTelphinDate(date: Date) {
 
 function normalizePhone(val: any) {
     if (!val) return null;
-    return String(val).replace(/[^\d+]/g, '');
+    let s = String(val).replace(/[^\d]/g, '');
+    // Standardize to 10 digits if 11 and starts with 7 or 8
+    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) {
+        s = s.slice(1);
+    }
+    return s.length >= 10 ? s : null;
 }
 
 const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
@@ -87,31 +93,9 @@ export async function GET(request: Request) {
             });
         }
 
-        const fetchChunk = async (extId: number, fromD: Date, toD: Date) => {
-            const params = new URLSearchParams({
-                start_datetime: formatTelphinDate(fromD),
-                end_datetime: formatTelphinDate(toD),
-                order: 'asc',
-            });
-            const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
-
-            try {
-                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-                if (!res.ok) {
-                    console.error(`[Backfill] Fetch failed for ext ${extId}: ${res.status}`);
-                    return [];
-                }
-                const data = await res.json();
-                return Array.isArray(data) ? data : [];
-            } catch (e) {
-                console.error(`[Backfill] Fetch error for ext ${extId}:`, e);
-                return [];
-            }
-        };
-
         // 2. Process one slice
-        // Use 6 hours slice
-        const SLICE_MS = 6 * 60 * 60 * 1000;
+        // REDUCED SLICE TO 1 HOUR to avoid hitting limits
+        const SLICE_MS = 1 * 60 * 60 * 1000;
         let endSliceMs = cursor.getTime() + SLICE_MS;
 
         // Cap at end date
@@ -124,17 +108,70 @@ export async function GET(request: Request) {
 
         console.log(`[Backfill] Processing slice: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
+        // Helper to fetch keys
+        const fetchChunk = async (extId: number, fromD: Date, toD: Date) => {
+            const params = new URLSearchParams({
+                start_datetime: formatTelphinDate(fromD),
+                end_datetime: formatTelphinDate(toD),
+                order: 'asc',
+                count: '500' // Explicit high limit.
+            });
+            const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
+
+            try {
+                const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+
+                // --- 429 HANDLING ---
+                if (res.status === 429) {
+                    console.warn(`[Backfill] ⚠️ 429 Limit hit for ext ${extId}. Cooling down 10s...`);
+                    await new Promise(r => setTimeout(r, 10000));
+                    return 'LIMIT_HIT';
+                }
+
+                if (!res.ok) {
+                    console.error(`[Backfill] Fetch failed for ext ${extId}: ${res.status}`);
+                    return [];
+                }
+                const data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch (e) {
+                console.error(`[Backfill] Fetch error for ext ${extId}:`, e);
+                return [];
+            }
+        };
+
         let sliceCalls: any[] = [];
-        const BATCH_SIZE = 3; // Reduced from 10 to avoid 429 errors
+        let limitHit = false;
 
-        for (let i = 0; i < EXTENSIONS.length; i += BATCH_SIZE) {
-            const chunkExts = EXTENSIONS.slice(i, i + BATCH_SIZE);
-            const promises = chunkExts.map(extId => fetchChunk(extId, fromD, toD));
-            const results = await Promise.all(promises);
-            results.forEach(r => sliceCalls.push(...r));
+        // --- GENTLE SYNC ----
+        // Sequential processing
+        for (const extId of EXTENSIONS) {
+            const result = await fetchChunk(extId, fromD, toD);
 
-            // Polite delay between batches
+            if (result === 'LIMIT_HIT') {
+                limitHit = true;
+                break; // Stop processing this slice, save what we have, but maybe don't advance cursor??
+                // Actually, if we hit limit, we probably shouldn't advance cursor to avoid skipping extensions.
+                // BUT, if we return now, we save partial data. 
+                // For simplicity given the task, if we hit 429, let's just abort this run. 
+                // The next cron run will pick up from the SAME cursor.
+            }
+
+            if (Array.isArray(result)) {
+                sliceCalls.push(...result);
+            }
+
+            // Mandatory delay
             await new Promise(r => setTimeout(r, 1000));
+        }
+
+        if (limitHit) {
+            console.warn('[Backfill] Aborting slice due to 429. Will retry next run.');
+            return NextResponse.json({
+                success: false,
+                status: 'rate_limited',
+                message: 'Hit 429 error. Aborted slice.'
+            });
         }
 
         let syncedCount = 0;
@@ -185,7 +222,7 @@ export async function GET(request: Request) {
             console.log('[Backfill] No calls in this slice.');
         }
 
-        // 3. Advance Cursor
+        // 3. Advance Cursor (Only if no 429)
         const nextCursor = new Date(endSliceMs + 1000); // +1s
         await supabase.from('sync_state').upsert({
             key: storageKey,

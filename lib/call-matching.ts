@@ -45,7 +45,7 @@ async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate
     const normalized = normalizePhone(phone);
     if (!normalized) return [];
 
-    const suffix = normalized.slice(-5); // Последние 5 цифр для частичного матчинга (было 7)
+    const suffix = normalized.slice(-7); // Последние 7 цифр (восстановлено по просьбе пользователя)
 
     // Ищем заказы с точным или частичным совпадением номера
     const { data: phoneEvents } = await supabase
@@ -103,15 +103,15 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
             direction: call.direction
         };
 
-        // Сравниваем по последним 5 цифрам (универсально - было 7)
-        const callSuffix = clientPhoneNorm.replace(/\D/g, '').slice(-5);
-        const orderPhoneSuffix = order.phone ? normalizePhone(order.phone)?.replace(/\D/g, '').slice(-5) : null;
-        const orderAdditionalSuffix = order.additional_phone ? normalizePhone(order.additional_phone)?.replace(/\D/g, '').slice(-5) : null;
+        // Сравниваем по последним 7 цифрам (как договаривались)
+        const callSuffix = clientPhoneNorm.replace(/\D/g, '').slice(-7);
+        const orderPhoneSuffix = order.phone ? normalizePhone(order.phone)?.replace(/\D/g, '').slice(-7) : null;
+        const orderAdditionalSuffix = order.additional_phone ? normalizePhone(order.additional_phone)?.replace(/\D/g, '').slice(-7) : null;
 
         const phoneMatch = callSuffix === orderPhoneSuffix || callSuffix === orderAdditionalSuffix;
 
         factors.phone_match = phoneMatch;
-        factors.partial_phone_match = phoneMatch; // Теперь это одно и то же
+        factors.partial_phone_match = phoneMatch;
 
         // Вычисляем разницу во времени
         if (order.last_event_at) {

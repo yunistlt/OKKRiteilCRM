@@ -1,108 +1,99 @@
 
+import * as dotenv from 'dotenv';
+dotenv.config({ path: '.env.local' });
+// Fix aliases for ts-node
+require('tsconfig-paths/register');
+
 import { supabase } from '../utils/supabase';
-import fs from 'fs';
-import path from 'path';
+import { matchCallToOrders, saveMatches, RawCall } from '../lib/call-matching';
 
-// Load .env.local manually
-try {
-    const envPath = path.resolve(process.cwd(), '.env.local');
-    if (fs.existsSync(envPath)) {
-        const envConfig = fs.readFileSync(envPath, 'utf8');
-        envConfig.split('\n').forEach(line => {
-            const match = line.match(/^([^=]+)=(.*)$/);
-            if (match) {
-                const key = match[1].trim();
-                const value = match[2].trim().replace(/^["']|["']$/g, ''); // Remove quotes
-                if (!process.env[key]) {
-                    process.env[key] = value;
-                }
-            }
-        });
-        console.log('.env.local loaded.');
-    }
-} catch (e) {
-    console.warn('Failed to load .env.local', e);
-}
+async function runBackfillMatching() {
+    console.log('=== HISTORICAL MATCHING WORKER (Sept 1 - Dec 1) ===');
+    console.log('Running in continuous loop. Press Ctrl+C to stop.');
 
-// Helper to normalize phone numbers (same as backfill)
-function cleanPhone(val: any): string {
-    if (!val) return '';
-    return String(val).replace(/[^\d+]/g, '');
-}
+    // Config
+    const START_DATE = '2025-09-01T00:00:00+00:00';
+    const END_DATE = '2025-12-01T23:59:59+00:00';
+    const BATCH_SIZE = 100;
 
-async function run() {
-    console.log('Starting CALL MATCHING Backfill...');
+    let PASS_COUNT = 0;
 
-    // 1. Get IDs of known matches
-    const { data: matches } = await supabase.from('matches').select('call_id');
-    const matchedCallIds = new Set((matches || []).map(m => m.call_id));
-    console.log(`Found ${matchedCallIds.size} existing matches.`);
+    while (true) {
+        PASS_COUNT++;
+        console.log(`\n\n--- STARTING PASS #${PASS_COUNT} ---`);
 
-    // 2. Iterate ALL calls
-    let processed = 0;
-    let newMatches = 0;
-    let page = 0;
-    const limit = 500;
-    let hasMore = true;
+        let processedTotal = 0;
+        let matchesTotal = 0;
+        let hasMore = true;
+        let offset = 0;
 
-    while (hasMore) {
-        const { data: calls, error } = await supabase
-            .from('calls')
-            .select('*')
-            .range(page * limit, (page + 1) * limit - 1)
-            .order('timestamp', { ascending: false });
+        // 1. Refresh "Already Matched" cache at start of each pass
+        console.log('Refreshing matches index...');
+        const { data: existing, error: existErr } = await supabase
+            .from('call_order_matches')
+            .select('telphin_call_id');
 
-        if (error || !calls || calls.length === 0) {
-            hasMore = false;
-            break;
+        if (existErr) {
+            console.error('Index fetch error:', existErr);
+            await new Promise(r => setTimeout(r, 5000)); // Sleep on error
+            continue;
         }
 
-        console.log(`Processing batch ${page + 1}: ${calls.length} calls (Total: ${processed})...`);
+        const matchedSet = new Set(existing?.map(x => x.telphin_call_id));
+        console.log(`Index contains ${matchedSet.size} matched calls.`);
 
-        for (const call of calls) {
-            // Skip if already matched
-            if (matchedCallIds.has(call.id)) continue;
+        // 2. Process range
+        while (hasMore) {
+            // console.log(`Fetching batch (Offset ${offset})...`);
 
-            const callPhone = cleanPhone(call.phone);
-            if (!callPhone || callPhone.length < 10) continue;
+            const { data: calls, error } = await supabase
+                .from('raw_telphin_calls')
+                .select('*')
+                .gte('started_at', START_DATE)
+                .lte('started_at', END_DATE)
+                .order('started_at', { ascending: true }) // Oldest first
+                .range(offset, offset + BATCH_SIZE - 1);
 
-            // 3. Search for Order
-            // Find order where customer_phones contains callPhone OR phone == callPhone
-            // Supabase filter for array contains: .contains('customer_phones', [phone])
-
-            const { data: orders } = await supabase
-                .from('orders')
-                .select('id, manager_id, status')
-                .or(`phone.eq.${callPhone},customer_phones.cs.{${callPhone}}`) // .cs. = contains
-                .order('created_at', { ascending: false })
-                .limit(1);
-
-            if (orders && orders.length > 0) {
-                const bestOrder = orders[0];
-
-                // Create Match
-                // console.log(`MATCH FOUND: Call ${call.id} -> Order ${bestOrder.id}`);
-                const { error: matchErr } = await supabase.from('matches').insert({
-                    call_id: call.id,
-                    order_id: bestOrder.id,
-                    manager_id: bestOrder.manager_id, // Assign call to order's manager
-                    is_processed: false
-                });
-
-                if (!matchErr) {
-                    newMatches++;
-                    matchedCallIds.add(call.id);
-                } else {
-                    console.error('Match insert failed:', matchErr);
-                }
+            if (error) {
+                console.error('Fetch error:', error);
+                break;
             }
+
+            if (!calls || calls.length === 0) {
+                hasMore = false;
+                break; // End of this pass
+            }
+
+            // Filter out already matched
+            const candidates = calls.filter(c => !matchedSet.has(c.telphin_call_id));
+
+            if (candidates.length > 0) {
+                process.stdout.write(`[Pass ${PASS_COUNT}] Processing ${candidates.length} calls... `);
+
+                for (const call of candidates) {
+                    const matches = await matchCallToOrders(call as RawCall);
+                    if (matches.length > 0) {
+                        await saveMatches(matches);
+                        matchesTotal += matches.length;
+                        matchedSet.add(call.telphin_call_id);
+                        process.stdout.write('+');
+                    } else {
+                        process.stdout.write('.');
+                    }
+                }
+                process.stdout.write('\n');
+                processedTotal += candidates.length;
+            }
+
+            offset += BATCH_SIZE;
         }
 
-        processed += calls.length;
-        page++;
-    }
+        console.log(`Pass #${PASS_COUNT} Complete. New Matches: ${matchesTotal}`);
 
-    console.log(`Matching Complete. Scanned ${processed} calls. Created ${newMatches} NEW matches.`);
+        // Sleep before next pass to avoid hammering if "faster than sync"
+        console.log('Sleeping 10s before restart...');
+        await new Promise(r => setTimeout(r, 10000));
+    }
 }
 
-run();
+runBackfillMatching().catch(console.error);

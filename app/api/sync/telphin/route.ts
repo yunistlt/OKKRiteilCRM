@@ -30,9 +30,14 @@ function formatTelphinDate(date: Date) {
 }
 
 // Normalization helper
+// Normalization helper (Updated to strip 7/8 prefix for 10-digit standard)
 function normalizePhone(val: any) {
     if (!val) return null;
-    return String(val).replace(/[^\d+]/g, '');
+    let s = String(val).replace(/[^\d]/g, '');
+    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) {
+        s = s.slice(1);
+    }
+    return s.length >= 10 ? s : null;
 }
 
 const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
