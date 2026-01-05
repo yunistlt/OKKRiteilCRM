@@ -13,7 +13,7 @@ async function checkEvents() {
             retailcrm_order_id,
             order_metrics!left ( current_status, manager_id, full_order_context )
         `)
-        .eq('event_type', 'status')
+        .in('event_type', ['status', 'status_changed'])
         .order('occurred_at', { ascending: false })
         .limit(5);
 
@@ -23,17 +23,21 @@ async function checkEvents() {
     }
 
     console.log(`Found ${events.length} events.`);
-    events.forEach((e: any) => {
-        console.log('--- Event ---');
-        console.log(`ID: ${e.event_id}, Time: ${e.occurred_at}`);
-        console.log(`Field: ${e.event_type} -> ${e.raw_payload?.newValue}`);
-        console.log('Order Context:', JSON.stringify(e.order_metrics?.full_order_context, null, 2));
+    const rawValue = e.raw_payload?.newValue;
+    const normalizedValue = (typeof rawValue === 'object' && rawValue !== null && 'code' in rawValue)
+        ? rawValue.code
+        : rawValue;
 
-        // Check manually
-        const comment = e.order_metrics?.full_order_context?.manager_comment;
-        console.log(`Manager Comment Value: '${comment}'`);
-        console.log(`Is Violation (Empty)? ${!comment || comment.trim() === ''}`);
-    });
+    console.log('--- Event ---');
+    console.log(`ID: ${e.event_id}, Time: ${e.occurred_at}`);
+    console.log(`Field: ${e.event_type} (as ${e.raw_payload?.field}) -> ${JSON.stringify(normalizedValue)}`);
+    console.log('Order Context:', JSON.stringify(e.order_metrics?.full_order_context, null, 2));
+
+    // Check manually
+    const comment = e.order_metrics?.full_order_context?.manager_comment;
+    console.log(`Manager Comment Value: '${comment}'`);
+    console.log(`Is Violation (Empty)? ${!comment || comment.trim() === ''}`);
+});
 }
 
 checkEvents();

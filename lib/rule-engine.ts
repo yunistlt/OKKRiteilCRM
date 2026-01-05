@@ -99,9 +99,14 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             full_order_context: e.order_metrics?.full_order_context || {},
             manager_id: e.order_metrics?.manager_id
         };
+        const rawValue = e.raw_payload?.newValue;
+        const normalizedValue = (typeof rawValue === 'object' && rawValue !== null && 'code' in rawValue)
+            ? rawValue.code
+            : rawValue;
+
         const row = {
-            field_name: e.event_type,
-            new_value: e.raw_payload?.newValue,
+            field_name: (e.event_type === 'status_changed' || e.raw_payload?.field === 'status') ? 'status' : e.event_type,
+            new_value: normalizedValue,
             occurred_at: e.occurred_at,
             om
         };
