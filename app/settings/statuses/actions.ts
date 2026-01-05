@@ -3,30 +3,29 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 
-export async function saveSettingsBatch(settings: { code: string; is_working: boolean }[]) {
+export async function saveSettingsBatch(settings: { code: string; is_working: boolean; is_transcribable: boolean }[]) {
     console.log(`[Server Action] Processing batch of ${settings.length} items`);
 
     try {
-        // 1. Identify codes to SAVE (is_working = true)
+        // 1. Identify codes to SAVE (either analysis or transcription is enabled)
         const toSave = settings
-            .filter(s => s.is_working)
+            .filter(s => s.is_working || s.is_transcribable)
             .map(s => ({
                 code: s.code,
-                is_working: true,
+                is_working: s.is_working,
+                is_transcribable: s.is_transcribable,
                 updated_at: new Date().toISOString()
             }));
 
-        // 2. Identify codes to REMOVE (is_working = false)
-        // We only need to remove them if they exist, but deleting by code is safe even if they don't.
+        // 2. Identify codes to REMOVE (both analysis and transcription are disabled)
         const toRemoveCodes = settings
-            .filter(s => !s.is_working)
+            .filter(s => !s.is_working && !s.is_transcribable)
             .map(s => s.code);
 
         console.log(`Saving ${toSave.length}, Removing ${toRemoveCodes.length}`);
 
         const results = [];
-
-        // Operation A: Upsert the "Working" ones
+        // Operation A: Upsert
         if (toSave.length > 0) {
             const { error: saveError } = await supabase
                 .from('status_settings')
@@ -36,7 +35,7 @@ export async function saveSettingsBatch(settings: { code: string; is_working: bo
             results.push('Saved');
         }
 
-        // Operation B: Delete the "Not Working" ones (Cleanup)
+        // Operation B: Delete (Cleanup)
         if (toRemoveCodes.length > 0) {
             const { error: deleteError } = await supabase
                 .from('status_settings')
@@ -48,7 +47,6 @@ export async function saveSettingsBatch(settings: { code: string; is_working: bo
         }
 
         revalidatePath('/settings/statuses');
-
         return { success: true, details: results.join(', ') };
     } catch (e: any) {
         console.error('[Server Action] Exception:', e);

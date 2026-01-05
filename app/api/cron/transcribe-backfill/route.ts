@@ -24,16 +24,16 @@ export async function GET(req: Request) {
 
         // Validation: If cursor is weird or future, reset? No, trust DB.
 
-        // 2. Load Working Statuses
+        // 2. Load Transcribable Statuses
         const { data: statusData } = await supabase
             .from('status_settings')
             .select('code')
-            .eq('is_working', true);
+            .eq('is_transcribable', true);
 
-        const workingCodes = (statusData || []).map(s => s.code);
+        const transcribableCodes = (statusData || []).map(s => s.code);
 
-        if (workingCodes.length === 0) {
-            return NextResponse.json({ message: 'No working statuses defined' });
+        if (transcribableCodes.length === 0) {
+            return NextResponse.json({ message: 'No transcribable statuses defined' });
         }
 
         // 3. Fetch Batch (Next 20 items after cursor)
@@ -54,7 +54,7 @@ export async function GET(req: Request) {
             .gt('started_at', currentCursor)
             .is('raw_payload->transcript', null) // Only untranscribed
             .gt('duration_sec', minDuration)
-            .in('call_order_matches.orders.status', workingCodes)
+            .in('call_order_matches.orders.status', transcribableCodes)
             .not('recording_url', 'is', null)
             .order('started_at', { ascending: true }) // Oldest first (progressing forward)
             .limit(3); // Small batch to prevent Vercel Timeout (Sync is slow!)

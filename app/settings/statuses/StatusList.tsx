@@ -9,6 +9,7 @@ export interface StatusItem {
     name: string;
     is_active?: boolean;
     is_working: boolean;
+    is_transcribable: boolean;
     ordering: number;
     group_name: string;
 }
@@ -37,6 +38,13 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         ));
     }
 
+    function handleTranscriptionToggle(code: string) {
+        setHasChanges(true);
+        setStatuses(prev => prev.map(s =>
+            s.code === code ? { ...s, is_transcribable: !s.is_transcribable } : s
+        ));
+    }
+
     async function handleSave() {
         if (isSaving) return;
         setIsSaving(true);
@@ -46,7 +54,8 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
             // Prepare payload
             const payload = statuses.map(s => ({
                 code: s.code,
-                is_working: s.is_working
+                is_working: s.is_working,
+                is_transcribable: s.is_transcribable
             }));
 
             const result = await saveSettingsBatch(payload);
@@ -144,16 +153,42 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                         <div>
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    onClick={() => handleLocalToggle(status.code)}
-                                    style={{ ...styles.item, ...(status.is_working ? styles.itemActive : {}) }}
+                                    style={{ ...styles.item, ...(status.is_working || status.is_transcribable ? styles.itemActive : {}) }}
                                 >
-                                    <input
-                                        type="checkbox"
-                                        checked={status.is_working}
-                                        readOnly
-                                        style={styles.checkbox}
-                                    />
-                                    <div>
+                                    {/* 1. Working Toggle */}
+                                    <div
+                                        onClick={() => handleLocalToggle(status.code)}
+                                        style={{ display: 'flex', alignItems: 'center', marginRight: '30px', minWidth: '120px' }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={status.is_working}
+                                            readOnly
+                                            style={styles.checkbox}
+                                        />
+                                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: status.is_working ? '#0070f3' : '#999' }}>
+                                            Анализ
+                                        </span>
+                                    </div>
+
+                                    {/* 2. Transcription Toggle */}
+                                    <div
+                                        onClick={() => handleTranscriptionToggle(status.code)}
+                                        style={{ display: 'flex', alignItems: 'center', marginRight: '40px', minWidth: '140px' }}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={status.is_transcribable}
+                                            readOnly
+                                            style={styles.checkbox}
+                                        />
+                                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: status.is_transcribable ? '#7c3aed' : '#999' }}>
+                                            Транскрибация
+                                        </span>
+                                    </div>
+
+                                    {/* 3. Status Info */}
+                                    <div style={{ flex: 1 }}>
                                         <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
                                             {status.name}
                                             {(counts[status.code] || 0) > 0 && (

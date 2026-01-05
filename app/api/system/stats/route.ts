@@ -36,7 +36,7 @@ export async function GET() {
         if (e2) throw e2;
 
         // 4. Count "Transcribed Matches" (linked to working orders + transcript exists)
-        // raw_telphin_calls.raw_payload->transcript is not null
+        // Note: We count ALL transcribed calls that are linked to working orders for progress tracking.
         const { count: transcribedCount, error: e3 } = await supabase
             .from('raw_telphin_calls')
             .select(`
@@ -52,7 +52,14 @@ export async function GET() {
 
         if (e3) throw e3;
 
-        // 5. Count "Pending Matches" (linked to working orders + transcript is null)
+        // 5. Count "Pending Matches" (linked to TRANSCRIBABLE orders + transcript is null)
+        const { data: transcribableSettings } = await supabase
+            .from('status_settings')
+            .select('code')
+            .eq('is_transcribable', true);
+
+        const transcribableCodes = (transcribableSettings || []).map(s => s.code);
+
         const { count: pendingCount, error: e4 } = await supabase
             .from('raw_telphin_calls')
             .select(`
@@ -63,7 +70,7 @@ export async function GET() {
                     )
                 )
             `, { count: 'exact', head: true })
-            .in('call_order_matches.orders.status', workingCodes)
+            .in('call_order_matches.orders.status', transcribableCodes)
             .is('transcript', null)
             .is('raw_payload->transcript', null);
 

@@ -27,16 +27,17 @@ export default async function StatusesPage() {
     // 3. Merge Strategies
     const settingsMap = new Map();
     if (settings) {
-        settings.forEach((s: any) => settingsMap.set(s.code, s.is_working));
+        settings.forEach((s: any) => settingsMap.set(s.code, { is_working: s.is_working, is_transcribable: s.is_transcribable }));
     }
 
-    const mergedStatuses: StatusItem[] = (statuses || []).map((s: any) => ({
-        ...s,
-        // PRIORITY: Check settings table first. 
-        // If settingsMap has the key, use it. 
-        // If not, default to false (safest default).
-        is_working: settingsMap.has(s.code) ? !!settingsMap.get(s.code) : false
-    }));
+    const mergedStatuses: StatusItem[] = (statuses || []).map((s: any) => {
+        const setting = settingsMap.get(s.code) || { is_working: false, is_transcribable: false };
+        return {
+            ...s,
+            is_working: !!setting.is_working,
+            is_transcribable: !!setting.is_transcribable
+        };
+    });
 
     // 4. Fetch Order Counts
     const { data: allOrders } = await supabase.from('orders').select('status');
