@@ -22,12 +22,38 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
         const newParams = { ...params, [key]: Number(value) }; // Assuming numeric for now
         setParams(newParams);
         // Debounce? For now just save on blur or button?
-        // Let's simple "Save" button or onBlur.
         // Doing onBlur for simplicity.
         try {
             await updateRuleParams(rule.code, newParams);
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleRunAudit = async () => {
+        const daysStr = prompt('Сколько дней проверить в истории?', '7');
+        if (!daysStr) return;
+        const days = parseInt(daysStr);
+        if (isNaN(days) || days <= 0) {
+            alert('Введите корректное число дней');
+            return;
+        }
+
+        if (!confirm(`Запустить проверку событий за последние ${days} дней? Это может занять пару минут.`)) return;
+
+        try {
+            const baseUrl = window.location.origin; // Client-side safe
+            await fetch(`${baseUrl}/api/rules/audit-history`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ruleId: rule.id,
+                    days: days
+                })
+            });
+            alert('✅ Проверка запущена! Если нарушения найдутся, они появятся в журнале через минуту.');
+        } catch (e: any) {
+            alert('Ошибка запуска: ' + e.message);
         }
     };
 
@@ -102,6 +128,14 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                             </button>
                         }
                     />
+
+                    <button
+                        onClick={handleRunAudit}
+                        className="text-gray-400 hover:text-indigo-600 p-1 mr-1"
+                        title="Проверить историю (Audit)"
+                    >
+                        🕰️
+                    </button>
 
                     <button
                         onClick={async () => {
