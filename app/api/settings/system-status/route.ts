@@ -107,6 +107,22 @@ export async function GET() {
             reason: matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.'
         };
 
+        // --- Transcription Backfill ---
+        const transCursorKey = stateMap.get('transcription_backfill_cursor');
+        const transCursor = transCursorKey?.value || 'Starts Sept 1';
+        const transLastRun = transCursorKey?.updated_at || null;
+        // Logic: If updated recently (< 10m), it's active.
+        const transActive = isFresh(transLastRun, 10);
+
+        const transStatus = {
+            service: 'Transcription Backfill',
+            cursor: transCursor.includes('T') ? transCursor.split('T')[0] : transCursor,
+            last_run: transLastRun,
+            status: transActive ? 'ok' : 'warning',
+            details: transActive ? 'Processing...' : 'Idle / Finished',
+            reason: transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.'
+        };
+
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
@@ -114,8 +130,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinMain, telphinBackfill, retailStatus, matchStatus],
-            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus],
+            services: [telphinMain, telphinBackfill, retailStatus, matchStatus, transStatus],
+            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus, transStatus],
             settings
         });
 
