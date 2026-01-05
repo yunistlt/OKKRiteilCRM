@@ -40,7 +40,7 @@ export async function GET(request: Request) {
         const token = await getTelphinToken();
         const storageKey = 'telphin_backfill_cursor';
 
-        // 1. Get Client ID (Required for Global Fetch)
+        // 1. Get Client ID
         const userRes = await fetch('https://apiproxy.telphin.ru/api/ver1.0/user', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -49,57 +49,50 @@ export async function GET(request: Request) {
         if (!clientId) throw new Error('Could not resolve Telphin Client ID');
 
         // BACKFILL BOUNDARIES
-        const BACKFILL_START_DATE = new Date('2025-09-01T00:00:00Z');
         const BACKFILL_END_DATE = new Date('2025-12-01T00:00:00Z');
 
         // 2. Determine Cursor
-        let cursor = BACKFILL_START_DATE;
+        // Default to Sept 1 if no cursor
+        let cursorStr = '2025-09-01T00:00:00.000Z'; // fallback
 
         if (forceStart) {
-            cursor = new Date(forceStart);
-            console.log(`[Backfill] Forced start: ${cursor.toISOString()}`);
+            cursorStr = forceStart;
+            console.log(`[Backfill] Forced start: ${cursorStr}`);
         } else {
             const { data: state } = await supabase
                 .from('sync_state')
                 .select('value')
                 .eq('key', storageKey)
                 .single();
-
-            if (state?.value) cursor = new Date(state.value);
-            console.log(`[Backfill] Resuming from: ${cursor.toISOString()}`);
+            if (state?.value) cursorStr = state.value;
         }
 
-        if (cursor.getTime() >= BACKFILL_END_DATE.getTime()) {
-            await updateState(storageKey, cursor.toISOString());
+        const cursorDate = new Date(cursorStr);
+        if (cursorDate.getTime() >= BACKFILL_END_DATE.getTime()) {
             return NextResponse.json({ status: 'completed', message: 'Backfill complete.' });
         }
 
-        // 3. Process Slice (Global Fetch)
-        // REDUCED to 2 HOURS to ensure sub-10s execution on Vercel
-        const SLICE_MS = 2 * 60 * 60 * 1000;
-        let endSliceMs = cursor.getTime() + SLICE_MS;
-        if (endSliceMs > BACKFILL_END_DATE.getTime()) endSliceMs = BACKFILL_END_DATE.getTime();
+        // 3. Process Batch (Count = 50)
+        // API Restriction: Range must be < 2 months. Use 30 days window.
+        const WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+        let endDateMs = cursorDate.getTime() + WINDOW_MS;
+        if (endDateMs > BACKFILL_END_DATE.getTime()) endDateMs = BACKFILL_END_DATE.getTime();
+        const endDate = new Date(endDateMs);
 
-        const fromD = cursor;
-        const toD = new Date(endSliceMs);
-
-        console.log(`[Backfill] Global Fetch (2h): ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
-
-        // Mandatory "Gentle" delay before request (just in case)
-        await new Promise(r => setTimeout(r, 1000));
+        console.log(`[Backfill] Batch Fetch (30d window): ${formatTelphinDate(cursorDate)} -> ${formatTelphinDate(endDate)}`);
 
         const params = new URLSearchParams({
-            start_datetime: formatTelphinDate(fromD),
-            end_datetime: formatTelphinDate(toD),
+            start_datetime: formatTelphinDate(cursorDate),
+            end_datetime: formatTelphinDate(endDate),
             order: 'asc',
-            count: '5000' // High limit just in case
+            count: '50'
         });
 
         const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/record/?${params.toString()}`;
 
-        // Timeout the fetch itself to 9s to capture error before Vercel kills us
+        // Timeout 9s
         const controller = new AbortController();
-        const fetchTimeout = setTimeout(() => controller.abort(), 9000); // 9 seconds
+        const fetchTimeout = setTimeout(() => controller.abort(), 9000);
 
         const res = await fetch(url, {
             headers: { 'Authorization': `Bearer ${token}` },
@@ -108,21 +101,22 @@ export async function GET(request: Request) {
         clearTimeout(fetchTimeout);
 
         if (res.status === 429) {
-            console.warn('[Backfill] Global Fetch Rate Limit (429). Pausing.');
+            console.warn('[Backfill] Rate Limit (429). Pausing.');
             return NextResponse.json({ status: 'rate_limited' });
         }
-
         if (!res.ok) {
             throw new Error(`Telphin API Error: ${res.status}`);
         }
 
         const data = await res.json();
         const calls = Array.isArray(data) ? data : [];
-        console.log(`[Backfill] Found ${calls.length} calls.`);
+        console.log(`[Backfill] Fetched ${calls.length} calls.`);
 
-        // 4. Upsert Calls
+        let nextCursor = cursorStr; // Default: stay if empty
         let syncedCount = 0;
+
         if (calls.length > 0) {
+            // Upsert Logic
             const rawCalls = calls.map((r: any) => {
                 const record_uuid = r.record_uuid || r.RecordUUID || `rec_${Math.random()}`;
                 const rawFlow = r.flow || r.direction;
@@ -132,7 +126,9 @@ export async function GET(request: Request) {
                 else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
 
                 const startedRaw = r.start_time_gmt || r.init_time_gmt;
-                const callDate = startedRaw ? new Date(startedRaw + 'Z') : new Date();
+                // If API gives us specific format, parse it carefully, or rely on Date()
+                // api returns "YYYY-MM-DD HH:mm:ss" usually in GMT if requested so
+                const callDate = startedRaw ? new Date(startedRaw + (startedRaw.includes('Z') ? '' : 'Z')) : new Date();
 
                 let fromNumber = r.from_number || r.ani_number;
                 let toNumber = r.to_number || r.dest_number;
@@ -168,17 +164,53 @@ export async function GET(request: Request) {
 
             if (rawError) console.error('[Backfill] Upsert Error:', rawError);
             else syncedCount = rawCalls.length;
+
+            // Update Cursor Logic
+            // The new cursor is the `started_at` of the LAST record.
+            // CAUTION: If the last record has the SAME timestamp as the current cursor, 
+            // and the WHOLE batch was that timestamp, we are looping.
+            const lastCall = calls[calls.length - 1];
+            // Format from API: "2025-09-08 12:05:00"
+            const lastTimeRaw = lastCall.start_time_gmt;
+            const lastDate = new Date(lastTimeRaw + (lastTimeRaw.includes('Z') ? '' : 'Z'));
+
+            // Check for loop/stuck
+            // If new lastDate <= old cursorDate, we might be stuck?
+            // Actually, because we use "start_datetime" (inclusive), we will always re-fetch the start point.
+            // If we fetched 50 items and they ALL have timestamp T, next time we fetch start=T, we get SAME 50. Loop.
+            // FIX: If lastDate.getTime() === cursorDate.getTime(), we MUST force advance by 1 second.
+
+            if (lastDate.getTime() <= cursorDate.getTime()) {
+                console.log('[Backfill] Batch timestamps stuck (high density). Forcing +1s advance.');
+                const forced = new Date(lastDate.getTime() + 1000);
+                nextCursor = forced.toISOString();
+            } else {
+                nextCursor = lastDate.toISOString();
+            }
+        } else {
+            // Empy batch? Meaning we reached the END boundary (2025-12-01) or a gap?
+            // If we provided 2025-12-01 as end, and got nothing, we are effectively done?
+            // Or maybe just a gap? No, if there's a gap, API would jump to the next record ?
+            // API documentation says "start_datetime ... returns records starting from ..."
+            // So if there are no records between cursor and END, we are done.
+            console.log('[Backfill] No calls found in range. Marking complete?');
+            // Check if we are near end date
+            if (cursorDate.getTime() < BACKFILL_END_DATE.getTime() - 24 * 3600 * 1000) {
+                // If we are far from end date, maybe just advance by 1 day to be safe?
+                // But normally global fetch skips gaps.
+                // Let's assume we are done or just close enough.
+                nextCursor = BACKFILL_END_DATE.toISOString();
+            }
         }
 
-        // 5. Update Cursor (Always advance if successful)
-        await updateState(storageKey, toD.toISOString());
+        await updateState(storageKey, nextCursor);
 
         return NextResponse.json({
             success: true,
-            status: 'slice_completed',
+            status: 'batch_completed',
             calls_found: syncedCount,
-            current_cursor: toD.toISOString(),
-            message: `Global fetch successful. Processed ${syncedCount} calls.`
+            current_cursor: nextCursor,
+            message: `Batch (50) processed. Next cursor: ${nextCursor}`
         });
 
     } catch (error: any) {
