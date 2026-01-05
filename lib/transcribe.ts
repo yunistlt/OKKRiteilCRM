@@ -16,8 +16,8 @@ export function isTranscribable(call: any): boolean {
     // Usually 'success' status is best, but we rely on duration too.
 
     // Skip short calls (usually silence or answering machine hangup)
-    // Save money by ignoring < 30s
-    if (duration < 30) return false;
+    // Save money by ignoring < 15s (was 30s)
+    if (duration < 15) return false;
 
     if (!call.recording_url) return false;
 
