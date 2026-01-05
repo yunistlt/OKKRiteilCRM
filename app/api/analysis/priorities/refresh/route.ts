@@ -9,7 +9,7 @@ export const maxDuration = 300; // Allow 5 minutes for full refresh
 export async function GET() {
     try {
         console.log('Refreshing priorities...');
-        const priorities = await calculatePriorities(2000); // Compute all
+        const priorities = await calculatePriorities(2000, true); // Compute heuristics only, fast!
 
         if (priorities.length === 0) {
             return NextResponse.json({ ok: true, message: 'No orders to update' });

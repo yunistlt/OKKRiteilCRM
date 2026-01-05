@@ -21,7 +21,7 @@ export interface OrderPriority {
 const CRITICAL_SLA_HOURS = 4; // Hours in 'new' without action
 const STAGNATION_DAYS = 7; // Days without any update
 
-export async function calculatePriorities(limit: number = 2000): Promise<OrderPriority[]> {
+export async function calculatePriorities(limit: number = 2000, skipAI: boolean = false): Promise<OrderPriority[]> {
     // 0. Fetch Managers Map
     const { data: managersRaw } = await supabase.from('managers').select('id, first_name, last_name');
     const managerNames: Record<number, string> = {};
@@ -163,7 +163,7 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
 
         let aiSummary = "Ожидание анализа";
 
-        if (lastCall && lastCall.transcript) {
+        if (!skipAI && lastCall && lastCall.transcript) {
             // Extract TOP-3 from raw_payload
             const payload = order.raw_payload as any || {};
             const customFields = payload.customFields || {};
