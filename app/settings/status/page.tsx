@@ -91,11 +91,8 @@ export default function SystemStatusPage() {
     const runService = async (serviceName: string) => {
         let url = '';
         if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
-        if (serviceName.includes('Telphin Backfill')) url = '/api/sync/telphin/backfill';
         if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
         if (serviceName.includes('Matching Service')) url = '/api/matching/process';
-        if (serviceName.includes('Matching Backfill')) url = '/api/cron/match-backfill';
-        if (serviceName.includes('Transcription Backfill')) url = '/api/cron/transcribe-backfill';
 
         if (!url) return;
 
@@ -168,11 +165,8 @@ export default function SystemStatusPage() {
 
     const getRusServiceName = (name: string) => {
         if (name.includes('Telphin Main')) return 'Телфин (Основной)';
-        if (name.includes('Telphin Backfill')) return 'Телфин (Архив)';
         if (name.includes('RetailCRM')) return 'RetailCRM Заказы';
         if (name.includes('Matching Service')) return 'Матчинг (Live)';
-        if (name.includes('Matching Backfill')) return 'Матчинг (Архив)';
-        if (name.includes('Transcription')) return 'Транскрибация (Архив)';
         return name;
     }
 

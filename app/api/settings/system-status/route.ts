@@ -146,8 +146,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinMain, telphinBackfill, retailStatus, matchStatus, transStatus, matchBackStatus],
-            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus, transStatus, matchBackStatus],
+            services: [telphinMain, retailStatus, matchStatus],
+            dashboard: [telphinStatus, retailStatus, matchStatus],
             settings
         });
 
