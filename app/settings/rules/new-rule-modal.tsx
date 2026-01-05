@@ -13,6 +13,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [sql, setSql] = useState('');
     const [explanation, setExplanation] = useState('');
     const [name, setName] = useState('');
+    const [entityType, setEntityType] = useState<'call' | 'event'>('call');
     const [severity, setSeverity] = useState('medium');
     const [historyDays, setHistoryDays] = useState(0);
     const [step, setStep] = useState(1); // 1: Prompt, 2: Review
@@ -33,7 +34,8 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
             setSql(data.sql);
             setExplanation(data.explanation);
-            setName(prompt.substring(0, 30)); // Auto-name draft
+            setName(data.name || prompt.substring(0, 30)); // Auto-name from AI or fallback
+            setEntityType(data.entity_type || 'call');
             setStep(2);
         } catch (e) {
             alert('AI Generation Failed: ' + e);
@@ -49,7 +51,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 code: 'rule_' + Date.now(), // Auto-generate code
                 name,
                 description: explanation,
-                entity_type: 'call', // Default for now
+                entity_type: entityType,
                 condition_sql: sql,
                 severity,
                 parameters: {}, // Hardcoded (dynamic) rules usually don't have params yet
@@ -158,6 +160,12 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 {step === 2 && (
                     <div className="space-y-4">
                         <div className="bg-green-50 p-4 rounded-lg text-sm text-green-800 border border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="bg-green-200 text-green-800 text-xs px-2 py-0.5 rounded font-bold uppercase">AI</span>
+                                <span className="text-gray-500 text-xs uppercase font-bold tracking-wide">
+                                    Тип: {entityType === 'call' ? 'Звонок (Call)' : 'Событие CRM (Event)'}
+                                </span>
+                            </div>
                             <strong>AI:</strong> {explanation}
                         </div>
 
