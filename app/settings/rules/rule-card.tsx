@@ -39,11 +39,12 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
             return;
         }
 
-        if (!confirm(`Запустить проверку событий за последние ${days} дней? Это может занять пару минут.`)) return;
+        if (!confirm(`Запустить проверку событий за последние ${days} дней? Это может занять время.`)) return;
 
+        setIsLoading(true); // Reusing existing loading state
         try {
-            const baseUrl = window.location.origin; // Client-side safe
-            await fetch(`${baseUrl}/api/rules/audit-history`, {
+            const baseUrl = window.location.origin;
+            const res = await fetch(`${baseUrl}/api/rules/audit-history`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -51,9 +52,19 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                     days: days
                 })
             });
-            alert('✅ Проверка запущена! Если нарушения найдутся, они появятся в журнале через минуту.');
+            const data = await res.json();
+
+            if (data.count > 0) {
+                alert(`✅ Готово! Найдено НОВЫХ нарушений: ${data.count}.\nОни добавлены в отчет.`);
+                // Trigger refresh if possible?
+                window.location.reload(); // Simple refresh to update counts
+            } else {
+                alert('✅ Проверка завершена. Нарушений за этот период не найдено.');
+            }
         } catch (e: any) {
             alert('Ошибка запуска: ' + e.message);
+        } finally {
+            setIsLoading(false);
         }
     };
 

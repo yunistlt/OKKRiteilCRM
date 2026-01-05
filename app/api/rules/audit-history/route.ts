@@ -19,13 +19,13 @@ export async function POST(req: Request) {
         console.log(`[Audit] Starting manual audit for rule ${ruleId} over past ${days} days...`);
 
         // Run engine for specific rule and range
-        await runRuleEngine(
+        const count = await runRuleEngine(
             startDate.toISOString(),
             endDate.toISOString(),
             ruleId
         );
 
-        return NextResponse.json({ success: true, message: 'Audit completed' });
+        return NextResponse.json({ success: true, message: 'Audit completed', count });
     } catch (e: any) {
         console.error('[Audit] Error:', e);
         return NextResponse.json({ error: e.message }, { status: 500 });

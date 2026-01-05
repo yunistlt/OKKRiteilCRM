@@ -38,12 +38,13 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     console.log(`[RuleEngine] Found ${rules.length} active rules.`);
 
     // 2. Execute per entity type
+    let totalViolations = 0;
     for (const rule of rules) {
         try {
             if (rule.entity_type === 'call') {
-                await executeCallRule(rule, startDate, endDate);
+                totalViolations += await executeCallRule(rule, startDate, endDate);
             } else if (rule.entity_type === 'event') {
-                await executeEventRule(rule, startDate, endDate);
+                totalViolations += await executeEventRule(rule, startDate, endDate);
             } else {
                 console.log(`[RuleEngine] Skipping unsupported entity type: ${rule.entity_type} (${rule.code})`);
             }
@@ -51,6 +52,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
             console.error(`[RuleEngine] Error executing rule ${rule.code}:`, e);
         }
     }
+    return totalViolations;
 }
 
 async function executeEventRule(rule: any, startDate: string, endDate: string) {
@@ -84,10 +86,10 @@ async function executeEventRule(rule: any, startDate: string, endDate: string) {
     const { data: events, error } = await query;
     if (error) {
         console.error(`Error fetching events for ${rule.code}:`, error);
-        return;
+        return 0;
     }
 
-    if (!events || events.length === 0) return;
+    if (!events || events.length === 0) return 0;
 
     // In-Memory Filter (Safe Evaluator)
     const violations = events.filter((e: any) => {
@@ -138,7 +140,9 @@ async function executeEventRule(rule: any, startDate: string, endDate: string) {
             .upsert(records, { onConflict: 'rule_code, order_id, violation_time' }); // Ensure unique constraint handles this
 
         if (insError) console.error(`Error saving violations for ${rule.code}:`, insError);
+        return violations.length;
     }
+    return 0;
 }
 
 async function executeCallRule(rule: any, startDate: string, endDate: string) {
@@ -236,10 +240,10 @@ async function executeCallRule(rule: any, startDate: string, endDate: string) {
 
     if (error) {
         console.error(`Error fetching calls for ${rule.code}:`, error);
-        return;
+        return 0;
     }
 
-    if (!calls || calls.length === 0) return;
+    if (!calls || calls.length === 0) return 0;
 
     console.log(`[${rule.code}] Found ${calls.length} violations.`);
 
@@ -258,4 +262,5 @@ async function executeCallRule(rule: any, startDate: string, endDate: string) {
         .upsert(violations, { onConflict: 'rule_code, call_id' });
 
     if (insError) console.error(`Error saving violations for ${rule.code}:`, insError);
+    return violations.length;
 }
