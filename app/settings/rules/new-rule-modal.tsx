@@ -124,10 +124,10 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                     return displayTags.map(tag => (
                                         <button
                                             key={tag.value}
-                                            onClick={() => setPrompt(prev => prev ? `${prev} ${tag.value}` : tag.value)}
+                                            onClick={() => setPrompt(prev => prev ? `${prev} ${tag.label}` : tag.label)}
                                             className={`px-2 py-1 text-xs rounded-full border transition-colors flex items-center gap-1 ${suggestions.length > 0 && prompt
-                                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' // Highlight relevant
-                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100' // Default
+                                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' // Highlight relevant
+                                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100' // Default
                                                 }`}
                                         >
                                             + {tag.label}
