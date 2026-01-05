@@ -54,11 +54,6 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
             .from('orders')
             .select(`
                 id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload,
-                matches (
-                    calls (
-                        id, timestamp, duration, transcript, am_detection_result
-                    )
-                ),
                 call_order_matches (
                     raw_telphin_calls (
                         telphin_call_id, started_at, duration_sec, transcript
@@ -102,11 +97,7 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
 
         // --- 1. Hard Rules (Heuristics) ---
 
-        // Extract and flatten all calls for this order (Legacy matches + New matches)
-        const legacyCalls = (order.matches || [])
-            .map((m: any) => m.calls)
-            .filter((c: any) => c !== null);
-
+        // Extract and flatten all calls for this order (New matches from raw_telphin_calls)
         const rawCalls = (order.call_order_matches || [])
             .map((m: any) => m.raw_telphin_calls)
             .filter((c: any) => c !== null)
@@ -118,28 +109,35 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
                 am_detection_result: null // Backfilled calls don't have AMD yet
             }));
 
-        const allCalls = [...legacyCalls, ...rawCalls];
+        const allCalls = rawCalls;
         const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
         // Collect all possible activity timestamps for "Movement"
         const movementDates: number[] = [];
 
         // A. CRM System Update
-        if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
+        if (order.updated_at) {
+            const d = new Date(order.updated_at).getTime();
+            if (d > 0) movementDates.push(d);
+        }
 
-        // B. CRM Creation Date (fallback)
-        if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
+        // B. CRM Creation Date (fallback - ALWAYS push this as base)
+        if (order.created_at) {
+            const d = new Date(order.created_at).getTime();
+            if (d > 0) movementDates.push(d);
+        }
 
         // C. Status Change Date from Payload
         const statusUpdatedAt = order.raw_payload?.statusUpdatedAt;
         if (statusUpdatedAt) {
-            const d = new Date(statusUpdatedAt);
-            if (!isNaN(d.getTime())) movementDates.push(d.getTime());
+            const d = new Date(statusUpdatedAt).getTime();
+            if (d > 0) movementDates.push(d);
         }
 
         // D. Latest Call from matched lists
         if (lastCall) {
-            movementDates.push(new Date(lastCall.timestamp).getTime());
+            const d = new Date(lastCall.timestamp).getTime();
+            if (d > 0) movementDates.push(d);
         }
 
         // Calculate "Days Since Last Movement"
