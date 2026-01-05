@@ -16,6 +16,10 @@
         {
             "path": "/api/sync/telphin/backfill",
             "schedule": "*/2 * * * *"
+        },
+        {
+            "path": "/api/cron/transcribe-backfill",
+            "schedule": "*/10 * * * *"
         }
     ]
 }
