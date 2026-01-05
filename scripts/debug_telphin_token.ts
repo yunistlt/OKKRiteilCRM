@@ -20,70 +20,48 @@ async function debugToken() {
     });
 
     const data = await res.json();
-    console.log('Auth Response Keys:', Object.keys(data));
-    console.log('Full Response:', JSON.stringify(data, null, 2));
-
     const token = data.access_token;
+    console.log('Got Token:', token ? 'YES' : 'NO');
 
-    // Check if key matches user proposal
-    const USER_PROPOSED_ID = '17563e0a94a44493a84143032edb5e57';
-    if (TELPHIN_KEY === USER_PROPOSED_ID) {
-        console.log('✅ Current TELPHIN_APP_KEY matches the User Proposed ID.');
-    } else {
-        console.log(`⚠️ Current TELPHIN_APP_KEY (starts with ${TELPHIN_KEY?.substring(0, 4)}...) does NOT match User Proposed ID.`);
-        console.log('If the Client Level fetch fails, we might need to switch keys (and get the secret).');
-    }
+    // 2. Try Extension-Level Record Fetch (loop top 5)
+    // From route.ts
+    const EXTENSIONS = [
+        94413, 94415, 145748, 349957, 349963, 858926
+    ];
 
-    // 1. Get User Data to confirm Client ID
-    console.log('\nFetching /user/ to confirm Client ID...');
-    const userRes = await fetch('https://apiproxy.telphin.ru/api/ver1.0/user', {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
-
-    let clientId = 10459; // Default from previous finding
-    if (userRes.ok) {
-        const userData = await userRes.json();
-        console.log(`User ID: ${userData.id}, Client ID: ${userData.client_id}`);
-        clientId = userData.client_id || clientId;
-    } else {
-        console.log('Failed to fetch user list:', userRes.status);
-    }
-
-    // 2. Try Client-Level Record Fetch
-    console.log(`\nAttempting Global Fetch: /client/${clientId}/record ...`);
-    // Try catching a small recent window
     const now = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 2);
+    const rangeStart = new Date();
+    rangeStart.setDate(rangeStart.getDate() - 5); // Last 5 days
 
     const pad = (n: number) => String(n).padStart(2, '0');
     const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-    const paramsFetch = new URLSearchParams({
-        start_datetime: fmt(yesterday),
-        end_datetime: fmt(now),
-        order: 'desc',
-        count: '5'
-    });
+    console.log(`\nChecking extensions from ${fmt(rangeStart)} to ${fmt(now)}...`);
 
-    const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/record/?${paramsFetch.toString()}`;
-    console.log(`URL: ${url}`);
+    for (const extId of EXTENSIONS) {
+        const paramsFetch = new URLSearchParams({
+            start_datetime: fmt(rangeStart),
+            end_datetime: fmt(now),
+            order: 'desc',
+        });
 
-    const clientRes = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-    });
+        const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${paramsFetch.toString()}`;
+        // console.log(`Checking Ext ${extId}...`);
 
-    if (clientRes.ok) {
-        const clientData = await clientRes.json();
-        console.log('✅ SUCCESS! Client-Level Fetch worked.');
-        console.log(`Returned ${Array.isArray(clientData) ? clientData.length : 0} records.`);
-        if (Array.isArray(clientData) && clientData.length > 0) {
-            console.log('Sample Record:', JSON.stringify(clientData[0], null, 2));
+        const extRes = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (extRes.ok) {
+            const extData = await extRes.json();
+            const count = Array.isArray(extData) ? extData.length : 0;
+            console.log(` - Ext ${extId}: ${count} records.`);
+            if (count > 0) {
+                console.log(`   Sample: ${JSON.stringify(extData[0]).substring(0, 100)}...`);
+            }
+        } else {
+            console.log(` - Ext ${extId}: FAILED ${extRes.status}`);
         }
-    } else {
-        console.log(`❌ Failed to fetch client records: ${clientRes.status} ${clientRes.statusText}`);
-        const txt = await clientRes.text();
-        console.log('Error Body:', txt);
     }
 }
 

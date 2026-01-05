@@ -10,14 +10,14 @@ const openai = new OpenAI({
 /**
  * Validates if the call is suitable for transcription
  */
-export function isTranscribable(call: any): boolean {
+export function isTranscribable(call: any, minDuration: number = 15): boolean {
     const duration = call.duration_sec || 0;
     const isSuccess = call.status === 'success' || (duration > 0);
     // Usually 'success' status is best, but we rely on duration too.
 
     // Skip short calls (usually silence or answering machine hangup)
-    // Save money by ignoring < 15s (was 30s)
-    if (duration < 15) return false;
+    // Save money by ignoring < minDuration (default 15s)
+    if (duration < minDuration) return false;
 
     if (!call.recording_url) return false;
 

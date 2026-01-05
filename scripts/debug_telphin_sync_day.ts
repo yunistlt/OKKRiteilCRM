@@ -36,14 +36,13 @@ function normalizePhone(val: any) {
 }
 
 async function debugSyncDay() {
-    const TARGET_DATE = '2025-11-10';
+    const TARGET_DATE = '2025-11-11';
     console.log(`🔍 Debugging Telphin Sync for ${TARGET_DATE}...`);
 
     // 1. Check existing
     const startOfDay = `${TARGET_DATE}T00:00:00`;
     const endOfDay = `${TARGET_DATE}T23:59:59`;
 
-    // Using upsert/raw_telphin_calls table directly
     const { count: startCount } = await supabase
         .from('raw_telphin_calls')
         .select('*', { count: 'exact', head: true })
@@ -72,8 +71,10 @@ async function debugSyncDay() {
         try {
             const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (!res.ok) {
-                // console.error(`Fetch failed for ext ${extId}: ${res.status} ${res.statusText}`);
-                if (res.status === 404) return []; // No records or ext not found
+                console.error(`❌ Fetch failed for ext ${extId}: ${res.status} ${res.statusText}`);
+                if (res.status === 404) return [];
+                const txt = await res.text();
+                console.error(`   Body: ${txt.substring(0, 100)}`);
                 return [];
             }
             const data = await res.json();
@@ -84,7 +85,7 @@ async function debugSyncDay() {
         }
     };
 
-    // Parallel execution for speed in debug
+    // Parallel execution
     console.log(`📡 Fetching from ${EXTENSIONS.length} extensions...`);
 
     const promises = EXTENSIONS.map(id => fetchChunk(id));
@@ -113,9 +114,15 @@ async function debugSyncDay() {
                 toNumber = r.to_number || r.dest_number;
             }
 
+            // Correct Direction Mapping
+            let direction = 'unknown';
+            if (flow === 'out') direction = 'outgoing';
+            else if (flow === 'in') direction = 'incoming';
+            else if (flow === 'incoming' || flow === 'outgoing') direction = flow;
+
             return {
                 telphin_call_id: record_uuid,
-                direction: flow || 'unknown',
+                direction: direction,
                 from_number: fromNumber || 'unknown',
                 to_number: toNumber || 'unknown',
                 from_number_normalized: normalizePhone(fromNumber),
