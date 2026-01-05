@@ -100,7 +100,7 @@ export async function GET(request: Request) {
         }
 
         const data = await res.json();
-        const calls = Array.isArray(data) ? data : [];
+        const calls = data.call_history || (Array.isArray(data) ? data : []);
         console.log(`[Backfill] Fetched ${calls.length} calls.`);
 
         let nextCursor = cursorStr;
