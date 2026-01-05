@@ -79,7 +79,7 @@ export async function GET(request: Request) {
             count: '50'
         });
 
-        const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/record/?${params.toString()}`;
+        const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/call_history/?${params.toString()}`;
 
         // Timeout 9s
         const controller = new AbortController();
@@ -109,22 +109,26 @@ export async function GET(request: Request) {
         if (calls.length > 0) {
             // Upsert Logic
             const rawCalls = calls.map((r: any) => {
-                const record_uuid = r.record_uuid || r.RecordUUID || `rec_${Math.random()}`;
+                // For history, ID is call_uuid. 
+                // Fallback to RecordUUID or random not really needed if call_uuid exists.
+                const record_uuid = r.call_uuid || r.record_uuid || `rec_${Math.random()}`;
+
                 const rawFlow = r.flow || r.direction;
                 let direction = 'unknown';
                 if (rawFlow === 'out') direction = 'outgoing';
                 else if (rawFlow === 'in') direction = 'incoming';
                 else if (rawFlow === 'incoming' || rawFlow === 'outgoing') direction = rawFlow;
 
-                const startedRaw = r.start_time_gmt || r.init_time_gmt;
+                // Priority: start_time_gmt -> init_time_gmt -> bridged_time_gmt
+                const startedRaw = r.start_time_gmt || r.init_time_gmt || r.bridged_time_gmt;
                 const callDate = startedRaw ? new Date(startedRaw + (startedRaw.includes('Z') ? '' : 'Z')) : new Date();
 
-                let fromNumber = r.from_number || r.ani_number;
-                let toNumber = r.to_number || r.dest_number;
+                let fromNumber = r.from_number || r.ani_number || r.from_username;
+                let toNumber = r.to_number || r.dest_number || r.to_username;
 
                 if (rawFlow === 'out') {
-                    fromNumber = r.ani_number || r.from_number;
-                    toNumber = r.dest_number || r.to_number;
+                    fromNumber = r.ani_number || r.from_number || r.from_username;
+                    toNumber = r.dest_number || r.to_number || r.to_username;
                 }
 
                 let sFrom = String(fromNumber || '').replace(/[^\d]/g, '');
@@ -142,7 +146,7 @@ export async function GET(request: Request) {
                     to_number_normalized: sTo.length >= 10 ? sTo : null,
                     started_at: callDate.toISOString(),
                     duration_sec: r.duration || 0,
-                    recording_url: r.record_url || r.storage_url || r.url || null,
+                    recording_url: r.record_url || r.storage_url || r.url || null, // Might be null in history
                     raw_payload: r,
                     ingested_at: new Date().toISOString()
                 };
@@ -155,7 +159,8 @@ export async function GET(request: Request) {
             else syncedCount = rawCalls.length;
 
             const lastCall = calls[calls.length - 1];
-            const lastTimeRaw = lastCall.start_time_gmt;
+            // Prioritize same fields as mapping
+            const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
             const lastDate = new Date(lastTimeRaw + (lastTimeRaw.includes('Z') ? '' : 'Z'));
 
             if (lastDate.getTime() <= cursorDate.getTime()) {
