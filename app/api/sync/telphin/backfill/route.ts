@@ -61,30 +61,36 @@ export async function GET(request: Request) {
         const BACKFILL_START_DATE = new Date('2025-09-01T00:00:00Z');
         const BACKFILL_END_DATE = new Date('2025-12-01T00:00:00Z');
 
-        // 1. Determine Cursor
+        // 1. Determine Cursor & Extension Index
         let cursor = BACKFILL_START_DATE;
+        let extIndex = 0;
 
         if (forceStart) {
             cursor = new Date(forceStart);
             console.log(`[Backfill] Forced start: ${cursor.toISOString()}`);
         } else {
-            const { data: state } = await supabase
+            const { data: states } = await supabase
                 .from('sync_state')
-                .select('value')
-                .eq('key', storageKey)
-                .single();
+                .select('key, value')
+                .in('key', [storageKey, 'telphin_backfill_ext_index']);
 
-            if (state?.value) {
-                cursor = new Date(state.value);
-                console.log(`[Backfill] Resuming from: ${cursor.toISOString()}`);
-            } else {
-                console.log(`[Backfill] Starting fresh from: ${cursor.toISOString()}`);
+            const stateMap = new Map(states?.map(s => [s.key, s.value]));
+
+            if (stateMap.has(storageKey)) {
+                cursor = new Date(stateMap.get(storageKey)!);
             }
+            if (stateMap.has('telphin_backfill_ext_index')) {
+                extIndex = parseInt(stateMap.get('telphin_backfill_ext_index') || '0');
+            }
+            console.log(`[Backfill] Resuming: ${cursor.toISOString()} (Ext Index: ${extIndex})`);
         }
 
         // Check if finished
         if (cursor.getTime() >= BACKFILL_END_DATE.getTime()) {
             console.log('[Backfill] Reached target end date. Backfill complete.');
+            // Ensure we report "Active" by updating timestamp even if completed
+            await updateState(storageKey, cursor.toISOString(), 0);
+
             return NextResponse.json({
                 success: true,
                 status: 'completed',
@@ -94,7 +100,6 @@ export async function GET(request: Request) {
         }
 
         // 2. Process one slice
-        // REDUCED SLICE TO 1 HOUR to avoid hitting limits
         const SLICE_MS = 1 * 60 * 60 * 1000;
         let endSliceMs = cursor.getTime() + SLICE_MS;
 
@@ -108,7 +113,7 @@ export async function GET(request: Request) {
 
         console.log(`[Backfill] Processing slice: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
-        // Helper to fetch keys
+        // Helper to fetch keys (Same as before)
         const fetchChunk = async (extId: number, fromD: Date, toD: Date) => {
             const params = new URLSearchParams({
                 start_datetime: formatTelphinDate(fromD),
@@ -123,8 +128,7 @@ export async function GET(request: Request) {
 
                 // --- 429 HANDLING ---
                 if (res.status === 429) {
-                    console.warn(`[Backfill] ⚠️ 429 Limit hit for ext ${extId}. Cooling down 10s...`);
-                    await new Promise(r => setTimeout(r, 10000));
+                    console.warn(`[Backfill] ⚠️ 429 Limit hit for ext ${extId}.`);
                     return 'LIMIT_HIT';
                 }
 
@@ -142,38 +146,81 @@ export async function GET(request: Request) {
 
         let sliceCalls: any[] = [];
         let limitHit = false;
+        let timeoutHit = false;
 
-        // --- GENTLE SYNC ----
-        // Sequential processing
-        for (const extId of EXTENSIONS) {
+        const startTime = Date.now();
+        const TIMEOUT_SAFETY_MS = 8000; // 8 seconds safety (for 10s vercel limit)
+
+        // --- RESUMABLE LOOP ---
+        let nextExtIndex = extIndex;
+
+        for (let i = extIndex; i < EXTENSIONS.length; i++) {
+            // Check Time Budget
+            if (Date.now() - startTime > TIMEOUT_SAFETY_MS) {
+                console.log('[Backfill] Approaching timeout. Saving state and yielding.');
+                timeoutHit = true;
+                nextExtIndex = i; // Resume from this index next time
+                break;
+            }
+
+            const extId = EXTENSIONS[i];
+            // No delay here? Or small delay?
+            // If we remove delay, we hit 429 faster.
+            // Let's keep small delay (500ms) and rely on timeout saving.
+
             const result = await fetchChunk(extId, fromD, toD);
 
             if (result === 'LIMIT_HIT') {
                 limitHit = true;
-                break; // Stop processing this slice, save what we have, but maybe don't advance cursor??
-                // Actually, if we hit limit, we probably shouldn't advance cursor to avoid skipping extensions.
-                // BUT, if we return now, we save partial data. 
-                // For simplicity given the task, if we hit 429, let's just abort this run. 
-                // The next cron run will pick up from the SAME cursor.
+                nextExtIndex = i; // Resume from this index (retry it)
+                break;
             }
 
             if (Array.isArray(result)) {
                 sliceCalls.push(...result);
             }
 
-            // Mandatory delay
-            await new Promise(r => setTimeout(r, 1000));
+            // Mandatory delay to be polite
+            await new Promise(r => setTimeout(r, 500));
         }
 
-        if (limitHit) {
-            console.warn('[Backfill] Aborting slice due to 429. Will retry next run.');
-            return NextResponse.json({
-                success: false,
-                status: 'rate_limited',
-                message: 'Hit 429 error. Aborted slice.'
-            });
+        // Determines next state
+        let nextCursor = cursor;
+        let finalExtIndex = nextExtIndex;
+        let isSliceFinished = !limitHit && !timeoutHit && (finalExtIndex >= EXTENSIONS.length || finalExtIndex === EXTENSIONS.length - 1 && !limitHit); // if loop finished
+
+        // Actually, if loop finished naturally:
+        if (!limitHit && !timeoutHit && nextExtIndex === EXTENSIONS.length - 1) {
+            // We processed the last one successfully
+            isSliceFinished = true;
+        }
+        // Correct check: if we iterated past last element
+        if (nextExtIndex >= EXTENSIONS.length) isSliceFinished = true;
+        // Wait, if loop finishes, i becomes EXTENSIONS.length. So nextExtIndex will be correct?
+        // Let's look at logic: `for (let i = extIndex; ...)`. If it finishes, it exits loop.
+        // We need to set `nextExtIndex` to 0 only if we finished the loop.
+        // If we broke, `nextExtIndex` is set. If we didn't break, `nextExtIndex` is still `extIndex` (initial value)?
+        // Fix: Update `nextExtIndex` inside the loop or after.
+
+        if (!limitHit && !timeoutHit) {
+            // If we got here, we finished the loop?
+            // Not necessarily, if extIndex was already at end?
+            // Let's rely on `i`
+            finalExtIndex = 0; // Reset for next slice
+            // Advance Cursor
+            nextCursor = new Date(endSliceMs + 1000);
+            isSliceFinished = true;
+        } else {
+            // We paused (Timeout or 429)
+            // Keep same cursor, use new extIndex
+            finalExtIndex = nextExtIndex;
+            // Cursor remains `cursor`
         }
 
+
+        // SAVE RAW CALLS (What we got so far)
+        // Even if we timeout/429, we should save partial data to avoid re-fetching successful extensions?
+        // Yes!
         let syncedCount = 0;
         if (sliceCalls.length > 0) {
             const rawCalls = sliceCalls.map((r: any) => {
@@ -194,14 +241,20 @@ export async function GET(request: Request) {
                     fromNumber = r.ani_number || r.from_number;
                     toNumber = r.dest_number || r.to_number;
                 }
+                // Normalization
+                let sFrom = String(fromNumber || '').replace(/[^\d]/g, '');
+                if (sFrom.length === 11 && (sFrom.startsWith('7') || sFrom.startsWith('8'))) sFrom = sFrom.slice(1);
+
+                let sTo = String(toNumber || '').replace(/[^\d]/g, '');
+                if (sTo.length === 11 && (sTo.startsWith('7') || sTo.startsWith('8'))) sTo = sTo.slice(1);
 
                 return {
                     telphin_call_id: record_uuid,
                     direction: direction,
                     from_number: fromNumber || 'unknown',
                     to_number: toNumber || 'unknown',
-                    from_number_normalized: normalizePhone(fromNumber),
-                    to_number_normalized: normalizePhone(toNumber),
+                    from_number_normalized: sFrom.length >= 10 ? sFrom : null,
+                    to_number_normalized: sTo.length >= 10 ? sTo : null,
                     started_at: callDate.toISOString(),
                     duration_sec: r.duration || 0,
                     recording_url: r.record_url || r.storage_url || r.url || null,
@@ -218,29 +271,36 @@ export async function GET(request: Request) {
                 syncedCount = rawCalls.length;
                 console.log(`[Backfill] Upserted ${syncedCount} calls.`);
             }
-        } else {
-            console.log('[Backfill] No calls in this slice.');
         }
 
-        // 3. Advance Cursor (Only if no 429)
-        const nextCursor = new Date(endSliceMs + 1000); // +1s
-        await supabase.from('sync_state').upsert({
-            key: storageKey,
-            value: nextCursor.toISOString(),
-            updated_at: new Date().toISOString()
-        });
+        // SAVE STATE
+        await updateState(storageKey, nextCursor.toISOString(), finalExtIndex);
 
         return NextResponse.json({
             success: true,
-            slice_start: fromD.toISOString(),
-            slice_end: toD.toISOString(),
+            status: isSliceFinished ? 'slice_completed' : (limitHit ? 'rate_limited' : 'timeout_paused'),
             calls_found: syncedCount,
-            next_cursor: nextCursor.toISOString(),
-            completed_pct: ((nextCursor.getTime() - BACKFILL_START_DATE.getTime()) / (BACKFILL_END_DATE.getTime() - BACKFILL_START_DATE.getTime()) * 100).toFixed(1) + '%'
+            current_cursor: nextCursor.toISOString(),
+            next_ext_index: finalExtIndex,
+            message: `Processed ${sliceCalls.length} calls. ` + (isSliceFinished ? 'Advancing slice.' : 'Paused/Resuming next run.')
         });
 
     } catch (error: any) {
         console.error('Telphin Backfill Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
+}
+
+async function updateState(cursorKey: string, cursorValue: string, extIndex: number) {
+    const ts = new Date().toISOString();
+    await supabase.from('sync_state').upsert([
+        { key: cursorKey, value: cursorValue, updated_at: ts },
+        { key: 'telphin_backfill_ext_index', value: String(extIndex), updated_at: ts }
+    ], { onConflict: 'key' });
+}
+
+    } catch (error: any) {
+    console.error('Telphin Backfill Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+}
 }
