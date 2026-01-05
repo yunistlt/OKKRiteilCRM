@@ -23,21 +23,23 @@ async function checkEvents() {
     }
 
     console.log(`Found ${events.length} events.`);
-    const rawValue = e.raw_payload?.newValue;
-    const normalizedValue = (typeof rawValue === 'object' && rawValue !== null && 'code' in rawValue)
-        ? rawValue.code
-        : rawValue;
+    events.forEach((e: any) => {
+        const rawValue = e.raw_payload?.newValue || e.raw_payload?.status;
+        const normalizedValue = (typeof rawValue === 'object' && rawValue !== null && 'code' in rawValue)
+            ? rawValue.code
+            : rawValue;
 
-    console.log('--- Event ---');
-    console.log(`ID: ${e.event_id}, Time: ${e.occurred_at}`);
-    console.log(`Field: ${e.event_type} (as ${e.raw_payload?.field}) -> ${JSON.stringify(normalizedValue)}`);
-    console.log('Order Context:', JSON.stringify(e.order_metrics?.full_order_context, null, 2));
+        console.log('--- Event ---');
+        console.log(`ID: ${e.event_id}, Order: ${e.retailcrm_order_id}, Time: ${e.occurred_at}`);
+        console.log(`Field: ${e.event_type} (Actual field: ${e.raw_payload?.field}) -> Normalized Value: ${JSON.stringify(normalizedValue)}`);
+        console.log('Metrics Data Status:', e.order_metrics ? 'FOUND' : 'MISSING');
+        console.log('Order Context Keys:', e.order_metrics?.full_order_context ? Object.keys(e.order_metrics.full_order_context).join(', ') : 'NONE');
 
-    // Check manually
-    const comment = e.order_metrics?.full_order_context?.manager_comment;
-    console.log(`Manager Comment Value: '${comment}'`);
-    console.log(`Is Violation (Empty)? ${!comment || comment.trim() === ''}`);
-});
+        // Check manually
+        const comment = e.order_metrics?.full_order_context?.manager_comment;
+        console.log(`Manager Comment Value: '${comment}'`);
+        console.log(`Is Violation (Empty)? ${!comment || comment.trim() === ''}`);
+    });
 }
 
 checkEvents();
