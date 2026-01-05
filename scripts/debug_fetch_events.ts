@@ -11,7 +11,7 @@ async function checkEvents() {
             new_value,
             occurred_at,
             retailcrm_order_id,
-            orders!left ( status, manager_id, full_order_context )
+            order_metrics!left ( current_status, manager_id, full_order_context )
         `)
         .eq('field_name', 'status')
         .order('occurred_at', { ascending: false })
@@ -27,10 +27,10 @@ async function checkEvents() {
         console.log('--- Event ---');
         console.log(`ID: ${e.event_id}, Time: ${e.occurred_at}`);
         console.log(`Field: ${e.field_name} -> ${e.new_value}`);
-        console.log('Order Context:', JSON.stringify(e.orders?.full_order_context, null, 2));
+        console.log('Order Context:', JSON.stringify(e.order_metrics?.full_order_context, null, 2));
 
         // Check manually
-        const comment = e.orders?.full_order_context?.manager_comment;
+        const comment = e.order_metrics?.full_order_context?.manager_comment;
         console.log(`Manager Comment Value: '${comment}'`);
         console.log(`Is Violation (Empty)? ${!comment || comment.trim() === ''}`);
     });

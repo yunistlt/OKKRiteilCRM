@@ -65,7 +65,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             new_value,
             occurred_at,
             retailcrm_order_id,
-            orders!left ( status, manager_id, full_order_context )
+            order_metrics!left ( current_status, manager_id, full_order_context )
         `)
         .gte('occurred_at', startDate)
         .lte('occurred_at', endDate);
@@ -95,9 +95,9 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     const violations = events.filter((e: any) => {
         // Construct a context object "om" to match the SQL/AI expectation
         const om = {
-            current_status: e.orders?.status,
-            full_order_context: e.orders?.full_order_context || {},
-            manager_id: e.orders?.manager_id
+            current_status: e.order_metrics?.current_status,
+            full_order_context: e.order_metrics?.full_order_context || {},
+            manager_id: e.order_metrics?.manager_id
         };
         const row = {
             field_name: e.field_name,
