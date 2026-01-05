@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation';
 function PriorityWidget() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'red' | 'yellow' | 'green' | 'black'>('red');
+    const [activeTab, setActiveTab] = useState<string | null>(null);
 
     useEffect(() => {
         fetch('/api/analysis/priorities')
@@ -56,7 +56,7 @@ function PriorityWidget() {
         }
     };
 
-    const filteredOrders = orders.filter(o => o.level === activeTab);
+    const filteredOrders = activeTab ? orders.filter(o => o.level === activeTab) : [];
 
     return (
         <div className="w-full max-w-5xl mb-12 bg-white rounded-[40px] p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
@@ -78,7 +78,7 @@ function PriorityWidget() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                 {/* Red Tab */}
                 <button
-                    onClick={() => setActiveTab('red')}
+                    onClick={() => setActiveTab(activeTab === 'red' ? null : 'red')}
                     className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'red'
                         ? 'bg-red-50 border-red-200 shadow-lg shadow-red-100'
                         : 'bg-white border-gray-100 hover:border-red-100 hover:bg-red-50/50'
@@ -94,7 +94,7 @@ function PriorityWidget() {
 
                 {/* Yellow Tab */}
                 <button
-                    onClick={() => setActiveTab('yellow')}
+                    onClick={() => setActiveTab(activeTab === 'yellow' ? null : 'yellow')}
                     className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'yellow'
                         ? 'bg-yellow-50 border-yellow-200 shadow-lg shadow-yellow-100'
                         : 'bg-white border-gray-100 hover:border-yellow-100 hover:bg-yellow-50/50'
@@ -110,7 +110,7 @@ function PriorityWidget() {
 
                 {/* Green Tab */}
                 <button
-                    onClick={() => setActiveTab('green')}
+                    onClick={() => setActiveTab(activeTab === 'green' ? null : 'green')}
                     className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'green'
                         ? 'bg-green-50 border-green-200 shadow-lg shadow-green-100'
                         : 'bg-white border-gray-100 hover:border-green-100 hover:bg-green-50/50'
@@ -126,7 +126,7 @@ function PriorityWidget() {
 
                 {/* Black Tab */}
                 <button
-                    onClick={() => setActiveTab('black')}
+                    onClick={() => setActiveTab(activeTab === 'black' ? null : 'black')}
                     className={`relative p-5 rounded-3xl border transition-all duration-300 text-left group overflow-hidden ${activeTab === 'black'
                         ? 'bg-gray-900 border-gray-700 shadow-lg shadow-gray-400'
                         : 'bg-white border-gray-100 hover:border-gray-400 hover:bg-gray-50'
@@ -142,70 +142,72 @@ function PriorityWidget() {
             </div>
 
             {/* List */}
-            <div className="space-y-3 min-h-[200px]">
-                {filteredOrders.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full py-10 text-center">
-                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-2xl text-gray-300">
-                            ✨
+            {activeTab && (
+                <div className="space-y-3 min-h-[200px]">
+                    {filteredOrders.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full py-10 text-center">
+                            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-2xl text-gray-300">
+                                ✨
+                            </div>
+                            <p className="text-gray-400 font-medium">Нет сделок в этой категории</p>
                         </div>
-                        <p className="text-gray-400 font-medium">Нет сделок в этой категории</p>
-                    </div>
-                ) : (
-                    filteredOrders.map((order) => (
-                        <div key={order.orderId} className="group p-5 rounded-3xl border border-gray-100 hover:border-blue-200 bg-gray-50/30 hover:bg-white transition-all duration-300 hover:shadow-lg cursor-pointer">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-2 h-12 rounded-full ${order.level === 'red' ? 'bg-red-500' :
+                    ) : (
+                        filteredOrders.map((order) => (
+                            <div key={order.orderId} className="group p-5 rounded-3xl border border-gray-100 hover:border-blue-200 bg-gray-50/30 hover:bg-white transition-all duration-300 hover:shadow-lg cursor-pointer">
+                                <div className="flex items-center justify-between mb-2">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-2 h-12 rounded-full ${order.level === 'red' ? 'bg-red-500' :
                                             order.level === 'yellow' ? 'bg-yellow-400' :
                                                 order.level === 'green' ? 'bg-green-500' : 'bg-gray-800'
-                                        }`}></div>
-                                    <div>
-                                        <div className="flex items-center gap-3 mb-1">
-                                            <span className="font-black text-gray-900 text-lg">#{order.orderNumber}</span>
-                                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white px-2 py-1 rounded-lg border border-gray-100">
-                                                {order.managerName}
-                                            </span>
-                                        </div>
-                                        <div className="text-sm font-medium text-gray-500">
-                                            {formatMoney(order.totalSum)}
-                                            {order.summary !== 'Ожидание анализа' && <span className="mx-2 text-gray-300">|</span>}
-                                            {order.summary !== 'Ожидание анализа' && <span className="italic text-gray-600">"{order.summary}"</span>}
+                                            }`}></div>
+                                        <div>
+                                            <div className="flex items-center gap-3 mb-1">
+                                                <span className="font-black text-gray-900 text-lg">#{order.orderNumber}</span>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white px-2 py-1 rounded-lg border border-gray-100">
+                                                    {order.managerName}
+                                                </span>
+                                            </div>
+                                            <div className="text-sm font-medium text-gray-500">
+                                                {formatMoney(order.totalSum)}
+                                                {order.summary !== 'Ожидание анализа' && <span className="mx-2 text-gray-300">|</span>}
+                                                {order.summary !== 'Ожидание анализа' && <span className="italic text-gray-600">"{order.summary}"</span>}
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="text-right">
-                                    <div className="flex flex-col items-end gap-1">
-                                        {order.reasons.map((r: string, i: number) => (
-                                            <div key={i} className={`text-[10px] font-bold px-2 py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
+                                    <div className="text-right">
+                                        <div className="flex flex-col items-end gap-1">
+                                            {order.reasons.map((r: string, i: number) => (
+                                                <div key={i} className={`text-[10px] font-bold px-2 py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
                                                     order.level === 'yellow' ? 'text-yellow-600 bg-yellow-50' :
                                                         order.level === 'green' ? 'text-green-500 bg-green-50' :
                                                             'text-gray-500 bg-gray-100'
-                                                }`}>
-                                                {r}
-                                            </div>
-                                        ))}
-                                        {order.reasons.length === 0 && (
-                                            <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">...</span>
-                                        )}
+                                                    }`}>
+                                                    {r}
+                                                </div>
+                                            ))}
+                                            {order.reasons.length === 0 && (
+                                                <span className="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-lg">...</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            {/* Action Recommendation */}
-                            {order.recommendedAction && (
-                                <div className="mt-4 pt-3 border-t border-gray-100 flex items-start gap-3">
-                                    <span className="text-lg">💡</span>
-                                    <div>
-                                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Рекомендация AI</p>
-                                        <p className="text-sm font-medium text-gray-700">{order.recommendedAction}</p>
+                                {/* Action Recommendation */}
+                                {order.recommendedAction && (
+                                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-start gap-3">
+                                        <span className="text-lg">💡</span>
+                                        <div>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Рекомендация AI</p>
+                                            <p className="text-sm font-medium text-gray-700">{order.recommendedAction}</p>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
-                    ))
-                )}
-            </div>
+                                )}
+                            </div>
+                        ))
+                    )}
+                </div>
+            )}
         </div>
     );
 }
