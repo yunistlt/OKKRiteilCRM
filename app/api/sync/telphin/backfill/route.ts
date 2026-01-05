@@ -203,6 +203,11 @@ export async function GET(request: Request) {
             }
         }
 
+        if (calls.length > 0 && calls.length < 50) {
+            console.log(`[Backfill] Partial batch (${calls.length} < 50). Window exhausted. Advancing to ${endDate.toISOString()}`);
+            nextCursor = endDate.toISOString();
+        }
+
         await updateState(storageKey, nextCursor);
 
         return NextResponse.json({
