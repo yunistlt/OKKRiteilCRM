@@ -12,7 +12,8 @@ export async function GET() {
             .select('key, value, updated_at')
             .in('key', [
                 'telphin_last_sync_time',
-                'telphin_backfill_cursor'
+                'telphin_backfill_cursor',
+                'transcription_min_duration'
             ]);
 
         if (syncError) throw syncError;
@@ -106,11 +107,45 @@ export async function GET() {
             reason: matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.'
         };
 
+        // --- Settings ---
+        // Get generic keys or specific ones
+        const settings = {
+            transcription_min_duration: parseInt(stateMap.get('transcription_min_duration')?.value || '15')
+        };
+
         return NextResponse.json({
             services: [telphinMain, telphinBackfill, retailStatus, matchStatus],
-            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus]
+            dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus],
+            settings
         });
 
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+}
+
+export async function POST(req: Request) {
+    try {
+        const body = await req.json();
+        const { key, value } = body;
+
+        if (!key || value === undefined) {
+            return NextResponse.json({ error: 'Missing key or value' }, { status: 400 });
+        }
+
+        // Whitelist keys for safety if needed, but for now open for sync_state
+        // Update sync_state
+        const { error } = await supabase
+            .from('sync_state')
+            .upsert({
+                key,
+                value: String(value),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+
+        if (error) throw error;
+
+        return NextResponse.json({ ok: true });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
