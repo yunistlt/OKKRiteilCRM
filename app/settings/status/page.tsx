@@ -79,6 +79,34 @@ export default function SystemStatusPage() {
         }
     };
 
+    // --- Actions ---
+
+    const runService = async (serviceName: string) => {
+        let url = '';
+        if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
+        if (serviceName.includes('Telphin Backfill')) url = '/api/sync/telphin/backfill';
+        if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
+        if (serviceName.includes('Matching')) url = '/api/matching/process';
+
+        if (!url) return;
+
+        // Optimistic UI: Set loading state
+        const originalStatuses = [...syncStatuses];
+        setSyncStatuses(prev => prev.map(s =>
+            s.service === serviceName ? { ...s, details: 'Запуск...', status: 'warning' } : s
+        ));
+
+        try {
+            await fetch(url);
+            // Wait a sec then refresh status
+            setTimeout(fetchSyncStatus, 2000);
+        } catch (e) {
+            console.error('Run failed', e);
+            setSyncStatuses(originalStatuses); // Revert on error
+            alert('Ошибка запуска: ' + e);
+        }
+    };
+
     // --- Effects ---
 
     useEffect(() => {
@@ -150,14 +178,14 @@ export default function SystemStatusPage() {
             {/* SECTION 1: SYNC MONITOR (Compact Row) */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {syncStatuses.length > 0 ? syncStatuses.map((service, idx) => (
-                    <div key={idx} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-gray-200/40 relative overflow-hidden group">
+                    <div key={idx} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-gray-200/40 relative overflow-hidden group flex flex-col justify-between h-full">
 
                         <div className={`absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity text-6xl -mr-4 -mt-4 select-none grayscale group-hover:grayscale-0`}>
                             {getIcon(service.service)}
                         </div>
 
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-3">
+                        <div className="relative z-10 w-full">
+                            <div className="flex items-center justify-between mb-3 w-full">
                                 <div className="text-2xl">{getIcon(service.service)}</div>
                                 <div className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${getStatusColor(service.status)}`}>
                                     {getStatusLabel(service.status)}
@@ -179,7 +207,7 @@ export default function SystemStatusPage() {
                                 </div>
                             )}
 
-                            {/* CURSOR BLOCK - Only if no reason, or to save space? Let's show cursor if no reason, or make it smaller */}
+                            {/* CURSOR BLOCK */}
                             {!service.reason && (
                                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-2">
                                     <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Курсор</div>
@@ -189,12 +217,20 @@ export default function SystemStatusPage() {
                                 </div>
                             )}
 
-                            <div className="flex items-center justify-between mt-auto">
+                            <div className="flex items-center justify-between mt-auto mb-3 w-full">
                                 <span className="text-[9px] font-bold text-gray-400 uppercase">Послед. запуск</span>
                                 <span className="text-[9px] font-bold text-gray-600">
                                     {service.last_run ? new Date(service.last_run).toLocaleString('ru-RU') : '---'}
                                 </span>
                             </div>
+
+                            {/* RUN BUTTON */}
+                            <button
+                                onClick={() => runService(service.service)}
+                                className="w-full py-2 bg-gray-50 hover:bg-blue-600 hover:text-white border border-gray-200 hover:border-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 group-hover:bg-gray-100"
+                            >
+                                <span>▶ Запустить</span>
+                            </button>
                         </div>
                     </div>
                 )) : (
