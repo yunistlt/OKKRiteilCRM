@@ -6,44 +6,27 @@ import { getTelphinToken } from '@/lib/telphin';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const EXTENSIONS = [
-    94413, 94415, 145748, 349957, 349963, 351106, 469589,
-    533987, 555997, 562946, 643886, 660848, 669428, 718843,
-    765119, 768698, 775235, 775238, 805250, 809876, 813743,
-    828290, 839939, 855176, 858926, 858929, 858932, 858935,
-    911927, 946706, 968099, 969008, 982610, 995756, 1015712,
-];
-
 function formatTelphinDate(date: Date) {
     const pad = (n: number) => String(n).padStart(2, '0');
-    // Use UTC to ensure Vercel/Local consistency
     return (
-        date.getUTCFullYear() +
-        '-' +
-        pad(date.getUTCMonth() + 1) +
-        '-' +
-        pad(date.getUTCDate()) +
-        ' ' +
-        pad(date.getUTCHours()) +
-        ':' +
-        pad(date.getUTCMinutes()) +
-        ':' +
+        date.getUTCFullYear() + '-' +
+        pad(date.getUTCMonth() + 1) + '-' +
+        pad(date.getUTCDate()) + ' ' +
+        pad(date.getUTCHours()) + ':' +
+        pad(date.getUTCMinutes()) + ':' +
         pad(date.getUTCSeconds())
     );
 }
 
-const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
-const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
-
 function normalizePhone(val: any) {
     if (!val) return null;
     let s = String(val).replace(/[^\d]/g, '');
-    // Standardize to 10 digits if 11 and starts with 7 or 8
-    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) {
-        s = s.slice(1);
-    }
+    if (s.length === 11 && (s.startsWith('7') || s.startsWith('8'))) s = s.slice(1);
     return s.length >= 10 ? s : null;
 }
+
+const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
+const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
 export async function GET(request: Request) {
     if (!TELPHIN_APP_KEY || !TELPHIN_APP_SECRET) {
@@ -57,112 +40,83 @@ export async function GET(request: Request) {
         const token = await getTelphinToken();
         const storageKey = 'telphin_backfill_cursor';
 
+        // 1. Get Client ID (Required for Global Fetch)
+        const userRes = await fetch('https://apiproxy.telphin.ru/api/ver1.0/user', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const userData = await userRes.json();
+        const clientId = userData.client_id;
+        if (!clientId) throw new Error('Could not resolve Telphin Client ID');
+
+        // BACKFILL BOUNDARIES
         const BACKFILL_START_DATE = new Date('2025-09-01T00:00:00Z');
         const BACKFILL_END_DATE = new Date('2025-12-01T00:00:00Z');
 
-        // 1. Determine Cursor & Ext Index
+        // 2. Determine Cursor
         let cursor = BACKFILL_START_DATE;
-        let extIndex = 0;
 
         if (forceStart) {
             cursor = new Date(forceStart);
+            console.log(`[Backfill] Forced start: ${cursor.toISOString()}`);
         } else {
-            const { data: states } = await supabase
+            const { data: state } = await supabase
                 .from('sync_state')
-                .select('key, value')
-                .in('key', [storageKey, 'telphin_backfill_ext_index']);
+                .select('value')
+                .eq('key', storageKey)
+                .single();
 
-            const stateMap = new Map(states?.map(s => [s.key, s.value]));
-
-            if (stateMap.has(storageKey)) cursor = new Date(stateMap.get(storageKey)!);
-            if (stateMap.has('telphin_backfill_ext_index')) extIndex = parseInt(stateMap.get('telphin_backfill_ext_index') || '0');
-
-            console.log(`[Backfill] Resuming: ${cursor.toISOString()} (Ext Index: ${extIndex})`);
+            if (state?.value) cursor = new Date(state.value);
+            console.log(`[Backfill] Resuming from: ${cursor.toISOString()}`);
         }
 
         if (cursor.getTime() >= BACKFILL_END_DATE.getTime()) {
-            await updateState(storageKey, cursor.toISOString(), 0);
+            await updateState(storageKey, cursor.toISOString());
             return NextResponse.json({ status: 'completed', message: 'Backfill complete.' });
         }
 
-        // 2. Process Slice
-        const SLICE_MS = 24 * 60 * 60 * 1000;
+        // 3. Process Slice (Global Fetch)
+        // We fetch a larger chunk because we only make 1 request.
+        // Let's do 6 hours per run.
+        const SLICE_MS = 6 * 60 * 60 * 1000;
         let endSliceMs = cursor.getTime() + SLICE_MS;
         if (endSliceMs > BACKFILL_END_DATE.getTime()) endSliceMs = BACKFILL_END_DATE.getTime();
 
         const fromD = cursor;
         const toD = new Date(endSliceMs);
-        console.log(`[Backfill] Slice: ${fromD.toISOString()} -> ${toD.toISOString()}`);
 
-        const fetchChunk = async (extId: number) => {
-            // ... Code skipped, reused in loop logic ...
-            // Re-inline or simplified helper:
-            const params = new URLSearchParams({
-                start_datetime: formatTelphinDate(fromD),
-                end_datetime: formatTelphinDate(toD),
-                order: 'asc',
-                count: '500'
-            });
-            const url = `https://apiproxy.telphin.ru/api/ver1.0/extension/${extId}/record/?${params.toString()}`;
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
-            if (res.status === 429) return 'LIMIT_HIT';
-            if (!res.ok) return [];
-            const data = await res.json();
-            return Array.isArray(data) ? data : [];
-        };
+        console.log(`[Backfill] Global Fetch: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
-        let sliceCalls: any[] = [];
-        let limitHit = false;
-        let timeoutHit = false;
-        let processedCount = 0;
+        // Mandatory "Gentle" delay before request (just in case)
+        await new Promise(r => setTimeout(r, 1000));
 
-        const startTime = Date.now();
-        const TIMEOUT_SAFETY_MS = 8000;
-        const BATCH_LIMIT = 3; // Optimistic 3
+        const params = new URLSearchParams({
+            start_datetime: formatTelphinDate(fromD),
+            end_datetime: formatTelphinDate(toD),
+            order: 'asc',
+            count: '2000' // Limit higher for global fetch
+        });
 
-        let nextExtIndex = extIndex;
+        const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/record/?${params.toString()}`;
 
-        for (let i = extIndex; i < EXTENSIONS.length; i++) {
-            // Check budget
-            if (Date.now() - startTime > TIMEOUT_SAFETY_MS || processedCount >= BATCH_LIMIT) {
-                console.log('[Backfill] Yielding (Time/Batch limit).');
-                timeoutHit = true;
-                break;
-            }
+        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
 
-            const extId = EXTENSIONS[i];
-            const result = await fetchChunk(extId);
-
-            if (result === 'LIMIT_HIT') {
-                limitHit = true;
-                break;
-            }
-
-            // Success processing
-            if (Array.isArray(result)) sliceCalls.push(...result);
-
-            processedCount++;
-            nextExtIndex = i + 1; // Explicitly advance marker
-
-            await new Promise(r => setTimeout(r, 1500)); // 1.5s delay
+        if (res.status === 429) {
+            console.warn('[Backfill] Global Fetch Rate Limit (429). Pausing.');
+            return NextResponse.json({ status: 'rate_limited' });
         }
 
-        let nextCursor = cursor;
-        let finalExtIndex = nextExtIndex;
-        let isSliceFinished = false;
-
-        // Determine if we finished the slice
-        if (finalExtIndex >= EXTENSIONS.length) {
-            isSliceFinished = true;
-            nextCursor = new Date(endSliceMs + 1000);
-            finalExtIndex = 0; // Reset for next day
+        if (!res.ok) {
+            throw new Error(`Telphin API Error: ${res.status}`);
         }
 
+        const data = await res.json();
+        const calls = Array.isArray(data) ? data : [];
+        console.log(`[Backfill] Found ${calls.length} calls.`);
 
-        // SAVE RAW CALLS (What we got so far)
+        // 4. Upsert Calls
         let syncedCount = 0;
-        if (sliceCalls.length > 0) {
-            const rawCalls = sliceCalls.map((r: any) => {
+        if (calls.length > 0) {
+            const rawCalls = calls.map((r: any) => {
                 const record_uuid = r.record_uuid || r.RecordUUID || `rec_${Math.random()}`;
                 const rawFlow = r.flow || r.direction;
                 let direction = 'unknown';
@@ -180,7 +134,7 @@ export async function GET(request: Request) {
                     fromNumber = r.ani_number || r.from_number;
                     toNumber = r.dest_number || r.to_number;
                 }
-                // Normalization
+
                 let sFrom = String(fromNumber || '').replace(/[^\d]/g, '');
                 if (sFrom.length === 11 && (sFrom.startsWith('7') || sFrom.startsWith('8'))) sFrom = sFrom.slice(1);
 
@@ -206,22 +160,22 @@ export async function GET(request: Request) {
                 .upsert(rawCalls, { onConflict: 'telphin_call_id' });
 
             if (rawError) console.error('[Backfill] Upsert Error:', rawError);
-            else {
-                syncedCount = rawCalls.length;
-                console.log(`[Backfill] Upserted ${syncedCount} calls.`);
-            }
+            else syncedCount = rawCalls.length;
         }
 
-        // SAVE STATE
-        await updateState(storageKey, nextCursor.toISOString(), finalExtIndex);
+        // 5. Update Cursor (Always advance if successful)
+        // Add 1 second to avoid overlapping overlap? Telphin is inclusive? 
+        // Docs say inclusive. We should probably start *after* the end date next time?
+        // Or just `endSliceMs`. Since we query ranges, minimal overlap is fine (upsert handles it).
+
+        await updateState(storageKey, toD.toISOString());
 
         return NextResponse.json({
             success: true,
-            status: isSliceFinished ? 'slice_completed' : (limitHit ? 'rate_limited' : 'timeout_paused'),
+            status: 'slice_completed',
             calls_found: syncedCount,
-            current_cursor: nextCursor.toISOString(),
-            next_ext_index: finalExtIndex,
-            message: `Processed ${sliceCalls.length} calls. ` + (isSliceFinished ? 'Advancing slice.' : 'Paused/Resuming next run.')
+            current_cursor: toD.toISOString(),
+            message: `Global fetch successful. Processed ${syncedCount} calls.`
         });
 
     } catch (error: any) {
@@ -230,10 +184,9 @@ export async function GET(request: Request) {
     }
 }
 
-async function updateState(cursorKey: string, cursorValue: string, extIndex: number) {
+async function updateState(cursorKey: string, cursorValue: string) {
     const ts = new Date().toISOString();
     await supabase.from('sync_state').upsert([
-        { key: cursorKey, value: cursorValue, updated_at: ts },
-        { key: 'telphin_backfill_ext_index', value: String(extIndex), updated_at: ts }
+        { key: cursorKey, value: cursorValue, updated_at: ts }
     ], { onConflict: 'key' });
 }
