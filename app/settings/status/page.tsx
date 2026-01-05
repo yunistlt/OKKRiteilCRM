@@ -264,57 +264,100 @@ export default function SystemStatusPage() {
                 )}
             </div>
 
-            {/* SECTION 2: INFRASTRUCTURE (Compact Grid) */}
+            {/* SECTION 2: INFRASTRUCTURE & SETTINGS (Unified Grid) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-                {/* Database Stats - Takes 2 cols */}
-                <div className="md:col-span-2 bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-blue-200/10 flex flex-col justify-between">
-                    <div className="flex items-center gap-3 mb-4">
+                {/* 1. General Stats (Orders & Matches) */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-blue-200/10 flex flex-col">
+                    <div className="flex items-center gap-3 mb-6">
                         <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg">📊</div>
-                        <div>
-                            <h3 className="text-sm font-black text-gray-900">Статистика Базы</h3>
-                        </div>
+                        <h3 className="text-sm font-black text-gray-900">Статистика Базы</h3>
                     </div>
 
                     {loadingStats ? (
-                        <div className="animate-pulse space-y-2">
-                            <div className="h-8 bg-gray-50 rounded-lg"></div>
-                            <div className="h-8 bg-gray-50 rounded-lg"></div>
+                        <div className="animate-pulse space-y-4">
+                            <div className="h-12 bg-gray-50 rounded-xl"></div>
+                            <div className="h-12 bg-gray-50 rounded-xl"></div>
                         </div>
                     ) : dbStats ? (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Заказы в работе</span>
-                                <span className="text-xl font-black text-gray-900">{dbStats.workingOrders}</span>
+                        <div className="space-y-4 flex-1 flex flex-col justify-center">
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Заказы в работе</span>
+                                <span className="text-2xl font-black text-gray-900">{dbStats.workingOrders}</span>
                             </div>
 
-                            <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
-                                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Матчи (звонки)</span>
-                                <span className="text-xl font-black text-gray-900">{dbStats.matchedCalls}</span>
+                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Матчи (звонки)</span>
+                                <span className="text-2xl font-black text-gray-900">{dbStats.matchedCalls}</span>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-gray-400 font-bold text-xs uppercase">Нет данных</div>
+                    )}
+                </div>
 
-                            <div className="col-span-2 mt-1">
-                                <div className="flex justify-between items-end mb-1">
-                                    <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Прогресс Транскрибации</span>
-                                    <span className="text-xs font-black text-blue-600">{percent}%</span>
+                {/* 2. Transcription (Progress + Settings) */}
+                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">📝</div>
+                        <h3 className="text-sm font-black text-gray-900">Транскрибация</h3>
+                    </div>
+
+                    {/* Progress Portion */}
+                    <div className="mb-8">
+                        {loadingStats ? (
+                            <div className="animate-pulse space-y-2">
+                                <div className="h-1 bg-gray-100 rounded-full"></div>
+                                <div className="h-3 w-2/3 bg-gray-50 rounded"></div>
+                            </div>
+                        ) : dbStats ? (
+                            <div>
+                                <div className="flex justify-between items-end mb-2">
+                                    <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">Прогресс</span>
+                                    <span className="text-xs font-black text-purple-600">{percent}%</span>
                                 </div>
-                                <div className="w-full h-1.5 bg-blue-100 rounded-full overflow-hidden mb-1">
-                                    <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${percent}%` }}></div>
+                                <div className="w-full h-2 bg-purple-100 rounded-full overflow-hidden mb-2">
+                                    <div className="h-full bg-purple-500 transition-all duration-500" style={{ width: `${percent}%` }}></div>
                                 </div>
-                                <div className="flex justify-between text-[9px] font-bold text-blue-400 uppercase tracking-wider">
+                                <div className="flex justify-between text-[10px] font-bold text-purple-400 uppercase tracking-wider">
                                     <span>Готово: {dbStats.transcribedCalls}</span>
                                     <span>Очередь: {dbStats.pendingCalls}</span>
                                 </div>
                             </div>
+                        ) : (
+                            <div className="h-12 flex items-center justify-center text-[10px] font-bold text-gray-300 uppercase">Нет статистики</div>
+                        )}
+                    </div>
+
+                    {/* Settings Portion */}
+                    <div className="mt-auto pt-6 border-t border-gray-50">
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
+                            Мин. длительность (сек)
+                        </label>
+                        <div className="flex gap-2">
+                            <input
+                                type="number"
+                                value={minDuration}
+                                onChange={(e) => setMinDuration(Number(e.target.value))}
+                                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            <button
+                                onClick={saveSettings}
+                                disabled={savingSettings}
+                                className="px-4 bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-95"
+                            >
+                                {savingSettings ? '...' : 'OK'}
+                            </button>
                         </div>
-                    ) : (
-                        <div className="text-center py-4 text-gray-400 font-bold text-xs">Нет данных</div>
-                    )}
+                        <p className="text-[9px] text-gray-400 mt-2 leading-relaxed">
+                            Звонки короче этого времени будут игнорироваться ИИ (автоответчики/сбросы).
+                        </p>
+                    </div>
                 </div>
 
-                {/* OpenAI Status - Takes 1 col */}
+                {/* 3. OpenAI Status */}
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-green-200/10 flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-green-50 text-green-600 rounded-lg flex items-center justify-center text-lg">🤖</div>
                             <h3 className="text-sm font-black text-gray-900">OpenAI</h3>
@@ -324,7 +367,7 @@ export default function SystemStatusPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 p-3 bg-gray-50 rounded-xl border border-gray-100 mb-3 flex items-center justify-center text-center">
+                    <div className="flex-1 p-4 bg-gray-50 rounded-xl border border-gray-100 mb-6 flex items-center justify-center text-center">
                         <p className={`text-xs font-bold leading-tight ${openai.status === 'error' ? 'text-red-600' : 'text-gray-600'}`}>
                             {openai.message === 'API Key is valid and active' ? 'Ключ API активен' : openai.message}
                         </p>
@@ -332,52 +375,16 @@ export default function SystemStatusPage() {
 
                     <button
                         onClick={checkOpenAI}
-                        className="w-full py-2 bg-gray-900 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all active:scale-95"
+                        className="w-full py-3 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all active:scale-95 mb-3"
                     >
                         Тест API
                     </button>
 
-                    <a href="https://platform.openai.com/usage" target="_blank" className="text-[9px] text-center text-blue-400 mt-2 hover:underline">
+                    <a href="https://platform.openai.com/usage" target="_blank" className="text-[10px] text-center font-bold text-blue-400 hover:text-blue-600 transition-colors uppercase tracking-widest">
                         Проверить баланс ↗
                     </a>
                 </div>
 
-            </div>
-
-            {/* SECTION 3: SETTINGS (New Grid) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10">
-                    <div className="flex items-center gap-3 mb-4">
-                        <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">⚙️</div>
-                        <h3 className="text-sm font-black text-gray-900">Настройки Транскрибации</h3>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">
-                                Мин. длительность (сек)
-                            </label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="number"
-                                    value={minDuration}
-                                    onChange={(e) => setMinDuration(Number(e.target.value))}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                />
-                                <button
-                                    onClick={saveSettings}
-                                    disabled={savingSettings}
-                                    className="px-4 bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-purple-700 disabled:opacity-50 transition-all active:scale-95"
-                                >
-                                    {savingSettings ? '...' : 'OK'}
-                                </button>
-                            </div>
-                            <p className="text-[9px] text-gray-400 mt-1">
-                                Звонки короче этого времени будут игнорироваться (автоответчики/сбросы).
-                            </p>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     );
