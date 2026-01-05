@@ -35,6 +35,14 @@ JOINED CONTEXT (Available for SQL):
 - om.manager_id (int)
 - om.full_order_context (JSONB)
 
+TERM MAPPING (Russian -> DB Field):
+- "Статус" -> field_name = 'status'
+- "Комментарий менеджера" -> manager_comment
+- "Сумма", "Стоимость" -> total_sum / order_amount
+- "Дата доставки" -> delivery_date
+- "Оплата", "Статус оплаты" -> payment_status
+- "Причина отмены" -> cancel_reason
+
 Task:
 Convert User's requirement into a Rule Definition.
 Determine 'entity_type' based on what we are looking for (Calls vs History Events).

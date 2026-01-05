@@ -95,23 +95,45 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                             />
                         </div>
 
-                        {/* Tag Cloud */}
+                        {/* Smart Tag Cloud */}
                         <div>
-                            <span className="text-xs text-gray-500 font-medium block mb-2">Нажмите, чтобы добавить поле:</span>
+                            <span className="text-xs text-gray-500 font-medium block mb-2">
+                                {prompt ? 'Подходящие поля (нажмите, чтобы добавить):' : 'Популярные поля:'}
+                            </span>
                             <div className="flex flex-wrap gap-2">
-                                {[
-                                    'поле status', 'поле manager_comment', 'поле total_sum',
-                                    'поле delivery_date', 'поле payment_status', 'поле manager_id',
-                                    'звонки > 30 сек', 'статус Отмена'
-                                ].map(tag => (
-                                    <button
-                                        key={tag}
-                                        onClick={() => setPrompt(prev => prev ? `${prev} ${tag}` : tag)}
-                                        className="px-2 py-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs rounded-full border border-gray-200 transition-colors"
-                                    >
-                                        + {tag}
-                                    </button>
-                                ))}
+                                {(() => {
+                                    const TAGS = [
+                                        { label: 'Статус заказа', value: 'поле status', keywords: ['статус', 'смена', 'изменил', 'этап'] },
+                                        { label: 'Комментарий Менеджера', value: 'поле manager_comment', keywords: ['коммент', 'причина', 'текст', 'написал'] },
+                                        { label: 'Сумма заказа', value: 'поле total_sum', keywords: ['сумма', 'деньги', 'стоимость', 'цена', 'бюджет'] },
+                                        { label: 'Дата доставки', value: 'поле delivery_date', keywords: ['дата', 'доставка', 'день', 'время'] },
+                                        { label: 'Статус оплаты', value: 'поле payment_status', keywords: ['оплата', 'платеж', 'деньги'] },
+                                        { label: 'ID Менеджера', value: 'поле manager_id', keywords: ['менеджер', 'сотрудник', 'кто'] },
+                                        { label: 'Звонок > 30 сек', value: 'звонки > 30 сек', keywords: ['звонок', 'длительность', 'разговор'] },
+                                        { label: 'Статус "Отмена"', value: 'статус Отмена', keywords: ['отмена', 'отказ', 'срыв'] }
+                                    ];
+
+                                    // Filter tags based on prompt context
+                                    const suggestions = prompt
+                                        ? TAGS.filter(t => t.keywords.some(k => prompt.toLowerCase().includes(k)))
+                                        : TAGS; // Show all if prompt is empty
+
+                                    // If no specific match found, show all (fallback)
+                                    const displayTags = suggestions.length > 0 ? suggestions : TAGS;
+
+                                    return displayTags.map(tag => (
+                                        <button
+                                            key={tag.value}
+                                            onClick={() => setPrompt(prev => prev ? `${prev} ${tag.value}` : tag.value)}
+                                            className={`px-2 py-1 text-xs rounded-full border transition-colors flex items-center gap-1 ${suggestions.length > 0 && prompt
+                                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100' // Highlight relevant
+                                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100' // Default
+                                                }`}
+                                        >
+                                            + {tag.label}
+                                        </button>
+                                    ));
+                                })()}
                             </div>
                         </div>
 
