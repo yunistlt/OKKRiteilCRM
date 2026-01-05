@@ -93,7 +93,6 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                 placeholder="Например: Звонки короче 10 секунд..."
                                 className="w-full border rounded-lg p-3 h-32 focus:ring-2 focus:ring-indigo-500 outline-none"
                             />
-                            />
                         </div>
 
                         {/* Tag Cloud */}
