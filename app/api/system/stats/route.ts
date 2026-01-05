@@ -48,7 +48,7 @@ export async function GET() {
                 )
             `, { count: 'exact', head: true })
             .in('call_order_matches.orders.status', workingCodes)
-            .not('raw_payload->transcript', 'is', null);
+            .or('transcript.not.is.null,raw_payload->>transcript.not.is.null');
 
         if (e3) throw e3;
 
@@ -64,6 +64,7 @@ export async function GET() {
                 )
             `, { count: 'exact', head: true })
             .in('call_order_matches.orders.status', workingCodes)
+            .is('transcript', null)
             .is('raw_payload->transcript', null);
 
         if (e4) throw e4;

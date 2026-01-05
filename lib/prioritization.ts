@@ -58,6 +58,11 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
                     calls (
                         id, timestamp, duration, transcript, am_detection_result
                     )
+                ),
+                call_order_matches (
+                    raw_telphin_calls (
+                        telphin_call_id, started_at, duration_sec, transcript
+                    )
                 )
             `)
             .in('status', workingCodes)
@@ -114,10 +119,23 @@ export async function calculatePriorities(limit: number = 2000): Promise<OrderPr
         }
 
         // --- 2. AI Analysis (Sentiment & Context) ---
-        // Flatten calls from matches
-        const allCalls = (order.matches || [])
+        // Flatten calls from both legacy and new match tables
+        const legacyCalls = (order.matches || [])
             .map((m: any) => m.calls)
             .filter((c: any) => c !== null);
+
+        const rawCalls = (order.call_order_matches || [])
+            .map((m: any) => m.raw_telphin_calls)
+            .filter((c: any) => c !== null)
+            .map((c: any) => ({
+                id: c.telphin_call_id,
+                timestamp: c.started_at,
+                duration: c.duration_sec,
+                transcript: c.transcript,
+                am_detection_result: null // Backfilled calls don't have AMD yet
+            }));
+
+        const allCalls = [...legacyCalls, ...rawCalls];
 
         const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
