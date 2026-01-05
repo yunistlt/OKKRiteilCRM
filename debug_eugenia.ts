@@ -1,13 +1,13 @@
 
-const dotenv = require('dotenv');
-dotenv.config({ path: '.env.local' });
-const { supabase } = require('./utils/supabase');
+const dotenvConfig = require('dotenv');
+dotenvConfig.config({ path: '.env.local' });
+const { supabase: supabaseDebug } = require('./utils/supabase');
 
 async function run() {
     console.log('--- Checking Eugenia (ID 98) specific status ---');
     console.log('Checking with Key:', process.env.SUPABASE_SERVICE_ROLE_KEY ? 'Service Role Found' : 'Not Found');
 
-    const { data: calls, error } = await supabase
+    const { data: calls, error } = await supabaseDebug
         .from('calls')
         .select(`
             id, 
