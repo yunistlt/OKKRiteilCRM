@@ -20,7 +20,7 @@ export async function GET() {
         const stateMap = new Map();
         syncStates?.forEach(s => stateMap.set(s.key, s));
 
-        // 2. Fetch Latest Order time (since RetailCRM sync uses this instead of sync_state)
+        // 2. Fetch Latest Order time
         const { data: lastOrder } = await supabase
             .from('orders')
             .select('created_at')
@@ -29,65 +29,85 @@ export async function GET() {
             .single();
 
         // 3. Fetch recent Matching Stats
-        // Count matches in last 24h
         const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { count: matches24h, error: matchError } = await supabase
             .from('call_order_matches')
             .select('*', { count: 'exact', head: true })
             .gte('created_at', yesterday);
 
-        // 4. Construct Status Object
+        // 4. Analysis & Diagnostics
 
-        // Helper to determine health (green/red) based on "updated_at" freshness
         const isFresh = (dateStr: string | null, minutes: number) => {
             if (!dateStr) return false;
             const diff = Date.now() - new Date(dateStr).getTime();
             return diff < minutes * 60 * 1000;
         };
 
-        // Telphin Main
+        const getDiagnosis = (service: string, isOk: boolean, lastRun: string | null) => {
+            if (isOk) return null;
+            if (!lastRun) return 'Никогда не запускался. Проверьте Cron.';
+
+            if (service === 'telphin_main') {
+                return 'Cron не запускался > 15 мин. Либо нет новых звонков, либо сбой Vercel Cron.';
+            }
+            if (service === 'telphin_backfill') {
+                return 'Пауза из-за лимитов API (429) или процесс завершен.';
+            }
+            if (service === 'retailcrm') {
+                return 'Нет новых заказов > 1 ч. Возможно, просто выходной день или ночь.';
+            }
+            return 'Требует проверки';
+        };
+
+        // --- Telphin Main ---
         const telphinMain = stateMap.get('telphin_last_sync_time');
+        const telphinOk = isFresh(telphinMain?.updated_at, 15);
         const telphinStatus = {
             service: 'Telphin Main Sync',
             cursor: telphinMain?.value || 'Never',
             last_run: telphinMain?.updated_at || null,
-            status: isFresh(telphinMain?.updated_at, 15) ? 'ok' : 'warning', // Should run every ~10 mins
-            details: isFresh(telphinMain?.updated_at, 15) ? 'Active' : 'Stalled (>15m ago)'
+            status: telphinOk ? 'ok' : 'warning',
+            details: telphinOk ? 'Active' : 'Stalled (>15m ago)',
+            reason: getDiagnosis('telphin_main', telphinOk, telphinMain?.updated_at)
         };
 
-        // Telphin Backfill
+        // --- Telphin Backfill ---
         const telphinBackfill = stateMap.get('telphin_backfill_cursor');
+        const backfillOk = isFresh(telphinBackfill?.updated_at, 5); // Strict 5m check
         const backfillStatus = {
             service: 'Telphin Backfill',
             cursor: telphinBackfill?.value || 'Never',
             last_run: telphinBackfill?.updated_at || null,
-            // Backfill might finish, so "stalled" isn't always bad, but for now we assume it runs
-            status: isFresh(telphinBackfill?.updated_at, 5) ? 'ok' : 'warning',
-            details: isFresh(telphinBackfill?.updated_at, 5) ? 'Running' : 'Stopped/Paused'
+            status: backfillOk ? 'ok' : 'warning',
+            details: backfillOk ? 'Running' : 'Stopped/Paused',
+            reason: getDiagnosis('telphin_backfill', backfillOk, telphinBackfill?.updated_at)
         };
 
-        // RetailCRM
-        // Use lastOrder.created_at as the cursor
+        // --- RetailCRM ---
         const retailCursor = lastOrder?.created_at || null;
+        const retailOk = isFresh(retailCursor, 60);
         const retailStatus = {
             service: 'RetailCRM Sync',
             cursor: retailCursor || 'Never',
-            last_run: retailCursor || null, // Best proxy we have
-            status: isFresh(retailCursor, 60) ? 'ok' : 'warning', // Orders might not happen every 15 mins, so 60 is safer
-            details: isFresh(retailCursor, 60) ? 'Recent Orders' : 'No recent orders (>1h)'
+            last_run: retailCursor || null,
+            status: retailOk ? 'ok' : 'warning',
+            details: retailOk ? 'Recent Orders' : 'No recent orders (>1h)',
+            reason: getDiagnosis('retailcrm', retailOk, retailCursor)
         };
 
-        // Matching
+        // --- Matching ---
+        const matchOk = (matches24h || 0) > 0;
         const matchStatus = {
             service: 'Matching Service',
             cursor: 'Realtime',
-            last_run: new Date().toISOString(), // It's on-demand or continuous
-            status: 'ok', // Assumed OK if API responds
-            details: `${matches24h || 0} matches in last 24h`
+            last_run: new Date().toISOString(),
+            status: matchOk ? 'ok' : 'warning',
+            details: `${matches24h || 0} matches in last 24h`,
+            reason: matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.'
         };
 
         return NextResponse.json({
-            services: [telphinMain, telphinBackfill, retailStatus, matchStatus], // debug raw
+            services: [telphinMain, telphinBackfill, retailStatus, matchStatus],
             dashboard: [telphinStatus, backfillStatus, retailStatus, matchStatus]
         });
 

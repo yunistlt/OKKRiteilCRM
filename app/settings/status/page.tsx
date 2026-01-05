@@ -10,6 +10,7 @@ interface SyncServiceStatus {
     last_run: string | null;
     status: 'ok' | 'warning' | 'error';
     details: string;
+    reason?: string | null;
 }
 
 interface OpenAIStatus {
@@ -168,15 +169,28 @@ export default function SystemStatusPage() {
                             </h3>
                             <p className="text-[10px] font-medium text-gray-500 mb-3 h-3 truncate">{service.details}</p>
 
-                            <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-2">
-                                <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Курсор / Прогресс</div>
-                                <div className="text-[10px] font-mono font-bold text-gray-700 truncate" title={service.cursor}>
-                                    {service.cursor.replace('T', ' ').replace('Z', '').split('.')[0]}
+                            {/* REASON BLOCK */}
+                            {service.reason && (
+                                <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 mb-2">
+                                    <div className="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">Диагностика</div>
+                                    <div className="text-[10px] font-medium text-orange-800 leading-tight">
+                                        {service.reason}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
-                            <div className="flex items-center justify-between">
-                                <span className="text-[9px] font-bold text-gray-400 uppercase">Синхронизация</span>
+                            {/* CURSOR BLOCK - Only if no reason, or to save space? Let's show cursor if no reason, or make it smaller */}
+                            {!service.reason && (
+                                <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-2">
+                                    <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Курсор</div>
+                                    <div className="text-[10px] font-mono font-bold text-gray-700 truncate" title={service.cursor}>
+                                        {service.cursor.replace('T', ' ').replace('Z', '').split('.')[0]}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex items-center justify-between mt-auto">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase">Послед. запуск</span>
                                 <span className="text-[9px] font-bold text-gray-600">
                                     {service.last_run ? new Date(service.last_run).toLocaleString('ru-RU') : '---'}
                                 </span>
