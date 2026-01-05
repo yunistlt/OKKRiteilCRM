@@ -97,6 +97,18 @@ export async function GET(request: Request) {
                 report.push(`Rules: Error (${e.message})`);
             }
         }
+        // 5. Refresh Priorities (Stagnation calculation)
+        if (checkBudget('Priorities')) {
+            console.log('[CRON] Step 6: Priorities');
+            try {
+                const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
+                const prioJson = await prioRes.json();
+                report.push(`Priorities: ${prioJson.count || 0} updated`);
+            } catch (e: any) {
+                console.error('[CRON] Priorities Error:', e);
+                report.push(`Priorities: Error (${e.message})`);
+            }
+        }
 
         const totalTime = (Date.now() - startTime) / 1000;
         console.log(`--- CRON FINISHED in ${totalTime.toFixed(1)}s ---`);

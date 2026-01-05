@@ -37,9 +37,10 @@ export default function SystemStatusPage() {
     const [dbStats, setDbStats] = useState<DbStats | null>(null);
     const [loadingStats, setLoadingStats] = useState(true);
 
-    // --- State: Settings ---
+    // --- State: Settings & AI ---
     const [minDuration, setMinDuration] = useState(15);
     const [savingSettings, setSavingSettings] = useState(false);
+    const [refreshingPriorities, setRefreshingPriorities] = useState(false);
 
     // --- Fetchers ---
 
@@ -88,6 +89,25 @@ export default function SystemStatusPage() {
 
     // --- Actions ---
 
+    const refreshPriorities = async () => {
+        setRefreshingPriorities(true);
+        try {
+            const res = await fetch('/api/analysis/priorities/refresh');
+            const data = await res.json();
+            if (data.ok) {
+                alert(`Анализ завершен: обработано ${data.count} заказов.`);
+                fetchDbStats();
+            } else {
+                alert('Ошибка анализа: ' + data.error);
+            }
+        } catch (e: any) {
+            console.error(e);
+            alert('Ошибка сети при анализе');
+        } finally {
+            setRefreshingPriorities(false);
+        }
+    };
+
     const runService = async (serviceName: string) => {
         let url = '';
         if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
@@ -121,7 +141,6 @@ export default function SystemStatusPage() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ key: 'transcription_min_duration', value: minDuration })
             });
-            // Reload to confirm (optional)
             fetchSyncStatus();
         } catch (e) {
             console.error(e);
@@ -138,7 +157,6 @@ export default function SystemStatusPage() {
         checkOpenAI();
         fetchDbStats();
 
-        // Poll sync status every 30s
         const interval = setInterval(fetchSyncStatus, 30000);
         return () => clearInterval(interval);
     }, []);
@@ -224,7 +242,6 @@ export default function SystemStatusPage() {
                             </h3>
                             <p className="text-[10px] font-medium text-gray-500 mb-3 h-3 truncate">{service.details}</p>
 
-                            {/* REASON BLOCK */}
                             {service.reason && (
                                 <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 mb-2">
                                     <div className="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">Диагностика</div>
@@ -234,7 +251,6 @@ export default function SystemStatusPage() {
                                 </div>
                             )}
 
-                            {/* CURSOR BLOCK */}
                             {!service.reason && (
                                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-2">
                                     <div className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Курсор</div>
@@ -251,7 +267,6 @@ export default function SystemStatusPage() {
                                 </span>
                             </div>
 
-                            {/* RUN BUTTON */}
                             <button
                                 onClick={() => runService(service.service)}
                                 className="w-full py-2 bg-gray-50 hover:bg-blue-600 hover:text-white border border-gray-200 hover:border-blue-600 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 group-hover:bg-gray-100"
@@ -267,10 +282,31 @@ export default function SystemStatusPage() {
                 )}
             </div>
 
-            {/* SECTION 2: INFRASTRUCTURE & SETTINGS (Unified Grid) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* SECTION 2: AI & STATS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                {/* 2.1 Priorities Analysis */}
+                <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="text-2xl">🚦</div>
+                            <h3 className="text-lg font-black text-gray-900 tracking-tight">Анализ Приоритетов</h3>
+                        </div>
+                        <p className="text-xs font-medium text-gray-500 mb-6 leading-relaxed">
+                            Пересчитывает критичность заказов на основе новых звонков, изменений статусов и AI-анализа.
+                            Именно этот модуль отвечает за надпись "Завис без движения".
+                        </p>
+                    </div>
 
-                {/* 1. General Stats (Orders & Matches) */}
+                    <button
+                        onClick={refreshPriorities}
+                        disabled={refreshingPriorities}
+                        className="w-full py-4 bg-gray-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                        {refreshingPriorities ? '🚀 Выполняется анализ...' : '⚡️ Обновить Анализ'}
+                    </button>
+                </div>
+
+                {/* 2.2 General Stats (Orders & Matches) */}
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-blue-200/10 flex flex-col">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg">📊</div>
@@ -299,14 +335,13 @@ export default function SystemStatusPage() {
                     )}
                 </div>
 
-                {/* 2. Transcription (Progress + Settings) */}
+                {/* 2.3 Transcription (Progress + Settings) */}
                 <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col">
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">📝</div>
                         <h3 className="text-sm font-black text-gray-900">Транскрибация</h3>
                     </div>
 
-                    {/* Progress Portion */}
                     <div className="mb-8">
                         {loadingStats ? (
                             <div className="animate-pulse space-y-2">
@@ -332,7 +367,6 @@ export default function SystemStatusPage() {
                         )}
                     </div>
 
-                    {/* Settings Portion */}
                     <div className="mt-auto pt-6 border-t border-gray-50">
                         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
                             Мин. длительность (сек)
@@ -352,42 +386,38 @@ export default function SystemStatusPage() {
                                 {savingSettings ? '...' : 'OK'}
                             </button>
                         </div>
-                        <p className="text-[9px] text-gray-400 mt-2 leading-relaxed">
-                            Звонки короче этого времени будут игнорироваться ИИ (автоответчики/сбросы).
+                    </div>
+                </div>
+            </div>
+
+            {/* SECTION 3: Open AI Testing Inline */}
+            <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex items-center justify-between">
+                <div className="flex items-center gap-6">
+                    <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center text-2xl">🤖</div>
+                    <div>
+                        <div className="flex items-center gap-3 mb-1">
+                            <h3 className="text-lg font-black text-gray-900 tracking-tight">OpenAI API</h3>
+                            <div className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${openai.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                {openai.status === 'ok' ? 'ОНЛАЙН' : 'ОШИБКА'}
+                            </div>
+                        </div>
+                        <p className={`text-xs font-bold ${openai.status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                            {openai.message === 'API Key is valid and active' ? 'Ключ API активен и готов к работе' : openai.message}
                         </p>
                     </div>
                 </div>
 
-                {/* 3. OpenAI Status */}
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-green-200/10 flex flex-col">
-                    <div className="flex items-center justify-between mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-green-50 text-green-600 rounded-lg flex items-center justify-center text-lg">🤖</div>
-                            <h3 className="text-sm font-black text-gray-900">OpenAI</h3>
-                        </div>
-                        <div className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest ${openai.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                            {openai.status === 'ok' ? 'ОНЛАЙН' : 'ОШИБКА'}
-                        </div>
-                    </div>
-
-                    <div className="flex-1 p-4 bg-gray-50 rounded-xl border border-gray-100 mb-6 flex items-center justify-center text-center">
-                        <p className={`text-xs font-bold leading-tight ${openai.status === 'error' ? 'text-red-600' : 'text-gray-600'}`}>
-                            {openai.message === 'API Key is valid and active' ? 'Ключ API активен' : openai.message}
-                        </p>
-                    </div>
-
+                <div className="flex items-center gap-4">
+                    <a href="https://platform.openai.com/usage" target="_blank" className="text-xs font-black text-blue-500 hover:text-blue-700 uppercase tracking-widest border-b-2 border-transparent hover:border-blue-200 transition-all">
+                        Баланс ↗
+                    </a>
                     <button
                         onClick={checkOpenAI}
-                        className="w-full py-3 bg-gray-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all active:scale-95 mb-3"
+                        className="px-6 py-3 bg-gray-900 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95"
                     >
-                        Тест API
+                        Проверить связь
                     </button>
-
-                    <a href="https://platform.openai.com/usage" target="_blank" className="text-[10px] text-center font-bold text-blue-400 hover:text-blue-600 transition-colors uppercase tracking-widest">
-                        Проверить баланс ↗
-                    </a>
                 </div>
-
             </div>
         </div>
     );
