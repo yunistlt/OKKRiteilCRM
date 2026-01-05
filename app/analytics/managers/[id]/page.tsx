@@ -24,6 +24,20 @@ const SEVERITY_COLORS: Record<string, string> = {
     'low': 'bg-blue-50 text-blue-700 ring-blue-600/20'
 };
 
+const PRIORITY_STYLES: Record<string, string> = {
+    'red': 'bg-red-100 text-red-700 ring-red-600/20',
+    'yellow': 'bg-amber-100 text-amber-700 ring-amber-600/20',
+    'green': 'bg-green-100 text-green-700 ring-green-600/20',
+    'black': 'bg-gray-100 text-gray-700 ring-gray-600/20'
+};
+
+const PRIORITY_ICON_BG: Record<string, string> = {
+    'red': 'bg-red-50 text-red-600',
+    'yellow': 'bg-amber-50 text-amber-600',
+    'green': 'bg-green-50 text-green-600',
+    'black': 'bg-gray-50 text-gray-400'
+};
+
 export default function ManagerProfilePage() {
     const params = useParams();
     const router = useRouter();
@@ -256,17 +270,22 @@ export default function ManagerProfilePage() {
                                                             target="_blank"
                                                             className="flex items-center gap-3 group/link"
                                                         >
-                                                            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-lg font-black group-hover/link:scale-110 transition-transform">
+                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black group-hover/link:scale-110 transition-transform ${PRIORITY_ICON_BG[group.order.priority] || PRIORITY_ICON_BG.black}`}>
                                                                 📦
                                                             </div>
                                                             <div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="text-xl font-black text-gray-900 group-hover/link:text-blue-600 transition-colors">#{group.order.number}</span>
+                                                                    <span className={`text-xl font-black transition-colors ${group.order.priority === 'red' ? 'text-red-700' : 'text-gray-900 group-hover/link:text-blue-600'}`}>#{group.order.number}</span>
                                                                     <svg className="w-4 h-4 text-gray-300 group-hover/link:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                                 </div>
                                                                 <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                                                                     История коммуникаций
                                                                 </div>
+                                                                {group.order.priority && group.order.priority !== 'black' && (
+                                                                    <div className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${PRIORITY_STYLES[group.order.priority]}`}>
+                                                                        {group.order.priority === 'red' ? 'Критично' : group.order.priority === 'yellow' ? 'Внимание' : 'Норма'}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </a>
                                                     ) : (
@@ -398,7 +417,11 @@ export default function ManagerProfilePage() {
                                                         <a
                                                             href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
                                                             target="_blank"
-                                                            className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-sm group-hover:scale-105"
+                                                            className={`inline-flex items-center gap-2 font-black transition-all text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
+                                                                    c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
+                                                                        c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
+                                                                            'text-blue-600 hover:text-blue-800'
+                                                                }`}
                                                         >
                                                             #{c.call_order_matches[0].orders.number}
                                                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>

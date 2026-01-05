@@ -55,7 +55,10 @@ export async function GET(
                     orders!inner (
                         manager_id,
                         order_id,
-                        number
+                        number,
+                        order_priorities (
+                            level
+                        )
                     )
                 )
             `)
@@ -67,7 +70,17 @@ export async function GET(
         const formattedCalls = calls?.map(c => ({
             ...c,
             transcript: (c.raw_payload as any)?.transcript,
-            is_answering_machine: (c.raw_payload as any)?.is_answering_machine
+            is_answering_machine: (c.raw_payload as any)?.is_answering_machine,
+            // Map priority to the order in matches for easier frontend access
+            call_order_matches: c.call_order_matches?.map((m: any) => ({
+                ...m,
+                orders: {
+                    ...m.orders,
+                    priority: (Array.isArray(m.orders?.order_priorities)
+                        ? m.orders?.order_priorities?.[0]?.level
+                        : m.orders?.order_priorities?.level) || 'black'
+                }
+            }))
         }));
 
         // 4. Fetch Violations (using the library, then filtering)
