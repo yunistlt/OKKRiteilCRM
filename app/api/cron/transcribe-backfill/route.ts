@@ -107,7 +107,6 @@ export async function GET(req: Request) {
 
         return NextResponse.json({
             processed: results.length,
-            new_cursor: lastTimestamp,
             details: results
         });
 
