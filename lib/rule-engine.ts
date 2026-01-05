@@ -13,14 +13,20 @@ export interface Rule {
  * Execute all active rules against a time range.
  * Currently supports 'call' entity type fully.
  */
-export async function runRuleEngine(startDate: string, endDate: string) {
-    console.log(`[RuleEngine] Running for range ${startDate} to ${endDate}`);
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: number) {
+    console.log(`[RuleEngine] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''}`);
 
     // 1. Fetch Active Rules
-    const { data: rules, error } = await supabase
+    let query = supabase
         .from('okk_rules')
         .select('*')
         .eq('is_active', true);
+
+    if (targetRuleId) {
+        query = query.eq('id', targetRuleId);
+    }
+
+    const { data: rules, error } = await query;
 
     if (error || !rules) {
         console.error('[RuleEngine] Failed to fetch rules:', error);
