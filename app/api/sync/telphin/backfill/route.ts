@@ -100,7 +100,8 @@ export async function GET(request: Request) {
         }
 
         // 2. Process one slice
-        const SLICE_MS = 1 * 60 * 60 * 1000;
+        // INCREASED SLICE TO 24 HOURS to sync faster with fewer requests per day (batching)
+        const SLICE_MS = 24 * 60 * 60 * 1000;
         let endSliceMs = cursor.getTime() + SLICE_MS;
 
         // Cap at end date
@@ -147,26 +148,25 @@ export async function GET(request: Request) {
         let sliceCalls: any[] = [];
         let limitHit = false;
         let timeoutHit = false;
+        let processedCount = 0;
 
         const startTime = Date.now();
         const TIMEOUT_SAFETY_MS = 8000; // 8 seconds safety (for 10s vercel limit)
+        const BATCH_LIMIT = 2; // Process MAX 2 extensions per run (Very slow, but safe for rate limits)
 
         // --- RESUMABLE LOOP ---
         let nextExtIndex = extIndex;
 
         for (let i = extIndex; i < EXTENSIONS.length; i++) {
-            // Check Time Budget
-            if (Date.now() - startTime > TIMEOUT_SAFETY_MS) {
-                console.log('[Backfill] Approaching timeout. Saving state and yielding.');
-                timeoutHit = true;
+            // Check Time Budget & Batch Limit
+            if (Date.now() - startTime > TIMEOUT_SAFETY_MS || processedCount >= BATCH_LIMIT) {
+                console.log('[Backfill] Approaching timeout or batch limit. Saving state and yielding.');
+                timeoutHit = true;  // Treat batch limit as "pause" similar to timeout
                 nextExtIndex = i; // Resume from this index next time
                 break;
             }
 
             const extId = EXTENSIONS[i];
-            // No delay here? Or small delay?
-            // If we remove delay, we hit 429 faster.
-            // Let's keep small delay (500ms) and rely on timeout saving.
 
             const result = await fetchChunk(extId, fromD, toD);
 
@@ -180,8 +180,10 @@ export async function GET(request: Request) {
                 sliceCalls.push(...result);
             }
 
-            // Mandatory delay to be polite
-            await new Promise(r => setTimeout(r, 500));
+            processedCount++;
+
+            // Mandatory delay to be polite (2 seconds!)
+            await new Promise(r => setTimeout(r, 2000));
         }
 
         // Determines next state
@@ -196,31 +198,23 @@ export async function GET(request: Request) {
         }
         // Correct check: if we iterated past last element
         if (nextExtIndex >= EXTENSIONS.length) isSliceFinished = true;
-        // Wait, if loop finishes, i becomes EXTENSIONS.length. So nextExtIndex will be correct?
-        // Let's look at logic: `for (let i = extIndex; ...)`. If it finishes, it exits loop.
-        // We need to set `nextExtIndex` to 0 only if we finished the loop.
-        // If we broke, `nextExtIndex` is set. If we didn't break, `nextExtIndex` is still `extIndex` (initial value)?
-        // Fix: Update `nextExtIndex` inside the loop or after.
 
         if (!limitHit && !timeoutHit) {
-            // If we got here, we finished the loop?
-            // Not necessarily, if extIndex was already at end?
-            // Let's rely on `i`
-            finalExtIndex = 0; // Reset for next slice
-            // Advance Cursor
-            nextCursor = new Date(endSliceMs + 1000);
-            isSliceFinished = true;
+            if (isSliceFinished) {
+                finalExtIndex = 0; // Reset for next slice
+                // Advance Cursor
+                nextCursor = new Date(endSliceMs + 1000);
+            } else {
+                // If we didn't finish loop but also didn't hit limits? (Shouldn't happen with correct logic above)
+                finalExtIndex = nextExtIndex;
+            }
         } else {
-            // We paused (Timeout or 429)
-            // Keep same cursor, use new extIndex
+            // We paused (Timeout or 429 or Batch Limit)
             finalExtIndex = nextExtIndex;
-            // Cursor remains `cursor`
         }
 
 
         // SAVE RAW CALLS (What we got so far)
-        // Even if we timeout/429, we should save partial data to avoid re-fetching successful extensions?
-        // Yes!
         let syncedCount = 0;
         if (sliceCalls.length > 0) {
             const rawCalls = sliceCalls.map((r: any) => {
@@ -298,4 +292,3 @@ async function updateState(cursorKey: string, cursorValue: string, extIndex: num
         { key: 'telphin_backfill_ext_index', value: String(extIndex), updated_at: ts }
     ], { onConflict: 'key' });
 }
-
