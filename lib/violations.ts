@@ -51,21 +51,22 @@ export async function detectViolations(startDate: string, endDate: string) {
     const isControlActive = controlledIds.size > 0;
 
     // 2. Fetch all calls in range with Order Match and Order Manager
+    // 2. Fetch all calls in range with Order Match and Order Manager
     const { data: calls } = await supabase
-        .from('calls')
+        .from('raw_telphin_calls')
         .select(`
-            id,
-            duration,
-            timestamp,
-            flow,
-            is_answering_machine,
-            matches(
-                order_id,
+            id: telphin_call_id,
+            duration: duration_sec,
+            timestamp: started_at,
+            flow: direction,
+            raw_payload,
+            call_order_matches(
+                order_id: retailcrm_order_id,
                 orders(status, manager_id)
             )
         `)
-        .gte('timestamp', startDate)
-        .lte('timestamp', endDate);
+        .gte('started_at', startDate)
+        .lte('started_at', endDate);
 
     // 3. Fetch all history events in range
     const { data: history } = await supabase
@@ -93,7 +94,9 @@ export async function detectViolations(startDate: string, endDate: string) {
 
     // --- CALL-BASED RULES (NOW STRICTLY MATCHED) ---
     for (const call of callData) {
-        const match = call.matches?.[0];
+        // Map raw_payload fields
+        const isAnsweringMachine = (call.raw_payload as any)?.is_answering_machine === true;
+        const match = call.call_order_matches?.[0]; // Relation name changed
         if (!match) continue; // RULE 1: Skip if no matching order
 
         const orderId = match.order_id;
@@ -101,7 +104,7 @@ export async function detectViolations(startDate: string, endDate: string) {
         const duration = call.duration || 0;
 
         // RULE: Answering Machine Deception (> 15s but AM)
-        if (duration > 15 && call.is_answering_machine === true) {
+        if (duration > 15 && isAnsweringMachine) {
             violations.push({
                 call_id: call.id,
                 manager_id: managerId,
@@ -183,11 +186,11 @@ export async function detectViolations(startDate: string, endDate: string) {
                 if (current.new_value === QUALIFIED_STATUS && NEW_STATUSES.includes(current.old_value)) {
                     // Check if there was a call > 20s for this order (in ALL callData, not just current range)
                     // Heuristic: for history analysis, we might need a broader call sync.
-                    const orderCalls = callData.filter(c => c.matches?.[0]?.order_id === orderId);
+                    const orderCalls = callData.filter(c => c.call_order_matches?.[0]?.order_id === orderId);
                     const hasValidCall = orderCalls.some(c =>
                         (c.duration || 0) > 20 &&
-                        c.is_answering_machine !== true && // Must NOT be an AM
-                        new Date(c.timestamp) < new Date(current.created_at)
+                        (c.raw_payload as any)?.is_answering_machine !== true && // Must NOT be an AM
+                        new Date(c.timestamp).getTime() < new Date(current.created_at).getTime()
                     );
 
                     if (!hasValidCall) {
@@ -204,7 +207,7 @@ export async function detectViolations(startDate: string, endDate: string) {
 
                 // RULE 6: NO_CALL_BEFORE_QUALIFICATION
                 if (current.new_value === QUALIFIED_STATUS) {
-                    const orderCalls = callData.filter(c => c.matches?.[0]?.order_id === orderId);
+                    const orderCalls = callData.filter(c => c.call_order_matches?.[0]?.order_id === orderId);
                     if (orderCalls.length === 0) {
                         violations.push({
                             manager_id: current.manager_id,

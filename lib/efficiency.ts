@@ -34,7 +34,10 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
         .order('order_id', { ascending: true })
         .order('created_at', { ascending: true }); // Crucial for timeline reconstruction
 
-    if (error) throw new Error(error.message);
+    if (error) {
+        console.error('[Efficiency] History fetch error:', error.message);
+        return [];
+    }
     if (!events || events.length === 0) return [];
 
     console.log(`[Efficiency] Processing ${events.length} status events`);
@@ -81,14 +84,18 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
 
     // 5. Refine Processed Orders (Exclude those with only AM calls if possible)
     // To do this strictly, we need to know which orders had at least one "REAL" (non-AM) call
-    const { data: realCalls } = await supabase
-        .from('calls')
-        .select('id, matches(order_id)')
-        .eq('is_answering_machine', false)
-        .gte('timestamp', startDate)
-        .lte('timestamp', endDate);
+    // 5. Refine Processed Orders (Exclude those with only AM calls if possible)
+    // To do this strictly, we need to know which orders had at least one "REAL" (non-AM) call
+    const { data: allCallsInPeriod } = await supabase
+        .from('raw_telphin_calls')
+        .select('id: telphin_call_id, raw_payload, call_order_matches(order_id: retailcrm_order_id)')
+        .gte('started_at', startDate)
+        .lte('started_at', endDate);
 
-    const ordersWithRealContact = new Set((realCalls || []).flatMap(c => c.matches?.map((m: any) => m.order_id) || []));
+    // Filter in memory for safety (JSONB query can be tricky)
+    const realCalls = (allCallsInPeriod || []).filter(c => (c.raw_payload as any)?.is_answering_machine !== true);
+
+    const ordersWithRealContact = new Set((realCalls || []).flatMap(c => c.call_order_matches?.map((m: any) => m.order_id) || []));
 
     // 6. Fetch Manager Metadata
     const knownManagerIds = Object.keys(managerTime).map(Number);
