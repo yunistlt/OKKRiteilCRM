@@ -57,55 +57,53 @@ export async function GET(req: Request) {
             .in('call_order_matches.orders.status', workingCodes)
             .not('recording_url', 'is', null)
             .order('started_at', { ascending: true }) // Oldest first (progressing forward)
-            .limit(10); // Small batch for cron
+            .limit(3); // Small batch to prevent Vercel Timeout (Sync is slow!)
 
         if (error) throw error;
 
         if (!candidates || candidates.length === 0) {
-            // Maybe we are done? Or maybe just a gap. 
-            // Let's check if there are ANY newer calls to decide if we should bump cursor blind?
-            // For now, if 0, we just say "Up to date" relative to filter.
-            // BUT, we must advance cursor to avoid getting stuck if calls exists but filtered out (e.g. short calls).
-            // Actually, the current query filters in DB. So it finds the next VALID ones.
-            // If 0 returned, it means no VALID calls after currentCursor.
-            // We should find the max started_at in DB and set cursor to that?
-            // Or better: Use a separate query to just "Advance Cursor" if no work found.
-
-            // Strategy: If 0 candidates found, look for ANY call after cursor to advance it.
-            const { data: nextCall } = await supabase
+            // Find the *latest* call time in DB to see if we are caught up
+            const { data: lastRaw } = await supabase
                 .from('raw_telphin_calls')
                 .select('started_at')
-                .gt('started_at', currentCursor)
-                .order('started_at', { ascending: true })
+                .order('started_at', { ascending: false })
                 .limit(1)
                 .single();
 
-            if (nextCall) {
-                // Advance cursor to skip the "gap" of invalid calls
-                await updateCursor(nextCall.started_at);
-                return NextResponse.json({ message: 'Skipping gap of invalid/filtered calls', new_cursor: nextCall.started_at });
+            // If we have data and we found no candidates, it implies we are caught up relative to filter.
+            // We should update cursor to "Latest Raw Time" (or Now) so status says "Fresh".
+            if (lastRaw) {
+                await updateCursor(lastRaw.started_at);
+                return NextResponse.json({ message: 'Caught up (No valid candidates found)', cursor: lastRaw.started_at });
             }
 
-            return NextResponse.json({ message: 'No more calls to backfill', cursor: currentCursor });
+            return NextResponse.json({ message: 'No calls found at all', cursor: currentCursor });
         }
 
         // 4. Process Batch
         const results = [];
-        let lastTimestamp = currentCursor;
 
         for (const call of candidates) {
             try {
+                // Transcribe
                 await transcribeCall(call.event_id || call.telphin_call_id, call.recording_url);
                 results.push({ id: call.telphin_call_id, status: 'success' });
+
+                // CRITICAL: Update Cursor IMMEDIATELY after each success.
+                // This ensures if Vercel times out on the next call, we don't lose progress.
+                await updateCursor(call.started_at);
+
             } catch (e: any) {
                 console.error(`Backfill Error ${call.telphin_call_id}:`, e);
                 results.push({ id: call.telphin_call_id, error: e.message });
+                // If error, we might want to skip this call in future?
+                // For now, we update cursor past it? No, if we update cursor, we skip retry.
+                // Let's NOT update cursor on failure, so it retries next time?
+                // Risk: Infinite loop on broken file.
+                // Improvement: Log error and Update Cursor anyway (skip bad file).
+                await updateCursor(call.started_at);
             }
-            lastTimestamp = call.started_at;
         }
-
-        // 5. Update Cursor
-        await updateCursor(lastTimestamp);
 
         return NextResponse.json({
             processed: results.length,

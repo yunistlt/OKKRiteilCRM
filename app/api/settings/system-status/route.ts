@@ -111,7 +111,7 @@ export async function GET() {
         const transCursorKey = stateMap.get('transcription_backfill_cursor');
         const transCursor = transCursorKey?.value || 'Starts Sept 1';
         const transLastRun = transCursorKey?.updated_at || null;
-        // Logic: If updated recently (< 10m), it's active.
+        // Logic: If updated recently (< 10m), it's active. (Cron schedule is 2m, so 10m is safe buffer)
         const transActive = isFresh(transLastRun, 10);
 
         const transStatus = {
