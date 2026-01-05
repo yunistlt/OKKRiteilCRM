@@ -8,9 +8,19 @@ import { transcribeCall } from '../lib/transcribe';
 
 async function runTranscriptionBackfill() {
     console.log('=== HISTORICAL TRANSCRIPTION WORKER ===');
-    console.log('Filters: Duration > 15s, Linked to Working Order, Human Voice (via Duration)');
+    console.log('Filters: Dynamic Duration (default 15s), Linked to Working Order, Human Voice');
 
-    // 1. Get Working Statuses
+    // 1a. Get Min Duration Setting
+    const { data: durationSetting } = await supabase
+        .from('sync_state')
+        .select('value')
+        .eq('key', 'transcription_min_duration')
+        .single();
+
+    const minDuration = parseInt(durationSetting?.value || '15');
+    console.log(`Using Min Duration: ${minDuration}s`);
+
+    // 1b. Get Working Statuses
     const { data: settings } = await supabase
         .from('status_settings')
         .select('code')
@@ -39,12 +49,6 @@ async function runTranscriptionBackfill() {
     while (hasMore) {
         // Fetch batch of raw calls
         // We need to join with call_order_matches -> orders to check status
-        // Supabase join syntax:
-        // raw_telphin_calls!inner(..., call_order_matches!inner(orders!inner(status)))
-
-        // Actually, fetching everything and filtering in code might be safer for complex joins vs large offsets
-        // BUT strict filtering in DB is better for performance if indices exist.
-        // Let's try to query ids first.
 
         const { data: candidates, error } = await supabase
             .from('raw_telphin_calls')
@@ -65,7 +69,7 @@ async function runTranscriptionBackfill() {
             .gte('started_at', START_DATE)
             .lte('started_at', END_DATE)
             .is('raw_payload->transcript', null) // Only untranscribed
-            .gt('duration_sec', 15) // Filter 1: Duration
+            .gt('duration_sec', minDuration) // Filter 1: Duration
             .in('call_order_matches.orders.status', workingCodes) // Filter 2: Working Status
             .not('recording_url', 'is', null) // Must have audio
             .order('started_at', { ascending: true })
@@ -79,8 +83,6 @@ async function runTranscriptionBackfill() {
 
         if (!candidates || candidates.length === 0) {
             console.log(`No candidates found in range ${offset}-${offset + BATCH_SIZE}. Checking next batch...`);
-            // This logic is tricky with filtering. If we filter in DB, "range" applies to the RESULT set!
-            // So if we get 0, we are DONE.
             hasMore = false;
             break;
         }
@@ -89,9 +91,6 @@ async function runTranscriptionBackfill() {
 
         for (const call of candidates) {
             console.log(`Processing call ${call.telphin_call_id} (${call.duration_sec}s)...`);
-
-            // Double check transcript just in case (sometimes raw_payload->transcript is tricky)
-            // (Handled by DB filter)
 
             try {
                 // Call Library function
