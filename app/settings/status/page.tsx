@@ -178,7 +178,7 @@ export default function SystemStatusPage() {
                             <div className="flex items-center justify-between">
                                 <span className="text-[9px] font-bold text-gray-400 uppercase">Синхронизация</span>
                                 <span className="text-[9px] font-bold text-gray-600">
-                                    {service.last_run ? new Date(service.last_run).toLocaleTimeString() : '---'}
+                                    {service.last_run ? new Date(service.last_run).toLocaleString('ru-RU') : '---'}
                                 </span>
                             </div>
                         </div>
