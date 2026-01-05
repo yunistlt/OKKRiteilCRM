@@ -75,16 +75,15 @@ export async function GET(request: Request) {
         }
 
         // 3. Process Slice (Global Fetch)
-        // We fetch a larger chunk because we only make 1 request.
-        // Let's do 6 hours per run.
-        const SLICE_MS = 6 * 60 * 60 * 1000;
+        // REDUCED to 2 HOURS to ensure sub-10s execution on Vercel
+        const SLICE_MS = 2 * 60 * 60 * 1000;
         let endSliceMs = cursor.getTime() + SLICE_MS;
         if (endSliceMs > BACKFILL_END_DATE.getTime()) endSliceMs = BACKFILL_END_DATE.getTime();
 
         const fromD = cursor;
         const toD = new Date(endSliceMs);
 
-        console.log(`[Backfill] Global Fetch: ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
+        console.log(`[Backfill] Global Fetch (2h): ${formatTelphinDate(fromD)} -> ${formatTelphinDate(toD)}`);
 
         // Mandatory "Gentle" delay before request (just in case)
         await new Promise(r => setTimeout(r, 1000));
@@ -93,12 +92,20 @@ export async function GET(request: Request) {
             start_datetime: formatTelphinDate(fromD),
             end_datetime: formatTelphinDate(toD),
             order: 'asc',
-            count: '2000' // Limit higher for global fetch
+            count: '5000' // High limit just in case
         });
 
         const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/record/?${params.toString()}`;
 
-        const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+        // Timeout the fetch itself to 9s to capture error before Vercel kills us
+        const controller = new AbortController();
+        const fetchTimeout = setTimeout(() => controller.abort(), 9000); // 9 seconds
+
+        const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${token}` },
+            signal: controller.signal
+        });
+        clearTimeout(fetchTimeout);
 
         if (res.status === 429) {
             console.warn('[Backfill] Global Fetch Rate Limit (429). Pausing.');
@@ -164,10 +171,6 @@ export async function GET(request: Request) {
         }
 
         // 5. Update Cursor (Always advance if successful)
-        // Add 1 second to avoid overlapping overlap? Telphin is inclusive? 
-        // Docs say inclusive. We should probably start *after* the end date next time?
-        // Or just `endSliceMs`. Since we query ranges, minimal overlap is fine (upsert handles it).
-
         await updateState(storageKey, toD.toISOString());
 
         return NextResponse.json({
