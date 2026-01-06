@@ -119,34 +119,34 @@ export default function AIPrimitivizationPage() {
     if (loading) return <div className="p-8">Loading...</div>;
 
     return (
-        <div className="p-8 max-w-6xl mx-auto">
-            <h1 className="text-2xl font-bold mb-6">Обучение ИИ (Настройка Промта)</h1>
+        <div className="p-4 md:p-8 max-w-6xl mx-auto">
+            <h1 className="text-xl md:text-2xl font-bold mb-6">Обучение ИИ (Настройка Промта)</h1>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Editor */}
                 <div className="space-y-4">
                     <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
                         <label className="block text-sm font-medium mb-2">System Prompt Template</label>
-                        <p className="text-xs text-gray-500 mb-2">
+                        <p className="text-[10px] md:text-xs text-gray-500 mb-2">
                             Используйте <code>{'{{transcript}}'}</code>, <code>{'{{days}}'}</code>, <code>{'{{sum}}'}</code>, <code>{'{{status}}'}</code> как плейсхолдеры.
                         </p>
                         <textarea
-                            className="w-full h-[600px] p-4 text-sm font-mono border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full h-[400px] md:h-[600px] p-4 text-xs md:text-sm font-mono border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
                             value={prompt}
                             onChange={e => setPrompt(e.target.value)}
                         />
-                        <div className="flex justify-between mt-4">
+                        <div className="flex flex-col sm:flex-row justify-between gap-3 mt-4">
                             <button
                                 onClick={handleTest}
                                 disabled={testing}
-                                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 disabled:opacity-50"
+                                className="px-4 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700 disabled:opacity-50 w-full sm:w-auto"
                             >
                                 {testing ? 'Тестируем...' : '🧪 Тестировать (Случайный заказ)'}
                             </button>
                             <button
                                 onClick={handleSave}
                                 disabled={saving}
-                                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                                className="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 w-full sm:w-auto"
                             >
                                 {saving ? 'Сохраняем...' : '💾 Сохранить'}
                             </button>
@@ -161,7 +161,7 @@ export default function AIPrimitivizationPage() {
                     <h2 className="text-lg font-semibold">Результат Теста</h2>
                     {testResult ? (
                         testResult.error ? (
-                            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg">
+                            <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg text-sm">
                                 <strong>Ошибка:</strong> {testResult.error}
                             </div>
                         ) : (
@@ -172,16 +172,16 @@ export default function AIPrimitivizationPage() {
                                         'bg-green-50 border-green-300'
                                     }`}>
                                     <div className="flex items-center gap-3 mb-2">
-                                        <span className="text-3xl">
+                                        <span className="text-2xl md:text-3xl">
                                             {testResult.result?.traffic_light === 'red' ? '🔴' :
                                                 testResult.result?.traffic_light === 'yellow' ? '🟡' : '🟢'}
                                         </span>
                                         <div>
-                                            <h3 className="font-bold text-lg">Оценка ИИ</h3>
-                                            <p className="text-sm text-gray-600">{testResult.result?.short_reason}</p>
+                                            <h3 className="font-bold text-base md:text-lg">Оценка ИИ</h3>
+                                            <p className="text-xs md:text-sm text-gray-600">{testResult.result?.short_reason}</p>
                                         </div>
                                     </div>
-                                    <div className="mt-2 p-3 bg-white rounded border border-gray-200">
+                                    <div className="mt-2 p-3 bg-white rounded border border-gray-200 text-sm">
                                         <strong>Рекомендация:</strong> {testResult.result?.recommended_action}
                                     </div>
 
@@ -189,7 +189,7 @@ export default function AIPrimitivizationPage() {
                                     <div className="mt-3">
                                         <button
                                             onClick={openSaveModal}
-                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+                                            className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm"
                                         >
                                             💾 Сохранить как пример обучения
                                         </button>
@@ -201,14 +201,14 @@ export default function AIPrimitivizationPage() {
                                     <div className="bg-white p-4 rounded-lg border border-gray-200 space-y-3">
                                         <h3 className="font-bold text-md border-b pb-2">📦 Информация о заказе</h3>
 
-                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                             <div>
                                                 <span className="text-gray-500">Номер:</span>
                                                 <p className="font-mono font-bold">#{testResult.order.number}</p>
                                             </div>
                                             <div>
                                                 <span className="text-gray-500">Сумма:</span>
-                                                <p className="font-bold">{testResult.order.totalSum.toLocaleString('ru-RU')} ₽</p>
+                                                <p className="font-bold">{testResult.order.totalSum?.toLocaleString('ru-RU')} ₽</p>
                                             </div>
                                             <div>
                                                 <span className="text-gray-500">Менеджер:</span>
@@ -228,7 +228,7 @@ export default function AIPrimitivizationPage() {
                                             </div>
                                         </div>
 
-                                        <div className="pt-2 border-t">
+                                        <div className="pt-2 border-t flex justify-between items-center">
                                             <span className="text-gray-500 text-sm">Дней без обновления:</span>
                                             <p className="font-bold text-orange-600">{testResult.order.daysSinceUpdate}</p>
                                         </div>
@@ -236,11 +236,11 @@ export default function AIPrimitivizationPage() {
                                         {testResult.order.lastCall && (
                                             <div className="pt-2 border-t">
                                                 <h4 className="font-semibold text-sm mb-2">📞 Последний звонок</h4>
-                                                <div className="text-xs text-gray-600 mb-1">
+                                                <div className="text-[10px] text-gray-600 mb-1">
                                                     {new Date(testResult.order.lastCall.timestamp).toLocaleString('ru-RU')}
                                                     {' '}({testResult.order.lastCall.duration}с)
                                                 </div>
-                                                <div className="bg-gray-50 p-3 rounded text-sm max-h-32 overflow-y-auto">
+                                                <div className="bg-gray-50 p-3 rounded text-xs md:text-sm max-h-32 overflow-y-auto">
                                                     {testResult.order.lastCall.transcript || 'Нет транскрипта'}
                                                 </div>
                                             </div>
@@ -249,7 +249,7 @@ export default function AIPrimitivizationPage() {
                                         {testResult.order.comments !== 'Нет комментариев' && (
                                             <div className="pt-2 border-t">
                                                 <h4 className="font-semibold text-sm mb-2">💬 Комментарии</h4>
-                                                <div className="bg-gray-50 p-3 rounded text-sm">
+                                                <div className="bg-gray-50 p-3 rounded text-xs md:text-sm">
                                                     {testResult.order.comments}
                                                 </div>
                                             </div>
@@ -259,7 +259,7 @@ export default function AIPrimitivizationPage() {
                             </div>
                         )
                     ) : (
-                        <div className="bg-gray-50 text-gray-500 italic p-8 rounded-lg text-center h-[600px] flex items-center justify-center">
+                        <div className="bg-gray-50 text-gray-500 italic p-8 rounded-lg text-center h-[200px] md:h-[600px] flex items-center justify-center text-sm md:text-base">
                             Нажмите "Тестировать" чтобы увидеть как ИИ оценит заказ с вашим промтом
                         </div>
                     )}
@@ -292,8 +292,8 @@ export default function AIPrimitivizationPage() {
                                     <button
                                         onClick={() => setSaveColor('red')}
                                         className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'red'
-                                                ? 'bg-red-100 border-red-500'
-                                                : 'bg-white border-gray-200'
+                                            ? 'bg-red-100 border-red-500'
+                                            : 'bg-white border-gray-200'
                                             }`}
                                     >
                                         🔴 Критичный
@@ -301,8 +301,8 @@ export default function AIPrimitivizationPage() {
                                     <button
                                         onClick={() => setSaveColor('yellow')}
                                         className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'yellow'
-                                                ? 'bg-yellow-100 border-yellow-500'
-                                                : 'bg-white border-gray-200'
+                                            ? 'bg-yellow-100 border-yellow-500'
+                                            : 'bg-white border-gray-200'
                                             }`}
                                     >
                                         🟡 Внимание
@@ -310,8 +310,8 @@ export default function AIPrimitivizationPage() {
                                     <button
                                         onClick={() => setSaveColor('green')}
                                         className={`flex-1 p-3 rounded-lg border-2 ${saveColor === 'green'
-                                                ? 'bg-green-100 border-green-500'
-                                                : 'bg-white border-gray-200'
+                                            ? 'bg-green-100 border-green-500'
+                                            : 'bg-white border-gray-200'
                                             }`}
                                     >
                                         🟢 Норма

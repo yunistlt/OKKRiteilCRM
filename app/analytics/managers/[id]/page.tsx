@@ -97,43 +97,43 @@ export default function ManagerProfilePage() {
     });
 
     return (
-        <div className="p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50 uppercase-none">
             {/* Header */}
-            <div className="mb-10 flex items-center gap-4">
-                <button onClick={() => router.back()} className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all">
+            <div className="mb-6 md:mb-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <button onClick={() => router.back()} className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all shrink-0">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <div>
-                    <h1 className="text-4xl font-black text-gray-900 tracking-tight">{manager.first_name} {manager.last_name}</h1>
-                    <p className="text-gray-400 font-bold uppercase text-xs tracking-widest mt-1">Профиль Менеджера • ID {manager.id}</p>
+                    <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-gray-900 tracking-tight leading-tight">{manager.first_name} {manager.last_name}</h1>
+                    <p className="text-gray-400 font-bold uppercase text-[10px] md:text-xs tracking-widest mt-1">Профиль Менеджера • ID {manager.id}</p>
                 </div>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-                <div className="bg-white p-8 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
-                    <div className="text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Звонки (30 дн)</div>
-                    <div className="text-4xl font-black text-gray-900 tabular-nums">{stats.total_calls}</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8 md:mb-12">
+                <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
+                    <div className="text-gray-400 text-[10px] md:text-xs font-black uppercase tracking-widest mb-2">Звонки</div>
+                    <div className="text-2xl md:text-4xl font-black text-gray-900 tabular-nums">{stats.total_calls}</div>
                 </div>
-                <div className="bg-white p-8 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
-                    <div className="text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Нарушения</div>
-                    <div className="text-4xl font-black text-red-600 tabular-nums">{stats.total_violations}</div>
+                <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100">
+                    <div className="text-gray-400 text-[10px] md:text-xs font-black uppercase tracking-widest mb-2">Нарушения</div>
+                    <div className="text-2xl md:text-4xl font-black text-red-600 tabular-nums">{stats.total_violations}</div>
                 </div>
-                <div className="bg-white p-8 rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 col-span-2 relative overflow-hidden">
+                <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 col-span-2 relative overflow-hidden">
                     <div className="relative z-10">
-                        <div className="text-gray-400 text-xs font-black uppercase tracking-widest mb-2">Эффективность</div>
-                        <div className="text-4xl font-black text-blue-600 tabular-nums">{stats.efficiency_percent}%</div>
-                        <div className="mt-1 text-xs text-gray-400 font-bold uppercase tracking-wider">~{stats.work_time_minutes} мин активного времени</div>
+                        <div className="text-gray-400 text-[10px] md:text-xs font-black uppercase tracking-widest mb-2">Эффективность</div>
+                        <div className="text-2xl md:text-4xl font-black text-blue-600 tabular-nums">{stats.efficiency_percent}%</div>
+                        <div className="mt-1 text-[8px] md:text-xs text-gray-400 font-bold uppercase tracking-wider">~{stats.work_time_minutes} мин активности</div>
                     </div>
                 </div>
             </div>
 
             {/* Tabs Control */}
-            <div className="flex flex-wrap gap-4 mb-8">
+            <div className="flex gap-3 mb-6 md:mb-8 overflow-x-auto pb-2 scrollbar-hide shrink-0">
                 <button
                     onClick={() => setActiveTab('violations')}
-                    className={`px-8 py-4 rounded-3xl font-black uppercase tracking-widest text-[11px] transition-all duration-300 transform active:scale-95 ${activeTab === 'violations'
-                        ? 'bg-red-600 text-white shadow-2xl shadow-red-200 translate-y-[-2px]'
+                    className={`px-6 md:px-8 py-3 md:py-4 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-[11px] transition-all whitespace-nowrap active:scale-95 ${activeTab === 'violations'
+                        ? 'bg-red-600 text-white shadow-xl shadow-red-200 -translate-y-0.5'
                         : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'
                         }`}
                 >
@@ -141,8 +141,8 @@ export default function ManagerProfilePage() {
                 </button>
                 <button
                     onClick={() => setActiveTab('calls')}
-                    className={`px-8 py-4 rounded-3xl font-black uppercase tracking-widest text-[11px] transition-all duration-300 transform active:scale-95 ${activeTab === 'calls'
-                        ? 'bg-blue-600 text-white shadow-2xl shadow-blue-200 translate-y-[-2px]'
+                    className={`px-6 md:px-8 py-3 md:py-4 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-[11px] transition-all whitespace-nowrap active:scale-95 ${activeTab === 'calls'
+                        ? 'bg-blue-600 text-white shadow-xl shadow-blue-200 -translate-y-0.5'
                         : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'
                         }`}
                 >
@@ -151,37 +151,37 @@ export default function ManagerProfilePage() {
             </div>
 
             {/* Content Area */}
-            <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-[24px] md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 {activeTab === 'violations' ? (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
+                        <table className="w-full text-left border-collapse min-w-[700px]">
                             <thead>
                                 <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
-                                    <th className="p-8">Дата и Время</th>
-                                    <th className="p-8">Тип Нарушения</th>
-                                    <th className="p-8">Описание ошибки</th>
-                                    <th className="p-8 text-right">CRM Заказ</th>
+                                    <th className="p-4 md:p-8">Дата и Время</th>
+                                    <th className="p-4 md:p-8">Тип Нарушения</th>
+                                    <th className="p-4 md:p-8">Описание ошибки</th>
+                                    <th className="p-4 md:p-8 text-right">CRM Заказ</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
                                 {violations.map((v: any, idx: number) => (
                                     <tr key={idx} className="hover:bg-red-50/10 transition-colors group">
-                                        <td className="p-8 font-bold text-gray-900 tabular-nums text-sm">
+                                        <td className="p-4 md:p-8 font-bold text-gray-900 tabular-nums text-xs md:text-sm">
                                             {new Date(v.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                         </td>
-                                        <td className="p-8">
-                                            <span className={`inline-flex items-center px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low}`}>
+                                        <td className="p-4 md:p-8">
+                                            <span className={`inline-flex items-center px-3 md:px-4 py-1.5 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low}`}>
                                                 {VIOLATION_LABELS[v.violation_type] || v.violation_type}
                                             </span>
                                         </td>
-                                        <td className="p-8 text-gray-600 text-sm font-medium leading-relaxed group-hover:text-gray-900 transition-colors">
+                                        <td className="p-4 md:p-8 text-gray-600 text-xs md:text-sm font-medium leading-relaxed group-hover:text-gray-900 transition-colors">
                                             {v.details}
                                         </td>
-                                        <td className="p-8 text-right">
+                                        <td className="p-4 md:p-8 text-right">
                                             <a
                                                 href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
                                                 target="_blank"
-                                                className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-sm group-hover:scale-105"
+                                                className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-xs md:text-sm group-hover:scale-105"
                                             >
                                                 #{v.order_id}
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
@@ -195,39 +195,39 @@ export default function ManagerProfilePage() {
                 ) : (
                     <div>
                         {/* Sub-Filters for Calls */}
-                        <div className="p-8 border-b border-gray-100 bg-gray-50/30 flex items-center justify-between">
-                            <div className="flex gap-2">
+                        <div className="p-4 md:p-8 border-b border-gray-100 bg-gray-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
                                 {(['all', 'real', 'am'] as const).map(f => (
                                     <button
                                         key={f}
                                         onClick={() => setCallFilter(f)}
-                                        className={`px-6 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${callFilter === f
+                                        className={`shrink-0 px-4 md:px-6 py-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${callFilter === f
                                             ? 'bg-gray-900 text-white shadow-lg'
                                             : 'bg-white text-gray-400 border border-gray-100 hover:border-gray-300'
                                             }`}
                                     >
-                                        {f === 'all' ? 'Все' : f === 'real' ? 'Живые' : 'Автоответчики'}
+                                        {f === 'all' ? 'Все' : f === 'real' ? 'Живые' : 'А/О'}
                                     </button>
                                 ))}
                             </div>
 
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-xl">
+                            <div className="flex items-center justify-between md:justify-end gap-4">
+                                <div className="flex items-center gap-1 md:gap-2 bg-gray-100 p-1 rounded-xl">
                                     <button
                                         onClick={() => setIsGroupedByOrder(false)}
-                                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                        className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${!isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
                                     >
                                         Список
                                     </button>
                                     <button
                                         onClick={() => setIsGroupedByOrder(true)}
-                                        className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                        className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
                                     >
-                                        По заказам
+                                        Заказы
                                     </button>
                                 </div>
-                                <div className="text-[10px] font-black text-gray-300 uppercase tracking-widest pl-4 border-l border-gray-100">
-                                    Найдено: {filteredCalls.length}
+                                <div className="text-[9px] md:text-[10px] font-black text-gray-300 uppercase tracking-widest px-3 md:px-4 border-l border-gray-200">
+                                    {filteredCalls.length}
                                 </div>
                             </div>
                         </div>
@@ -262,88 +262,83 @@ export default function ManagerProfilePage() {
                                     .map((group: any) => (
                                         <div key={group.order ? group.order.order_id : 'unmatched'} className="bg-white hover:bg-gray-50/30 transition-colors">
                                             {/* Group Header */}
-                                            <div className="p-8 pb-4 flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
+                                            <div className="p-4 md:p-8 flex items-center justify-between gap-4">
+                                                <div className="flex items-center gap-3">
                                                     {group.order ? (
                                                         <a
                                                             href={`https://zmktlt.retailcrm.ru/orders/${group.order.order_id}/edit`}
                                                             target="_blank"
                                                             className="flex items-center gap-3 group/link"
                                                         >
-                                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black group-hover/link:scale-110 transition-transform ${PRIORITY_ICON_BG[group.order.priority] || PRIORITY_ICON_BG.black}`}>
+                                                            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center text-sm md:text-lg font-black group-hover/link:scale-110 transition-transform shrink-0 ${PRIORITY_ICON_BG[group.order.priority] || PRIORITY_ICON_BG.black}`}>
                                                                 📦
                                                             </div>
                                                             <div>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`text-xl font-black transition-colors ${group.order.priority === 'red' ? 'text-red-700' : 'text-gray-900 group-hover/link:text-blue-600'}`}>#{group.order.number}</span>
-                                                                    <svg className="w-4 h-4 text-gray-300 group-hover/link:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                                    <span className={`text-base md:text-xl font-black transition-colors ${group.order.priority === 'red' ? 'text-red-700' : 'text-gray-900 group-hover/link:text-blue-600'}`}>#{group.order.number}</span>
+                                                                    <svg className="w-3 md:w-4 h-3 md:h-4 text-gray-300 group-hover/link:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                                 </div>
-                                                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                                                    История коммуникаций
+                                                                <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-0.5">
+                                                                    История
                                                                 </div>
-                                                                {group.order.priority && group.order.priority !== 'black' && (
-                                                                    <div className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${PRIORITY_STYLES[group.order.priority]}`}>
-                                                                        {group.order.priority === 'red' ? 'Критично' : group.order.priority === 'yellow' ? 'Внимание' : 'Норма'}
-                                                                    </div>
-                                                                )}
                                                             </div>
                                                         </a>
                                                     ) : (
                                                         <div className="flex items-center gap-3">
-                                                            <div className="w-10 h-10 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center text-lg font-black">
+                                                            <div className="w-8 h-8 md:w-10 md:h-10 bg-gray-100 text-gray-400 rounded-xl flex items-center justify-center text-sm md:text-lg font-black shrink-0">
                                                                 🚫
                                                             </div>
                                                             <div>
-                                                                <div className="text-xl font-black text-gray-400">Без заказа</div>
-                                                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                                                    Не удалось определить
+                                                                <div className="text-base md:text-xl font-black text-gray-400">Без заказа</div>
+                                                                <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                                                    Не определен
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="text-right">
-                                                    <div className="text-2xl font-black text-gray-900">{group.calls.length}</div>
-                                                    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Звонков</div>
+                                                <div className="text-right shrink-0">
+                                                    <div className="text-xl md:text-2xl font-black text-gray-900 leading-none">{group.calls.length}</div>
+                                                    <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Звонков</div>
                                                 </div>
                                             </div>
 
                                             {/* Calls List inside Group */}
-                                            <div className="px-8 pb-8">
-                                                <div className="border-l-2 border-gray-100 pl-8 space-y-6">
+                                            <div className="px-4 md:px-8 pb-6 md:pb-8">
+                                                <div className="border-l-2 border-gray-100 ml-4 md:ml-5 pl-6 md:pl-8 space-y-4 md:space-y-6">
                                                     {group.calls.map((c: any) => (
                                                         <div key={c.id} className="relative">
                                                             {/* Timeline dot */}
-                                                            <div className="absolute -left-[39px] top-6 w-4 h-4 rounded-full border-4 border-white bg-gray-200"></div>
+                                                            <div className="absolute -left-[31px] md:-left-[39px] top-6 w-3 h-3 md:w-4 md:h-4 rounded-full border-2 md:border-4 border-white bg-gray-200"></div>
 
-                                                            <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 hover:border-blue-200 transition-colors">
-                                                                <div className="flex items-start justify-between mb-4">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <div className="font-bold text-gray-900 tabular-nums">
+                                                            <div className="bg-gray-50/50 rounded-2xl p-4 md:p-6 border border-gray-100 hover:border-blue-200 transition-colors">
+                                                                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4">
+                                                                    <div className="flex items-center gap-2 md:gap-3">
+                                                                        <div className="text-xs md:text-sm font-bold text-gray-900 tabular-nums">
                                                                             {new Date(c.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                                         </div>
                                                                         <span className="text-gray-300">|</span>
-                                                                        <div className="text-xs font-bold text-gray-500 uppercase tracking-wide">
-                                                                            {c.duration} сек
+                                                                        <div className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">
+                                                                            {c.duration}с
                                                                         </div>
                                                                         {c.is_answering_machine && (
-                                                                            <span className="ml-2 bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">Автоответчик</span>
+                                                                            <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[8px] md:text-[10px] font-black uppercase tracking-widest">А/О</span>
                                                                         )}
                                                                     </div>
                                                                     {c.record_url && (
-                                                                        <audio controls className="h-8 w-[200px] opacity-70 hover:opacity-100 transition-opacity">
+                                                                        <audio controls className="h-8 w-full md:w-[200px] opacity-70 hover:opacity-100 transition-opacity">
                                                                             <source src={`/api/proxy/audio?url=${encodeURIComponent(c.record_url)}`} type="audio/mpeg" />
                                                                         </audio>
                                                                     )}
                                                                 </div>
 
                                                                 {c.transcript ? (
-                                                                    <div className="text-gray-700 text-xs leading-relaxed font-medium">
+                                                                    <div className="text-gray-700 text-[11px] md:text-xs leading-relaxed font-medium italic">
                                                                         "{c.transcript}"
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="text-gray-300 text-[10px] font-bold uppercase tracking-widest italic">
-                                                                        Нет стенограммы
+                                                                    <div className="text-gray-300 text-[9px] md:text-[10px] font-bold uppercase tracking-widest italic">
+                                                                        Нет записи
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -354,73 +349,71 @@ export default function ManagerProfilePage() {
                                         </div>
                                     ))}
                                 {filteredCalls.length === 0 && (
-                                    <div className="p-32 text-center">
-                                        <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Нет звонков</p>
+                                    <div className="p-16 md:p-32 text-center">
+                                        <p className="text-gray-400 font-black uppercase tracking-widest text-[10px] md:text-xs">Нет звонков</p>
                                     </div>
                                 )}
                             </div>
                         ) : (
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse min-w-[800px]">
                                     <thead>
                                         <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
-                                            <th className="p-8">Время</th>
-                                            <th className="p-8">Вердикт ИИ & Плеер</th>
-                                            <th className="p-8">Стенограмма звонка</th>
-                                            <th className="p-8 text-right">Заказ</th>
+                                            <th className="p-4 md:p-8">Время</th>
+                                            <th className="p-4 md:p-8">Статус & Аудио</th>
+                                            <th className="p-4 md:p-8">Стенограмма</th>
+                                            <th className="p-4 md:p-8 text-right">Заказ</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50 text-sm">
                                         {filteredCalls.map((c: any) => (
                                             <tr key={c.id} className="hover:bg-blue-50/5 transition-colors">
-                                                <td className="p-8 align-top">
-                                                    <div className="font-bold text-gray-900 tabular-nums">
+                                                <td className="p-4 md:p-8 align-top whitespace-nowrap">
+                                                    <div className="font-bold text-gray-900 tabular-nums text-xs md:text-sm">
                                                         {new Date(c.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                     </div>
-                                                    <div className="text-gray-400 font-bold uppercase text-[10px] mt-1 pr-4">
-                                                        Длительность: {c.duration} сек
+                                                    <div className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] mt-1">
+                                                        {c.duration} сек
                                                     </div>
                                                 </td>
-                                                <td className="p-8 align-top space-y-4">
+                                                <td className="p-4 md:p-8 align-top space-y-4">
                                                     <div className="flex items-center gap-3">
                                                         {c.is_answering_machine === true ? (
-                                                            <span className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">Автоответчик</span>
+                                                            <span className="bg-amber-100 text-amber-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">Автоответчик</span>
                                                         ) : c.is_answering_machine === false ? (
-                                                            <span className="bg-green-100 text-green-700 px-4 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest ring-1 ring-green-600/20">Живой голос</span>
+                                                            <span className="bg-green-100 text-green-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-green-600/20">Живой голос</span>
                                                         ) : (
-                                                            <span className="text-gray-300 text-[10px] font-bold uppercase tracking-widest italic">Ожидает проверки</span>
+                                                            <span className="text-gray-300 text-[9px] md:text-[10px] font-bold uppercase tracking-widest italic">Ожидает</span>
                                                         )}
                                                     </div>
                                                     {c.record_url && (
                                                         <div className="pt-2">
-                                                            <audio controls className="h-10 w-full max-w-[240px] opacity-80 hover:opacity-100 transition-opacity">
+                                                            <audio controls className="h-8 md:h-10 w-full max-w-[200px] md:max-w-[240px] opacity-80 hover:opacity-100 transition-opacity">
                                                                 <source src={`/api/proxy/audio?url=${encodeURIComponent(c.record_url)}`} type="audio/mpeg" />
-                                                                Ваш браузер не поддерживает аудио.
                                                             </audio>
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="p-8 align-top max-w-lg">
+                                                <td className="p-4 md:p-8 align-top max-w-lg">
                                                     {c.transcript ? (
-                                                        <div className="bg-gray-50/50 p-6 rounded-3xl border border-gray-100 text-gray-700 leading-relaxed font-medium text-xs italic relative group">
-                                                            <span className="text-blue-400 absolute top-2 right-4 text-[10px] font-black uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">Whisper AI</span>
+                                                        <div className="bg-gray-50/50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-100 text-gray-700 leading-relaxed font-medium text-[11px] md:text-xs italic relative group">
                                                             "{c.transcript}"
                                                         </div>
                                                     ) : (
-                                                        <div className="h-24 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-3xl text-gray-300 font-bold uppercase text-[10px] tracking-widest">
-                                                            Разговор еще не обработан
+                                                        <div className="h-20 md:h-24 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-2xl md:rounded-3xl text-gray-300 font-bold uppercase text-[9px] md:text-[10px] tracking-widest text-center px-4">
+                                                            В обработке
                                                         </div>
                                                     )}
                                                 </td>
-                                                <td className="p-8 align-top text-right">
+                                                <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
                                                     {c.call_order_matches && c.call_order_matches[0]?.orders && (
                                                         <a
                                                             href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
                                                             target="_blank"
-                                                            className={`inline-flex items-center gap-2 font-black transition-all text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
-                                                                    c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
-                                                                        c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
-                                                                            'text-blue-600 hover:text-blue-800'
+                                                            className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-xs md:text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
+                                                                c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
+                                                                    c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
+                                                                        'text-blue-600 hover:text-blue-800'
                                                                 }`}
                                                         >
                                                             #{c.call_order_matches[0].orders.number}
@@ -433,8 +426,8 @@ export default function ManagerProfilePage() {
                                     </tbody>
                                 </table>
                                 {filteredCalls.length === 0 && (
-                                    <div className="p-32 text-center bg-gray-50/10">
-                                        <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Нет звонков, соответствующих фильтру</p>
+                                    <div className="p-16 md:p-32 text-center bg-gray-50/10">
+                                        <p className="text-gray-400 font-black uppercase tracking-widest text-[10px] md:text-xs">Нет звонков</p>
                                     </div>
                                 )}
                             </div>

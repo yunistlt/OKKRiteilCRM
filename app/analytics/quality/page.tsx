@@ -70,24 +70,24 @@ function QualityContent() {
     );
 
     return (
-        <div className="p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50">
             {/* Header */}
-            <div className="mb-10 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Link href={`/analytics${suffix}`} className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all">
+            <div className="mb-6 md:mb-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                    <Link href={`/analytics${suffix}`} className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all shrink-0">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M15 19l-7-7 7-7" /></svg>
                     </Link>
                     <div>
-                        <h1 className="text-4xl font-black text-gray-900 tracking-tight">Качество Звонков</h1>
-                        <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">
-                            Отчет по диалогам (без автоответчиков)
+                        <h1 className="text-2xl md:text-3xl lg:text-4xl font-black text-gray-900 tracking-tight">Качество Звонков</h1>
+                        <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest mt-1 flex flex-wrap items-center gap-y-1">
+                            Отчет по диалогам
                             {lastUpdated && (
-                                <span className="ml-2 text-blue-400 font-black italic">
-                                    • Обновлено: {new Date(lastUpdated).toLocaleTimeString('ru-RU')}
+                                <span className="ml-0 sm:ml-2 text-blue-400 font-black italic">
+                                    • {new Date(lastUpdated).toLocaleTimeString('ru-RU')}
                                 </span>
                             )}
-                            <Link href="/settings/status" className="ml-4 text-gray-300 hover:text-blue-500 transition-colors uppercase italic underline decoration-dotted">
-                                Статус систем →
+                            <Link href="/settings/status" className="ml-3 text-gray-300 hover:text-blue-500 transition-colors uppercase italic underline decoration-dotted">
+                                Статус →
                             </Link>
                         </p>
                     </div>
@@ -96,60 +96,60 @@ function QualityContent() {
                 <button
                     onClick={handleRefresh}
                     disabled={refreshing}
-                    className={`flex items-center gap-2 px-8 py-4 bg-white border border-gray-100 rounded-3xl text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-gray-200/50 hover:bg-gray-50 active:scale-95 disabled:opacity-50 ${refreshing ? 'animate-pulse' : ''}`}
+                    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 bg-white border border-gray-100 rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-gray-200/50 hover:bg-gray-50 active:scale-95 disabled:opacity-50 ${refreshing ? 'animate-pulse' : ''}`}
                 >
                     <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {refreshing ? 'Обновляем базy...' : 'Обновить данные'}
+                    {refreshing ? 'Обновляем...' : 'Обновить данные'}
                 </button>
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-3xl md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse min-w-[600px]">
                         <thead>
-                            <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
-                                <th className="p-8 sticky left-0 bg-gray-50/50 z-10">Менеджер</th>
-                                <th className="p-8 text-center bg-blue-50/20">Сегодня (24ч)</th>
-                                <th className="p-8 text-center bg-indigo-50/20 border-l border-gray-100">Неделя (7дн)</th>
-                                <th className="p-8 text-center bg-violet-50/20 border-l border-gray-100">Месяц (30дн)</th>
-                                <th className="p-8 text-right">Профиль</th>
+                            <tr className="bg-gray-50/50 text-gray-400 text-[9px] md:text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
+                                <th className="p-4 md:p-8 sticky left-0 bg-gray-50/50 z-10">Менеджер</th>
+                                <th className="p-4 md:p-8 text-center bg-blue-50/20">Сегодня</th>
+                                <th className="p-4 md:p-8 text-center bg-indigo-50/20 border-l border-gray-100">Неделя</th>
+                                <th className="p-4 md:p-8 text-center bg-violet-50/20 border-l border-gray-100">Месяц</th>
+                                <th className="p-4 md:p-8 text-right">Профиль</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {data.map((m) => (
                                 <tr key={m.id} className="hover:bg-gray-50/50 transition-colors group">
-                                    <td className="p-8 font-black text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/50 z-10">
-                                        {m.name}
-                                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">ID {m.id}</div>
+                                    <td className="p-4 md:p-8 font-black text-gray-900 sticky left-0 bg-white group-hover:bg-gray-50/50 z-10">
+                                        <div className="text-xs md:text-base leading-tight">{m.name}</div>
+                                        <div className="text-[8px] md:text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">ID {m.id}</div>
                                     </td>
 
                                     {/* 1 Day */}
-                                    <td className="p-8 text-center">
-                                        <div className="text-xl font-black text-blue-600">{m.d1.count}</div>
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d1.duration)}</div>
+                                    <td className="p-4 md:p-8 text-center">
+                                        <div className="text-lg md:text-xl font-black text-blue-600">{m.d1.count}</div>
+                                        <div className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d1.duration)}</div>
                                     </td>
 
                                     {/* 7 Days */}
-                                    <td className="p-8 text-center border-l border-gray-50">
-                                        <div className="text-xl font-black text-indigo-600">{m.d7.count}</div>
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d7.duration)}</div>
+                                    <td className="p-4 md:p-8 text-center border-l border-gray-50">
+                                        <div className="text-lg md:text-xl font-black text-indigo-600">{m.d7.count}</div>
+                                        <div className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d7.duration)}</div>
                                     </td>
 
                                     {/* 30 Days */}
-                                    <td className="p-8 text-center border-l border-gray-50">
-                                        <div className="text-xl font-black text-violet-600">{m.d30.count}</div>
-                                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d30.duration)}</div>
+                                    <td className="p-4 md:p-8 text-center border-l border-gray-50">
+                                        <div className="text-lg md:text-xl font-black text-violet-600">{m.d30.count}</div>
+                                        <div className="text-[9px] md:text-[10px] font-bold text-gray-400 uppercase tracking-wider mt-1">{formatDuration(m.d30.duration)}</div>
                                     </td>
 
-                                    <td className="p-8 text-right">
+                                    <td className="p-4 md:p-8 text-right whitespace-nowrap">
                                         <Link
                                             href={`/analytics/managers/${m.id}${suffix}`}
-                                            className="inline-flex items-center gap-2 px-6 py-2 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-gray-200"
+                                            className="inline-flex items-center gap-2 px-4 md:px-6 py-2 bg-gray-900 text-white rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg shadow-gray-200"
                                         >
-                                            Детали
+                                            <span className="hidden xs:inline">Детали</span>
                                             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5l7 7-7 7" /></svg>
                                         </Link>
                                     </td>
@@ -158,8 +158,8 @@ function QualityContent() {
                         </tbody>
                     </table>
                     {data.length === 0 && (
-                        <div className="p-32 text-center bg-gray-50/10">
-                            <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Нет данных по диалогам для выбранных менеджеров</p>
+                        <div className="p-16 md:p-32 text-center bg-gray-50/10">
+                            <p className="text-gray-400 font-black uppercase tracking-widest text-[10px] md:text-xs">Нет данных</p>
                         </div>
                     )}
                 </div>

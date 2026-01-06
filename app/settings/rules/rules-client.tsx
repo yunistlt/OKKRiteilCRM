@@ -14,24 +14,23 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
     const displayedRules = activeTab === 'active' ? activeRules : archivedRules;
 
     return (
-        <div className="p-8 max-w-4xl mx-auto">
-            <div className="flex justify-between items-center mb-8">
+        <div className="p-4 md:p-8 max-w-4xl mx-auto">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                 <div>
                     <Link href="/violations" className="text-sm text-gray-500 hover:text-gray-900 mb-2 block">← Назад к журналу</Link>
-                    <h1 className="text-3xl font-bold text-gray-900">Настройка Правил ОКК</h1>
-                    <p className="mt-2 text-gray-600">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Настройка Правил ОКК</h1>
+                    <p className="mt-2 text-sm md:text-base text-gray-600">
                         Включайте и отключайте правила, настраивайте пороги срабатывания.
                     </p>
                 </div>
-                {/* Only allow creating new rules in Active tab? Or always? Always is fine. */}
                 <NewRuleModal />
             </div>
 
             {/* Tabs */}
-            <div className="flex border-b border-gray-200 mb-6">
+            <div className="flex border-b border-gray-200 mb-6 overflow-x-auto no-scrollbar">
                 <button
                     onClick={() => setActiveTab('active')}
-                    className={`pb-4 px-4 text-sm font-medium transition-colors relative ${activeTab === 'active'
+                    className={`pb-4 px-4 text-sm font-medium transition-colors relative whitespace-nowrap ${activeTab === 'active'
                         ? 'text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700'
                         }`}
@@ -40,7 +39,7 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
                 </button>
                 <button
                     onClick={() => setActiveTab('archived')}
-                    className={`pb-4 px-4 text-sm font-medium transition-colors relative ${activeTab === 'archived'
+                    className={`pb-4 px-4 text-sm font-medium transition-colors relative whitespace-nowrap ${activeTab === 'archived'
                         ? 'text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700'
                         }`}
@@ -49,7 +48,7 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
                 </button>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4 md:space-y-6">
                 {displayedRules.length === 0 && (
                     <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg dashed border border-gray-200">
                         {activeTab === 'active' ? 'Нет активных правил' : 'Архив пуст'}
@@ -64,7 +63,7 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
                 ))}
             </div>
 
-            <div className="mt-12 p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
+            <div className="mt-8 md:mt-12 p-4 bg-blue-50 rounded-lg text-xs md:text-sm text-blue-800">
                 <span className="font-bold">Совет:</span> Изменение правил реализовано через создание новых версий (Immutable Rules). Старые версии попадают в Архив.
             </div>
         </div>

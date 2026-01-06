@@ -20,17 +20,11 @@ interface StatusListProps {
 }
 
 export default function StatusList({ initialStatuses, counts = {} }: StatusListProps) {
-    // ... (rest of state logic)
-
     const [statuses, setStatuses] = useState<StatusItem[]>(initialStatuses);
     const [isSaving, setIsSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
-
-    // NOTE: We track 'hasChanges' locally if we want to show visual cues, 
-    // but the buttons remain active regardless.
     const [hasChanges, setHasChanges] = useState(false);
 
-    // Local handler: updates UI state immediately for responsiveness
     function handleLocalToggle(code: string) {
         setHasChanges(true);
         setStatuses(prev => prev.map(s =>
@@ -51,7 +45,6 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         setSaveError(null);
 
         try {
-            // Prepare payload
             const payload = statuses.map(s => ({
                 code: s.code,
                 is_working: s.is_working,
@@ -59,18 +52,9 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
             }));
 
             const result = await saveSettingsBatch(payload);
-
-            if (!result.success) {
-                throw new Error(result.error);
-            }
-
-            // On success, reset dirty state
+            if (!result.success) throw new Error(result.error);
             setHasChanges(false);
-
-            // Redirect to home as requested workflow
-            // Using window.location to ensure full refresh/navigation
             window.location.href = '/';
-
         } catch (err: any) {
             console.error('Save Failed:', err);
             setSaveError(`Не удалось сохранить: ${err.message}`);
@@ -89,122 +73,85 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
 
     const groupNames = Object.keys(grouped).sort();
 
-    const styles = {
-        container: {
-            maxWidth: '1000px', margin: '0 auto', padding: '30px',
-            fontFamily: 'system-ui, sans-serif', color: '#333', backgroundColor: '#fff', minHeight: '100vh',
-        },
-        header: {
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #eee', paddingBottom: '20px'
-        },
-        saveButtonTop: {
-            padding: '10px 20px',
-            backgroundColor: '#0070f3', // Always blue/active
-            color: '#fff',
-            border: 'none', borderRadius: '6px',
-            cursor: 'pointer', // Always pointer
-            fontWeight: 600,
-            transition: 'background 0.2s'
-        },
-        group: { marginBottom: '25px', border: '1px solid #e0e0e0', borderRadius: '8px', overflow: 'hidden' },
-        groupHeader: { backgroundColor: '#f8f9fa', padding: '12px 20px', fontWeight: 600, color: '#444', borderBottom: '1px solid #eee' },
-        item: { padding: '14px 20px', display: 'flex', alignItems: 'center', borderBottom: '1px solid #f0f0f0', cursor: 'pointer', backgroundColor: '#fff' },
-        itemActive: { backgroundColor: '#f0f9ff' },
-        checkbox: { marginRight: '15px', width: '20px', height: '20px', cursor: 'pointer' },
-        footer: { marginTop: '40px', display: 'flex', justifyContent: 'center', paddingBottom: '40px' },
-        saveButton: {
-            padding: '16px 48px',
-            backgroundColor: '#0070f3',
-            color: '#fff', border: 'none', borderRadius: '8px',
-            fontSize: '18px', fontWeight: 600,
-            cursor: isSaving ? 'wait' : 'pointer',
-            boxShadow: '0 4px 14px rgba(0,118,255,0.39)',
-            opacity: isSaving ? 0.7 : 1
-        }
-    };
-
     return (
-        <div style={styles.container}>
-            <div style={styles.header}>
-                <h1>Настройка статусов</h1>
-                {/* Top Save Button - ALWAYS ACTIVE */}
+        <div className="max-w-[1000px] mx-auto p-4 md:p-8 min-h-screen bg-white font-sans text-gray-800">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-5 border-b border-gray-100">
+                <h1 className="text-2xl md:text-3xl font-bold">Настройка статусов</h1>
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    style={{
-                        ...styles.saveButtonTop,
-                        cursor: isSaving ? 'wait' : 'pointer'
-                    }}
+                    className={`w-full sm:w-auto px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold transition hover:bg-blue-700 disabled:opacity-50 ${isSaving ? 'cursor-wait' : 'cursor-pointer'
+                        }`}
                 >
                     {isSaving ? 'Сохранение...' : 'Сохранить'}
                 </button>
             </div>
 
             {saveError && (
-                <div style={{ backgroundColor: '#fee2e2', color: '#b91c1c', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+                <div className="bg-red-50 text-red-700 p-4 rounded-lg mb-6 border border-red-100">
                     {saveError}
                 </div>
             )}
 
-            <div>
+            <div className="space-y-6">
                 {groupNames.map(group => (
-                    <div key={group} style={styles.group}>
-                        <div style={styles.groupHeader}>{group}</div>
-                        <div>
+                    <div key={group} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                        <div className="bg-gray-50 px-5 py-3 font-semibold text-gray-700 border-b border-gray-200 uppercase text-xs tracking-wider">
+                            {group}
+                        </div>
+                        <div className="divide-y divide-gray-100">
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    style={{ ...styles.item, ...(status.is_working || status.is_transcribable ? styles.itemActive : {}) }}
+                                    className={`p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 transition-colors ${status.is_working || status.is_transcribable ? 'bg-blue-50/30' : 'bg-white'
+                                        }`}
                                 >
-                                    {/* 1. Working Toggle */}
-                                    <div
-                                        onClick={() => handleLocalToggle(status.code)}
-                                        style={{ display: 'flex', alignItems: 'center', marginRight: '30px', minWidth: '120px' }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={status.is_working}
-                                            readOnly
-                                            style={styles.checkbox}
-                                        />
-                                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: status.is_working ? '#0070f3' : '#999' }}>
-                                            Анализ
-                                        </span>
-                                    </div>
+                                    <div className="flex items-center gap-6 w-full sm:w-auto">
+                                        {/* 1. Working Toggle */}
+                                        <div
+                                            onClick={() => handleLocalToggle(status.code)}
+                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[100px]"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={status.is_working}
+                                                readOnly
+                                                className="w-5 h-5 cursor-pointer accent-blue-600"
+                                            />
+                                            <span className={`text-[10px] md:text-xs font-bold uppercase transition-colors ${status.is_working ? 'text-blue-600' : 'text-gray-400'
+                                                }`}>
+                                                Анализ
+                                            </span>
+                                        </div>
 
-                                    {/* 2. Transcription Toggle */}
-                                    <div
-                                        onClick={() => handleTranscriptionToggle(status.code)}
-                                        style={{ display: 'flex', alignItems: 'center', marginRight: '40px', minWidth: '140px' }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={status.is_transcribable}
-                                            readOnly
-                                            style={styles.checkbox}
-                                        />
-                                        <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: status.is_transcribable ? '#7c3aed' : '#999' }}>
-                                            Транскрибация
-                                        </span>
+                                        {/* 2. Transcription Toggle */}
+                                        <div
+                                            onClick={() => handleTranscriptionToggle(status.code)}
+                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[130px]"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={status.is_transcribable}
+                                                readOnly
+                                                className="w-5 h-5 cursor-pointer accent-purple-600"
+                                            />
+                                            <span className={`text-[10px] md:text-xs font-bold uppercase transition-colors ${status.is_transcribable ? 'text-purple-600' : 'text-gray-400'
+                                                }`}>
+                                                Транскрибация
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* 3. Status Info */}
-                                    <div style={{ flex: 1 }}>
-                                        <div style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <div className="flex-1 w-full">
+                                        <div className="font-semibold flex items-center gap-3 text-sm md:text-base">
                                             {status.name}
                                             {(counts[status.code] || 0) > 0 && (
-                                                <span style={{
-                                                    backgroundColor: '#e5e7eb',
-                                                    color: '#374151',
-                                                    padding: '2px 8px',
-                                                    borderRadius: '12px',
-                                                    fontSize: '12px',
-                                                    fontWeight: 600
-                                                }}>
+                                                <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full text-[10px] md:text-xs font-bold">
                                                     {counts[status.code]}
                                                 </span>
                                             )}
                                         </div>
-                                        <div style={{ fontSize: '12px', color: '#888' }}>{status.code}</div>
+                                        <div className="text-[10px] md:text-xs text-gray-400 font-mono mt-0.5">{status.code}</div>
                                     </div>
                                 </div>
                             ))}
@@ -213,12 +160,12 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                 ))}
             </div>
 
-            <div style={styles.footer}>
-                {/* Bottom Save Button - ALWAYS ACTIVE */}
+            <div className="mt-12 flex justify-center pb-12">
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    style={styles.saveButton}
+                    className={`w-full md:w-auto px-12 py-4 bg-blue-600 text-white rounded-xl text-lg font-bold shadow-lg shadow-blue-200 transition-all hover:bg-blue-700 hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 ${isSaving ? 'cursor-wait' : 'cursor-pointer'
+                        }`}
                 >
                     {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
                 </button>

@@ -109,56 +109,62 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
     };
 
     return (
-        <div className={`border rounded-lg p-6 shadow-sm transition-all ${rule.is_active ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
-            <div className="flex justify-between items-start">
-                <div>
-                    <h3 className="text-lg font-medium text-gray-900 flex items-center gap-2">
-                        {rule.name}
-                        <span className={`text-xs px-2 py-0.5 rounded-full uppercase ${rule.severity === 'critical' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+        <div className={`border rounded-lg p-4 md:p-6 shadow-sm transition-all ${rule.is_active ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-75'}`}>
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <div className="flex-1 min-w-0 w-full">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <h3 className="text-base md:text-lg font-medium text-gray-900 truncate">
+                            {rule.name}
+                        </h3>
+                        <span className={`text-[10px] md:text-xs px-2 py-0.5 rounded-full uppercase ${rule.severity === 'critical' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
                             }`}>
                             {rule.severity}
                         </span>
-                    </h3>
-                    <p className="mt-1 text-sm text-gray-500 max-w-xl">{rule.description}</p>
+                    </div>
+                    <p className="text-xs md:text-sm text-gray-500 line-clamp-2 md:line-clamp-none" title={rule.description}>
+                        {rule.description}
+                    </p>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {/* Violation Count Badge */}
-                    {violationCount > 0 && (
-                        <div className="mr-4 px-3 py-1 bg-gray-100 rounded-full text-xs font-bold text-gray-600 flex items-center gap-1" title="Найдено нарушений по этому правилу">
-                            ⚠️ {violationCount}
-                        </div>
-                    )}
+                <div className="flex items-center justify-between w-full sm:w-auto gap-2 md:gap-3 shrink-0">
+                    <div className="flex items-center gap-1 md:gap-2">
+                        {/* Violation Count Badge */}
+                        {violationCount > 0 && (
+                            <div className="px-2 py-1 bg-gray-100 rounded-full text-[10px] md:text-xs font-bold text-gray-600 flex items-center gap-1" title="Найдено нарушений по этому правилу">
+                                ⚠️ {violationCount}
+                            </div>
+                        )}
 
-                    {/* Edit As New Version */}
-                    <NewRuleModal
-                        initialPrompt={rule.description}
-                        trigger={
-                            <button className="text-gray-400 hover:text-blue-600 p-1 mr-1" title="Создать новую версию (Edit)">
-                                ✏️
-                            </button>
-                        }
-                    />
-
-                    <button
-                        onClick={handleRunAudit}
-                        className="text-gray-400 hover:text-indigo-600 p-1 mr-1"
-                        title="Проверить историю (Audit)"
-                    >
-                        🕰️
-                    </button>
-
-                    <button
-                        onClick={async () => {
-                            if (confirm('Вы уверены? Правило будет перенесено в архив (выключено).')) {
-                                await updateRuleStatus(rule.code, false);
+                        {/* Edit As New Version */}
+                        <NewRuleModal
+                            initialPrompt={rule.description}
+                            trigger={
+                                <button className="text-gray-400 hover:text-blue-600 p-2 md:p-1" title="Создать новую версию (Edit)">
+                                    ✏️
+                                </button>
                             }
-                        }}
-                        className="text-gray-400 hover:text-red-500 p-1"
-                        title="Архивировать (Выключить)"
-                    >
-                        🗑️
-                    </button>
+                        />
+
+                        <button
+                            onClick={handleRunAudit}
+                            className="text-gray-400 hover:text-indigo-600 p-2 md:p-1"
+                            title="Проверить историю (Audit)"
+                        >
+                            🕰️
+                        </button>
+
+                        <button
+                            onClick={async () => {
+                                if (confirm('Вы уверены? Правило будет перенесено в архив (выключено).')) {
+                                    await updateRuleStatus(rule.code, false);
+                                }
+                            }}
+                            className="text-gray-400 hover:text-red-500 p-2 md:p-1"
+                            title="Архивировать (Выключить)"
+                        >
+                            🗑️
+                        </button>
+                    </div>
 
                     <button
                         onClick={handleToggle}
