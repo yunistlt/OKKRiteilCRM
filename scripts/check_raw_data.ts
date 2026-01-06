@@ -1,5 +1,5 @@
 
-import { supabase } from '@/utils/supabase';
+import { supabase } from '../utils/supabase';
 
 async function checkRawData() {
     console.log('Checking raw_order_events data...');
@@ -13,9 +13,20 @@ async function checkRawData() {
         return;
     }
 
-    console.log(`Found ${data?.length || 0} rows.`);
-    if (data && data.length > 0) {
-        console.log('Sample Row:', JSON.stringify(data[0], null, 2));
+    // ... events check ...
+    console.log('--- raw_telphin_calls ---');
+    const { data: calls, error: callError } = await supabase
+        .from('raw_telphin_calls')
+        .select('*')
+        .limit(5);
+
+    if (callError) {
+        console.error('Call Error:', callError);
+    } else {
+        console.log(`Found ${calls?.length || 0} rows.`);
+        if (calls && calls.length > 0) {
+            console.log('Sample Call Row:', JSON.stringify(calls[0], null, 2));
+        }
     }
 }
 

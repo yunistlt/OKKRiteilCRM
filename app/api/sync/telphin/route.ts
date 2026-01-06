@@ -157,11 +157,22 @@ export async function GET(request: Request) {
             updated_at: new Date().toISOString()
         }, { onConflict: 'key' });
 
+        // 5. Trigger Rule Engine Analysis
+        let ruleEngineResult = null;
+        try {
+            const { runRuleEngine } = await import('@/lib/rule-engine');
+            ruleEngineResult = await runRuleEngine(start.toISOString(), now.toISOString());
+            console.log(`[Sync] Rule Engine processed. Violations found: ${ruleEngineResult}`);
+        } catch (reError) {
+            console.error('[Sync] Rule Engine trigger failed:', reError);
+        }
+
         return NextResponse.json({
             success: true,
             total_synced: totalSynced,
             new_cursor: nextCursor,
-            mode: calls.length === 100 ? 'partial (more data likely)' : 'caught up'
+            mode: calls.length === 100 ? 'partial (more data likely)' : 'caught up',
+            rule_engine_violations: ruleEngineResult
         });
 
     } catch (error: any) {
