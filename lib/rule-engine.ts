@@ -115,7 +115,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     });
 
     if (violations.length > 0) {
-        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} violations.`);
+        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} event violations.`);
 
         const records = violations.map((v: any) => ({
             rule_code: rule.code,
@@ -126,12 +126,22 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             details: `Событие: ${v.event_type}. ${rule.description || rule.name}`
         }));
 
-        const { error: insError } = await supabase
-            .from('okk_violations')
-            .upsert(records, { onConflict: 'rule_code, order_id, violation_time' });
+        // Try upserting one by one to avoid batch failure on unique constraint
+        let saved = 0;
+        for (const record of records) {
+            const { error: insError } = await supabase
+                .from('okk_violations')
+                .upsert(record, { onConflict: 'rule_code, order_id, violation_time' });
 
-        if (insError) console.error(`Error saving violations for ${rule.code}:`, insError);
-        return violations.length;
+            if (!insError) saved++;
+            // Ignore duplicate key errors silently, log others
+            else if (insError.code !== '23505') {
+                console.error(`[RuleEngine] Error saving event violation:`, insError);
+            }
+        }
+
+        console.log(`[RuleEngine] ${rule.code} -> Saved ${saved}/${records.length} violations.`);
+        return saved;
     }
     return 0;
 }
@@ -183,7 +193,7 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
     });
 
     if (violations.length > 0) {
-        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} violations.`);
+        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} call violations.`);
 
         const records = violations.map(c => ({
             rule_code: rule.code,
@@ -193,12 +203,20 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
             details: `Звонок: ${c.direction}, ${c.duration_sec} сек. ${rule.description || rule.name}`
         }));
 
-        const { error: insError } = await supabase
-            .from('okk_violations')
-            .upsert(records, { onConflict: 'rule_code, call_id' });
+        let saved = 0;
+        for (const record of records) {
+            const { error: insError } = await supabase
+                .from('okk_violations')
+                .upsert(record, { onConflict: 'rule_code, call_id' });
 
-        if (insError) console.error(`Error saving violations for ${rule.code}:`, insError);
-        return violations.length;
+            if (!insError) saved++;
+            else if (insError.code !== '23505') {
+                console.error(`[RuleEngine] Error saving call violation:`, insError);
+            }
+        }
+
+        console.log(`[RuleEngine] ${rule.code} -> Saved ${saved}/${violations.length} violations.`);
+        return saved;
     }
     return 0;
 }
