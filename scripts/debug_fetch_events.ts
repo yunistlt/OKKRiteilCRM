@@ -1,5 +1,5 @@
 
-import { supabase } from '@/utils/supabase';
+import { supabase } from '../utils/supabase';
 
 async function checkEvents() {
     console.log('Fetching recent status change events...');
