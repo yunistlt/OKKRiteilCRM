@@ -63,9 +63,19 @@ export async function GET() {
                 }));
 
             if (processedEvents.length > 0) {
+                // Deduplicate events by unique key before upserting
+                const uniqueEvents = new Map();
+                processedEvents.forEach((event: any) => {
+                    const key = `${event.retailcrm_order_id}_${event.event_type}_${event.occurred_at}_${event.source}`;
+                    uniqueEvents.set(key, event);
+                });
+
+                const deduplicatedEvents = Array.from(uniqueEvents.values());
+                console.log(`[Resync] Deduplicating: ${processedEvents.length} → ${deduplicatedEvents.length} unique events`);
+
                 const { error: upsertError } = await supabase
                     .from('raw_order_events')
-                    .upsert(processedEvents, {
+                    .upsert(deduplicatedEvents, {
                         onConflict: 'retailcrm_order_id, event_type, occurred_at, source',
                         ignoreDuplicates: false
                     });
@@ -75,7 +85,7 @@ export async function GET() {
                     throw upsertError;
                 }
 
-                totalSaved += processedEvents.length;
+                totalSaved += deduplicatedEvents.length;
             }
 
             totalProcessed += history.length;
