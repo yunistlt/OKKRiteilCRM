@@ -1,13 +1,33 @@
 
 'use client'
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { updateRuleStatus, updateRuleParams } from '@/app/actions/rules';
+import { supabase } from '@/utils/supabase';
 import NewRuleModal from './new-rule-modal';
 
 export default function RuleCard({ rule, violationCount }: { rule: any, violationCount: number }) {
     const [isLoading, setIsLoading] = useState(false);
     const [params, setParams] = useState(rule.parameters);
+    const [auditStatus, setAuditStatus] = useState(rule.parameters?.audit_status || 'idle');
+
+    // Polling while auditing
+    useEffect(() => {
+        let interval: any;
+        if (auditStatus === 'running') {
+            interval = setInterval(async () => {
+                const { data } = await supabase.from('okk_rules').select('parameters').eq('code', rule.code).single();
+                if (data?.parameters?.audit_status !== 'running') {
+                    setAuditStatus(data?.parameters?.audit_status || 'idle');
+                    setParams(data?.parameters);
+                    clearInterval(interval);
+                    // Optionally refresh violations count
+                    window.location.reload();
+                }
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [auditStatus, rule.code]);
 
     const handleToggle = async () => {
         setIsLoading(true);
@@ -42,27 +62,22 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
         if (!confirm(`Запустить проверку событий за последние ${days} дней? Это может занять время.`)) return;
 
         setIsLoading(true); // Reusing existing loading state
+        setAuditStatus('running');
         try {
             const baseUrl = window.location.origin;
             const res = await fetch(`${baseUrl}/api/rules/audit-history`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    ruleId: rule.id,
+                    ruleId: rule.code, // Changed from id to code
                     days: days
                 })
             });
             const data = await res.json();
-
-            if (data.count > 0) {
-                alert(`✅ Готово! Найдено НОВЫХ нарушений: ${data.count}.\nОни добавлены в отчет.`);
-                // Trigger refresh if possible?
-                window.location.reload(); // Simple refresh to update counts
-            } else {
-                alert('✅ Проверка завершена. Нарушений за этот период не найдено.');
-            }
+            // Polling will handle the UI update
         } catch (e: any) {
             alert('Ошибка запуска: ' + e.message);
+            setAuditStatus('error');
         } finally {
             setIsLoading(false);
         }
@@ -144,6 +159,17 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                 </div>
 
                 <div className="flex items-center justify-between w-full sm:w-auto gap-2 md:gap-3 shrink-0">
+                    {/* Audit Progress UI */}
+                    {auditStatus === 'running' && (
+                        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full animate-pulse border border-indigo-100">
+                            <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-widest">Проверка истории...</span>
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-1 md:gap-2">
                         {/* Violation Count Badge */}
                         {violationCount > 0 && (
