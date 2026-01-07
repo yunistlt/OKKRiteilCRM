@@ -1,5 +1,6 @@
 
 import { supabase } from '@/utils/supabase';
+import { analyzeTranscript } from './semantic';
 
 export interface Rule {
     code: string;
@@ -7,13 +8,16 @@ export interface Rule {
     condition_sql: string;
     params: Record<string, any>;
     severity: string;
+    rule_type?: 'sql' | 'semantic';
+    semantic_prompt?: string;
+    name: string;
+    description: string;
 }
 
 /**
  * Execute all active rules against a time range.
- * Currently supports 'call' entity type fully.
  */
-export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: number) {
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string) {
     console.log(`[RuleEngine] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''}`);
 
     // 1. Fetch Active Rules
@@ -23,7 +27,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
         .eq('is_active', true);
 
     if (targetRuleId) {
-        query = query.eq('id', targetRuleId);
+        query = query.eq('code', targetRuleId);
     }
 
     const { data: rules, error } = await query;
@@ -35,14 +39,16 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 
     console.log(`[RuleEngine] Found ${rules.length} active rules.`);
 
-    console.log(`[RuleEngine] Found ${rules.length} active rules.`);
-
     // 2. Execute per entity type
     let totalViolations = 0;
     for (const rule of rules) {
         try {
             if (rule.entity_type === 'call') {
-                totalViolations += await executeCallRule(rule, startDate, endDate);
+                if (rule.rule_type === 'semantic') {
+                    totalViolations += await executeSemanticRule(rule, startDate, endDate);
+                } else {
+                    totalViolations += await executeCallRule(rule, startDate, endDate);
+                }
             } else if (rule.entity_type === 'event') {
                 totalViolations += await executeEventRule(rule, startDate, endDate);
             } else {
@@ -81,7 +87,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     if (!events || events.length === 0) return 0;
 
     // 2. Prepare Context (e.g. Monitored Statuses)
-    const sql = rule.condition_sql.toLowerCase();
+    const sql = rule.condition_sql?.toLowerCase() || '';
     let monitoredStatuses: string[] = [];
     if (sql.includes('@monitored_statuses')) {
         const { data: stData } = await supabase.from('statuses').select('code').eq('is_working', true);
@@ -129,8 +135,6 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     });
 
     if (violations.length > 0) {
-        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} event violations.`);
-
         const records = violations.map((v: any) => ({
             rule_code: rule.code,
             order_id: v.retailcrm_order_id,
@@ -140,7 +144,6 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             details: `Событие: ${v.event_type === 'status_changed' ? 'Смена статуса' : v.event_type}. ${rule.description || rule.name}`
         }));
 
-        // Try upserting one by one to avoid batch failure on unique constraint
         let saved = 0;
         for (const record of records) {
             const { error: insError } = await supabase
@@ -148,13 +151,10 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
                 .upsert(record, { onConflict: 'rule_code, order_id, violation_time' });
 
             if (!insError) saved++;
-            // Ignore duplicate key errors silently, log others
             else if (insError.code !== '23505') {
                 console.error(`[RuleEngine] Error saving event violation:`, insError);
             }
         }
-
-        console.log(`[RuleEngine] ${rule.code} -> Saved ${saved}/${records.length} violations.`);
         return saved;
     }
     return 0;
@@ -165,7 +165,13 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
 
     let query = supabase
         .from('raw_telphin_calls')
-        .select('*')
+        .select(`
+            *,
+            call_order_matches(
+                order_id: retailcrm_order_id,
+                orders(manager_id)
+            )
+        `)
         .gte('started_at', startDate)
         .lte('started_at', endDate);
 
@@ -177,69 +183,111 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
 
     if (!calls || calls.length === 0) return 0;
 
-    const sql = rule.condition_sql.toLowerCase();
+    const sql = rule.condition_sql?.toLowerCase() || '';
     const params = rule.parameters || {};
 
     const violations = calls.filter((c: any) => {
-        // missed_incoming logic: flow = 'incoming' AND duration = 0
-        if (sql.includes("flow = 'incoming'") || sql.includes("direction = 'incoming'")) {
+        if (rule.rule_type === 'semantic') return false;
+
+        if (sql.includes("flow = 'incoming'") || sql.includes("direction = 'incoming'") || sql.includes("call_type = 'incoming'")) {
             if (c.direction !== 'incoming') return false;
             if (sql.includes("duration = 0") || sql.includes("duration_sec = 0")) {
                 return (c.duration_sec === 0);
             }
         }
 
-        // short_call logic
         if (sql.includes("duration <") || sql.includes("duration_sec <")) {
-            const threshold = params.threshold_sec || 15;
+            const thresholdMatch = sql.match(/duration_sec\s*<\s*(\d+)/) || sql.match(/duration\s*<\s*(\d+)/);
+            const threshold = thresholdMatch ? parseInt(thresholdMatch[1]) : (params.threshold_sec || 15);
             return c.duration_sec > 0 && c.duration_sec < threshold;
         }
 
-        // answering_machine_dialog logic
-        if (sql.includes("is_answering_machine = true")) {
+        if (sql.includes("is_answering_machine = true") || sql.includes("is_answering_machine=true")) {
             if (c.is_answering_machine !== true) return false;
             const threshold = params.threshold_sec || 15;
             return c.duration_sec > threshold;
         }
 
-        // call_impersonation logic: duration > 0 AND duration < 5 AND is_answering_machine IS NOT true
-        if (sql.includes("is_answering_machine is distinct from true") || sql.includes("is_answering_machine is not true")) {
-            if (c.is_answering_machine === true) return false;
-            // The rest of logic (duration) will be handled by short_call block if combined? 
-            // Better to handle specifically if requested.
+        if (sql.includes("call_type = 'outgoing'") || sql.includes("direction = 'outgoing'")) {
+            if (c.direction !== 'outgoing') return false;
+            if (sql.includes("status = 'success'") && c.duration_sec > 0) return true;
         }
 
         return false;
     });
 
-    if (violations.length > 0) {
-        console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} call violations.`);
-
-        const records = violations.map(c => {
+    const records = violations
+        .map(c => {
+            const match = c.call_order_matches?.[0];
             const dirLabel = c.direction === 'incoming' ? 'входящий' : (c.direction === 'outgoing' ? 'исходящий' : c.direction);
             return {
                 rule_code: rule.code,
                 call_id: c.event_id,
+                order_id: match?.order_id || null,
+                manager_id: match?.orders?.manager_id || null,
                 violation_time: c.started_at,
                 severity: rule.severity,
                 details: `Звонок: ${dirLabel}, ${c.duration_sec} сек. ${rule.description || rule.name}`
             };
-        });
+        })
+        .filter(r => r.order_id !== null);
 
-        let saved = 0;
-        for (const record of records) {
+    let saved = 0;
+    for (const record of records) {
+        const { error: insError } = await supabase
+            .from('okk_violations')
+            .upsert(record, { onConflict: 'rule_code, call_id' });
+
+        if (!insError) saved++;
+        else if (insError.code !== '23505') {
+            console.error(`[RuleEngine] Error saving call violation:`, insError);
+        }
+    }
+    return saved;
+}
+
+async function executeSemanticRule(rule: any, startDate: string, endDate: string): Promise<number> {
+    console.log(`[RuleEngine] Executing Semantic Rule: ${rule.code} (${rule.name})`);
+
+    const { data: calls } = await supabase
+        .from('raw_telphin_calls')
+        .select(`
+            *,
+            call_order_matches(
+                order_id: retailcrm_order_id,
+                orders(manager_id)
+            )
+        `)
+        .gte('started_at', startDate)
+        .lte('started_at', endDate)
+        .not('transcript', 'is', null);
+
+    if (!calls || calls.length === 0) return 0;
+
+    let saved = 0;
+    for (const c of calls) {
+        const match = c.call_order_matches?.[0];
+        if (!match) continue;
+
+        const result = await analyzeTranscript(c.transcript, rule.semantic_prompt || rule.description);
+
+        if (result.is_violation) {
+            const dirLabel = c.direction === 'incoming' ? 'входящий' : (c.direction === 'outgoing' ? 'исходящий' : c.direction);
             const { error: insError } = await supabase
                 .from('okk_violations')
-                .upsert(record, { onConflict: 'rule_code, call_id' });
+                .upsert({
+                    rule_code: rule.code,
+                    call_id: c.event_id,
+                    order_id: match.order_id,
+                    manager_id: match.orders?.manager_id,
+                    violation_time: c.started_at,
+                    severity: rule.severity,
+                    details: `Звонок: ${dirLabel}, ${c.duration_sec} сек. Анализ: ${result.reasoning}`,
+                    evidence_text: result.evidence
+                }, { onConflict: 'rule_code, call_id' });
 
             if (!insError) saved++;
-            else if (insError.code !== '23505') {
-                console.error(`[RuleEngine] Error saving call violation:`, insError);
-            }
         }
-
-        console.log(`[RuleEngine] ${rule.code} -> Saved ${saved}/${violations.length} violations.`);
-        return saved;
     }
-    return 0;
+    return saved;
 }

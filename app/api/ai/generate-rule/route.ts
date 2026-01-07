@@ -54,10 +54,17 @@ TERM MAPPING (Russian -> DB Field):
 
 Task:
 Convert User's requirement into a Rule Definition.
+
+Rule Types:
+1. 'sql' (Default) - For checks on metadata like duration, direction, status changes, comments presence.
+2. 'semantic' - For checks that require analyzing WHAT was said in the call (quality of service, asking questions, sentiment, etc).
+
 Determine 'entity_type' based on what we are looking for (Calls vs History Events).
 
-IMPORTANT:
-- OUTPUT MUST BE IN RUSSIAN LANGUAGE (Name and Explanation).
+IMPORTANT (Strict rules):
+- If the check involves ANALYZING CONVERSATION/SPEECH CONTENT -> set rule_type: 'semantic'.
+- If the check is about metadata (duration, missed, just a status changed) -> set rule_type: 'sql'.
+- OUTPUT MUST BE IN RUSSIAN LANGUAGE (Name and Explanation/Description).
 - Even if the user prompt is in English, translate the explanation to Russian.
 - "name" field should be a short, professional Title in Russian (max 4-5 words).
 - Use macros like 'new_value IN (@monitored_statuses)' when applicable.
