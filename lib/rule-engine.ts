@@ -61,6 +61,21 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     return totalViolations;
 }
 
+/**
+ * Helper: Get the actual event time from raw_payload metadata
+ * Falls back to occurred_at if no better timestamp is available
+ */
+function getActualEventTime(event: any): string {
+    // Try to get the real event time from order's statusUpdatedAt
+    const metadata = event.raw_payload?._sync_metadata;
+    if (metadata?.order_statusUpdatedAt) {
+        return metadata.order_statusUpdatedAt;
+    }
+
+    // Fallback to occurred_at (which might be the API createdAt)
+    return event.occurred_at;
+}
+
 async function executeEventRule(rule: any, startDate: string, endDate: string): Promise<number> {
     console.log(`[RuleEngine] Executing Event Rule: ${rule.code} (${rule.name})`);
 
@@ -98,6 +113,19 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     const violations = events.filter((e: any) => {
         const orderId = e.retailcrm_order_id;
         const managerId = e.order_metrics?.manager_id;
+
+        // IMPORTANT: Check if event actually occurred within the time range
+        // This prevents old events with incorrect occurred_at from being flagged
+        const actualEventTime = getActualEventTime(e);
+        const eventDate = new Date(actualEventTime);
+        const rangeStart = new Date(startDate);
+        const rangeEnd = new Date(endDate);
+
+        // If the actual event time is outside our range, skip it
+        if (eventDate < rangeStart || eventDate > rangeEnd) {
+            console.log(`[RuleEngine] Skipping event ${e.event_id} - actual time ${actualEventTime} outside range ${startDate} to ${endDate}`);
+            return false;
+        }
         const params = rule.parameters || {};
 
         // Filter by Manager ID

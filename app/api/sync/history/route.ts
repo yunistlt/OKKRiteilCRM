@@ -72,15 +72,18 @@ export async function GET() {
                 .filter((event: any) => event.order && event.order.id)
                 .map((event: any) => ({
                     retailcrm_order_id: event.order.id,
-                    event_type: event.field || 'unknown', // Map field name to event_type
-                    occurred_at: event.createdAt,
+                    event_type: event.field || 'unknown',
+                    occurred_at: event.createdAt, // This is when the history entry was created
                     source: 'retailcrm',
-                    // Pack everything into raw_payload since specific columns don't exist
+                    // Save the FULL event object for future reference
                     raw_payload: {
-                        field: event.field,
-                        oldValue: event.oldValue,
-                        newValue: event.newValue,
-                        user: event.user
+                        ...event, // Complete event data from API
+                        // Add metadata for timestamp investigation
+                        _sync_metadata: {
+                            api_createdAt: event.createdAt,
+                            order_statusUpdatedAt: event.order?.statusUpdatedAt,
+                            synced_at: new Date().toISOString()
+                        }
                     },
                     manager_id: event.user ? event.user.id : null,
                 }));
