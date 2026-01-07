@@ -137,7 +137,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             manager_id: v.order_metrics?.manager_id,
             violation_time: v.occurred_at,
             severity: rule.severity,
-            details: `Событие: ${v.event_type}. ${rule.description || rule.name}`
+            details: `Событие: ${v.event_type === 'status_changed' ? 'Смена статуса' : v.event_type}. ${rule.description || rule.name}`
         }));
 
         // Try upserting one by one to avoid batch failure on unique constraint
@@ -215,13 +215,16 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
     if (violations.length > 0) {
         console.log(`[RuleEngine] ${rule.code} -> Found ${violations.length} call violations.`);
 
-        const records = violations.map(c => ({
-            rule_code: rule.code,
-            call_id: c.event_id,
-            violation_time: c.started_at,
-            severity: rule.severity,
-            details: `Звонок: ${c.direction}, ${c.duration_sec} сек. ${rule.description || rule.name}`
-        }));
+        const records = violations.map(c => {
+            const dirLabel = c.direction === 'incoming' ? 'входящий' : (c.direction === 'outgoing' ? 'исходящий' : c.direction);
+            return {
+                rule_code: rule.code,
+                call_id: c.event_id,
+                violation_time: c.started_at,
+                severity: rule.severity,
+                details: `Звонок: ${dirLabel}, ${c.duration_sec} сек. ${rule.description || rule.name}`
+            };
+        });
 
         let saved = 0;
         for (const record of records) {

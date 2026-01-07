@@ -26,14 +26,15 @@ Input:
 1. Rule Definition (what strictly constitutes a violation).
 2. Call Transcript.
 
-Output JSON:
+Output JSON (Strictly in Russian language):
 {
-  "is_violation": boolean, // TRUE if the rule is violated, FALSE otherwise.
-  "evidence": string, // Quote from the text that proves the violation or lack thereof.
-  "confidence": number, // 0.0 to 1.0
-  "reasoning": string // Brief explanation
+  "is_violation": boolean, // TRUE если правило нарушено, FALSE в противном случае.
+  "evidence": string, // Цитата из текста, подтверждающая нарушение (на языке оригинала).
+  "confidence": number, // от 0.0 до 1.0
+  "reasoning": string // Краткое объяснение на РУССКОМ языке
 }
 
+CRITICAL: All reasoning, explanations and summary fields MUST BE IN RUSSIAN.
 Be strict. If the transcript is ambiguous, bias towards NO violation (innocent until proven guilty) unless the rule says "Ensure X happened".
     `;
 
