@@ -68,7 +68,7 @@ export async function getViolations(limit = 100) {
             severity,
             rule_code,
             okk_rules ( name ),
-            managers ( name, email ),
+            managers ( first_name, last_name, email ),
             call_id,
             order_id
         `)

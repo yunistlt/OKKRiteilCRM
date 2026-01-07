@@ -80,7 +80,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                         </div>
                                     </td>
                                     <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-900">
-                                        {v.managers?.name || 'N/A'}
+                                        {v.managers ? `${v.managers.first_name || ''} ${v.managers.last_name || ''}`.trim() || 'N/A' : 'N/A'}
                                     </td>
                                     <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-xs truncate">
                                         {v.details}
