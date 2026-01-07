@@ -162,6 +162,9 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                     ))}
                                     {allManagers.length === 0 && <span className="text-gray-400 text-[10px] italic">Нет активных менеджеров</span>}
                                 </div>
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    * Если никто не выбран, проверка будет идти по всем менеджерам в списке.
+                                </p>
                             </div>
 
                             <div>
@@ -175,6 +178,9 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                     placeholder="Например: 12345, 12346"
                                     className="w-full border-gray-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-gray-300"
                                 />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">
+                                    * Если не указаны, проверка пойдет по всем заказам в статусах, выбранных в настройках.
+                                </p>
                             </div>
                         </div>
 
