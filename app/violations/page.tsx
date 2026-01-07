@@ -4,13 +4,35 @@ import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ViolationsPage() {
-    const violations = await getViolations();
+export default async function ViolationsPage({ searchParams }: { searchParams: { rule?: string } }) {
+    const allViolations = await getViolations();
+    const ruleFilter = searchParams?.rule;
+
+    // Filter violations if rule parameter is present
+    const violations = ruleFilter
+        ? allViolations.filter((v: any) => v.rule_code === ruleFilter)
+        : allViolations;
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                <h1 className="text-xl md:text-2xl font-bold">Журнал Нарушений</h1>
+                <div>
+                    <h1 className="text-xl md:text-2xl font-bold">Журнал Нарушений</h1>
+                    {ruleFilter && (
+                        <div className="mt-2 flex items-center gap-2">
+                            <span className="text-sm text-gray-500">Фильтр по правилу:</span>
+                            <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-bold border border-indigo-200">
+                                {violations[0]?.okk_rules?.name || ruleFilter}
+                            </span>
+                            <Link
+                                href="/violations"
+                                className="text-xs text-gray-400 hover:text-gray-600 underline"
+                            >
+                                Сбросить фильтр
+                            </Link>
+                        </div>
+                    )}
+                </div>
                 <Link
                     href="/settings/rules"
                     className="bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded text-sm font-medium transition w-full sm:w-auto text-center"
@@ -48,23 +70,22 @@ export default async function ViolationsPage() {
                                         </div>
                                     </td>
                                     <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-900">
-                                        {v.managers?.name || 'Неизвестно'}
+                                        {v.managers?.name || 'N/A'}
                                     </td>
-                                    <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-[150px] md:max-w-md truncate" title={v.details}>
+                                    <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-xs truncate">
                                         {v.details}
                                     </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-blue-600">
-                                        {v.call_id ? `Call #${v.call_id}` : `Order #${v.order_id}`}
+                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
+                                        {v.order_id ? (
+                                            <a href={`https://okk.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                                                #{v.order_id}
+                                            </a>
+                                        ) : (
+                                            <span className="text-gray-400">—</span>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
-                            {violations.length === 0 && (
-                                <tr>
-                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                        Нарушений пока нет (или фильтры слишком строгие).
-                                    </td>
-                                </tr>
-                            )}
                         </tbody>
                     </table>
                 </div>

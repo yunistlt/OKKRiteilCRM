@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { updateRuleStatus, updateRuleParams } from '@/app/actions/rules';
 import { supabase } from '@/utils/supabase';
+import Link from 'next/link';
 import NewRuleModal from './new-rule-modal';
 
 export default function RuleCard({ rule, violationCount }: { rule: any, violationCount: number }) {
@@ -177,9 +178,13 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                     <div className="flex items-center gap-1 md:gap-2">
                         {/* Violation Count Badge */}
                         {violationCount > 0 && (
-                            <div className="px-2 py-1 bg-gray-100 rounded-full text-[10px] md:text-xs font-bold text-gray-600 flex items-center gap-1" title="Найдено нарушений по этому правилу">
+                            <Link
+                                href={`/violations?rule=${rule.code}`}
+                                className="px-2 py-1 bg-yellow-50 hover:bg-yellow-100 rounded-full text-[10px] md:text-xs font-bold text-yellow-700 flex items-center gap-1 border border-yellow-200 transition-colors cursor-pointer"
+                                title="Показать нарушения по этому правилу"
+                            >
                                 ⚠️ {violationCount}
-                            </div>
+                            </Link>
                         )}
 
                         {/* Edit As New Version */}
