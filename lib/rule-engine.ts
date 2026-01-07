@@ -58,6 +58,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 async function executeEventRule(rule: any, startDate: string, endDate: string): Promise<number> {
     console.log(`[RuleEngine] Executing Event Rule: ${rule.code} (${rule.name})`);
 
+    // 1. Fetch Events
     let query = supabase
         .from('raw_order_events')
         .select(`
@@ -79,6 +80,15 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
     if (!events || events.length === 0) return 0;
 
+    // 2. Prepare Context (e.g. Monitored Statuses)
+    const sql = rule.condition_sql.toLowerCase();
+    let monitoredStatuses: string[] = [];
+    if (sql.includes('@monitored_statuses')) {
+        const { data: stData } = await supabase.from('statuses').select('code').eq('is_working', true);
+        monitoredStatuses = (stData || []).map(s => s.code);
+    }
+
+    // 3. Filter Violations
     const violations = events.filter((e: any) => {
         const om = {
             current_status: e.order_metrics?.current_status,
@@ -98,20 +108,24 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             om
         };
 
-        // Condition matching: "field_name = 'status' AND ... manager_comment ..."
-        const sql = rule.condition_sql.toLowerCase();
-
+        // Logic Check
         if (sql.includes("field_name = 'status'") || sql.includes("field_name='status'")) {
             if (row.field_name !== 'status') return false;
         }
 
+        // Macro: @monitored_statuses
+        if (sql.includes('@monitored_statuses')) {
+            if (!monitoredStatuses.includes(row.new_value)) return false;
+        }
+
+        // Check Manager Comment
         if (sql.includes("manager_comment")) {
             const comment = om.full_order_context?.manager_comment;
             const isEmpty = !comment || String(comment).trim() === '' || String(comment).trim() === 'null';
-            if (isEmpty) return true;
+            if (!isEmpty) return false; // Has comment -> NOT a violation
         }
 
-        return false;
+        return true;
     });
 
     if (violations.length > 0) {
@@ -181,12 +195,18 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
             return c.duration_sec > 0 && c.duration_sec < threshold;
         }
 
-        // successful outgoing
-        if (sql.includes("call_type = 'outgoing'") || sql.includes("direction = 'outgoing'")) {
-            if (c.direction !== 'outgoing') return false;
-            if (sql.includes("status = 'success'")) {
-                return c.duration_sec > 0;
-            }
+        // answering_machine_dialog logic
+        if (sql.includes("is_answering_machine = true")) {
+            if (c.is_answering_machine !== true) return false;
+            const threshold = params.threshold_sec || 15;
+            return c.duration_sec > threshold;
+        }
+
+        // call_impersonation logic: duration > 0 AND duration < 5 AND is_answering_machine IS NOT true
+        if (sql.includes("is_answering_machine is distinct from true") || sql.includes("is_answering_machine is not true")) {
+            if (c.is_answering_machine === true) return false;
+            // The rest of logic (duration) will be handled by short_call block if combined? 
+            // Better to handle specifically if requested.
         }
 
         return false;

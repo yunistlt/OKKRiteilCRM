@@ -35,10 +35,16 @@ function ViolationsContent() {
     const [rules, setRules] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState<string>('all');
+    const [filterManager, setFilterManager] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'group'>('group');
 
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+
+    const getRuleName = (code: string) => {
+        const rule = rules.find(r => r.code === code);
+        return rule?.name || VIOLATION_LABELS[code] || code;
+    };
 
     // ... (rest of the component logic) ...
 
@@ -71,12 +77,17 @@ function ViolationsContent() {
         fetchData();
     }, [from, to]);
 
-    // Filtered by type
+    // Filtered by type and manager
     const filtered = useMemo(() => {
-        return filterType === 'all'
-            ? violations
-            : violations.filter(v => v.violation_type === filterType);
-    }, [violations, filterType]);
+        let result = violations;
+        if (filterType !== 'all') {
+            result = result.filter(v => v.violation_type === filterType);
+        }
+        if (filterManager) {
+            result = result.filter(v => (v.manager_name || 'Не определен') === filterManager);
+        }
+        return result;
+    }, [violations, filterType, filterManager]);
 
     // Grouping logic (Type -> Manager -> Count)
     const groupedData = useMemo(() => {
@@ -120,6 +131,13 @@ function ViolationsContent() {
                 </div>
 
                 <div className="w-full lg:w-auto flex flex-col sm:flex-row items-center gap-3 md:gap-4 bg-white p-3 md:p-2 rounded-2xl md:rounded-3xl shadow-sm border border-gray-100">
+                    {filterManager && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest border border-blue-100">
+                            👤 {filterManager}
+                            <button onClick={() => setFilterManager(null)} className="ml-1 hover:text-red-500">✕</button>
+                        </div>
+                    )}
+
                     <div className="w-full sm:w-auto flex bg-gray-50 p-1 rounded-xl shrink-0">
                         <button
                             onClick={() => setViewMode('group')}
@@ -137,7 +155,10 @@ function ViolationsContent() {
 
                     <select
                         value={filterType}
-                        onChange={(e) => setFilterType(e.target.value)}
+                        onChange={(e) => {
+                            setFilterType(e.target.value);
+                            setFilterManager(null); // Reset manager filter when rule changes manually
+                        }}
                         className="w-full sm:w-auto bg-gray-50 md:bg-white border-0 text-gray-700 text-[10px] md:text-sm font-black uppercase tracking-widest rounded-xl focus:ring-0 block p-2 md:p-3 outline-none cursor-pointer"
                     >
                         <option value="all">Все нарушения</option>
@@ -149,6 +170,19 @@ function ViolationsContent() {
                     <div className="hidden sm:flex bg-blue-600 h-10 px-4 items-center rounded-xl shadow-lg shadow-blue-100 shrink-0">
                         <span className="text-white font-black text-lg">{filtered.length}</span>
                     </div>
+
+                    {viewMode === 'list' && (
+                        <button
+                            onClick={() => {
+                                setViewMode('group');
+                                setFilterType('all');
+                                setFilterManager(null);
+                            }}
+                            className="text-[10px] md:text-sm font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 px-4 py-2 bg-blue-50 rounded-xl border border-blue-100 transition-all"
+                        >
+                            Сбросить и назад
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -156,10 +190,17 @@ function ViolationsContent() {
                 <div className="grid gap-6 md:gap-8">
                     {Object.entries(groupedData).map(([type, managers]) => (
                         <div key={type} className="bg-white rounded-3xl shadow-xl shadow-gray-200/40 border border-gray-100 overflow-hidden">
-                            <div className="bg-gray-50/50 p-4 md:p-6 border-b border-gray-100 flex justify-between items-center gap-4">
-                                <h2 className="text-lg md:text-xl font-black text-gray-800 flex items-center gap-3 leading-tight">
+                            <div
+                                onClick={() => {
+                                    setFilterType(type);
+                                    setFilterManager(null);
+                                    setViewMode('list');
+                                }}
+                                className="bg-gray-50/50 p-4 md:p-6 border-b border-gray-100 flex justify-between items-center gap-4 cursor-pointer hover:bg-gray-100 transition-colors group"
+                            >
+                                <h2 className="text-lg md:text-xl font-black text-gray-800 flex items-center gap-3 leading-tight group-hover:text-blue-600 transition-colors">
                                     <span className="w-1.5 h-6 md:h-8 bg-blue-600 rounded-full shrink-0"></span>
-                                    {VIOLATION_LABELS[type] || type}
+                                    {getRuleName(type)}
                                 </h2>
                                 <span className="bg-gray-200 text-gray-600 px-3 py-1 rounded-full text-[9px] md:text-xs font-black uppercase tracking-widest shrink-0">
                                     {Object.values(managers).reduce((acc, curr) => acc + curr.count, 0)} шт
@@ -170,22 +211,26 @@ function ViolationsContent() {
                                     {Object.entries(managers)
                                         .sort((a, b) => b[1].count - a[1].count)
                                         .map(([manager, data]) => (
-                                            <Link
-                                                href={data.manager_id ? `/analytics/managers/${data.manager_id}` : '#'}
+                                            <div
                                                 key={manager}
-                                                className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:border-blue-400 hover:bg-blue-50/10 transition-all group"
+                                                onClick={() => {
+                                                    setFilterType(type);
+                                                    setFilterManager(manager);
+                                                    setViewMode('list');
+                                                }}
+                                                className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:border-blue-400 hover:bg-blue-50/10 transition-all group cursor-pointer"
                                             >
                                                 <div className="min-w-0">
                                                     <div className="text-[10px] md:text-sm font-black text-gray-800 group-hover:text-blue-600 transition-colors uppercase tracking-widest flex items-center gap-2 truncate whitespace-nowrap">
                                                         {manager}
-                                                        {data.manager_id && <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>}
+                                                        <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7" /></svg>
                                                     </div>
-                                                    <div className="text-[8px] md:text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-widest truncate">Аналитика</div>
+                                                    <div className="text-[8px] md:text-[10px] text-gray-400 mt-1 font-bold uppercase tracking-widest truncate">Показать список</div>
                                                 </div>
                                                 <div className="bg-white ml-3 px-3 py-2 rounded-xl border border-gray-200 font-black text-blue-600 shadow-sm min-w-[2.5rem] md:min-w-[3rem] text-center text-xs md:text-sm shrink-0">
                                                     {data.count}
                                                 </div>
-                                            </Link>
+                                            </div>
                                         ))}
                                 </div>
                             </div>
@@ -226,7 +271,7 @@ function ViolationsContent() {
                                         <td className="p-4 md:p-6">
                                             <span className={`inline-flex items-center px-3 md:px-4 py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low
                                                 }`}>
-                                                {VIOLATION_LABELS[v.violation_type] || v.violation_type}
+                                                {getRuleName(v.violation_type)}
                                             </span>
                                         </td>
                                         <td className="p-4 md:p-6 text-gray-600 text-xs md:text-sm leading-relaxed max-w-xs md:max-w-md font-medium">

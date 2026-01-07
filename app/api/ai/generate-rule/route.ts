@@ -18,8 +18,7 @@ Target tables:
 Schema 'raw_telphin_calls':
 - started_at (timestamp)
 - duration_sec (int)
-- from_number_normalized, to_number_normalized (Caller/Callee)
-- call_type (incoming/outgoing)
+- direction (incoming/outgoing)
 - transcript (text)
 
 Schema 'raw_order_events':
@@ -29,11 +28,21 @@ Schema 'raw_order_events':
 - new_value (text)
 - retailcrm_order_id (int)
 
+Schema 'statuses' (Dictionary):
+- code (text) (primary key)
+- name (text)
+- is_working (boolean) - If true, this status is monitored for Quality Control (Анализ).
+- is_transcribable (boolean) - If true, calls in this status are transcribed.
+
 JOINED CONTEXT (Available for SQL):
 - om.current_status (text)
 - om.order_amount (numeric)
 - om.manager_id (int)
 - om.full_order_context (JSONB)
+
+SEMANTIC MACROS (Use these instead of complex subqueries):
+- "@monitored_statuses" -> Use when user refers to "monitored", "active", "statuses for analysis" (is_working = true).
+- "@transcribable_statuses" -> Use when user refers to statuses for transcription.
 
 TERM MAPPING (Russian -> DB Field):
 - "Статус" -> field_name = 'status'
@@ -51,6 +60,7 @@ IMPORTANT:
 - OUTPUT MUST BE IN RUSSIAN LANGUAGE (Name and Explanation).
 - Even if the user prompt is in English, translate the explanation to Russian.
 - "name" field should be a short, professional Title in Russian (max 4-5 words).
+- Use macros like 'new_value IN (@monitored_statuses)' when applicable.
 
 Examples:
 1. User: "Short calls"
@@ -59,12 +69,12 @@ Examples:
 2. User: "Status changed to Cancelled"
    Output: { "entity_type": "event", "sql": "field_name = 'status' AND new_value = 'cancel'", "name": "Смена статуса на Отмена", "explanation": "События изменения статуса заказа на 'Отмена' (cancel)." }
 
-3. User: "Manager comment is empty when status changes"
+3. User: "Manager comment is empty when status changes for monitored statuses"
    Output: { 
      "entity_type": "event", 
-     "sql": "field_name = 'status' AND (om.full_order_context->>'manager_comment' IS NULL OR om.full_order_context->>'manager_comment' = '')",
+     "sql": "field_name = 'status' AND new_value IN (@monitored_statuses) AND (om.full_order_context->>'manager_comment' IS NULL OR om.full_order_context->>'manager_comment' = '')",
      "name": "Пустой комментарий при смене статуса",
-     "explanation": "Проверка событий, где происходит смена статуса, но поле 'Комментарий менеджера' в текущем контексте заказа пустое."
+     "explanation": "Проверка событий смены статуса на один из отслеживаемых, где поле 'Комментарий менеджера' в текущем контексте заказа пустое."
    }
 `;
 
