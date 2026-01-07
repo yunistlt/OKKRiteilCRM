@@ -63,9 +63,34 @@ export async function GET() {
                 }));
 
             if (processedEvents.length > 0) {
+                // Get unique order IDs from this batch
+                const orderIds = Array.from(new Set(processedEvents.map((e: any) => e.retailcrm_order_id)));
+
+                // Check which orders exist in our database
+                const { data: existingOrders } = await supabase
+                    .from('orders')
+                    .select('id')
+                    .in('id', orderIds);
+
+                const existingOrderIds = new Set((existingOrders || []).map((o: any) => o.id));
+
+                // Filter to only events for existing orders
+                const validEvents = processedEvents.filter((e: any) =>
+                    existingOrderIds.has(e.retailcrm_order_id)
+                );
+
+                console.log(`[Resync] Filtered ${processedEvents.length} events → ${validEvents.length} valid (${processedEvents.length - validEvents.length} skipped due to missing orders)`);
+
+                if (validEvents.length === 0) {
+                    console.log('[Resync] No valid events in this batch, skipping');
+                    totalProcessed += history.length;
+                    if (!pagination || page >= pagination.totalPageCount) break;
+                    page++;
+                    continue;
+                }
                 // Deduplicate events by unique key before upserting
                 const uniqueEvents = new Map();
-                processedEvents.forEach((event: any) => {
+                validEvents.forEach((event: any) => {
                     const key = `${event.retailcrm_order_id}_${event.event_type}_${event.occurred_at}_${event.source}`;
                     uniqueEvents.set(key, event);
                 });
