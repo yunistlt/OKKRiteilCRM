@@ -121,9 +121,26 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                             {rule.severity}
                         </span>
                     </div>
-                    <p className="text-xs md:text-sm text-gray-500 line-clamp-2 md:line-clamp-none" title={rule.description}>
+                    <p className="text-xs md:text-sm text-gray-500 line-clamp-2 md:line-clamp-none mb-3" title={rule.description}>
                         {rule.description}
                     </p>
+                    <div className="flex flex-wrap gap-2">
+                        {params.manager_ids?.length > 0 && (
+                            <span className="bg-blue-50 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold border border-blue-100 flex items-center gap-1">
+                                👤 {params.manager_ids.length} Менедж.
+                            </span>
+                        )}
+                        {params.order_ids?.length > 0 && (
+                            <span className="bg-purple-50 text-purple-700 text-[10px] px-2 py-0.5 rounded font-bold border border-purple-100 flex items-center gap-1">
+                                📦 {params.order_ids.length} Заказа
+                            </span>
+                        )}
+                        {rule.created_at && (
+                            <span className="bg-gray-50 text-gray-400 text-[10px] px-2 py-0.5 rounded font-medium border border-gray-100 italic">
+                                📅 с {new Date(rule.created_at).toLocaleDateString()}
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 <div className="flex items-center justify-between w-full sm:w-auto gap-2 md:gap-3 shrink-0">

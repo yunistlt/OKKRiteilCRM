@@ -96,6 +96,20 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
     // 3. Filter Violations
     const violations = events.filter((e: any) => {
+        const orderId = e.retailcrm_order_id;
+        const managerId = e.order_metrics?.manager_id;
+        const params = rule.parameters || {};
+
+        // Filter by Manager ID
+        if (params.manager_ids && params.manager_ids.length > 0) {
+            if (!managerId || !params.manager_ids.includes(managerId)) return false;
+        }
+
+        // Filter by Order ID
+        if (params.order_ids && params.order_ids.length > 0) {
+            if (!orderId || !params.order_ids.includes(orderId)) return false;
+        }
+
         const om = {
             current_status: e.order_metrics?.current_status,
             full_order_context: e.order_metrics?.full_order_context || {},
@@ -187,6 +201,20 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
     const params = rule.parameters || {};
 
     const violations = calls.filter((c: any) => {
+        const match = c.call_order_matches?.[0];
+        const orderId = match?.order_id;
+        const managerId = match?.orders?.manager_id;
+
+        // Filter by Manager ID
+        if (params.manager_ids && params.manager_ids.length > 0) {
+            if (!managerId || !params.manager_ids.includes(managerId)) return false;
+        }
+
+        // Filter by Order ID
+        if (params.order_ids && params.order_ids.length > 0) {
+            if (!orderId || !params.order_ids.includes(orderId)) return false;
+        }
+
         if (rule.rule_type === 'semantic') return false;
 
         if (sql.includes("flow = 'incoming'") || sql.includes("direction = 'incoming'") || sql.includes("call_type = 'incoming'")) {
@@ -265,9 +293,24 @@ async function executeSemanticRule(rule: any, startDate: string, endDate: string
     if (!calls || calls.length === 0) return 0;
 
     let saved = 0;
+    const params = rule.parameters || {};
+
     for (const c of calls) {
         const match = c.call_order_matches?.[0];
         if (!match) continue;
+
+        const orderId = match.order_id;
+        const managerId = match.orders?.manager_id;
+
+        // Filter by Manager ID
+        if (params.manager_ids && params.manager_ids.length > 0) {
+            if (!managerId || !params.manager_ids.includes(managerId)) continue;
+        }
+
+        // Filter by Order ID
+        if (params.order_ids && params.order_ids.length > 0) {
+            if (!orderId || !params.order_ids.includes(orderId)) continue;
+        }
 
         const result = await analyzeTranscript(c.transcript, rule.semantic_prompt || rule.description);
 
