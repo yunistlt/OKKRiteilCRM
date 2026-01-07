@@ -22,7 +22,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                         <div className="mt-2 flex items-center gap-2">
                             <span className="text-sm text-gray-500">Фильтр по правилу:</span>
                             <span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-bold border border-indigo-200">
-                                {violations[0]?.okk_rules?.name || ruleFilter}
+                                {(violations.length > 0 && violations[0]?.okk_rules?.[0]?.name) || ruleFilter}
                             </span>
                             <Link
                                 href="/violations"
