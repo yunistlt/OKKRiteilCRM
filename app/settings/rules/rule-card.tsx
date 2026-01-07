@@ -152,7 +152,11 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                         )}
                         {rule.created_at && (
                             <span className="bg-gray-50 text-gray-400 text-[10px] px-2 py-0.5 rounded font-medium border border-gray-100 italic">
-                                📅 с {new Date(rule.created_at).toLocaleDateString()}
+                                📅 с {(() => {
+                                    const d = new Date(rule.created_at);
+                                    if (params.audit_days) d.setDate(d.getDate() - params.audit_days);
+                                    return d.toLocaleDateString();
+                                })()}
                             </span>
                         )}
                     </div>
@@ -160,7 +164,7 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
 
                 <div className="flex items-center justify-between w-full sm:w-auto gap-2 md:gap-3 shrink-0">
                     {/* Audit Progress UI */}
-                    {auditStatus === 'running' && (
+                    {(auditStatus === 'running' || params.audit_status === 'running') && (
                         <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full animate-pulse border border-indigo-100">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>

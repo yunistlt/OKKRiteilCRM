@@ -83,25 +83,29 @@ export async function getViolations(limit = 100) {
 }
 
 export async function createRule(ruleData: any, historyDays = 0) {
+    // 1. If history requested, set initial status in parameters
+    const initialParams = ruleData.parameters || {};
+    if (historyDays > 0) {
+        initialParams.audit_status = 'running';
+        initialParams.audit_days = historyDays;
+    }
+
     const { error, data } = await supabase
         .from('okk_rules')
-        .insert([ruleData])
+        .insert([{ ...ruleData, parameters: initialParams }])
         .select()
         .single();
 
     if (error) throw new Error(error.message);
 
-    // If history check requested, trigger background audit
+    // 2. If history check requested, trigger background audit
     if (historyDays > 0 && data) {
-        // We use fetch to fire-and-forget a background check request
-        // Using a dedicated API endpoint for this is safer than calling engine directly in server action (timeout risk)
-        // Adjust URL based on environment (locally localhost:3000, prod Vercel URL)
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk-riteil-crm-aqwq.vercel.app'; // Fallback to current prod URL if env missing
         fetch(`${baseUrl}/api/rules/audit-history`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                ruleId: data.id,
+                ruleId: data.code, // IMPORTANT: Use string code, not numeric id
                 days: historyDays
             })
         }).catch(err => console.error('Failed to trigger background audit:', err));
