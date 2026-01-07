@@ -114,6 +114,12 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         const orderId = e.retailcrm_order_id;
         const managerId = e.order_metrics?.manager_id;
 
+        // Skip events without metadata (old events with potentially incorrect timestamps)
+        if (!e.raw_payload?._sync_metadata) {
+            console.log(`[RuleEngine] Skipping event ${e.event_id} - no sync metadata (old event)`);
+            return false;
+        }
+
         // IMPORTANT: Check if event actually occurred within the time range
         // This prevents old events with incorrect occurred_at from being flagged
         const actualEventTime = getActualEventTime(e);
