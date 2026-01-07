@@ -87,7 +87,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                     </td>
                                     <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
                                         {v.order_id ? (
-                                            <a href={`https://okk.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
+                                            <a href={`https://zmktlt.retailcrm.ru/order/${v.order_id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
                                                 #{v.order_id}
                                             </a>
                                         ) : (
