@@ -8,10 +8,20 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
     const allViolations = await getViolations();
     const ruleFilter = searchParams?.rule;
 
+    console.log('[Violations Page] searchParams:', searchParams);
+    console.log('[Violations Page] ruleFilter:', ruleFilter);
+    console.log('[Violations Page] Total violations:', allViolations.length);
+
     // Filter violations if rule parameter is present
     const violations = ruleFilter
-        ? allViolations.filter((v: any) => v.rule_code === ruleFilter)
+        ? allViolations.filter((v: any) => {
+            const match = v.rule_code === ruleFilter;
+            console.log(`[Filter] ${v.rule_code} === ${ruleFilter}? ${match}`);
+            return match;
+        })
         : allViolations;
+
+    console.log('[Violations Page] Filtered violations:', violations.length);
 
     return (
         <div className="p-4 md:p-8 max-w-7xl mx-auto">
