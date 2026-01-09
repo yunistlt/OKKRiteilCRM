@@ -11,6 +11,10 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     try {
+        // Only process calls from the last 30 days to reduce costs
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         // 1. Fetch Candidates
         // "pending" status AND has recording_url
         // Limit to 5 per run to avoid timeout/limits
@@ -19,6 +23,7 @@ export async function GET(req: Request) {
             .select('*')
             .eq('transcription_status', 'pending')
             .not('recording_url', 'is', null)
+            .gte('started_at', thirtyDaysAgo.toISOString()) // Only last 30 days
             .order('started_at', { ascending: false }) // Process newest first? Or oldest? Newest provides faster feedback.
             .limit(5);
 
