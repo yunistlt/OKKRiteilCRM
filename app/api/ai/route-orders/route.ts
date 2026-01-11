@@ -125,7 +125,7 @@ export async function POST(request: Request) {
                             },
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
-                                site: 'zmktlt', // Site as separate parameter
+                                site: 'zmktlt-ru', // Default site for CRM
                                 order: JSON.stringify(requestBody)
                             })
                         });
