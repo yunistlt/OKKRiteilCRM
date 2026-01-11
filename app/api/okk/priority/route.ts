@@ -92,10 +92,11 @@ export async function GET(request: Request) {
         }
 
         // Date Filter (Next Contact Date)
-        if (dateFrom) {
+        // Ensure we don't pass 'undefined' string
+        if (dateFrom && dateFrom !== 'undefined' && dateFrom !== 'null') {
             crmUrl += `&filter[customFields][data_kontakta][min]=${dateFrom}`;
         }
-        if (dateTo) {
+        if (dateTo && dateTo !== 'undefined' && dateTo !== 'null') {
             crmUrl += `&filter[customFields][data_kontakta][max]=${dateTo}`;
         }
 
@@ -104,10 +105,13 @@ export async function GET(request: Request) {
         if (sumMax) crmUrl += `&filter[totalSummMax]=${sumMax}`;
 
         // --- 5. EXECUTE SEARCH ---
+        console.log('[PriorityAPI] Fetching URL:', crmUrl);
+
         const crmRes = await fetch(crmUrl);
         const crmData = await crmRes.json();
 
         if (!crmData.success) {
+            console.error('[PriorityAPI] RetailCRM Error:', JSON.stringify(crmData));
             throw new Error(`RetailCRM API Error: ${crmData.errorMsg || 'Unknown error'}`);
         }
 
