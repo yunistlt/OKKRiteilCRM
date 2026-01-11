@@ -43,7 +43,13 @@ export async function POST(request: Request) {
         let eventType = 'status_changed';
         let fieldName = 'status';
         let newValue = 'novyi-1';
-        let managerId = 249;
+
+        // CRITICAL: Use manager from rule parameters if specified
+        let managerId = 249; // Default fallback
+        if (rule.parameters?.manager_ids && Array.isArray(rule.parameters.manager_ids) && rule.parameters.manager_ids.length > 0) {
+            managerId = rule.parameters.manager_ids[0]; // Use first allowed manager
+            console.log(`[RuleTest] Using rule-specific manager: ${managerId}`);
+        }
 
         // A. Detection Logic
         // 1. Time based (e.g. > 24 hours)
