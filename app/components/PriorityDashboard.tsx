@@ -184,6 +184,12 @@ export const PriorityDashboard = () => {
                                     <div className="text-sm text-muted-foreground line-clamp-1">
                                         {order.raw_payload?.items?.[0]?.offer?.name || 'Заказ без товаров'}
                                     </div>
+                                    {order.raw_payload?.manager && (
+                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                            <span className="font-medium">Менеджер:</span>
+                                            <span>{order.raw_payload.manager.lastName} {order.raw_payload.manager.firstName}</span>
+                                        </div>
+                                    )}
                                     <div className="text-sm font-medium">
                                         {order.totalSumm?.toLocaleString()} ₽
                                     </div>
