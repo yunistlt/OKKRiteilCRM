@@ -122,13 +122,28 @@ export async function GET(request: Request) {
             .select('id, first_name, last_name')
             .in('id', controlledIds);
 
+        // 6. Fetch "is_working" statuses for the filter using status_settings table
+        const { data: workingSettings } = await supabase
+            .from('status_settings')
+            .select('code')
+            .eq('is_working', true);
+
+        const workingCodes = (workingSettings || []).map(s => s.code);
+
+        const { data: activeStatuses } = await supabase
+            .from('statuses')
+            .select('code, name, group_name')
+            .in('code', workingCodes)
+            .order('ordering');
+
         return NextResponse.json({
             success: true,
             orders: processedOrders.sort((a: any, b: any) => b.totalSumm - a.totalSumm), // Sort by sum desc
             activeManagers: (activeManagers || []).map(m => ({
                 id: m.id,
                 name: m.last_name ? `${m.last_name} ${m.first_name}` : m.first_name
-            }))
+            })),
+            activeStatuses: activeStatuses || []
         });
 
     } catch (error: any) {
