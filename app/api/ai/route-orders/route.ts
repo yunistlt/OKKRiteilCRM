@@ -108,7 +108,7 @@ export async function POST(request: Request) {
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
                     try {
                         // Update status in RetailCRM
-                        const retailcrmResponse = await fetch(`${process.env.NEXT_PUBLIC_RETAILCRM_URL}/api/v5/orders/${order.id}/edit`, {
+                        const retailcrmResponse = await fetch(`${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded',
