@@ -34,6 +34,7 @@ interface PriorityOrder {
 
 export const PriorityDashboard = () => {
     const [orders, setOrders] = useState<PriorityOrder[]>([]);
+    const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +45,7 @@ export const PriorityDashboard = () => {
             const data = await res.json();
             if (data.error) throw new Error(data.error);
             setOrders(data.orders || []);
+            setActiveManagers(data.activeManagers || []);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -116,20 +118,31 @@ export const PriorityDashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold mb-2">{orders.length}</div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
                                 const stats = orders.reduce((acc: any, o) => {
                                     const name = o.managerName || 'Не назначен';
                                     acc[name] = (acc[name] || 0) + 1;
                                     return acc;
                                 }, {});
-                                return Object.entries(stats)
-                                    .sort((a: any, b: any) => b[1] - a[1])
-                                    .slice(0, 3)
-                                    .map(([name, count]: [string, any]) => (
-                                        <div key={name} className="flex justify-between">
-                                            <span className="truncate">{name}</span>
-                                            <span className="font-semibold ml-1">{count}</span>
+
+                                // Merge active managers with stats
+                                const list = activeManagers.map(m => ({
+                                    name: m.name,
+                                    count: stats[m.name] || 0
+                                }));
+
+                                // Add "Не назначен" if exists
+                                if (stats['Не назначен']) {
+                                    list.push({ name: 'Не назначен', count: stats['Не назначен'] });
+                                }
+
+                                return list
+                                    .sort((a, b) => b.count - a.count)
+                                    .map((m) => (
+                                        <div key={m.name} className={`flex justify-between ${m.count === 0 ? 'opacity-50' : ''}`}>
+                                            <span className="truncate">{m.name}</span>
+                                            <span className="font-semibold ml-1">{m.count}</span>
                                         </div>
                                     ));
                             })()}
@@ -147,7 +160,7 @@ export const PriorityDashboard = () => {
                         <div className="text-2xl font-bold text-green-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'success').length}
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
                                 const stats = orders
                                     .filter(o => o.today_stats.status === 'success')
@@ -156,13 +169,22 @@ export const PriorityDashboard = () => {
                                         acc[name] = (acc[name] || 0) + 1;
                                         return acc;
                                     }, {});
-                                return Object.entries(stats)
-                                    .sort((a: any, b: any) => b[1] - a[1])
-                                    .slice(0, 3)
-                                    .map(([name, count]: [string, any]) => (
-                                        <div key={name} className="flex justify-between">
-                                            <span className="truncate">{name}</span>
-                                            <span className="font-semibold ml-1">{count}</span>
+
+                                const list = activeManagers.map(m => ({
+                                    name: m.name,
+                                    count: stats[m.name] || 0
+                                }));
+
+                                if (stats['Не назначен']) {
+                                    list.push({ name: 'Не назначен', count: stats['Не назначен'] });
+                                }
+
+                                return list
+                                    .sort((a, b) => b.count - a.count)
+                                    .map((m) => (
+                                        <div key={m.name} className={`flex justify-between ${m.count === 0 ? 'opacity-50' : ''}`}>
+                                            <span className="truncate">{m.name}</span>
+                                            <span className="font-semibold ml-1">{m.count}</span>
                                         </div>
                                     ));
                             })()}
@@ -180,7 +202,7 @@ export const PriorityDashboard = () => {
                         <div className="text-2xl font-bold text-orange-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'fallback_required').length}
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
                                 const stats = orders
                                     .filter(o => o.today_stats.status === 'fallback_required')
@@ -189,13 +211,22 @@ export const PriorityDashboard = () => {
                                         acc[name] = (acc[name] || 0) + 1;
                                         return acc;
                                     }, {});
-                                return Object.entries(stats)
-                                    .sort((a: any, b: any) => b[1] - a[1])
-                                    .slice(0, 3)
-                                    .map(([name, count]: [string, any]) => (
-                                        <div key={name} className="flex justify-between">
-                                            <span className="truncate">{name}</span>
-                                            <span className="font-semibold ml-1">{count}</span>
+
+                                const list = activeManagers.map(m => ({
+                                    name: m.name,
+                                    count: stats[m.name] || 0
+                                }));
+
+                                if (stats['Не назначен']) {
+                                    list.push({ name: 'Не назначен', count: stats['Не назначен'] });
+                                }
+
+                                return list
+                                    .sort((a, b) => b.count - a.count)
+                                    .map((m) => (
+                                        <div key={m.name} className={`flex justify-between ${m.count === 0 ? 'opacity-50' : ''}`}>
+                                            <span className="truncate">{m.name}</span>
+                                            <span className="font-semibold ml-1">{m.count}</span>
                                         </div>
                                     ));
                             })()}
@@ -213,7 +244,7 @@ export const PriorityDashboard = () => {
                         <div className="text-2xl font-bold text-red-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'overdue').length}
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
                                 const stats = orders
                                     .filter(o => o.today_stats.status === 'overdue')
@@ -222,13 +253,22 @@ export const PriorityDashboard = () => {
                                         acc[name] = (acc[name] || 0) + 1;
                                         return acc;
                                     }, {});
-                                return Object.entries(stats)
-                                    .sort((a: any, b: any) => b[1] - a[1])
-                                    .slice(0, 3)
-                                    .map(([name, count]: [string, any]) => (
-                                        <div key={name} className="flex justify-between">
-                                            <span className="truncate">{name}</span>
-                                            <span className="font-semibold ml-1">{count}</span>
+
+                                const list = activeManagers.map(m => ({
+                                    name: m.name,
+                                    count: stats[m.name] || 0
+                                }));
+
+                                if (stats['Не назначен']) {
+                                    list.push({ name: 'Не назначен', count: stats['Не назначен'] });
+                                }
+
+                                return list
+                                    .sort((a, b) => b.count - a.count)
+                                    .map((m) => (
+                                        <div key={m.name} className={`flex justify-between ${m.count === 0 ? 'opacity-50' : ''}`}>
+                                            <span className="truncate">{m.name}</span>
+                                            <span className="font-semibold ml-1">{m.count}</span>
                                         </div>
                                     ));
                             })()}
