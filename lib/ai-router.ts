@@ -30,31 +30,23 @@ export interface RoutingResult {
 /**
  * Analyze manager comment to determine target status for order routing
  */
-export async function analyzeOrderForRouting(comment: string): Promise<RoutingDecision> {
+export async function analyzeOrderForRouting(
+    comment: string,
+    allowedStatuses: Map<string, string>
+): Promise<RoutingDecision> {
+    // Build status list for prompt
+    const statusList = Array.from(allowedStatuses.entries())
+        .map(([code, name], i) => `${i + 1}. "${code}" - ${name}`)
+        .join('\n');
+
     const systemPrompt = `
 Ты - ассистент для обработки заказов в статусе "Согласование Отмены".
 
 Твоя задача: на основе комментария менеджера определить, в какой статус нужно перевести заказ.
 
-Доступные статусы отмены (выбери НАИБОЛЕЕ подходящий):
+Доступные статусы:
 
-1. "otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem" - Не прошли по цене (клиент нашёл дешевле)
-2. "cancel-other" - Купили в другом месте
-3. "net-takikh-pozitsii" - Нет таких позиций (товара нет на складе)
-4. "no-product" - Не устроили сроки (долгая доставка)
-5. "delyvery-did-not-suit" - Не устроила доставка
-6. "already-buyed" - Технические характеристики не подошли
-7. "otmenen-propala-neobkhodimost" - Пропала необходимость (клиент передумал)
-8. "zakazchik-ne-vykhodit-na-sviaz" - Заказчик не выходит на связь
-9. "ne-vydelen-biudzhet" - Не выделен бюджет
-10. "otmenili-zakupku-perenesli-na-bolee-pozdnij-srok" - Перенесли на более поздний срок
-11. "ne-vyigrali-tender" - Не выиграли тендер
-12. "tender-otkaz" - Отказались от участия в тендере
-13. "otmenili-zakupku-smeta" - Смета (бюджетные ограничения)
-14. "nasha-zakupochnaia-bolshe-ili-ravna-tseny-konkurentov" - Наша закупочная больше или равна цены конкурентов
-15. "tender-s-dubliruyuschimi-zayavkami" - Отмена: Дубль на тендер
-16. "bitriks" - Битрикс (технические причины)
-17. "starye" - Старые (устаревший заказ)
+${statusList}
 
 ВАЖНЫЕ ПРАВИЛА:
 - Если комментарий пустой или неинформативный ("ок", "тест", "+") -> используй "otmenen-propala-neobkhodimost"
@@ -64,6 +56,7 @@ export async function analyzeOrderForRouting(comment: string): Promise<RoutingDe
 - Если клиент не отвечает/не берёт трубку -> "zakazchik-ne-vykhodit-na-sviaz"
 - Если клиент передумал/отказался -> "otmenen-propala-neobkhodimost"
 - Если купили у конкурента -> "cancel-other"
+- Если заказ ещё в работе/нужно уточнить -> "novyi-1" или "zapros-kontaktov"
 - Если уверенность < 0.7, используй "otmenen-propala-neobkhodimost" (безопасный вариант)
 
 Верни ТОЛЬКО JSON (без markdown):
@@ -73,6 +66,42 @@ export async function analyzeOrderForRouting(comment: string): Promise<RoutingDe
   "reasoning": "Краткое объяснение на русском (1-2 предложения)"
 }
 `;
+
+    1. "otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem" - Не прошли по цене(клиент нашёл дешевле)
+    2. "cancel-other" - Купили в другом месте
+    3. "net-takikh-pozitsii" - Нет таких позиций(товара нет на складе)
+    4. "no-product" - Не устроили сроки(долгая доставка)
+    5. "delyvery-did-not-suit" - Не устроила доставка
+    6. "already-buyed" - Технические характеристики не подошли
+    7. "otmenen-propala-neobkhodimost" - Пропала необходимость(клиент передумал)
+    8. "zakazchik-ne-vykhodit-na-sviaz" - Заказчик не выходит на связь
+    9. "ne-vydelen-biudzhet" - Не выделен бюджет
+    10. "otmenili-zakupku-perenesli-na-bolee-pozdnij-srok" - Перенесли на более поздний срок
+    11. "ne-vyigrali-tender" - Не выиграли тендер
+    12. "tender-otkaz" - Отказались от участия в тендере
+    13. "otmenili-zakupku-smeta" - Смета(бюджетные ограничения)
+    14. "nasha-zakupochnaia-bolshe-ili-ravna-tseny-konkurentov" - Наша закупочная больше или равна цены конкурентов
+    15. "tender-s-dubliruyuschimi-zayavkami" - Отмена: Дубль на тендер
+    16. "bitriks" - Битрикс(технические причины)
+    17. "starye" - Старые(устаревший заказ)
+
+ВАЖНЫЕ ПРАВИЛА:
+    - Если комментарий пустой или неинформативный("ок", "тест", "+") -> используй "otmenen-propala-neobkhodimost"
+        - Если упоминается цена / дорого / дешевле -> "otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem"
+            - Если упоминается отсутствие товара / нет на складе -> "net-takikh-pozitsii"
+                - Если упоминаются сроки / долго / поздно -> "no-product"
+                    - Если клиент не отвечает / не берёт трубку -> "zakazchik-ne-vykhodit-na-sviaz"
+                        - Если клиент передумал / отказался -> "otmenen-propala-neobkhodimost"
+                            - Если купили у конкурента -> "cancel-other"
+                                - Если уверенность < 0.7, используй "otmenen-propala-neobkhodimost"(безопасный вариант)
+
+Верни ТОЛЬКО JSON(без markdown):
+    {
+        "target_status": "код_статуса",
+            "confidence": 0.0 - 1.0,
+                "reasoning": "Краткое объяснение на русском (1-2 предложения)"
+    }
+    `;
 
     try {
         const completion = await openai.chat.completions.create({
@@ -90,27 +119,9 @@ export async function analyzeOrderForRouting(comment: string): Promise<RoutingDe
 
         const result = JSON.parse(content);
 
-        // Validate and sanitize
-        const validStatuses = [
-            'otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem',
-            'cancel-other',
-            'net-takikh-pozitsii',
-            'no-product',
-            'delyvery-did-not-suit',
-            'already-buyed',
-            'otmenen-propala-neobkhodimost',
-            'zakazchik-ne-vykhodit-na-sviaz',
-            'ne-vydelen-biudzhet',
-            'otmenili-zakupku-perenesli-na-bolee-pozdnij-srok',
-            'ne-vyigrali-tender',
-            'tender-otkaz',
-            'otmenili-zakupku-smeta',
-            'nasha-zakupochnaia-bolshe-ili-ravna-tseny-konkurentov',
-            'tender-s-dubliruyuschimi-zayavkami',
-            'bitriks',
-            'starye'
-        ];
-
+        // Validate against allowed statuses
+        const validStatuses = Array.from(allowedStatuses.keys());
+        
         if (!validStatuses.includes(result.target_status)) {
             console.warn(`Invalid status "${result.target_status}", defaulting to "otmenen-propala-neobkhodimost"`);
             result.target_status = 'otmenen-propala-neobkhodimost';
@@ -132,7 +143,7 @@ export async function analyzeOrderForRouting(comment: string): Promise<RoutingDe
     } catch (e) {
         console.error('AI Routing Analysis Error:', e);
         return {
-            target_status: 'work',
+            target_status: 'otmenen-propala-neobkhodimost',
             confidence: 0,
             reasoning: 'Ошибка анализа - требуется ручная проверка'
         };
