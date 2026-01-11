@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         // Note: order_metrics uses retailcrm_order_id, not orders.id
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
-            .select('id, status, site')
+            .select('id, status')
             .eq('status', 'soglasovanie-otmeny')
             .limit(options.limit!);
 
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
 
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
                     try {
-                        // First, fetch the order from RetailCRM to get its site
+                        // First, fetch the order from RetailCRM to get its site and LATEST manager comment
                         const fetchResponse = await fetch(
                             `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=20`
                         );
@@ -119,13 +119,19 @@ export async function POST(request: Request) {
 
                         const retailcrmOrder = fetchData.orders[0];
                         const orderSite = retailcrmOrder.site;
+                        const existingComment = retailcrmOrder.managerComment || '';
 
-                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}`);
+                        // Append new comment, ensuring there's a separator if existing comment is not empty
+                        const newComment = existingComment
+                            ? `${existingComment}\n\nОКК: ${decision.reasoning}`
+                            : `ОКК: ${decision.reasoning}`;
+
+                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}. Existing comment length: ${existingComment.length}`);
 
                         // Update status in RetailCRM
                         const requestBody = {
                             status: decision.target_status,
-                            managerComment: `ОКК: ${decision.reasoning}`, // Add AI reasoning to manager comment
+                            managerComment: newComment,
                             // Clear next_contact_date to avoid validation errors
                             customFields: {
                                 next_contact_date: null
