@@ -31,7 +31,21 @@ export async function GET(request: Request) {
             return NextResponse.json({ success: true, orders: [] });
         }
 
-        // 2. Aggregate statistics from Supabase for these specific orders
+        // 2. Get unique manager IDs and fetch their names from DB
+        const managerIds = Array.from(new Set(orders.map((o: any) => o.managerId).filter(Boolean)));
+        const { data: managers } = await supabase
+            .from('managers')
+            .select('retailcrm_manager_id, first_name, last_name')
+            .in('retailcrm_manager_id', managerIds);
+
+        const managerMap = new Map(
+            (managers || []).map(m => [
+                String(m.retailcrm_manager_id),
+                `${m.last_name} ${m.first_name}`
+            ])
+        );
+
+        // 3. Aggregate statistics from Supabase for these specific orders
         const { data: calls } = await supabase
             .from('call_order_matches')
             .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(*)')
@@ -43,7 +57,7 @@ export async function GET(request: Request) {
             .in('retailcrm_order_id', orderIds)
             .eq('event_type', 'mail_send');
 
-        // 3. Process each order
+        // 4. Process each order
         const processedOrders = orders.map((order: any) => {
             // Filter calls ONLY for target date
             const orderCalls = (calls || [])
@@ -82,6 +96,8 @@ export async function GET(request: Request) {
                 id: order.id,
                 number: order.number,
                 totalSumm: order.totalSumm,
+                managerId: order.managerId,
+                managerName: managerMap.get(String(order.managerId)) || null,
                 today_stats: {
                     call_count: callCount,
                     has_dialogue: hasDialogue,

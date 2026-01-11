@@ -20,7 +20,8 @@ interface PriorityOrder {
     id: number;
     number: string;
     totalSumm: number;
-    managerComment: string;
+    managerId?: number;
+    managerName?: string;
     today_stats: {
         call_count: number;
         has_dialogue: boolean;
@@ -106,14 +107,11 @@ export const PriorityDashboard = () => {
                 </Button>
             </div>
 
-            {/* Manager Summary */}
+            {/* Manager Summary - Compact */}
             {orders.length > 0 && (() => {
+                const totalSum = orders.reduce((sum, o) => sum + (o.totalSumm || 0), 0);
                 const managerStats = orders.reduce((acc: any, order) => {
-                    const managerName = order.raw_payload?.manager
-                        ? `${order.raw_payload.manager.lastName} ${order.raw_payload.manager.firstName}`
-                        : order.raw_payload?.managerId
-                            ? `ID ${order.raw_payload.managerId}`
-                            : 'Не назначен';
+                    const managerName = order.managerName || `ID ${order.managerId}` || 'Не назначен';
 
                     if (!acc[managerName]) {
                         acc[managerName] = { count: 0, sum: 0 };
@@ -123,23 +121,22 @@ export const PriorityDashboard = () => {
                     return acc;
                 }, {});
 
+                const sortedManagers = Object.entries(managerStats).sort((a: any, b: any) => b[1].count - a[1].count);
+
                 return (
                     <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                        <CardHeader>
-                            <CardTitle className="text-sm font-medium text-blue-900">Распределение по менеджерам</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                                {Object.entries(managerStats).map(([name, stats]: [string, any]) => (
-                                    <div key={name} className="bg-white rounded-lg p-3 border border-blue-100">
-                                        <div className="text-xs font-medium text-gray-600 mb-1">{name}</div>
-                                        <div className="flex items-baseline gap-2">
-                                            <span className="text-lg font-bold text-blue-600">{stats.count}</span>
-                                            <span className="text-xs text-gray-500">заказов</span>
-                                        </div>
-                                        <div className="text-xs font-medium text-gray-700 mt-1">
-                                            {stats.sum.toLocaleString()} ₽
-                                        </div>
+                        <CardContent className="pt-6">
+                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                                <div className="font-bold text-gray-900">
+                                    Всего {orders.length} — {totalSum.toLocaleString()} ₽
+                                </div>
+                                {sortedManagers.map(([name, stats]: [string, any]) => (
+                                    <div key={name} className="text-gray-700">
+                                        <span className="font-medium">{name}</span>
+                                        {' '}
+                                        <span className="text-blue-600 font-semibold">{stats.count}</span>
+                                        {' — '}
+                                        <span className="text-gray-600">{stats.sum.toLocaleString()} ₽</span>
                                     </div>
                                 ))}
                             </div>
@@ -228,13 +225,7 @@ export const PriorityDashboard = () => {
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1">
                                         <span className="font-medium">Менеджер:</span>
-                                        <span>
-                                            {order.raw_payload?.manager
-                                                ? `${order.raw_payload.manager.lastName} ${order.raw_payload.manager.firstName}`
-                                                : order.raw_payload?.managerId
-                                                    ? `ID ${order.raw_payload.managerId}`
-                                                    : 'Не назначен'}
-                                        </span>
+                                        <span>{order.managerName || `ID ${order.managerId}` || 'Не назначен'}</span>
                                     </div>
                                     <div className="text-sm font-medium">
                                         {order.totalSumm?.toLocaleString()} ₽
