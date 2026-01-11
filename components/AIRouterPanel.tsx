@@ -203,7 +203,14 @@ export default function AIRouterPanel() {
                                         {results.slice(0, 10).map((result) => (
                                             <tr key={result.order_id} className="border-t hover:bg-gray-50">
                                                 <td className="px-4 py-2 font-mono text-xs">
-                                                    #{result.order_id}
+                                                    <a
+                                                        href={`https://zmktlt.retailcrm.ru/orders/${result.order_id}/edit`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-blue-600 hover:underline"
+                                                    >
+                                                        #{result.order_id}
+                                                    </a>
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
