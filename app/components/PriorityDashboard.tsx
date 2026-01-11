@@ -235,8 +235,8 @@ export const PriorityDashboard = () => {
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold tracking-tight">Утренний Спринт (Ключевые заказы)</h2>
-                    <p className="text-muted-foreground">Обработака приоритетных лидов до 14:00</p>
+                    <h2 className="text-xl md:text-2xl font-bold tracking-tight">Ключевые заказы</h2>
+                    <p className="text-muted-foreground hidden md:block">Обработака приоритетных лидов до 14:00</p>
                 </div>
                 <div className="flex gap-2">
                     <Button
@@ -438,7 +438,7 @@ export const PriorityDashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold mb-2">{filteredOrders.length}</div>
-                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1 hidden md:block">
                             {(() => {
                                 const stats = filteredOrders.reduce((acc: any, o) => {
                                     const name = o.managerName || 'Не назначен';
@@ -480,7 +480,7 @@ export const PriorityDashboard = () => {
                         <div className="text-2xl font-bold text-red-600 mb-2">
                             {filteredOrders.filter(o => o.today_stats.status === 'overdue').length}
                         </div>
-                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
+                        <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1 hidden md:block">
                             {(() => {
                                 const stats = filteredOrders
                                     .filter(o => o.today_stats.status === 'overdue')
@@ -525,7 +525,7 @@ export const PriorityDashboard = () => {
                                         order.today_stats.status === 'fallback_required' ? '#f97316' : '#3b82f6'
                         }}>
                             <CardContent className="p-0">
-                                <div className="flex flex-col md:flex-row items-start md:items-center p-6 gap-6">
+                                <div className="flex flex-col md:flex-row items-start md:items-center p-4 md:p-6 gap-4 md:gap-6">
                                     <div className="flex-1 space-y-1">
                                         <div className="flex items-center gap-3 flex-wrap">
                                             <a
@@ -558,7 +558,7 @@ export const PriorityDashboard = () => {
                                             {order.raw_payload?.items?.[0]?.offer?.name || 'Заказ без товаров'}
                                         </div>
                                         <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <span className="font-medium">Менеджер:</span>
+                                            <span className="font-medium hidden md:inline">Менеджер:</span>
                                             <span>{order.managerName || `ID ${order.managerId}` || 'Не назначен'}</span>
                                         </div>
                                         <div className="text-sm font-medium">
@@ -566,26 +566,27 @@ export const PriorityDashboard = () => {
                                         </div>
                                     </div>
 
-                                    <div className="flex gap-8 items-center">
+                                    <div className="flex gap-4 md:gap-8 items-center w-full md:w-auto justify-between md:justify-start border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0">
                                         <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Звонки</div>
+                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Звонки</div>
                                             <div className="flex items-center justify-center gap-1.5 font-bold">
                                                 <PhoneCall className={`w-4 h-4 ${order.today_stats.call_count > 0 ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
                                                 <span className={order.today_stats.call_count >= 3 ? 'text-orange-600' : ''}>
-                                                    {order.today_stats.call_count} / 3
+                                                    {order.today_stats.call_count}
+                                                    <span className="text-gray-400 font-normal"> / 3</span>
                                                 </span>
                                             </div>
                                         </div>
 
                                         <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Диалог</div>
+                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Диалог</div>
                                             <div className="flex justify-center">
                                                 <MessageSquare className={`w-5 h-5 ${order.today_stats.has_dialogue ? 'text-green-500' : 'text-muted-foreground opacity-30'}`} />
                                             </div>
                                         </div>
 
                                         <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Email</div>
+                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Email</div>
                                             <div className="flex justify-center">
                                                 <Mail className={`w-5 h-5 ${order.today_stats.has_email ? 'text-blue-500' : 'text-muted-foreground opacity-30'}`} />
                                             </div>
@@ -598,13 +599,13 @@ export const PriorityDashboard = () => {
                                 </div>
 
                                 {order.today_stats.calls.length > 0 && (
-                                    <div className="bg-muted/30 px-6 py-4 border-t">
-                                        <div className="text-xs font-semibold uppercase text-muted-foreground mb-3 flex items-center gap-2">
+                                    <div className="bg-muted/30 px-4 md:px-6 py-3 md:py-4 border-t">
+                                        <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 md:mb-3 flex items-center gap-2">
                                             <PhoneCall className="w-3 h-3" /> Последние активности
                                         </div>
-                                        <div className="space-y-3">
+                                        <div className="space-y-2 md:space-y-3">
                                             {order.today_stats.calls.slice(0, 2).map((call: any, idx: number) => (
-                                                <div key={idx} className="text-sm bg-white p-3 rounded border shadow-sm">
+                                                <div key={idx} className="text-sm bg-white p-2 md:p-3 rounded border shadow-sm">
                                                     <div className="flex justify-between mb-1 items-center">
                                                         <span className="text-xs font-medium text-primary">
                                                             {new Date(call.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
