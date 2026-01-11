@@ -116,11 +116,9 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
         // Skip events without metadata (old events with potentially incorrect timestamps)
         if (!e.raw_payload?._sync_metadata) {
-            console.log(`[RuleEngine] Skipping event ${e.event_id} - no sync metadata`);
             return false;
         }
 
-        // IMPORTANT: Check if event actually occurred within the time range
         const actualEventTime = getActualEventTime(e);
         const eventDate = new Date(actualEventTime);
         const rangeStart = new Date(startDate);
@@ -131,6 +129,12 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         }
 
         const params = rule.parameters || {};
+
+        if (params.manager_ids?.length > 0) {
+            if (!params.manager_ids.includes(managerId) && !params.manager_ids.includes(Number(managerId))) {
+                return false;
+            }
+        }
 
         const om = {
             current_status: e.order_metrics?.current_status,
@@ -172,37 +176,32 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
     console.log(`[RuleEngine] Filtered ${violations.length} violations for rule ${rule.code}.`);
 
-    if (violations.length > 0) {
-        const records = violations.map((v: any) => ({
-            rule_code: rule.code,
-            order_id: v.retailcrm_order_id,
-            manager_id: v.order_metrics?.manager_id,
-            violation_time: v.occurred_at,
-            severity: rule.severity,
-            details: `Событие: ${v.event_type === 'status_changed' ? 'Смена статуса' : v.event_type}. ${rule.description || rule.name}`
-        }));
+    const records = violations.map((v: any) => ({
+        rule_code: rule.code,
+        order_id: v.retailcrm_order_id,
+        manager_id: v.order_metrics?.manager_id,
+        violation_time: v.occurred_at,
+        call_id: null, // Critical: must be null for event violations
+        severity: rule.severity,
+        details: `Событие: ${v.event_type === 'status_changed' ? 'Смена статуса' : v.event_type}. ${rule.description || rule.name}`
+    }));
 
-        let saved = 0;
-        console.log(`[RuleEngine] Attempting to save ${records.length} records...`);
-        for (let i = 0; i < records.length; i++) {
-            const record = records[i];
-            const { error: insError } = await supabase
-                .from('okk_violations')
-                .upsert(record, { onConflict: 'rule_code, order_id, violation_time' });
+    let saved = 0;
+    for (const record of records) {
+        const { error: insError } = await supabase
+            .from('okk_violations')
+            .upsert(record, { onConflict: 'rule_code, order_id, violation_time, call_id' });
 
-            if (!insError) {
-                saved++;
-                console.log(`[RuleEngine] [${i + 1}/${records.length}] Saved violation for order ${record.order_id}`);
-            } else if (insError.code === '23505') {
-                console.log(`[RuleEngine] [${i + 1}/${records.length}] Duplicate for order ${record.order_id} skipped.`);
-            } else {
-                console.error(`[RuleEngine] [${i + 1}/${records.length}] Error saving order ${record.order_id}:`, insError);
-            }
+        if (!insError) {
+            saved++;
+        } else if (insError.code === '23505') {
+            // Already exists
+        } else {
+            console.error(`[RuleEngine] Error saving order ${record.order_id}:`, insError);
         }
-        console.log(`[RuleEngine] Successfully saved ${saved} violations for rule ${rule.code}.`);
-        return saved;
     }
-    return 0;
+    console.log(`[RuleEngine] Successfully saved ${saved} violations for rule ${rule.code}.`);
+    return saved;
 }
 
 async function executeCallRule(rule: any, startDate: string, endDate: string): Promise<number> {
