@@ -107,84 +107,131 @@ export const PriorityDashboard = () => {
                 </Button>
             </div>
 
-            {/* Manager Summary - Compact */}
-            {orders.length > 0 && (() => {
-                const totalSum = orders.reduce((sum, o) => sum + (o.totalSumm || 0), 0);
-                const managerStats = orders.reduce((acc: any, order) => {
-                    const managerName = order.managerName || `ID ${order.managerId}` || 'Не назначен';
-
-                    if (!acc[managerName]) {
-                        acc[managerName] = { count: 0, sum: 0 };
-                    }
-                    acc[managerName].count++;
-                    acc[managerName].sum += order.totalSumm || 0;
-                    return acc;
-                }, {});
-
-                const sortedManagers = Object.entries(managerStats).sort((a: any, b: any) => b[1].count - a[1].count);
-
-                return (
-                    <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-                        <CardContent className="pt-6">
-                            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-                                <div className="font-bold text-gray-900">
-                                    Всего {orders.length} — {totalSum.toLocaleString()} ₽
-                                </div>
-                                {sortedManagers.map(([name, stats]: [string, any]) => (
-                                    <div key={name} className="text-gray-700">
-                                        <span className="font-medium">{name}</span>
-                                        {' '}
-                                        <span className="text-blue-600 font-semibold">{stats.count}</span>
-                                        {' — '}
-                                        <span className="text-gray-600">{stats.sum.toLocaleString()} ₽</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </CardContent>
-                    </Card>
-                );
-            })()}
-
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {/* Всего ключевых */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Всего ключевых</CardTitle>
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{orders.length}</div>
+                        <div className="text-2xl font-bold mb-2">{orders.length}</div>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                            {(() => {
+                                const stats = orders.reduce((acc: any, o) => {
+                                    const name = o.managerName || 'Не назначен';
+                                    acc[name] = (acc[name] || 0) + 1;
+                                    return acc;
+                                }, {});
+                                return Object.entries(stats)
+                                    .sort((a: any, b: any) => b[1] - a[1])
+                                    .slice(0, 3)
+                                    .map(([name, count]: [string, any]) => (
+                                        <div key={name} className="flex justify-between">
+                                            <span className="truncate">{name}</span>
+                                            <span className="font-semibold ml-1">{count}</span>
+                                        </div>
+                                    ));
+                            })()}
+                        </div>
                     </CardContent>
                 </Card>
+
+                {/* Обработано */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Обработано</CardTitle>
                         <CheckCircle2 className="h-4 w-4 text-green-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-green-600">
+                        <div className="text-2xl font-bold text-green-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'success').length}
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                            {(() => {
+                                const stats = orders
+                                    .filter(o => o.today_stats.status === 'success')
+                                    .reduce((acc: any, o) => {
+                                        const name = o.managerName || 'Не назначен';
+                                        acc[name] = (acc[name] || 0) + 1;
+                                        return acc;
+                                    }, {});
+                                return Object.entries(stats)
+                                    .sort((a: any, b: any) => b[1] - a[1])
+                                    .slice(0, 3)
+                                    .map(([name, count]: [string, any]) => (
+                                        <div key={name} className="flex justify-between">
+                                            <span className="truncate">{name}</span>
+                                            <span className="font-semibold ml-1">{count}</span>
+                                        </div>
+                                    ));
+                            })()}
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Нужно письмо */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Нужно письмо</CardTitle>
                         <Mail className="h-4 w-4 text-orange-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-orange-600">
+                        <div className="text-2xl font-bold text-orange-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'fallback_required').length}
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                            {(() => {
+                                const stats = orders
+                                    .filter(o => o.today_stats.status === 'fallback_required')
+                                    .reduce((acc: any, o) => {
+                                        const name = o.managerName || 'Не назначен';
+                                        acc[name] = (acc[name] || 0) + 1;
+                                        return acc;
+                                    }, {});
+                                return Object.entries(stats)
+                                    .sort((a: any, b: any) => b[1] - a[1])
+                                    .slice(0, 3)
+                                    .map(([name, count]: [string, any]) => (
+                                        <div key={name} className="flex justify-between">
+                                            <span className="truncate">{name}</span>
+                                            <span className="font-semibold ml-1">{count}</span>
+                                        </div>
+                                    ));
+                            })()}
                         </div>
                     </CardContent>
                 </Card>
+
+                {/* Просрочено */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Просрочено</CardTitle>
                         <AlertCircle className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold text-red-600">
+                        <div className="text-2xl font-bold text-red-600 mb-2">
                             {orders.filter(o => o.today_stats.status === 'overdue').length}
+                        </div>
+                        <div className="text-xs text-muted-foreground space-y-0.5">
+                            {(() => {
+                                const stats = orders
+                                    .filter(o => o.today_stats.status === 'overdue')
+                                    .reduce((acc: any, o) => {
+                                        const name = o.managerName || 'Не назначен';
+                                        acc[name] = (acc[name] || 0) + 1;
+                                        return acc;
+                                    }, {});
+                                return Object.entries(stats)
+                                    .sort((a: any, b: any) => b[1] - a[1])
+                                    .slice(0, 3)
+                                    .map(([name, count]: [string, any]) => (
+                                        <div key={name} className="flex justify-between">
+                                            <span className="truncate">{name}</span>
+                                            <span className="font-semibold ml-1">{count}</span>
+                                        </div>
+                                    ));
+                            })()}
                         </div>
                     </CardContent>
                 </Card>
