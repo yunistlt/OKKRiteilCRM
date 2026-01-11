@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         // Note: order_metrics uses retailcrm_order_id, not orders.id
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
-            .select('id, status')
+            .select('id, status, site')
             .eq('status', 'soglasovanie-otmeny')
             .limit(options.limit!);
 

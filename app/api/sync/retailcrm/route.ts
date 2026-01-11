@@ -115,6 +115,7 @@ export async function GET(request: Request) {
                     updated_at: new Date().toISOString(),
                     number: order.number || String(order.id),
                     status: order.status,
+                    site: order.site || null, // Add site field
                     event_type: 'snapshot',
                     manager_id: order.managerId ? String(order.managerId) : null,
                     phone: cleanPhone(order.phone) || null,
