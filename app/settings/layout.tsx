@@ -15,6 +15,7 @@ export default function SettingsLayout({
         { name: 'Менеджеры', href: '/settings/managers', icon: '👤' },
         { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📊' },
         { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️' },
+        { name: 'AI Инструменты', href: '/settings/ai-tools', icon: '🤖' },
         { name: 'Статус Систем', href: '/settings/status', icon: '⚡️' },
     ];
 
