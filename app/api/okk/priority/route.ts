@@ -112,7 +112,15 @@ export async function GET(request: Request) {
 
         if (!crmData.success) {
             console.error('[PriorityAPI] RetailCRM Error:', JSON.stringify(crmData));
-            throw new Error(`RetailCRM API Error: ${crmData.errorMsg || 'Unknown error'}`);
+            const debugInfo = JSON.stringify({
+                statuses,
+                control,
+                sumMin,
+                sumMax,
+                dateFrom,
+                dateTo
+            });
+            throw new Error(`retailCRM Error: ${JSON.stringify(crmData.errors || crmData.errorMsg)} | Params: ${debugInfo}`);
         }
 
         const orders = crmData.orders || [];
