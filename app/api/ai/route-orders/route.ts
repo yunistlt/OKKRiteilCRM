@@ -34,7 +34,7 @@ export async function POST(request: Request) {
             .from('statuses')
             .select('code, name, group_name, is_working')
             .eq('is_active', true)
-            .or('group_name.ilike.%отмен%,is_working.eq.true');
+            .or('group_name.ilike.%отмен%,group_name.ilike.%согласован%,group_name.ilike.%тендер%,group_name.ilike.%оплат%,group_name.ilike.%новый%,is_working.eq.true');
 
         const allowedStatusMap = new Map(
             allowedStatuses?.map(s => [s.code, s.name]) || []
