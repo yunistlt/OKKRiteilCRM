@@ -107,6 +107,21 @@ export async function POST(request: Request) {
 
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
                     try {
+                        // First, fetch the order from RetailCRM to get its site
+                        const fetchResponse = await fetch(
+                            `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=20`
+                        );
+                        const fetchData = await fetchResponse.json();
+
+                        if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
+                            throw new Error(`Order ${order.id} not found in RetailCRM`);
+                        }
+
+                        const retailcrmOrder = fetchData.orders[0];
+                        const orderSite = retailcrmOrder.site;
+
+                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}`);
+
                         // Update status in RetailCRM
                         const requestBody = {
                             status: decision.target_status,
@@ -129,7 +144,7 @@ export async function POST(request: Request) {
                             },
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
-                                site: 'zmktlt-ru', // Default site for CRM
+                                site: orderSite, // Use the order's actual site
                                 order: JSON.stringify(requestBody)
                             })
                         });
