@@ -46,7 +46,7 @@ export async function POST(request: Request) {
         // Note: order_metrics uses retailcrm_order_id, not orders.id
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
-            .select('id, status')
+            .select('id, status, site')
             .eq('status', 'soglasovanie-otmeny')
             .limit(options.limit!);
 
@@ -109,6 +109,7 @@ export async function POST(request: Request) {
                     try {
                         // Update status in RetailCRM
                         const requestBody = {
+                            site: order.site || 'zmktlt', // Use order site or default
                             status: decision.target_status,
                             // Clear next_contact_date to avoid validation errors
                             customFields: {
