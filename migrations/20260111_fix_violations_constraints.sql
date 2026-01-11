@@ -10,10 +10,15 @@ DROP CONSTRAINT IF EXISTS unique_call_rule_violation,
 DROP CONSTRAINT IF EXISTS unique_order_event_violation;
 
 -- 2. Create improved constraints
--- For Call rules: unique per rule and call
-ALTER TABLE public.okk_violations 
-ADD CONSTRAINT unique_call_rule_violation 
-UNIQUE NULLS NOT DISTINCT (rule_code, call_id);
+-- We will rely on unique_order_event_violation for EVERYTHING.
+-- It covers (rule_code, call_id) implicit uniqueness if call_id is not null?
+-- No, we should have a separate one for calls if we want simple uniqueness there.
+-- BUT, for Call Rules, call_id is the primary identifier.
+-- Let's use simple UNIQUE for call rules, treating NULLs as distinct (so they don't block each other if inserted by mistake, but mainly call_ids are not null there).
+-- Actually, the best is to just DROP unique_call_rule_violation and have one big constraint.
+
+-- Or, make unique_call_rule_violation partial index?
+-- CREATE UNIQUE INDEX unique_call_rule_violation ON public.okk_violations (rule_code, call_id) WHERE call_id IS NOT NULL;
 
 -- For Event/Order rules: unique per rule, order, and time
 -- Using NULLS NOT DISTINCT ensures that if call_id is NULL (which it is for events), 
