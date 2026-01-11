@@ -218,48 +218,40 @@ export async function saveMatches(matches: MatchResult[]): Promise<void> {
 /**
  * Обрабатывает все звонки без матчей
  */
+/**
+ * Обрабатывает все звонки без матчей используя SQL функцию для производительности
+ */
 export async function processUnmatchedCalls(limit: number = 100): Promise<number> {
-    // 1. Получаем все ID звонков, которые уже сматчены
-    const { data: matchedCallIds } = await supabase
-        .from('call_order_matches')
-        .select('telphin_call_id');
+    console.log(`[Matching] Starting SQL-based matching process (limit: ${limit})...`);
 
-    const matchedIds = new Set(matchedCallIds?.map(m => m.telphin_call_id) || []);
+    try {
+        // 1. Trigger the SQL matcher function
+        // This function finds matches and returns them
+        const { data: matches, error } = await supabase.rpc('match_calls_to_orders', {
+            batch_limit: limit
+        });
 
-    console.log(`[Matching] Already matched: ${matchedIds.size} calls`);
-
-    // 2. Получаем все звонки
-    const { data: allCalls } = await supabase
-        .from('raw_telphin_calls')
-        .select('*')
-        .order('started_at', { ascending: false })
-        .limit(limit * 2); // Берём с запасом
-
-    if (!allCalls || allCalls.length === 0) {
-        return 0;
-    }
-
-    // 3. Фильтруем несматченные
-    const unmatchedCalls = allCalls
-        .filter(call => !matchedIds.has(call.telphin_call_id))
-        .slice(0, limit);
-
-    console.log(`[Matching] Processing ${unmatchedCalls.length} unmatched calls...`);
-
-    if (unmatchedCalls.length === 0) {
-        return 0;
-    }
-
-    let totalMatches = 0;
-
-    for (const call of unmatchedCalls) {
-        const matches = await matchCallToOrders(call as RawCall);
-        if (matches.length > 0) {
-            await saveMatches(matches);
-            totalMatches += matches.length;
-            console.log(`[Matching] Call ${call.telphin_call_id}: ${matches.length} matches found`);
+        if (error) {
+            console.error('[Matching] SQL Function Error:', error);
+            throw error;
         }
-    }
 
-    return totalMatches;
+        if (!matches || matches.length === 0) {
+            console.log('[Matching] No new matches found.');
+            return 0;
+        }
+
+        console.log(`[Matching] SQL function returned ${matches.length} potential matches.`);
+
+        // 2. Save the results
+        // match_calls_to_orders returns the full structure needed for saveMatches
+        await saveMatches(matches as MatchResult[]);
+
+        console.log(`[Matching] Successfully saved ${matches.length} matches.`);
+        return matches.length;
+
+    } catch (e: any) {
+        console.error('[Matching] Fatal error in SQL matching:', e.message);
+        throw e;
+    }
 }
