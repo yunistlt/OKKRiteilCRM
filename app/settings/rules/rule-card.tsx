@@ -84,7 +84,12 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
         }
     };
 
-    const handleTestRule = async () => {
+    const handleTestRule = async (e?: React.MouseEvent) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
         if (!confirm('Запустить синтетическую проверку правила? Будет создан временный заказ и событие.')) return;
 
         setIsLoading(true);
