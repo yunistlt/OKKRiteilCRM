@@ -109,11 +109,18 @@ export async function GET(request: Request) {
             };
         });
 
-        // 5. Fetch all active managers for the dashboard list
+        // 5. Fetch only CONTROLLED managers for the dashboard list
+        const { data: controlledSettings } = await supabase
+            .from('manager_settings')
+            .select('id')
+            .eq('is_controlled', true);
+
+        const controlledIds = (controlledSettings || []).map(s => s.id);
+
         const { data: activeManagers } = await supabase
             .from('managers')
             .select('id, first_name, last_name')
-            .eq('active', true);
+            .in('id', controlledIds);
 
         return NextResponse.json({
             success: true,
