@@ -163,7 +163,14 @@ export const PriorityDashboard = () => {
                             <div className="flex flex-col md:flex-row items-start md:items-center p-6 gap-6">
                                 <div className="flex-1 space-y-1">
                                     <div className="flex items-center gap-3">
-                                        <span className="text-lg font-bold">#{order.number}</span>
+                                        <a
+                                            href={`https://${order.raw_payload?.site}.retailcrm.ru/orders/${order.id}/edit`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-lg font-bold hover:text-primary transition-colors hover:underline"
+                                        >
+                                            #{order.number}
+                                        </a>
                                         {getStatusBadge(order.today_stats.status)}
                                         <a
                                             href={`https://${order.raw_payload?.site}.retailcrm.ru/orders/${order.id}/edit`}
