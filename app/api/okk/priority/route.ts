@@ -81,7 +81,7 @@ export async function GET(request: Request) {
 
         // Status Filter
         statuses.forEach(status => {
-            crmUrl += `&filter[status][]=${status}`;
+            crmUrl += `&filter[extendedStatus][]=${status}`;
         });
 
         // Control Filter
