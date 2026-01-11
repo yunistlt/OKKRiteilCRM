@@ -109,10 +109,19 @@ export async function GET(request: Request) {
             };
         });
 
+        // 5. Fetch all active managers for the dashboard list
+        const { data: activeManagers } = await supabase
+            .from('managers')
+            .select('id, first_name, last_name')
+            .eq('active', true);
+
         return NextResponse.json({
             success: true,
-            date,
-            orders: processedOrders
+            orders: processedOrders.sort((a: any, b: any) => b.totalSumm - a.totalSumm), // Sort by sum desc
+            activeManagers: (activeManagers || []).map(m => ({
+                id: m.id,
+                name: `${m.last_name} ${m.first_name}`
+            }))
         });
 
     } catch (error: any) {
