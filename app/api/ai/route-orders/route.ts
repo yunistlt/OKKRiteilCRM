@@ -146,6 +146,7 @@ export async function POST(request: Request) {
                     order_id: order.id,
                     from_status: order.status,
                     to_status: decision.target_status,
+                    to_status_name: statusMap.get(decision.target_status) || decision.target_status,
                     confidence: decision.confidence,
                     reasoning: decision.reasoning,
                     was_applied: wasApplied,
@@ -157,7 +158,8 @@ export async function POST(request: Request) {
                 results.push({
                     order_id: order.id,
                     from_status: order.status,
-                    to_status: 'work',
+                    to_status: 'otmenen-propala-neobkhodimost',
+                    to_status_name: statusMap.get('otmenen-propala-neobkhodimost') || 'Пропала необходимость',
                     confidence: 0,
                     reasoning: 'Processing error',
                     was_applied: false,

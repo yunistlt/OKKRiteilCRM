@@ -6,6 +6,7 @@ interface RoutingResult {
     order_id: number;
     from_status: string;
     to_status: string;
+    to_status_name?: string;
     confidence: number;
     reasoning: string;
     was_applied: boolean;
@@ -206,13 +207,13 @@ export default function AIRouterPanel() {
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
-                                                        {getStatusLabel(result.to_status)}
+                                                        {result.to_status_name || result.to_status}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <span className={`font-semibold ${result.confidence >= 0.8 ? 'text-green-600' :
-                                                            result.confidence >= 0.6 ? 'text-yellow-600' :
-                                                                'text-red-600'
+                                                        result.confidence >= 0.6 ? 'text-yellow-600' :
+                                                            'text-red-600'
                                                         }`}>
                                                         {(result.confidence * 100).toFixed(0)}%
                                                     </span>

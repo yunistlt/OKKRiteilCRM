@@ -21,6 +21,7 @@ export interface RoutingResult {
     order_id: number;
     from_status: string;
     to_status: string;
+    to_status_name?: string;
     confidence: number;
     reasoning: string;
     was_applied: boolean;
