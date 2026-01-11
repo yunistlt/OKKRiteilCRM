@@ -108,6 +108,16 @@ export async function POST(request: Request) {
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
                     try {
                         // Update status in RetailCRM
+                        const requestBody = {
+                            status: decision.target_status,
+                            // Clear next_contact_date to avoid validation errors
+                            customFields: {
+                                next_contact_date: null
+                            }
+                        };
+
+                        console.log(`[AIRouter] Updating order ${order.id} in RetailCRM:`, requestBody);
+
                         const retailcrmResponse = await fetch(`${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit`, {
                             method: 'POST',
                             headers: {
@@ -115,21 +125,15 @@ export async function POST(request: Request) {
                             },
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
-                                order: JSON.stringify({
-                                    status: decision.target_status,
-                                    // Clear next_contact_date to avoid validation errors
-                                    // (can't be in the past for some statuses)
-                                    customFields: {
-                                        next_contact_date: null
-                                    }
-                                })
+                                order: JSON.stringify(requestBody)
                             })
                         });
 
                         const retailcrmData = await retailcrmResponse.json();
+                        console.log(`[AIRouter] RetailCRM response for order ${order.id}:`, retailcrmData);
 
                         if (!retailcrmData.success) {
-                            throw new Error(retailcrmData.errorMsg || 'RetailCRM API error');
+                            throw new Error(JSON.stringify(retailcrmData));
                         }
 
                         // Also update in our local database
