@@ -120,7 +120,7 @@ export async function GET(request: Request) {
             orders: processedOrders.sort((a: any, b: any) => b.totalSumm - a.totalSumm), // Sort by sum desc
             activeManagers: (activeManagers || []).map(m => ({
                 id: m.id,
-                name: `${m.last_name} ${m.first_name}`
+                name: m.last_name ? `${m.last_name} ${m.first_name}` : m.first_name
             }))
         });
 
