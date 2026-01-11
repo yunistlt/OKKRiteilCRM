@@ -17,14 +17,12 @@ export async function POST(request: Request) {
 
         console.log('[AIRouter] Starting with options:', options);
 
-        // 0. Get allowed statuses from settings (where АНАЛИЗ is checked)
+        // 0. Get allowed statuses from settings (where "АНАЛИЗ" checkbox is checked)
         const { data: allowedStatuses } = await supabase
             .from('statuses')
             .select('code, name')
             .eq('is_active', true)
-            // TODO: Add filter for statuses where analysis is enabled
-            // For now, get cancellation statuses + a few working ones
-            .or('group_name.ilike.%отмен%,code.in.(novyi-1,zapros-kontaktov,availability,prepayed)');
+            .eq('is_working', true); // This is the "АНАЛИЗ" checkbox
 
         const statusMap = new Map(
             allowedStatuses?.map(s => [s.code, s.name]) || []
