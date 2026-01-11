@@ -2,10 +2,12 @@
 -- Fix unique constraints on okk_violations to allow multiple NULL call_ids (for event rules)
 -- And ensure idempotency for different types of rules.
 
--- 1. Drop old constraints
+-- 1. Drop old constraints (including the ones we are about to add, for idempotency)
 ALTER TABLE public.okk_violations 
 DROP CONSTRAINT IF EXISTS unique_call_violation,
-DROP CONSTRAINT IF EXISTS unique_order_daily_violation;
+DROP CONSTRAINT IF EXISTS unique_order_daily_violation,
+DROP CONSTRAINT IF EXISTS unique_call_rule_violation,
+DROP CONSTRAINT IF EXISTS unique_order_event_violation;
 
 -- 2. Create improved constraints
 -- For Call rules: unique per rule and call
