@@ -3,9 +3,15 @@ import OpenAI from 'openai';
 import { getTelphinToken } from './telphin';
 import { supabase } from '@/utils/supabase';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+let _openai: OpenAI | null = null;
+function getOpenAI() {
+    if (!_openai) {
+        _openai = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY,
+        });
+    }
+    return _openai;
+}
 
 /**
  * Validates if the call is suitable for transcription
@@ -62,6 +68,7 @@ async function downloadAudio(recordingUrl: string): Promise<File> {
  */
 async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnsweringMachine: boolean; reason: string }> {
     try {
+        const openai = getOpenAI();
         const response = await openai.chat.completions.create({
             model: "gpt-4o-mini", // Cost efficient for classification
             messages: [
@@ -106,6 +113,7 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         const file = await downloadAudio(recordingUrl);
 
         // 2. Transcribe (Whisper)
+        const openai = getOpenAI();
         const transcription = await openai.audio.transcriptions.create({
             file: file,
             model: "whisper-1",

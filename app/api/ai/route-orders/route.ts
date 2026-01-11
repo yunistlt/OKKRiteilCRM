@@ -2,9 +2,89 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
+import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 
 export const maxDuration = 300; // 5 minutes for batch processing
 export const dynamic = 'force-dynamic';
+
+/**
+ * Gathers additional context for "Triple Check" (Calls + Emails)
+ */
+async function getAuditContext(orderId: number) {
+    let latestCallTranscript: string | undefined = undefined;
+    let latestEmailText: string | undefined = undefined;
+
+    try {
+        // 1. Fetch Latest Successful Call
+        const { data: matchedCalls, error: matchedError } = await supabase
+            .from('call_order_matches')
+            .select(`
+                telphin_call_id,
+                raw_telphin_calls (
+                    event_id,
+                    transcript,
+                    recording_url,
+                    duration_sec,
+                    started_at,
+                    direction
+                )
+            `)
+            .eq('retailcrm_order_id', orderId)
+            // Note: ordering by related table field can be tricky in some PostgREST versions, 
+            // but we can sort locally or try the syntax:
+            // .order('raw_telphin_calls.started_at', { ascending: false }) 
+            .limit(5);
+
+        if (!matchedError && matchedCalls && matchedCalls.length > 0) {
+            // Sort by started_at descending locally to be safe
+            const calls = matchedCalls
+                .map((m: any) => m.raw_telphin_calls)
+                .filter(Boolean)
+                .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+
+            const latestCall = calls[0];
+            if (latestCall) {
+                if (latestCall.transcript) {
+                    latestCallTranscript = latestCall.transcript;
+                } else if (isTranscribable(latestCall)) {
+                    console.log(`[Audit] Triggering on-the-fly transcription for call ${latestCall.event_id} (Order ${orderId})`);
+                    try {
+                        latestCallTranscript = await transcribeCall(latestCall.event_id, latestCall.recording_url);
+                    } catch (err) {
+                        console.warn(`[Audit] Transcription failed for ${latestCall.event_id}:`, err);
+                    }
+                }
+            }
+        }
+
+        // 2. Fetch Latest Communications (Emails/Messages) from History
+        // We look for 'customer_comment' or fields that often contain inbound text
+        const { data: comms } = await supabase
+            .from('raw_order_events')
+            .select('event_type, raw_payload')
+            .eq('retailcrm_order_id', orderId)
+            .or('event_type.ilike.%comment%,event_type.ilike.%message%,event_type.ilike.%email%')
+            .order('occurred_at', { ascending: false })
+            .limit(3);
+
+        if (comms && comms.length > 0) {
+            // Pick most informative inbound one
+            const inboundComm = comms.find((c: any) =>
+                String(c.raw_payload?.source).toLowerCase() === 'user' ||
+                String(c.event_type).includes('customer')
+            );
+            if (inboundComm) {
+                const payload = inboundComm.raw_payload;
+                latestEmailText = payload?.newValue || payload?.text || payload?.value || JSON.stringify(payload);
+            }
+        }
+
+    } catch (auditErr) {
+        console.error(`[Audit] Context gathering failed for order ${orderId}:`, auditErr);
+    }
+
+    return { latestCallTranscript, latestEmailText };
+}
 
 export async function POST(request: Request) {
     try {
@@ -43,7 +123,6 @@ export async function POST(request: Request) {
         console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing`);
 
         // 1. Fetch orders in "Согласование отмены" status
-        // Note: order_metrics uses retailcrm_order_id, not orders.id
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
             .select('id, status')
@@ -66,10 +145,9 @@ export async function POST(request: Request) {
 
         for (const order of orders) {
             try {
-                // 2a. First, fetch the order from RetailCRM to get its site and LATEST manager comment
-                // This ensures we analyze the absolute latest information
+                // 2a. Fetch fresh data from RetailCRM
                 const fetchResponse = await fetch(
-                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=100`
+                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=1`
                 );
                 const fetchData = await fetchResponse.json();
 
@@ -81,14 +159,22 @@ export async function POST(request: Request) {
                 const orderSite = retailcrmOrder.site;
                 const comment = retailcrmOrder.managerComment || '';
 
+                // 2b. Gather Triple Check Audit Context
+                const auditContext = await getAuditContext(Number(order.id));
+
                 // Prepare system context for AI to handle chronology correctly
                 const systemContext = {
                     currentTime: new Date().toISOString(),
                     orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
                 };
 
-                // 2b. Analyze with AI (pass allowed statuses for routing + system context)
-                const decision = await analyzeOrderForRouting(comment, allowedStatusMap, systemContext);
+                // 2c. Analyze with AI (pass allowed statuses for routing + contexts)
+                const decision = await analyzeOrderForRouting(comment, allowedStatusMap, systemContext, auditContext);
+
+                console.log(`[AIRouter] Order ${order.id} Audit Context:`, {
+                    hasTranscript: !!auditContext.latestCallTranscript,
+                    hasEmail: !!auditContext.latestEmailText
+                });
 
                 // Log to database
                 const { error: logError } = await supabase
