@@ -118,7 +118,7 @@ export async function POST(request: Request) {
 
                         console.log(`[AIRouter] Updating order ${order.id} in RetailCRM:`, requestBody);
 
-                        const retailcrmResponse = await fetch(`${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit`, {
+                        const retailcrmResponse = await fetch(`${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit?by=id`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded',
