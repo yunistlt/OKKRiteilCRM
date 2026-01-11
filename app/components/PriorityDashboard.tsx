@@ -37,6 +37,15 @@ export const PriorityDashboard = () => {
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [showFilters, setShowFilters] = useState(false);
+    const [filters, setFilters] = useState({
+        sumMin: '',
+        sumMax: '',
+        control: 'all', // 'all', 'yes', 'no'
+        nextContactDateFrom: '',
+        nextContactDateTo: '',
+        status: 'all'
+    });
 
     const fetchOrders = async () => {
         try {
@@ -58,6 +67,49 @@ export const PriorityDashboard = () => {
         const interval = setInterval(fetchOrders, 60000); // Auto refresh every minute
         return () => clearInterval(interval);
     }, []);
+
+    const filteredOrders = orders.filter(order => {
+        // 1. Sum Filter
+        if (filters.sumMin && (order.totalSumm || 0) < Number(filters.sumMin)) return false;
+        if (filters.sumMax && (order.totalSumm || 0) > Number(filters.sumMax)) return false;
+
+        // 2. Control Filter
+        if (filters.control !== 'all') {
+            const isControlled = order.raw_payload?.customFields?.control === true; // Assuming 'control' is the field key, need to verify
+            // Based on previous chats, 'control' field exists in customFields. 
+            // Let's check raw_payload usage in other parts or just rely on common sense for now, 
+            // but for safety, I'll log or check if I can.
+            // Actually, in the verified API response earlier: "customFields": { "control": true, ... }
+            if (filters.control === 'yes' && !isControlled) return false;
+            if (filters.control === 'no' && isControlled) return false;
+        }
+
+        // 3. Next Contact Date Filter
+        if (filters.nextContactDateFrom || filters.nextContactDateTo) {
+            const nextContact = order.raw_payload?.customFields?.nextContactDate; // Verify field name. 
+            // In the API response shown in Step 6168, I don't see 'nextContactDate' immediately in customFields.
+            // I see 'data_kontakta': '2026-01-12'. Let's use that.
+            const contactDate = order.raw_payload?.customFields?.data_kontakta;
+
+            if (contactDate) {
+                if (filters.nextContactDateFrom && contactDate < filters.nextContactDateFrom) return false;
+                if (filters.nextContactDateTo && contactDate > filters.nextContactDateTo) return false;
+            } else if (filters.nextContactDateFrom || filters.nextContactDateTo) {
+                // If filtering by date but order has no date, usually exclude it? Or keep?
+                // Let's exclude for now as "doesn't match range".
+                return false;
+            }
+        }
+
+        // 4. Status Filter
+        // The user asked for "Status". The order has `status` in payload (e.g. 'na-soglasovanii') 
+        // and also computed `today_stats.status`. The user likely means the CRM status.
+        if (filters.status !== 'all') {
+            if (order.raw_payload?.status !== filters.status) return false;
+        }
+
+        return true;
+    });
 
     const getStatusBadge = (status: string) => {
         switch (status) {
@@ -98,16 +150,107 @@ export const PriorityDashboard = () => {
     );
 
     return (
-        <div className="space-y-6 p-6">
-            <div className="flex justify-between items-center">
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight">Утренний Спринт (Ключевые заказы)</h2>
-                    <p className="text-muted-foreground">Обработка приоритетных лидов до 14:00</p>
+                    <p className="text-muted-foreground">Обработака приоритетных лидов до 14:00</p>
                 </div>
-                <Button onClick={fetchOrders} variant="outline" size="sm">
-                    Обновить
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={showFilters ? 'bg-secondary' : ''}
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                        Фильтры
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={fetchOrders}>
+                        Обновить
+                    </Button>
+                </div>
             </div>
+
+            {showFilters && (
+                <Card className="bg-gray-50/50 border-dashed">
+                    <CardContent className="pt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            {/* Status Filter */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase text-gray-500">Статус заказа</label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    value={filters.status}
+                                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                                >
+                                    <option value="all">Любой</option>
+                                    <option value="new">Новый</option>
+                                    <option value="in-progress">В работе</option>
+                                    <option value="na-soglasovanii">На согласовании</option>
+                                    {/* Add more statuses as needed */}
+                                </select>
+                            </div>
+
+                            {/* Control Filter */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase text-gray-500">Контроль</label>
+                                <select
+                                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                    value={filters.control}
+                                    onChange={(e) => setFilters({ ...filters, control: e.target.value })}
+                                >
+                                    <option value="all">Любой</option>
+                                    <option value="yes">Да</option>
+                                    <option value="no">Нет</option>
+                                </select>
+                            </div>
+
+                            {/* Sum Filter */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase text-gray-500">Сумма заказа, ₽</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        placeholder="0"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={filters.sumMin}
+                                        onChange={(e) => setFilters({ ...filters, sumMin: e.target.value })}
+                                    />
+                                    <span className="text-gray-400 py-2">–</span>
+                                    <input
+                                        type="number"
+                                        placeholder="∞"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={filters.sumMax}
+                                        onChange={(e) => setFilters({ ...filters, sumMax: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Date Filter */}
+                            <div className="space-y-2">
+                                <label className="text-xs font-semibold uppercase text-gray-500">Дата след. контакта</label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="date"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={filters.nextContactDateFrom}
+                                        onChange={(e) => setFilters({ ...filters, nextContactDateFrom: e.target.value })}
+                                    />
+                                    <span className="text-gray-400 py-2">–</span>
+                                    <input
+                                        type="date"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        value={filters.nextContactDateTo}
+                                        onChange={(e) => setFilters({ ...filters, nextContactDateTo: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {/* Всего ключевых */}
@@ -117,10 +260,10 @@ export const PriorityDashboard = () => {
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold mb-2">{orders.length}</div>
+                        <div className="text-2xl font-bold mb-2">{filteredOrders.length}</div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
-                                const stats = orders.reduce((acc: any, o) => {
+                                const stats = filteredOrders.reduce((acc: any, o) => {
                                     const name = o.managerName || 'Не назначен';
                                     acc[name] = (acc[name] || 0) + 1;
                                     return acc;
@@ -158,11 +301,11 @@ export const PriorityDashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-green-600 mb-2">
-                            {orders.filter(o => o.today_stats.status === 'success').length}
+                            {filteredOrders.filter(o => o.today_stats.status === 'success').length}
                         </div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
-                                const stats = orders
+                                const stats = filteredOrders
                                     .filter(o => o.today_stats.status === 'success')
                                     .reduce((acc: any, o) => {
                                         const name = o.managerName || 'Не назначен';
@@ -200,11 +343,11 @@ export const PriorityDashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-orange-600 mb-2">
-                            {orders.filter(o => o.today_stats.status === 'fallback_required').length}
+                            {filteredOrders.filter(o => o.today_stats.status === 'fallback_required').length}
                         </div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
-                                const stats = orders
+                                const stats = filteredOrders
                                     .filter(o => o.today_stats.status === 'fallback_required')
                                     .reduce((acc: any, o) => {
                                         const name = o.managerName || 'Не назначен';
@@ -242,11 +385,11 @@ export const PriorityDashboard = () => {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold text-red-600 mb-2">
-                            {orders.filter(o => o.today_stats.status === 'overdue').length}
+                            {filteredOrders.filter(o => o.today_stats.status === 'overdue').length}
                         </div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1">
                             {(() => {
-                                const stats = orders
+                                const stats = filteredOrders
                                     .filter(o => o.today_stats.status === 'overdue')
                                     .reduce((acc: any, o) => {
                                         const name = o.managerName || 'Не назначен';
@@ -278,7 +421,7 @@ export const PriorityDashboard = () => {
             </div>
 
             <div className="grid gap-4">
-                {orders.map((order) => (
+                {filteredOrders.map((order) => (
                     <Card key={order.id} className="overflow-hidden border-l-4" style={{
                         borderLeftColor:
                             order.today_stats.status === 'success' ? '#22c55e' :
