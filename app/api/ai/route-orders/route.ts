@@ -109,7 +109,6 @@ export async function POST(request: Request) {
                     try {
                         // Update status in RetailCRM
                         const requestBody = {
-                            site: 'zmktlt', // Hardcoded site value (orders table doesn't have site column)
                             status: decision.target_status,
                             // Clear next_contact_date to avoid validation errors
                             customFields: {
@@ -126,6 +125,7 @@ export async function POST(request: Request) {
                             },
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
+                                site: 'zmktlt', // Site as separate parameter
                                 order: JSON.stringify(requestBody)
                             })
                         });
