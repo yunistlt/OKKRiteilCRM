@@ -35,17 +35,22 @@ interface PriorityOrder {
 export const PriorityDashboard = () => {
     const [orders, setOrders] = useState<PriorityOrder[]>([]);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
+    const [activeStatuses, setActiveStatuses] = useState<{ code: string, name: string, group_name: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [showFilters, setShowFilters] = useState(false);
+
+    // Filters State
     const [filters, setFilters] = useState({
         sumMin: '',
         sumMax: '',
         control: 'all', // 'all', 'yes', 'no'
         nextContactDateFrom: '',
         nextContactDateTo: '',
-        status: 'all'
+        statuses: [] as string[] // Changed from single string to array
     });
+
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
     const fetchOrders = async () => {
         try {
@@ -55,6 +60,7 @@ export const PriorityDashboard = () => {
             if (data.error) throw new Error(data.error);
             setOrders(data.orders || []);
             setActiveManagers(data.activeManagers || []);
+            setActiveStatuses(data.activeStatuses || []);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -68,6 +74,27 @@ export const PriorityDashboard = () => {
         return () => clearInterval(interval);
     }, []);
 
+    // Helper to toggle status selection
+    const toggleStatus = (code: string) => {
+        setFilters(prev => {
+            const current = prev.statuses;
+            if (current.includes(code)) {
+                return { ...prev, statuses: current.filter(c => c !== code) };
+            } else {
+                return { ...prev, statuses: [...current, code] };
+            }
+        });
+    };
+
+    // Select All / Deselect All
+    const toggleAllStatuses = () => {
+        if (filters.statuses.length === activeStatuses.length) {
+            setFilters(prev => ({ ...prev, statuses: [] }));
+        } else {
+            setFilters(prev => ({ ...prev, statuses: activeStatuses.map(s => s.code) }));
+        }
+    };
+
     const filteredOrders = orders.filter(order => {
         // 1. Sum Filter
         if (filters.sumMin && (order.totalSumm || 0) < Number(filters.sumMin)) return false;
@@ -75,37 +102,27 @@ export const PriorityDashboard = () => {
 
         // 2. Control Filter
         if (filters.control !== 'all') {
-            const isControlled = order.raw_payload?.customFields?.control === true; // Assuming 'control' is the field key, need to verify
-            // Based on previous chats, 'control' field exists in customFields. 
-            // Let's check raw_payload usage in other parts or just rely on common sense for now, 
-            // but for safety, I'll log or check if I can.
-            // Actually, in the verified API response earlier: "customFields": { "control": true, ... }
+            const isControlled = order.raw_payload?.customFields?.control === true;
             if (filters.control === 'yes' && !isControlled) return false;
             if (filters.control === 'no' && isControlled) return false;
         }
 
         // 3. Next Contact Date Filter
         if (filters.nextContactDateFrom || filters.nextContactDateTo) {
-            const nextContact = order.raw_payload?.customFields?.nextContactDate; // Verify field name. 
-            // In the API response shown in Step 6168, I don't see 'nextContactDate' immediately in customFields.
-            // I see 'data_kontakta': '2026-01-12'. Let's use that.
             const contactDate = order.raw_payload?.customFields?.data_kontakta;
 
             if (contactDate) {
                 if (filters.nextContactDateFrom && contactDate < filters.nextContactDateFrom) return false;
                 if (filters.nextContactDateTo && contactDate > filters.nextContactDateTo) return false;
             } else if (filters.nextContactDateFrom || filters.nextContactDateTo) {
-                // If filtering by date but order has no date, usually exclude it? Or keep?
-                // Let's exclude for now as "doesn't match range".
                 return false;
             }
         }
 
-        // 4. Status Filter
-        // The user asked for "Status". The order has `status` in payload (e.g. 'na-soglasovanii') 
-        // and also computed `today_stats.status`. The user likely means the CRM status.
-        if (filters.status !== 'all') {
-            if (order.raw_payload?.status !== filters.status) return false;
+        // 4. Status Filter (Multi-select)
+        if (filters.statuses.length > 0) {
+            const orderStatus = order.raw_payload?.status;
+            if (!filters.statuses.includes(orderStatus)) return false;
         }
 
         return true;
@@ -176,20 +193,67 @@ export const PriorityDashboard = () => {
                 <Card className="bg-gray-50/50 border-dashed">
                     <CardContent className="pt-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            {/* Status Filter */}
-                            <div className="space-y-2">
+                            {/* Status Filter (Multi-Select) */}
+                            <div className="space-y-2 relative">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Статус заказа</label>
-                                <select
-                                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                    value={filters.status}
-                                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                                >
-                                    <option value="all">Любой</option>
-                                    <option value="new">Новый</option>
-                                    <option value="in-progress">В работе</option>
-                                    <option value="na-soglasovanii">На согласовании</option>
-                                    {/* Add more statuses as needed */}
-                                </select>
+                                <div className="relative">
+                                    <button
+                                        onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                                        className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+                                    >
+                                        <span className="truncate">
+                                            {filters.statuses.length === 0
+                                                ? 'Любой статус'
+                                                : filters.statuses.length === activeStatuses.length
+                                                    ? 'Все статусы'
+                                                    : `Выбрано: ${filters.statuses.length}`}
+                                        </span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-50"><path d="m6 9 6 6 6-6" /></svg>
+                                    </button>
+
+                                    {statusDropdownOpen && (
+                                        <>
+                                            <div
+                                                className="fixed inset-0 z-10"
+                                                onClick={() => setStatusDropdownOpen(false)}
+                                            ></div>
+                                            <div className="absolute top-full left-0 z-20 mt-1 w-full min-w-[200px] rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95 bg-white max-h-[300px] flex flex-col">
+                                                <div className="p-2 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                                                    <span className="text-xs font-semibold text-gray-500">Выберите статусы</span>
+                                                    <button
+                                                        onClick={toggleAllStatuses}
+                                                        className="text-[10px] text-blue-600 font-bold uppercase hover:text-blue-800"
+                                                    >
+                                                        {filters.statuses.length === activeStatuses.length ? 'Снять все' : 'Выбрать все'}
+                                                    </button>
+                                                </div>
+                                                <div className="overflow-y-auto p-1">
+                                                    {activeStatuses.map((status) => (
+                                                        <div
+                                                            key={status.code}
+                                                            className="flex items-center space-x-2 rounded-sm px-2 py-1.5 hover:bg-accent hover:text-accent-foreground cursor-pointer hover:bg-gray-50"
+                                                            onClick={() => toggleStatus(status.code)}
+                                                        >
+                                                            <div className={`flex h-4 w-4 items-center justify-center rounded border ${filters.statuses.includes(status.code) ? 'bg-primary border-primary bg-blue-600 border-blue-600' : 'border-primary opacity-50'}`}>
+                                                                {filters.statuses.includes(status.code) && (
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white"><polyline points="20 6 9 17 4 12" /></svg>
+                                                                )}
+                                                            </div>
+                                                            <span className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                                                {status.name}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                    {activeStatuses.length === 0 && (
+                                                        <div className="p-4 text-center text-xs text-gray-400">
+                                                            Нет доступных статусов. Проверьте настройки.
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
                             </div>
 
                             {/* Control Filter */}
