@@ -59,18 +59,6 @@ export async function POST(request: Request) {
             });
         }
 
-        // Fetch metrics separately
-        const orderIds = orders.map(o => o.id);
-        const { data: metrics } = await supabase
-            .from('order_metrics')
-            .select('retailcrm_order_id, full_order_context')
-            .in('retailcrm_order_id', orderIds);
-
-        // Create a map for quick lookup
-        const metricsMap = new Map(
-            metrics?.map(m => [m.retailcrm_order_id, m]) || []
-        );
-
         console.log(`[AIRouter] Processing ${orders.length} orders...`);
 
         // 2. Process each order
@@ -78,11 +66,29 @@ export async function POST(request: Request) {
 
         for (const order of orders) {
             try {
-                const orderMetrics = metricsMap.get(order.id);
-                const comment = orderMetrics?.full_order_context?.manager_comment || '';
+                // 2a. First, fetch the order from RetailCRM to get its site and LATEST manager comment
+                // This ensures we analyze the absolute latest information
+                const fetchResponse = await fetch(
+                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=100`
+                );
+                const fetchData = await fetchResponse.json();
 
-                // Analyze with AI (pass allowed statuses for routing)
-                const decision = await analyzeOrderForRouting(comment, allowedStatusMap);
+                if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
+                    throw new Error(`Order ${order.id} not found in RetailCRM`);
+                }
+
+                const retailcrmOrder = fetchData.orders[0];
+                const orderSite = retailcrmOrder.site;
+                const comment = retailcrmOrder.managerComment || '';
+
+                // Prepare system context for AI to handle chronology correctly
+                const systemContext = {
+                    currentTime: new Date().toISOString(),
+                    orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
+                };
+
+                // 2b. Analyze with AI (pass allowed statuses for routing + system context)
+                const decision = await analyzeOrderForRouting(comment, allowedStatusMap, systemContext);
 
                 // Log to database
                 const { error: logError } = await supabase
@@ -101,32 +107,18 @@ export async function POST(request: Request) {
                     console.error(`[AIRouter] Log error for order ${order.id}:`, logError);
                 }
 
-                // Apply status change if not dry run
+                // 2c. Apply status change if not dry run
                 let wasApplied = false;
                 let error: string | undefined;
 
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
                     try {
-                        // First, fetch the order from RetailCRM to get its site and LATEST manager comment
-                        const fetchResponse = await fetch(
-                            `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=20`
-                        );
-                        const fetchData = await fetchResponse.json();
-
-                        if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
-                            throw new Error(`Order ${order.id} not found in RetailCRM`);
-                        }
-
-                        const retailcrmOrder = fetchData.orders[0];
-                        const orderSite = retailcrmOrder.site;
-                        const existingComment = retailcrmOrder.managerComment || '';
-
                         // Append new comment, ensuring there's a separator if existing comment is not empty
-                        const newComment = existingComment
-                            ? `${existingComment}\n\nОКК: ${decision.reasoning}`
+                        const newComment = comment
+                            ? `${comment}\n\nОКК: ${decision.reasoning}`
                             : `ОКК: ${decision.reasoning}`;
 
-                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}. Existing comment length: ${existingComment.length}`);
+                        console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}. Existing comment length: ${comment.length}`);
 
                         // Update status in RetailCRM
                         const requestBody = {
@@ -141,8 +133,6 @@ export async function POST(request: Request) {
                         console.log(`[AIRouter] Updating order ${order.id} in RetailCRM:`, requestBody);
 
                         const url = `${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit?by=id`;
-                        console.log(`[AIRouter] Request URL: ${url}`);
-
                         const retailcrmResponse = await fetch(url, {
                             method: 'POST',
                             headers: {
@@ -150,16 +140,16 @@ export async function POST(request: Request) {
                             },
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
-                                site: orderSite, // Use the order's actual site
+                                site: orderSite,
                                 order: JSON.stringify(requestBody)
                             })
                         });
 
-                        const retailcrmData = await retailcrmResponse.json();
-                        console.log(`[AIRouter] RetailCRM response for order ${order.id}:`, retailcrmData);
+                        const retailcrmUpdateData = await retailcrmResponse.json();
+                        console.log(`[AIRouter] RetailCRM response for order ${order.id}:`, retailcrmUpdateData);
 
-                        if (!retailcrmData.success) {
-                            throw new Error(JSON.stringify(retailcrmData));
+                        if (!retailcrmUpdateData.success) {
+                            throw new Error(JSON.stringify(retailcrmUpdateData));
                         }
 
                         // Also update in our local database

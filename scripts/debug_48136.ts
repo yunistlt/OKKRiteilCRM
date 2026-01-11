@@ -25,7 +25,10 @@ async function debugOrder48136() {
     console.log(rawComment);
     console.log('-------------------\n');
 
-    const decision = await analyzeOrderForRouting(rawComment, statusMap);
+    const decision = await analyzeOrderForRouting(rawComment, statusMap, {
+        currentTime: '2026-01-11T19:00:00Z',
+        orderUpdatedAt: '2026-01-11T18:56:15Z'
+    });
 
     console.log('🤖 AI Decision:');
     console.log(`  Target Status: ${decision.target_status} (${statusMap.get(decision.target_status)})`);
