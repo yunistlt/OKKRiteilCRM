@@ -1,6 +1,5 @@
-
 import { supabase } from '@/utils/supabase';
-import { analyzeTranscript } from './semantic';
+import { analyzeTranscript, analyzeText } from './semantic';
 
 export interface Rule {
     code: string;
@@ -78,6 +77,7 @@ function getActualEventTime(event: any): string {
 
 async function executeEventRule(rule: any, startDate: string, endDate: string): Promise<number> {
     console.log(`[RuleEngine] Executing Event Rule: ${rule.code} (${rule.name})`);
+    console.log(`[RuleEngine] Rule SQL: ${rule.condition_sql}`);
 
     // 1. Fetch Events
     let query = supabase
@@ -98,6 +98,58 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         console.error(`Error fetching events for ${rule.code}:`, error);
         return 0;
     }
+    console.log(`[RuleEngine] Fetched ${events?.length} events for analysis.`);
+
+    // 2. Prepare for Semantic Analysis (if needed)
+    let semanticViolations = 0;
+    if (rule.rule_type === 'semantic') {
+        console.log(`[RuleEngine] Semantic Analysis (Event) for ${rule.code}`);
+        for (const e of events) {
+            const orderId = e.retailcrm_order_id;
+            // order_metrics can be an array or object depending on join, safely handle it
+            const metrics = Array.isArray(e.order_metrics) ? e.order_metrics[0] : e.order_metrics;
+            const managerId = metrics?.manager_id;
+            const context = metrics?.full_order_context || {};
+            const managerComment = context.manager_comment;
+
+            // Basic filtering (date/manager) akin to SQL rules
+            const actualEventTime = getActualEventTime(e);
+            if (new Date(actualEventTime) < new Date(startDate) || new Date(actualEventTime) > new Date(endDate)) continue;
+
+            // Check allowed managers if params exist
+            if (rule.params?.manager_ids?.length > 0) {
+                if (!rule.params.manager_ids.includes(managerId) && !rule.params.manager_ids.includes(Number(managerId))) continue;
+            }
+
+            console.log(`[RuleEngine] Analyzing comment for Order ${orderId}...`);
+            // Substitute variables in prompt
+            let prompt = rule.semantic_prompt || rule.description;
+            const newValue = (e.raw_payload?.status && typeof e.raw_payload.status === 'object') ? e.raw_payload.status.code : (e.raw_payload?.status || 'unknown');
+            prompt = prompt.replace('{{new_value}}', newValue);
+
+            const analysis = await analyzeText(managerComment || '', prompt, 'Manager Comment');
+
+            if (analysis.is_violation) {
+                console.log(`[RuleEngine] Violation detected for Order ${orderId}! Reason: ${analysis.reasoning}`);
+                semanticViolations++;
+                const { error: upsertError } = await supabase.from('okk_violations').upsert({
+                    order_id: orderId,
+                    rule_code: rule.code,
+                    manager_id: managerId,
+                    violation_time: actualEventTime,
+                    details: analysis.reasoning,
+                    severity: rule.severity,
+                    evidence_text: analysis.evidence,
+                    call_id: null // Explicitly null for event violations
+                }, { onConflict: 'order_id, rule_code, call_id' }); // Ensure unique constraint matches DB
+
+                if (upsertError) {
+                    console.error('[RuleEngine] Violation Persistence Error:', upsertError);
+                }
+            }
+        }
+        return semanticViolations;
+    }
 
     if (!events || events.length === 0) return 0;
 
@@ -111,6 +163,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
     // 3. Filter Violations
     const violations = events.filter((e: any) => {
+        // console.log(`[RuleEngine] Filter Loop for ${rule.code}. SQL: ${sql.substring(0, 30)}... Params: ${JSON.stringify(rule.parameters)}`);
         const orderId = e.retailcrm_order_id;
         const managerId = e.order_metrics?.manager_id;
 
@@ -164,6 +217,43 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             if (!monitoredStatuses.includes(row.new_value)) return false;
         }
 
+        // Logic Rule: Unjustified Rescheduling (Next Contact Date)
+        // console.log(`[RuleEngine] Checking IF condition for 'next_contact_date'. Includes: ${sql.includes('next_contact_date')}`);
+        if (sql.includes('next_contact_date')) {
+            // 1. Check if event is a change of 'data_kontakta'
+            try {
+                // console.log(`[RuleEngine] Checking match logic. event_type=${e.event_type}, raw_payload=${JSON.stringify(e.raw_payload)}`);
+
+                const isTargetField =
+                    e.event_type === 'data_kontakta' ||
+                    (e.event_type === 'customFields' && e.raw_payload?.field === 'data_kontakta') ||
+                    (e.raw_payload?.field === 'data_kontakta');
+
+                if (!isTargetField) {
+                    // console.log(`[RuleEngine] SKIP: Not data_kontakta.`);
+                    return false;
+                }
+                // console.log('[RuleEngine] MATCHED field!');
+            } catch (err) {
+                console.error('[RuleEngine] Error in match logic:', err);
+                return false;
+            }
+
+            // 2. Determine timestamps
+            const eventTime = new Date(e.occurred_at).getTime();
+            const oneDayAgo = new Date(eventTime - 24 * 60 * 60 * 1000).toISOString();
+
+            // 3. We can't easily query DB *inside* this filter loop efficiently without N+1.
+            // However, for this specific rule, we MUST check for calls.
+            // OPTIMIZATION: We fetch calls for this order ONCE before filter? No, difficult.
+            // Hack solution for prototype: We will rely on 'violations' being filtered first by field type, 
+            // then we do the async check in the MAPPING phase or separate Loop.
+            // LIMITATION: 'filter' function is synchronous. We cannot await DB calls here.
+            // FIX: We will return TRUE here to include it as a "Potential Candidate", 
+            // and filter it out during the DB persistence phase if calls exist.
+            return true;
+        }
+
         // Check Manager Comment
         if (sql.includes("manager_comment")) {
             const comment = om.full_order_context?.manager_comment;
@@ -171,12 +261,102 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             if (!isEmpty) return false; // Has comment -> NOT a violation
         }
 
+        // 5. Generic SQL Logic Check (Regex-based approximation)
+        // This is a safety net for rules that aren't hardcoded above.
+        // We check for common patterns: new_value = 'X', context->>'Y' IS NULL, etc.
+
+        // Check: new_value = '...' (Strict AND condition)
+        const newValueMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
+        if (newValueMatch) {
+            const requiredValue = newValueMatch[1].toLowerCase();
+            if (String(row.new_value).toLowerCase() !== requiredValue) return false;
+        }
+
+        // JSON Checks: Usually "Bad Conditions". If ANY match, it's a violation.
+        // If checks define what constitutes a violation (e.g. "IS NULL"), 
+        // then finding ONE true check justifies the violation.
+        const nullChecks = [...sql.matchAll(/om\.full_order_context->>'([^']+)'\s+is\s+null/gi)];
+        const emptyChecks = [...sql.matchAll(/om\.full_order_context->>'([^']+)'\s*=\s*''/gi)];
+
+        // Helper for case-insensitive lookup
+        const getContextValue = (ctx: any, key: string) => {
+            if (!ctx) return undefined;
+            // distinct lowercase lookup
+            const foundKey = Object.keys(ctx).find(k => k.toLowerCase() === key);
+            return foundKey ? ctx[foundKey] : undefined;
+        };
+
+        const hasJsonChecks = nullChecks.length > 0 || emptyChecks.length > 0;
+
+        if (hasJsonChecks) {
+            let matchedAny = false;
+
+            // Check IS NULL
+            for (const match of nullChecks) {
+                const key = match[1]; // key is lowercase from sql
+                const val = getContextValue(row.om.full_order_context, key);
+
+                if (val === undefined || val === null) {
+                    matchedAny = true;
+                    break;
+                }
+            }
+
+            // Check = ''
+            if (!matchedAny) {
+                for (const match of emptyChecks) {
+                    const key = match[1];
+                    const val = getContextValue(row.om.full_order_context, key);
+                    if (val === '') {
+                        matchedAny = true;
+                        break;
+                    }
+                }
+            }
+
+            // If we have checks, but NONE matched, then the event is "Clean" -> Filter OUT.
+            if (!matchedAny) return false;
+        }
+
         return true;
     });
 
-    console.log(`[RuleEngine] Filtered ${violations.length} violations for rule ${rule.code}.`);
+    // --- ASYNC FILTERING FOR COMPLEX RULES ---
+    // Some rules (like Rescheduling) need Async DB checks. We do it here on the reduced set.
+    const finalViolations = [];
+    for (const v of violations) {
+        const sql = rule.condition_sql?.toLowerCase() || '';
 
-    const records = violations.map((v: any) => ({
+        if (sql.includes("field_name = 'next_contact_date'")) {
+            // Perform the Async Call Check
+            // Verify NO CALLS in previous 24h
+            const eventTime = new Date(v.occurred_at).getTime();
+            const oneDayAgo = new Date(eventTime - 24 * 60 * 60 * 1000).toISOString();
+            const timeOfEvent = v.occurred_at;
+
+            // Check Outgoing Calls via Matches
+            const { count, error } = await supabase
+                .from('call_order_matches')
+                .select('match_id, raw_telphin_calls!inner(direction, started_at)', { count: 'exact', head: true })
+                .eq('retailcrm_order_id', v.retailcrm_order_id)
+                .filter('raw_telphin_calls.started_at', 'gte', oneDayAgo)
+                .filter('raw_telphin_calls.started_at', 'lte', timeOfEvent)
+                .filter('raw_telphin_calls.direction', 'eq', 'outgoing');
+            // User said "не выполнение действий", usually means outgoing. Let's stick to outgoing first.
+
+            if (!error && count !== null && count > 0) {
+                console.log(`[RuleEngine] Order ${v.retailcrm_order_id}: Found ${count} calls. Not a violation.`);
+                continue; // Found calls, skip validation
+            }
+            // Add check for Emails later if needed...
+        }
+
+        finalViolations.push(v);
+    }
+
+    console.log(`[RuleEngine] Filtered ${finalViolations.length} violations for rule ${rule.code}.`);
+
+    const records = finalViolations.map((v: any) => ({
         rule_code: rule.code,
         order_id: v.retailcrm_order_id,
         manager_id: v.order_metrics?.manager_id,
