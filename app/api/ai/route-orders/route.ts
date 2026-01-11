@@ -110,6 +110,7 @@ export async function POST(request: Request) {
                         // Update status in RetailCRM
                         const requestBody = {
                             status: decision.target_status,
+                            managerComment: `ОКК: ${decision.reasoning}`, // Add AI reasoning to manager comment
                             // Clear next_contact_date to avoid validation errors
                             customFields: {
                                 next_contact_date: null
