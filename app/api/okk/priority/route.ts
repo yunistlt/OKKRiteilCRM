@@ -5,100 +5,102 @@ import { supabase } from '@/utils/supabase';
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
-        const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+        // Default to Moscow time date if not provided (many RetailCRM users are in MSK/Russia)
+        const nowInMSK = new Date(new Date().getTime() + (3 * 60 * 60 * 1000));
+        const date = searchParams.get('date') || nowInMSK.toISOString().split('T')[0];
 
-        // 1. Fetch "Key for Today" orders
-        // Note: Using text conversion ->> for customFields and exact string match
-        const { data: orders, error: ordersError } = await supabase
-            .from('orders')
-            .select('*')
-            .eq('raw_payload->customFields->>control', 'true')
-            .eq('raw_payload->customFields->>data_kontakta', date);
+        // 1. Fetch "Key for Today" orders directly from RetailCRM for real-time data
+        // Filter: [customFields][control]=1 AND [customFields][data_kontakta]=date
+        const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
+        const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
+        const baseUrl = RETAILCRM_URL?.replace(/\/+$/, '');
 
-        if (ordersError) throw ordersError;
+        const crmUrl = `${baseUrl}/api/v5/orders?apiKey=${RETAILCRM_API_KEY}&limit=100&filter[customFields][control]=1&filter[customFields][data_kontakta][min]=${date}&filter[customFields][data_kontakta][max]=${date}`;
 
-        if (!orders || orders.length === 0) {
-            return NextResponse.json({ orders: [] });
+        const crmRes = await fetch(crmUrl);
+        const crmData = await crmRes.json();
+
+        if (!crmData.success) {
+            throw new Error(`RetailCRM API Error: ${crmData.errorMsg || 'Unknown error'}`);
         }
 
-        const enrichedOrders = await Promise.all(orders.map(async (order) => {
-            const orderId = order.id;
+        const orders = crmData.orders || [];
+        const orderIds = orders.map((o: any) => o.id);
 
-            // 2. Fetch calls for today
-            const startOfDay = `${date}T00:00:00Z`;
-            const endOfDay = `${date}T23:59:59Z`;
+        if (orders.length === 0) {
+            return NextResponse.json({ success: true, orders: [] });
+        }
 
-            const { data: matchedCalls } = await supabase
-                .from('call_order_matches')
-                .select(`
-                    telphin_call_id,
-                    raw_telphin_calls (
-                        transcript,
-                        started_at,
-                        duration_sec,
-                        transcription_status
-                    )
-                `)
-                .eq('retailcrm_order_id', orderId);
+        // 2. Aggregate statistics from Supabase for these specific orders
+        const { data: calls } = await supabase
+            .from('call_order_matches')
+            .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(*)')
+            .in('retailcrm_order_id', orderIds);
 
-            const todayCalls = (matchedCalls || [])
-                .map((m: any) => m.raw_telphin_calls)
-                .filter((c: any) => c && c.started_at >= startOfDay && c.started_at <= endOfDay);
+        const { data: emails } = await supabase
+            .from('raw_order_events')
+            .select('order_id, event_type, created_at')
+            .in('order_id', orderIds)
+            .eq('event_type', 'mail_send'); // Assuming this is how we track emails, or similar
 
-            // 3. Fetch emails/messages for today
-            const { data: events } = await supabase
-                .from('raw_order_events')
-                .select('*')
-                .eq('retailcrm_order_id', orderId)
-                .gte('occurred_at', startOfDay)
-                .lte('occurred_at', endOfDay);
+        // 3. Process each order
+        const processedOrders = orders.map((order: any) => {
+            const orderCalls = (calls || []).filter(c => c.retailcrm_order_id === order.id);
+            const orderEmails = (emails || []).filter(e => e.order_id === order.id);
 
-            const outboundEvents = (events || []).filter((e: any) =>
-                String(e.source).toLowerCase() === 'retailcrm' ||
-                String(e.event_type).includes('manager_comment')
-            );
+            const hasDialogue = orderCalls.some((c: any) => {
+                const callData = Array.isArray(c.raw_telphin_calls) ? c.raw_telphin_calls[0] : c.raw_telphin_calls;
+                return (
+                    callData &&
+                    callData.duration_sec > 15 &&
+                    callData.transcript
+                );
+            });
 
-            // 4. Calculate status
+            const callCount = orderCalls.length;
+            const hasEmail = orderEmails.length > 0;
+
+            // Determine Status
             let status: 'success' | 'in_progress' | 'fallback_required' | 'overdue' = 'in_progress';
-
-            const hasDialogue = todayCalls.some((c: any) =>
-                c.duration_sec > 15 && c.transcript && c.transcript.length > 50
-            );
-
-            const callCount = todayCalls.length;
-            const hasEmail = outboundEvents.length > 0;
 
             if (hasDialogue) {
                 status = 'success';
-            } else if (callCount >= 3 && !hasEmail) {
-                status = 'fallback_required';
-            } else if (callCount >= 3 && hasEmail) {
-                status = 'success'; // Fallback achieved
+            } else if (callCount >= 3) {
+                status = hasEmail ? 'success' : 'fallback_required';
             }
 
-            // Check if overdue (passed 14:00 local)
-            // Note: For simplicity, we check against current time if date is today
+            // Check deadline 14:00 (of "today")
             const now = new Date();
-            const isToday = date === now.toISOString().split('T')[0];
-            if (isToday && now.getHours() >= 14 && status !== 'success') {
+            const deadline = new Date(date + 'T14:00:00');
+            if (status !== 'success' && now > deadline) {
                 status = 'overdue';
             }
 
             return {
-                ...order,
+                id: order.id,
+                number: order.number,
+                totalSumm: order.totalSumm,
                 today_stats: {
                     call_count: callCount,
                     has_dialogue: hasDialogue,
                     has_email: hasEmail,
                     status,
-                    calls: todayCalls
-                }
+                    calls: orderCalls.map((c: any) =>
+                        Array.isArray(c.raw_telphin_calls) ? c.raw_telphin_calls[0] : c.raw_telphin_calls
+                    ).filter(Boolean).slice(0, 3)
+                },
+                raw_payload: order
             };
-        }));
+        });
 
-        return NextResponse.json({ orders: enrichedOrders });
+        return NextResponse.json({
+            success: true,
+            date,
+            orders: processedOrders
+        });
+
     } catch (error: any) {
-        console.error('Error fetching priority orders:', error);
+        console.error('Priority API Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
