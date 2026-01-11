@@ -116,7 +116,12 @@ export async function POST(request: Request) {
                             body: new URLSearchParams({
                                 apiKey: process.env.RETAILCRM_API_KEY!,
                                 order: JSON.stringify({
-                                    status: decision.target_status
+                                    status: decision.target_status,
+                                    // Clear next_contact_date to avoid validation errors
+                                    // (can't be in the past for some statuses)
+                                    customFields: {
+                                        next_contact_date: null
+                                    }
                                 })
                             })
                         });
