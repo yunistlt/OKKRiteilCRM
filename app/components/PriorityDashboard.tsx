@@ -164,7 +164,7 @@ export const PriorityDashboard = () => {
                                 <div className="flex-1 space-y-1">
                                     <div className="flex items-center gap-3">
                                         <a
-                                            href={`https://${order.raw_payload?.site}.retailcrm.ru/orders/${order.id}/edit`}
+                                            href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-lg font-bold hover:text-primary transition-colors hover:underline"
@@ -173,7 +173,7 @@ export const PriorityDashboard = () => {
                                         </a>
                                         {getStatusBadge(order.today_stats.status)}
                                         <a
-                                            href={`https://${order.raw_payload?.site}.retailcrm.ru/orders/${order.id}/edit`}
+                                            href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-muted-foreground hover:text-primary transition-colors"
