@@ -116,33 +116,21 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
         // Skip events without metadata (old events with potentially incorrect timestamps)
         if (!e.raw_payload?._sync_metadata) {
-            console.log(`[RuleEngine] Skipping event ${e.event_id} - no sync metadata (old event)`);
+            console.log(`[RuleEngine] Skipping event ${e.event_id} - no sync metadata`);
             return false;
         }
 
         // IMPORTANT: Check if event actually occurred within the time range
-        // This prevents old events with incorrect occurred_at from being flagged
         const actualEventTime = getActualEventTime(e);
         const eventDate = new Date(actualEventTime);
         const rangeStart = new Date(startDate);
         const rangeEnd = new Date(endDate);
 
-        // If the actual event time is outside our range, skip it
         if (eventDate < rangeStart || eventDate > rangeEnd) {
-            console.log(`[RuleEngine] Skipping event ${e.event_id} - actual time ${actualEventTime} outside range ${startDate} to ${endDate}`);
             return false;
         }
+
         const params = rule.parameters || {};
-
-        // Filter by Manager ID
-        if (params.manager_ids && params.manager_ids.length > 0) {
-            if (!managerId || !params.manager_ids.includes(managerId)) return false;
-        }
-
-        // Filter by Order ID
-        if (params.order_ids && params.order_ids.length > 0) {
-            if (!orderId || !params.order_ids.includes(orderId)) return false;
-        }
 
         const om = {
             current_status: e.order_metrics?.current_status,
@@ -182,6 +170,8 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         return true;
     });
 
+    console.log(`[RuleEngine] Filtered ${violations.length} violations for rule ${rule.code}.`);
+
     if (violations.length > 0) {
         const records = violations.map((v: any) => ({
             rule_code: rule.code,
@@ -193,16 +183,23 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         }));
 
         let saved = 0;
-        for (const record of records) {
+        console.log(`[RuleEngine] Attempting to save ${records.length} records...`);
+        for (let i = 0; i < records.length; i++) {
+            const record = records[i];
             const { error: insError } = await supabase
                 .from('okk_violations')
                 .upsert(record, { onConflict: 'rule_code, order_id, violation_time' });
 
-            if (!insError) saved++;
-            else if (insError.code !== '23505') {
-                console.error(`[RuleEngine] Error saving event violation:`, insError);
+            if (!insError) {
+                saved++;
+                console.log(`[RuleEngine] [${i + 1}/${records.length}] Saved violation for order ${record.order_id}`);
+            } else if (insError.code === '23505') {
+                console.log(`[RuleEngine] [${i + 1}/${records.length}] Duplicate for order ${record.order_id} skipped.`);
+            } else {
+                console.error(`[RuleEngine] [${i + 1}/${records.length}] Error saving order ${record.order_id}:`, insError);
             }
         }
+        console.log(`[RuleEngine] Successfully saved ${saved} violations for rule ${rule.code}.`);
         return saved;
     }
     return 0;

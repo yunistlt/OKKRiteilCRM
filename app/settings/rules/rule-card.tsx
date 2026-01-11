@@ -84,6 +84,31 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
         }
     };
 
+    const handleTestRule = async () => {
+        if (!confirm('Запустить синтетическую проверку правила? Будет создан временный заказ и событие.')) return;
+
+        setIsLoading(true);
+        try {
+            const res = await fetch('/api/rules/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ruleId: rule.code })
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert(`✅ Проверка пройдена!\n\n${data.message}`);
+            } else {
+                alert(`❌ Проверка не пройдена!\n\n${data.error || data.message || 'Неизвестная ошибка'}`);
+            }
+        } catch (e: any) {
+            alert('Ошибка при выполнении теста: ' + e.message);
+        } finally {
+            setIsLoading(false);
+            // Refresh counts if needed
+        }
+    };
+
     // Render Specific Inputs based on Rule Code (Variant A: Hardcoded UX)
     const renderInputs = () => {
         if (rule.code === 'SHORT_CALL') {
@@ -203,6 +228,15 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                             title="Проверить историю (Audit)"
                         >
                             🕰️
+                        </button>
+
+                        <button
+                            onClick={handleTestRule}
+                            className="text-gray-400 hover:text-orange-500 p-2 md:p-1"
+                            title="Синтетическая проверка (Test)"
+                            disabled={isLoading}
+                        >
+                            {isLoading ? '⏳' : '🧪'}
                         </button>
 
                         <button
