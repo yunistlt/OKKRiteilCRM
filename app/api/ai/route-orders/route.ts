@@ -17,18 +17,30 @@ export async function POST(request: Request) {
 
         console.log('[AIRouter] Starting with options:', options);
 
-        // 0. Get allowed statuses from settings (where "АНАЛИЗ" checkbox is checked)
-        const { data: allowedStatuses } = await supabase
+        // 0a. Get ALL active statuses for name mapping (display purposes)
+        const { data: allStatuses } = await supabase
             .from('statuses')
             .select('code, name')
-            .eq('is_active', true)
-            .eq('is_working', true); // This is the "АНАЛИЗ" checkbox
+            .eq('is_active', true);
 
         const statusMap = new Map(
+            allStatuses?.map(s => [s.code, s.name]) || []
+        );
+
+        // 0b. Get allowed statuses for AI routing:
+        // - ALL statuses from "Отменен" group (regardless of АНАЛИЗ checkbox)
+        // - ONLY statuses with АНАЛИЗ checkbox (is_working = true) from other groups
+        const { data: allowedStatuses } = await supabase
+            .from('statuses')
+            .select('code, name, group_name, is_working')
+            .eq('is_active', true)
+            .or('group_name.ilike.%отмен%,is_working.eq.true');
+
+        const allowedStatusMap = new Map(
             allowedStatuses?.map(s => [s.code, s.name]) || []
         );
 
-        console.log(`[AIRouter] Loaded ${statusMap.size} allowed statuses for routing`);
+        console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing`);
 
         // 1. Fetch orders in "Согласование отмены" status
         // Note: order_metrics uses retailcrm_order_id, not orders.id
@@ -69,8 +81,8 @@ export async function POST(request: Request) {
                 const orderMetrics = metricsMap.get(order.id);
                 const comment = orderMetrics?.full_order_context?.manager_comment || '';
 
-                // Analyze with AI (pass allowed statuses)
-                const decision = await analyzeOrderForRouting(comment, statusMap);
+                // Analyze with AI (pass allowed statuses for routing)
+                const decision = await analyzeOrderForRouting(comment, allowedStatusMap);
 
                 // Log to database
                 const { error: logError } = await supabase
