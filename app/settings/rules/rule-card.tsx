@@ -89,16 +89,28 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
 
         setIsLoading(true);
         try {
+            const payload = { ruleId: rule.code };
+            console.log('[RuleCard] Sending test request:', payload);
+
+            if (!rule.code) {
+                alert('Ошибка: Отсутствует код правила (rule.code is missing)');
+                console.error('[RuleCard] rule object:', rule);
+                return;
+            }
+
             const res = await fetch('/api/rules/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ruleId: rule.code })
+                body: JSON.stringify(payload)
             });
 
             const data = await res.json();
+            console.log('[RuleCard] Test response:', res.status, data);
+
             if (data.success) {
                 alert(`✅ Проверка пройдена!\n\n${data.message}`);
             } else {
+                console.error('[RuleCard] Test failed:', data);
                 alert(`❌ Проверка не пройдена!\n\n${data.error || data.message || 'Неизвестная ошибка'}`);
             }
         } catch (e: any) {

@@ -13,9 +13,11 @@ export async function POST(request: Request) {
 
     try {
         const body = await request.json();
+        console.log('[RuleTest] Received body:', JSON.stringify(body));
         ruleId = body.ruleId;
 
         if (!ruleId) {
+            console.error('[RuleTest] Missing ruleId in body:', body);
             return NextResponse.json({ success: false, error: 'Missing ruleId' }, { status: 400 });
         }
 
