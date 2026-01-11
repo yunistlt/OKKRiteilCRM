@@ -81,17 +81,33 @@ export async function POST(request: Request) {
                 let error: string | undefined;
 
                 if (!options.dryRun && decision.confidence >= options.minConfidence!) {
-                    // TODO: Integrate with RetailCRM API to update status
-                    // For now, just update in our database
-                    const { error: updateError } = await supabase
-                        .from('orders')
-                        .update({ status: decision.target_status })
-                        .eq('id', order.id);
+                    try {
+                        // Update status in RetailCRM
+                        const retailcrmResponse = await fetch(`${process.env.NEXT_PUBLIC_RETAILCRM_URL}/api/v5/orders/${order.id}/edit`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                            },
+                            body: new URLSearchParams({
+                                apiKey: process.env.RETAILCRM_API_KEY!,
+                                order: JSON.stringify({
+                                    status: decision.target_status
+                                })
+                            })
+                        });
 
-                    if (updateError) {
-                        error = updateError.message;
-                        console.error(`[AIRouter] Update error for order ${order.id}:`, updateError);
-                    } else {
+                        const retailcrmData = await retailcrmResponse.json();
+
+                        if (!retailcrmData.success) {
+                            throw new Error(retailcrmData.errorMsg || 'RetailCRM API error');
+                        }
+
+                        // Also update in our local database
+                        await supabase
+                            .from('orders')
+                            .update({ status: decision.target_status })
+                            .eq('id', order.id);
+
                         wasApplied = true;
 
                         // Update log to mark as applied
@@ -104,6 +120,12 @@ export async function POST(request: Request) {
                             .eq('order_id', order.id)
                             .order('created_at', { ascending: false })
                             .limit(1);
+
+                        console.log(`[AIRouter] Successfully updated order ${order.id} to ${decision.target_status}`);
+
+                    } catch (apiError: any) {
+                        error = apiError.message;
+                        console.error(`[AIRouter] RetailCRM API error for order ${order.id}:`, apiError);
                     }
                 }
 
