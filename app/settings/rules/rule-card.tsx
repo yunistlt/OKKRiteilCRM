@@ -243,6 +243,7 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                         </button>
 
                         <button
+                            type="button"
                             onClick={handleTestRule}
                             className="text-gray-400 hover:text-orange-500 p-2 md:p-1"
                             title="Синтетическая проверка (Test)"
