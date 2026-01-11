@@ -56,22 +56,24 @@ export const PriorityDashboard = () => {
     });
 
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const [activePresetId, setActivePresetId] = useState<string | null>(null);
 
-    const fetchOrders = async () => {
+    const fetchOrders = async (filtersOverride?: typeof filters) => {
+        const activeFilters = filtersOverride || filters;
         try {
             setLoading(true);
 
             // Build Query Params
             const params = new URLSearchParams();
 
-            if (filters.statuses.length > 0) {
-                params.set('statuses', filters.statuses.join(','));
+            if (activeFilters.statuses.length > 0) {
+                params.set('statuses', activeFilters.statuses.join(','));
             }
-            if (filters.control && filters.control !== 'all') {
-                params.set('control', filters.control);
+            if (activeFilters.control && activeFilters.control !== 'all') {
+                params.set('control', activeFilters.control);
             }
-            if (filters.sumMin) params.set('sumMin', filters.sumMin);
-            if (filters.sumMax) params.set('sumMax', filters.sumMax);
+            if (activeFilters.sumMin) params.set('sumMin', activeFilters.sumMin);
+            if (activeFilters.sumMax) params.set('sumMax', activeFilters.sumMax);
 
             // Date Logic
             // If we have a preset, we should resolve it to actual dates or let the backend handle it?
@@ -86,8 +88,8 @@ export const PriorityDashboard = () => {
             // BUT, if we loaded a preset from DB that says "today", we need to make sure `from`/`to` are calculated for TODAY.
             // The `handleLoadPreset` function already does `resolveDatePreset`, so state should be correct.
 
-            if (filters.dateRange.from) params.set('from', filters.dateRange.from);
-            if (filters.dateRange.to) params.set('to', filters.dateRange.to);
+            if (activeFilters.dateRange.from) params.set('from', activeFilters.dateRange.from);
+            if (activeFilters.dateRange.to) params.set('to', activeFilters.dateRange.to);
 
             const res = await fetch(`/api/okk/priority?${params.toString()}`);
             const data = await res.json();
@@ -131,33 +133,40 @@ export const PriorityDashboard = () => {
     };
 
     const handleLoadPreset = (preset: Preset) => {
+        setActivePresetId(preset.id);
+        let newFilters = preset.filters;
+
         // If the preset has a 'dateRange' with a 'preset' (e.g. 'today'), re-calculate dates
         if (preset.filters.dateRange?.preset) {
             const resolved = resolveDatePreset(preset.filters.dateRange.preset);
             if (resolved) {
-                setFilters({
+                newFilters = {
                     ...preset.filters,
                     dateRange: {
                         ...preset.filters.dateRange,
                         from: resolved.from,
                         to: resolved.to
                     }
-                });
-                return;
+                };
             }
         }
-        setFilters(preset.filters);
+
+        setFilters(newFilters);
+        // Instant apply
+        fetchOrders(newFilters);
     };
 
     const handleDeletePreset = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (!confirm('Удалить этот фильтр?')) return;
         await deletePreset(id);
+        if (activePresetId === id) setActivePresetId(null);
         loadPresets();
     };
 
     // Helper to toggle status selection
     const toggleStatus = (code: string) => {
+        setActivePresetId(null); // Reset preset highlighting on manual change
         setFilters(prev => {
             const current = prev.statuses;
             if (current.includes(code)) {
@@ -170,6 +179,7 @@ export const PriorityDashboard = () => {
 
     // Select All / Deselect All
     const toggleAllStatuses = () => {
+        setActivePresetId(null);
         if (filters.statuses.length === activeStatuses.length) {
             setFilters(prev => ({ ...prev, statuses: [] }));
         } else {
@@ -303,7 +313,10 @@ export const PriorityDashboard = () => {
                                 {presets.map(preset => (
                                     <div
                                         key={preset.id}
-                                        className="group flex items-center gap-1.5 bg-white border border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-full px-3 py-1 text-sm cursor-pointer transition-all shadow-sm"
+                                        className={`group flex items-center gap-1.5 border rounded-full px-3 py-1 text-sm cursor-pointer transition-all shadow-sm ${activePresetId === preset.id
+                                                ? 'bg-blue-100 border-blue-500 ring-1 ring-blue-500'
+                                                : 'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/50'
+                                            }`}
                                         onClick={() => handleLoadPreset(preset)}
                                     >
                                         <span className="font-medium text-gray-700 group-hover:text-blue-700">{preset.name}</span>
@@ -391,7 +404,10 @@ export const PriorityDashboard = () => {
                                 <select
                                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                                     value={filters.control}
-                                    onChange={(e) => setFilters({ ...filters, control: e.target.value })}
+                                    onChange={(e) => {
+                                        setActivePresetId(null);
+                                        setFilters({ ...filters, control: e.target.value });
+                                    }}
                                 >
                                     <option value="all">Любой</option>
                                     <option value="yes">Да</option>
@@ -405,18 +421,26 @@ export const PriorityDashboard = () => {
                                 <div className="flex gap-2">
                                     <input
                                         type="number"
+                                        min="0"
                                         placeholder="0"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         value={filters.sumMin}
-                                        onChange={(e) => setFilters({ ...filters, sumMin: e.target.value })}
+                                        onChange={(e) => {
+                                            setActivePresetId(null);
+                                            setFilters({ ...filters, sumMin: e.target.value });
+                                        }}
                                     />
                                     <span className="text-gray-400 py-2">–</span>
                                     <input
                                         type="number"
+                                        min="0"
                                         placeholder="∞"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                                         value={filters.sumMax}
-                                        onChange={(e) => setFilters({ ...filters, sumMax: e.target.value })}
+                                        onChange={(e) => {
+                                            setActivePresetId(null);
+                                            setFilters({ ...filters, sumMax: e.target.value });
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -426,14 +450,28 @@ export const PriorityDashboard = () => {
                                 <label className="text-xs font-semibold uppercase text-gray-500">Дата след. контакта</label>
                                 <DateRangePicker
                                     value={filters.dateRange}
-                                    onChange={(range) => setFilters({
-                                        ...filters,
-                                        dateRange: { ...range, preset: range.preset || null }
-                                    })}
+                                    onChange={(range) => {
+                                        setActivePresetId(null);
+                                        setFilters({
+                                            ...filters,
+                                            dateRange: { ...range, preset: range.preset || null }
+                                        });
+                                    }}
                                     placeholder="Выберите период"
                                     className="w-full"
                                 />
                             </div>
+                        </div>
+
+                        {/* Apply Button - Prominent Footer Action */}
+                        <div className="flex justify-end pt-2 border-t border-gray-100 md:border-transparent mt-2 md:mt-0">
+                            <Button
+                                onClick={() => fetchOrders()}
+                                className="w-full md:w-auto font-semibold shadow-md active:scale-95 transition-transform bg-primary hover:bg-primary/90"
+                                size="lg"
+                            >
+                                Показать заказы
+                            </Button>
                         </div>
                     </CardContent>
                 </Card>
