@@ -194,69 +194,78 @@ export default function DateRangePicker({ value, onChange, placeholder = "Выб
             </button>
 
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-[500px] bg-white rounded-lg shadow-xl border border-gray-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col md:flex-row">
-                    {/* Presets Column */}
-                    <div className="w-full md:w-48 bg-gray-50/80 p-3 border-r border-gray-100/50 flex flex-col gap-1 overflow-y-auto max-h-[300px]">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-2">Быстрый выбор</span>
-                        {PRESETS_CONFIG.map((p) => (
-                            <button
-                                key={p.id}
-                                onClick={() => applyPreset(p.id)}
-                                className={`
-                                    flex items-center justify-between w-full px-3 py-2 rounded-md text-xs font-medium transition-all
-                                    ${currentPreset === p.id
-                                        ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                                        : 'text-gray-600 hover:bg-white hover:shadow-sm'
-                                    }
-                                `}
-                            >
-                                {p.label}
-                                {currentPreset === p.id && <Check className="w-3 h-3" />}
-                            </button>
-                        ))}
-                    </div>
+                <>
+                    {/* Backdrop for Mobile */}
+                    <div
+                        className="fixed inset-0 bg-black/50 z-40 md:hidden"
+                        onClick={() => setIsOpen(false)}
+                    />
 
-                    {/* Manual Range Column */}
-                    <div className="flex-1 p-5">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-4 block">Точный диапазон</span>
-
-                        <div className="grid grid-cols-2 gap-4 mb-6">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 ml-1">С даты</label>
-                                <input
-                                    type="date"
-                                    value={tempFrom}
-                                    onChange={(e) => setTempFrom(e.target.value)}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-semibold text-gray-500 ml-1">По дату</label>
-                                <input
-                                    type="date"
-                                    value={tempTo}
-                                    onChange={(e) => setTempTo(e.target.value)}
-                                    className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                />
-                            </div>
+                    {/* Modal/Popover */}
+                    <div className="fixed inset-x-4 top-[20%] z-50 md:absolute md:inset-auto md:top-full md:left-0 md:mt-2 w-auto md:w-[500px] bg-white rounded-lg shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col md:flex-row max-h-[80vh] md:max-h-none">
+                        {/* Presets Column */}
+                        <div className="w-full md:w-48 bg-gray-50/80 p-3 border-b md:border-b-0 md:border-r border-gray-100/50 flex flex-row md:flex-col gap-2 md:gap-1 overflow-x-auto md:overflow-x-visible md:overflow-y-auto max-h-[300px] no-scrollbar">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-2 hidden md:block">Быстрый выбор</span>
+                            {PRESETS_CONFIG.map((p) => (
+                                <button
+                                    key={p.id}
+                                    onClick={() => applyPreset(p.id)}
+                                    className={`
+                                        flex items-center justify-between whitespace-nowrap px-3 py-2 rounded-md text-xs font-medium transition-all shrink-0 md:shrink
+                                        ${currentPreset === p.id
+                                            ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+                                            : 'text-gray-600 hover:bg-white hover:shadow-sm bg-white md:bg-transparent border md:border-0 border-gray-100'
+                                        }
+                                    `}
+                                >
+                                    {p.label}
+                                    {currentPreset === p.id && <Check className="w-3 h-3 ml-2" />}
+                                </button>
+                            ))}
                         </div>
 
-                        <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
-                            <button
-                                onClick={handleReset}
-                                className="px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                            >
-                                Сбросить
-                            </button>
-                            <button
-                                onClick={handleManualApply}
-                                className="flex-1 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black transition-all shadow-lg shadow-gray-200 active:scale-95"
-                            >
-                                Применить диапазон
-                            </button>
+                        {/* Manual Range Column */}
+                        <div className="flex-1 p-4 md:p-5">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-4 block">Точный диапазон</span>
+
+                            <div className="grid grid-cols-2 gap-3 md:gap-4 mb-6">
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-500 ml-1">С даты</label>
+                                    <input
+                                        type="date"
+                                        value={tempFrom}
+                                        onChange={(e) => setTempFrom(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 md:p-2.5 text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-xs font-semibold text-gray-500 ml-1">По дату</label>
+                                    <input
+                                        type="date"
+                                        value={tempTo}
+                                        onChange={(e) => setTempTo(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-200 rounded-lg p-2 md:p-2.5 text-xs font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 pt-4 border-t border-gray-100">
+                                <button
+                                    onClick={handleReset}
+                                    className="px-4 py-2 text-xs font-semibold text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                                >
+                                    Сбросить
+                                </button>
+                                <button
+                                    onClick={handleManualApply}
+                                    className="flex-1 px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg hover:bg-black transition-all shadow-lg shadow-gray-200 active:scale-95"
+                                >
+                                    Применить
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </>
             )}
         </div>
     );

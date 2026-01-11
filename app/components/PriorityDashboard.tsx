@@ -257,30 +257,41 @@ export const PriorityDashboard = () => {
             {/* Filter Section */}
             {showFilters && (
                 <Card className="bg-gray-50/50 border-dashed">
-                    <CardContent className="pt-6 space-y-6">
+                    <CardContent className="pt-3 pb-3 md:pt-6 md:pb-6 space-y-3 md:space-y-6">
                         {/* 1. Saved Presets Section */}
-                        <div className="space-y-3">
+                        <div className="space-y-2 md:space-y-3">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Сохраненные фильтры</label>
 
-                                {/* Save Current Filter Form */}
+                                {/* Save Current Filter Form - Compact Mode */}
                                 <div className="flex items-center gap-2 w-full sm:w-auto">
-                                    <input
-                                        type="text"
-                                        placeholder="Название нового фильтра..."
-                                        className="h-8 text-sm px-2 rounded border border-input w-full sm:w-[200px]"
-                                        value={presetName}
-                                        onChange={(e) => setPresetName(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
-                                    />
+                                    <div className={`transition-all duration-200 ${presetName || isSavingPreset ? 'w-full sm:w-[200px]' : 'w-0 overflow-hidden'}`}>
+                                        <input
+                                            type="text"
+                                            placeholder="Название..."
+                                            className="h-8 text-sm px-2 rounded border border-input w-full"
+                                            value={presetName}
+                                            onChange={(e) => setPresetName(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
+                                        />
+                                    </div>
                                     <Button
                                         size="sm"
-                                        variant="outline"
-                                        className="h-8"
-                                        onClick={handleSavePreset}
-                                        disabled={!presetName.trim() || isSavingPreset}
+                                        variant={presetName ? "default" : "outline"}
+                                        className="h-8 px-2"
+                                        onClick={() => {
+                                            if (!presetName && !isSavingPreset) {
+                                                // Just focus/show input
+                                                setPresetName('Мой фильтр');
+                                            } else {
+                                                handleSavePreset();
+                                            }
+                                        }}
+                                        disabled={isSavingPreset}
+                                        title="Сохранить текущий фильтр"
                                     >
-                                        {isSavingPreset ? '...' : <Save className="w-4 h-4" />}
+                                        <Save className="w-4 h-4" />
+                                        {presetName && <span className="ml-2">Сохранить</span>}
                                     </Button>
                                 </div>
                             </div>
@@ -311,9 +322,9 @@ export const PriorityDashboard = () => {
                         <div className="border-t border-gray-200/60"></div>
 
                         {/* 2. Standard Filters */}
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 md:gap-4">
                             {/* Status Filter (Multi-select) */}
-                            <div className="space-y-2 relative">
+                            <div className="space-y-1.5 md:space-y-2 relative">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Статус заказа</label>
                                 <div className="relative">
                                     <button
@@ -333,41 +344,40 @@ export const PriorityDashboard = () => {
                                     {statusDropdownOpen && (
                                         <>
                                             <div
-                                                className="fixed inset-0 z-10"
+                                                className="fixed inset-0 z-40 md:hidden bg-black/20"
                                                 onClick={() => setStatusDropdownOpen(false)}
                                             ></div>
-                                            <div className="absolute top-full left-0 z-20 mt-1 w-full min-w-[200px] rounded-md border bg-popover text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95 bg-white max-h-[300px] flex flex-col">
-                                                <div className="p-2 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                                                    <span className="text-xs font-semibold text-gray-500">Выберите статусы</span>
+                                            <div
+                                                className="fixed inset-0 z-40 hidden md:block"
+                                                onClick={() => setStatusDropdownOpen(false)}
+                                            ></div>
+                                            <div className="fixed md:absolute top-auto bottom-0 md:bottom-auto md:top-full left-0 z-50 mt-1 w-full min-w-[200px] rounded-t-xl md:rounded-md border bg-popover text-popover-foreground shadow-xl md:shadow-md outline-none animate-in slide-in-from-bottom-10 md:fade-in-0 md:zoom-in-95 bg-white max-h-[50vh] md:max-h-[300px] flex flex-col">
+                                                <div className="p-3 md:p-2 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-xl md:rounded-t-md">
+                                                    <span className="text-sm md:text-xs font-semibold text-gray-500">Выберите статусы</span>
                                                     <button
                                                         onClick={toggleAllStatuses}
-                                                        className="text-[10px] text-blue-600 font-bold uppercase hover:text-blue-800"
+                                                        className="text-xs md:text-[10px] text-blue-600 font-bold uppercase hover:text-blue-800"
                                                     >
                                                         {filters.statuses.length === activeStatuses.length ? 'Снять все' : 'Выбрать все'}
                                                     </button>
                                                 </div>
-                                                <div className="overflow-y-auto p-1">
+                                                <div className="overflow-y-auto p-2 md:p-1">
                                                     {activeStatuses.map((status) => (
                                                         <div
                                                             key={status.code}
-                                                            className="flex items-center space-x-2 rounded-sm px-2 py-1.5 hover:bg-accent hover:text-accent-foreground cursor-pointer hover:bg-gray-50"
+                                                            className="flex items-center space-x-3 md:space-x-2 rounded-sm px-2 py-3 md:py-1.5 hover:bg-accent hover:text-accent-foreground cursor-pointer hover:bg-gray-50 border-b border-gray-50 md:border-0 last:border-0"
                                                             onClick={() => toggleStatus(status.code)}
                                                         >
-                                                            <div className={`flex h-4 w-4 items-center justify-center rounded border ${filters.statuses.includes(status.code) ? 'bg-primary border-primary bg-blue-600 border-blue-600' : 'border-primary opacity-50'}`}>
+                                                            <div className={`flex h-5 w-5 md:h-4 md:w-4 items-center justify-center rounded border ${filters.statuses.includes(status.code) ? 'bg-primary border-primary bg-blue-600 border-blue-600' : 'border-primary opacity-50'}`}>
                                                                 {filters.statuses.includes(status.code) && (
                                                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-white"><polyline points="20 6 9 17 4 12" /></svg>
                                                                 )}
                                                             </div>
-                                                            <div className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(status.group_name)}`}>
+                                                            <div className={`px-2 py-0.5 rounded text-xs md:text-[10px] font-medium border ${getStatusColor(status.group_name)}`}>
                                                                 {status.name}
                                                             </div>
                                                         </div>
                                                     ))}
-                                                    {activeStatuses.length === 0 && (
-                                                        <div className="p-4 text-center text-xs text-gray-400">
-                                                            Нет доступных статусов.
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </div>
                                         </>
@@ -376,7 +386,7 @@ export const PriorityDashboard = () => {
                             </div>
 
                             {/* Control Filter */}
-                            <div className="space-y-2">
+                            <div className="space-y-1.5 md:space-y-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Контроль</label>
                                 <select
                                     className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
@@ -390,7 +400,7 @@ export const PriorityDashboard = () => {
                             </div>
 
                             {/* Sum Filter */}
-                            <div className="space-y-2">
+                            <div className="space-y-1.5 md:space-y-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Сумма заказа, ₽</label>
                                 <div className="flex gap-2">
                                     <input
@@ -412,7 +422,7 @@ export const PriorityDashboard = () => {
                             </div>
 
                             {/* Date Filter */}
-                            <div className="space-y-2">
+                            <div className="space-y-1.5 md:space-y-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Дата след. контакта</label>
                                 <DateRangePicker
                                     value={filters.dateRange}
@@ -599,7 +609,7 @@ export const PriorityDashboard = () => {
                                 </div>
 
                                 {order.today_stats.calls.length > 0 && (
-                                    <div className="bg-muted/30 px-4 md:px-6 py-3 md:py-4 border-t">
+                                    <div className="bg-muted/30 px-3 py-3 md:px-6 md:py-4 border-t">
                                         <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 md:mb-3 flex items-center gap-2">
                                             <PhoneCall className="w-3 h-3" /> Последние активности
                                         </div>
