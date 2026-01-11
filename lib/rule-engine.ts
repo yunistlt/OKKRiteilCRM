@@ -122,6 +122,32 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             }
 
             console.log(`[RuleEngine] Analyzing comment for Order ${orderId}...`);
+
+            // SPECIAL CASE: If rule checks for empty/null comments, handle directly
+            const checksEmptyComment = rule.condition_sql?.includes('manager_comment') &&
+                (rule.condition_sql?.includes('IS NULL') || rule.condition_sql?.includes("= ''"));
+
+            if (checksEmptyComment && (!managerComment || managerComment.trim() === '')) {
+                // Empty comment IS the violation for this rule type
+                console.log(`[RuleEngine] Empty comment detected - immediate violation for Order ${orderId}`);
+                semanticViolations++;
+                const { error: upsertError } = await supabase.from('okk_violations').upsert({
+                    order_id: orderId,
+                    rule_code: rule.code,
+                    manager_id: managerId,
+                    violation_time: actualEventTime,
+                    details: 'Отсутствует комментарий менеджера при смене статуса',
+                    severity: rule.severity,
+                    evidence_text: null,
+                    call_id: null
+                }, { onConflict: 'order_id, rule_code, call_id' });
+
+                if (upsertError) {
+                    console.error('[RuleEngine] Violation Persistence Error:', upsertError);
+                }
+                continue; // Skip AI analysis for empty comments
+            }
+
             // Substitute variables in prompt
             let prompt = rule.semantic_prompt || rule.description;
             const newValue = (e.raw_payload?.status && typeof e.raw_payload.status === 'object') ? e.raw_payload.status.code : (e.raw_payload?.status || 'unknown');
