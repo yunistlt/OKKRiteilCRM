@@ -60,8 +60,38 @@ export const PriorityDashboard = () => {
     const fetchOrders = async () => {
         try {
             setLoading(true);
-            const res = await fetch('/api/okk/priority');
+
+            // Build Query Params
+            const params = new URLSearchParams();
+
+            if (filters.statuses.length > 0) {
+                params.set('statuses', filters.statuses.join(','));
+            }
+            if (filters.control && filters.control !== 'all') {
+                params.set('control', filters.control);
+            }
+            if (filters.sumMin) params.set('sumMin', filters.sumMin);
+            if (filters.sumMax) params.set('sumMax', filters.sumMax);
+
+            // Date Logic
+            // If we have a preset, we should resolve it to actual dates or let the backend handle it?
+            // The API expects 'from'/'to'. The DateRangePicker/filters state holds actual dates if they are resolved.
+            // When does resolution happen? 
+            // - If user selects manual: filters.dateRange.from/to are set.
+            // - If user selects preset: DateRangePicker usually sets from/to immediately OR we need to resolve it here.
+            // Let's resolve it here just in case, or assume state is correct.
+            // Checking DateRangePicker usage: in `onChange`, it sets from/to.
+            // Wait, does DateRangePicker update `from`/`to` in `filters.dateRange` when a preset is picked?
+            // Yes, standard DateRangePicker usually calls onChange with { from, to, preset }.
+            // BUT, if we loaded a preset from DB that says "today", we need to make sure `from`/`to` are calculated for TODAY.
+            // The `handleLoadPreset` function already does `resolveDatePreset`, so state should be correct.
+
+            if (filters.dateRange.from) params.set('from', filters.dateRange.from);
+            if (filters.dateRange.to) params.set('to', filters.dateRange.to);
+
+            const res = await fetch(`/api/okk/priority?${params.toString()}`);
             const data = await res.json();
+
             if (data.error) throw new Error(data.error);
             setOrders(data.orders || []);
             setActiveManagers(data.activeManagers || []);
@@ -160,38 +190,8 @@ export const PriorityDashboard = () => {
         return 'bg-slate-100 text-slate-800 border-slate-200'; // Default
     };
 
-    const filteredOrders = orders.filter(order => {
-        // 1. Sum Filter
-        if (filters.sumMin && (order.totalSumm || 0) < Number(filters.sumMin)) return false;
-        if (filters.sumMax && (order.totalSumm || 0) > Number(filters.sumMax)) return false;
-
-        // 2. Control Filter
-        if (filters.control !== 'all') {
-            const isControlled = order.raw_payload?.customFields?.control === true;
-            if (filters.control === 'yes' && !isControlled) return false;
-            if (filters.control === 'no' && isControlled) return false;
-        }
-
-        // 3. Next Contact Date Filter
-        if (filters.dateRange.from || filters.dateRange.to) {
-            const contactDate = order.raw_payload?.customFields?.data_kontakta;
-
-            if (contactDate) {
-                if (filters.dateRange.from && contactDate < filters.dateRange.from) return false;
-                if (filters.dateRange.to && contactDate > filters.dateRange.to) return false;
-            } else if (filters.dateRange.from || filters.dateRange.to) {
-                return false;
-            }
-        }
-
-        // 4. Status Filter (Multi-select)
-        if (filters.statuses.length > 0) {
-            const orderStatus = order.raw_payload?.status;
-            if (!filters.statuses.includes(orderStatus)) return false;
-        }
-
-        return true;
-    });
+    // Client-side filtering is no longer needed as the API handles it
+    const filteredOrders = orders;
 
     const getStatusBadge = (status: string) => {
         switch (status) {
@@ -523,120 +523,133 @@ export const PriorityDashboard = () => {
                 </Card>
             </div>
 
-            <div className="grid gap-4">
-                {filteredOrders.map((order) => {
-                    const statusInfo = activeStatuses.find(s => s.code === order.raw_payload?.status);
+            {filteredOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-gray-50/50 border border-dashed rounded-lg">
+                    <div className="bg-gray-100 p-3 rounded-full mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900">Заказы не найдены</h3>
+                    <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                        Измените параметры фильтрации или выберите другой период, чтобы увидеть список заказов.
+                    </p>
+                </div>
+            ) : (
+                <div className="grid gap-4">
 
-                    return (
-                        <Card key={order.id} className="overflow-hidden border-l-4" style={{
-                            borderLeftColor:
-                                order.today_stats.status === 'success' ? '#22c55e' :
-                                    order.today_stats.status === 'overdue' ? '#ef4444' :
-                                        order.today_stats.status === 'fallback_required' ? '#f97316' : '#3b82f6'
-                        }}>
-                            <CardContent className="p-0">
-                                <div className="flex flex-col md:flex-row items-start md:items-center p-4 md:p-6 gap-4 md:gap-6">
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex items-center gap-3 flex-wrap">
-                                            <a
-                                                href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-lg font-bold hover:text-primary transition-colors hover:underline"
-                                            >
-                                                #{order.number}
-                                            </a>
+                    {filteredOrders.map((order) => {
+                        const statusInfo = activeStatuses.find(s => s.code === order.raw_payload?.status);
 
-                                            {statusInfo && (
-                                                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusColor(statusInfo.group_name)}`}>
-                                                    {statusInfo.name}
-                                                </span>
-                                            )}
+                        return (
+                            <Card key={order.id} className="overflow-hidden border-l-4" style={{
+                                borderLeftColor:
+                                    order.today_stats.status === 'success' ? '#22c55e' :
+                                        order.today_stats.status === 'overdue' ? '#ef4444' :
+                                            order.today_stats.status === 'fallback_required' ? '#f97316' : '#3b82f6'
+                            }}>
+                                <CardContent className="p-0">
+                                    <div className="flex flex-col md:flex-row items-start md:items-center p-4 md:p-6 gap-4 md:gap-6">
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center gap-3 flex-wrap">
+                                                <a
+                                                    href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-lg font-bold hover:text-primary transition-colors hover:underline"
+                                                >
+                                                    #{order.number}
+                                                </a>
 
-                                            {getStatusBadge(order.today_stats.status)}
+                                                {statusInfo && (
+                                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${getStatusColor(statusInfo.group_name)}`}>
+                                                        {statusInfo.name}
+                                                    </span>
+                                                )}
 
-                                            <a
-                                                href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-muted-foreground hover:text-primary transition-colors"
-                                            >
-                                                <ExternalLink className="w-4 h-4" />
-                                            </a>
-                                        </div>
-                                        <div className="text-sm text-muted-foreground line-clamp-1">
-                                            {order.raw_payload?.items?.[0]?.offer?.name || 'Заказ без товаров'}
-                                        </div>
-                                        <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <span className="font-medium hidden md:inline">Менеджер:</span>
-                                            <span>{order.managerName || `ID ${order.managerId}` || 'Не назначен'}</span>
-                                        </div>
-                                        <div className="text-sm font-medium">
-                                            {order.totalSumm?.toLocaleString()} ₽
-                                        </div>
-                                    </div>
+                                                {getStatusBadge(order.today_stats.status)}
 
-                                    <div className="flex gap-4 md:gap-8 items-center w-full md:w-auto justify-between md:justify-start border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0">
-                                        <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Звонки</div>
-                                            <div className="flex items-center justify-center gap-1.5 font-bold">
-                                                <PhoneCall className={`w-4 h-4 ${order.today_stats.call_count > 0 ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
-                                                <span className={order.today_stats.call_count >= 3 ? 'text-orange-600' : ''}>
-                                                    {order.today_stats.call_count}
-                                                    <span className="text-gray-400 font-normal"> / 3</span>
-                                                </span>
+                                                <a
+                                                    href={`https://${order.raw_payload?.site?.replace('-ru', '')}.retailcrm.ru/orders/${order.id}/edit`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-muted-foreground hover:text-primary transition-colors"
+                                                >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                </a>
+                                            </div>
+                                            <div className="text-sm text-muted-foreground line-clamp-1">
+                                                {order.raw_payload?.items?.[0]?.offer?.name || 'Заказ без товаров'}
+                                            </div>
+                                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                                <span className="font-medium hidden md:inline">Менеджер:</span>
+                                                <span>{order.managerName || `ID ${order.managerId}` || 'Не назначен'}</span>
+                                            </div>
+                                            <div className="text-sm font-medium">
+                                                {order.totalSumm?.toLocaleString()} ₽
                                             </div>
                                         </div>
 
-                                        <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Диалог</div>
-                                            <div className="flex justify-center">
-                                                <MessageSquare className={`w-5 h-5 ${order.today_stats.has_dialogue ? 'text-green-500' : 'text-muted-foreground opacity-30'}`} />
-                                            </div>
-                                        </div>
-
-                                        <div className="text-center space-y-1">
-                                            <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Email</div>
-                                            <div className="flex justify-center">
-                                                <Mail className={`w-5 h-5 ${order.today_stats.has_email ? 'text-blue-500' : 'text-muted-foreground opacity-30'}`} />
-                                            </div>
-                                        </div>
-
-                                        <div className="pl-4 border-l">
-                                            {getStatusIcon(order.today_stats.status)}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {order.today_stats.calls.length > 0 && (
-                                    <div className="bg-muted/30 px-3 py-3 md:px-6 md:py-4 border-t">
-                                        <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 md:mb-3 flex items-center gap-2">
-                                            <PhoneCall className="w-3 h-3" /> Последние активности
-                                        </div>
-                                        <div className="space-y-2 md:space-y-3">
-                                            {order.today_stats.calls.slice(0, 2).map((call: any, idx: number) => (
-                                                <div key={idx} className="text-sm bg-white p-2 md:p-3 rounded border shadow-sm">
-                                                    <div className="flex justify-between mb-1 items-center">
-                                                        <span className="text-xs font-medium text-primary">
-                                                            {new Date(call.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                        </span>
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {call.duration_sec} сек.
-                                                        </span>
-                                                    </div>
-                                                    <div className="text-xs italic text-muted-foreground line-clamp-2 leading-relaxed">
-                                                        {call.transcript || (call.transcription_status === 'processing' ? 'Транскрибация идёт...' : 'Нет записи разговора')}
-                                                    </div>
+                                        <div className="flex gap-4 md:gap-8 items-center w-full md:w-auto justify-between md:justify-start border-t md:border-t-0 pt-4 md:pt-0 mt-2 md:mt-0">
+                                            <div className="text-center space-y-1">
+                                                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Звонки</div>
+                                                <div className="flex items-center justify-center gap-1.5 font-bold">
+                                                    <PhoneCall className={`w-4 h-4 ${order.today_stats.call_count > 0 ? 'text-primary' : 'text-muted-foreground opacity-30'}`} />
+                                                    <span className={order.today_stats.call_count >= 3 ? 'text-orange-600' : ''}>
+                                                        {order.today_stats.call_count}
+                                                        <span className="text-gray-400 font-normal"> / 3</span>
+                                                    </span>
                                                 </div>
-                                            ))}
+                                            </div>
+
+                                            <div className="text-center space-y-1">
+                                                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Диалог</div>
+                                                <div className="flex justify-center">
+                                                    <MessageSquare className={`w-5 h-5 ${order.today_stats.has_dialogue ? 'text-green-500' : 'text-muted-foreground opacity-30'}`} />
+                                                </div>
+                                            </div>
+
+                                            <div className="text-center space-y-1">
+                                                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Email</div>
+                                                <div className="flex justify-center">
+                                                    <Mail className={`w-5 h-5 ${order.today_stats.has_email ? 'text-blue-500' : 'text-muted-foreground opacity-30'}`} />
+                                                </div>
+                                            </div>
+
+                                            <div className="pl-4 border-l">
+                                                {getStatusIcon(order.today_stats.status)}
+                                            </div>
                                         </div>
                                     </div>
-                                )}
-                            </CardContent>
-                        </Card>
-                    );
-                })}
-            </div>
+
+                                    {order.today_stats.calls.length > 0 && (
+                                        <div className="bg-muted/30 px-3 py-3 md:px-6 md:py-4 border-t">
+                                            <div className="text-xs font-semibold uppercase text-muted-foreground mb-2 md:mb-3 flex items-center gap-2">
+                                                <PhoneCall className="w-3 h-3" /> Последние активности
+                                            </div>
+                                            <div className="space-y-2 md:space-y-3">
+                                                {order.today_stats.calls.slice(0, 2).map((call: any, idx: number) => (
+                                                    <div key={idx} className="text-sm bg-white p-2 md:p-3 rounded border shadow-sm">
+                                                        <div className="flex justify-between mb-1 items-center">
+                                                            <span className="text-xs font-medium text-primary">
+                                                                {new Date(call.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                            </span>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {call.duration_sec} сек.
+                                                            </span>
+                                                        </div>
+                                                        <div className="text-xs italic text-muted-foreground line-clamp-2 leading-relaxed">
+                                                            {call.transcript || (call.transcription_status === 'processing' ? 'Транскрибация идёт...' : 'Нет записи разговора')}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 };
