@@ -10,6 +10,7 @@ import {
     ExternalLink, PhoneCall, ChevronDown, Check, Save, X
 } from 'lucide-react';
 import { getPresets, savePreset, deletePreset, type Preset } from '@/app/actions/presets';
+import DateRangePicker, { type DateRangePreset, resolveDatePreset } from './DateRangePicker';
 
 interface PriorityOrder {
     id: number;
@@ -46,8 +47,11 @@ export const PriorityDashboard = () => {
         sumMin: '',
         sumMax: '',
         control: 'all', // 'all', 'yes', 'no'
-        nextContactDateFrom: '',
-        nextContactDateTo: '',
+        dateRange: {
+            from: '',
+            to: '',
+            preset: null as DateRangePreset
+        },
         statuses: [] as string[]
     });
 
@@ -97,6 +101,21 @@ export const PriorityDashboard = () => {
     };
 
     const handleLoadPreset = (preset: Preset) => {
+        // If the preset has a 'dateRange' with a 'preset' (e.g. 'today'), re-calculate dates
+        if (preset.filters.dateRange?.preset) {
+            const resolved = resolveDatePreset(preset.filters.dateRange.preset);
+            if (resolved) {
+                setFilters({
+                    ...preset.filters,
+                    dateRange: {
+                        ...preset.filters.dateRange,
+                        from: resolved.from,
+                        to: resolved.to
+                    }
+                });
+                return;
+            }
+        }
         setFilters(preset.filters);
     };
 
@@ -154,13 +173,13 @@ export const PriorityDashboard = () => {
         }
 
         // 3. Next Contact Date Filter
-        if (filters.nextContactDateFrom || filters.nextContactDateTo) {
+        if (filters.dateRange.from || filters.dateRange.to) {
             const contactDate = order.raw_payload?.customFields?.data_kontakta;
 
             if (contactDate) {
-                if (filters.nextContactDateFrom && contactDate < filters.nextContactDateFrom) return false;
-                if (filters.nextContactDateTo && contactDate > filters.nextContactDateTo) return false;
-            } else if (filters.nextContactDateFrom || filters.nextContactDateTo) {
+                if (filters.dateRange.from && contactDate < filters.dateRange.from) return false;
+                if (filters.dateRange.to && contactDate > filters.dateRange.to) return false;
+            } else if (filters.dateRange.from || filters.dateRange.to) {
                 return false;
             }
         }
@@ -395,21 +414,15 @@ export const PriorityDashboard = () => {
                             {/* Date Filter */}
                             <div className="space-y-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Дата след. контакта</label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="date"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={filters.nextContactDateFrom}
-                                        onChange={(e) => setFilters({ ...filters, nextContactDateFrom: e.target.value })}
-                                    />
-                                    <span className="text-gray-400 py-2">–</span>
-                                    <input
-                                        type="date"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                                        value={filters.nextContactDateTo}
-                                        onChange={(e) => setFilters({ ...filters, nextContactDateTo: e.target.value })}
-                                    />
-                                </div>
+                                <DateRangePicker
+                                    value={filters.dateRange}
+                                    onChange={(range) => setFilters({
+                                        ...filters,
+                                        dateRange: { ...range, preset: range.preset || null }
+                                    })}
+                                    placeholder="Выберите период"
+                                    className="w-full"
+                                />
                             </div>
                         </div>
                     </CardContent>
