@@ -35,12 +35,12 @@ export async function GET(request: Request) {
         const managerIds = Array.from(new Set(orders.map((o: any) => o.managerId).filter(Boolean)));
         const { data: managers } = await supabase
             .from('managers')
-            .select('retailcrm_manager_id, first_name, last_name')
-            .in('retailcrm_manager_id', managerIds);
+            .select('id, first_name, last_name')
+            .in('id', managerIds);
 
         const managerMap = new Map(
             (managers || []).map(m => [
-                String(m.retailcrm_manager_id),
+                String(m.id),
                 `${m.last_name} ${m.first_name}`
             ])
         );
