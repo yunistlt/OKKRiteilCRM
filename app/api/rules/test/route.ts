@@ -34,48 +34,88 @@ export async function POST(request: Request) {
             throw new Error(`Rule ${ruleId} not found`);
         }
 
-        // 2. Create Synthetic Data (Always creates a VIOLATION)
+        // 2. Create Synthetic Data (Smart adaptation to Rule SQL)
         console.log(`[RuleTest] Creating synthetic data...`);
+        const sql = rule.condition_sql || '';
+        const now = new Date();
+
+        let eventTime = now;
+        let eventType = 'status_changed';
+        let fieldName = 'status';
+        let newValue = 'novyi-1';
+        let managerId = 249;
+
+        // A. Detection Logic
+        // 1. Time based (e.g. > 24 hours)
+        if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()')) {
+            // fast forward: make event happen 25h ago
+            eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000);
+            console.log('[RuleTest] Detected time condition, backdating event to:', eventTime.toISOString());
+        }
+
+        // 2. Event Type (Rescheduling)
+        if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
+            eventType = 'data_kontakta';
+            fieldName = 'data_kontakta';
+            // Set newValue to a future date for "Rescheduling" logic
+            const future = new Date();
+            future.setDate(future.getDate() + 5);
+            newValue = future.toISOString().split('T')[0];
+        }
+
+        // 3. Status Value
+        // Try to find required status in SQL: new_value = 'X'
+        const statusMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
+        if (statusMatch) {
+            newValue = statusMatch[1];
+            // Also need to set order current_status to this?
+        }
 
         // Create Order
         const { error: orderErr } = await supabase.from('orders').upsert({
             id: testOrderId,
             order_id: testOrderId,
-            status: 'novyi-1',
-            manager_id: 249 // Standard test manager
+            status: fieldName === 'status' ? newValue : 'work',
+            manager_id: managerId
         });
         if (orderErr) throw new Error(`Order creation failed: ${orderErr.message}`);
 
-        // Create Metrics (Empty comment for violations)
+        // Create Metrics 
         const { error: metricErr } = await supabase.from('order_metrics').upsert({
             retailcrm_order_id: testOrderId,
-            manager_id: 249,
-            current_status: 'novyi-1',
-            full_order_context: { manager_comment: '' }
+            manager_id: managerId,
+            current_status: fieldName === 'status' ? newValue : 'work',
+            full_order_context: {
+                manager_comment: '', // Empty comment to trigger "No Comment" rule if applicable
+                // For TOP-3 rule, we specifically leave custom fields EMPTY to trigger violation
+                status_name: fieldName === 'status' ? newValue : 'work' // Helps with label matching
+            }
         });
         if (metricErr) throw new Error(`Metrics creation failed: ${metricErr.message}`);
 
         // Create Event
-        const now = new Date();
         const { error: eventErr } = await supabase.from('raw_order_events').upsert({
             event_id: testEventId,
             retailcrm_order_id: testOrderId,
-            event_type: 'status_changed',
-            occurred_at: now.toISOString(),
+            event_type: eventType,
+            occurred_at: eventTime.toISOString(),
             raw_payload: {
-                field: 'status',
-                newValue: 'novyi-1',
+                field: fieldName,
+                newValue: newValue,
+                oldValue: 'prev_value', // often needed for "change" logic
+                status: { code: newValue, name: newValue }, // mocked object structure
                 _sync_metadata: {
-                    order_statusUpdatedAt: now.toISOString()
+                    order_statusUpdatedAt: eventTime.toISOString()
                 }
             },
-            manager_id: 249
+            manager_id: managerId
         });
         if (eventErr) throw new Error(`Event creation failed: ${eventErr.message}`);
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
-        const startTime = new Date(now.getTime() - 10 * 60 * 1000); // 10 min window
+        // Ensure window covers the potentially backdated event
+        const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000); // Event time - 2h
         const endTime = new Date(now.getTime() + 60 * 1000);
 
         const violationsFound = await runRuleEngine(
