@@ -12,30 +12,30 @@ export interface SemanticResult {
     reasoning: string;
 }
 
-export async function analyzeTranscript(transcript: string, rulePrompt: string): Promise<SemanticResult> {
-    if (!transcript || transcript.length < 10) {
-        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Transcript too short' };
+export async function analyzeText(text: string, rulePrompt: string, contextDescription: string = 'Text Content'): Promise<SemanticResult> {
+    if (!text || text.length < 2) {
+        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Text too short' };
     }
 
     // System Prompt for the Analyzer
     const systemPrompt = `
-You are an AI Quality Assurance Manager for a Sales Department.
-Your task is to analyze a call transcript and check for specific violations based on a Rule Definition.
+You are an AI Quality Assurance Auditor.
+Your task is to analyze a text input (${contextDescription}) and check for specific violations based on a Rule Definition.
 
 Input:
 1. Rule Definition (what strictly constitutes a violation).
-2. Call Transcript.
+2. Input Text (${contextDescription}).
 
 Output JSON (Strictly in Russian language):
 {
   "is_violation": boolean, // TRUE если правило нарушено, FALSE в противном случае.
-  "evidence": string, // Цитата из текста, подтверждающая нарушение (на языке оригинала).
+  "evidence": string, // Цитата из текста, подтверждающая нарушение (на языке оригинала) или NULL если текста нет.
   "confidence": number, // от 0.0 до 1.0
   "reasoning": string // Краткое объяснение на РУССКОМ языке
 }
 
 CRITICAL: All reasoning, explanations and summary fields MUST BE IN RUSSIAN.
-Be strict. If the transcript is ambiguous, bias towards NO violation (innocent until proven guilty) unless the rule says "Ensure X happened".
+Be strict. If the text is ambiguous, bias towards NO violation (innocent until proven guilty) unless the rule says "Ensure X happened".
     `;
 
     try {
@@ -43,7 +43,7 @@ Be strict. If the transcript is ambiguous, bias towards NO violation (innocent u
             model: "gpt-4o-mini", // Efficient model for analysis
             messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: `RULE: ${rulePrompt}\n\nTRANSCRIPT:\n${transcript}` }
+                { role: "user", content: `RULE: ${rulePrompt}\n\nINPUT TEXT:\n${text}` }
             ],
             response_format: { type: "json_object" },
             temperature: 0.1,
@@ -64,4 +64,8 @@ Be strict. If the transcript is ambiguous, bias towards NO violation (innocent u
         console.error('Semantic Analysis Error:', e);
         return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Error' };
     }
+}
+
+export async function analyzeTranscript(transcript: string, rulePrompt: string): Promise<SemanticResult> {
+    return analyzeText(transcript, rulePrompt, 'Call Transcript');
 }
