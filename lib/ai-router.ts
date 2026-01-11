@@ -29,12 +29,27 @@ export interface RoutingResult {
 }
 
 /**
+ * Clean up manager comment by removing previous AI routing notes to avoid feedback loops
+ */
+function cleanComment(comment: string): string {
+    if (!comment) return '';
+    // Remove lines starting with "ОКК:" and double newlines
+    return comment
+        .split('\n')
+        .filter(line => !line.trim().startsWith('ОКК:'))
+        .join('\n')
+        .trim();
+}
+
+/**
  * Analyze manager comment to determine target status for order routing
  */
 export async function analyzeOrderForRouting(
-    comment: string,
+    rawComment: string,
     allowedStatuses: Map<string, string>
 ): Promise<RoutingDecision> {
+    const comment = cleanComment(rawComment);
+
     // Build status list for prompt
     const statusList = Array.from(allowedStatuses.entries())
         .map(([code, name], i) => `${i + 1}. "${code}" - ${name}`)
@@ -50,21 +65,22 @@ export async function analyzeOrderForRouting(
 ${statusList}
 
 ВАЖНЫЕ ПРАВИЛА:
-- Если комментарий пустой или неинформативный ("ок", "тест", "+") -> используй "otmenen-propala-neobkhodimost"
-- Если упоминается цена/дорого/дешевле -> "otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem"
-- Если упоминается отсутствие товара/нет на складе -> "net-takikh-pozitsii"
-- Если упоминаются сроки/долго/поздно -> "no-product"
-- Если клиент не отвечает/не берёт трубку -> "zakazchik-ne-vykhodit-na-sviaz"
-- Если клиент передумал/отказался -> "otmenen-propala-neobkhodimost"
-- Если купили у конкурента -> "cancel-other"
-- Если заказ ещё в работе/нужно уточнить -> используй рабочий статус из списка
-- Если уверенность < 0.7, используй "otmenen-propala-neobkhodimost" (безопасный вариант)
+1. ХРОНОЛОГИЯ: Комментарий менеджера может содержать историю за несколько месяцев. Самая СВЕЖАЯ и актуальная информация обычно находится В КОНЦЕ текста (внизу). Ориентируйся на последние записи!
+2. РАБОЧИЕ СТАТУСЫ: Если в последней записи указано, что заказ ЕЩЁ В РАБОТЕ (уточняем, ждем ответа, звоним, договариваемся), выбери соответствующий рабочий статус (например, "Звонок 1", "Звонок 2" или "soglasovanieru").
+3. ПРИЧИНЫ ОТМЕНЫ: Если клиент окончательно отказался, выбери наиболее точную причину:
+   - Цена/дорого/нет денег -> "otmenili-zakupku-v-svyazi-s-nedostatochnym-finansirovaniem"
+   - Нет товара/не производим -> "net-takikh-pozitsii"
+   - Долго/не успеем в срок -> "no-product"
+   - Не отвечает/недоступен (последние записи) -> "zakazchik-ne-vykhodit-na-sviaz"
+   - Купил у конкурента/в другом месте -> "cancel-other"
+   - Просто передумал/нет причины -> "otmenen-propala-neobkhodimost"
+4. БЕЗОПАСНОСТЬ: Если ты не уверен (confidence < 0.7) или комментарий пустой/непонятный -> используй "otmenen-propala-neobkhodimost" (это основной статус отмены).
 
 Верни ТОЛЬКО JSON (без markdown):
 {
   "target_status": "код_статуса",
   "confidence": 0.0-1.0,
-  "reasoning": "Краткое объяснение на русском (1-2 предложения)"
+  "reasoning": "Краткое объяснение на русском (1-2 предложения), почему выбран именно этот статус на основе ПОСЛЕДНЕЙ информации в комментарии."
 }
 `;
 
