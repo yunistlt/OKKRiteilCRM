@@ -15,21 +15,47 @@ export async function GET(req: Request) {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // 1. Fetch Candidates
-        // "pending" status AND has recording_url
-        // Limit to 5 per run to avoid timeout/limits
+        // 1. Fetch Transcribable Statuses
+        const { data: statusSettings } = await supabase
+            .from('status_settings')
+            .select('code')
+            .eq('is_transcribable', true);
+
+        const transcribableStatuses = statusSettings?.map(s => s.code) || [];
+
+        if (transcribableStatuses.length === 0) {
+            return NextResponse.json({ message: 'No statuses configured for transcription.' });
+        }
+
+        // 2. Fetch Candidates
+        // Only fetch calls that:
+        // - are in 'pending' transcription status
+        // - have a recording URL
+        // - were started in the last 30 days
+        // - are matched to an order with a 'transcribable' status
         const { data: calls, error } = await supabase
             .from('raw_telphin_calls')
-            .select('*')
+            .select(`
+                *,
+                matches:call_order_matches!inner(
+                    retailcrm_order_id,
+                    orders:orders!inner(status)
+                )
+            `)
             .eq('transcription_status', 'pending')
             .not('recording_url', 'is', null)
-            .gte('started_at', thirtyDaysAgo.toISOString()) // Only last 30 days
-            .order('started_at', { ascending: false }) // Process newest first? Or oldest? Newest provides faster feedback.
+            .gte('started_at', thirtyDaysAgo.toISOString())
+            .in('matches.orders.status', transcribableStatuses)
+            .order('started_at', { ascending: false })
             .limit(5);
 
-        if (error) throw new Error(error.message);
+        if (error) {
+            console.error('[Cron] Fetch candidates error:', error);
+            throw new Error(error.message);
+        }
+
         if (!calls || calls.length === 0) {
-            return NextResponse.json({ message: 'No pending calls found.' });
+            return NextResponse.json({ message: 'No transcribable pending calls found.' });
         }
 
         const results = [];
