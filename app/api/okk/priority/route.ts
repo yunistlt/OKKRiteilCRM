@@ -37,25 +37,27 @@ export async function GET(request: Request) {
             .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(*)')
             .in('retailcrm_order_id', orderIds);
 
-        const { data: emails } = await supabase
+        const { data: events } = await supabase
             .from('raw_order_events')
-            .select('order_id, event_type, created_at')
-            .in('order_id', orderIds)
-            .eq('event_type', 'mail_send'); // Assuming this is how we track emails, or similar
+            .select('retailcrm_order_id, event_type, occurred_at')
+            .in('retailcrm_order_id', orderIds)
+            .eq('event_type', 'mail_send');
 
         // 3. Process each order
         const processedOrders = orders.map((order: any) => {
-            const orderCalls = (calls || []).filter(c => c.retailcrm_order_id === order.id);
-            const orderEmails = (emails || []).filter(e => e.order_id === order.id);
+            // Filter calls ONLY for target date
+            const orderCalls = (calls || [])
+                .filter(c => c.retailcrm_order_id === order.id)
+                .map((c: any) => Array.isArray(c.raw_telphin_calls) ? c.raw_telphin_calls[0] : c.raw_telphin_calls)
+                .filter((c: any) => c && String(c.started_at).startsWith(date));
 
-            const hasDialogue = orderCalls.some((c: any) => {
-                const callData = Array.isArray(c.raw_telphin_calls) ? c.raw_telphin_calls[0] : c.raw_telphin_calls;
-                return (
-                    callData &&
-                    callData.duration_sec > 15 &&
-                    callData.transcript
-                );
-            });
+            // Filter emails ONLY for target date
+            const orderEmails = (events || [])
+                .filter(e => e.retailcrm_order_id === order.id && String(e.occurred_at).startsWith(date));
+
+            const hasDialogue = orderCalls.some((c: any) =>
+                c && c.duration_sec > 15 && c.transcript
+            );
 
             const callCount = orderCalls.length;
             const hasEmail = orderEmails.length > 0;
@@ -85,9 +87,7 @@ export async function GET(request: Request) {
                     has_dialogue: hasDialogue,
                     has_email: hasEmail,
                     status,
-                    calls: orderCalls.map((c: any) =>
-                        Array.isArray(c.raw_telphin_calls) ? c.raw_telphin_calls[0] : c.raw_telphin_calls
-                    ).filter(Boolean).slice(0, 3)
+                    calls: orderCalls.slice(0, 3)
                 },
                 raw_payload: order
             };
