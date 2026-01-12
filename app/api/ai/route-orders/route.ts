@@ -299,13 +299,32 @@ export async function POST(request: Request) {
 
             } catch (orderError: any) {
                 console.error(`[AIRouter] Error processing order ${order.id}:`, orderError);
+                const errorMsg = `Processing error: ${orderError.message}`;
+
+                // Log error to database as well
+                try {
+                    await supabase
+                        .from('ai_routing_logs')
+                        .insert({
+                            order_id: order.id,
+                            from_status: order.status,
+                            to_status: 'otmenen-propala-neobkhodimost',
+                            manager_comment: 'ERROR FETCHING DATA',
+                            ai_reasoning: errorMsg,
+                            confidence: 0,
+                            was_applied: false
+                        });
+                } catch (dbErr) {
+                    console.error('[AIRouter] Failed to log error to DB:', dbErr);
+                }
+
                 results.push({
                     order_id: order.id,
                     from_status: order.status,
                     to_status: 'otmenen-propala-neobkhodimost',
                     to_status_name: statusMap.get('otmenen-propala-neobkhodimost') || 'Пропала необходимость',
                     confidence: 0,
-                    reasoning: `Processing error: ${orderError.message}`,
+                    reasoning: errorMsg,
                     was_applied: false,
                     error: orderError.message
                 });
