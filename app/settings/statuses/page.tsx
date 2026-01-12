@@ -27,15 +27,20 @@ export default async function StatusesPage() {
     // 3. Merge Strategies
     const settingsMap = new Map();
     if (settings) {
-        settings.forEach((s: any) => settingsMap.set(s.code, { is_working: s.is_working, is_transcribable: s.is_transcribable }));
+        settings.forEach((s: any) => settingsMap.set(s.code, {
+            is_working: s.is_working,
+            is_transcribable: s.is_transcribable,
+            is_ai_target: s.is_ai_target
+        }));
     }
 
     const mergedStatuses: StatusItem[] = (statuses || []).map((s: any) => {
-        const setting = settingsMap.get(s.code) || { is_working: false, is_transcribable: false };
+        const setting = settingsMap.get(s.code) || { is_working: false, is_transcribable: false, is_ai_target: false };
         return {
             ...s,
             is_working: !!setting.is_working,
-            is_transcribable: !!setting.is_transcribable
+            is_transcribable: !!setting.is_transcribable,
+            is_ai_target: !!setting.is_ai_target
         };
     });
 

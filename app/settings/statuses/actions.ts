@@ -3,23 +3,24 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 
-export async function saveSettingsBatch(settings: { code: string; is_working: boolean; is_transcribable: boolean }[]) {
+export async function saveSettingsBatch(settings: { code: string; is_working: boolean; is_transcribable: boolean; is_ai_target: boolean }[]) {
     console.log(`[Server Action] Processing batch of ${settings.length} items`);
 
     try {
-        // 1. Identify codes to SAVE (either analysis or transcription is enabled)
+        // 1. Identify codes to SAVE (any flag is enabled)
         const toSave = settings
-            .filter(s => s.is_working || s.is_transcribable)
+            .filter(s => s.is_working || s.is_transcribable || s.is_ai_target)
             .map(s => ({
                 code: s.code,
                 is_working: s.is_working,
                 is_transcribable: s.is_transcribable,
+                is_ai_target: s.is_ai_target,
                 updated_at: new Date().toISOString()
             }));
 
-        // 2. Identify codes to REMOVE (both analysis and transcription are disabled)
+        // 2. Identify codes to REMOVE (all flags are disabled)
         const toRemoveCodes = settings
-            .filter(s => !s.is_working && !s.is_transcribable)
+            .filter(s => !s.is_working && !s.is_transcribable && !s.is_ai_target)
             .map(s => s.code);
 
         console.log(`Saving ${toSave.length}, Removing ${toRemoveCodes.length}`);

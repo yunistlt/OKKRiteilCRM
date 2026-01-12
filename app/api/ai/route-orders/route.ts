@@ -107,20 +107,29 @@ export async function POST(request: Request) {
             allStatuses?.map(s => [s.code, s.name]) || []
         );
 
-        // 0b. Get allowed statuses for AI routing:
-        // - ALL statuses from "Отменен" group (regardless of АНАЛИЗ checkbox)
-        // - ONLY statuses with АНАЛИЗ checkbox (is_working = true) from other groups
+        // 0b. Get allowed statuses for AI routing from status_settings
+        const { data: routeSettings, error: routeError } = await supabase
+            .from('status_settings')
+            .select('code, is_ai_target')
+            .eq('is_ai_target', true);
+
+        if (routeError) {
+            console.error('[AIRouter] Error fetching routing settings:', routeError);
+        }
+
+        const allowedCodes = (routeSettings || []).map(s => s.code);
+
         const { data: allowedStatuses } = await supabase
             .from('statuses')
-            .select('code, name, group_name, is_working')
-            .eq('is_active', true)
-            .or('group_name.ilike.%отмен%,group_name.ilike.%согласован%,group_name.ilike.%тендер%,group_name.ilike.%оплат%,group_name.ilike.%новый%,is_working.eq.true');
+            .select('code, name, group_name')
+            .in('code', allowedCodes)
+            .eq('is_active', true);
 
         const allowedStatusMap = new Map(
             allowedStatuses?.map(s => [s.code, s.name]) || []
         );
 
-        console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing`);
+        console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing (from status_settings)`);
 
         // 1. Fetch orders in "Согласование отмены" status
         const { data: orders, error: fetchError } = await supabase

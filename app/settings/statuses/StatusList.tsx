@@ -10,6 +10,7 @@ export interface StatusItem {
     is_active?: boolean;
     is_working: boolean;
     is_transcribable: boolean;
+    is_ai_target: boolean;
     ordering: number;
     group_name: string;
 }
@@ -39,6 +40,13 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         ));
     }
 
+    function handleAiRoutingToggle(code: string) {
+        setHasChanges(true);
+        setStatuses(prev => prev.map(s =>
+            s.code === code ? { ...s, is_ai_target: !s.is_ai_target } : s
+        ));
+    }
+
     async function handleSave() {
         if (isSaving) return;
         setIsSaving(true);
@@ -48,7 +56,8 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
             const payload = statuses.map(s => ({
                 code: s.code,
                 is_working: s.is_working,
-                is_transcribable: s.is_transcribable
+                is_transcribable: s.is_transcribable,
+                is_ai_target: s.is_ai_target
             }));
 
             const result = await saveSettingsBatch(payload);
@@ -102,22 +111,22 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                         <div className="divide-y divide-gray-100">
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    className={`p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 transition-colors ${status.is_working || status.is_transcribable ? 'bg-blue-50/30' : 'bg-white'
+                                    className={`p-4 md:p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4 transition-colors ${status.is_working || status.is_transcribable || status.is_ai_target ? 'bg-blue-50/30' : 'bg-white'
                                         }`}
                                 >
-                                    <div className="flex items-center gap-6 w-full sm:w-auto">
+                                    <div className="grid grid-cols-2 sm:flex sm:items-center gap-4 md:gap-6 w-full sm:w-auto">
                                         {/* 1. Working Toggle */}
                                         <div
                                             onClick={() => handleLocalToggle(status.code)}
-                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[100px]"
+                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[90px]"
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={status.is_working}
                                                 readOnly
-                                                className="w-5 h-5 cursor-pointer accent-blue-600"
+                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-blue-600"
                                             />
-                                            <span className={`text-[10px] md:text-xs font-bold uppercase transition-colors ${status.is_working ? 'text-blue-600' : 'text-gray-400'
+                                            <span className={`text-[9px] md:text-xs font-bold uppercase transition-colors ${status.is_working ? 'text-blue-600' : 'text-gray-400'
                                                 }`}>
                                                 Анализ
                                             </span>
@@ -126,17 +135,34 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                         {/* 2. Transcription Toggle */}
                                         <div
                                             onClick={() => handleTranscriptionToggle(status.code)}
-                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[130px]"
+                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[120px]"
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={status.is_transcribable}
                                                 readOnly
-                                                className="w-5 h-5 cursor-pointer accent-purple-600"
+                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-purple-600"
                                             />
-                                            <span className={`text-[10px] md:text-xs font-bold uppercase transition-colors ${status.is_transcribable ? 'text-purple-600' : 'text-gray-400'
+                                            <span className={`text-[9px] md:text-xs font-bold uppercase transition-colors ${status.is_transcribable ? 'text-purple-600' : 'text-gray-400'
                                                 }`}>
                                                 Транскрибация
+                                            </span>
+                                        </div>
+
+                                        {/* 3. AI Routing Toggle */}
+                                        <div
+                                            onClick={() => handleAiRoutingToggle(status.code)}
+                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[110px]"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={status.is_ai_target}
+                                                readOnly
+                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-green-600"
+                                            />
+                                            <span className={`text-[9px] md:text-xs font-bold uppercase transition-colors ${status.is_ai_target ? 'text-green-600' : 'text-gray-400'
+                                                }`}>
+                                                Роутинг ИИ
                                             </span>
                                         </div>
                                     </div>
