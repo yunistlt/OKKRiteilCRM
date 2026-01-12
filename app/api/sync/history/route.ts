@@ -70,23 +70,34 @@ export async function GET() {
 
             const processedEvents = history
                 .filter((event: any) => event.order && event.order.id)
-                .map((event: any) => ({
-                    retailcrm_order_id: event.order.id,
-                    event_type: event.field || 'unknown',
-                    occurred_at: event.createdAt, // This is when the history entry was created
-                    source: 'retailcrm',
-                    // Save the FULL event object for future reference
-                    raw_payload: {
-                        ...event, // Complete event data from API
-                        // Add metadata for timestamp investigation
-                        _sync_metadata: {
-                            api_createdAt: event.createdAt,
-                            order_statusUpdatedAt: event.order?.statusUpdatedAt,
-                            synced_at: new Date().toISOString()
+                .map((event: any) => {
+                    const orderData = event.order || {};
+                    const phone = orderData.phone || null;
+                    const additionalPhone = orderData.additionalPhone || null;
+
+                    // Simple normalization (digits only)
+                    const normalize = (p: any) => p ? String(p).replace(/[^\d]/g, '') : null;
+
+                    return {
+                        retailcrm_order_id: event.order.id,
+                        event_type: event.field || 'unknown',
+                        occurred_at: event.createdAt,
+                        source: 'retailcrm',
+                        phone: phone,
+                        phone_normalized: normalize(phone),
+                        additional_phone: additionalPhone,
+                        additional_phone_normalized: normalize(additionalPhone),
+                        manager_id: event.user ? event.user.id : (orderData.managerId || null),
+                        raw_payload: {
+                            ...event,
+                            _sync_metadata: {
+                                api_createdAt: event.createdAt,
+                                order_statusUpdatedAt: orderData.statusUpdatedAt,
+                                synced_at: new Date().toISOString()
+                            }
                         }
-                    },
-                    manager_id: event.user ? event.user.id : null,
-                }));
+                    };
+                });
 
             if (processedEvents.length > 0) {
                 const { error: upsertError } = await supabase

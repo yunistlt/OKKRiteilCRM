@@ -34,7 +34,7 @@ export async function GET() {
         const { count: matches24h, error: matchError } = await supabase
             .from('call_order_matches')
             .select('*', { count: 'exact', head: true })
-            .gte('created_at', yesterday);
+            .gte('matched_at', yesterday);
 
         // 4. Analysis & Diagnostics
 
