@@ -164,14 +164,14 @@ export async function POST(request: Request) {
                 }
 
                 let fetchResponse = await fetch(
-                    `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[ids][]=${order.id}&limit=1`
+                    `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[ids][]=${order.id}&limit=20`
                 );
                 let fetchData = await fetchResponse.json();
 
                 if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
                     console.log(`[AIRouter] Order ${order.id} not found by ID, trying by Number...`);
                     fetchResponse = await fetch(
-                        `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[numbers][]=${order.id}&limit=1`
+                        `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[numbers][]=${order.id}&limit=20`
                     );
                     fetchData = await fetchResponse.json();
                 }
