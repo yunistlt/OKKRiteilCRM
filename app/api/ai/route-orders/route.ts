@@ -155,13 +155,22 @@ export async function POST(request: Request) {
         for (const order of orders) {
             try {
                 // 2a. Fetch fresh data from RetailCRM
-                const fetchResponse = await fetch(
+                // Try by ID first, then fallback to Number if not found
+                let fetchResponse = await fetch(
                     `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[ids][]=${order.id}&limit=1`
                 );
-                const fetchData = await fetchResponse.json();
+                let fetchData = await fetchResponse.json();
 
                 if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
-                    throw new Error(`Order ${order.id} not found in RetailCRM`);
+                    console.log(`[AIRouter] Order ${order.id} not found by ID, trying by Number...`);
+                    fetchResponse = await fetch(
+                        `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=1`
+                    );
+                    fetchData = await fetchResponse.json();
+                }
+
+                if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
+                    throw new Error(`Order ${order.id} not found in RetailCRM (Tried IDs and Numbers). Response: ${JSON.stringify(fetchData)}`);
                 }
 
                 const retailcrmOrder = fetchData.orders[0];
@@ -293,7 +302,7 @@ export async function POST(request: Request) {
                     to_status: 'otmenen-propala-neobkhodimost',
                     to_status_name: statusMap.get('otmenen-propala-neobkhodimost') || 'Пропала необходимость',
                     confidence: 0,
-                    reasoning: 'Processing error',
+                    reasoning: `Processing error: ${orderError.message}`,
                     was_applied: false,
                     error: orderError.message
                 });
