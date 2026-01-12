@@ -24,8 +24,7 @@ export async function GET(request: Request) {
     try {
         console.log('--- CRON STARTED ---');
 
-        // 1. Sync Telphin Calls (DISABLED until Jan 12 to prioritize Backfill)
-        /*
+        // 1. Sync Telphin Calls
         if (checkBudget('Telphin Sync')) {
             console.log('[CRON] Step 1: Telphin Sync');
             try {
@@ -40,10 +39,8 @@ export async function GET(request: Request) {
                 report.push(`Calls: Error (${e.message})`);
             }
         }
-        */
 
-        // 2a. Sync RetailCRM Orders (State) (DISABLED until Jan 12)
-        /*
+        // 2a. Sync RetailCRM Orders (State)
         if (checkBudget('Orders Sync')) {
             console.log('[CRON] Step 2: Orders Sync');
             try {
@@ -55,10 +52,8 @@ export async function GET(request: Request) {
                 report.push(`Orders: Error (${e.message})`);
             }
         }
-        */
 
-        // 2b. Sync Order History (DISABLED until Jan 12)
-        /*
+        // 2b. Sync Order History
         if (checkBudget('History Sync')) {
             console.log('[CRON] Step 3: History Sync');
             try {
@@ -70,7 +65,6 @@ export async function GET(request: Request) {
                 report.push(`History: Error (${e.message})`);
             }
         }
-        */
 
         // 3. Match Calls
         if (checkBudget('Matching')) {
