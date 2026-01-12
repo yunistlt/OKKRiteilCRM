@@ -115,6 +115,16 @@ export async function GET(request: Request) {
                     toNumber = r.dest_number || r.to_number || r.to_username;
                 }
 
+                // Extract recording URL from nested CDR array if available
+                let recordingUrl = r.record_url || r.storage_url || r.url || null;
+                if (!recordingUrl && r.cdr && Array.isArray(r.cdr)) {
+                    // Find the first CDR with a storage_url
+                    const cdrWithStorage = r.cdr.find((c: any) => c.storage_url);
+                    if (cdrWithStorage) {
+                        recordingUrl = cdrWithStorage.storage_url;
+                    }
+                }
+
                 return {
                     telphin_call_id: record_uuid,
                     direction: direction,
@@ -124,7 +134,7 @@ export async function GET(request: Request) {
                     to_number_normalized: normalizePhone(toNumber),
                     started_at: callDate.toISOString(),
                     duration_sec: r.duration || 0,
-                    recording_url: r.record_url || r.storage_url || r.url || null,
+                    recording_url: recordingUrl,
                     raw_payload: r,
                     ingested_at: new Date().toISOString()
                 };
