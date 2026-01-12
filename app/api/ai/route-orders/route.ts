@@ -299,7 +299,7 @@ export async function POST(request: Request) {
 
             } catch (orderError: any) {
                 console.error(`[AIRouter] Error processing order ${order.id}:`, orderError);
-                const errorMsg = `Processing error: ${orderError.message}`;
+                const errorMsg = `[v2.1] Processing error: ${orderError.message}`;
 
                 // Log error to database as well
                 try {
