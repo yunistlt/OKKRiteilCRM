@@ -156,15 +156,18 @@ export async function POST(request: Request) {
             try {
                 // 2a. Fetch fresh data from RetailCRM
                 // Try by ID first, then fallback to Number if not found
+                const baseUrl = process.env.RETAILCRM_URL?.replace(/\/$/, '');
+                const apiKey = process.env.RETAILCRM_API_KEY;
+
                 let fetchResponse = await fetch(
-                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[ids][]=${order.id}&limit=1`
+                    `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[ids][]=${order.id}&limit=1`
                 );
                 let fetchData = await fetchResponse.json();
 
                 if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
                     console.log(`[AIRouter] Order ${order.id} not found by ID, trying by Number...`);
                     fetchResponse = await fetch(
-                        `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=1`
+                        `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[numbers][]=${order.id}&limit=1`
                     );
                     fetchData = await fetchResponse.json();
                 }
