@@ -156,7 +156,7 @@ export async function POST(request: Request) {
             try {
                 // 2a. Fetch fresh data from RetailCRM
                 const fetchResponse = await fetch(
-                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[numbers][]=${order.id}&limit=1`
+                    `${process.env.RETAILCRM_URL}/api/v5/orders?apiKey=${process.env.RETAILCRM_API_KEY}&filter[ids][]=${order.id}&limit=1`
                 );
                 const fetchData = await fetchResponse.json();
 
