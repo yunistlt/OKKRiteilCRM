@@ -12,10 +12,6 @@
         {
             "path": "/api/sync/managers",
             "schedule": "0 * * * *"
-        },
-        {
-            "path": "/api/sync/telphin/backfill",
-            "schedule": "*/2 * * * *"
         }
     ]
 }
