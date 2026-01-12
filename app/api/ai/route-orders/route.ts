@@ -156,8 +156,12 @@ export async function POST(request: Request) {
             try {
                 // 2a. Fetch fresh data from RetailCRM
                 // Try by ID first, then fallback to Number if not found
-                const baseUrl = process.env.RETAILCRM_URL?.replace(/\/$/, '');
-                const apiKey = process.env.RETAILCRM_API_KEY;
+                const baseUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
+                const apiKey = (process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY)?.trim();
+
+                if (!baseUrl || !apiKey) {
+                    throw new Error(`RetailCRM configuration missing (URL: ${!!baseUrl}, Key: ${!!apiKey})`);
+                }
 
                 let fetchResponse = await fetch(
                     `${baseUrl}/api/v5/orders?apiKey=${apiKey}&filter[ids][]=${order.id}&limit=1`
@@ -175,6 +179,10 @@ export async function POST(request: Request) {
                 if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
                     throw new Error(`Order ${order.id} not found in RetailCRM (Tried IDs and Numbers). Response: ${JSON.stringify(fetchData)}`);
                 }
+
+                // Ensure we use the same key for the update part later
+                (order as any)._apiKey = apiKey;
+                (order as any)._baseUrl = baseUrl;
 
                 const retailcrmOrder = fetchData.orders[0];
                 const orderSite = retailcrmOrder.site;
@@ -227,6 +235,9 @@ export async function POST(request: Request) {
 
                         console.log(`[AIRouter] Order ${order.id} is on site: ${orderSite}. Existing comment length: ${comment.length}`);
 
+                        const currentBaseUrl = (order as any)._baseUrl;
+                        const currentApiKey = (order as any)._apiKey;
+
                         // Update status in RetailCRM
                         const requestBody = {
                             status: decision.target_status,
@@ -239,14 +250,14 @@ export async function POST(request: Request) {
 
                         console.log(`[AIRouter] Updating order ${order.id} in RetailCRM:`, requestBody);
 
-                        const url = `${process.env.RETAILCRM_URL}/api/v5/orders/${order.id}/edit?by=id`;
+                        const url = `${currentBaseUrl}/api/v5/orders/${order.id}/edit?by=id`;
                         const retailcrmResponse = await fetch(url, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/x-www-form-urlencoded',
                             },
                             body: new URLSearchParams({
-                                apiKey: process.env.RETAILCRM_API_KEY!,
+                                apiKey: currentApiKey,
                                 site: orderSite,
                                 order: JSON.stringify(requestBody)
                             })
