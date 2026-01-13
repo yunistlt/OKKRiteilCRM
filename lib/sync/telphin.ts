@@ -33,7 +33,7 @@ export interface SyncResult {
     error?: string;
 }
 
-export async function runTelphinSync(forceResync: boolean = false): Promise<SyncResult> {
+export async function runTelphinSync(forceResync: boolean = false, hours: number = 2): Promise<SyncResult> {
     const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
     const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
@@ -47,7 +47,7 @@ export async function runTelphinSync(forceResync: boolean = false): Promise<Sync
         const storageKey = 'telphin_last_sync_time';
 
         // 1. Get Start Date from Persistent Cursor (Sync State)
-        let start = new Date(Date.now() - 2 * 60 * 60 * 1000); // Default to 2 hours ago if no state
+        let start = new Date(Date.now() - hours * 60 * 60 * 1000); // Default to N hours ago
 
         if (!forceResync) {
             const { data: state } = await supabase
@@ -66,6 +66,8 @@ export async function runTelphinSync(forceResync: boolean = false): Promise<Sync
                     console.warn('Stored cursor is in the future, falling back to default window.', state.value);
                 }
             }
+        } else {
+            console.log(`Forced resync requested. Looking back ${hours} hours.`);
         }
 
         // 2. Get Client ID

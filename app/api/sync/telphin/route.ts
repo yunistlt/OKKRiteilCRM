@@ -7,8 +7,9 @@ export const maxDuration = 300;
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const forceResync = searchParams.get('force') === 'true';
+    const hours = parseInt(searchParams.get('hours') || '2');
 
-    const result = await runTelphinSync(forceResync);
+    const result = await runTelphinSync(forceResync, hours);
 
     if (!result.success) {
         return NextResponse.json({ error: result.error }, { status: 500 });
