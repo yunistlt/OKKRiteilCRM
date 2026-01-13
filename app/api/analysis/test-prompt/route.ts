@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     const allCalls = (order.call_order_matches || [])
         .flatMap((m: any) => m.raw_telphin_calls ? [m.raw_telphin_calls] : [])
         .filter((c: any) => c !== null)
-        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        .sort((a: any, b: any) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 
     const lastCall = allCalls[0];
     const transcript = lastCall?.transcript || "Нет транскрипта";
@@ -76,11 +76,12 @@ export async function POST(req: Request) {
     // Get human-readable status name from statuses table
     const { data: statusSetting } = await supabase
         .from('statuses')
-        .select('name, code')
+        .select('name, code, color')
         .eq('code', order.status)
         .single();
 
     const statusName = statusSetting?.name || order.status; // Fallback to code if not found
+    const statusColor = statusSetting?.color || '#808080';
 
     // Extract custom fields from raw_payload
     const payload = order.raw_payload as any || {};
@@ -111,11 +112,13 @@ export async function POST(req: Request) {
 
         return NextResponse.json({
             result,
+            retailCrmUrl: process.env.RETAILCRM_URL,
             order: {
                 number: order.number,
                 id: order.id,
                 status: statusName, // Human-readable name
                 statusCode: order.status, // Keep code for reference
+                statusColor,
                 managerName,
                 managerId: order.manager_id,
                 totalSum: order.totalsumm || 0,
@@ -123,8 +126,8 @@ export async function POST(req: Request) {
                 updatedAt: order.updated_at,
                 daysSinceUpdate: Math.round(daysSinceUpdate),
                 lastCall: lastCall ? {
-                    timestamp: lastCall.timestamp,
-                    duration: lastCall.duration,
+                    timestamp: lastCall.started_at,
+                    duration: lastCall.duration_sec,
                     transcript: transcript.substring(0, 500), // First 500 chars for display
                     transcriptFull: transcript
                 } : null,
@@ -138,11 +141,13 @@ export async function POST(req: Request) {
         // Return order data even if AI analysis fails
         return NextResponse.json({
             error: e.message,
+            retailCrmUrl: process.env.RETAILCRM_URL,
             order: {
                 number: order.number,
                 id: order.id,
                 status: statusName, // Human-readable name
                 statusCode: order.status, // Keep code for reference
+                statusColor,
                 managerName,
                 managerId: order.manager_id,
                 totalSum: order.totalsumm || 0,
@@ -150,8 +155,8 @@ export async function POST(req: Request) {
                 updatedAt: order.updated_at,
                 daysSinceUpdate: Math.round(daysSinceUpdate),
                 lastCall: lastCall ? {
-                    timestamp: lastCall.timestamp,
-                    duration: lastCall.duration,
+                    timestamp: lastCall.started_at,
+                    duration: lastCall.duration_sec,
                     transcript: transcript.substring(0, 500),
                     transcriptFull: transcript
                 } : null,

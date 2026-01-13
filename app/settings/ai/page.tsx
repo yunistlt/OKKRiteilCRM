@@ -215,27 +215,43 @@ export default function AIPrimitivizationPage() {
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                                             <div>
-                                                <span className="text-gray-500">Номер:</span>
-                                                <p className="font-mono font-bold">#{testResult.order.number}</p>
+                                                <span className="text-gray-500 block">Номер:</span>
+                                                <a
+                                                    href={testResult.retailCrmUrl ? `${testResult.retailCrmUrl}/orders/${testResult.order.id}/edit` : '#'}
+                                                    target={testResult.retailCrmUrl ? '_blank' : undefined}
+                                                    className="font-mono font-bold text-blue-600 hover:underline text-lg"
+                                                    onClick={e => !testResult.retailCrmUrl && e.preventDefault()}
+                                                >
+                                                    #{testResult.order.number}
+                                                </a>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500">Сумма:</span>
-                                                <p className="font-bold">{testResult.order.totalSum?.toLocaleString('ru-RU')} ₽</p>
+                                                <span className="text-gray-500 block">Сумма:</span>
+                                                <p className="font-bold text-lg">{testResult.order.totalSum?.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 })}</p>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500">Менеджер:</span>
+                                                <span className="text-gray-500 block">Менеджер:</span>
                                                 <p className="font-medium">{testResult.order.managerName}</p>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500">Статус:</span>
-                                                <p className="font-medium">{testResult.order.status}</p>
+                                                <span className="text-gray-500 block">Статус:</span>
+                                                <div
+                                                    className="inline-block px-2 py-0.5 rounded font-bold text-xs uppercase tracking-wide border"
+                                                    style={{
+                                                        borderColor: testResult.order.statusColor || '#ccc',
+                                                        backgroundColor: testResult.order.statusColor ? `${testResult.order.statusColor}20` : '#f3f4f6',
+                                                        color: testResult.order.statusColor || '#374151'
+                                                    }}
+                                                >
+                                                    {testResult.order.status}
+                                                </div>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500">Категория товара:</span>
+                                                <span className="text-gray-500 block">Категория товара:</span>
                                                 <p>{testResult.order.productCategory}</p>
                                             </div>
                                             <div>
-                                                <span className="text-gray-500">Категория клиента:</span>
+                                                <span className="text-gray-500 block">Категория клиента:</span>
                                                 <p>{testResult.order.clientCategory}</p>
                                             </div>
                                         </div>
@@ -248,13 +264,21 @@ export default function AIPrimitivizationPage() {
                                         {testResult.order.lastCall && (
                                             <div className="pt-2 border-t">
                                                 <h4 className="font-semibold text-sm mb-2">📞 Последний звонок</h4>
-                                                <div className="text-[10px] text-gray-600 mb-1">
-                                                    {new Date(testResult.order.lastCall.timestamp).toLocaleString('ru-RU')}
-                                                    {' '}({testResult.order.lastCall.duration}с)
+                                                <div className="text-xs text-gray-600 mb-1 flex items-center gap-2">
+                                                    <span className="font-mono bg-gray-100 px-1 rounded">
+                                                        {testResult.order.lastCall.timestamp
+                                                            ? new Date(testResult.order.lastCall.timestamp).toLocaleString('ru-RU')
+                                                            : 'Неизвестно'}
+                                                    </span>
+                                                    <span>⏱ {testResult.order.lastCall.duration} сек</span>
                                                 </div>
-                                                <div className="bg-gray-50 p-3 rounded text-xs md:text-sm max-h-32 overflow-y-auto">
-                                                    {testResult.order.lastCall.transcript || 'Нет транскрипта'}
-                                                </div>
+                                                {testResult.order.lastCall.transcript ? (
+                                                    <div className="bg-gray-50 p-3 rounded text-xs md:text-sm max-h-32 overflow-y-auto mt-2 italic border border-gray-100">
+                                                        "{testResult.order.lastCall.transcript}"
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-gray-400 text-xs italic mt-1">Нет транскрипта</div>
+                                                )}
                                             </div>
                                         )}
 
