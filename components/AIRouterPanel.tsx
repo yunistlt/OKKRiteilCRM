@@ -290,11 +290,10 @@ export default function AIRouterPanel() {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 sticky top-0">
                                     <tr>
-                                        <th className="px-2 py-2 text-left w-20">Заказ</th>
-                                        <th className="px-2 py-2 text-left w-24">Сумма</th>
-                                        <th className="px-2 py-2 text-left w-32">Текущий</th>
+                                        <th className="px-2 py-2 text-left w-28">Заказ / Сумма</th>
+                                        <th className="px-2 py-2 text-left w-24">Текущий</th>
                                         <th className="px-2 py-2 text-left w-32">Решение ИИ</th>
-                                        {trainingMode && <th className="px-2 py-2 text-left w-40">Ваш Выбор</th>}
+                                        {trainingMode && <th className="px-2 py-2 text-left w-64">Ваш Выбор (Статус)</th>}
                                         <th className="px-2 py-2 text-left w-12">Conf</th>
                                         <th className="px-2 py-2 text-left w-[40%]">Причина / Комментарий</th>
                                         {trainingMode && <th className="px-2 py-2 w-24">Действие</th>}
@@ -305,21 +304,23 @@ export default function AIRouterPanel() {
                                         const state = trainingState[result.order_id] || {};
                                         return (
                                             <tr key={result.order_id} className={`border-t hover:bg-gray-50 ${state.done ? 'bg-green-50' : ''}`}>
-                                                <td className="px-4 py-2 font-mono text-xs">
-                                                    <a
-                                                        href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
-                                                        target={result.retail_crm_url ? "_blank" : undefined}
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:underline font-bold"
-                                                        onClick={e => !result.retail_crm_url && e.preventDefault()}
-                                                    >
-                                                        #{result.order_id}
-                                                    </a>
+                                                <td className="px-2 py-2">
+                                                    <div className="flex flex-col gap-1">
+                                                        <a
+                                                            href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
+                                                            target={result.retail_crm_url ? "_blank" : undefined}
+                                                            rel="noopener noreferrer"
+                                                            className="text-blue-600 hover:underline font-bold text-xs"
+                                                            onClick={e => !result.retail_crm_url && e.preventDefault()}
+                                                        >
+                                                            #{result.order_id}
+                                                        </a>
+                                                        <span className="text-[11px] font-bold text-gray-600">
+                                                            {result.total_sum?.toLocaleString('ru-RU')} ₽
+                                                        </span>
+                                                    </div>
                                                 </td>
-                                                <td className="px-4 py-2 text-xs font-bold text-gray-700">
-                                                    {result.total_sum?.toLocaleString('ru-RU')} ₽
-                                                </td>
-                                                <td className="px-4 py-2">
+                                                <td className="px-2 py-2">
                                                     <span
                                                         className="inline-block px-2 py-1 text-[10px] font-bold rounded uppercase border shadow-sm"
                                                         style={{
@@ -331,7 +332,7 @@ export default function AIRouterPanel() {
                                                         {result.current_status_name || result.from_status}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-2">
+                                                <td className="px-2 py-2">
                                                     {/* AI Decision - Always ReadOnly here now */}
                                                     <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
                                                         {result.to_status_name || result.to_status}
@@ -340,12 +341,12 @@ export default function AIRouterPanel() {
 
                                                 {/* User Selection Column (Training Mode Only) */}
                                                 {trainingMode && (
-                                                    <td className="px-4 py-2">
+                                                    <td className="px-2 py-2">
                                                         {!state.done ? (
                                                             <select
                                                                 value={state.status}
                                                                 onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
-                                                                className="w-full p-1 border rounded text-xs bg-white text-gray-900 font-medium border-purple-300 focus:border-purple-500 ring-purple-200"
+                                                                className="w-full p-2 border rounded text-xs bg-white text-gray-900 font-medium border-purple-300 focus:border-purple-500 ring-purple-200 shadow-sm"
                                                             >
                                                                 {/* Group by group_name */}
                                                                 {(() => {
@@ -377,20 +378,20 @@ export default function AIRouterPanel() {
                                                     </td>
                                                 )}
 
-                                                <td className="px-4 py-2">
-                                                    <span className={`font-semibold ${result.confidence >= 0.8 ? 'text-green-600' :
+                                                <td className="px-2 py-2">
+                                                    <span className={`font-semibold text-xs ${result.confidence >= 0.8 ? 'text-green-600' :
                                                         result.confidence >= 0.6 ? 'text-yellow-600' :
                                                             'text-red-600'
                                                         }`}>
                                                         {(result.confidence * 100).toFixed(0)}%
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-2">
+                                                <td className="px-2 py-2">
                                                     {trainingMode && !state.done ? (
                                                         <textarea
                                                             value={state.comment}
                                                             onChange={(e) => updateTrainingState(result.order_id, 'comment', e.target.value)}
-                                                            className="w-full p-2 border rounded text-xs min-h-[200px] leading-relaxed"
+                                                            className="w-full p-2 border rounded text-xs min-h-[100px] leading-relaxed"
                                                             placeholder="Обоснование решения..."
                                                         />
                                                     ) : (
