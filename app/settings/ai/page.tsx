@@ -317,8 +317,34 @@ export default function AIPrimitivizationPage() {
                         </div>
 
                         <div className="space-y-4">
-                            <div className="bg-gray-50 p-3 rounded">
-                                <strong>Заказ:</strong> #{testResult.order.number}
+                            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm">
+                                <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Заказ:</span>
+                                        <span className="font-bold">#{testResult.order.number}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Сумма:</span>
+                                        <span className="font-bold">{testResult.order.totalSum?.toLocaleString('ru-RU')} ₽</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-500">Статус:</span>
+                                        <span
+                                            className="px-2 py-0.5 rounded text-[10px] font-bold uppercase border"
+                                            style={{
+                                                borderColor: testResult.order.statusColor || '#ccc',
+                                                backgroundColor: testResult.order.statusColor ? `${testResult.order.statusColor}20` : '#fff',
+                                                color: testResult.order.statusColor || '#333'
+                                            }}
+                                        >
+                                            {testResult.order.status}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Менеджер:</span>
+                                        <span className="font-medium text-xs text-right">{testResult.order.managerName}</span>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Color Selection */}
