@@ -29,23 +29,29 @@ export async function GET() {
             return NextResponse.json({ message: 'No statuses found' });
         }
 
-        // Map group code to name
-        const groupMap: Record<string, string> = {};
+        // Map group code to full group data
+        const groupMap: Record<string, any> = {};
         if (groups) {
             Object.values(groups).forEach((g: any) => {
-                groupMap[g.code] = g.name;
+                groupMap[g.code] = g;
             });
         }
 
-        const rows = Object.values(statuses).map((s: any) => ({
-            code: s.code,
-            name: s.name,
-            ordering: s.ordering || 0,
-            updated_at: new Date().toISOString(),
-            group_name: groupMap[s.group] || s.group || 'Other',
-            is_active: s.active === true,
-            color: s.rgb || s.color
-        }));
+        const rows = Object.values(statuses).map((s: any) => {
+            const group = groupMap[s.group];
+            // Try to find color in status, then in group
+            const color = s.rgb || s.color || group?.rgb || group?.color || group?.hex || null;
+
+            return {
+                code: s.code,
+                name: s.name,
+                ordering: s.ordering || 0,
+                updated_at: new Date().toISOString(),
+                group_name: group?.name || s.group || 'Other',
+                is_active: s.active === true,
+                color: color
+            };
+        });
 
         const inactiveCount = rows.filter((r: any) => !r.is_active).length;
 
@@ -61,8 +67,12 @@ export async function GET() {
             count: rows.length,
             inactive_count: inactiveCount,
             groups_found: Object.keys(groupMap).length,
-            message: 'DEBUG VERSION: Statuses synced',
-            debug_sample: rows[0] // Use the processed row to see if color is there
+            message: 'DEBUG 2: Checking Groups',
+            debug_sample_status: Object.values(statuses)[0],
+            debug_sample_group: Object.values(groups)[0], // Check if group has color
+            debug_resolved_color: rows[0]?.color
+        }, {
+            headers: { 'Content-Type': 'application/json; charset=utf-8' }
         });
 
     } catch (error: any) {
