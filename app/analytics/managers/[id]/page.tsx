@@ -475,8 +475,8 @@ export default function ManagerProfilePage() {
             </div>
         )
     }
-                    </div >
-                )
+                </div >
+            )
 }
             </div >
         </div >
