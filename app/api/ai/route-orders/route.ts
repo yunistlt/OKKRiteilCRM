@@ -363,6 +363,10 @@ export async function POST(request: Request) {
                 results.push({
                     order_id: order.id,
                     from_status: order.status,
+                    current_status_name: statusMap.get(order.status) || order.status,
+                    current_status_color: statusColorMap.get(order.status) || '#f3f4f6',
+                    total_sum: order.totalsumm || 0,
+                    retail_crm_url: retailCrmBaseUrl,
                     to_status: 'otmenen-propala-neobkhodimost',
                     to_status_name: statusMap.get('otmenen-propala-neobkhodimost') || 'Пропала необходимость',
                     confidence: 0,
