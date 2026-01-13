@@ -52,6 +52,8 @@ function cleanComment(comment: string): string {
         .trim();
 }
 
+import { DEFAULT_ROUTING_PROMPT } from '@/lib/prompts';
+
 /**
  * Analyze manager comment to determine target status for order routing
  */
@@ -59,7 +61,8 @@ export async function analyzeOrderForRouting(
     rawComment: string,
     allowedStatuses: Map<string, string>,
     systemContext?: { currentTime: string, orderUpdatedAt: string },
-    auditContext?: { latestCallTranscript?: string, latestEmailText?: string }
+    auditContext?: { latestCallTranscript?: string, latestEmailText?: string },
+    customSystemPrompt?: string
 ): Promise<RoutingDecision> {
     const comment = cleanComment(rawComment);
 
@@ -80,39 +83,19 @@ ${auditContext.latestCallTranscript ? `- ТРАНСКРИПТ ПОСЛЕДНЕГ
 ${auditContext.latestEmailText ? `- ПОСЛЕДНЯЯ ПЕРЕПИСКА (EMAIL/ЧАТ): "${auditContext.latestEmailText}"` : '- Свежей переписки с клиентом не найдено.'}
 \n` : '';
 
-    const systemPrompt = `
-Ты - аудитор ОКК (Отдел Контроля Качества).
-Твоя задача: на основе комментария менеджера и данных аудита определить верный статус заказа.
-Сейчас заказ находится в статусе "Согласование Отмены". Менеджер хочет его отменить.
+    // Use custom prompt if provided, otherwise default
+    // Replace {{placeholders}} with actual data
+    let promptTemplate = customSystemPrompt || DEFAULT_ROUTING_PROMPT;
 
-${contextPrompt}
-${auditPrompt}
+    // Safety check if template is empty
+    if (!promptTemplate.trim()) {
+        promptTemplate = DEFAULT_ROUTING_PROMPT;
+    }
 
-Доступные статусы для перевода:
-${statusList}
-
-ПРАВИЛА ПРИНЯТИЯ РЕШЕНИЙ:
-1. ОБОСНОВАННАЯ ОТМЕНА:
-   - Если клиент отказался, передумал, купил в другом месте, или игнорирует (и это подтверждается аудитом/комментарием) -> Выбирай подходящий статус ОТМЕНЫ (например, "otmenen-propala-neobkhodimost", "cancel-other").
-
-2. ВОЗВРАТ В РАБОТУ (Смена статуса на "В работе", "Новый" и т.д.):
-   - Если в звонке/переписке клиент говорит "Я подумаю", "Пришлите счет", "Давайте позже", "Не отменяйте" -> ЭТО НЕ ОТМЕНА.
-   - Если менеджер ошибся и отправил в отмену, а работа идет -> ВЕРНИ В РАБОТУ.
-   - Выбери из списка "Доступные статусы" наиболее подходящий РАБОЧИЙ статус (например "work", "new", "in-progress"). Если точного рабочего статуса нет в списке, верни "soglasovanie-otmeny" с комментарием "Требуется вернуть в работу, но нет подходящего статуса".
-
-3. КОНФЛИКТ / НЕЯСНОСТЬ (Оставить в "soglasovanie-otmeny"):
-   - Если есть прямое противоречие (менеджер пишет "отказ", а в звонке клиент просит счет) и ты не уверен, какой рабочий статус выбрать -> оставь "soglasovanie-otmeny".
-   - В поле reasoning ОБЯЗАТЕЛЬНО укажи причину сомнений.
-
-4. STRICT TAIL ANALYSIS (Правило конца): Анализируй хронологию. Последнее событие важнее. Но слова клиента ("Не отменяйте") важнее мнения менеджера ("Он слился").
-
-Верни ТОЛЬКО JSON:
-{
-  "target_status": "код_статуса",
-  "confidence": 0.0-1.0,
-  "reasoning": "Краткое обоснование. Если возвращаешь в работу - напиши почему (напр. 'Клиент в звонке просил счет')."
-}
-`;
+    const systemPrompt = promptTemplate
+        .replace('{{contextPrompt}}', contextPrompt)
+        .replace('{{auditPrompt}}', auditPrompt)
+        .replace('{{statusList}}', statusList);
 
     try {
         const openai = getOpenAI();

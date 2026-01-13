@@ -136,6 +136,17 @@ export async function POST(request: Request) {
 
         console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing (from status_settings)`);
 
+        // 0c. Fetch Custom Routing Prompt from DB
+        const { data: routingPromptData } = await supabase
+            .from('prompts')
+            .select('content')
+            .eq('key', 'order_routing_main')
+            .single();
+
+        const customRoutingPrompt = routingPromptData?.content || undefined;
+
+        console.log(`[AIRouter] Custom Routing Prompt present: ${!!customRoutingPrompt}`);
+
         // 1. Fetch orders in "Согласование отмены" status
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
@@ -162,12 +173,8 @@ export async function POST(request: Request) {
         for (const order of orders) {
             try {
                 // ... (existing processing code) ...
-                // Note: I am NOT replacing the loop logic, just the SELECT and the PUSH.
-                // Wait, use replace_file_content carefully.
-                // I will use multi_replace to target specific blocks.
 
                 // 2a. Fetch fresh data from RetailCRM
-                // Try by ID first, then fallback to Number if not found
                 const baseUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
                 const apiKey = (process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY)?.trim();
 
@@ -224,8 +231,14 @@ export async function POST(request: Request) {
                     orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
                 };
 
-                // 2c. Analyze with AI (pass allowed statuses for routing + contexts)
-                const decision = await analyzeOrderForRouting(comment, allowedStatusMap, systemContext, auditContext);
+                // 2c. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt)
+                const decision = await analyzeOrderForRouting(
+                    comment,
+                    allowedStatusMap,
+                    systemContext,
+                    auditContext,
+                    customRoutingPrompt
+                );
 
                 console.log(`[AIRouter] Order ${order.id} Audit Context:`, {
                     hasTranscript: !!auditContext.latestCallTranscript,
