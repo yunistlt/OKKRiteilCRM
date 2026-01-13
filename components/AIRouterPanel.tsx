@@ -167,12 +167,12 @@ export default function AIRouterPanel() {
 
     return (
         <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                    🤖 AI Маршрутизация Заказов
+            <div className="p-4 border-b border-gray-200">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                    🤖 Маршрутизация
                 </h2>
-                <p className="text-gray-600 mt-2">
-                    Автоматическая обработка заказов в статусе "Согласование отмены" (593 заказа)
+                <p className="text-xs text-gray-500 mt-1">
+                    Обработа статуса "Согласование отмены"
                 </p>
             </div>
 
