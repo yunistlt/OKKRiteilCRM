@@ -1,6 +1,6 @@
 export async function getTelphinToken() {
-    const TELPHIN_KEY = process.env.TELPHIN_APP_KEY;
-    const TELPHIN_SECRET = process.env.TELPHIN_APP_SECRET;
+    const TELPHIN_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
+    const TELPHIN_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
     if (!TELPHIN_KEY || !TELPHIN_SECRET) {
         throw new Error('Telphin config missing (KEY/SECRET)');
