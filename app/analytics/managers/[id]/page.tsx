@@ -295,8 +295,14 @@ export default function ManagerProfilePage() {
                                                                     <span className={`text-base md:text-xl font-black transition-colors ${group.order.priority === 'red' ? 'text-red-700' : 'text-gray-900 group-hover/link:text-blue-600'}`}>#{group.order.number}</span>
                                                                     <svg className="w-3 md:w-4 h-3 md:h-4 text-gray-300 group-hover/link:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                                 </div>
-                                                                <div className="text-[8px] md:text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-0.5">
-                                                                    История
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${getStatusColor(group.order.status)}`}>
+                                                                        {group.order.status_name || group.order.status}
+                                                                    </span>
+                                                                    <span className="text-gray-200">|</span>
+                                                                    <span className="text-gray-900 font-extrabold text-xs md:text-sm tracking-tight">
+                                                                        {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(group.order.totalsumm || 0)}
+                                                                    </span>
                                                                 </div>
                                                             </div>
                                                         </a>
