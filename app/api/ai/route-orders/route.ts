@@ -189,7 +189,9 @@ export async function POST(request: Request) {
                 }
 
                 if (!fetchData.success || !fetchData.orders || fetchData.orders.length === 0) {
-                    throw new Error(`Order ${order.id} not found in RetailCRM (Tried IDs and Numbers). Response: ${JSON.stringify(fetchData)}`);
+                    console.log(`[AIRouter] Order ${order.id} deleted in RetailCRM. Removing from local DB...`);
+                    await supabase.from('orders').delete().eq('id', order.id);
+                    continue;
                 }
 
                 // Ensure we use the same key for the update part later
