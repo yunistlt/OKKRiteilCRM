@@ -148,8 +148,8 @@ export default function AIPrimitivizationPage() {
                 <button
                     onClick={() => setActiveTab('order_analysis_main')}
                     className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'order_analysis_main'
-                            ? 'border-blue-600 text-blue-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
                 >
                     🚦 Анализ Эффективности Менеджера
@@ -157,8 +157,8 @@ export default function AIPrimitivizationPage() {
                 <button
                     onClick={() => setActiveTab('order_routing_main')}
                     className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'order_routing_main'
-                            ? 'border-purple-600 text-purple-600'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                        ? 'border-purple-600 text-purple-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
                 >
                     🤖 Маршрутизация (Смена Статусов)
@@ -300,9 +300,9 @@ export default function AIPrimitivizationPage() {
                                 <h4 className="font-bold mb-2">Логика по умолчанию:</h4>
                                 <ul className="list-disc pl-4 space-y-1">
                                     <li>Анализирует комментарий менеджера и Audit Trail.</li>
-                                    <li>Если клиент просит счет/не отменять -> переводит в рабочий статус.</li>
-                                    <li>Если клиент отказался -> переводит в отмену.</li>
-                                    <li>Если есть конфликт -> оставляет на проверку.</li>
+                                    <li>Если клиент просит счет/не отменять &rarr; переводит в рабочий статус.</li>
+                                    <li>Если клиент отказался &rarr; переводит в отмену.</li>
+                                    <li>Если есть конфликт &rarr; оставляет на проверку.</li>
                                 </ul>
                             </div>
                             <p className="italic text-xs">
