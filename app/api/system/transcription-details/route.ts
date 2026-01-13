@@ -18,7 +18,7 @@ export async function GET() {
         const { data: pending, error: e1 } = await supabase
             .from('raw_telphin_calls')
             .select(`
-                id,
+                telphin_call_id,
                 started_at,
                 duration,
                 call_order_matches!inner (
@@ -42,7 +42,7 @@ export async function GET() {
         const { data: completed, error: e2 } = await supabase
             .from('raw_telphin_calls')
             .select(`
-                id,
+                telphin_call_id,
                 started_at,
                 duration,
                 transcript,
@@ -63,7 +63,7 @@ export async function GET() {
         if (e2) throw e2;
 
         const formatCall = (c: any) => ({
-            id: c.id,
+            id: c.telphin_call_id,
             date: c.started_at,
             duration: c.duration,
             order: c.call_order_matches?.[0]?.orders,
