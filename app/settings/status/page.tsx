@@ -483,8 +483,8 @@ export default function SystemStatusPage() {
                                                         </span>
                                                         {item.order && (
                                                             <span
-                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-white w-fit"
-                                                                style={{ backgroundColor: item.order.status_color || '#9ca3af' }}
+                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-gray-900 border border-black/5 w-fit"
+                                                                style={{ backgroundColor: item.order.status_color || '#eee' }}
                                                             >
                                                                 {item.order.status_name || item.order.status}
                                                             </span>
@@ -531,8 +531,8 @@ export default function SystemStatusPage() {
                                                         </span>
                                                         {item.order && (
                                                             <span
-                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-white w-fit"
-                                                                style={{ backgroundColor: item.order.status_color || '#9ca3af' }}
+                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-gray-900 border border-black/5 w-fit"
+                                                                style={{ backgroundColor: item.order.status_color || '#eee' }}
                                                             >
                                                                 {item.order.status_name || item.order.status}
                                                             </span>
