@@ -75,7 +75,26 @@ export default function ManagerProfilePage() {
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
-    // ... (useEffect remains same) ...
+    useEffect(() => {
+        async function load() {
+            try {
+                setLoading(true);
+                const query = new URLSearchParams();
+                if (from) query.set('from', from);
+                if (to) query.set('to', to);
+
+                const res = await fetch(`/api/analysis/managers/${params.id}?${query.toString()}`);
+                if (!res.ok) throw new Error('Failed to load');
+                const json = await res.json();
+                setData(json);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        }
+        if (params.id) load();
+    }, [params.id, from, to]);
 
     const { manager, stats, violations, calls } = data || { manager: {}, stats: {}, violations: [], calls: [] };
 
