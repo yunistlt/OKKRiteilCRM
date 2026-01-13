@@ -294,6 +294,7 @@ export default function AIRouterPanel() {
                                         <th className="px-4 py-2 text-left w-24">Сумма</th>
                                         <th className="px-4 py-2 text-left w-28">Текущий Статус</th>
                                         <th className="px-4 py-2 text-left w-32">Решение ИИ</th>
+                                        {trainingMode && <th className="px-4 py-2 text-left w-32">Ваш Выбор</th>}
                                         <th className="px-4 py-2 text-left w-14">Conf</th>
                                         <th className="px-4 py-2 text-left">Причина / Комментарий</th>
                                         {trainingMode && <th className="px-4 py-2 w-24">Действие</th>}
@@ -331,41 +332,51 @@ export default function AIRouterPanel() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-2">
-                                                    {trainingMode && !state.done ? (
-                                                        <select
-                                                            value={state.status}
-                                                            onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
-                                                            className="w-full p-1 border rounded text-xs"
-                                                        >
-                                                            {/* User might want to keep original if not in list */}
-                                                            {/* Group by group_name */}
-                                                            {(() => {
-                                                                const grouped: Record<string, typeof availableStatuses> = {};
-                                                                availableStatuses.forEach(s => {
-                                                                    const g = s.group_name || 'Другое';
-                                                                    if (!grouped[g]) grouped[g] = [];
-                                                                    grouped[g].push(s);
-                                                                });
-
-                                                                return Object.entries(grouped).sort().map(([group, statuses]) => (
-                                                                    <optgroup key={group} label={group}>
-                                                                        {statuses.map(s => (
-                                                                            <option key={s.code} value={s.code}>{s.name}</option>
-                                                                        ))}
-                                                                    </optgroup>
-                                                                ));
-                                                            })()}
-                                                            {/* User might want to keep original if not in list */}
-                                                            {!availableStatuses.find(s => s.code === state.status) && (
-                                                                <option value={state.status}>{state.status}</option>
-                                                            )}
-                                                        </select>
-                                                    ) : (
-                                                        <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
-                                                            {result.to_status_name || result.to_status}
-                                                        </span>
-                                                    )}
+                                                    {/* AI Decision - Always ReadOnly here now */}
+                                                    <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
+                                                        {result.to_status_name || result.to_status}
+                                                    </span>
                                                 </td>
+
+                                                {/* User Selection Column (Training Mode Only) */}
+                                                {trainingMode && (
+                                                    <td className="px-4 py-2">
+                                                        {!state.done ? (
+                                                            <select
+                                                                value={state.status}
+                                                                onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
+                                                                className="w-full p-1 border rounded text-xs bg-white text-gray-900 font-medium border-purple-300 focus:border-purple-500 ring-purple-200"
+                                                            >
+                                                                {/* Group by group_name */}
+                                                                {(() => {
+                                                                    const grouped: Record<string, typeof availableStatuses> = {};
+                                                                    availableStatuses.forEach(s => {
+                                                                        const g = s.group_name || 'Другое';
+                                                                        if (!grouped[g]) grouped[g] = [];
+                                                                        grouped[g].push(s);
+                                                                    });
+
+                                                                    return Object.entries(grouped).sort().map(([group, statuses]) => (
+                                                                        <optgroup key={group} label={group}>
+                                                                            {statuses.map(s => (
+                                                                                <option key={s.code} value={s.code}>{s.name}</option>
+                                                                            ))}
+                                                                        </optgroup>
+                                                                    ));
+                                                                })()}
+                                                                {!availableStatuses.find(s => s.code === state.status) && (
+                                                                    <option value={state.status}>{state.status}</option>
+                                                                )}
+                                                            </select>
+                                                        ) : (
+                                                            /* Show what was applied */
+                                                            <span className="text-xs font-bold text-purple-700">
+                                                                {availableStatuses.find(s => s.code === state.status)?.name || state.status}
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                )}
+
                                                 <td className="px-4 py-2">
                                                     <span className={`font-semibold ${result.confidence >= 0.8 ? 'text-green-600' :
                                                         result.confidence >= 0.6 ? 'text-yellow-600' :
