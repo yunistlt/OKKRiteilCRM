@@ -10,6 +10,13 @@ export async function GET() {
             .select('code')
             .eq('is_transcribable', true);
 
+        // Fetch Statuses for enrichment
+        const { data: statusesData } = await supabase.from('statuses').select('code, name, color');
+        const statusMap: Record<string, { name: string, color?: string }> = {};
+        statusesData?.forEach((s: any) => {
+            statusMap[s.code] = { name: s.name, color: s.color };
+        });
+
         const transcribableCodes = (transcribableSettings || []).map(s => s.code);
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -25,7 +32,8 @@ export async function GET() {
                     orders!inner (
                         order_id,
                         number,
-                        status
+                        status,
+                        totalsumm
                     )
                 )
             `)
@@ -50,7 +58,8 @@ export async function GET() {
                     orders!inner (
                         order_id,
                         number,
-                        status
+                        status,
+                        totalsumm
                     )
                 )
             `)
@@ -62,13 +71,22 @@ export async function GET() {
 
         if (e2) throw e2;
 
-        const formatCall = (c: any) => ({
-            id: c.telphin_call_id,
-            date: c.started_at,
-            duration: c.duration_sec,
-            order: c.call_order_matches?.[0]?.orders,
-            transcript_preview: c.transcript ? c.transcript.substring(0, 50) + '...' : null
-        });
+        const formatCall = (c: any) => {
+            const order = c.call_order_matches?.[0]?.orders;
+            const statusInfo = order ? statusMap[order.status] : null;
+
+            return {
+                id: c.telphin_call_id,
+                date: c.started_at,
+                duration: c.duration_sec,
+                order: order ? {
+                    ...order,
+                    status_name: statusInfo?.name || order.status,
+                    status_color: statusInfo?.color || '#333333'
+                } : null,
+                transcript_preview: c.transcript ? c.transcript.substring(0, 50) + '...' : null
+            };
+        };
 
         return NextResponse.json({
             queue: (pending || []).map(formatCall),

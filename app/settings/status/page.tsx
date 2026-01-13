@@ -477,14 +477,31 @@ export default function SystemStatusPage() {
                                         transcriptionDetails.queue.map((item: any) => (
                                             <div key={item.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-purple-200 transition-colors">
                                                 <div className="flex justify-between items-start mb-2">
-                                                    <span className="font-bold text-gray-900 text-xs text-purple-700">
-                                                        {item.order ? `#${item.order.number}` : 'Без заказа'}
-                                                    </span>
-                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
-                                                        {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="font-bold text-gray-900 text-xs text-purple-700">
+                                                            {item.order ? `#${item.order.number}` : 'Без заказа'}
+                                                        </span>
+                                                        {item.order && (
+                                                            <span
+                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-white w-fit"
+                                                                style={{ backgroundColor: item.order.status_color || '#9ca3af' }}
+                                                            >
+                                                                {item.order.status_name || item.order.status}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase block">
+                                                            {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                        {item.order && item.order.totalsumm > 0 && (
+                                                            <span className="text-[10px] font-bold text-gray-900 block mt-1">
+                                                                {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(item.order.totalsumm)}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center justify-between text-[10px] font-medium text-gray-500">
+                                                <div className="flex items-center justify-between text-[10px] font-medium text-gray-500 mt-2">
                                                     <span>{item.duration} сек</span>
                                                     <span>{new Date(item.date).toLocaleDateString()}</span>
                                                 </div>
@@ -508,14 +525,31 @@ export default function SystemStatusPage() {
                                         transcriptionDetails.completed.map((item: any) => (
                                             <div key={item.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-green-200 transition-colors">
                                                 <div className="flex justify-between items-start mb-2">
-                                                    <span className="font-bold text-gray-900 text-xs">
-                                                        {item.order ? `#${item.order.number}` : 'Без заказа'}
-                                                    </span>
-                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
-                                                        {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                    </span>
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="font-bold text-gray-900 text-xs">
+                                                            {item.order ? `#${item.order.number}` : 'Без заказа'}
+                                                        </span>
+                                                        {item.order && (
+                                                            <span
+                                                                className="text-[9px] font-bold px-1.5 py-0.5 rounded-md text-white w-fit"
+                                                                style={{ backgroundColor: item.order.status_color || '#9ca3af' }}
+                                                            >
+                                                                {item.order.status_name || item.order.status}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-right">
+                                                        <span className="text-[10px] font-bold text-gray-400 uppercase block">
+                                                            {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                        {item.order && item.order.totalsumm > 0 && (
+                                                            <span className="text-[10px] font-bold text-gray-900 block mt-1">
+                                                                {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(item.order.totalsumm)}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                                <p className="text-[10px] text-gray-500 leading-snug mb-2 line-clamp-2 italic">
+                                                <p className="text-[10px] text-gray-500 leading-snug mb-2 line-clamp-2 italic mt-1">
                                                     "{item.transcript_preview || '...'}"
                                                 </p>
                                                 <div className="flex items-center justify-between text-[10px] font-medium text-gray-400">
