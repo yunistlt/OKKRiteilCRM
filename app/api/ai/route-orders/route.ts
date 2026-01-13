@@ -199,8 +199,21 @@ export async function POST(request: Request) {
                 const retailcrmOrder = fetchData.orders[0];
                 const orderSite = retailcrmOrder.site;
                 const comment = retailcrmOrder.managerComment || '';
+                const freshStatus = retailcrmOrder.status;
 
-                // 2b. Gather Triple Check Audit Context
+                // 2b. Validate Status Regularity (Fix Stale Data)
+                // If the order in CRM is NOT 'soglasovanie-otmeny', we shouldn't route it.
+                // We must update our local DB and skip this order.
+                if (freshStatus !== 'soglasovanie-otmeny') {
+                    console.log(`[AIRouter] Order ${order.id} is '${freshStatus}' in CRM (DB said '${order.status}'). Updating DB and skipping.`);
+                    await supabase
+                        .from('orders')
+                        .update({ status: freshStatus })
+                        .eq('id', order.id);
+                    continue;
+                }
+
+                // 2c. Gather Triple Check Audit Context
                 const auditContext = await getAuditContext(Number(order.id));
 
                 // Prepare system context for AI to handle chronology correctly
@@ -309,7 +322,7 @@ export async function POST(request: Request) {
                     }
                 }
 
-                const freshStatus = retailcrmOrder.status;
+
 
                 results.push({
                     order_id: order.id,
