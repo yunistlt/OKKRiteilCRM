@@ -20,7 +20,7 @@ export async function GET() {
             .select(`
                 telphin_call_id,
                 started_at,
-                duration,
+                duration_sec,
                 call_order_matches!inner (
                     orders!inner (
                         order_id,
@@ -44,7 +44,7 @@ export async function GET() {
             .select(`
                 telphin_call_id,
                 started_at,
-                duration,
+                duration_sec,
                 transcript,
                 call_order_matches!inner (
                     orders!inner (
@@ -65,7 +65,7 @@ export async function GET() {
         const formatCall = (c: any) => ({
             id: c.telphin_call_id,
             date: c.started_at,
-            duration: c.duration,
+            duration: c.duration_sec,
             order: c.call_order_matches?.[0]?.orders,
             transcript_preview: c.transcript ? c.transcript.substring(0, 50) + '...' : null
         });
