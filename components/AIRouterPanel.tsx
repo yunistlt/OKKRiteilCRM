@@ -27,7 +27,7 @@ interface RoutingSummary {
 export default function AIRouterPanel() {
     const [trainingMode, setTrainingMode] = useState(false);
     const [trainingState, setTrainingState] = useState<Record<string, { status: string; comment: string; loading: boolean; done: boolean }>>({});
-    const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string }[]>([]);
+    const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string; group_name?: string }[]>([]);
 
     // Restoring missing state
     const [isRunning, setIsRunning] = useState(false);
@@ -40,23 +40,11 @@ export default function AIRouterPanel() {
     // Fetch allowed AI statuses on mount or when mode toggles
     const fetchStatuses = async () => {
         try {
-            // We can reuse the status settings API or just fetch from DB via a new simple endpoint
-            // For now, let's hardcode the most common ones or try to fetch from an existing one if available.
-            // Actually, best to fetch from /api/sync/statuses but that syncs from CRM. 
-            // Better to use the database 'status_settings' where is_ai_target is true.
-            // But we don't have a direct public endpoint for that list yet.
-            // Let's create a quick list or fetch all statuses. 
-            // Workaround: We will use the 'otmenen-propala-neobkhodimost' etc as default options 
-            // and maybe fetch later if needed. For now I'll include the main ones user cares about.
-            const commonStatuses = [
-                { code: 'otmenen-propala-neobkhodimost', name: 'Пропала необходимость' },
-                { code: 'ne-vyigrali-tender', name: 'Не выиграли тендер' },
-                { code: 'zakazchik-ne-vykhodit-na-sviaz', name: 'Заказчик не выходит на связь' },
-                { code: 'v-proscete', name: 'В просчете' },
-                { code: 'soglasovanie-otmeny', name: 'Согласование отмены' },
-                { code: 'otmenyon-klientom', name: 'Отменен клиентом' },
-            ];
-            setAvailableStatuses(commonStatuses);
+            const res = await fetch('/api/dict/statuses');
+            const data = await res.json();
+            if (Array.isArray(data)) {
+                setAvailableStatuses(data);
+            }
         } catch (e) {
             console.error(e);
         }
@@ -349,9 +337,24 @@ export default function AIRouterPanel() {
                                                             onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
                                                             className="w-full p-1 border rounded text-xs"
                                                         >
-                                                            {availableStatuses.map(s => (
-                                                                <option key={s.code} value={s.code}>{s.name} ({s.code})</option>
-                                                            ))}
+                                                            {/* User might want to keep original if not in list */}
+                                                            {/* Group by group_name */}
+                                                            {(() => {
+                                                                const grouped: Record<string, typeof availableStatuses> = {};
+                                                                availableStatuses.forEach(s => {
+                                                                    const g = s.group_name || 'Другое';
+                                                                    if (!grouped[g]) grouped[g] = [];
+                                                                    grouped[g].push(s);
+                                                                });
+
+                                                                return Object.entries(grouped).sort().map(([group, statuses]) => (
+                                                                    <optgroup key={group} label={group}>
+                                                                        {statuses.map(s => (
+                                                                            <option key={s.code} value={s.code}>{s.name}</option>
+                                                                        ))}
+                                                                    </optgroup>
+                                                                ));
+                                                            })()}
                                                             {/* User might want to keep original if not in list */}
                                                             {!availableStatuses.find(s => s.code === state.status) && (
                                                                 <option value={state.status}>{state.status}</option>
