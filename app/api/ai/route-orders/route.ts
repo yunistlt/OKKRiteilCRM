@@ -309,11 +309,13 @@ export async function POST(request: Request) {
                     }
                 }
 
+                const freshStatus = retailcrmOrder.status;
+
                 results.push({
                     order_id: order.id,
-                    from_status: order.status,
-                    current_status_name: statusMap.get(order.status) || order.status,
-                    current_status_color: statusColorMap.get(order.status) || '#f3f4f6',
+                    from_status: freshStatus,
+                    current_status_name: statusMap.get(freshStatus) || freshStatus,
+                    current_status_color: statusColorMap.get(freshStatus) || '#f3f4f6',
                     total_sum: order.totalsumm || 0,
                     retail_crm_url: retailCrmBaseUrl,
                     to_status: decision.target_status,

@@ -376,10 +376,11 @@ export default function AIRouterPanel() {
                                                         <textarea
                                                             value={state.comment}
                                                             onChange={(e) => updateTrainingState(result.order_id, 'comment', e.target.value)}
-                                                            className="w-full p-1 border rounded text-xs min-h-[60px]"
+                                                            className="w-full p-2 border rounded text-xs min-h-[200px] leading-relaxed"
+                                                            placeholder="Обоснование решения..."
                                                         />
                                                     ) : (
-                                                        <div className="text-xs text-gray-600 max-h-20 overflow-y-auto">
+                                                        <div className="text-xs text-gray-600 max-h-60 overflow-y-auto whitespace-pre-wrap">
                                                             {result.reasoning}
                                                         </div>
                                                     )}
