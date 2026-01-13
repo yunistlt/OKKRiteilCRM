@@ -202,6 +202,31 @@ export default function SystemStatusPage() {
         : 0;
 
     return (
+    // --- State: Transcription Details ---
+    const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
+    const [transcriptionDetails, setTranscriptionDetails] = useState<{ queue: any[], completed: any[] } | null>(null);
+    const [loadingDetails, setLoadingDetails] = useState(false);
+
+    const fetchTranscriptionDetails = async () => {
+        setLoadingDetails(true);
+        try {
+            const res = await fetch('/api/system/transcription-details');
+            const data = await res.json();
+            if (data.queue || data.completed) {
+                setTranscriptionDetails(data);
+                setShowTranscriptionModal(true);
+            } else {
+                alert('Не удалось загрузить детали: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сети');
+        } finally {
+            setLoadingDetails(false);
+        }
+    };
+
+    return (
         <div className="max-w-7xl mx-auto py-4 px-2 md:px-0">
             {/* Header */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
@@ -336,10 +361,13 @@ export default function SystemStatusPage() {
                 </div>
 
                 {/* 2.3 Transcription (Progress + Settings) */}
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col">
+                <div
+                    onClick={fetchTranscriptionDetails}
+                    className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col cursor-pointer hover:shadow-xl hover:shadow-purple-200/20 active:scale-[0.98] transition-all group"
+                >
                     <div className="flex items-center gap-3 mb-6">
                         <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">📝</div>
-                        <h3 className="text-sm font-black text-gray-900">Транскрибация</h3>
+                        <h3 className="text-sm font-black text-gray-900 group-hover:text-purple-600 transition-colors">Транскрибация</h3>
                     </div>
 
                     <div className="mb-8">
@@ -367,7 +395,7 @@ export default function SystemStatusPage() {
                         )}
                     </div>
 
-                    <div className="mt-auto pt-6 border-t border-gray-50">
+                    <div className="mt-auto pt-6 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
                         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
                             Мин. длительность (сек)
                         </label>
@@ -419,6 +447,91 @@ export default function SystemStatusPage() {
                     </button>
                 </div>
             </div>
+
+            {/* Modal: Transcription Details */}
+            {showTranscriptionModal && transcriptionDetails && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowTranscriptionModal(false)}>
+                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 md:p-8 flex items-center justify-between bg-gray-50 border-b border-gray-100">
+                            <div>
+                                <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">Очередь Транскрибации</h2>
+                                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Детализация статусов</p>
+                            </div>
+                            <button onClick={() => setShowTranscriptionModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                            {/* Queue Column */}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="text-xs font-black text-purple-600 uppercase tracking-widest bg-purple-50 px-3 py-1 rounded-lg">
+                                        В очереди ({transcriptionDetails.queue.length})
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    {transcriptionDetails.queue.length === 0 ? (
+                                        <div className="text-gray-300 text-xs font-bold text-center py-8">Пусто</div>
+                                    ) : (
+                                        transcriptionDetails.queue.map((item: any) => (
+                                            <div key={item.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-purple-200 transition-colors">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="font-bold text-gray-900 text-xs text-purple-700">
+                                                        {item.order ? `#${item.order.number}` : 'Без заказа'}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                        {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center justify-between text-[10px] font-medium text-gray-500">
+                                                    <span>{item.duration} сек</span>
+                                                    <span>{new Date(item.date).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Completed Column */}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="text-xs font-black text-green-600 uppercase tracking-widest bg-green-50 px-3 py-1 rounded-lg">
+                                        Готово ({transcriptionDetails.completed.length})
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    {transcriptionDetails.completed.length === 0 ? (
+                                        <div className="text-gray-300 text-xs font-bold text-center py-8">Пусто</div>
+                                    ) : (
+                                        transcriptionDetails.completed.map((item: any) => (
+                                            <div key={item.id} className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:border-green-200 transition-colors">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="font-bold text-gray-900 text-xs">
+                                                        {item.order ? `#${item.order.number}` : 'Без заказа'}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                                                        {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 leading-snug mb-2 line-clamp-2 italic">
+                                                    "{item.transcript_preview || '...'}"
+                                                </p>
+                                                <div className="flex items-center justify-between text-[10px] font-medium text-gray-400">
+                                                    <span>{item.duration} сек</span>
+                                                    <span>{new Date(item.date).toLocaleDateString()}</span>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
