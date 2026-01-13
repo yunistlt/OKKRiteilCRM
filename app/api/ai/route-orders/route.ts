@@ -97,15 +97,20 @@ export async function POST(request: Request) {
 
         console.log('[AIRouter] Starting with options:', options);
 
-        // 0a. Get ALL active statuses for name mapping (display purposes)
+        // 0a. Get ALL active statuses for name and color mapping
         const { data: allStatuses } = await supabase
             .from('statuses')
-            .select('code, name')
+            .select('code, name, color')
             .eq('is_active', true);
 
         const statusMap = new Map(
             allStatuses?.map(s => [s.code, s.name]) || []
         );
+        const statusColorMap = new Map(
+            allStatuses?.map(s => [s.code, s.color]) || []
+        );
+
+
 
         // 0b. Get allowed statuses for AI routing from status_settings
         const { data: routeSettings, error: routeError } = await supabase
@@ -308,6 +313,7 @@ export async function POST(request: Request) {
                     order_id: order.id,
                     from_status: order.status,
                     current_status_name: statusMap.get(order.status) || order.status,
+                    current_status_color: statusColorMap.get(order.status) || '#f3f4f6',
                     total_sum: order.totalsumm || 0,
                     retail_crm_url: retailCrmBaseUrl,
                     to_status: decision.target_status,

@@ -28,6 +28,7 @@ export interface RoutingResult {
     order_id: number;
     from_status: string;
     current_status_name?: string;
+    current_status_color?: string;
     total_sum?: number;
     retail_crm_url?: string;
     to_status: string;

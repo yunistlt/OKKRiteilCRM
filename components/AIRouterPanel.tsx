@@ -6,6 +6,7 @@ interface RoutingResult {
     order_id: number;
     from_status: string;
     current_status_name?: string;
+    current_status_color?: string;
     total_sum?: number;
     retail_crm_url?: string;
     to_status: string;
@@ -330,7 +331,14 @@ export default function AIRouterPanel() {
                                                     {result.total_sum?.toLocaleString('ru-RU')} ₽
                                                 </td>
                                                 <td className="px-4 py-2">
-                                                    <span className={`inline-block px-2 py-1 text-[10px] font-semibold rounded uppercase ${getStatusBadge(result.from_status)}`}>
+                                                    <span
+                                                        className="inline-block px-2 py-1 text-[10px] font-semibold rounded uppercase border"
+                                                        style={{
+                                                            borderColor: result.current_status_color || '#ccc',
+                                                            backgroundColor: result.current_status_color ? `${result.current_status_color}20` : '#f3f4f6',
+                                                            color: result.current_status_color || '#374151'
+                                                        }}
+                                                    >
                                                         {result.current_status_name || result.from_status}
                                                     </span>
                                                 </td>
