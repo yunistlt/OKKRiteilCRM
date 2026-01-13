@@ -4,6 +4,18 @@ import { supabase } from '@/utils/supabase';
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY;
 
+const STATUS_GROUP_COLORS: Record<string, string> = {
+    'new': '#DBEAFE', // blue-100
+    'work': '#FEF3C7', // amber-100
+    'approval': '#FEF3C7', // amber-100
+    'assembling': '#F3E8FF', // purple-100
+    'delivery': '#E0E7FF', // indigo-100
+    'complete': '#DCFCE7', // green-100
+    'cancel': '#FEE2E2', // red-100
+    'fail': '#FEE2E2', // red-100
+    'return': '#FFE4E6' // rose-100
+};
+
 export async function GET() {
     if (!RETAILCRM_URL || !RETAILCRM_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
@@ -39,8 +51,22 @@ export async function GET() {
 
         const rows = Object.values(statuses).map((s: any) => {
             const group = groupMap[s.group];
-            // Try to find color in status, then in group
-            const color = s.rgb || s.color || group?.rgb || group?.color || group?.hex || null;
+            const groupCode = s.group;
+            // Try to find color in status, then in group, then in static map
+            let color = s.rgb || s.color || group?.rgb || group?.color || group?.hex || null;
+
+            if (!color && groupCode) {
+                // Try simple match
+                if (STATUS_GROUP_COLORS[groupCode]) {
+                    color = STATUS_GROUP_COLORS[groupCode];
+                } else {
+                    // Try partial match keys
+                    if (groupCode.includes('cancel') || groupCode.includes('otmen')) color = STATUS_GROUP_COLORS['cancel'];
+                    else if (groupCode.includes('complete') || groupCode.includes('vypoln')) color = STATUS_GROUP_COLORS['complete'];
+                    else if (groupCode.includes('deliv') || groupCode.includes('dostav')) color = STATUS_GROUP_COLORS['delivery'];
+                    else if (groupCode.includes('new') || groupCode.includes('nov')) color = STATUS_GROUP_COLORS['new'];
+                }
+            }
 
             return {
                 code: s.code,
@@ -67,7 +93,7 @@ export async function GET() {
             count: rows.length,
             inactive_count: inactiveCount,
             groups_found: Object.keys(groupMap).length,
-            message: 'DEBUG 2: Checking Groups',
+            message: 'FIXED: Static Fallbacks applied',
             debug_sample_status: Object.values(statuses)[0],
             debug_sample_group: Object.values(groups)[0], // Check if group has color
             debug_resolved_color: rows[0]?.color
