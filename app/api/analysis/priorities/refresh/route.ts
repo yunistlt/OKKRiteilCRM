@@ -1,6 +1,6 @@
-
 import { NextResponse } from 'next/server';
 import { calculatePriorities } from '@/lib/prioritization';
+import { runRuleEngine } from '@/lib/rule-engine';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,19 @@ export const maxDuration = 300; // Allow 5 minutes for full refresh
 
 export async function GET() {
     try {
-        console.log('Refreshing priorities...');
+        console.log('Refreshing priorities & Running Rule Engine...');
+
+        // 1. Run Rule Engine (Last 24h)
+        const now = new Date();
+        const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        try {
+            await runRuleEngine(yesterday.toISOString(), now.toISOString());
+            console.log('Rule Engine verification complete.');
+        } catch (reErr) {
+            console.error('Rule Engine manual trigger failed:', reErr);
+        }
+
+        // 2. Refresh Priorities
         const priorities = await calculatePriorities(2000, true); // Compute heuristics only, fast!
 
         if (priorities.length === 0) {
