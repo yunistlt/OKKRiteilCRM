@@ -406,24 +406,46 @@ export default function ManagerProfilePage() {
                                                     )}
                                                 </td>
                                                 <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
+
+                                                    const STATUS_COLORS: Record<string, string> = {
+                                                        'new': 'bg-blue-100 text-blue-700',
+                                                    'send-to-delivery': 'bg-purple-100 text-purple-700',
+                                                    'delivering': 'bg-indigo-100 text-indigo-700',
+                                                    'complete': 'bg-green-100 text-green-700',
+                                                    'cancel-other': 'bg-red-100 text-red-700',
+                                                    'rosten': 'bg-amber-100 text-amber-700'
+};
+
+                                                    function getStatusColor(code: string): string {
+    if (!code) return 'bg-gray-100 text-gray-600';
+                                                    if (code.includes('cancel')) return 'bg-red-50 text-red-700';
+                                                    if (code.includes('complete')) return 'bg-green-50 text-green-700';
+                                                    if (code.includes('new')) return 'bg-blue-50 text-blue-700';
+                                                    return 'bg-gray-50 text-gray-600';
+}
+
                                                     {c.call_order_matches && c.call_order_matches[0]?.orders && (
-                                                        <div className="flex flex-col items-end gap-1">
+                                                        <div className="flex flex-col items-end gap-1.5">
                                                             <a
                                                                 href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
                                                                 target="_blank"
-                                                                className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-xs md:text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
-                                                                    c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
-                                                                        c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
-                                                                            'text-blue-600 hover:text-blue-800'
+                                                                className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-sm md:text-base group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-700 hover:text-red-800' :
+                                                                    c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-700 hover:text-amber-800' :
+                                                                        c.call_order_matches[0].orders.priority === 'green' ? 'text-green-700 hover:text-green-800' :
+                                                                            'text-blue-700 hover:text-blue-800'
                                                                     }`}
                                                             >
                                                                 #{c.call_order_matches[0].orders.number}
-                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                                <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                             </a>
-                                                            <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                                                                <span>{c.call_order_matches[0].orders.status}</span>
-                                                                <span className="text-gray-300">|</span>
-                                                                <span>{new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(c.call_order_matches[0].orders.totalsumm || 0)}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${getStatusColor(c.call_order_matches[0].orders.status)}`}>
+                                                                    {c.call_order_matches[0].orders.status_name || c.call_order_matches[0].orders.status}
+                                                                </span>
+                                                                <span className="text-gray-200">|</span>
+                                                                <span className="text-gray-900 font-extrabold text-xs md:text-sm tracking-tight">
+                                                                    {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(c.call_order_matches[0].orders.totalsumm || 0)}
+                                                                </span>
                                                             </div>
                                                         </div>
                                                     )}
