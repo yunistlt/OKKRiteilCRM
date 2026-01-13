@@ -321,6 +321,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
             for (const match of nullChecks) {
                 const key = match[1]; // key is lowercase from sql
                 const val = getContextValue(row.om.full_order_context, key);
+                console.log(`[RuleEngine] Checking NULL for '${key}'. Value:`, val);
 
                 if (val === undefined || val === null) {
                     matchedAny = true;
@@ -333,12 +334,15 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
                 for (const match of emptyChecks) {
                     const key = match[1];
                     const val = getContextValue(row.om.full_order_context, key);
+                    console.log(`[RuleEngine] Checking EMPTY for '${key}'. Value: '${val}'`);
                     if (val === '') {
                         matchedAny = true;
                         break;
                     }
                 }
             }
+
+            console.log(`[RuleEngine] JSON Checks result: matchedAny=${matchedAny}`);
 
             // If we have checks, but NONE matched, then the event is "Clean" -> Filter OUT.
             if (!matchedAny) return false;
