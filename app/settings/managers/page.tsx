@@ -76,15 +76,16 @@ export default function ManagerSettingsPage() {
 
     return (
         <div className="p-4 md:p-0 max-w-4xl mx-auto">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-10">
-                <div>
-                    <h1 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">Контроль Менеджеров</h1>
-                    <p className="text-sm md:text-base text-gray-500 mt-2">Выберите сотрудников для детального анализа нарушений</p>
-                </div>
+            {/* Compact Header */}
+            <div className="flex flex-col gap-4 mb-6">
+                {/* Mobile-first text */}
+                <p className="text-sm text-gray-500 font-medium">
+                    Выберите сотрудников для анализа нарушений
+                </p>
                 <button
                     onClick={handleSave}
                     disabled={saving}
-                    className="w-full sm:w-auto bg-blue-600 text-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-blue-700 hover:shadow-lg hover:shadow-blue-200 transition-all disabled:opacity-50"
+                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm md:w-auto md:px-8"
                 >
                     {saving ? 'Сохранение...' : 'Сохранить изменения'}
                 </button>
@@ -121,18 +122,47 @@ NOTIFY pgrst, 'reload config';`}
                 </div>
             )}
 
-            <div className="bg-white rounded-3xl shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
-                <div className="p-4 md:p-6 border-b border-gray-100 bg-gray-50/30">
+            <div className="bg-white rounded-xl md:rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-3 border-b border-gray-100 bg-gray-50/50">
                     <input
                         type="text"
-                        placeholder="Поиск по имени или ID..."
+                        placeholder="Поиск..."
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        className="w-full bg-white border-2 border-gray-100 rounded-2xl p-3 md:p-4 text-sm md:text-base text-gray-900 font-bold focus:border-blue-500 transition-all outline-none"
+                        className="w-full bg-white border border-gray-200 rounded-lg p-2 text-sm text-gray-900 focus:border-blue-500 transition-all outline-none"
                     />
                 </div>
                 <div className="max-h-[600px] overflow-y-auto">
-                    <div className="overflow-x-auto">
+                    {/* Mobile List View */}
+                    <div className="md:hidden divide-y divide-gray-100">
+                        {filteredManagers.map((m) => (
+                            <div key={m.id} className="p-3 flex items-center justify-between active:bg-gray-50" onClick={() => handleToggle(m.id)}>
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    {/* Toggle */}
+                                    <div className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${controlledIds.has(m.id) ? 'bg-blue-600' : 'bg-gray-200'}`}>
+                                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${controlledIds.has(m.id) ? 'translate-x-4' : 'translate-x-0'}`} />
+                                    </div>
+
+                                    <div className="flex flex-col min-w-0">
+                                        <span className="text-sm font-bold text-gray-900 truncate">
+                                            {m.first_name} {m.last_name}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] text-gray-400">ID: {m.id}</span>
+                                            {m.active ? (
+                                                <span className="text-[10px] text-green-600 font-medium">Активен</span>
+                                            ) : (
+                                                <span className="text-[10px] text-gray-400">He активен</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop Table View */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-left border-collapse min-w-[500px]">
                             <thead>
                                 <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100 sticky top-0 bg-white">

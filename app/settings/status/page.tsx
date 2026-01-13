@@ -226,26 +226,49 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <div className="max-w-7xl mx-auto py-4 px-2 md:px-0">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6">
-                <div>
-                    <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight mb-1">Системный Монитор</h1>
-                    <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest">
-                        Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}
-                    </p>
-                </div>
+        <div className="max-w-7xl mx-auto py-2 px-2 md:py-4 md:px-0">
+            {/* Compact Header */}
+            <div className="flex items-center justify-between mb-4">
+                <h1 className="text-lg font-bold text-gray-900">Системный Монитор</h1>
                 <button
                     onClick={() => { fetchSyncStatus(); checkOpenAI(); fetchDbStats(); }}
                     disabled={loadingSync || loadingStats}
-                    className="w-full md:w-auto px-4 py-2 bg-white border border-gray-200 rounded-lg font-bold text-xs hover:bg-gray-50 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                    className="p-2 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50"
                 >
-                    {loadingSync ? '...' : '🔄 Обновить'}
+                    {loadingSync ? '...' : '🔄'}
                 </button>
             </div>
 
-            {/* SECTION 1: SYNC MONITOR (Compact Row) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            {/* Mobile Sync List (Compact) */}
+            <div className="md:hidden space-y-2 mb-6">
+                {syncStatuses.map((service, idx) => (
+                    <div key={idx} className="bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                            <div className="text-xl shrink-0">{getIcon(service.service)}</div>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-xs font-bold text-gray-900 truncate max-w-[120px]">
+                                        {getRusServiceName(service.service)}
+                                    </h3>
+                                    <span className={`w-2 h-2 rounded-full ${service.status === 'ok' ? 'bg-green-500' : service.status === 'warning' ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                                </div>
+                                <p className="text-[9px] text-gray-500 truncate mt-0.5">
+                                    {service.last_run ? new Date(service.last_run).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => runService(service.service)}
+                            className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[9px] font-bold uppercase hover:bg-blue-100 active:scale-95"
+                        >
+                            Start
+                        </button>
+                    </div>
+                ))}
+            </div>
+
+            {/* Desktop Sync Grid */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {syncStatuses.length > 0 ? syncStatuses.map((service, idx) => (
                     <div key={idx} className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-lg shadow-gray-200/40 relative overflow-hidden group flex flex-col justify-between h-full">
 
@@ -307,32 +330,31 @@ export default function SystemStatusPage() {
             </div>
 
             {/* SECTION 2: AI & STATS */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mb-8">
                 {/* 2.1 Priorities Analysis */}
-                <div className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col justify-between">
+                <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col justify-between">
                     <div>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="text-2xl">🚦</div>
-                            <h3 className="text-lg font-black text-gray-900 tracking-tight">Анализ Приоритетов</h3>
+                        <div className="flex items-center gap-3 mb-2 md:mb-4">
+                            <div className="text-xl md:text-2xl">🚦</div>
+                            <h3 className="text-base md:text-lg font-black text-gray-900 tracking-tight">Анализ Приоритетов</h3>
                         </div>
-                        <p className="text-xs font-medium text-gray-500 mb-6 leading-relaxed">
-                            Пересчитывает критичность заказов на основе новых звонков, изменений статусов и AI-анализа.
-                            Именно этот модуль отвечает за надпись "Завис без движения".
+                        <p className="text-[10px] md:text-xs font-medium text-gray-500 mb-4 leading-relaxed">
+                            Пересчет критичности заказов и статусов (модуль "Завис без движения").
                         </p>
                     </div>
 
                     <button
                         onClick={refreshPriorities}
                         disabled={refreshingPriorities}
-                        className="w-full py-4 bg-gray-900 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                        className="w-full py-3 md:py-4 bg-gray-900 text-white rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                     >
-                        {refreshingPriorities ? '🚀 Выполняется анализ...' : '⚡️ Обновить Анализ'}
+                        {refreshingPriorities ? '🚀 ...' : '⚡️ Обновить'}
                     </button>
                 </div>
 
                 {/* 2.2 General Stats (Orders & Matches) */}
-                <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-blue-200/10 flex flex-col">
-                    <div className="flex items-center gap-3 mb-6">
+                <div className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-lg shadow-blue-200/10 flex flex-col">
+                    <div className="flex items-center gap-3 mb-4 md:mb-6">
                         <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center text-lg">📊</div>
                         <h3 className="text-sm font-black text-gray-900">Статистика Базы</h3>
                     </div>
@@ -343,15 +365,15 @@ export default function SystemStatusPage() {
                             <div className="h-12 bg-gray-50 rounded-xl"></div>
                         </div>
                     ) : dbStats ? (
-                        <div className="space-y-4 flex-1 flex flex-col justify-center">
-                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Заказы в работе</span>
-                                <span className="text-2xl font-black text-gray-900">{dbStats.workingOrders}</span>
+                        <div className="space-y-3 md:space-y-4 flex-1 flex flex-col justify-center">
+                            <div className="p-3 md:p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">В работе</span>
+                                <span className="text-xl md:text-2xl font-black text-gray-900">{dbStats.workingOrders}</span>
                             </div>
 
-                            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Матчи (звонки)</span>
-                                <span className="text-2xl font-black text-gray-900">{dbStats.matchedCalls}</span>
+                            <div className="p-3 md:p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Звонки</span>
+                                <span className="text-xl md:text-2xl font-black text-gray-900">{dbStats.matchedCalls}</span>
                             </div>
                         </div>
                     ) : (
@@ -362,14 +384,14 @@ export default function SystemStatusPage() {
                 {/* 2.3 Transcription (Progress + Settings) */}
                 <div
                     onClick={fetchTranscriptionDetails}
-                    className="bg-white p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col cursor-pointer hover:shadow-xl hover:shadow-purple-200/20 active:scale-[0.98] transition-all group"
+                    className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-lg shadow-purple-200/10 flex flex-col cursor-pointer hover:shadow-xl hover:shadow-purple-200/20 active:scale-[0.98] transition-all group"
                 >
-                    <div className="flex items-center gap-3 mb-6">
+                    <div className="flex items-center gap-3 mb-4 md:mb-6">
                         <div className="w-8 h-8 bg-purple-50 text-purple-600 rounded-lg flex items-center justify-center text-lg">📝</div>
                         <h3 className="text-sm font-black text-gray-900 group-hover:text-purple-600 transition-colors">Транскрибация</h3>
                     </div>
 
-                    <div className="mb-8">
+                    <div className="mb-4 md:mb-8">
                         {loadingStats ? (
                             <div className="animate-pulse space-y-2">
                                 <div className="h-1 bg-gray-100 rounded-full"></div>
@@ -394,7 +416,7 @@ export default function SystemStatusPage() {
                         )}
                     </div>
 
-                    <div className="mt-auto pt-6 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-auto pt-4 md:pt-6 border-t border-gray-50" onClick={(e) => e.stopPropagation()}>
                         <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">
                             Мин. длительность (сек)
                         </label>
@@ -418,50 +440,50 @@ export default function SystemStatusPage() {
             </div>
 
             {/* SECTION 3: Open AI Testing Inline */}
-            <div className="bg-white p-4 md:p-6 rounded-[24px] md:rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-                <div className="flex items-start md:items-center gap-4 md:gap-6">
+            <div className="bg-white p-4 md:p-6 rounded-2xl md:rounded-[32px] border border-gray-100 shadow-xl shadow-gray-200/50 flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6">
+                <div className="flex items-center gap-4 w-full md:w-auto">
                     <div className="w-10 h-10 md:w-12 md:h-12 bg-green-50 text-green-600 rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl flex-shrink-0">🤖</div>
-                    <div>
-                        <div className="flex items-center gap-3 mb-1">
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2 md:gap-3 mb-1">
                             <h3 className="text-base md:text-lg font-black text-gray-900 tracking-tight">OpenAI API</h3>
-                            <div className={`px-2 py-0.5 md:py-1 rounded text-[8px] md:text-[9px] font-black uppercase tracking-widest ${openai.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                            <div className={`px-2 py-0.5 md:py-1 rounded text-[8px] md:text-[9px] font-black uppercase tracking-widest flex-shrink-0 ${openai.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                 {openai.status === 'ok' ? 'ОНЛАЙН' : 'ОШИБКА'}
                             </div>
                         </div>
-                        <p className={`text-[10px] md:text-xs font-bold ${openai.status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
-                            {openai.message === 'API Key is valid and active' ? 'Ключ API активен и готов к работе' : openai.message}
+                        <p className={`text-[10px] md:text-xs font-bold truncate ${openai.status === 'error' ? 'text-red-500' : 'text-gray-500'}`}>
+                            {openai.message === 'API Key is valid and active' ? 'Ключ активен' : openai.message}
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center justify-between w-full md:w-auto gap-4">
+                <div className="flex items-center justify-between w-full md:w-auto gap-3">
                     <a href="https://platform.openai.com/usage" target="_blank" className="text-[10px] md:text-xs font-black text-blue-500 hover:text-blue-700 uppercase tracking-widest border-b-2 border-transparent hover:border-blue-200 transition-all">
                         Баланс ↗
                     </a>
                     <button
                         onClick={checkOpenAI}
-                        className="px-4 py-2.5 md:px-6 md:py-3 bg-gray-900 text-white rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95"
+                        className="px-4 py-2 bg-gray-900 text-white rounded-lg md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all active:scale-95 whitespace-nowrap"
                     >
-                        Проверить связь
+                        Проверить
                     </button>
                 </div>
             </div>
 
             {/* Modal: Transcription Details */}
             {showTranscriptionModal && transcriptionDetails && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowTranscriptionModal(false)}>
-                    <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 md:p-8 flex items-center justify-between bg-gray-50 border-b border-gray-100">
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 md:p-4" onClick={() => setShowTranscriptionModal(false)}>
+                    <div className="bg-white rounded-2xl md:rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 md:p-8 flex items-center justify-between bg-gray-50 border-b border-gray-100 shrink-0">
                             <div>
-                                <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">Очередь Транскрибации</h2>
-                                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-1">Детализация статусов</p>
+                                <h2 className="text-lg md:text-2xl font-black text-gray-900 tracking-tight">Транскрибация</h2>
+                                <p className="text-gray-400 font-bold uppercase text-[10px] tracking-widest mt-0.5">Очередь и статус</p>
                             </div>
                             <button onClick={() => setShowTranscriptionModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
                                 ✕
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="flex-1 overflow-y-auto p-4 md:p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
 
                             {/* Queue Column */}
                             <div>
