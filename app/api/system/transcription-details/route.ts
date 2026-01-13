@@ -18,8 +18,14 @@ export async function GET() {
         });
 
         const transcribableCodes = (transcribableSettings || []).map(s => s.code);
-        const thirtyDaysAgo = new Date();
-        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        // Fetch Min Duration Setting
+        const { data: durationSetting } = await supabase
+            .from('sync_state')
+            .select('value')
+            .eq('key', 'transcription_min_duration')
+            .single();
+
+        const minDuration = parseInt(durationSetting?.value || '15');
 
         // Fetch Queue (Pending)
         const { data: pending, error: e1 } = await supabase
@@ -39,6 +45,7 @@ export async function GET() {
             `)
             .in('call_order_matches.orders.status', transcribableCodes)
             .gte('started_at', thirtyDaysAgo.toISOString())
+            .gte('duration_sec', minDuration) // Apply Min Duration Filter
             .is('transcript', null)
             .is('raw_payload->transcript', null)
             .order('started_at', { ascending: false })
