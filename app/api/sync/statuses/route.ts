@@ -43,7 +43,8 @@ export async function GET() {
             ordering: s.ordering || 0,
             updated_at: new Date().toISOString(),
             group_name: groupMap[s.group] || s.group || 'Other',
-            is_active: s.active === true // Sync active state
+            is_active: s.active === true,
+            color: s.rgb || s.color
         }));
 
         const inactiveCount = rows.filter((r: any) => !r.is_active).length;

@@ -92,21 +92,22 @@ export async function GET(
         // 5. Fetch Statuses for reference
         const { data: statusesData } = await supabase
             .from('statuses')
-            .select('code, name');
+            .select('code, name, color');
 
-        const statusMap: Record<string, string> = {};
+        const statusMap: Record<string, { name: string, color?: string }> = {};
         statusesData?.forEach((s: any) => {
-            statusMap[s.code] = s.name;
+            statusMap[s.code] = { name: s.name, color: s.color };
         });
 
-        // Enrich calls with status names
+        // Enrich calls with status names & colors
         const enrichedCalls = formattedCalls?.map(c => ({
             ...c,
             call_order_matches: c.call_order_matches?.map((m: any) => ({
                 ...m,
                 orders: {
                     ...m.orders,
-                    status_name: statusMap[m.orders.status] || m.orders.status
+                    status_name: statusMap[m.orders.status]?.name || m.orders.status,
+                    status_color: statusMap[m.orders.status]?.color
                 }
             }))
         }));

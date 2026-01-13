@@ -274,29 +274,29 @@ export default function ManagerProfilePage() {
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100/50">
                                 {/* Date Range */}
                                 <div className="flex gap-2 items-center">
-                                    <div className="relative w-full">
+                                    <div className="w-full space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">С даты</label>
                                         <input
                                             type="date"
                                             className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
                                             value={filterDateStart}
                                             onChange={(e) => setFilterDateStart(e.target.value)}
-                                            placeholder="С"
                                         />
-                                        <label className="absolute -top-2 left-2 px-1 bg-gray-50/30 text-[8px] font-black text-gray-400 uppercase tracking-widest">С даты</label>
                                     </div>
-                                    <div className="relative w-full">
+                                    <div className="w-full space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">По дату</label>
                                         <input
                                             type="date"
                                             className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
                                             value={filterDateEnd}
                                             onChange={(e) => setFilterDateEnd(e.target.value)}
                                         />
-                                        <label className="absolute -top-2 left-2 px-1 bg-gray-50/30 text-[8px] font-black text-gray-400 uppercase tracking-widest">По дату</label>
                                     </div>
                                 </div>
 
                                 {/* Order Number */}
-                                <div className="relative">
+                                <div className="space-y-1">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Номер заказа</label>
                                     <input
                                         type="text"
                                         className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
@@ -304,12 +304,12 @@ export default function ManagerProfilePage() {
                                         value={filterOrderNumber}
                                         onChange={(e) => setFilterOrderNumber(e.target.value)}
                                     />
-                                    <label className="absolute -top-2 left-2 px-1 bg-gray-50/30 text-[8px] font-black text-gray-400 uppercase tracking-widest max-w-full truncate">Номер заказа</label>
                                 </div>
 
                                 {/* Duration Range */}
                                 <div className="flex gap-2 items-center col-span-1 md:col-span-2">
-                                    <div className="relative w-full">
+                                    <div className="w-full space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Мин. сек</label>
                                         <input
                                             type="number"
                                             className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
@@ -317,9 +317,9 @@ export default function ManagerProfilePage() {
                                             value={filterDurationMin}
                                             onChange={(e) => setFilterDurationMin(e.target.value)}
                                         />
-                                        <label className="absolute -top-2 left-2 px-1 bg-gray-50/30 text-[8px] font-black text-gray-400 uppercase tracking-widest">Мин. сек</label>
                                     </div>
-                                    <div className="relative w-full">
+                                    <div className="w-full space-y-1">
+                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Макс. сек</label>
                                         <input
                                             type="number"
                                             className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
@@ -327,7 +327,6 @@ export default function ManagerProfilePage() {
                                             value={filterDurationMax}
                                             onChange={(e) => setFilterDurationMax(e.target.value)}
                                         />
-                                        <label className="absolute -top-2 left-2 px-1 bg-gray-50/30 text-[8px] font-black text-gray-400 uppercase tracking-widest">Макс. сек</label>
                                     </div>
                                 </div>
                             </div>
@@ -381,7 +380,10 @@ export default function ManagerProfilePage() {
                                                                         <svg className="w-3 md:w-4 h-3 md:h-4 text-gray-300 group-hover/link:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                                     </div>
                                                                     <div className="flex items-center gap-2 mt-1">
-                                                                        <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${getStatusColor(group.order.status)}`}>
+                                                                        <span
+                                                                            className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!group.order.status_color ? getStatusColor(group.order.status) : 'text-gray-900'}`}
+                                                                            style={group.order.status_color ? { backgroundColor: group.order.status_color } : {}}
+                                                                        >
                                                                             {group.order.status_name || group.order.status}
                                                                         </span>
                                                                         <span className="text-gray-200">|</span>
@@ -529,7 +531,10 @@ export default function ManagerProfilePage() {
                                                                     <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                                                                 </a>
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${getStatusColor(c.call_order_matches[0].orders.status)}`}>
+                                                                    <span
+                                                                        className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!c.call_order_matches[0].orders.status_color ? getStatusColor(c.call_order_matches[0].orders.status) : 'text-gray-900'}`}
+                                                                        style={c.call_order_matches[0].orders.status_color ? { backgroundColor: c.call_order_matches[0].orders.status_color } : {}}
+                                                                    >
                                                                         {c.call_order_matches[0].orders.status_name || c.call_order_matches[0].orders.status}
                                                                     </span>
                                                                     <span className="text-gray-200">|</span>
