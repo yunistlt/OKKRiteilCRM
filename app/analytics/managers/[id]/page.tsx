@@ -214,205 +214,247 @@ export default function ManagerProfilePage() {
             {/* Content Area */}
             <div className="bg-white rounded-[24px] md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 {activeTab === 'violations' ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse min-w-[700px]">
-                            <thead>
-                                <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
-                                    <th className="p-4 md:p-8">Дата и Время</th>
-                                    <th className="p-4 md:p-8">Тип Нарушения</th>
-                                    <th className="p-4 md:p-8">Описание ошибки</th>
-                                    <th className="p-4 md:p-8 text-right">CRM Заказ</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {violations.map((v: any, idx: number) => (
-                                    <tr key={idx} className="hover:bg-red-50/10 transition-colors group">
-                                        <td className="p-4 md:p-8 font-bold text-gray-900 tabular-nums text-xs md:text-sm">
+                    <div>
+                        {/* Responsive: Mobile List / Desktop Table */}
+                        <div className="block md:hidden divide-y divide-gray-100">
+                            {violations.map((v: any, idx: number) => (
+                                <div key={idx} className="p-4 bg-white hover:bg-gray-50">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div className="text-sm font-bold text-gray-900 tabular-nums">
                                             {new Date(v.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                        </td>
-                                        <td className="p-4 md:p-8">
-                                            <span className={`inline-flex items-center px-3 md:px-4 py-1.5 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low}`}>
-                                                {VIOLATION_LABELS[v.violation_type] || v.violation_type}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 md:p-8 text-gray-600 text-xs md:text-sm font-medium leading-relaxed group-hover:text-gray-900 transition-colors">
-                                            {v.details}
-                                        </td>
-                                        <td className="p-4 md:p-8 text-right">
-                                            <a
-                                                href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
-                                                target="_blank"
-                                                className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-xs md:text-sm group-hover:scale-105"
-                                            >
-                                                #{v.order_id}
-                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                            </a>
-                                        </td>
+                                        </div>
+                                        <a
+                                            href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                            target="_blank"
+                                            className="inline-flex items-center gap-1 font-black text-blue-600 text-sm"
+                                        >
+                                            #{v.order_id}
+                                        </a>
+                                    </div>
+
+                                    <div className="mb-2">
+                                        <span className={`inline-flex items-center px-2 py-1 rounded-xl text-[9px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low}`}>
+                                            {VIOLATION_LABELS[v.violation_type] || v.violation_type}
+                                        </span>
+                                    </div>
+
+                                    <div className="text-xs text-gray-600 font-medium leading-relaxed">
+                                        {v.details}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="hidden md:block overflow-x-auto">
+                            <table className="w-full text-left border-collapse min-w-[700px]">
+                                <thead>
+                                    <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
+                                        <th className="p-4 md:p-8">Дата и Время</th>
+                                        <th className="p-4 md:p-8">Тип Нарушения</th>
+                                        <th className="p-4 md:p-8">Описание ошибки</th>
+                                        <th className="p-4 md:p-8 text-right">CRM Заказ</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                    {violations.map((v: any, idx: number) => (
+                                        <tr key={idx} className="hover:bg-red-50/10 transition-colors group">
+                                            <td className="p-4 md:p-8 font-bold text-gray-900 tabular-nums text-xs md:text-sm">
+                                                {new Date(v.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                            </td>
+                                            <td className="p-4 md:p-8">
+                                                <span className={`inline-flex items-center px-3 md:px-4 py-1.5 rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-inset ${SEVERITY_COLORS[v.severity] || SEVERITY_COLORS.low}`}>
+                                                    {VIOLATION_LABELS[v.violation_type] || v.violation_type}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 md:p-8 text-gray-600 text-xs md:text-sm font-medium leading-relaxed group-hover:text-gray-900 transition-colors">
+                                                {v.details}
+                                            </td>
+                                            <td className="p-4 md:p-8 text-right">
+                                                <a
+                                                    href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                                    target="_blank"
+                                                    className="inline-flex items-center gap-2 font-black text-blue-600 hover:text-blue-800 transition-all text-xs md:text-sm group-hover:scale-105"
+                                                >
+                                                    #{v.order_id}
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : (
                     <div>
 
+
                         {/* Filters Container */}
-                        <div className="p-4 md:p-8 border-b border-gray-100 bg-gray-50/30 space-y-4 md:space-y-6">
+                        <div className="bg-gray-50/30 border-b border-gray-100">
+                            {/* Mobile Toggle */}
+                            <details className="group md:open:block open:block">
+                                <summary className="md:hidden p-4 list-none flex items-center justify-between font-black uppercase tracking-widest text-xs text-gray-500 cursor-pointer select-none">
+                                    <span>Фильтры и Поиск</span>
+                                    <svg className="w-5 h-5 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                </summary>
 
-                            {/* Top Row: Type Toggles & View Toggles */}
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
-                                    {(['all', 'real', 'am'] as const).map(f => (
-                                        <button
-                                            key={f}
-                                            onClick={() => setCallFilter(f)}
-                                            className={`shrink-0 px-4 md:px-6 py-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${callFilter === f
-                                                ? 'bg-gray-900 text-white shadow-lg'
-                                                : 'bg-white text-gray-400 border border-gray-100 hover:border-gray-300'
-                                                }`}
-                                        >
-                                            {f === 'all' ? 'Все' : f === 'real' ? 'Живые' : 'А/О'}
-                                        </button>
-                                    ))}
-                                </div>
+                                <div className="p-4 md:p-8 space-y-4 md:space-y-6 pt-0 md:pt-8 md:block">
+                                    {/* Top Row: Type Toggles & View Toggles */}
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div className="flex gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+                                            {(['all', 'real', 'am'] as const).map(f => (
+                                                <button
+                                                    key={f}
+                                                    onClick={() => setCallFilter(f)}
+                                                    className={`shrink-0 px-4 md:px-6 py-2 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${callFilter === f
+                                                        ? 'bg-gray-900 text-white shadow-lg'
+                                                        : 'bg-white text-gray-400 border border-gray-100 hover:border-gray-300'
+                                                        }`}
+                                                >
+                                                    {f === 'all' ? 'Все' : f === 'real' ? 'Живые' : 'А/О'}
+                                                </button>
+                                            ))}
+                                        </div>
 
-                                <div className="flex items-center justify-between md:justify-end gap-4">
-                                    <div className="flex items-center gap-1 md:gap-2 bg-gray-100 p-1 rounded-xl">
-                                        <button
-                                            onClick={() => setIsGroupedByOrder(false)}
-                                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${!isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                                        >
-                                            Список
-                                        </button>
-                                        <button
-                                            onClick={() => setIsGroupedByOrder(true)}
-                                            className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
-                                        >
-                                            Заказы
-                                        </button>
-                                    </div>
-                                    <div className="text-[9px] md:text-[10px] font-black text-gray-300 uppercase tracking-widest px-3 md:px-4 border-l border-gray-200">
-                                        {filteredCalls.length}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Bottom Row: Detailed Filters */}
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100/50">
-                                {/* Date Range */}
-                                <div className="flex gap-2 items-center">
-                                    <div className="w-full space-y-1">
-                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">С даты</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
-                                            value={filterDateStart}
-                                            onChange={(e) => setFilterDateStart(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="w-full space-y-1">
-                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">По дату</label>
-                                        <input
-                                            type="date"
-                                            className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
-                                            value={filterDateEnd}
-                                            onChange={(e) => setFilterDateEnd(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Order Number */}
-                                <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Номер заказа</label>
-                                    <input
-                                        type="text"
-                                        className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
-                                        placeholder="Например: 50123"
-                                        value={filterOrderNumber}
-                                        onChange={(e) => setFilterOrderNumber(e.target.value)}
-                                    />
-                                </div>
-
-                                {/* Duration Range */}
-                                <div className="flex gap-2 items-center col-span-1 md:col-span-2">
-                                    <div className="w-full space-y-1">
-                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Мин. сек</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
-                                            placeholder="0"
-                                            value={filterDurationMin}
-                                            onChange={(e) => setFilterDurationMin(e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="w-full space-y-1">
-                                        <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Макс. сек</label>
-                                        <input
-                                            type="number"
-                                            className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
-                                            placeholder="∞"
-                                            value={filterDurationMax}
-                                            onChange={(e) => setFilterDurationMax(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Status Filter */}
-                                <div className="space-y-1 relative">
-                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Статусы ({filterStatuses.length})</label>
-                                    <button
-                                        onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                                        className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 text-left focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all flex justify-between items-center"
-                                    >
-                                        <span className="truncate">
-                                            {filterStatuses.length === 0 ? 'Все статусы' :
-                                                filterStatuses.length === 1 ? availableStatuses.find(s => s.code === filterStatuses[0])?.name :
-                                                    `Выбрано: ${filterStatuses.length}`}
-                                        </span>
-                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-                                    </button>
-
-                                    {/* Dropdown */}
-                                    {showStatusDropdown && (
-                                        <>
-                                            <div className="fixed inset-0 z-10" onClick={() => setShowStatusDropdown(false)}></div>
-                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 z-20 max-h-60 overflow-y-auto p-2 space-y-1">
-                                                {availableStatuses.length === 0 ? (
-                                                    <div className="p-2 text-xs text-gray-400 font-bold text-center">Нет статусов</div>
-                                                ) : (
-                                                    availableStatuses.map((status: any) => (
-                                                        <label key={status.code} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
-                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filterStatuses.includes(status.code) ? 'bg-blue-600 border-blue-600' : 'border-gray-200 bg-white'}`}>
-                                                                {filterStatuses.includes(status.code) && (
-                                                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
-                                                                )}
-                                                            </div>
-                                                            <input
-                                                                type="checkbox"
-                                                                className="hidden"
-                                                                checked={filterStatuses.includes(status.code)}
-                                                                onChange={() => {
-                                                                    setFilterStatuses(prev =>
-                                                                        prev.includes(status.code)
-                                                                            ? prev.filter(s => s !== status.code)
-                                                                            : [...prev, status.code]
-                                                                    );
-                                                                }}
-                                                            />
-                                                            <span
-                                                                className="text-xs font-bold text-gray-900 px-2 py-0.5 rounded"
-                                                                style={status.color ? { backgroundColor: status.color } : {}}
-                                                            >
-                                                                {status.name}
-                                                            </span>
-                                                        </label>
-                                                    ))
-                                                )}
+                                        <div className="flex items-center justify-between md:justify-end gap-4">
+                                            <div className="flex items-center gap-1 md:gap-2 bg-gray-100 p-1 rounded-xl">
+                                                <button
+                                                    onClick={() => setIsGroupedByOrder(false)}
+                                                    className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${!isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                                >
+                                                    Список
+                                                </button>
+                                                <button
+                                                    onClick={() => setIsGroupedByOrder(true)}
+                                                    className={`px-3 md:px-4 py-1.5 md:py-2 rounded-lg text-[9px] md:text-[10px] font-black uppercase tracking-widest transition-all ${isGroupedByOrder ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600'}`}
+                                                >
+                                                    Заказы
+                                                </button>
                                             </div>
-                                        </>
-                                    )}
+                                            <div className="text-[9px] md:text-[10px] font-black text-gray-300 uppercase tracking-widest px-3 md:px-4 border-l border-gray-200">
+                                                {filteredCalls.length}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Bottom Row: Detailed Filters */}
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-gray-100/50">
+                                        {/* Date Range */}
+                                        <div className="flex gap-2 items-center">
+                                            <div className="w-full space-y-1">
+                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">С даты</label>
+                                                <input
+                                                    type="date"
+                                                    className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
+                                                    value={filterDateStart}
+                                                    onChange={(e) => setFilterDateStart(e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="w-full space-y-1">
+                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">По дату</label>
+                                                <input
+                                                    type="date"
+                                                    className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-600 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all uppercase"
+                                                    value={filterDateEnd}
+                                                    onChange={(e) => setFilterDateEnd(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Order Number */}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Номер заказа</label>
+                                            <input
+                                                type="text"
+                                                className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
+                                                placeholder="Например: 50123"
+                                                value={filterOrderNumber}
+                                                onChange={(e) => setFilterOrderNumber(e.target.value)}
+                                            />
+                                        </div>
+
+                                        {/* Duration Range */}
+                                        <div className="flex gap-2 items-center col-span-1 md:col-span-2">
+                                            <div className="w-full space-y-1">
+                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Мин. сек</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
+                                                    placeholder="0"
+                                                    value={filterDurationMin}
+                                                    onChange={(e) => setFilterDurationMin(e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="w-full space-y-1">
+                                                <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Макс. сек</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 placeholder-gray-300 focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all"
+                                                    placeholder="∞"
+                                                    value={filterDurationMax}
+                                                    onChange={(e) => setFilterDurationMax(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Status Filter */}
+                                        <div className="space-y-1 relative">
+                                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Статусы ({filterStatuses.length})</label>
+                                            <button
+                                                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                                                className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 text-left focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all flex justify-between items-center"
+                                            >
+                                                <span className="truncate">
+                                                    {filterStatuses.length === 0 ? 'Все статусы' :
+                                                        filterStatuses.length === 1 ? availableStatuses.find(s => s.code === filterStatuses[0])?.name :
+                                                            `Выбрано: ${filterStatuses.length}`}
+                                                </span>
+                                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                            </button>
+
+                                            {/* Dropdown */}
+                                            {showStatusDropdown && (
+                                                <>
+                                                    <div className="fixed inset-0 z-10" onClick={() => setShowStatusDropdown(false)}></div>
+                                                    <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                                                        {availableStatuses.length === 0 ? (
+                                                            <div className="p-2 text-xs text-gray-400 font-bold text-center">Нет статусов</div>
+                                                        ) : (
+                                                            availableStatuses.map((status: any) => (
+                                                                <label key={status.code} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filterStatuses.includes(status.code) ? 'bg-blue-600 border-blue-600' : 'border-gray-200 bg-white'}`}>
+                                                                        {filterStatuses.includes(status.code) && (
+                                                                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                                                                        )}
+                                                                    </div>
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        className="hidden"
+                                                                        checked={filterStatuses.includes(status.code)}
+                                                                        onChange={() => {
+                                                                            setFilterStatuses(prev =>
+                                                                                prev.includes(status.code)
+                                                                                    ? prev.filter(s => s !== status.code)
+                                                                                    : [...prev, status.code]
+                                                                            );
+                                                                        }}
+                                                                    />
+                                                                    <span
+                                                                        className="text-xs font-bold text-gray-900 px-2 py-0.5 rounded"
+                                                                        style={status.color ? { backgroundColor: status.color } : {}}
+                                                                    >
+                                                                        {status.name}
+                                                                    </span>
+                                                                </label>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                            </details>
                         </div>
 
                         {/* Grouped View */}
@@ -464,7 +506,7 @@ export default function ManagerProfilePage() {
                                                                     </div>
                                                                     <div className="flex items-center gap-2 mt-1">
                                                                         <span
-                                                                            className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!group.order.status_color ? getStatusColor(group.order.status) : 'text-gray-900'}`}
+                                                                            className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!group.order.status_color ? getStatusColor(group.order.status) : 'text-gray-900 border border-black/5'}`}
                                                                             style={group.order.status_color ? { backgroundColor: group.order.status_color } : {}}
                                                                         >
                                                                             {group.order.status_name || group.order.status}
@@ -548,90 +590,142 @@ export default function ManagerProfilePage() {
                                     )}
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse min-w-[800px]">
-                                        <thead>
-                                            <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
-                                                <th className="p-4 md:p-8">Время</th>
-                                                <th className="p-4 md:p-8">Статус & Аудио</th>
-                                                <th className="p-4 md:p-8">Стенограмма</th>
-                                                <th className="p-4 md:p-8 text-right">Заказ</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50 text-sm">
-                                            {filteredCalls.map((c: any) => (
-                                                <tr key={c.id} className="hover:bg-blue-50/5 transition-colors">
-                                                    <td className="p-4 md:p-8 align-top whitespace-nowrap">
-                                                        <div className="font-bold text-gray-900 tabular-nums text-xs md:text-sm">
+                                <div>
+                                    {/* Responsive: Mobile List / Desktop Table */}
+                                    <div className="block md:hidden divide-y divide-gray-100">
+                                        {/* Mobile Cards */}
+                                        {filteredCalls.map((c: any) => (
+                                            <div key={c.id} className="p-4 bg-white hover:bg-gray-50/50">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div>
+                                                        <div className="text-sm font-bold text-gray-900 tabular-nums">
                                                             {new Date(c.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                                         </div>
-                                                        <div className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] mt-1">
-                                                            {c.duration} сек
+                                                        <div className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">
+                                                            {c.duration} сек • {c.is_answering_machine === true ? 'Автоответчик' : c.is_answering_machine === false ? 'Живой' : 'Ожидание'}
                                                         </div>
-                                                    </td>
-                                                    <td className="p-4 md:p-8 align-top space-y-4">
-                                                        <div className="flex items-center gap-3">
-                                                            {c.is_answering_machine === true ? (
-                                                                <span className="bg-amber-100 text-amber-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">Автоответчик</span>
-                                                            ) : c.is_answering_machine === false ? (
-                                                                <span className="bg-green-100 text-green-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-green-600/20">Живой голос</span>
-                                                            ) : (
-                                                                <span className="text-gray-300 text-[9px] md:text-[10px] font-bold uppercase tracking-widest italic">Ожидает</span>
-                                                            )}
-                                                        </div>
-                                                        {c.record_url && (
-                                                            <div className="pt-2">
-                                                                <audio controls className="h-8 md:h-10 w-full max-w-[200px] md:max-w-[240px] opacity-80 hover:opacity-100 transition-opacity">
-                                                                    <source src={`/api/proxy/audio?url=${encodeURIComponent(c.record_url)}`} type="audio/mpeg" />
-                                                                </audio>
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-4 md:p-8 align-top max-w-lg">
-                                                        {c.transcript ? (
-                                                            <div className="bg-gray-50/50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-100 text-gray-700 leading-relaxed font-medium text-[11px] md:text-xs italic relative group">
-                                                                "{c.transcript}"
-                                                            </div>
-                                                        ) : (
-                                                            <div className="h-20 md:h-24 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-2xl md:rounded-3xl text-gray-300 font-bold uppercase text-[9px] md:text-[10px] tracking-widest text-center px-4">
-                                                                В обработке
-                                                            </div>
-                                                        )}
-                                                    </td>
-                                                    <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
-                                                        {c.call_order_matches && c.call_order_matches[0]?.orders && (
-                                                            <div className="flex flex-col items-end gap-1.5">
-                                                                <a
-                                                                    href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
-                                                                    target="_blank"
-                                                                    className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-sm md:text-base group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-700 hover:text-red-800' :
-                                                                        c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-700 hover:text-amber-800' :
-                                                                            c.call_order_matches[0].orders.priority === 'green' ? 'text-green-700 hover:text-green-800' :
-                                                                                'text-blue-700 hover:text-blue-800'
-                                                                        }`}
+                                                    </div>
+
+                                                    {c.call_order_matches && c.call_order_matches[0]?.orders && (
+                                                        <div className="text-right">
+                                                            <a href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`} className="inline-flex items-center gap-1 font-black text-blue-600 text-sm">
+                                                                #{c.call_order_matches[0].orders.number}
+                                                            </a>
+                                                            <div className="mt-1">
+                                                                <span
+                                                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold text-gray-900 border border-black/5 w-fit ml-auto block`}
+                                                                    style={{ backgroundColor: c.call_order_matches[0].orders.status_color || '#eee' }}
                                                                 >
-                                                                    #{c.call_order_matches[0].orders.number}
-                                                                    <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                                                </a>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span
-                                                                        className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!c.call_order_matches[0].orders.status_color ? getStatusColor(c.call_order_matches[0].orders.status) : 'text-gray-900'}`}
-                                                                        style={c.call_order_matches[0].orders.status_color ? { backgroundColor: c.call_order_matches[0].orders.status_color } : {}}
-                                                                    >
-                                                                        {c.call_order_matches[0].orders.status_name || c.call_order_matches[0].orders.status}
-                                                                    </span>
-                                                                    <span className="text-gray-200">|</span>
-                                                                    <span className="text-gray-900 font-extrabold text-xs md:text-sm tracking-tight">
-                                                                        {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(c.call_order_matches[0].orders.totalsumm || 0)}
-                                                                    </span>
-                                                                </div>
+                                                                    {c.call_order_matches[0].orders.status_name || c.call_order_matches[0].orders.status}
+                                                                </span>
                                                             </div>
-                                                        )}
-                                                    </td>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Transcript Preview */}
+                                                <div className="mt-3 bg-gray-50 rounded-lg p-3 text-[11px] text-gray-600 italic leading-snug">
+                                                    {c.transcript ? `"${c.transcript}"` : <span className="text-gray-300 not-italic uppercase font-bold text-[9px]">Нет стенограммы</span>}
+                                                </div>
+
+                                                {/* Audio */}
+                                                {c.record_url && (
+                                                    <div className="mt-3">
+                                                        <audio controls className="h-8 w-full opacity-80">
+                                                            <source src={`/api/proxy/audio?url=${encodeURIComponent(c.record_url)}`} type="audio/mpeg" />
+                                                        </audio>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {/* Desktop Table (Hidden on Mobile) */}
+                                    <div className="hidden md:block overflow-x-auto">
+                                        <table className="w-full text-left border-collapse min-w-[800px]">
+                                            <thead>
+                                                <tr className="bg-gray-50/50 text-gray-400 text-[10px] uppercase tracking-[0.2em] font-black border-b border-gray-100">
+                                                    <th className="p-4 md:p-8">Время</th>
+                                                    <th className="p-4 md:p-8">Статус & Аудио</th>
+                                                    <th className="p-4 md:p-8">Стенограмма</th>
+                                                    <th className="p-4 md:p-8 text-right">Заказ</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50 text-sm">
+                                                {filteredCalls.map((c: any) => (
+                                                    <tr key={c.id} className="hover:bg-blue-50/5 transition-colors">
+                                                        <td className="p-4 md:p-8 align-top whitespace-nowrap">
+                                                            <div className="font-bold text-gray-900 tabular-nums text-xs md:text-sm">
+                                                                {new Date(c.timestamp).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                                            </div>
+                                                            <div className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] mt-1">
+                                                                {c.duration} сек
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-4 md:p-8 align-top space-y-4">
+                                                            <div className="flex items-center gap-3">
+                                                                {c.is_answering_machine === true ? (
+                                                                    <span className="bg-amber-100 text-amber-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">Автоответчик</span>
+                                                                ) : c.is_answering_machine === false ? (
+                                                                    <span className="bg-green-100 text-green-700 px-3 md:px-4 py-1.5 rounded-xl md:rounded-2xl text-[9px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-green-600/20">Живой голос</span>
+                                                                ) : (
+                                                                    <span className="text-gray-300 text-[9px] md:text-[10px] font-bold uppercase tracking-widest italic">Ожидает</span>
+                                                                )}
+                                                            </div>
+                                                            {c.record_url && (
+                                                                <div className="pt-2">
+                                                                    <audio controls className="h-8 md:h-10 w-full max-w-[200px] md:max-w-[240px] opacity-80 hover:opacity-100 transition-opacity">
+                                                                        <source src={`/api/proxy/audio?url=${encodeURIComponent(c.record_url)}`} type="audio/mpeg" />
+                                                                    </audio>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4 md:p-8 align-top max-w-lg">
+                                                            {c.transcript ? (
+                                                                <div className="bg-gray-50/50 p-4 md:p-6 rounded-2xl md:rounded-3xl border border-gray-100 text-gray-700 leading-relaxed font-medium text-[11px] md:text-xs italic relative group">
+                                                                    "{c.transcript}"
+                                                                </div>
+                                                            ) : (
+                                                                <div className="h-20 md:h-24 flex items-center justify-center border-2 border-dashed border-gray-100 rounded-2xl md:rounded-3xl text-gray-300 font-bold uppercase text-[9px] md:text-[10px] tracking-widest text-center px-4">
+                                                                    В обработке
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
+                                                            {c.call_order_matches && c.call_order_matches[0]?.orders && (
+                                                                <div className="flex flex-col items-end gap-1.5">
+                                                                    <a
+                                                                        href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
+                                                                        target="_blank"
+                                                                        className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-sm md:text-base group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-700 hover:text-red-800' :
+                                                                            c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-700 hover:text-amber-800' :
+                                                                                c.call_order_matches[0].orders.priority === 'green' ? 'text-green-700 hover:text-green-800' :
+                                                                                    'text-blue-700 hover:text-blue-800'
+                                                                            }`}
+                                                                    >
+                                                                        #{c.call_order_matches[0].orders.number}
+                                                                        <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                                    </a>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span
+                                                                            className={`px-2 py-0.5 rounded text-[9px] md:text-[10px] font-black uppercase tracking-widest ${!c.call_order_matches[0].orders.status_color ? getStatusColor(c.call_order_matches[0].orders.status) : 'text-gray-900 border border-black/5'}`}
+                                                                            style={c.call_order_matches[0].orders.status_color ? { backgroundColor: c.call_order_matches[0].orders.status_color } : {}}
+                                                                        >
+                                                                            {c.call_order_matches[0].orders.status_name || c.call_order_matches[0].orders.status}
+                                                                        </span>
+                                                                        <span className="text-gray-200">|</span>
+                                                                        <span className="text-gray-900 font-extrabold text-xs md:text-sm tracking-tight">
+                                                                            {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(c.call_order_matches[0].orders.totalsumm || 0)}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                     {filteredCalls.length === 0 && (
                                         <div className="p-16 md:p-32 text-center bg-gray-50/10">
                                             <p className="text-gray-400 font-black uppercase tracking-widest text-[10px] md:text-xs">Нет звонков</p>
