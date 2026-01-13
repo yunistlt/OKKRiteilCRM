@@ -61,7 +61,8 @@ export async function GET() {
             count: rows.length,
             inactive_count: inactiveCount,
             groups_found: Object.keys(groupMap).length,
-            message: 'Statuses synced successfully'
+            message: 'DEBUG VERSION: Statuses synced',
+            debug_sample: rows[0] // Use the processed row to see if color is there
         });
 
     } catch (error: any) {
