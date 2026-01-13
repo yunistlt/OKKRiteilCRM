@@ -201,7 +201,6 @@ export default function SystemStatusPage() {
         ? Math.round(((dbStats?.transcribedCalls || 0) / totalTranscriptionPool) * 100)
         : 0;
 
-    return (
     // --- State: Transcription Details ---
     const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
     const [transcriptionDetails, setTranscriptionDetails] = useState<{ queue: any[], completed: any[] } | null>(null);
