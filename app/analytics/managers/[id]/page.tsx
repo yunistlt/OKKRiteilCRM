@@ -407,18 +407,25 @@ export default function ManagerProfilePage() {
                                                 </td>
                                                 <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
                                                     {c.call_order_matches && c.call_order_matches[0]?.orders && (
-                                                        <a
-                                                            href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
-                                                            target="_blank"
-                                                            className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-xs md:text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
-                                                                c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
-                                                                    c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
-                                                                        'text-blue-600 hover:text-blue-800'
-                                                                }`}
-                                                        >
-                                                            #{c.call_order_matches[0].orders.number}
-                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
-                                                        </a>
+                                                        <div className="flex flex-col items-end gap-1">
+                                                            <a
+                                                                href={`https://zmktlt.retailcrm.ru/orders/${c.call_order_matches[0].orders.order_id}/edit`}
+                                                                target="_blank"
+                                                                className={`inline-flex items-center gap-1.5 md:gap-2 font-black transition-all text-xs md:text-sm group-hover:scale-105 ${c.call_order_matches[0].orders.priority === 'red' ? 'text-red-600 hover:text-red-800' :
+                                                                    c.call_order_matches[0].orders.priority === 'yellow' ? 'text-amber-600 hover:text-amber-800' :
+                                                                        c.call_order_matches[0].orders.priority === 'green' ? 'text-green-600 hover:text-green-800' :
+                                                                            'text-blue-600 hover:text-blue-800'
+                                                                    }`}
+                                                            >
+                                                                #{c.call_order_matches[0].orders.number}
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                                                            </a>
+                                                            <div className="flex items-center gap-2 text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                                                                <span>{c.call_order_matches[0].orders.status}</span>
+                                                                <span className="text-gray-300">|</span>
+                                                                <span>{new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(c.call_order_matches[0].orders.totalsumm || 0)}</span>
+                                                            </div>
+                                                        </div>
                                                     )}
                                                 </td>
                                             </tr>

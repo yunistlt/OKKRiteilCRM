@@ -56,6 +56,8 @@ export async function GET(
                         manager_id,
                         order_id,
                         number,
+                        status,
+                        totalsumm,
                         order_priorities (
                             level
                         )
