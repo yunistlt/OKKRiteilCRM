@@ -302,13 +302,13 @@ export default function AIRouterPanel() {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 sticky top-0">
                                     <tr>
-                                        <th className="px-4 py-2 text-left w-24">Заказ</th>
+                                        <th className="px-4 py-2 text-left w-20">Заказ</th>
                                         <th className="px-4 py-2 text-left w-24">Сумма</th>
-                                        <th className="px-4 py-2 text-left w-32">Текущий Статус</th>
-                                        <th className="px-4 py-2 text-left w-40">Решение ИИ</th>
-                                        <th className="px-4 py-2 text-left w-20">Conf</th>
+                                        <th className="px-4 py-2 text-left w-28">Текущий Статус</th>
+                                        <th className="px-4 py-2 text-left w-32">Решение ИИ</th>
+                                        <th className="px-4 py-2 text-left w-14">Conf</th>
                                         <th className="px-4 py-2 text-left">Причина / Комментарий</th>
-                                        {trainingMode && <th className="px-4 py-2 w-32">Действие</th>}
+                                        {trainingMode && <th className="px-4 py-2 w-24">Действие</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -332,11 +332,11 @@ export default function AIRouterPanel() {
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <span
-                                                        className="inline-block px-2 py-1 text-[10px] font-semibold rounded uppercase border"
+                                                        className="inline-block px-2 py-1 text-[10px] font-bold rounded uppercase border shadow-sm"
                                                         style={{
-                                                            borderColor: result.current_status_color || '#ccc',
-                                                            backgroundColor: result.current_status_color ? `${result.current_status_color}20` : '#f3f4f6',
-                                                            color: result.current_status_color || '#374151'
+                                                            borderColor: result.current_status_color || '#e5e7eb',
+                                                            backgroundColor: result.current_status_color ? `${result.current_status_color}30` : '#f3f4f6',
+                                                            color: '#1f2937'
                                                         }}
                                                     >
                                                         {result.current_status_name || result.from_status}
