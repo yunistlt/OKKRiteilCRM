@@ -178,73 +178,71 @@ export default function AIRouterPanel() {
 
             <div className="p-6 space-y-6">
                 {/* Controls */}
-                <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-                    <div className="flex flex-col md:flex-row gap-6">
-                        {/* Dry Run Toggle */}
-                        <div className="flex items-center justify-between gap-4 bg-white p-3 rounded border">
-                            <div className="space-y-1">
-                                <label className="text-sm font-medium">
-                                    Режим тестирования
-                                </label>
-                                <p className="text-xs text-gray-500">
-                                    Без обновлений в CRM
-                                </p>
+                {/* Compact Controls */}
+                <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        {/* Toggles Group */}
+                        <div className="flex items-center gap-4 flex-1">
+                            {/* Dry Run */}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setDryRun(!dryRun)}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${dryRun ? 'bg-blue-600' : 'bg-gray-200'}`}
+                                >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${dryRun ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </button>
+                                <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Тест</span>
                             </div>
-                            <button
-                                onClick={() => setDryRun(!dryRun)}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${dryRun ? 'bg-blue-600' : 'bg-gray-200'
-                                    }`}
-                            >
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${dryRun ? 'translate-x-6' : 'translate-x-1'
-                                    }`} />
-                            </button>
+
+                            {/* Training Mode */}
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => {
+                                        setTrainingMode(!trainingMode);
+                                        if (!trainingMode) fetchStatuses();
+                                    }}
+                                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${trainingMode ? 'bg-purple-600' : 'bg-gray-200'}`}
+                                >
+                                    <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${trainingMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                                </button>
+                                <span className="text-xs font-medium text-purple-700 whitespace-nowrap">Обучение</span>
+                            </div>
                         </div>
 
-                        {/* Training Mode Toggle */}
-                        <div className="flex items-center justify-between gap-4 bg-white p-3 rounded border border-purple-200 shadow-sm">
-                            <div className="space-y-1">
-                                <label className="text-sm font-bold text-purple-900">
-                                    🎓 Режим Обучения
-                                </label>
-                                <p className="text-xs text-purple-600">
-                                    Ручная правка и дообучение
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setTrainingMode(!trainingMode);
-                                    if (!trainingMode) fetchStatuses();
-                                }}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${trainingMode ? 'bg-purple-600' : 'bg-gray-200'
-                                    }`}
-                            >
-                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${trainingMode ? 'translate-x-6' : 'translate-x-1'
-                                    }`} />
-                            </button>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">
-                                Лимит
-                            </label>
+                        {/* Limit Input */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">Лимит:</span>
                             <input
                                 type="number"
                                 min="1"
                                 max="100"
                                 value={limit}
                                 onChange={(e) => setLimit(parseInt(e.target.value) || 10)}
-                                className="w-20 px-3 py-2 border border-gray-300 rounded-md"
+                                className="w-14 px-2 py-1 text-sm border border-gray-300 rounded text-center"
                             />
                         </div>
                     </div>
 
+                    {/* Action Button */}
                     <button
                         onClick={runRouting}
                         disabled={isRunning}
-                        className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                     >
                         {isRunning ? 'Обработка...' : '▶ Запустить Анализ'}
                     </button>
+
+                    {/* Compact Status Text */}
+                    <div className="flex justify-between px-1">
+                        <span className="text-[10px] text-gray-400">
+                            {dryRun ? 'Без записи в CRM' : '⚠️ Запись включена'}
+                        </span>
+                        {trainingMode && (
+                            <span className="text-[10px] text-purple-600">
+                                Ручная правка включена
+                            </span>
+                        )}
+                    </div>
                 </div>
 
                 {/* Info Banners */}

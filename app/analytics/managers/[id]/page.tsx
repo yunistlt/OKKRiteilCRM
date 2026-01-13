@@ -189,26 +189,28 @@ export default function ManagerProfilePage() {
                 </div>
             </div>
 
-            {/* Tabs Control */}
-            <div className="flex gap-3 mb-6 md:mb-8 overflow-x-auto pb-2 scrollbar-hide shrink-0">
-                <button
-                    onClick={() => setActiveTab('violations')}
-                    className={`px-6 md:px-8 py-3 md:py-4 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-[11px] transition-all whitespace-nowrap active:scale-95 ${activeTab === 'violations'
-                        ? 'bg-red-600 text-white shadow-xl shadow-red-200 -translate-y-0.5'
-                        : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'
-                        }`}
-                >
-                    🚩 Нарушения ({violations.length})
-                </button>
-                <button
-                    onClick={() => setActiveTab('calls')}
-                    className={`px-6 md:px-8 py-3 md:py-4 rounded-2xl md:rounded-3xl font-black uppercase tracking-widest text-[10px] md:text-[11px] transition-all whitespace-nowrap active:scale-95 ${activeTab === 'calls'
-                        ? 'bg-blue-600 text-white shadow-xl shadow-blue-200 -translate-y-0.5'
-                        : 'bg-white text-gray-400 border border-gray-100 hover:bg-gray-50'
-                        }`}
-                >
-                    📞 Аудит звонков ({calls?.length || 0})
-                </button>
+            {/* Compact Tabs Control */}
+            <div className="mb-6">
+                <div className="flex w-full bg-gray-100 p-1 rounded-xl">
+                    <button
+                        onClick={() => setActiveTab('violations')}
+                        className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'violations'
+                            ? 'bg-white text-red-600 shadow-sm ring-1 ring-black/5'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        🚩 Нарушения <span className="opacity-60 ml-1">({violations.length})</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('calls')}
+                        className={`flex-1 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${activeTab === 'calls'
+                            ? 'bg-white text-blue-600 shadow-sm ring-1 ring-black/5'
+                            : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        📞 Аудит <span className="opacity-60 ml-1">({calls?.length || 0})</span>
+                    </button>
+                </div>
             </div>
 
             {/* Content Area */}
