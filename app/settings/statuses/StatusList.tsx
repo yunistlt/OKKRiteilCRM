@@ -141,7 +141,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                 </div>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-4">
                 {groupNames.map(group => (
                     <div key={group} className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-xl shadow-gray-200/40">
                         <div className="bg-gray-50/50 px-5 py-3 font-black text-gray-400 uppercase text-[9px] tracking-[0.3em] border-b border-gray-100">
@@ -150,22 +150,30 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                         <div className="divide-y divide-gray-50">
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    className={`p-4 md:p-5 flex flex-col sm:flex-row-reverse items-start sm:items-center gap-4 transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target ? 'bg-blue-50/10' : 'bg-white'
+                                    className={`p-4 flex flex-col gap-3 transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target ? 'bg-blue-50/10' : 'bg-white'
                                         }`}
                                 >
-                                    <div className="grid grid-cols-2 sm:flex sm:items-center gap-4 md:gap-6 w-full sm:w-auto">
+                                    {/* Status Name */}
+                                    <div className="font-bold flex items-center gap-3 text-sm text-gray-900 tracking-tight">
+                                        {status.name}
+                                        {(counts[status.code] || 0) > 0 && (
+                                            <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full text-[10px] font-black">
+                                                {counts[status.code]}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Toggles Row */}
+                                    <div className="flex items-center gap-4 md:gap-6 w-full overflow-x-auto no-scrollbar pt-1">
                                         {/* 1. Working Toggle */}
                                         <div
                                             onClick={() => handleLocalToggle(status.code)}
-                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[90px]"
+                                            className="flex items-center gap-2 cursor-pointer select-none shrink-0"
                                         >
-                                            <input
-                                                type="checkbox"
-                                                checked={status.is_working}
-                                                readOnly
-                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-blue-600 rounded-md ring-offset-2 focus:ring-2 focus:ring-blue-500"
-                                            />
-                                            <span className={`text-[9px] font-black uppercase tracking-widest sm:hidden ${status.is_working ? 'text-blue-600' : 'text-gray-400'}`}>
+                                            <div className={`w-4 h-4 md:w-5 md:h-5 rounded border flex items-center justify-center transition-colors ${status.is_working ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+                                                {status.is_working && <span className="text-white text-[10px] font-bold">✓</span>}
+                                            </div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${status.is_working ? 'text-blue-600' : 'text-gray-400'}`}>
                                                 Анализ
                                             </span>
                                         </div>
@@ -173,15 +181,12 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                         {/* 2. Transcription Toggle */}
                                         <div
                                             onClick={() => handleTranscriptionToggle(status.code)}
-                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[120px]"
+                                            className="flex items-center gap-2 cursor-pointer select-none shrink-0"
                                         >
-                                            <input
-                                                type="checkbox"
-                                                checked={status.is_transcribable}
-                                                readOnly
-                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-purple-600 rounded-md ring-offset-2 focus:ring-2 focus:ring-purple-500"
-                                            />
-                                            <span className={`text-[9px] font-black uppercase tracking-widest sm:hidden ${status.is_transcribable ? 'text-purple-600' : 'text-gray-400'}`}>
+                                            <div className={`w-4 h-4 md:w-5 md:h-5 rounded border flex items-center justify-center transition-colors ${status.is_transcribable ? 'bg-purple-600 border-purple-600' : 'bg-white border-gray-300'}`}>
+                                                {status.is_transcribable && <span className="text-white text-[10px] font-bold">✓</span>}
+                                            </div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${status.is_transcribable ? 'text-purple-600' : 'text-gray-400'}`}>
                                                 Текст
                                             </span>
                                         </div>
@@ -189,31 +194,15 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                         {/* 3. AI Routing Toggle */}
                                         <div
                                             onClick={() => handleAiRoutingToggle(status.code)}
-                                            className="flex items-center gap-3 cursor-pointer select-none min-w-[110px]"
+                                            className="flex items-center gap-2 cursor-pointer select-none shrink-0"
                                         >
-                                            <input
-                                                type="checkbox"
-                                                checked={status.is_ai_target}
-                                                readOnly
-                                                className="w-4 h-4 md:w-5 md:h-5 cursor-pointer accent-green-600 rounded-md ring-offset-2 focus:ring-2 focus:ring-green-500"
-                                            />
-                                            <span className={`text-[9px] font-black uppercase tracking-widest sm:hidden ${status.is_ai_target ? 'text-green-600' : 'text-gray-400'}`}>
+                                            <div className={`w-4 h-4 md:w-5 md:h-5 rounded border flex items-center justify-center transition-colors ${status.is_ai_target ? 'bg-green-600 border-green-600' : 'bg-white border-gray-300'}`}>
+                                                {status.is_ai_target && <span className="text-white text-[10px] font-bold">✓</span>}
+                                            </div>
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${status.is_ai_target ? 'text-green-600' : 'text-gray-400'}`}>
                                                 Роутинг
                                             </span>
                                         </div>
-                                    </div>
-
-                                    {/* 3. Status Info */}
-                                    <div className="flex-1 w-full sm:text-left">
-                                        <div className="font-bold flex items-center gap-3 text-sm md:text-base text-gray-900 tracking-tight">
-                                            {status.name}
-                                            {(counts[status.code] || 0) > 0 && (
-                                                <span className="bg-blue-50 text-blue-600 px-2.5 py-0.5 rounded-full text-[10px] font-black">
-                                                    {counts[status.code]}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mt-1 opacity-60">{status.code}</div>
                                     </div>
                                 </div>
                             ))}
