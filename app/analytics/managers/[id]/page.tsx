@@ -38,6 +38,23 @@ const PRIORITY_ICON_BG: Record<string, string> = {
     'black': 'bg-gray-50 text-gray-400'
 };
 
+const STATUS_COLORS: Record<string, string> = {
+    'new': 'bg-blue-100 text-blue-700',
+    'send-to-delivery': 'bg-purple-100 text-purple-700',
+    'delivering': 'bg-indigo-100 text-indigo-700',
+    'complete': 'bg-green-100 text-green-700',
+    'cancel-other': 'bg-red-100 text-red-700',
+    'rosten': 'bg-amber-100 text-amber-700'
+};
+
+function getStatusColor(code: string): string {
+    if (!code) return 'bg-gray-100 text-gray-600';
+    if (code.includes('cancel')) return 'bg-red-50 text-red-700';
+    if (code.includes('complete')) return 'bg-green-50 text-green-700';
+    if (code.includes('new')) return 'bg-blue-50 text-blue-700';
+    return 'bg-gray-50 text-gray-600';
+}
+
 export default function ManagerProfilePage() {
     const params = useParams();
     const router = useRouter();
@@ -406,24 +423,6 @@ export default function ManagerProfilePage() {
                                                     )}
                                                 </td>
                                                 <td className="p-4 md:p-8 align-top text-right whitespace-nowrap">
-
-                                                    const STATUS_COLORS: Record<string, string> = {
-                                                        'new': 'bg-blue-100 text-blue-700',
-                                                    'send-to-delivery': 'bg-purple-100 text-purple-700',
-                                                    'delivering': 'bg-indigo-100 text-indigo-700',
-                                                    'complete': 'bg-green-100 text-green-700',
-                                                    'cancel-other': 'bg-red-100 text-red-700',
-                                                    'rosten': 'bg-amber-100 text-amber-700'
-};
-
-                                                    function getStatusColor(code: string): string {
-    if (!code) return 'bg-gray-100 text-gray-600';
-                                                    if (code.includes('cancel')) return 'bg-red-50 text-red-700';
-                                                    if (code.includes('complete')) return 'bg-green-50 text-green-700';
-                                                    if (code.includes('new')) return 'bg-blue-50 text-blue-700';
-                                                    return 'bg-gray-50 text-gray-600';
-}
-
                                                     {c.call_order_matches && c.call_order_matches[0]?.orders && (
                                                         <div className="flex flex-col items-end gap-1.5">
                                                             <a
