@@ -8,6 +8,7 @@ function PriorityWidget() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string | null>(null);
+    const [crmUrl, setCrmUrl] = useState<string>('');
 
     useEffect(() => {
         fetch('/api/analysis/priorities')
@@ -15,6 +16,7 @@ function PriorityWidget() {
             .then(data => {
                 if (data.ok) {
                     setOrders(data.priorities);
+                    setCrmUrl(data.retailCrmUrl || '');
                 }
                 setLoading(false);
             })
@@ -162,21 +164,26 @@ function PriorityWidget() {
                                             }`}></div>
                                         <div>
                                             <div className="flex flex-wrap items-center gap-2 md:gap-3 mb-1">
-                                                <span className="font-black text-gray-900 text-base md:text-lg">#{order.orderNumber}</span>
+                                                <a
+                                                    href={crmUrl ? `${crmUrl}/orders/${order.orderId}/edit` : '#'}
+                                                    target={crmUrl ? '_blank' : undefined}
+                                                    className="font-black text-gray-900 text-base md:text-lg hover:text-blue-600 hover:underline decoration-2 underline-offset-2 transition-colors"
+                                                    onClick={e => !crmUrl && e.preventDefault()}
+                                                >
+                                                    #{order.orderNumber}
+                                                </a>
                                                 <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white px-2 py-0.5 rounded-lg border border-gray-100">
                                                     {order.managerName}
                                                 </span>
                                             </div>
                                             <div className="text-xs md:text-sm font-medium text-gray-500">
                                                 {formatMoney(order.totalSum)}
-                                                {order.summary !== 'Ожидание анализа' && <span className="mx-2 text-gray-300">|</span>}
-                                                {order.summary !== 'Ожидание анализа' && <span className="italic text-gray-600 block md:inline mt-1 md:mt-0">"{order.summary}"</span>}
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="flex flex-row md:flex-col items-center md:items-end flex-wrap gap-1.5">
-                                        {order.reasons.map((r: string, i: number) => (
+                                        {order.reasons.filter((r: string) => !r.startsWith('AI:')).map((r: string, i: number) => (
                                             <div key={i} className={`text-[9px] md:text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
                                                 order.level === 'yellow' ? 'text-yellow-600 bg-yellow-50' :
                                                     order.level === 'green' ? 'text-green-500 bg-green-50' :
@@ -185,22 +192,32 @@ function PriorityWidget() {
                                                 {r}
                                             </div>
                                         ))}
-                                        {order.reasons.length === 0 && (
-                                            <span className="text-[9px] md:text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-lg">...</span>
-                                        )}
+                                        {/* Don't show redundant dots if no non-AI reasons */}
                                     </div>
                                 </div>
 
-                                {/* Action Recommendation */}
-                                {order.recommendedAction && (
-                                    <div className="mt-4 pt-3 border-t border-gray-100 flex items-start gap-3">
-                                        <span className="text-lg">💡</span>
-                                        <div>
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Рекомендация AI</p>
-                                            <p className="text-sm font-medium text-gray-700">{order.recommendedAction}</p>
+                                {/* AI Resume & Recommendation Section */}
+                                <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {order.summary && order.summary !== 'Ожидание анализа' && (
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-lg">🤖</span>
+                                            <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 mb-1">AI Резюме</p>
+                                                <p className="text-sm font-medium text-gray-700 italic">"{order.summary}"</p>
+                                            </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
+
+                                    {order.recommendedAction && (
+                                        <div className="flex items-start gap-3">
+                                            <span className="text-lg">💡</span>
+                                            <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-blue-500 mb-1">Рекомендация</p>
+                                                <p className="text-sm font-medium text-gray-700">{order.recommendedAction}</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         ))
                     )}

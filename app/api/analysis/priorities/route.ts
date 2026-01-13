@@ -10,7 +10,8 @@ export async function GET() {
 
         return NextResponse.json({
             ok: true,
-            priorities
+            priorities,
+            retailCrmUrl: process.env.RETAILCRM_URL,
         });
     } catch (e: any) {
         console.error('[Priority API] Error:', e);
