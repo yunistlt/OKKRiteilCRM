@@ -27,6 +27,9 @@ export async function GET() {
 
         const minDuration = parseInt(durationSetting?.value || '15');
 
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         // Fetch Queue (Pending)
         const { data: pending, error: e1 } = await supabase
             .from('raw_telphin_calls')
