@@ -72,6 +72,9 @@ export default function ManagerProfilePage() {
     const [filterDurationMin, setFilterDurationMin] = useState('');
     const [filterDurationMax, setFilterDurationMax] = useState('');
 
+    const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
+    const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
     const from = searchParams.get('from');
     const to = searchParams.get('to');
 
@@ -97,6 +100,24 @@ export default function ManagerProfilePage() {
     }, [params.id, from, to]);
 
     const { manager, stats, violations, calls } = data || { manager: {}, stats: {}, violations: [], calls: [] };
+
+    // Derive available statuses from calls
+    const availableStatuses = React.useMemo(() => {
+        const statusMap = new Map();
+        (calls || []).forEach((c: any) => {
+            const order = c.call_order_matches?.[0]?.orders;
+            if (order && order.status) {
+                if (!statusMap.has(order.status)) {
+                    statusMap.set(order.status, {
+                        code: order.status,
+                        name: order.status_name || order.status,
+                        color: order.status_color
+                    });
+                }
+            }
+        });
+        return Array.from(statusMap.values());
+    }, [calls]);
 
     const filteredCalls = (calls || []).filter((c: any) => {
         // 1. Basic Type Filter
@@ -125,6 +146,12 @@ export default function ManagerProfilePage() {
         if (filterOrderNumber) {
             const orderNum = c.call_order_matches?.[0]?.orders?.number;
             if (!orderNum || !String(orderNum).includes(filterOrderNumber)) return false;
+        }
+
+        // 5. Status Filter
+        if (filterStatuses.length > 0) {
+            const status = c.call_order_matches?.[0]?.orders?.status;
+            if (!status || !filterStatuses.includes(status)) return false;
         }
 
         return true;
@@ -328,6 +355,62 @@ export default function ManagerProfilePage() {
                                             onChange={(e) => setFilterDurationMax(e.target.value)}
                                         />
                                     </div>
+                                </div>
+
+                                {/* Status Filter */}
+                                <div className="space-y-1 relative">
+                                    <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest ml-1">Статусы ({filterStatuses.length})</label>
+                                    <button
+                                        onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                                        className="w-full bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-900 text-left focus:outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100 transition-all flex justify-between items-center"
+                                    >
+                                        <span className="truncate">
+                                            {filterStatuses.length === 0 ? 'Все статусы' :
+                                                filterStatuses.length === 1 ? availableStatuses.find(s => s.code === filterStatuses[0])?.name :
+                                                    `Выбрано: ${filterStatuses.length}`}
+                                        </span>
+                                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                    </button>
+
+                                    {/* Dropdown */}
+                                    {showStatusDropdown && (
+                                        <>
+                                            <div className="fixed inset-0 z-10" onClick={() => setShowStatusDropdown(false)}></div>
+                                            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-gray-100 z-20 max-h-60 overflow-y-auto p-2 space-y-1">
+                                                {availableStatuses.length === 0 ? (
+                                                    <div className="p-2 text-xs text-gray-400 font-bold text-center">Нет статусов</div>
+                                                ) : (
+                                                    availableStatuses.map((status: any) => (
+                                                        <label key={status.code} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${filterStatuses.includes(status.code) ? 'bg-blue-600 border-blue-600' : 'border-gray-200 bg-white'}`}>
+                                                                {filterStatuses.includes(status.code) && (
+                                                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                                                                )}
+                                                            </div>
+                                                            <input
+                                                                type="checkbox"
+                                                                className="hidden"
+                                                                checked={filterStatuses.includes(status.code)}
+                                                                onChange={() => {
+                                                                    setFilterStatuses(prev =>
+                                                                        prev.includes(status.code)
+                                                                            ? prev.filter(s => s !== status.code)
+                                                                            : [...prev, status.code]
+                                                                    );
+                                                                }}
+                                                            />
+                                                            <span
+                                                                className="text-xs font-bold text-gray-900 px-2 py-0.5 rounded"
+                                                                style={status.color ? { backgroundColor: status.color } : {}}
+                                                            >
+                                                                {status.name}
+                                                            </span>
+                                                        </label>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
