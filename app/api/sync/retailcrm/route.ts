@@ -149,17 +149,6 @@ export async function GET(request: Request) {
         }
 
         // 6. Trigger Rule Engine Analysis
-        let ruleEngineResult = null;
-        try {
-            const { runRuleEngine } = await import('@/lib/rule-engine');
-            // We analyze from the filter date to now
-            const analysisEnd = new Date().toISOString();
-            ruleEngineResult = await runRuleEngine(new Date(filterDateFrom).toISOString(), analysisEnd);
-            console.log(`[Orders Sync] Rule Engine processed. Violations found: ${ruleEngineResult}`);
-        } catch (reError) {
-            console.error('[Orders Sync] Rule Engine trigger failed:', reError);
-        }
-
         return NextResponse.json({
             success: true,
             method: 'orders_time_window_sync',
@@ -168,8 +157,7 @@ export async function GET(request: Request) {
             pages_processed: pagesProcessed,
             total_orders_fetched: totalOrdersFetched,
             total_pages_in_window: finalPagination ? finalPagination.totalPageCount : '?',
-            has_more: hasMore,
-            rule_engine_violations: ruleEngineResult
+            has_more: hasMore
         });
 
     } catch (error: any) {

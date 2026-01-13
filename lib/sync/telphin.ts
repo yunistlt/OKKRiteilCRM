@@ -177,26 +177,11 @@ export async function runTelphinSync(forceResync: boolean = false): Promise<Sync
         }, { onConflict: 'key' });
 
         // 5. Trigger Rule Engine Analysis
-        let ruleEngineResult = null;
-        try {
-            // Dynamic import might not be ideal in a lib function if used in a script,
-            // but we'll keep it for now as it was in the route.
-            // Ideally this should be a direct import if not for circular dep worries or Next.js specifics.
-            // Given this is now a lib function, direct import is safer if Rule Engine is also lib-friendly.
-            // Assuming @/lib/rule-engine is safe.
-            const { runRuleEngine } = await import('@/lib/rule-engine');
-            ruleEngineResult = await runRuleEngine(start.toISOString(), now.toISOString());
-            console.log(`[Sync] Rule Engine processed. Violations found: ${ruleEngineResult}`);
-        } catch (reError) {
-            console.error('[Sync] Rule Engine trigger failed:', reError);
-        }
-
         return {
             success: true,
             total_synced: totalSynced,
             new_cursor: nextCursor,
-            mode: fetchedCount === 100 ? 'partial (more data likely)' : 'caught up',
-            rule_engine_violations: ruleEngineResult
+            mode: fetchedCount === 100 ? 'partial (more data likely)' : 'caught up'
         };
 
     } catch (error: any) {
