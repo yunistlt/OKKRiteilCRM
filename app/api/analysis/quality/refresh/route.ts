@@ -31,18 +31,37 @@ export async function POST() {
 
         // Warning: filtering by matched_at is good, but ideally we filter by call date. 
         // We'll fetch matches created recently, which should cover recent calls.
-        // Batched fetch via Join for efficiency
-        const { data: matches, error: matchError } = await supabase
-            .from('call_order_matches')
-            .select(`
-                telphin_call_id,
-                retailcrm_order_id,
-                raw_telphin_calls (duration_sec, started_at),
-                orders (manager_id)
-            `)
-            .gte('matched_at', startStr);
+        // Batched fetch via Join for efficiency with pagination
+        let allMatches: any[] = [];
+        let from = 0;
+        const batchSize = 1000;
+        let fetching = true;
 
-        if (matchError) throw matchError;
+        while (fetching) {
+            const { data: batch, error: matchError } = await supabase
+                .from('call_order_matches')
+                .select(`
+                    telphin_call_id,
+                    retailcrm_order_id,
+                    raw_telphin_calls (duration_sec, started_at),
+                    orders (manager_id)
+                `)
+                .gte('matched_at', startStr)
+                .range(from, from + batchSize - 1);
+
+            if (matchError) throw matchError;
+
+            if (batch && batch.length > 0) {
+                allMatches = allMatches.concat(batch);
+                from += batchSize;
+                if (batch.length < batchSize) fetching = false;
+            } else {
+                fetching = false;
+            }
+        }
+
+        const matches = allMatches;
+
         if (!matches || matches.length === 0) {
             console.log('[QualityRefresh] No matches found in window.');
             return NextResponse.json({ message: 'No matches found.' });
