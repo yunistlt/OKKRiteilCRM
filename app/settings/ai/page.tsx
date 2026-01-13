@@ -28,7 +28,11 @@ export default function AIPrimitivizationPage() {
             const data = await res.json();
             // Assuming we want 'order_analysis_main'
             const main = data.find((p: any) => p.key === 'order_analysis_main');
-            if (main) setPrompt(main.content);
+            if (main) {
+                // Unescape newlines if they are stored as literals
+                const unescaped = main.content.replace(/\\n/g, '\n');
+                setPrompt(unescaped);
+            }
         } catch (e) {
             setError('Failed to fetch prompt');
         } finally {
@@ -45,7 +49,7 @@ export default function AIPrimitivizationPage() {
                 method: 'POST',
                 body: JSON.stringify({
                     key: 'order_analysis_main',
-                    content: prompt,
+                    content: prompt, // Will happen as regular string, JSON.stringify handles escaping
                     description: 'Main Traffic Light Prompt'
                 })
             });
@@ -126,12 +130,20 @@ export default function AIPrimitivizationPage() {
                 {/* Editor */}
                 <div className="space-y-4">
                     <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
-                        <label className="block text-sm font-medium mb-2">System Prompt Template</label>
-                        <p className="text-[10px] md:text-xs text-gray-500 mb-2">
-                            Используйте <code>{'{{transcript}}'}</code>, <code>{'{{days}}'}</code>, <code>{'{{sum}}'}</code>, <code>{'{{status}}'}</code> как плейсхолдеры.
-                        </p>
+                        <label className="block text-sm font-bold mb-2">Инструкция для ИИ (System Prompt)</label>
+                        <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-800 mb-3 space-y-1">
+                            <p className="font-bold">📝 Как заполнять:</p>
+                            <p>Пишите сюда правила, как для живого сотрудника. Используйте placeholders (заполнители), куда система подставит данные заказа:</p>
+                            <ul className="list-disc pl-4 mt-1 space-y-0.5 font-mono">
+                                <li>{'{{transcript}}'} - текст разговора с клиентом</li>
+                                <li>{'{{days}}'} - дней без движения</li>
+                                <li>{'{{sum}}'} - сумма заказа</li>
+                                <li>{'{{status}}'} - текущий статус</li>
+                            </ul>
+                            <p className="mt-2 text-blue-600 italic">ИИ будет использовать эту "шпаргалку" при каждом анализе.</p>
+                        </div>
                         <textarea
-                            className="w-full h-[400px] md:h-[600px] p-4 text-xs md:text-sm font-mono border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none"
+                            className="w-full h-[400px] md:h-[600px] p-4 text-xs md:text-sm font-mono border rounded bg-gray-50 focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed"
                             value={prompt}
                             onChange={e => setPrompt(e.target.value)}
                         />
