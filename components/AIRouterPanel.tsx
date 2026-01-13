@@ -290,14 +290,14 @@ export default function AIRouterPanel() {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 sticky top-0">
                                     <tr>
-                                        <th className="px-4 py-2 text-left w-20">Заказ</th>
-                                        <th className="px-4 py-2 text-left w-24">Сумма</th>
-                                        <th className="px-4 py-2 text-left w-28">Текущий Статус</th>
-                                        <th className="px-4 py-2 text-left w-32">Решение ИИ</th>
-                                        {trainingMode && <th className="px-4 py-2 text-left w-32">Ваш Выбор</th>}
-                                        <th className="px-4 py-2 text-left w-14">Conf</th>
-                                        <th className="px-4 py-2 text-left">Причина / Комментарий</th>
-                                        {trainingMode && <th className="px-4 py-2 w-24">Действие</th>}
+                                        <th className="px-2 py-2 text-left w-20">Заказ</th>
+                                        <th className="px-2 py-2 text-left w-24">Сумма</th>
+                                        <th className="px-2 py-2 text-left w-32">Текущий</th>
+                                        <th className="px-2 py-2 text-left w-32">Решение ИИ</th>
+                                        {trainingMode && <th className="px-2 py-2 text-left w-40">Ваш Выбор</th>}
+                                        <th className="px-2 py-2 text-left w-12">Conf</th>
+                                        <th className="px-2 py-2 text-left w-[40%]">Причина / Комментарий</th>
+                                        {trainingMode && <th className="px-2 py-2 w-24">Действие</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
