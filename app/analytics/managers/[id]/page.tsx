@@ -432,6 +432,43 @@ export default function ManagerProfilePage() {
                                 )}
                             </div>
                         )}
+
+                        {/* Summary Footer */}
+                        {filteredCalls.length > 0 && (
+                            <div className="bg-white border-t border-gray-100 p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4 text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">
+                                <div>
+                                    {filteredCalls.length} элементов
+                                </div>
+                                <div className="flex flex-col md:flex-row gap-2 md:gap-8 text-center md:text-right">
+                                    <div>
+                                        Средняя длительность: <span className="text-gray-900 ml-1">
+                                            {(() => {
+                                                const total = filteredCalls.reduce((acc: number, c: any) => acc + (c.duration || 0), 0);
+                                                const avg = Math.round(total / filteredCalls.length);
+                                                const m = Math.floor(avg / 60);
+                                                const s = avg % 60;
+                                                return m > 0 ? `${m} мин. ${s} с.` : `${s} с.`;
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        Общая длительность: <span className="text-gray-900 ml-1">
+                                            {(() => {
+                                                const total = filteredCalls.reduce((acc: number, c: any) => acc + (c.duration || 0), 0);
+                                                const h = Math.floor(total / 3600);
+                                                const m = Math.floor((total % 3600) / 60);
+                                                const s = total % 60;
+                                                const parts = [];
+                                                if (h > 0) parts.push(`${h} ч.`);
+                                                if (m > 0) parts.push(`${m} мин.`);
+                                                parts.push(`${s} с.`);
+                                                return parts.join(' ');
+                                            })()}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
