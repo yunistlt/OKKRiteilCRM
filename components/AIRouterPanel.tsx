@@ -5,6 +5,9 @@ import { useState } from 'react';
 interface RoutingResult {
     order_id: number;
     from_status: string;
+    current_status_name?: string;
+    total_sum?: number;
+    retail_crm_url?: string;
     to_status: string;
     to_status_name?: string;
     confidence: number;
@@ -298,8 +301,10 @@ export default function AIRouterPanel() {
                             <table className="w-full text-sm">
                                 <thead className="bg-gray-50 sticky top-0">
                                     <tr>
-                                        <th className="px-4 py-2 text-left w-20">Заказ</th>
-                                        <th className="px-4 py-2 text-left w-48">Решение ИИ</th>
+                                        <th className="px-4 py-2 text-left w-24">Заказ</th>
+                                        <th className="px-4 py-2 text-left w-24">Сумма</th>
+                                        <th className="px-4 py-2 text-left w-32">Текущий Статус</th>
+                                        <th className="px-4 py-2 text-left w-40">Решение ИИ</th>
                                         <th className="px-4 py-2 text-left w-20">Conf</th>
                                         <th className="px-4 py-2 text-left">Причина / Комментарий</th>
                                         {trainingMode && <th className="px-4 py-2 w-32">Действие</th>}
@@ -312,13 +317,22 @@ export default function AIRouterPanel() {
                                             <tr key={result.order_id} className={`border-t hover:bg-gray-50 ${state.done ? 'bg-green-50' : ''}`}>
                                                 <td className="px-4 py-2 font-mono text-xs">
                                                     <a
-                                                        href={`https://zmktlt.retailcrm.ru/orders/${result.order_id}/edit`}
-                                                        target="_blank"
+                                                        href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
+                                                        target={result.retail_crm_url ? "_blank" : undefined}
                                                         rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:underline"
+                                                        className="text-blue-600 hover:underline font-bold"
+                                                        onClick={e => !result.retail_crm_url && e.preventDefault()}
                                                     >
                                                         #{result.order_id}
                                                     </a>
+                                                </td>
+                                                <td className="px-4 py-2 text-xs font-bold text-gray-700">
+                                                    {result.total_sum?.toLocaleString('ru-RU')} ₽
+                                                </td>
+                                                <td className="px-4 py-2">
+                                                    <span className={`inline-block px-2 py-1 text-[10px] font-semibold rounded uppercase ${getStatusBadge(result.from_status)}`}>
+                                                        {result.current_status_name || result.from_status}
+                                                    </span>
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     {trainingMode && !state.done ? (

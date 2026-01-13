@@ -134,7 +134,7 @@ export async function POST(request: Request) {
         // 1. Fetch orders in "Согласование отмены" status
         const { data: orders, error: fetchError } = await supabase
             .from('orders')
-            .select('id, status')
+            .select('id, status, totalsumm')
             .eq('status', 'soglasovanie-otmeny')
             .limit(options.limit!);
 
@@ -149,11 +149,18 @@ export async function POST(request: Request) {
 
         console.log(`[AIRouter] Processing ${orders.length} orders...`);
 
+        const retailCrmBaseUrl = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
+
         // 2. Process each order
         const results: RoutingResult[] = [];
 
         for (const order of orders) {
             try {
+                // ... (existing processing code) ...
+                // Note: I am NOT replacing the loop logic, just the SELECT and the PUSH.
+                // Wait, use replace_file_content carefully.
+                // I will use multi_replace to target specific blocks.
+
                 // 2a. Fetch fresh data from RetailCRM
                 // Try by ID first, then fallback to Number if not found
                 const baseUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
@@ -300,6 +307,9 @@ export async function POST(request: Request) {
                 results.push({
                     order_id: order.id,
                     from_status: order.status,
+                    current_status_name: statusMap.get(order.status) || order.status,
+                    total_sum: order.totalsumm || 0,
+                    retail_crm_url: retailCrmBaseUrl,
                     to_status: decision.target_status,
                     to_status_name: statusMap.get(decision.target_status) || decision.target_status,
                     confidence: decision.confidence,
