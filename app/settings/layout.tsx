@@ -26,25 +26,27 @@ export default function SettingsLayout({
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-            {/* Mobile Navigation (Horizontal Scroll) */}
-            <div className="md:hidden bg-white border-b border-gray-100 overflow-x-auto whitespace-nowrap p-4 flex gap-2 no-scrollbar">
-                {[...tabs, ...aiTabs].map((tab) => {
-                    const isActive = pathname === tab.href;
-                    return (
-                        <Link
-                            key={tab.href}
-                            href={tab.href}
-                            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${isActive
-                                ? 'bg-blue-600 text-white shadow-md'
-                                : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-                                }`}
-                        >
-                            <span>{tab.icon}</span>
-                            {tab.name}
-                        </Link>
-                    );
-                })}
-            </div>
+            {/* Mobile Navigation (Horizontal Scroll) - Hide on main settings page to avoid duplicate nav */}
+            {pathname !== '/settings' && pathname !== '/settings/' && (
+                <div className="md:hidden bg-white border-b border-gray-100 overflow-x-auto whitespace-nowrap p-4 flex gap-2 no-scrollbar">
+                    {[...tabs, ...aiTabs].map((tab) => {
+                        const isActive = pathname === tab.href;
+                        return (
+                            <Link
+                                key={tab.href}
+                                href={tab.href}
+                                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${isActive
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                                    }`}
+                            >
+                                <span>{tab.icon}</span>
+                                {tab.name}
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Desktop Sidebar */}
             <aside className="hidden md:flex w-64 bg-white border-r border-gray-100 shadow-sm flex-col sticky top-0 h-screen overflow-y-auto">
