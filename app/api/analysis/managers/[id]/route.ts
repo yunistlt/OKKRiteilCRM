@@ -89,7 +89,29 @@ export async function GET(
         const allViolations = await detectViolations(startStr, endDate);
         const managerViolations = allViolations.filter(v => v.manager_id === managerId);
 
-        // 5. Calculate Efficiency (Work Time)
+        // 5. Fetch Statuses for reference
+        const { data: statusesData } = await supabase
+            .from('statuses')
+            .select('code, name');
+
+        const statusMap: Record<string, string> = {};
+        statusesData?.forEach((s: any) => {
+            statusMap[s.code] = s.name;
+        });
+
+        // Enrich calls with status names
+        const enrichedCalls = formattedCalls?.map(c => ({
+            ...c,
+            call_order_matches: c.call_order_matches?.map((m: any) => ({
+                ...m,
+                orders: {
+                    ...m.orders,
+                    status_name: statusMap[m.orders.status] || m.orders.status
+                }
+            }))
+        }));
+
+        // 6. Calculate Efficiency (Work Time)
         // Pass correctly formatted date strings
         const efficiencyData = await calculateEfficiency(startStr.split('T')[0], endDate.split('T')[0]);
         const managerEfficiency = efficiencyData.find(m => m.manager_id === managerId);
@@ -102,13 +124,13 @@ export async function GET(
         return NextResponse.json({
             manager,
             stats: {
-                total_calls: formattedCalls?.length || 0,
+                total_calls: enrichedCalls?.length || 0,
                 total_violations: managerViolations.length,
                 efficiency_percent: efficiencyPercent,
                 work_time_minutes: workTimeMins
             },
             violations: managerViolations.slice(0, 50),
-            calls: formattedCalls || [], // Full history for the audit period (30 days)
+            calls: enrichedCalls || [], // Full history for the audit period (30 days)
         });
 
     } catch (e: any) {
