@@ -60,7 +60,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Правило</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Детали</th>
-                                <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                                <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Заказ / Статус</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -85,11 +85,25 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                     <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-xs truncate">
                                         {v.details}
                                     </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
+                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs">
                                         {v.order_id ? (
-                                            <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
-                                                #{v.order_id}
-                                            </a>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-2">
+                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-bold underline">
+                                                        #{v.orders?.number || v.order_id}
+                                                    </a>
+                                                    {v.orders?.total_sum && (
+                                                        <span className="text-gray-600 font-medium">
+                                                            {v.orders.total_sum.toLocaleString('ru-RU')} ₽
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {v.orders?.status && (
+                                                    <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600 font-mono">
+                                                        {v.orders.status}
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
                                             <span className="text-gray-400">—</span>
                                         )}

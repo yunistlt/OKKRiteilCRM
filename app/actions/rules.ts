@@ -70,7 +70,8 @@ export async function getViolations(limit = 100) {
             okk_rules ( name ),
             managers ( first_name, last_name, email ),
             call_id,
-            order_id
+            order_id,
+            orders ( status, total_sum, number )
         `)
         .order('violation_time', { ascending: false })
         .limit(limit);
