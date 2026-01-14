@@ -279,17 +279,31 @@ function ViolationsContent() {
                                         </td>
                                         <td className="p-4 md:p-6 text-right">
                                             {v.order_id ? (
-                                                <a
-                                                    href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-2 px-4 md:px-5 py-2 md:py-2.5 bg-white text-gray-700 rounded-xl md:rounded-2xl hover:bg-blue-600 hover:text-white hover:border-blue-600 hover:shadow-lg hover:shadow-blue-200 transition-all duration-300 font-black text-[10px] md:text-xs border border-gray-200 md:border-2"
-                                                >
-                                                    #{v.order_id}
-                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                                    </svg>
-                                                </a>
+                                                <div className="flex flex-col items-end gap-1">
+                                                    <div className="flex items-center gap-2">
+                                                        {v.order_sum && (
+                                                            <span className="text-gray-900 font-bold text-xs md:text-sm">
+                                                                {v.order_sum.toLocaleString('ru-RU')} ₽
+                                                            </span>
+                                                        )}
+                                                        <a
+                                                            href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-white text-gray-700 rounded-lg hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all duration-300 font-black text-[10px] md:text-xs border border-gray-200"
+                                                        >
+                                                            #{v.order_number || v.order_id}
+                                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                            </svg>
+                                                        </a>
+                                                    </div>
+                                                    {v.order_status && (
+                                                        <span className="inline-block px-2 py-0.5 text-[9px] bg-gray-100 text-gray-500 rounded font-mono uppercase tracking-wide">
+                                                            {v.order_status}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             ) : (
                                                 <span className="text-gray-300 italic text-[9px] md:text-xs font-black uppercase tracking-widest">Нет №</span>
                                             )}
