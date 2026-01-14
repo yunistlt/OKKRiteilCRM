@@ -33,6 +33,7 @@ function ViolationsContent() {
     const searchParams = useSearchParams();
     const [violations, setViolations] = useState<any[]>([]);
     const [rules, setRules] = useState<any[]>([]);
+    const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState<string>('all');
     const [filterManager, setFilterManager] = useState<string | null>(null);
@@ -46,11 +47,10 @@ function ViolationsContent() {
         return rule?.name || VIOLATION_LABELS[code] || code;
     };
 
-    // ... (rest of the component logic) ...
-
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true);
+            setError(null);
             try {
                 const url = new URL('/api/analysis/violations', window.location.origin);
                 if (from) url.searchParams.set('start', from);
@@ -62,14 +62,19 @@ function ViolationsContent() {
                     getRules()
                 ]);
 
+                if (resViolations.error) {
+                    throw new Error(resViolations.error);
+                }
+
                 if (resViolations.violations) {
                     setViolations(resViolations.violations);
                 }
                 if (activeRules) {
                     setRules(activeRules);
                 }
-            } catch (e) {
+            } catch (e: any) {
                 console.error(e);
+                setError(e.message || 'Unknown error occurred');
             } finally {
                 setLoading(false);
             }
@@ -119,6 +124,15 @@ function ViolationsContent() {
         <div className="flex flex-col items-center justify-center min-h-[400px]">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-medium font-sans italic">Собираем данные по нарушениям...</div>
+        </div>
+    );
+
+    if (error) return (
+        <div className="p-8 max-w-7xl mx-auto">
+            <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg">
+                <h3 className="font-bold">Ошибка загрузки данных</h3>
+                <p className="font-mono text-sm mt-2">{error}</p>
+            </div>
         </div>
     );
 
