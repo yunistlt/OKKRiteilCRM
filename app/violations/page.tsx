@@ -92,9 +92,9 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                                     <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-bold underline">
                                                         #{v.orders?.number || v.order_id}
                                                     </a>
-                                                    {v.orders?.total_sum && (
+                                                    {v.orders?.totalsumm && (
                                                         <span className="text-gray-600 font-medium">
-                                                            {v.orders.total_sum.toLocaleString('ru-RU')} ₽
+                                                            {v.orders.totalsumm.toLocaleString('ru-RU')} ₽
                                                         </span>
                                                     )}
                                                 </div>

@@ -71,7 +71,7 @@ export async function getViolations(limit = 100) {
             managers ( first_name, last_name, email ),
             call_id,
             order_id,
-            orders ( status, total_sum, number )
+            orders ( status, totalsumm, number )
         `)
         .order('violation_time', { ascending: false })
         .limit(limit);

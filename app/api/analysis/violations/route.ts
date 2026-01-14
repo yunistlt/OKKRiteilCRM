@@ -17,7 +17,7 @@ export async function GET(request: Request) {
         // 1. Fetch Violations from DB
         const { data: rawViolations, error } = await supabase
             .from('okk_violations')
-            .select('*, orders ( status, total_sum, number )')
+            .select('*, orders ( status, totalsumm, number )')
             .gte('violation_time', start)
             .lte('violation_time', end)
             .order('violation_time', { ascending: false });
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
             severity: v.severity,
             created_at: v.violation_time, // Map DB time to UI expected field
             order_status: v.orders?.status,
-            order_sum: v.orders?.total_sum,
+            order_sum: v.orders?.totalsumm,
             order_number: v.orders?.number
         }));
 
