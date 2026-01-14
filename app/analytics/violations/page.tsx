@@ -313,7 +313,15 @@ function ViolationsContent() {
                                                         </a>
                                                     </div>
                                                     {v.order_status && (
-                                                        <span className="inline-block px-2 py-0.5 text-[9px] bg-gray-100 text-gray-500 rounded font-mono uppercase tracking-wide">
+                                                        <span
+                                                            className="inline-block px-2 py-0.5 text-[9px] rounded font-mono uppercase tracking-wide border border-transparent shadow-sm"
+                                                            style={{
+                                                                backgroundColor: v.order_status_color || '#f3f4f6',
+                                                                color: v.order_status_color ? '#ffffff' : '#6b7280',
+                                                                borderColor: v.order_status_color ? 'transparent' : '#e5e7eb',
+                                                                textShadow: v.order_status_color ? '0 1px 1px rgba(0,0,0,0.1)' : 'none'
+                                                            }}
+                                                        >
                                                             {v.order_status}
                                                         </span>
                                                     )}
