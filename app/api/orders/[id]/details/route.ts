@@ -40,10 +40,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             // Step B: Fetch calls and their transcriptions
             const { data: callsData } = await supabase
                 .from('raw_telphin_calls')
-                .select(`
-                    *,
-                    call_transcriptions ( transcription_text, summary, sentiment )
-                `)
+                .select('*')
                 .in('telphin_call_id', callIds)
                 .order('started_at', { ascending: false });
 
@@ -54,7 +51,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         const { data: events } = await supabase
             .from('raw_order_events')
             .select('event_type, raw_payload, occurred_at')
-            .eq('retailcrm_order_id', order.order_id) // Match by RetailCRM ID (which is order_id in orders table usually, or we match via FK if needed. Let's assume order_id is correct)
+            .eq('retailcrm_order_id', order.order_id)
             .or('event_type.ilike.%email%,event_type.ilike.%message%,event_type.ilike.%comment%')
             .order('occurred_at', { ascending: false })
             .limit(10);
@@ -79,8 +76,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 date: c.started_at,
                 type: c.direction,
                 duration: c.duration_sec,
-                transcription: c.call_transcriptions?.[0]?.transcription_text || null,
-                summary: c.call_transcriptions?.[0]?.summary || null,
+                transcription: c.transcript || c.call_transcriptions?.[0]?.transcription_text || null,
+                summary: c.summary || c.call_transcriptions?.[0]?.summary || null,
                 link: c.recording_url
             })),
             emails: emails,
