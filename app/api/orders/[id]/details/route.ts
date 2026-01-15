@@ -29,11 +29,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         // Step A: Get matched call IDs
         const { data: matches } = await supabase
             .from('call_order_matches')
-            .select('call_id, match_score, match_type')
-            .eq('order_id', id)
+            .select('telphin_call_id, match_score, match_type')
+            .eq('retailcrm_order_id', id)
             .order('created_at', { ascending: false });
 
-        const callIds = matches?.map(m => m.call_id) || [];
+        const callIds = matches?.map(m => m.telphin_call_id) || [];
 
         let calls: any[] = [];
         if (callIds.length > 0) {
