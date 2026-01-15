@@ -11,6 +11,7 @@ interface OrderDetailsModalProps {
 interface OrderDetails {
     order: any;
     calls: any[];
+    emails: any[]; // [NEW] Added emails
     raw_payload: any;
 }
 
@@ -93,8 +94,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                 <div className="flex justify-between items-start mb-2">
                                                     <div className="flex items-center gap-2">
                                                         <span className={`px-2 py-0.5 text-[10px] rounded uppercase font-bold ${call.type === 'incoming'
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : 'bg-blue-100 text-blue-700'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-blue-100 text-blue-700'
                                                             }`}>
                                                             {call.type === 'incoming' ? 'Входящий' : 'Исходящий'}
                                                         </span>
@@ -133,6 +134,37 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                         Транскрибация отсутствует...
                                                     </div>
                                                 )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+
+                            {/* [NEW] 1.5 Correspondence / Emails */}
+                            <section>
+                                <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
+                                    ✉️ Переписка (Email / SMS)
+                                </h3>
+                                {(!data.emails || data.emails.length === 0) ? (
+                                    <p className="text-sm text-gray-500 italic">Переписки не найдено.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {data.emails.map((msg: any, idx: number) => (
+                                            <div key={idx} className="bg-white border rounded-lg p-3 shadow-sm">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${msg.type.includes('customer') || msg.source === 'user'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-blue-100 text-blue-700'
+                                                        }`}>
+                                                        {msg.type}
+                                                    </span>
+                                                    <span className="text-xs text-gray-400">
+                                                        {new Date(msg.date).toLocaleString('ru-RU')}
+                                                    </span>
+                                                </div>
+                                                <div className="text-sm text-gray-800 whitespace-pre-wrap">
+                                                    {msg.text}
+                                                </div>
                                             </div>
                                         ))}
                                     </div>

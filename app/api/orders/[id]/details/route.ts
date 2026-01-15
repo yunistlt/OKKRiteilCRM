@@ -50,9 +50,23 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             calls = callsData || [];
         }
 
-        // 3. Fetch Status History (Violations table often acts as a history log for rules, 
-        // but for exact status changes we might rely on RetailCRM audit if we synced it.
-        // For now, we'll return recent violations as "History of Issues" and rely on raw_payload for current state)
+        // 3. Fetch Communications (Emails, Messages from raw_order_events)
+        const { data: events } = await supabase
+            .from('raw_order_events')
+            .select('event_type, raw_payload, occurred_at')
+            .eq('retailcrm_order_id', order.order_id) // Match by RetailCRM ID (which is order_id in orders table usually, or we match via FK if needed. Let's assume order_id is correct)
+            .or('event_type.ilike.%email%,event_type.ilike.%message%,event_type.ilike.%comment%')
+            .order('occurred_at', { ascending: false })
+            .limit(10);
+
+        // Normalize events for frontend
+        const emails = events?.map(e => ({
+            id: e.occurred_at, // use timestamp as id
+            date: e.occurred_at,
+            type: e.event_type,
+            text: e.raw_payload?.text || e.raw_payload?.message || e.raw_payload?.newValue || JSON.stringify(e.raw_payload),
+            source: e.raw_payload?.source || 'unknown'
+        })) || [];
 
         // Return structured data
         return NextResponse.json({
@@ -69,6 +83,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 summary: c.call_transcriptions?.[0]?.summary || null,
                 link: c.recording_url
             })),
+            emails: emails,
             raw_payload: order.raw_payload // Contains manager comments and history from RetailCRM if synced full
         });
 

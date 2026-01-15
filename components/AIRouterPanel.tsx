@@ -20,6 +20,7 @@ interface RoutingResult {
 
 interface RoutingSummary {
     total_processed: number;
+    total_pending_count?: number;
     applied: number;
     dry_run: boolean;
     status_distribution: Record<string, number>;
@@ -276,6 +277,11 @@ export default function AIRouterPanel() {
                             <span className="text-green-600">✅</span>
                             <div className="text-sm text-green-800">
                                 <strong>Обработано:</strong> {summary.total_processed} заказов
+                                {summary.total_pending_count !== undefined && (
+                                    <span className="ml-2 opacity-75">
+                                        (Всего в очереди: <strong>{summary.total_pending_count}</strong>)
+                                    </span>
+                                )}
                             </div>
                         </div>
 

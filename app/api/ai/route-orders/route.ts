@@ -393,8 +393,15 @@ export async function POST(request: Request) {
         }
 
         // 3. Generate summary
+        // 3a. Get total count of pending orders (regardless of limit)
+        const { count: totalPendingCount } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'soglasovanie-otmeny');
+
         const summary = {
             total_processed: results.length,
+            total_pending_count: totalPendingCount || 0,
             applied: results.filter(r => r.was_applied).length,
             dry_run: options.dryRun,
             status_distribution: results.reduce((acc, r) => {
