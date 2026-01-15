@@ -43,12 +43,34 @@ async function matchCallToOrders(call: any) {
         .order('occurred_at', { ascending: false })
         .limit(20);
 
-    if (!phoneEvents || phoneEvents.length === 0) return [];
+    const candidates = new Set<number>();
+    if (phoneEvents) {
+        phoneEvents.forEach((e: any) => candidates.add(e.retailcrm_order_id));
+    }
+
+    const { data: directOrders, error: queryError } = await supabase
+        .from('orders')
+        .select('id')
+        .ilike('phone', `%${suffix}`) // Use simple ilike on phone column
+        .limit(5);
+
+    if (call.telphin_call_id === '38E645AF1723483FA9A5D6C6EBA4AFF9') {
+        console.log('DEBUG 50840 Call:', call);
+        console.log('DEBUG Suffix:', suffix);
+        console.log('DEBUG Events:', phoneEvents);
+        console.log('DEBUG DirectOrders:', directOrders);
+        if (queryError) console.log('DEBUG Query Error:', queryError);
+    }
+
+    if (directOrders) {
+        directOrders.forEach((o: any) => candidates.add(o.id));
+    }
+
+    if (candidates.size === 0) return [];
 
     const matches: any[] = [];
-    const candidates = new Set(phoneEvents.map((e: any) => e.retailcrm_order_id));
 
-    // Get orders details (created_at) for candidates
+    // Get orders details
     const { data: orders } = await supabase
         .from('orders')
         .select('id, created_at, customer_phones')
@@ -87,18 +109,22 @@ async function run() {
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+    // 1. Target specific problem calls + recent context
+    const targetCallIds = [
+        '38E645AF1723483FA9A5D6C6EBA4AFF9', // Order 50840
+        '03421E543AC440459E40B91696A07CE2'  // Order 50835 (from debug output)
+    ];
+
     const { data: recentCalls } = await supabase
         .from('raw_telphin_calls')
         .select('*')
-        .gte('started_at', sevenDaysAgo.toISOString())
-        .order('started_at', { ascending: false })
-        .limit(200);
+        .in('telphin_call_id', targetCallIds);
 
     if (!recentCalls) return;
 
-    // We process ALL recent calls to fix stolen/bad matches
+    // We process ONLY target calls
     const unmatched = recentCalls;
-    console.log(`Processing ${unmatched.length} recent calls...`);
+    console.log(`Processing ${unmatched.length} TARGET calls...`);
 
     let newMatchesCount = 0;
 

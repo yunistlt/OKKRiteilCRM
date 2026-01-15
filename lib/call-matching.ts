@@ -71,11 +71,11 @@ async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate
     }
 
     // 2. Add candidates directly from ORDERS table (Fallback if events missing)
-    // Checking main phone or customer_phones array
+    // Checking main phone
     const { data: orders } = await supabase
         .from('orders')
         .select('id, phone, customer_phones, manager_id, created_at')
-        .or(`phone.ilike.%${suffix},customer_phones.ilike.%${suffix}`) // simplified check
+        .ilike('phone', `%${suffix}`)
         .order('created_at', { ascending: false })
         .limit(5);
 
