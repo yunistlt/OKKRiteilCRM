@@ -107,8 +107,6 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
 
 export async function transcribeCall(callId: string, recordingUrl: string) {
     try {
-        console.log(`[Transcribe] Processing call ${callId}...`);
-
         // 1. Download
         const file = await downloadAudio(recordingUrl);
 
@@ -126,7 +124,7 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         const amd = await analyzeAnsweringMachine(transcription);
 
         // 4. Update DB
-        const { error } = await supabase
+        const { error, count, data } = await supabase
             .from('raw_telphin_calls')
             .update({
                 transcript: transcription,
@@ -139,26 +137,63 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
                     processed_at: new Date().toISOString()
                 }
             })
-            .eq('event_id', callId);
+            .eq('event_id', callId)
+            .select(); // Select to see if rows matched
+
+        let successUpdate = !error && ((count !== null && count > 0) || ((data as any)?.length > 0));
+
+        // Fallback: Try ID as telphin_call_id (UUID)
+        if (!successUpdate && !error) {
+            const { error: uuidError, data: uuidData } = await supabase
+                .from('raw_telphin_calls')
+                .update({
+                    transcript: transcription,
+                    transcription_status: 'completed',
+                    is_answering_machine: amd.isAnsweringMachine,
+                    am_detection_result: {
+                        reason: amd.reason,
+                        processed_at: new Date().toISOString()
+                    }
+                })
+                .eq('telphin_call_id', callId)
+                .select();
+
+            if (!uuidError && (uuidData as any)?.length > 0) {
+                successUpdate = true;
+            }
+        }
+
 
         if (error) {
             // Handle missing columns by falling back to transcript only
             // Supabase/PostgREST might return 42703 or a message about missing column
             if (error.code === '42703' || error.message?.includes('am_detection_result') || error.message?.includes('column')) {
                 console.warn('[Transcribe] AMD columns missing, saving only transcript...');
-                await supabase
+                const { error: matchError, count: matchCount, data: matchData } = await supabase
                     .from('raw_telphin_calls')
                     .update({
                         transcript: transcription,
                         transcription_status: 'completed'
                     })
-                    .eq('event_id', callId);
+                    .eq('event_id', callId)
+                    .select();
+
+                // If that also failed (0 rows), try telphin_call_id
+                if (!matchError && (!matchData || (matchData as any).length === 0)) {
+                    const { error: uuidError2, data: uuidData2 } = await supabase
+                        .from('raw_telphin_calls')
+                        .update({
+                            transcript: transcription,
+                            transcription_status: 'completed'
+                        })
+                        .eq('telphin_call_id', callId)
+                        .select();
+                }
             } else {
                 throw error;
             }
         }
 
-        console.log(`[Transcribe] Success for ${callId} (AMD: ${amd.isAnsweringMachine})`);
         return transcription;
 
     } catch (e: any) {
