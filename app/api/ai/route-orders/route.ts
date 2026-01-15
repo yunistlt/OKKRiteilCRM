@@ -424,3 +424,19 @@ export async function POST(request: Request) {
         }, { status: 500 });
     }
 }
+
+export async function GET() {
+    try {
+        const { count } = await supabase
+            .from('orders')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'soglasovanie-otmeny');
+
+        return NextResponse.json({
+            success: true,
+            count: count || 0
+        });
+    } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    }
+}

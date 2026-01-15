@@ -38,6 +38,7 @@ export default function AIRouterPanel() {
     const [results, setResults] = useState<RoutingResult[] | null>(null);
     const [summary, setSummary] = useState<RoutingSummary | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [pendingCount, setPendingCount] = useState<number | null>(null);
 
     // Fetch allowed AI statuses on mount or when mode toggles
     const fetchStatuses = async () => {
@@ -51,6 +52,24 @@ export default function AIRouterPanel() {
             console.error(e);
         }
     };
+
+    const fetchPendingCount = async () => {
+        try {
+            const res = await fetch('/api/ai/route-orders');
+            const data = await res.json();
+            if (data.success && typeof data.count === 'number') {
+                setPendingCount(data.count);
+            }
+        } catch (e) {
+            console.error('Failed to fetch pending count:', e);
+        }
+    };
+
+    // Initial fetch
+    useState(() => {
+        fetchStatuses();
+        fetchPendingCount();
+    });
 
     const runRouting = async () => {
         setIsRunning(true);
@@ -175,6 +194,11 @@ export default function AIRouterPanel() {
             <div className="p-4 border-b border-gray-200">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                     🤖 Маршрутизация
+                    {pendingCount !== null && (
+                        <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            Всего: {pendingCount}
+                        </span>
+                    )}
                 </h2>
                 <p className="text-xs text-gray-500 mt-1">
                     Обработа статуса "Согласование отмены"
