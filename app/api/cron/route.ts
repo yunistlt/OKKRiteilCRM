@@ -24,49 +24,21 @@ export async function GET(request: Request) {
     try {
         console.log('--- CRON STARTED ---');
 
-        // 1. Sync Telphin Calls
-        if (checkBudget('Telphin Sync')) {
-            console.log('[CRON] Step 1: Telphin Sync');
+        // NOTE: Telphin, RetailCRM, and History syncs are now handled by separate Vercel Crons
+        // This endpoint acts as the "Data Processor" (Matching -> Rules -> Analysis)
+
+        // 1. Match Calls
+        if (checkBudget('Matching')) {
+            console.log('[CRON] Step 1: Matching');
             try {
-                const callsRes = await fetch(`${baseUrl}/api/sync/telphin`, {
-                    cache: 'no-store',
-                    headers: { 'x-triggered-by': 'cron' }
-                });
-                const callsJson = await callsRes.json();
-                report.push(`Calls: ${callsJson.count || 0} fetched`);
+                const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
+                const matchJson = await matchRes.json();
+                report.push(`Matches: ${matchJson.matches_found || 0} new`);
             } catch (e: any) {
-                console.error('[CRON] Telphin Error:', e);
-                report.push(`Calls: Error (${e.message})`);
+                console.error('[CRON] Matching Error:', e);
+                report.push(`Matches: Error (${e.message})`);
             }
         }
-
-        // 2a. Sync RetailCRM Orders (State)
-        if (checkBudget('Orders Sync')) {
-            console.log('[CRON] Step 2: Orders Sync');
-            try {
-                const ordersRes = await fetch(`${baseUrl}/api/sync/retailcrm`, { cache: 'no-store' });
-                const ordersJson = await ordersRes.json();
-                report.push(`Orders: ${ordersJson.total_orders_fetched || 0} fetched`);
-            } catch (e: any) {
-                console.error('[CRON] Orders Error:', e);
-                report.push(`Orders: Error (${e.message})`);
-            }
-        }
-
-        // 2b. Sync Order History
-        if (checkBudget('History Sync')) {
-            console.log('[CRON] Step 3: History Sync');
-            try {
-                const histRes = await fetch(`${baseUrl}/api/sync/history`, { cache: 'no-store' });
-                const histJson = await histRes.json();
-                report.push(`History: ${histJson.saved_events || 0} saved`);
-            } catch (e: any) {
-                console.error('[CRON] History Error:', e);
-                report.push(`History: Error (${e.message})`);
-            }
-        }
-
-        // 3. Match Calls
         if (checkBudget('Matching')) {
             console.log('[CRON] Step 4: Matching');
             try {
@@ -79,9 +51,9 @@ export async function GET(request: Request) {
             }
         }
 
-        // 4. Run Rule Engine
+        // 2. Run Rule Engine
         if (checkBudget('Rules')) {
-            console.log('[CRON] Step 5: Rules');
+            console.log('[CRON] Step 2: Rules');
             try {
                 const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
                 const rulesJson = await rulesRes.json();
@@ -91,9 +63,9 @@ export async function GET(request: Request) {
                 report.push(`Rules: Error (${e.message})`);
             }
         }
-        // 5. Refresh Priorities (Stagnation calculation)
+        // 3. Refresh Priorities (Stagnation calculation)
         if (checkBudget('Priorities')) {
-            console.log('[CRON] Step 6: Priorities');
+            console.log('[CRON] Step 3: Priorities');
             try {
                 const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
                 const prioJson = await prioRes.json();
