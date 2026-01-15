@@ -29,7 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         // Step A: Get matched call IDs
         const { data: matches } = await supabase
             .from('call_order_matches')
-            .select('telphin_call_id, match_score, match_type')
+            .select('telphin_call_id, confidence_score, match_type')
             .eq('retailcrm_order_id', id)
             .order('created_at', { ascending: false });
 
@@ -38,11 +38,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         let calls: any[] = [];
         if (callIds.length > 0) {
             // Step B: Fetch calls and their transcriptions
-            const { data: callsData } = await supabase
+            const { data: callsData, error: callsError } = await supabase
                 .from('raw_telphin_calls')
                 .select('*')
                 .in('telphin_call_id', callIds)
                 .order('started_at', { ascending: false });
+
+            if (callsError) console.error('[Details] Error fetching calls:', callsError);
 
             calls = callsData || [];
         }
