@@ -91,23 +91,14 @@ async function run() {
         .from('raw_telphin_calls')
         .select('*')
         .gte('started_at', sevenDaysAgo.toISOString())
-        .not('telphin_call_id', 'in', (
-            // simple negation, iterating matches might be safer but subquery matches standard filtering
-            // supabase-js supports .not('id', 'in', '(select id from ...)') but valid syntax is trickier
-            // lets iterate
-            'dummy_value'
-        ))
         .order('started_at', { ascending: false })
-        .limit(500); // broad fetch
+        .limit(200);
 
     if (!recentCalls) return;
 
-    // Get existing matches ID set
-    const { data: existing } = await supabase.from('call_order_matches').select('telphin_call_id');
-    const matchedSet = new Set(existing?.map(m => m.telphin_call_id));
-
-    const unmatched = recentCalls.filter(c => !matchedSet.has(c.telphin_call_id));
-    console.log(`Processing ${unmatched.length} unmatched calls...`);
+    // We process ALL recent calls to fix stolen/bad matches
+    const unmatched = recentCalls;
+    console.log(`Processing ${unmatched.length} recent calls...`);
 
     let newMatchesCount = 0;
 

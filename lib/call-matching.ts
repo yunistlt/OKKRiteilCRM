@@ -47,25 +47,21 @@ async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate
 
     const suffix = normalized.slice(-7); // Последние 7 цифр (восстановлено по просьбе пользователя)
 
-    // Ищем заказы с точным или частичным совпадением номера
+    // Ищем заказы с точным или частичным совпадением номера в EVENTS
     const { data: phoneEvents } = await supabase
         .from('raw_order_events')
         .select('retailcrm_order_id, phone, phone_normalized, additional_phone, additional_phone_normalized, manager_id, occurred_at')
         .or(`phone_normalized.eq.${normalized},additional_phone_normalized.eq.${normalized},phone_normalized.like.%${suffix},additional_phone_normalized.like.%${suffix}`)
         .order('occurred_at', { ascending: false })
-        .limit(100);
+        .limit(50);
 
-    if (!phoneEvents || phoneEvents.length === 0) return [];
+    const candidatesMap = new Map<number, OrderCandidate>();
 
-    // Группируем по заказу и берём последнее событие
-    const orderMap = new Map<number, OrderCandidate>();
-
-    for (const event of phoneEvents) {
-        const orderId = event.retailcrm_order_id;
-
-        if (!orderMap.has(orderId)) {
-            orderMap.set(orderId, {
-                retailcrm_order_id: orderId,
+    // 1. Add candidates from events
+    if (phoneEvents) {
+        for (const event of phoneEvents) {
+            candidatesMap.set(event.retailcrm_order_id, {
+                retailcrm_order_id: event.retailcrm_order_id,
                 phone: event.phone,
                 additional_phone: event.additional_phone,
                 manager_id: event.manager_id,
@@ -74,7 +70,30 @@ async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate
         }
     }
 
-    return Array.from(orderMap.values());
+    // 2. Add candidates directly from ORDERS table (Fallback if events missing)
+    // Checking main phone or customer_phones array
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('id, phone, customer_phones, manager_id, created_at')
+        .or(`phone.ilike.%${suffix},customer_phones.ilike.%${suffix}`) // simplified check
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    if (orders) {
+        for (const o of orders) {
+            if (!candidatesMap.has(o.id)) {
+                candidatesMap.set(o.id, {
+                    retailcrm_order_id: o.id,
+                    phone: o.phone || (o.customer_phones?.[0] || null),
+                    additional_phone: null,
+                    manager_id: o.manager_id,
+                    last_event_at: o.created_at // Use creation time as event time
+                });
+            }
+        }
+    }
+
+    return Array.from(candidatesMap.values());
 }
 
 /**
