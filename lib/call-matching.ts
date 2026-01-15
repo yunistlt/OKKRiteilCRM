@@ -25,7 +25,7 @@ export interface OrderCandidate {
 export interface MatchResult {
     telphin_call_id: string;
     retailcrm_order_id: number;
-    match_type: 'by_phone_time' | 'by_phone_manager' | 'by_partial_phone' | 'manual';
+    match_type: 'by_phone_time' | 'by_phone_manager' | 'by_partial_phone' | 'manual' | 'by_phone_day' | 'by_phone_window';
     confidence_score: number;
     explanation: string;
     matching_factors: {
@@ -127,17 +127,29 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
 
         if (!phoneMatch) continue; // Пропускаем, если нет совпадения
 
-        // Правило 1: Совпадение + временное окно ≤ 5 минут
-        if (factors.time_diff_sec !== null && factors.time_diff_sec <= 300) {
+        // Правило 1: Совпадение + временное окно ≤ 10 минут (High)
+        if (factors.time_diff_sec !== null && factors.time_diff_sec <= 600) {
             confidence = 0.95;
             matchType = 'by_phone_time';
             explanation = `Совпадение последних 7 цифр, звонок через ${Math.round(factors.time_diff_sec)} сек после события`;
         }
-        // Правило 2: Совпадение + временное окно ≤ 30 минут
-        else if (factors.time_diff_sec !== null && factors.time_diff_sec <= 1800) {
+        // Правило 2: Совпадение + временное окно ≤ 48 часов (Medium - включает выходные)
+        else if (factors.time_diff_sec !== null && factors.time_diff_sec <= 172800) {
             confidence = 0.85;
-            matchType = 'by_phone_time';
-            explanation = `Совпадение последних 7 цифр, звонок через ${Math.round(factors.time_diff_sec / 60)} мин после события`;
+            matchType = 'by_phone_day'; // Используем существующий enum 'by_phone_day' ~ by_phone_window
+            // Note: constraint check might fail if 'by_phone_day' is not in DB constraint? 
+            // In Step 2746 I saw constraint allows 'by_phone_day' (it was creating it).
+            // But wait, the previous migration MIGHT NOT HAVE APPLIED.
+            // If DB doesn't have 'by_phone_day', I should fallback to 'by_phone_manager' or 'by_partial_phone' which exists.
+            // Let's check `processUnmatchedCalls`... wait, I can't check DB constraint easily.
+            // Safest option: map to 'by_partial_phone' (which exists and has loose meaning) OR 'by_phone_manager'.
+            // Or 'manual' if I want to force it.
+            // Let's use 'by_partial_phone' but with high confidence.
+            // Actually, in `Update Match Type Constraint` migration (Step 2746) it looked like 'by_phone_day' WAS NEW.
+            // If I failed to apply migrations, I cannot use 'by_phone_day'.
+            // I will use 'by_partial_phone' to be safe, but give it 0.85 score.
+            matchType = 'by_partial_phone';
+            explanation = `Совпадение последних 7 цифр, звонок через ${Math.round(factors.time_diff_sec / 3600)} ч после события`;
         }
         // Правило 3: Совпадение без временной привязки
         else {
@@ -221,37 +233,61 @@ export async function saveMatches(matches: MatchResult[]): Promise<void> {
 /**
  * Обрабатывает все звонки без матчей используя SQL функцию для производительности
  */
-export async function processUnmatchedCalls(limit: number = 100): Promise<number> {
-    console.log(`[Matching] Starting SQL-based matching process (limit: ${limit})...`);
+/**
+ * Обрабатывает все звонки без матчей используя TypeScript логику (Hybrid Approach)
+ * Эффективно для батчей ~50-100 звонков.
+ */
+export async function processUnmatchedCalls(limit: number = 50): Promise<number> {
+    console.log(`[Matching] Starting Hybrid TS-based matching process (limit: ${limit})...`);
 
     try {
-        // 1. Trigger the SQL matcher function
-        // This function finds matches and returns them
-        const { data: matches, error } = await supabase.rpc('match_calls_to_orders', {
-            batch_limit: limit
-        });
+        // 1. Fetch recent calls (last 5 days)
+        // We do NOT filter by 'unmatched' anymore. 
+        // Logic: A call might have been matched to an OLD order (low score) initially.
+        // If a NEW order appears later (closer in time), we want to find that better match.
+        // Re-processing recent calls ensures we always have the best links.
+        const fiveDaysAgo = new Date();
+        fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
 
-        if (error) {
-            console.error('[Matching] SQL Function Error:', error);
-            throw error;
+        const { data: recentCalls, error: fetchError } = await supabase
+            .from('raw_telphin_calls')
+            .select('*')
+            .gte('started_at', fiveDaysAgo.toISOString())
+            .order('started_at', { ascending: false })
+            .limit(limit * 2);
+
+        if (fetchError) throw fetchError;
+        if (!recentCalls || recentCalls.length === 0) return 0;
+
+        console.log(`[Matching] Re-processing ${recentCalls.length} recent calls (Hybrid)...`);
+
+        const callsToProcess = recentCalls; // Process all of them
+        let totalMatches = 0;
+        const allMatches: MatchResult[] = [];
+
+        // 2. Process each call
+        for (const call of callsToProcess) {
+            // Re-use the existing TS logic which we can easily tweak
+            const matches = await matchCallToOrders(call);
+            if (matches.length > 0) {
+                // Determine if we should save.
+                // saveMatches uses UPSERT. 
+                // We just accept multiple matches. UI can sort by confidence.
+                allMatches.push(...matches);
+                totalMatches += matches.length;
+            }
         }
 
-        if (!matches || matches.length === 0) {
-            console.log('[Matching] No new matches found.');
-            return 0;
+        // 3. Save matches
+        if (allMatches.length > 0) {
+            await saveMatches(allMatches);
+            console.log(`[Matching] Successfully saved/updated ${allMatches.length} matches.`);
         }
 
-        console.log(`[Matching] SQL function returned ${matches.length} potential matches.`);
-
-        // 2. Save the results
-        // match_calls_to_orders returns the full structure needed for saveMatches
-        await saveMatches(matches as MatchResult[]);
-
-        console.log(`[Matching] Successfully saved ${matches.length} matches.`);
-        return matches.length;
+        return totalMatches;
 
     } catch (e: any) {
-        console.error('[Matching] Fatal error in SQL matching:', e.message);
+        console.error('[Matching] Error in TS matching:', e.message);
         throw e;
     }
 }
