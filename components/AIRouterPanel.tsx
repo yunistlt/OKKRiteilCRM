@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import OrderDetailsModal from './OrderDetailsModal';
 
 interface RoutingResult {
     order_id: number;
@@ -157,8 +158,19 @@ export default function AIRouterPanel() {
         return labels[status] || status;
     };
 
+    // State for Modal
+    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+
     return (
         <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+            {selectedOrderId && (
+                <OrderDetailsModal
+                    orderId={selectedOrderId}
+                    isOpen={!!selectedOrderId}
+                    onClose={() => setSelectedOrderId(null)}
+                />
+            )}
+
             <div className="p-4 border-b border-gray-200">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                     🤖 Маршрутизация
@@ -306,15 +318,24 @@ export default function AIRouterPanel() {
                                             <tr key={result.order_id} className={`border-t hover:bg-gray-50 ${state.done ? 'bg-green-50' : ''}`}>
                                                 <td className="px-2 py-2">
                                                     <div className="flex flex-col gap-1">
-                                                        <a
-                                                            href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
-                                                            target={result.retail_crm_url ? "_blank" : undefined}
-                                                            rel="noopener noreferrer"
-                                                            className="text-blue-600 hover:underline font-bold text-xs"
-                                                            onClick={e => !result.retail_crm_url && e.preventDefault()}
-                                                        >
-                                                            #{result.order_id}
-                                                        </a>
+                                                        <div className="flex items-center gap-1">
+                                                            <a
+                                                                href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
+                                                                target={result.retail_crm_url ? "_blank" : undefined}
+                                                                rel="noopener noreferrer"
+                                                                className="text-blue-600 hover:underline font-bold text-xs"
+                                                                onClick={e => !result.retail_crm_url && e.preventDefault()}
+                                                            >
+                                                                #{result.order_id}
+                                                            </a>
+                                                            <button
+                                                                onClick={() => setSelectedOrderId(result.order_id)}
+                                                                className="text-gray-400 hover:text-blue-600"
+                                                                title="Подробнее"
+                                                            >
+                                                                ℹ️
+                                                            </button>
+                                                        </div>
                                                         <span className="text-[11px] font-bold text-gray-600">
                                                             {result.total_sum?.toLocaleString('ru-RU')} ₽
                                                         </span>
