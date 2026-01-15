@@ -29,7 +29,7 @@ interface RoutingSummary {
 export default function AIRouterPanel() {
     const [trainingMode, setTrainingMode] = useState(false);
     const [trainingState, setTrainingState] = useState<Record<string, { status: string; comment: string; loading: boolean; done: boolean }>>({});
-    const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string; group_name?: string }[]>([]);
+    const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string; group_name?: string; color?: string }[]>([]);
 
     // Restoring missing state
     const [isRunning, setIsRunning] = useState(false);
@@ -169,6 +169,9 @@ export default function AIRouterPanel() {
     };
 
     const getStatusLabel = (status: string) => {
+        const found = availableStatuses.find(s => s.code === status);
+        if (found) return found.name;
+
         const labels: Record<string, string> = {
             'otmenyon-klientom': 'Отменён клиентом',
             'otmenyon-postavschikom': 'Отменён поставщиком',
@@ -310,14 +313,26 @@ export default function AIRouterPanel() {
                         </div>
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {Object.entries(summary.status_distribution).map(([status, count]) => (
-                                <div key={status} className="p-3 bg-white border rounded-lg">
-                                    <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(status)}`}>
-                                        {getStatusLabel(status)}
-                                    </span>
-                                    <p className="text-2xl font-bold mt-2">{count}</p>
-                                </div>
-                            ))}
+                            {Object.entries(summary.status_distribution).map(([status, count]) => {
+                                const statusInfo = availableStatuses.find(s => s.code === status);
+                                const color = statusInfo?.color;
+
+                                return (
+                                    <div key={status} className="p-3 bg-white border rounded-lg">
+                                        <span
+                                            className={`inline-block px-2 py-1 text-xs font-semibold rounded border ${!color ? getStatusBadge(status) : ''}`}
+                                            style={color ? {
+                                                borderColor: color,
+                                                backgroundColor: `${color}30`,
+                                                color: '#1f2937'
+                                            } : undefined}
+                                        >
+                                            {getStatusLabel(status)}
+                                        </span>
+                                        <p className="text-2xl font-bold mt-2">{count}</p>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
