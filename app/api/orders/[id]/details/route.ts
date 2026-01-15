@@ -31,7 +31,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .from('call_order_matches')
             .select('telphin_call_id, confidence_score, match_type')
             .eq('retailcrm_order_id', id)
-            .order('created_at', { ascending: false });
+            .order('matched_at', { ascending: false });
 
         const callIds = matches?.map(m => m.telphin_call_id) || [];
 
