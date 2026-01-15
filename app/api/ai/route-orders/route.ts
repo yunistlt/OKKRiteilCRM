@@ -126,12 +126,15 @@ export async function POST(request: Request) {
 
         const { data: allowedStatuses } = await supabase
             .from('statuses')
-            .select('code, name, group_name')
+            .select('code, name, group_name, ai_description')
             .in('code', allowedCodes)
             .eq('is_active', true);
 
         const allowedStatusMap = new Map(
-            allowedStatuses?.map(s => [s.code, s.name]) || []
+            allowedStatuses?.map(s => [
+                s.code,
+                s.name + (s.ai_description ? ` (Описание: ${s.ai_description})` : '')
+            ]) || []
         );
 
         console.log(`[AIRouter] Loaded ${statusMap.size} total statuses, ${allowedStatusMap.size} allowed for AI routing (from status_settings)`);
