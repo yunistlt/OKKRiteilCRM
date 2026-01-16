@@ -30,6 +30,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         }
     }, [isOpen, orderId]);
 
+    const [analyzing, setAnalyzing] = useState(false);
+
+    const handleRunAnalysis = async () => {
+        if (!orderId) return;
+        setAnalyzing(true);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/analyze`, { method: 'POST' });
+            if (!res.ok) throw new Error('Analysis failed');
+            await fetchDetails(); // Refresh all data
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка при запуске анализа');
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
     const fetchDetails = async () => {
         setLoading(true);
         setError(null);
@@ -276,11 +293,41 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </h3>
 
                                     {!data.priority ? (
-                                        <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed">
-                                            AI-анализ для этого заказа ещё не проводился.
+                                        <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed flex flex-col items-center gap-3">
+                                            <p>AI-анализ для этого заказа ещё не проводился.</p>
+                                            <button
+                                                onClick={handleRunAnalysis}
+                                                disabled={analyzing}
+                                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
+                                            >
+                                                {analyzing ? (
+                                                    <>
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                        Анализирую...
+                                                    </>
+                                                ) : (
+                                                    '⚡ Запустить анализ'
+                                                )}
+                                            </button>
                                         </div>
                                     ) : (
                                         <div className="space-y-6">
+                                            {/* Action Bar (Refresh) */}
+                                            <div className="flex justify-end">
+                                                <button
+                                                    onClick={handleRunAnalysis}
+                                                    disabled={analyzing}
+                                                    className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                                >
+                                                    {analyzing ? (
+                                                        <span className="animate-spin">↻</span>
+                                                    ) : (
+                                                        <span>↻</span>
+                                                    )}
+                                                    Обновить анализ
+                                                </button>
+                                            </div>
+
                                             {/* Verdict Banner */}
                                             <div className={`p-6 rounded-lg border flex items-start gap-4 ${data.priority.level === 'green' ? 'bg-green-50 border-green-200' :
                                                 data.priority.level === 'yellow' ? 'bg-yellow-50 border-yellow-200' :
