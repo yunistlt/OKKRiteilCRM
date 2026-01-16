@@ -67,6 +67,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             source: e.raw_payload?.source || 'unknown'
         })) || [];
 
+        // 4. Fetch Order History
+        const { data: history } = await supabase
+            .from('order_history_log')
+            .select(`
+                field, old_value, new_value, user_data, occurred_at
+            `)
+            .eq('retailcrm_order_id', order.order_id) // Assuming order.order_id is the RetailCRM ID stored in 'orders' table
+            .order('occurred_at', { ascending: false });
+
         // Return structured data
         return NextResponse.json({
             order: {
@@ -83,7 +92,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 link: c.recording_url
             })),
             emails: emails,
-            raw_payload: order.raw_payload // Contains manager comments and history from RetailCRM if synced full
+            history: history || [],
+            raw_payload: order.raw_payload
         });
 
     } catch (e: any) {
