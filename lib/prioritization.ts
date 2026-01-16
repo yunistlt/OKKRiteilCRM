@@ -140,6 +140,21 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             if (d > 0) movementDates.push(d);
         }
 
+        // Get Last 3 calls with transcripts
+        const callsWithTranscript = allCalls
+            .filter((c: any) => c.transcript && c.transcript.length > 10)
+            .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .slice(0, 3);
+
+        // Formatted transcript history
+        let transcriptHistory = '';
+        if (callsWithTranscript.length > 0) {
+            transcriptHistory = callsWithTranscript.map((c: any) => {
+                const dateStr = new Date(c.timestamp).toLocaleDateString('ru-RU');
+                return `[${dateStr}] ${c.transcript.substring(0, 1000)}`;
+            }).join('\n\n');
+        }
+
         // Calculate "Days Since Last Movement"
         // If no dates found at all (shouldn't happen with created_at), use created_at or now.
         const lastMovementTs = movementDates.length > 0 ? Math.max(...movementDates) : now.getTime();
@@ -163,7 +178,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
 
         let aiSummary = "Ожидание анализа";
 
-        if (!skipAI && lastCall && lastCall.transcript) {
+        if (!skipAI && callsWithTranscript.length > 0) {
             // Extract TOP-3 from raw_payload
             const payload = order.raw_payload as any || {};
             const customFields = payload.customFields || {};
@@ -174,7 +189,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             };
 
             const aiResult = await analyzeOrderWithAI(
-                lastCall.transcript,
+                transcriptHistory,
                 order.status,
                 daysSinceUpdate,
                 order.totalsumm || 0,
