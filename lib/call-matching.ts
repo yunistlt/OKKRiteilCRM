@@ -41,7 +41,7 @@ export interface MatchResult {
  * Находит кандидатов заказов по номеру телефона
  * Использует денормализованные поля для быстрого поиска
  */
-async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate[]> {
+export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCandidate[]> {
     const normalized = normalizePhone(phone);
     if (!normalized) return [];
 

@@ -140,7 +140,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 )}
                             </section>
 
-                            {/* [NEW] 1.5 Correspondence / Emails */}
+                            {/* [NEW] 1.5 Correspondence / Emails - HIDDEN by user request (Step 156)
                             <section>
                                 <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
                                     ✉️ Переписка (Email / SMS)
@@ -170,6 +170,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </div>
                                 )}
                             </section>
+                            */}
 
                             {/* 2. Manager Comments (RetailCRM Context) */}
                             <section>

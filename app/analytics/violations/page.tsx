@@ -140,8 +140,8 @@ function ViolationsContent() {
         <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans bg-gray-50 min-h-screen">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8 md:mb-10">
                 <div>
-                    <h1 className="text-2xl md:text-3xl lg:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight">Нарушения Регламента</h1>
-                    <p className="text-gray-500 mt-1 md:mt-2 text-sm md:text-lg">Контроль качества работы с заказами</p>
+                    <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight">Нарушения Регламента</h1>
+                    <p className="text-gray-500 mt-1 md:mt-2 text-xs md:text-sm">Контроль качества работы с заказами</p>
                 </div>
 
                 <div className="w-full lg:w-auto flex flex-col sm:flex-row items-center gap-3 md:gap-4 bg-white p-3 md:p-2 rounded-2xl md:rounded-3xl shadow-sm border border-gray-100">

@@ -9,7 +9,7 @@ export async function GET(request: Request) {
         console.log('[Matching API] Starting matching process...');
 
         const { searchParams } = new URL(request.url);
-        const limit = parseInt(searchParams.get('limit') || '50');
+        const limit = parseInt(searchParams.get('limit') || '1000');
 
         // Use the library function directly for consistency and simplicity
         const matchesFound = await processUnmatchedCalls(limit);
