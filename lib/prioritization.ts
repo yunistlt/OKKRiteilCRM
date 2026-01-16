@@ -78,12 +78,28 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
         if (batch.length < PAGE_SIZE) break; // End of list
         from += PAGE_SIZE;
 
-        // Safety break if infinite loop (e.g. limit > 10000 and we want to stop?)
+        // Safety break
         if (allOrders.length >= limit) break;
     }
 
     const orders = allOrders.slice(0, limit);
     console.log(`Fetched Total Orders: ${orders.length} (Requested Limit: ${limit})`);
+
+    // [New] Batch fetch history logs for these orders to avoid N+1
+    const orderIds = orders.map(o => o.id);
+    let historyMap: Record<number, any[]> = {};
+    if (orderIds.length > 0) {
+        const { data: histories } = await supabase
+            .from('order_history_log')
+            .select('*')
+            .in('retailcrm_order_id', orderIds)
+            .order('occurred_at', { ascending: true }); // Oldest first for timeline
+
+        (histories || []).forEach(h => {
+            if (!historyMap[h.retailcrm_order_id]) historyMap[h.retailcrm_order_id] = [];
+            historyMap[h.retailcrm_order_id].push(h);
+        });
+    }
 
     if (orders.length === 0) return [];
 
@@ -97,7 +113,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
 
         // --- 1. Hard Rules (Heuristics) ---
 
-        // Extract and flatten all calls for this order (New matches from raw_telphin_calls)
+        // Extract and flatten all calls
         const rawCalls = (order.call_order_matches || [])
             .map((m: any) => m.raw_telphin_calls)
             .filter((c: any) => c !== null)
@@ -106,47 +122,54 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
                 timestamp: c.started_at,
                 duration: c.duration_sec,
                 transcript: c.transcript,
-                am_detection_result: null // Backfilled calls don't have AMD yet
             }));
 
         const allCalls = rawCalls;
         const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
-        // Collect all possible activity timestamps for "Movement"
+        // Prepare Call Stats (Pattern)
+        const totalCalls = allCalls.length;
+        const shortCalls = allCalls.filter((c: any) => c.duration < 20).length;
+        const longCalls = allCalls.filter((c: any) => c.duration >= 20).length;
+        const callPattern = `Total ${totalCalls} calls: ${shortCalls} short (<20s), ${longCalls} successful (>20s).`;
+
+        // Prepare Status History Summary
+        const orderHistory = historyMap[order.id] || [];
+        // Filter mainly status changes or relevant fields
+        const statusChanges = orderHistory
+            .filter(h => h.field === 'status')
+            .map(h => {
+                const date = new Date(h.occurred_at).toLocaleDateString('ru-RU');
+                return `${date}: ${h.old_value || 'New'} -> ${h.new_value}`;
+            });
+        const statusHistoryStr = statusChanges.length > 0 ? statusChanges.join('; ') : 'No status history found.';
+
+        // Calculate days in current status (approx if we have history)
+        // (Existing logic for daysSinceUpdate is good, but history gives more context)
+
+        // Prepare Product Info & Comments
+        const payload = order.raw_payload as any || {};
+        const items = (payload.items || []).map((i: any) => {
+            return `${i.offer?.name || 'Unknown'} (x${i.quantity})`;
+        }).join(', ');
+        const productInfo = items || 'No products listed';
+
+        const commentsContext = `Manager: "${payload.managerComment || 'None'}"\nCustomer: "${payload.customerComment || 'None'}"`;
+
+
+        // Collect all possible activity timestamps (Logic preserved)
         const movementDates: number[] = [];
+        if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
+        if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
+        if (payload.statusUpdatedAt) movementDates.push(new Date(payload.statusUpdatedAt).getTime());
+        if (lastCall) movementDates.push(new Date(lastCall.timestamp).getTime());
 
-        // A. CRM System Update
-        if (order.updated_at) {
-            const d = new Date(order.updated_at).getTime();
-            if (d > 0) movementDates.push(d);
-        }
-
-        // B. CRM Creation Date (fallback - ALWAYS push this as base)
-        if (order.created_at) {
-            const d = new Date(order.created_at).getTime();
-            if (d > 0) movementDates.push(d);
-        }
-
-        // C. Status Change Date from Payload
-        const statusUpdatedAt = order.raw_payload?.statusUpdatedAt;
-        if (statusUpdatedAt) {
-            const d = new Date(statusUpdatedAt).getTime();
-            if (d > 0) movementDates.push(d);
-        }
-
-        // D. Latest Call from matched lists
-        if (lastCall) {
-            const d = new Date(lastCall.timestamp).getTime();
-            if (d > 0) movementDates.push(d);
-        }
-
-        // Get Last 3 calls with transcripts
+        // Get Last 3 calls for transcripts
         const callsWithTranscript = allCalls
             .filter((c: any) => c.transcript && c.transcript.length > 10)
             .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             .slice(0, 3);
 
-        // Formatted transcript history
         let transcriptHistory = '';
         if (callsWithTranscript.length > 0) {
             transcriptHistory = callsWithTranscript.map((c: any) => {
@@ -155,8 +178,6 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             }).join('\n\n');
         }
 
-        // Calculate "Days Since Last Movement"
-        // If no dates found at all (shouldn't happen with created_at), use created_at or now.
         const lastMovementTs = movementDates.length > 0 ? Math.max(...movementDates) : now.getTime();
         const daysSinceUpdate = (now.getTime() - lastMovementTs) / (1000 * 3600 * 24);
 
@@ -179,8 +200,6 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
         let aiSummary = "Ожидание анализа";
 
         if (!skipAI && callsWithTranscript.length > 0) {
-            // Extract TOP-3 from raw_payload
-            const payload = order.raw_payload as any || {};
             const customFields = payload.customFields || {};
             const top3 = {
                 price: customFields.top3_prokhodim_li_po_tsene2 === 'yes' ? 'Да' : customFields.top3_prokhodim_li_po_tsene2 === 'no' ? 'Нет' : 'Не указано',
@@ -193,6 +212,12 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
                 order.status,
                 daysSinceUpdate,
                 order.totalsumm || 0,
+                {
+                    productInfo,
+                    commentsContext,
+                    statusHistoryStr,
+                    callPattern
+                },
                 aiPromptTemplate,
                 top3
             );
@@ -205,7 +230,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             }
         }
 
-        // Fallback Green logic for all orders (if still black)
+        // Fallback Green logic
         if (level === 'black') {
             if (daysSinceUpdate < 3) {
                 level = 'green';
@@ -230,13 +255,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             lastActionAt: order.updated_at,
             totalSum: order.totalsumm || 0
         });
-    } // End Loop
-
-    // Return ALL (limit applied at end if needed, but route says 'all' for distribution?)
-    // Route currently slices. We should slice only if requested. 
-    // But we want to return counts for dashboard.
-    // Dashboard probably needs aggregated counts + list of Top Critical.
-    // I'll return ALL priorities here, so API can aggregate or slice.
+    }
 
     return priorities.sort((a, b) => b.score - a.score).slice(0, limit);
 }
@@ -282,8 +301,6 @@ export async function getStoredPriorities(limit: number = 2000): Promise<OrderPr
 
     const prioritiesRaw = allPriorities.slice(0, limit);
 
-
-
     // Need manager names
     const { data: managersRaw } = await supabase.from('managers').select('id, first_name, last_name');
     const managerNames: Record<number, string> = {};
@@ -315,34 +332,80 @@ export async function getStoredPriorities(limit: number = 2000): Promise<OrderPr
 
 // Default prompt if DB entry missing
 const DEFAULT_PROMPT = `Роль ИИ
-Ты — аналитик заказов в B2B-продажах. Твоя задача — выявить критически важные заказы.
+Ты — опытный РОП (Руководитель Отдела Продаж). Твоя задача — проверить качество работы менеджера и принять решение по заказу.
 
-📥 Входные данные:
-- last_call_date: {{days}} дн. назад
-- last_call_summary: {{transcript}}
-- total_sum: {{sum}} руб.
-- order_status: {{status}}
+ТВОЙ АЛГОРИТМ (Строго следуй по шагам):
 
-🚦 Правила Светофора:
+ШАГ 1. ОЦЕНКА СУММЫ (НЮАНС С НУЛЕМ)
+- Если 0 руб: ЭТО НОРМАЛЬНО, ЕСЛИ:
+   а) Товара нет в ассортименте (не наше).
+   б) Клиент сразу отказался ("Не актуально", "Купили").
+- Если 0 руб, товар НАШ и клиент "Тёплый" — это КРИТИЧЕСКАЯ ОШИБКА (Менеджер обязан выставить КП!).
+- Если < 300 000 руб — "Мелкий чек".
+- Если > 300 000 руб — "Крупный чек" (Высокий приоритет).
+- Твой вывод по сумме?
+
+ШАГ 2. ОЦЕНКА ТОВАРА (ВАЖНО!)
+- Это НАШЕ производство? (Ключевые слова: Шкаф сушильный, Стеллаж, Металлическая мебель, Верстак).
+- НЮАНС: "Палетные стеллажи" — это НЕ НАШЕ. Если видишь "Палетный" — считай, что товар чужой.
+- Если это НАШЕ (обычный стеллаж, шкаф) — мы ОБЯЗАНЫ выставить КП (Сумма должна быть > 0).
+- Если "палетные", "погрузчик" или чужое — можно отказать (Сумма 0 - ОК).
+- Твой вывод по товару?
+
+ШАГ 3. КОММЕНТАРИИ И ТРАНСКРИПТ (СВЕРКА)
+- Чего хотел клиент? (Счет, КП).
+- Что сделал менеджер? (Выставил? Позвонил?).
+- ВАЖНО: Если в звонке клиент сказал "Не актуально", "Купили", "Дорого" — менеджер молодец, что узнал. Это ЗЕЛЕНЫЙ.
+- Есть ли разрыв? (Клиент просит, а менеджер молчит = КРАСНЫЙ).
+- Твой вывод по работе менеджера?
+
+ШАГ 4. ИСТОРИЯ И ДИНАМИКА
+- Сколько дней заказ висел в статусе "Новый"? (Если > 1 дня без реакции — плохо).
+- Текущий статус "Tender" (Тендер)? Если да — это нормальный "режим ожидания", менеджер молодец, что перевел.
+- Текущий статус "Согласование отмены"? Проверь, реально ли мы всё сделали перед отменой.
+
+ШАГ 5. ЗВОНКИ (Качество контакта)
+- Были ли реальные разговоры (> 30 сек)?
+- Или только "недозвоны" (короткие по 0-10 сек)?
+- Если менеджер звонил 5 раз по 5 секунд и сдался — это ПЛОХО.
+
+📥 ВХОДНЫЕ ДАННЫЕ ЗАКАЗА:
+- Товарная корзина: {{product_info}}
+- Сумма: {{sum}} руб.
+- Комментарии (Интент): {{comments_context}}
+- История статусов: {{status_history}}
+- Паттерн звонков: {{call_pattern}}
+- Последний разговор (Транскрипт): {{transcript}}
+- Текущий статус: {{status}}
+- Дней без движения: {{days}}
+
+🚦 ВЕРДИКТ (СВЕТОФОР):
 1. 🔴 КРАСНЫЙ (Critical):
-   - Клиент готов платить, но менеджер тормозит.
-   - Клиент недоволен сроками/качеством.
-   - Есть риск ухода к конкуренту.
+   - Сумма 0 руб, но товар НАШ (Менеджер не выставил КП).
+   - Крупный чек / Наш товар -> Менеджер слил (не перезвонил, забыл).
+   - Клиент просит счет -> Менеджер молчит.
 
 2. 🟡 ЖЕЛТЫЙ (Warning):
-   - Есть вопросы без ответов.
-   - Сделка затянулась, но клиент на связи.
+   - Есть вопросы, процесс идет, но медленно.
+   - Сумма мелкая, но менеджер мог бы дожать.
 
 3. 🟢 ЗЕЛЕНЫЙ (OK):
-   - Идет рабочий процесс.
-   - Ждем поставку/производство (норма).
-   - "Я подумаю" (не срочно).
+   - Сумма 0 руб, ПОТОМУ ЧТО товар не наш (Менеджер не может выставить счет).
+   - Статус "Тендер" (Ждем).
+   - Отказ обоснован.
 
-💡 Вывод (JSON):
+💡 ФОРМАТ ОТВЕТА (JSON):
 {
   "traffic_light": "red" | "yellow" | "green",
-  "short_reason": "Краткая причина (макс 6 слов)",
-  "recommended_action": "Что сделать менеджеру"
+  "short_reason": "Краткй вывод (5-7 слов)",
+  "recommended_action": "Совет менеджеру",
+  "analysis_steps": {
+     "sum_check": "Текстом: Ноль (Норм/Ошибка)...",
+     "product_check": "Текстом: Наш/Не наш...",
+     "manager_check": "Текстом: Отработал/Забыл...",
+     "history_check": "Текстом: Быстро/Долго...",
+     "calls_check": "Текстом: Дозвонился/Нет..."
+  }
 }`;
 
 export async function analyzeOrderWithAI(
@@ -350,12 +413,19 @@ export async function analyzeOrderWithAI(
     status: string,
     daysStagnant: number,
     amount: number,
+    extraContext: {
+        productInfo: string;
+        commentsContext: string;
+        statusHistoryStr: string;
+        callPattern: string;
+    },
     promptTemplate?: string,
     top3?: { price: string; timing: string; specs: string }
 ): Promise<{
     traffic_light: 'red' | 'yellow' | 'green',
     short_reason: string,
-    recommended_action: string
+    recommended_action: string,
+    analysis_steps?: any
 }> {
     const openai = getOpenAIClient();
 
@@ -365,60 +435,67 @@ export async function analyzeOrderWithAI(
     const { data: examples } = await supabase
         .from('training_examples')
         .select('*')
-        .limit(6); // Get up to 6 examples (2 per color ideally)
+        .limit(6);
 
-    // Build few-shot examples section
+    // Build few-shot examples
     let fewShotSection = '';
     if (examples && examples.length > 0) {
-        // Group by traffic light
         const redExamples = examples.filter(e => e.traffic_light === 'red').slice(0, 2);
         const yellowExamples = examples.filter(e => e.traffic_light === 'yellow').slice(0, 2);
         const greenExamples = examples.filter(e => e.traffic_light === 'green').slice(0, 2);
 
-        fewShotSection = '\n\n📚 Примеры правильных оценок:\n\n';
+        fewShotSection = '\n\n📚 Примеры из прошлого:\n\n';
 
         const formatExample = (ex: any, colorLabel: string) => {
-            const ctx = ex.order_context || {};
-            let str = `Пример (${colorLabel}):\n`;
-            str += `- Транскрипт: "${(ctx.lastCall?.transcript || '').substring(0, 200)}..."\n`;
-            str += `- Статус: ${ctx.status || 'N/A'}\n`;
-            str += `- Дней без обновления: ${ctx.daysSinceUpdate || 0}\n`;
-            if (ctx.top3) {
-                str += `- ТОП-3 (Цена/Срок/Тех): ${ctx.top3.price}/${ctx.top3.timing}/${ctx.top3.specs}\n`;
-            }
-            str += `- Сумма: ${ctx.totalSum || 0} руб.\n`;
-            str += `- Обоснование: "${ex.user_reasoning}"\n\n`;
-            return str;
+            // We can assume examples might behave differently, but let's try to format them simply
+            return `Пример (${colorLabel}): ${ex.user_reasoning} \n`;
         };
 
         redExamples.forEach((ex) => { fewShotSection += formatExample(ex, '🔴 КРАСНЫЙ'); });
         yellowExamples.forEach((ex) => { fewShotSection += formatExample(ex, '🟡 ЖЕЛТЫЙ'); });
         greenExamples.forEach((ex) => { fewShotSection += formatExample(ex, '🟢 ЗЕЛЕНЫЙ'); });
 
-        fewShotSection += 'Используй эти примеры для калибровки своей оценки.\n\n---\n\n';
+        fewShotSection += 'Используй эти примеры как ориентир.\n\n---\n\n';
     }
 
-    // Prepare top3 string for the prompt
+    // Prepare top3 string
     const top3Str = top3
-        ? `\n- TOP-3 Quality (Price/Timing/Tech): ${top3.price}/${top3.timing}/${top3.specs}`
+        ? `\n- TOP-3 (Цена/Срок/Тех): ${top3.price}/${top3.timing}/${top3.specs}`
         : '';
 
-    // Replace placeholders and add few-shot examples
+    // Check if template has new tags, if not, append context manually for safety
+    const hasNewTags = prompt.includes('{{product_info}}');
+
     prompt = prompt
         .replace('{{days}}', Math.round(daysStagnant).toString())
         .replace('{{transcript}}', transcript.substring(0, 3000))
         .replace('{{sum}}', amount.toString())
-        .replace('{{status}}', `${status}${top3Str}`);
+        .replace('{{status}}', `${status}${top3Str}`)
+        .replace('{{product_info}}', extraContext.productInfo)
+        .replace('{{comments_context}}', extraContext.commentsContext)
+        .replace('{{status_history}}', extraContext.statusHistoryStr)
+        .replace('{{call_pattern}}', extraContext.callPattern);
 
-    // Insert few-shot examples before the output format section
-    if (prompt.includes('💡 Вывод')) {
+    if (!hasNewTags && promptTemplate) {
+        // Fallback: Append context if using an old custom prompt from DB
+        prompt += `\n\nДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ:\n` +
+            `Product: ${extraContext.productInfo}\n` +
+            `Comments: ${extraContext.commentsContext}\n` +
+            `History: ${extraContext.statusHistoryStr}\n` +
+            `Calls: ${extraContext.callPattern}\n`;
+    }
+
+    // Insert few-shot examples
+    if (prompt.includes('💡 ФОРМАТ')) {
+        prompt = prompt.replace('💡 ФОРМАТ', fewShotSection + '💡 ФОРМАТ');
+    } else if (prompt.includes('💡 Вывод')) {
         prompt = prompt.replace('💡 Вывод', fewShotSection + '💡 Вывод');
     } else {
         prompt = fewShotSection + prompt;
     }
 
     const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
         temperature: 0.3
@@ -429,3 +506,4 @@ export async function analyzeOrderWithAI(
 
     return JSON.parse(content);
 }
+

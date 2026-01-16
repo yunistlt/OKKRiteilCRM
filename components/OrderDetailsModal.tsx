@@ -12,7 +12,8 @@ interface OrderDetails {
     order: any;
     calls: any[];
     emails: any[];
-    history: any[]; // [NEW] History
+    history: any[];
+    priority?: any; // [NEW] Added priority field
     raw_payload: any;
 }
 
@@ -20,7 +21,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'info' | 'history'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'history' | 'ai_audit'>('info');
 
     useEffect(() => {
         if (isOpen && orderId) {
@@ -76,8 +77,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <button
                         onClick={() => setActiveTab('info')}
                         className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'info'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         Основная информация
@@ -85,11 +86,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <button
                         onClick={() => setActiveTab('history')}
                         className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'history'
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         История изменений
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('ai_audit')}
+                        className={`py-3 px-4 text-sm font-medium border-b-2 transition-colors ${activeTab === 'ai_audit'
+                            ? 'border-blue-600 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700'
+                            }`}
+                    >
+                        🤖 AI Аудит
                     </button>
                 </div>
 
@@ -107,6 +117,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <>
                             {activeTab === 'info' && (
                                 <div className="space-y-6">
+                                    {/* ... Existing Info Content ... */}
                                     {/* 1. Transcriptions / Calls */}
                                     <section>
                                         <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
@@ -253,6 +264,79 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                     ))}
                                                 </tbody>
                                             </table>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
+
+                            {activeTab === 'ai_audit' && (
+                                <section className="space-y-6">
+                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
+                                        🤖 Проверка качества (AI)
+                                    </h3>
+
+                                    {!data.priority ? (
+                                        <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed">
+                                            AI-анализ для этого заказа ещё не проводился.
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-6">
+                                            {/* Verdict Banner */}
+                                            <div className={`p-6 rounded-lg border flex items-start gap-4 ${data.priority.level === 'green' ? 'bg-green-50 border-green-200' :
+                                                data.priority.level === 'yellow' ? 'bg-yellow-50 border-yellow-200' :
+                                                    'bg-red-50 border-red-200'
+                                                }`}>
+                                                <div className={`text-4xl ${data.priority.level === 'green' ? 'text-green-500' :
+                                                    data.priority.level === 'yellow' ? 'text-yellow-500' :
+                                                        'text-red-500'
+                                                    }`}>
+                                                    {data.priority.level === 'green' ? '🟢' :
+                                                        data.priority.level === 'yellow' ? '🟡' : '🔴'}
+                                                </div>
+                                                <div className="flex-1">
+                                                    <h4 className="text-lg font-bold text-gray-900 mb-1">
+                                                        Вердикт ИИ: {data.priority.summary}
+                                                    </h4>
+                                                    <p className="text-gray-700 font-medium">
+                                                        Рекомендация: {data.priority.recommended_action}
+                                                    </p>
+                                                    <div className="mt-2 text-xs text-gray-500">
+                                                        Score: {data.priority.score} | Last Checked: {new Date(data.priority.updated_at).toLocaleString()}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Analysis Steps (New) */}
+                                            {data.priority.reasons?.analysis_steps && (
+                                                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                                                    <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
+                                                        <span className="text-gray-500">📋</span>
+                                                        <h4 className="text-sm font-bold text-gray-700">Детальный разбор (Логика РОПа)</h4>
+                                                    </div>
+                                                    <div className="divide-y divide-gray-100">
+                                                        <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
+                                                            <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">1. Сумма</div>
+                                                            <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.sum_check}</div>
+                                                        </div>
+                                                        <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
+                                                            <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">2. Товар</div>
+                                                            <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.product_check}</div>
+                                                        </div>
+                                                        <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
+                                                            <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">3. Сверка (Менеджер)</div>
+                                                            <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.manager_check}</div>
+                                                        </div>
+                                                        <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
+                                                            <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">4. История</div>
+                                                            <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.history_check}</div>
+                                                        </div>
+                                                        <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
+                                                            <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">5. Звонки</div>
+                                                            <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.calls_check}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </section>

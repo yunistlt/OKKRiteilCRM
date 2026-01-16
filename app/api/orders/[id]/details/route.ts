@@ -76,12 +76,20 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .eq('retailcrm_order_id', order.order_id) // Assuming order.order_id is the RetailCRM ID stored in 'orders' table
             .order('occurred_at', { ascending: false });
 
+        // 5. Fetch AI Priority Analysis
+        const { data: priority } = await supabase
+            .from('order_priorities')
+            .select('*')
+            .eq('order_id', order.id) // This is the internal UUID (orders.id), check if table uses internal id
+            .maybeSingle();
+
         // Return structured data
         return NextResponse.json({
             order: {
                 ...order,
                 manager_name: order.managers ? `${order.managers.first_name || ''} ${order.managers.last_name || ''}`.trim() : 'Не определен'
             },
+            priority: priority, // Return priority data
             calls: calls.map(c => ({
                 id: c.telphin_call_id,
                 date: c.started_at,
