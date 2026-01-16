@@ -100,13 +100,28 @@ export async function POST(req: Request) {
 
     const daysSinceUpdate = (new Date().getTime() - new Date(order.updated_at).getTime()) / (1000 * 3600 * 24);
 
+    // Construct Extra Context
+    const items = (order.raw_payload?.items || []) as any[];
+    const productInfo = items.map(i => `${i.offer?.name || i.name} (x${i.quantity})`).join(', ') || "Нет товаров";
+
+    // Simple mock or basic fetch for these since query is limited
+    const commentsContext = orderComments;
+    const statusHistoryStr = `Current: ${statusName}`; // Simplified for test-prompt
+    const callPattern = `Total calls: ${allCalls.length}. Last: ${lastCall ? lastCall.duration_sec + 's' : 'None'}`;
+
     try {
         const result = await analyzeOrderWithAI(
             transcript,
             order.status,
             daysSinceUpdate,
             order.totalsumm || 0,
-            prompt,
+            {
+                productInfo,
+                commentsContext,
+                statusHistoryStr,
+                callPattern
+            },
+            prompt, // passed as promptTemplate
             top3
         );
 
