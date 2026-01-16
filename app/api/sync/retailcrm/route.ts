@@ -26,28 +26,12 @@ export async function GET(request: Request) {
         const maxTimeMs = 50000; // 50 seconds limit (Vercel hobby is 10s or 60s depending on plan, safe buffer)
         const maxPagesPerRun = 20; // Safe limit
 
-        // 1. Determine Start Date (Time-based sync)
-        let filterDateFrom = '2023-01-01 00:00:00';
+        const days = parseInt(searchParams.get('days') || '7');
+        const defaultLookback = new Date();
+        defaultLookback.setDate(defaultLookback.getDate() - days);
+        const filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
 
-        if (!forceResync) {
-            const { data: lastOrder } = await supabase
-                .from('orders')
-                .select('created_at')
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single();
-
-            if (lastOrder && lastOrder.created_at) {
-                const d = new Date(lastOrder.created_at);
-                d.setDate(d.getDate() - 1); // Go back 1 day to be safe (timezones, lateness)
-                filterDateFrom = d.toISOString().slice(0, 19).replace('T', ' ');
-                console.log(`[Orders Sync] Found recent order (${lastOrder.created_at}). Syncing from: ${filterDateFrom}`);
-            } else {
-                console.log('[Orders Sync] No recent orders found. Full sync from 2023.');
-            }
-        } else {
-            console.log('[Orders Sync] Force resync requested. Syncing from 2023.');
-        }
+        console.log(`[Orders Sync] Syncing updates from: ${filterDateFrom} (Last ${days} days)`);
 
         let page = 1;
         let pagesProcessed = 0;
@@ -64,7 +48,7 @@ export async function GET(request: Request) {
             params.append('apiKey', RETAILCRM_API_KEY);
             params.append('limit', String(limit));
             params.append('page', String(page));
-            params.append('filter[createdAtFrom]', filterDateFrom);
+            params.append('filter[statusUpdatedAtFrom]', filterDateFrom);
             params.append('paginator', 'page');
 
             // To ensure we get everything cleanly, we let standard ordering apply (usually by ID or CreatedAt desc)
