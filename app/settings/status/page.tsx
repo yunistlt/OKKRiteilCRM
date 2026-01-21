@@ -38,7 +38,6 @@ interface DbStats {
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
-    const [savedRulesStatus, setSavedRulesStatus] = useState<RulesStatus | null>(null);
     const [loadingSync, setLoadingSync] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -62,10 +61,6 @@ export default function SystemStatusPage() {
 
             if (data.dashboard) {
                 setSyncStatuses(data.dashboard);
-            }
-
-            if (data.rules_health) {
-                setSavedRulesStatus(data.rules_health);
             }
 
             if (data.settings && data.settings.transcription_min_duration) {
@@ -288,7 +283,7 @@ export default function SystemStatusPage() {
             </div>
 
             {/* Desktop Sync Grid */}
-            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-6">
                 {syncStatuses.length > 0 ? syncStatuses.map((service, idx) => (
                     <div key={idx} className="bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-lg shadow-gray-200/40 relative overflow-hidden group flex flex-col justify-between h-full">
 
@@ -307,7 +302,7 @@ export default function SystemStatusPage() {
                             <h3 className="text-sm font-black text-gray-900 tracking-tight mb-1 truncate" title={getRusServiceName(service.service)}>
                                 {getRusServiceName(service.service)}
                             </h3>
-                            <p className="text-[9px] md:text-[10px] font-medium text-gray-500 mb-3 h-3 truncate">{service.details}</p>
+                            <p className="text-[9px] md:text-[10px] font-medium text-gray-500 mb-3 min-h-[1.5em] line-clamp-2 leading-tight" title={service.details}>{service.details}</p>
 
                             {service.reason && (
                                 <div className="bg-orange-50 p-2 rounded-lg border border-orange-100 mb-2">
@@ -320,7 +315,9 @@ export default function SystemStatusPage() {
 
                             {!service.reason && (
                                 <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-2">
-                                    <div className="text-[8px] md:text-[9px] font-black text-gray-400 uppercase tracking-widest">Курсор</div>
+                                    <div className="text-[8px] md:text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                        {service.service.includes('Rule') ? 'Расписание' : 'Курсор'}
+                                    </div>
                                     <div className="text-[9px] md:text-[10px] font-mono font-bold text-gray-700 truncate" title={service.cursor}>
                                         {service.cursor.replace('T', ' ').replace('Z', '').split('.')[0]}
                                     </div>
@@ -348,53 +345,6 @@ export default function SystemStatusPage() {
                     </div>
                 )}
             </div>
-
-            {/* SECTION 1.5: Rule Engine Monitor */}
-            {savedRulesStatus && (
-                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-xl shadow-blue-900/5 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
-                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
-
-                    <div className="flex items-center gap-4 z-10 w-full md:w-auto">
-                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">⚡️</div>
-                        <div>
-                            <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-3">
-                                Правила ОКК
-                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest ${savedRulesStatus.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                    {savedRulesStatus.status === 'ok' ? 'АКТИВЕН' : 'СБОЙ'}
-                                </span>
-                            </h3>
-                            <div className="flex flex-col md:flex-row md:items-center md:gap-4 mt-1 text-xs font-medium text-gray-500">
-                                <span title="Время последней автоматической проверки">
-                                    Проверка: {savedRulesStatus.last_run ? new Date(savedRulesStatus.last_run).toLocaleString('ru-RU') : 'Никогда'}
-                                </span>
-                                <span className="hidden md:inline text-gray-300">|</span>
-                                <span>{savedRulesStatus.details}</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 w-full md:w-auto flex flex-col items-start md:items-end gap-2 z-10">
-                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 w-full md:text-right">Активные Правила</div>
-                        <div className="flex flex-wrap md:justify-end gap-2 max-w-2xl">
-                            {savedRulesStatus.active_rules.length > 0 ? savedRulesStatus.active_rules.map((rule: string, idx: number) => (
-                                <span key={idx} className="px-3 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 shadow-sm whitespace-nowrap">
-                                    {rule}
-                                </span>
-                            )) : (
-                                <span className="text-gray-400 text-xs italic">Нет активных правил</span>
-                            )}
-                        </div>
-                    </div>
-
-                    <button
-                        onClick={() => runService('Rule Engine')}
-                        disabled={loadingSync}
-                        className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 active:scale-95 transition-all z-10 whitespace-nowrap mt-4 md:mt-0"
-                    >
-                        {loadingSync ? '...' : '▶ Проверить'}
-                    </button>
-                </div>
-            )}
 
             {/* SECTION 2: AI & STATS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mb-8">

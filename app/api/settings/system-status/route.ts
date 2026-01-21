@@ -170,14 +170,17 @@ export async function GET() {
         const { data: activeRules } = await supabase
             .from('okk_rules')
             .select('name')
-            .eq('is_enabled', true);
+            .eq('is_active', true);
 
+        const rulesNames = activeRules?.map(r => r.name) || [];
         const rulesStatus = {
             service: 'Rule Engine Execution',
+            cursor: 'Schedule',
             last_run: lastRuleRun,
             status: ruleRunOk ? 'ok' : 'warning',
-            active_rules: activeRules?.map(r => r.name) || [],
-            details: ruleRunOk ? 'Running on schedule' : 'No execution > 1h'
+            details: rulesNames.length > 0 ? `Active (${rulesNames.length}): ${rulesNames.join(', ')}` : 'No active rules',
+            reason: ruleRunOk ? null : 'No execution > 1h',
+            active_rules: rulesNames // Pass explicitly if frontend wants to iterate
         };
 
         // --- Settings ---
@@ -187,9 +190,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinMain, retailStatus, matchStatus, historyStatus],
-            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus],
-            rules_health: rulesStatus,
+            services: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
+            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
             settings
         });
 
