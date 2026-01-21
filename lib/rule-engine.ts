@@ -144,12 +144,16 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
                 };
             }
 
-            let prompt = rule.semantic_prompt || rule.description;
-            const newValue = (e.raw_payload?.status && typeof e.raw_payload.status === 'object') ? e.raw_payload.status.code : (e.raw_payload?.status || 'unknown');
-            prompt = prompt.replace('{{new_value}}', newValue);
+            let semanticPrompt = rule.semantic_prompt || rule.description;
+            const sRawVal = e.raw_payload?.newValue || e.raw_payload?.status;
+            const newValue = (typeof sRawVal === 'object' && sRawVal !== null && 'code' in sRawVal)
+                ? sRawVal.code
+                : (sRawVal || 'unknown');
+
+            semanticPrompt = semanticPrompt.replace('{{new_value}}', newValue);
 
             try {
-                const analysis = await analyzeText(managerComment || '', prompt, 'Manager Comment');
+                const analysis = await analyzeText(managerComment || '', semanticPrompt, 'Manager Comment');
                 if (analysis.is_violation) {
                     return {
                         order_id: orderId,
