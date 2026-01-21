@@ -139,6 +139,25 @@ export async function GET() {
             reason: matchBackActive ? null : 'Скрипт ожидает запуска или завершил работу.'
         };
 
+        // 4.5. Fetch Latest History Event (Rule Engine Source)
+        const { data: lastHistoryEvent } = await supabase
+            .from('raw_order_events')
+            .select('occurred_at')
+            .order('occurred_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        const historyCursor = lastHistoryEvent?.occurred_at || null;
+        const historyOk = isFresh(historyCursor, 120); // 2 hours threshold
+        const historyStatus = {
+            service: 'History Sync (Rules)',
+            cursor: historyCursor || 'Never',
+            last_run: historyCursor || null,
+            status: historyOk ? 'ok' : 'warning',
+            details: historyOk ? 'Events Flowing' : 'Stalled (>2h)',
+            reason: getDiagnosis('history_sync', historyOk, historyCursor)
+        };
+
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
@@ -146,8 +165,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinMain, retailStatus, matchStatus],
-            dashboard: [telphinStatus, retailStatus, matchStatus],
+            services: [telphinMain, retailStatus, matchStatus, historyStatus],
+            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus],
             settings
         });
 
