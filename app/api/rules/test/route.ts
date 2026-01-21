@@ -140,8 +140,8 @@ export async function POST(request: Request) {
             manager_id: managerId,
             raw_payload: {
                 field: fieldName,
-                newValue: newValue,
-                oldValue: 'work', // Safe default
+                newValue: fieldName === 'status' ? { code: newValue, name: newValue } : newValue,
+                oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
                 status: { code: newValue, name: newValue },
                 _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
             },
