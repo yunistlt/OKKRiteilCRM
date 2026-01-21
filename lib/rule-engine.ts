@@ -183,9 +183,9 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
 
     // 3. Filter Violations
     const violations = events.filter((e: any) => {
-        // console.log(`[RuleEngine] Filter Loop for ${rule.code}. SQL: ${sql.substring(0, 30)}... Params: ${JSON.stringify(rule.parameters)}`);
+        const metricsRaw = Array.isArray(e.order_metrics) ? e.order_metrics[0] : e.order_metrics;
         const orderId = e.retailcrm_order_id;
-        const managerId = e.order_metrics?.manager_id;
+        const managerId = metricsRaw?.manager_id;
 
         // Skip events without metadata (old events with potentially incorrect timestamps)
         if (!e.raw_payload?._sync_metadata) {
@@ -210,19 +210,23 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         }
 
         const om = {
-            current_status: e.order_metrics?.current_status,
-            full_order_context: e.order_metrics?.full_order_context || {},
-            manager_id: e.order_metrics?.manager_id
+            current_status: metricsRaw?.current_status,
+            full_order_context: metricsRaw?.full_order_context || {},
+            manager_id: metricsRaw?.manager_id
         };
 
         const rawValue = e.raw_payload?.newValue || e.raw_payload?.status;
         const normalizedValue = (typeof rawValue === 'object' && rawValue !== null && 'code' in rawValue)
             ? rawValue.code
             : rawValue;
+        const normalizedName = (typeof rawValue === 'object' && rawValue !== null && 'name' in rawValue)
+            ? rawValue.name
+            : null;
 
         const row = {
             field_name: (e.event_type === 'status_changed' || e.raw_payload?.field === 'status' || e.raw_payload?.status) ? 'status' : e.event_type,
             new_value: normalizedValue,
+            new_name: normalizedName,
             occurred_at: e.occurred_at,
             om
         };
@@ -289,7 +293,9 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         const newValueMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
         if (newValueMatch) {
             const requiredValue = newValueMatch[1].toLowerCase();
-            if (String(row.new_value).toLowerCase() !== requiredValue) return false;
+            const valMatch = String(row.new_value).toLowerCase();
+            const nameMatch = row.new_name ? String(row.new_name).toLowerCase() : null;
+            if (valMatch !== requiredValue && nameMatch !== requiredValue) return false;
         }
 
         // JSON Checks: Usually "Bad Conditions". If ANY match, it's a violation.
@@ -302,7 +308,8 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         const getContextValue = (ctx: any, key: string) => {
             if (!ctx) return undefined;
             // distinct lowercase lookup
-            const foundKey = Object.keys(ctx).find(k => k.toLowerCase() === key);
+            const targetKey = String(key).toLowerCase();
+            const foundKey = Object.keys(ctx).find(k => k.toLowerCase() === targetKey);
             return foundKey ? ctx[foundKey] : undefined;
         };
 
