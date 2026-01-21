@@ -136,8 +136,8 @@ export async function POST(request: Request) {
             retailcrm_order_id: testOrderId,
             event_type: eventType,
             occurred_at: eventTime.toISOString(),
-            // Remove explicit manager_id just in case it's causing schema issues, trust mapping or allow null
-            // manager_id: managerId, 
+            // Ensure manager_id is present
+            manager_id: managerId,
             raw_payload: {
                 field: fieldName,
                 newValue: newValue,
