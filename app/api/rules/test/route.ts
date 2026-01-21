@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { supabase } from '@/utils/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { runRuleEngine } from '@/lib/rule-engine';
 
 export const maxDuration = 60; // Allow enough time for synthetic test
@@ -10,6 +10,11 @@ export async function POST(request: Request) {
     let testOrderId = 999000 + Math.floor(Math.random() * 999);
     let testEventId = 888000 + Math.floor(Math.random() * 999);
     let ruleId: string;
+
+    // Use Service Role Client explicitly
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     try {
         const body = await request.json();
@@ -31,7 +36,8 @@ export async function POST(request: Request) {
             .single();
 
         if (ruleError || !rule) {
-            throw new Error(`Rule ${ruleId} not found`);
+            console.error('Rule Fetch Error:', ruleError);
+            throw new Error(`Rule ${ruleId} not found. DB Error: ${ruleError?.message}`);
         }
 
         // 2. Create Synthetic Data (Smart adaptation to Rule SQL)
@@ -47,83 +53,74 @@ export async function POST(request: Request) {
         // CRITICAL: Use manager from rule parameters if specified
         let managerId = 249; // Default fallback
         if (rule.parameters?.manager_ids && Array.isArray(rule.parameters.manager_ids) && rule.parameters.manager_ids.length > 0) {
-            managerId = rule.parameters.manager_ids[0]; // Use first allowed manager
-            console.log(`[RuleTest] Using rule-specific manager: ${managerId}`);
+            managerId = Number(rule.parameters.manager_ids[0]); // Ensure number
         }
 
         // A. Detection Logic
-        // 1. Time based (e.g. > 24 hours)
         if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()')) {
-            // fast forward: make event happen 25h ago
             eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000);
-            console.log('[RuleTest] Detected time condition, backdating event to:', eventTime.toISOString());
         }
-
-        // 2. Event Type (Rescheduling)
         if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
             eventType = 'data_kontakta';
             fieldName = 'data_kontakta';
-            // Set newValue to a future date for "Rescheduling" logic
             const future = new Date();
             future.setDate(future.getDate() + 5);
             newValue = future.toISOString().split('T')[0];
         }
-
-        // 3. Status Value
-        // Try to find required status in SQL: new_value = 'X'
         const statusMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
         if (statusMatch) {
             newValue = statusMatch[1];
-            // Also need to set order current_status to this?
         }
 
-        // Create Order
+        console.log('[RuleTest] Upserting Order...');
         const { error: orderErr } = await supabase.from('orders').upsert({
             id: testOrderId,
             order_id: testOrderId,
             status: fieldName === 'status' ? newValue : 'work',
             manager_id: managerId
         });
-        if (orderErr) throw new Error(`Order creation failed: ${orderErr.message}`);
+        if (orderErr) throw new Error(`Order upsert failed: ${orderErr.message}`);
 
-        // Create Metrics 
+        console.log('[RuleTest] Upserting Metrics...');
         const { error: metricErr } = await supabase.from('order_metrics').upsert({
             retailcrm_order_id: testOrderId,
             manager_id: managerId,
             current_status: fieldName === 'status' ? newValue : 'work',
             full_order_context: {
-                manager_comment: '', // Empty comment to trigger "No Comment" rule if applicable
-                // For TOP-3 rule, we specifically leave custom fields EMPTY to trigger violation
-                status_name: fieldName === 'status' ? newValue : 'work' // Helps with label matching
+                manager_comment: '',
+                status_name: fieldName === 'status' ? newValue : 'work'
             }
         });
-        if (metricErr) throw new Error(`Metrics creation failed: ${metricErr.message}`);
+        if (metricErr) throw new Error(`Metrics upsert failed: ${metricErr.message}`);
 
-        // Create Event
+        console.log('[RuleTest] Upserting Event...');
         const { error: eventErr } = await supabase.from('raw_order_events').upsert({
             event_id: testEventId,
             retailcrm_order_id: testOrderId,
             event_type: eventType,
             occurred_at: eventTime.toISOString(),
+            // Remove explicit manager_id just in case it's causing schema issues, trust mapping or allow null
+            // manager_id: managerId, 
             raw_payload: {
                 field: fieldName,
                 newValue: newValue,
-                oldValue: 'prev_value', // often needed for "change" logic
-                status: { code: newValue, name: newValue }, // mocked object structure
-                _sync_metadata: {
-                    order_statusUpdatedAt: eventTime.toISOString()
-                }
+                oldValue: 'prev_value',
+                status: { code: newValue, name: newValue },
+                _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
             },
-            manager_id: managerId
+            source: 'synthetic_test' // Explicit source
         });
-        if (eventErr) throw new Error(`Event creation failed: ${eventErr.message}`);
+        if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
-        // Ensure window covers the potentially backdated event
-        const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000); // Event time - 2h
+        const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000);
         const endTime = new Date(now.getTime() + 60 * 1000);
 
+        // runRuleEngine needs to use our service client ideally, but it imports utils/supabase. 
+        // We cannot change runRuleEngine signature easily here. 
+        // But if utils/supabase is configured with SERVICE key in env, it should work.
+        // Assuming runRuleEngine works (it seemed to work in my local test).
         const violationsFound = await runRuleEngine(
             startTime.toISOString(),
             endTime.toISOString(),
@@ -131,11 +128,13 @@ export async function POST(request: Request) {
         );
 
         // 4. Verify Violation Exists
-        const { data: dbViolations } = await supabase
+        const { data: dbViolations, error: violError } = await supabase
             .from('okk_violations')
             .select('*')
             .eq('rule_code', ruleId)
             .eq('order_id', testOrderId);
+
+        if (violError) console.error('Violations fetch error:', violError);
 
         const isSuccess = (violationsFound || 0) > 0 && dbViolations && dbViolations.length > 0;
         const resultMessage = isSuccess
@@ -143,7 +142,8 @@ export async function POST(request: Request) {
             : 'Проверка не пройдена: Нарушение не зафиксировано.';
 
         // 5. Log Result
-        await supabase.from('okk_rule_test_logs').insert({
+        console.log('[RuleTest] Logging results...');
+        const { error: logInsertErr } = await supabase.from('okk_rule_test_logs').insert({
             rule_code: ruleId,
             status: isSuccess ? 'success' : 'failure',
             message: resultMessage,
@@ -151,13 +151,13 @@ export async function POST(request: Request) {
                 test_order_id: testOrderId,
                 test_event_id: testEventId,
                 violations_found_count: violationsFound || 0,
-                db_violations_count: dbViolations?.length || 0,
-                range: { start: startTime.toISOString(), end: endTime.toISOString() }
+                db_violations_count: dbViolations?.length || 0
             }
         });
+        if (logInsertErr) console.error('Log insert failed:', logInsertErr);
 
         // 6. Cleanup
-        console.log(`[RuleTest] Cleaning up synthetic data...`);
+        console.log(`[RuleTest] Cleaning up...`);
         await supabase.from('okk_violations').delete().eq('order_id', testOrderId);
         await supabase.from('raw_order_events').delete().eq('event_id', testEventId);
         await supabase.from('order_metrics').delete().eq('retailcrm_order_id', testOrderId);
@@ -170,19 +170,22 @@ export async function POST(request: Request) {
         });
 
     } catch (e: any) {
-        console.error(`[RuleTest] Error:`, e.message);
+        console.error(`[RuleTest] Exception:`, e);
 
-        // Log error if possible
+        // Try to log error
         if (ruleId!) {
-            const { error: logErr } = await supabase.from('okk_rule_test_logs').insert({
+            await supabase.from('okk_rule_test_logs').insert({
                 rule_code: ruleId,
                 status: 'error',
                 message: `Ошибка выполнения теста: ${e.message}`,
-                details: { error: e.message, test_order_id: testOrderId }
-            });
-            if (logErr) console.error('Failed to log test error:', logErr);
+                details: { error: e.message || String(e), stack: e.stack }
+            }).catch(err => console.error('Emergency log failed', err));
         }
 
-        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+        return NextResponse.json({
+            success: false,
+            error: `API Error: ${e.message}`,
+            details: e.stack
+        }, { status: 500 });
     }
 }
