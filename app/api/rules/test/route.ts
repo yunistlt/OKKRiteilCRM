@@ -28,17 +28,19 @@ export async function POST(request: Request) {
 
         console.log(`[RuleTest] Starting test for rule: ${ruleId}`);
 
-        // 1. Fetch Rule Info
-        const { data: rule, error: ruleError } = await supabase
-            .from('okk_rules')
-            .select('*')
-            .eq('code', ruleId)
-            .single();
+        // 1. Fetch Rule Info & Status Mappings
+        const [{ data: rule, error: ruleError }, { data: statuses }] = await Promise.all([
+            supabase.from('okk_rules').select('*').eq('code', ruleId).single(),
+            supabase.from('statuses').select('code, name')
+        ]);
 
         if (ruleError || !rule) {
             console.error('Rule Fetch Error:', ruleError);
             throw new Error(`Rule ${ruleId} not found. DB Error: ${ruleError?.message}`);
         }
+
+        const nameToCode = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
+        const codeToName = new Map((statuses || []).map(s => [s.code, s.name]));
 
         // 2. Create Synthetic Data (Smart adaptation to Rule SQL)
         console.log(`[RuleTest] Creating synthetic data...`);
@@ -79,10 +81,13 @@ export async function POST(request: Request) {
         // Match specific EQUALS: new_value = 'X'
         const eqMatch = sql.match(/(?:new_value|field_name)\s*=\s*'([^']+)'/);
         if (eqMatch && eqMatch[1] !== 'status') {
-            // If it matched 'status', it just confirms field name, not value.
-            // But if it matched new_value = 'something', use it.
-            if (sql.includes(`new_value = '${eqMatch[1]}'`)) {
-                newValue = eqMatch[1];
+            const val = eqMatch[1];
+            // If val is a human name, use the code
+            const mappedCode = nameToCode.get(val.toLowerCase());
+            if (mappedCode) {
+                newValue = mappedCode;
+            } else {
+                newValue = val;
             }
         }
 
@@ -92,7 +97,9 @@ export async function POST(request: Request) {
             // Extract first valid option from 'a', 'b', 'c'
             const options = inMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
             if (options.length > 0) {
-                newValue = options[0];
+                // Try translation
+                const mappedCode = nameToCode.get(options[0].toLowerCase());
+                newValue = mappedCode || options[0];
             }
         }
 
@@ -130,6 +137,7 @@ export async function POST(request: Request) {
         });
         if (metricErr) throw new Error(`Metrics upsert failed: ${metricErr.message}`);
 
+        const humanName = codeToName.get(newValue) || newValue;
         console.log('[RuleTest] Upserting Event...');
         const { error: eventErr } = await supabase.from('raw_order_events').upsert({
             event_id: testEventId,
@@ -140,9 +148,9 @@ export async function POST(request: Request) {
             manager_id: managerId,
             raw_payload: {
                 field: fieldName,
-                newValue: fieldName === 'status' ? { code: newValue, name: newValue } : newValue,
+                newValue: fieldName === 'status' ? { code: newValue, name: humanName } : newValue,
                 oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
-                status: { code: newValue, name: newValue },
+                status: { code: newValue, name: humanName },
                 _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
             },
             source: 'synthetic_test' // Explicit source

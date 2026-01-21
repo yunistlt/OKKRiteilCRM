@@ -19,24 +19,29 @@ export interface Rule {
 export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string) {
     console.log(`[RuleEngine] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''}`);
 
-    // 1. Fetch Active Rules
-    let query = supabase
+    // 1. Fetch Active Rules and Status Mappings
+    const statusesPromise = supabase.from('statuses').select('code, name');
+    let rulesQuery = supabase
         .from('okk_rules')
         .select('*')
         .eq('is_active', true);
 
     if (targetRuleId) {
-        query = query.eq('code', targetRuleId);
+        rulesQuery = rulesQuery.eq('code', targetRuleId);
     }
 
-    const { data: rules, error } = await query;
+    const [{ data: rules, error: rulesError }, { data: statuses }] = await Promise.all([
+        rulesQuery,
+        statusesPromise
+    ]);
 
-    if (error || !rules) {
-        console.error('[RuleEngine] Failed to fetch rules:', error);
+    if (rulesError || !rules) {
+        console.error('[RuleEngine] Failed to fetch rules:', rulesError);
         return;
     }
 
-    console.log(`[RuleEngine] Found ${rules.length} active rules.`);
+    const statusMap = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
+    console.log(`[RuleEngine] Found ${rules.length} active rules and ${statuses?.length} status mappings.`);
 
     // 2. Execute per entity type
     let totalViolations = 0;
@@ -49,7 +54,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
                     totalViolations += await executeCallRule(rule, startDate, endDate);
                 }
             } else if (rule.entity_type === 'event') {
-                totalViolations += await executeEventRule(rule, startDate, endDate);
+                totalViolations += await executeEventRule(rule, startDate, endDate, statusMap);
             } else {
                 console.log(`[RuleEngine] Skipping unsupported entity type: ${rule.entity_type} (${rule.code})`);
             }
@@ -75,7 +80,7 @@ function getActualEventTime(event: any): string {
     return event.occurred_at;
 }
 
-async function executeEventRule(rule: any, startDate: string, endDate: string): Promise<number> {
+async function executeEventRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>): Promise<number> {
     console.log(`[RuleEngine] Executing Event Rule: ${rule.code} (${rule.name})`);
     console.log(`[RuleEngine] Rule SQL: ${rule.condition_sql}`);
 
@@ -289,13 +294,25 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         // This is a safety net for rules that aren't hardcoded above.
         // We check for common patterns: new_value = 'X', context->>'Y' IS NULL, etc.
 
-        // Check: new_value = '...' (Strict AND condition)
+        // Match code or name from mapping
         const newValueMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
         if (newValueMatch) {
             const requiredValue = newValueMatch[1].toLowerCase();
             const valMatch = String(row.new_value).toLowerCase();
             const nameMatch = row.new_name ? String(row.new_name).toLowerCase() : null;
-            if (valMatch !== requiredValue && nameMatch !== requiredValue) return false;
+
+            // 1. Direct match (code or name)
+            if (valMatch === requiredValue || nameMatch === requiredValue) {
+                // matched
+            } else {
+                // 2. Lookup mapping (if requiredValue is a name, find the code)
+                const mappedCode = statusMap?.get(requiredValue);
+                if (mappedCode && mappedCode.toLowerCase() === valMatch) {
+                    // matched via mapping
+                } else {
+                    return false;
+                }
+            }
         }
 
         // JSON Checks: Usually "Bad Conditions". If ANY match, it's a violation.
