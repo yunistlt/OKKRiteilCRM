@@ -109,10 +109,79 @@ export async function GET() {
                     });
 
                 if (upsertError) {
-                    console.error('[History Sync] DB Error:', upsertError);
-                    throw new Error(upsertError.message);
+                    // Self-healing: If failing due to missing order_metrics/orders (FK), try to fetch the order explicitly
+                    if (upsertError.code === '23503') {
+                        console.warn('[History Sync] FK Violation. Attempting to auto-fix missing orders...');
+
+                        // Collect missing Order IDs from this batch
+                        const orderIds = Array.from(new Set(processedEvents.map((e: any) => e.retailcrm_order_id)));
+
+                        for (const missedId of orderIds) {
+                            try {
+                                // 1. Fetch single order from RetailCRM
+                                const singleOrderUrl = `${RETAILCRM_URL}/api/v5/orders/${missedId}?apiKey=${RETAILCRM_API_KEY}`;
+                                const soRes = await fetch(singleOrderUrl);
+                                const soData = await soRes.json();
+
+                                if (soData.success && soData.order) {
+                                    // 2. Upsert via RPC (same as retailcrm sync)
+                                    // We construct a mini-batch of 1
+                                    const o = soData.order;
+                                    const phones = new Set<string>();
+                                    // ... mini-utils ...
+                                    const clph = (v: any) => v ? String(v).replace(/[^\d+]/g, '') : '';
+
+                                    const p1 = clph(o.phone); if (p1) phones.add(p1);
+                                    if (o.additionalPhone) { const p2 = clph(o.additionalPhone); if (p2) phones.add(p2); }
+                                    if (o.customer?.phones) o.customer.phones.forEach((p: any) => { const x = clph(p.number); if (x) phones.add(x) });
+
+                                    const payload = [{
+                                        id: o.id,
+                                        order_id: o.id,
+                                        created_at: o.createdAt,
+                                        updated_at: new Date().toISOString(),
+                                        number: o.number || String(o.id),
+                                        status: o.status,
+                                        site: o.site || null,
+                                        event_type: 'snapshot',
+                                        manager_id: o.managerId ? String(o.managerId) : null,
+                                        phone: clph(o.phone) || null,
+                                        customer_phones: Array.from(phones),
+                                        totalsumm: o.totalSumm || 0,
+                                        raw_payload: o
+                                    }];
+
+                                    await supabase.rpc('upsert_orders_v2', { orders_data: payload });
+                                    // console.log(`[History Sync] Auto-healed order ${o.id}`);
+                                }
+                            } catch (healErr) {
+                                console.error(`[History Sync] Failed to heal order ${missedId}`, healErr);
+                            }
+                        }
+
+                        // Retry the batch upsert once
+                        const { error: retryError } = await supabase
+                            .from('raw_order_events')
+                            .upsert(processedEvents, {
+                                onConflict: 'retailcrm_order_id, event_type, occurred_at, source',
+                                ignoreDuplicates: true
+                            });
+
+                        if (retryError) {
+                            console.error('[History Sync] Retry failed, skipping batch:', retryError);
+                            // Do not throw, allow partial progress if possible? No, strict logging.
+                        } else {
+                            console.log('[History Sync] Retry successful after self-healing.');
+                            totalSaved += processedEvents.length;
+                        }
+
+                    } else {
+                        console.error('[History Sync] DB Error:', upsertError);
+                        throw new Error(upsertError.message);
+                    }
+                } else {
+                    totalSaved += processedEvents.length;
                 }
-                totalSaved += processedEvents.length;
 
                 // --- NEW: Propagate Status Changes to Orders Table ---
                 const statusChanges = history
