@@ -57,20 +57,60 @@ export async function POST(request: Request) {
         }
 
         // A. Detection Logic
-        if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()')) {
-            eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000);
+        // 1. Time based (e.g. > 24 hours) check
+        if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()') || sql.includes('occurred_at')) {
+            // fast forward: make event happen 25h ago
+            eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000); // 25 hours ago
         }
-        if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
+
+        // 2. Event Type & Field Name determination
+        if (sql.includes("event_type='status_changed'") || sql.includes("field_name = 'status'")) {
+            eventType = 'status_changed';
+            fieldName = 'status';
+        } else if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
             eventType = 'data_kontakta';
             fieldName = 'data_kontakta';
             const future = new Date();
             future.setDate(future.getDate() + 5);
             newValue = future.toISOString().split('T')[0];
         }
-        const statusMatch = sql.match(/new_value\s*=\s*'([^']+)'/);
-        if (statusMatch) {
-            newValue = statusMatch[1];
+
+        // 3. Smart Value Extraction
+        // Match specific EQUALS: new_value = 'X'
+        const eqMatch = sql.match(/(?:new_value|field_name)\s*=\s*'([^']+)'/);
+        if (eqMatch && eqMatch[1] !== 'status') {
+            // If it matched 'status', it just confirms field name, not value.
+            // But if it matched new_value = 'something', use it.
+            if (sql.includes(`new_value = '${eqMatch[1]}'`)) {
+                newValue = eqMatch[1];
+            }
         }
+
+        // Match IN clause: new_value IN ('a', 'b', ...)
+        const inMatch = sql.match(/new_value\s+IN\s*\(([^)]+)\)/i);
+        if (inMatch) {
+            // Extract first valid option from 'a', 'b', 'c'
+            const options = inMatch[1].split(',').map(s => s.trim().replace(/'/g, ''));
+            if (options.length > 0) {
+                newValue = options[0];
+            }
+        }
+
+        // 4. Special Handling for Context/Comments
+        const contextData: any = {
+            manager_comment: '', // Default empty for "No Comment" rules
+            status_name: newValue
+        };
+
+        // If rule checks for "status = 'Согласование...'", ensure we use that status name
+        if (newValue === 'soglasovanie-parametrov-zakaza' || sql.includes('Согласование параметров')) {
+            // Usually the Code is slug, Name is Russian. 
+            // If SQL checks "new_value = 'Согласование...'", then new_value should be that string.
+            // But usually new_value is CODE. 
+            // Let's trust the extraction above.
+        }
+
+        console.log(`[RuleTest] Generated Synthetic Data: Time=${eventTime.toISOString()}, Type=${eventType}, NewVal=${newValue}`);
 
         console.log('[RuleTest] Upserting Order...');
         const { error: orderErr } = await supabase.from('orders').upsert({
@@ -86,10 +126,7 @@ export async function POST(request: Request) {
             retailcrm_order_id: testOrderId,
             manager_id: managerId,
             current_status: fieldName === 'status' ? newValue : 'work',
-            full_order_context: {
-                manager_comment: '',
-                status_name: fieldName === 'status' ? newValue : 'work'
-            }
+            full_order_context: contextData
         });
         if (metricErr) throw new Error(`Metrics upsert failed: ${metricErr.message}`);
 
@@ -104,7 +141,7 @@ export async function POST(request: Request) {
             raw_payload: {
                 field: fieldName,
                 newValue: newValue,
-                oldValue: 'prev_value',
+                oldValue: 'work', // Safe default
                 status: { code: newValue, name: newValue },
                 _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
             },
