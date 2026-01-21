@@ -216,6 +216,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
 
         if (params.manager_ids?.length > 0) {
             if (!params.manager_ids.includes(managerId) && !params.manager_ids.includes(Number(managerId))) {
+                console.log(`[RuleEngine] Rule ${rule.code}: Manager ${managerId} not in expected list [${params.manager_ids}]. Event skipped.`);
                 return false;
             }
         }
@@ -290,7 +291,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
                     (e.raw_payload?.field === 'data_kontakta');
 
                 if (!isTargetField) {
-                    // console.log(`[RuleEngine] SKIP: Not data_kontakta.`);
+                    console.log(`[RuleEngine] Rule ${rule.code}: Not a contact date event. Skipped.`);
                     return false;
                 }
                 // console.log('[RuleEngine] MATCHED field!');
@@ -394,9 +395,13 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
             console.log(`[RuleEngine] JSON Checks result: matchedAny=${matchedAny}`);
 
             // If we have checks, but NONE matched, then the event is "Clean" -> Filter OUT.
-            if (!matchedAny) return false;
+            if (!matchedAny) {
+                console.log(`[RuleEngine] Rule ${rule.code}: Order ${orderId} - All JSON checks failed. Event is clean.`);
+                return false;
+            }
         }
 
+        console.log(`[RuleEngine] Rule ${rule.code}: SUCCESS! Violation confirmed for Order ${orderId}`);
         return true;
     });
 

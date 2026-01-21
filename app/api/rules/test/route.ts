@@ -78,26 +78,23 @@ export async function POST(request: Request) {
         }
 
         // 3. Smart Value Extraction
-        // Match specific EQUALS: new_value = 'X'
-        const eqMatch = sql.match(/(?:new_value|field_name)\s*=\s*'([^']+)'/);
-        if (eqMatch && eqMatch[1] !== 'status') {
-            const val = eqMatch[1];
-            // If val is a human name, use the code
+        // Match specific EQUALS: new_value = 'X' (Prioritize new_value)
+        const newValueEq = sql.match(/new_value\s*=\s*'([^']+)'/i);
+        const fieldNameEq = sql.match(/field_name\s*=\s*'([^']+)'/i);
+
+        if (newValueEq) {
+            const val = newValueEq[1];
             const mappedCode = nameToCode.get(val.toLowerCase());
-            if (mappedCode) {
-                newValue = mappedCode;
-            } else {
-                newValue = val;
-            }
+            newValue = mappedCode || val;
+        } else if (fieldNameEq && fieldNameEq[1] !== 'status') {
+            newValue = fieldNameEq[1];
         }
 
         // Match IN clause: new_value IN ('a', 'b', ...)
         const inMatch = sql.match(/new_value\s+IN\s*\(([^)]+)\)/i);
-        if (inMatch) {
-            // Extract first valid option from 'a', 'b', 'c'
+        if (inMatch && !newValueEq) { // Only if not already found via =
             const options = inMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
             if (options.length > 0) {
-                // Try translation
                 const mappedCode = nameToCode.get(options[0].toLowerCase());
                 newValue = mappedCode || options[0];
             }
@@ -166,8 +163,11 @@ export async function POST(request: Request) {
         // We cannot change runRuleEngine signature easily here. 
         // But if utils/supabase is configured with SERVICE key in env, it should work.
         // Assuming runRuleEngine works (it seemed to work in my local test).
+        // BROADEN THE SEARCH WINDOW FOR THE TEST RUN
+        // Force scan from 2 days ago to ensure we catch rules with > 24h delay
+        const longAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
         const violationsFound = await runRuleEngine(
-            startTime.toISOString(),
+            longAgo,
             endTime.toISOString(),
             ruleId
         );
