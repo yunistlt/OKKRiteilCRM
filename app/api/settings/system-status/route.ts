@@ -26,6 +26,7 @@ export async function GET() {
             .from('orders')
             .select('created_at')
             .order('created_at', { ascending: false })
+            .not('created_at', 'is', null)
             .limit(1)
             .single();
 
