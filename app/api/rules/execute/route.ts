@@ -21,6 +21,14 @@ export async function GET(request: Request) {
 
         await runRuleEngine(start.toISOString(), now.toISOString());
 
+        // Log execution time for monitoring
+        const { supabase } = await import('@/utils/supabase');
+        await supabase.from('sync_state').upsert({
+            key: 'rule_engine_last_run',
+            value: now.toISOString(),
+            updated_at: now.toISOString()
+        }, { onConflict: 'key' });
+
         return NextResponse.json({
             success: true,
             message: `Rule Engine executed for range ${start.toISOString()} -> ${now.toISOString()}`

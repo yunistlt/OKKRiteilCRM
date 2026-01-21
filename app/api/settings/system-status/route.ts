@@ -13,7 +13,10 @@ export async function GET() {
             .in('key', [
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
-                'transcription_min_duration'
+                'telphin_last_sync_time',
+                'telphin_backfill_cursor',
+                'transcription_min_duration',
+                'rule_engine_last_run'
             ]);
 
         if (syncError) throw syncError;
@@ -159,6 +162,24 @@ export async function GET() {
             reason: getDiagnosis('history_sync', historyOk, historyCursor)
         };
 
+        // 4.6 Rule Engine Execution & Active Rules
+        const ruleRunKey = stateMap.get('rule_engine_last_run');
+        const lastRuleRun = ruleRunKey?.updated_at || null;
+        const ruleRunOk = isFresh(lastRuleRun, 65); // 1 hour + 5 min buffer
+
+        const { data: activeRules } = await supabase
+            .from('okk_rules')
+            .select('name')
+            .eq('is_enabled', true);
+
+        const rulesStatus = {
+            service: 'Rule Engine Execution',
+            last_run: lastRuleRun,
+            status: ruleRunOk ? 'ok' : 'warning',
+            active_rules: activeRules?.map(r => r.name) || [],
+            details: ruleRunOk ? 'Running on schedule' : 'No execution > 1h'
+        };
+
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
@@ -168,6 +189,7 @@ export async function GET() {
         return NextResponse.json({
             services: [telphinMain, retailStatus, matchStatus, historyStatus],
             dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus],
+            rules_health: rulesStatus,
             settings
         });
 

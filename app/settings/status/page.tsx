@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -11,6 +12,14 @@ interface SyncServiceStatus {
     status: 'ok' | 'warning' | 'error';
     details: string;
     reason?: string | null;
+}
+
+interface RulesStatus {
+    service: string;
+    last_run: string | null;
+    status: 'ok' | 'warning';
+    active_rules: string[];
+    details: string;
 }
 
 interface OpenAIStatus {
@@ -29,6 +38,7 @@ interface DbStats {
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
+    const [savedRulesStatus, setSavedRulesStatus] = useState<RulesStatus | null>(null);
     const [loadingSync, setLoadingSync] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -49,13 +59,20 @@ export default function SystemStatusPage() {
         try {
             const res = await fetch('/api/settings/system-status');
             const data = await res.json();
+
             if (data.dashboard) {
                 setSyncStatuses(data.dashboard);
-                setLastUpdated(new Date());
             }
+
+            if (data.rules_health) {
+                setSavedRulesStatus(data.rules_health);
+            }
+
             if (data.settings && data.settings.transcription_min_duration) {
                 setMinDuration(data.settings.transcription_min_duration);
             }
+            setLastUpdated(new Date());
+
         } catch (e) {
             console.error('Failed to fetch sync status', e);
         } finally {
@@ -113,6 +130,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
         if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
         if (serviceName.includes('Matching Service')) url = '/api/matching/process';
+        if (serviceName.includes('Rule Engine')) url = '/api/rules/execute';
 
         if (!url) return;
 
@@ -185,6 +203,7 @@ export default function SystemStatusPage() {
         if (name.includes('Telphin Main')) return 'Телфин (Основной)';
         if (name.includes('RetailCRM')) return 'RetailCRM Заказы';
         if (name.includes('Matching Service')) return 'Матчинг (Live)';
+        if (name.includes('History Sync')) return 'History Sync (Rules)';
         return name;
     }
 
@@ -193,7 +212,8 @@ export default function SystemStatusPage() {
         if (name.includes('RetailCRM')) return '🛍️';
         if (name.includes('Matching')) return '🔗';
         if (name.includes('Transcription')) return '📝';
-        return '⚡️';
+        if (name.includes('History')) return '⚡️';
+        return '⚙️';
     };
 
     const totalTranscriptionPool = (dbStats?.transcribedCalls || 0) + (dbStats?.pendingCalls || 0);
@@ -328,6 +348,53 @@ export default function SystemStatusPage() {
                     </div>
                 )}
             </div>
+
+            {/* SECTION 1.5: Rule Engine Monitor */}
+            {savedRulesStatus && (
+                <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-xl shadow-blue-900/5 mb-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-blue-600"></div>
+
+                    <div className="flex items-center gap-4 z-10 w-full md:w-auto">
+                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-2xl shadow-inner flex-shrink-0">⚡️</div>
+                        <div>
+                            <h3 className="text-lg font-black text-gray-900 tracking-tight flex items-center gap-3">
+                                Правила ОКК
+                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest ${savedRulesStatus.status === 'ok' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                    {savedRulesStatus.status === 'ok' ? 'АКТИВЕН' : 'СБОЙ'}
+                                </span>
+                            </h3>
+                            <div className="flex flex-col md:flex-row md:items-center md:gap-4 mt-1 text-xs font-medium text-gray-500">
+                                <span title="Время последней автоматической проверки">
+                                    Проверка: {savedRulesStatus.last_run ? new Date(savedRulesStatus.last_run).toLocaleString('ru-RU') : 'Никогда'}
+                                </span>
+                                <span className="hidden md:inline text-gray-300">|</span>
+                                <span>{savedRulesStatus.details}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 w-full md:w-auto flex flex-col items-start md:items-end gap-2 z-10">
+                        <div className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1 w-full md:text-right">Активные Правила</div>
+                        <div className="flex flex-wrap md:justify-end gap-2 max-w-2xl">
+                            {savedRulesStatus.active_rules.length > 0 ? savedRulesStatus.active_rules.map((rule: string, idx: number) => (
+                                <span key={idx} className="px-3 py-1 bg-gray-50 border border-gray-200 rounded-lg text-xs font-bold text-gray-700 shadow-sm whitespace-nowrap">
+                                    {rule}
+                                </span>
+                            )) : (
+                                <span className="text-gray-400 text-xs italic">Нет активных правил</span>
+                            )}
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => runService('Rule Engine')}
+                        disabled={loadingSync}
+                        className="w-full md:w-auto px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 shadow-lg shadow-blue-200 active:scale-95 transition-all z-10 whitespace-nowrap mt-4 md:mt-0"
+                    >
+                        {loadingSync ? '...' : '▶ Проверить'}
+                    </button>
+                </div>
+            )}
 
             {/* SECTION 2: AI & STATS */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-6 mb-8">
