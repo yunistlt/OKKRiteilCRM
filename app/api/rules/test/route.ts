@@ -71,7 +71,7 @@ export async function POST(request: Request) {
             fieldName = 'status';
         } else if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
             eventType = 'data_kontakta';
-            fieldName = 'data_kontakta';
+            fieldName = 'next_contact_date'; // Use rule-standard name
             const future = new Date();
             future.setDate(future.getDate() + 5);
             newValue = future.toISOString().split('T')[0];
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
         if (metricErr) throw new Error(`Metrics upsert failed: ${metricErr.message}`);
 
         const humanName = codeToName.get(newValue) || newValue;
-        console.log('[RuleTest] Upserting Event...');
+        console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
         const { error: eventErr } = await supabase.from('raw_order_events').upsert({
             event_id: testEventId,
             retailcrm_order_id: testOrderId,

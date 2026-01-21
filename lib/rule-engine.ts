@@ -119,14 +119,19 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
             const actualEventTime = getActualEventTime(e);
             if (new Date(actualEventTime) < new Date(startDate) || new Date(actualEventTime) > new Date(endDate)) return null;
 
-            if (rule.params?.manager_ids?.length > 0) {
-                if (!rule.params.manager_ids.includes(managerId) && !rule.params.manager_ids.includes(Number(managerId))) return null;
+            const ruleParams = rule.parameters || {};
+            if (ruleParams.manager_ids?.length > 0) {
+                if (!ruleParams.manager_ids.includes(managerId) && !ruleParams.manager_ids.includes(Number(managerId))) {
+                    console.log(`[RuleEngine] Rule ${rule.code}: Manager ${managerId} not in monitored list:`, ruleParams.manager_ids);
+                    return null;
+                }
             }
 
-            const checksEmptyComment = rule.condition_sql?.includes('manager_comment') &&
+            const checksEmptyComment = rule.condition_sql?.toLowerCase().includes('manager_comment') &&
                 (rule.condition_sql?.includes('IS NULL') || rule.condition_sql?.includes("= ''"));
 
             if (checksEmptyComment && (!managerComment || managerComment.trim() === '')) {
+                console.log(`[RuleEngine] Rule ${rule.code}: Violation detected (Empty Comment) for Order ${orderId}`);
                 return {
                     order_id: orderId,
                     rule_code: rule.code,
@@ -167,10 +172,11 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
         const violationsToSave = results.filter((v): v is any => v !== null);
 
         if (violationsToSave.length > 0) {
+            console.log(`[RuleEngine] Rule ${rule.code}: Saving ${violationsToSave.length} semantic violations.`);
             const { error: upsertError } = await supabase.from('okk_violations').upsert(violationsToSave, {
-                onConflict: 'order_id, rule_code, call_id'
+                onConflict: 'rule_code, order_id, violation_time, call_id'
             });
-            if (upsertError) console.error('[RuleEngine] Semantic Batch Upsert Error:', upsertError);
+            if (upsertError) console.error(`[RuleEngine] Rule ${rule.code} (Semantic) Batch Upsert Error:`, upsertError);
             return violationsToSave.length;
         }
         return 0;
@@ -236,9 +242,34 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
             om
         };
 
+        // Normalize some field names for matching (RetailCRM names vs our event names)
+        if (row.field_name === 'data_kontakta') row.field_name = 'next_contact_date';
+
+        // 4. Manual Logic Overrides for complex rules
+        // Check: field_name = 'X' (Strict check if provided in SQL)
+        const fieldMatch = sql.match(/field_name\s*=\s*'([^']+)'/);
+        if (fieldMatch) {
+            const req = fieldMatch[1].toLowerCase();
+            const actual = row.field_name.toLowerCase();
+            if (req !== actual) {
+                // Special case: SQL might use 'data_kontakta'.
+                if (req === 'data_kontakta' && actual === 'next_contact_date') {
+                    // okay
+                } else if (req === 'next_contact_date' && actual === 'data_kontakta') {
+                    // okay
+                } else {
+                    console.log(`[RuleEngine] Rule ${rule.code}: Field name mismatch. Req: ${req}, Actual: ${actual}`);
+                    return false;
+                }
+            }
+        }
+
         // Logic Check
         if (sql.includes("field_name = 'status'") || sql.includes("field_name='status'")) {
-            if (row.field_name !== 'status') return false;
+            if (row.field_name !== 'status') {
+                console.log(`[RuleEngine] Rule ${rule.code}: Not a status event.`);
+                return false;
+            }
         }
 
         // Macro: @monitored_statuses
