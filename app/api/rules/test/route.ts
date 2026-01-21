@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         const inMatch = sql.match(/new_value\s+IN\s*\(([^)]+)\)/i);
         if (inMatch) {
             // Extract first valid option from 'a', 'b', 'c'
-            const options = inMatch[1].split(',').map(s => s.trim().replace(/'/g, ''));
+            const options = inMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
             if (options.length > 0) {
                 newValue = options[0];
             }
