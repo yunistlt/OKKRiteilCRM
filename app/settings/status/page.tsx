@@ -256,9 +256,9 @@ export default function SystemStatusPage() {
 
                 <div className="flex items-center gap-5">
                     <div className="text-right">
-                        <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">OpenAI</div>
+                        <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">OpenAI API</div>
                         <div className={`text-[10px] font-black ${openai.status === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-                            {openai.status === 'ok' ? 'ONLINE' : 'ERROR'}
+                            {openai.status === 'ok' ? 'ОНЛАЙН' : 'ОШИБКА'}
                         </div>
                     </div>
                     <div className="w-px h-5 bg-gray-100"></div>
@@ -286,7 +286,7 @@ export default function SystemStatusPage() {
                                 <th className="px-5 py-2 font-black text-gray-300 uppercase tracking-widest text-center">Статус</th>
                                 <th className="px-5 py-2 font-black text-gray-300 uppercase tracking-widest">Последний запуск</th>
                                 <th className="px-5 py-2 font-black text-gray-300 uppercase tracking-widest">Диагностика</th>
-                                <th className="px-5 py-2 font-black text-gray-300 uppercase tracking-widest text-right">Статус</th>
+                                <th className="px-5 py-2 font-black text-gray-300 uppercase tracking-widest text-right">Управление</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
@@ -329,7 +329,7 @@ export default function SystemStatusPage() {
                                                 onClick={() => runService(s.service)}
                                                 className={`px-3 py-1 rounded-lg font-black uppercase tracking-widest active:scale-95 text-[8px] ${s.status === 'ok' ? 'bg-gray-100 text-gray-800 hover:bg-blue-600 hover:text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                                             >
-                                                ▶ Launch
+                                                ▶ ЗАПУСТИТЬ
                                             </button>
                                         </td>
                                     </tr>
@@ -347,8 +347,8 @@ export default function SystemStatusPage() {
                     <div className="flex items-center justify-between mb-2">
                         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Реестр Правил (ОКК)</h3>
                         <div className="flex gap-2 text-[8px] font-black">
-                            <span className="text-green-600">В работе: {allRules.filter(r => r.is_active).length}</span>
-                            <span className="text-gray-300">Выкл: {allRules.filter(r => !r.is_active).length}</span>
+                            <span className="text-green-600">ВКЛ: {allRules.filter(r => r.is_active).length}</span>
+                            <span className="text-gray-300">ВЫКЛ: {allRules.filter(r => !r.is_active).length}</span>
                         </div>
                     </div>
 
@@ -357,7 +357,7 @@ export default function SystemStatusPage() {
                             <div key={idx} className={`px-2 py-1 rounded-lg border flex items-center justify-between gap-2 ${rule.is_active ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200'}`}>
                                 <div className="truncate font-bold text-gray-700 text-[9px]">{rule.name}</div>
                                 <div className={`text-[7px] font-black uppercase ${rule.is_active ? 'text-green-500' : 'text-gray-400'}`}>
-                                    {rule.is_active ? 'On' : 'Off'}
+                                    {rule.is_active ? 'ВКЛ' : 'ВЫКЛ'}
                                 </div>
                             </div>
                         ))}
@@ -375,7 +375,7 @@ export default function SystemStatusPage() {
                         <div className="h-full bg-purple-500" style={{ width: `${dbStats ? Math.round((dbStats.transcribedCalls / (dbStats.transcribedCalls + dbStats.pendingCalls || 1)) * 100) : 0}%` }}></div>
                     </div>
                     <button onClick={fetchTranscriptionDetails} className="w-full py-1.5 bg-purple-50 text-purple-600 rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white">
-                        Очередь
+                        ОЧЕРЕДЬ
                     </button>
                 </div>
 
@@ -383,7 +383,7 @@ export default function SystemStatusPage() {
                 <div className="bg-gray-900 rounded-2xl p-4 text-white flex flex-col justify-between h-full">
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                            <label className="text-[8px] font-black text-gray-500 uppercase">Min длина (сек)</label>
+                            <label className="text-[8px] font-black text-gray-500 uppercase">Мин длина (сек)</label>
                             <input
                                 type="number"
                                 value={minDuration}
@@ -391,7 +391,7 @@ export default function SystemStatusPage() {
                                 className="w-10 bg-gray-800 border-none rounded px-1 py-0.5 text-[10px] font-bold text-white text-right"
                             />
                         </div>
-                        <button onClick={saveSettings} className="w-full py-1 bg-blue-600 rounded text-[8px] font-black uppercase">Сохранить</button>
+                        <button onClick={saveSettings} className="w-full py-1 bg-blue-600 rounded text-[8px] font-black uppercase">СОХРАНИТЬ</button>
                     </div>
                     <div className="pt-2 border-t border-gray-800">
                         <button
@@ -399,7 +399,7 @@ export default function SystemStatusPage() {
                             disabled={refreshingPriorities}
                             className="w-full py-1.5 bg-white/10 hover:bg-white hover:text-gray-900 rounded-lg text-[8px] font-black uppercase tracking-widest transition-all"
                         >
-                            {refreshingPriorities ? '...' : '⚡️ Приоритеты'}
+                            {refreshingPriorities ? '...' : '⚡️ ПРИОРИТЕТЫ'}
                         </button>
                     </div>
                 </div>
@@ -416,20 +416,20 @@ export default function SystemStatusPage() {
                         </div>
                         <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 gap-6">
                             <div className="space-y-2">
-                                <h4 className="font-black text-purple-600">В очереди ({transcriptionDetails.queue.length})</h4>
+                                <h4 className="font-black text-purple-600 uppercase">В очереди ({transcriptionDetails.queue.length})</h4>
                                 {transcriptionDetails.queue.slice(0, 15).map((item: any) => (
                                     <div key={item.id} className="p-2 border border-gray-50 rounded-lg flex justify-between items-center">
                                         <span className="font-black text-gray-800">#{item.order?.number || '??'}</span>
-                                        <span className="text-gray-400">{item.duration}s</span>
+                                        <span className="text-gray-400 font-bold">{item.duration} сек</span>
                                     </div>
                                 ))}
                             </div>
                             <div className="space-y-2">
-                                <h4 className="font-black text-green-600">Готово ({transcriptionDetails.completed.length})</h4>
+                                <h4 className="font-black text-green-600 uppercase">Готово ({transcriptionDetails.completed.length})</h4>
                                 {transcriptionDetails.completed.slice(0, 15).map((item: any) => (
                                     <div key={item.id} className="p-2 border border-gray-50 rounded-lg flex justify-between items-center text-green-600">
                                         <span className="font-black">#{item.order?.number || '??'}</span>
-                                        <span className="font-bold">OK</span>
+                                        <span className="font-bold">ГОТОВО</span>
                                     </div>
                                 ))}
                             </div>
