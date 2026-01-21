@@ -167,20 +167,26 @@ export async function GET() {
         const lastRuleRun = ruleRunKey?.updated_at || null;
         const ruleRunOk = isFresh(lastRuleRun, 65); // 1 hour + 5 min buffer
 
-        const { data: activeRules } = await supabase
+        // --- Rule Engine Health ---
+        const { data: allRules } = await supabase
             .from('okk_rules')
-            .select('name')
-            .eq('is_active', true);
+            .select('name, is_active')
+            .order('name');
 
-        const rulesNames = activeRules?.map(r => r.name) || [];
+        const activeRules = allRules?.filter(r => r.is_active).map(r => r.name) || [];
+        const inactiveRules = allRules?.filter(r => !r.is_active).map(r => r.name) || [];
+
         const rulesStatus = {
             service: 'Rule Engine Execution',
-            cursor: 'Schedule',
+            cursor: 'Automated',
             last_run: lastRuleRun,
-            status: ruleRunOk ? 'ok' : 'warning',
-            details: rulesNames.length > 0 ? `Active (${rulesNames.length}): ${rulesNames.join(', ')}` : 'No active rules',
-            reason: ruleRunOk ? null : 'No execution > 1h',
-            active_rules: rulesNames // Pass explicitly if frontend wants to iterate
+            status: ruleRunOk ? 'ok' : 'error',
+            details: activeRules.length > 0
+                ? `Active (${activeRules.length}): ${activeRules.join(', ')}`
+                : 'No active rules found!',
+            reason: !ruleRunOk ? 'System has not run for > 1 hour. Possible Cron/API failure.' : null,
+            active_rules: activeRules,
+            inactive_rules: inactiveRules
         };
 
         // --- Settings ---
@@ -192,6 +198,7 @@ export async function GET() {
         return NextResponse.json({
             services: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
             dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
+            all_rules: allRules || [],
             settings
         });
 
