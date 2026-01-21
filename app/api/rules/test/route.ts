@@ -174,12 +174,13 @@ export async function POST(request: Request) {
 
         // Try to log error
         if (ruleId!) {
-            await supabase.from('okk_rule_test_logs').insert({
+            const { error: emergencyLogErr } = await supabase.from('okk_rule_test_logs').insert({
                 rule_code: ruleId,
                 status: 'error',
                 message: `Ошибка выполнения теста: ${e.message}`,
                 details: { error: e.message || String(e), stack: e.stack }
-            }).catch(err => console.error('Emergency log failed', err));
+            });
+            if (emergencyLogErr) console.error('Emergency log failed', emergencyLogErr);
         }
 
         return NextResponse.json({
