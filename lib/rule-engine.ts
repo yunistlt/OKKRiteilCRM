@@ -104,34 +104,25 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     let semanticViolations = 0;
     if (rule.rule_type === 'semantic') {
         console.log(`[RuleEngine] Semantic Analysis (Event) for ${rule.code}`);
-        for (const e of events) {
+        const semanticTasks = events.map(async (e) => {
             const orderId = e.retailcrm_order_id;
-            // order_metrics can be an array or object depending on join, safely handle it
             const metrics = Array.isArray(e.order_metrics) ? e.order_metrics[0] : e.order_metrics;
             const managerId = metrics?.manager_id;
             const context = metrics?.full_order_context || {};
             const managerComment = context.manager_comment;
 
-            // Basic filtering (date/manager) akin to SQL rules
             const actualEventTime = getActualEventTime(e);
-            if (new Date(actualEventTime) < new Date(startDate) || new Date(actualEventTime) > new Date(endDate)) continue;
+            if (new Date(actualEventTime) < new Date(startDate) || new Date(actualEventTime) > new Date(endDate)) return null;
 
-            // Check allowed managers if params exist
             if (rule.params?.manager_ids?.length > 0) {
-                if (!rule.params.manager_ids.includes(managerId) && !rule.params.manager_ids.includes(Number(managerId))) continue;
+                if (!rule.params.manager_ids.includes(managerId) && !rule.params.manager_ids.includes(Number(managerId))) return null;
             }
 
-            console.log(`[RuleEngine] Analyzing comment for Order ${orderId}...`);
-
-            // SPECIAL CASE: If rule checks for empty/null comments, handle directly
             const checksEmptyComment = rule.condition_sql?.includes('manager_comment') &&
                 (rule.condition_sql?.includes('IS NULL') || rule.condition_sql?.includes("= ''"));
 
             if (checksEmptyComment && (!managerComment || managerComment.trim() === '')) {
-                // Empty comment IS the violation for this rule type
-                console.log(`[RuleEngine] Empty comment detected - immediate violation for Order ${orderId}`);
-                semanticViolations++;
-                const { error: upsertError } = await supabase.from('okk_violations').upsert({
+                return {
                     order_id: orderId,
                     rule_code: rule.code,
                     manager_id: managerId,
@@ -140,41 +131,44 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
                     severity: rule.severity,
                     evidence_text: null,
                     call_id: null
-                }, { onConflict: 'order_id, rule_code, call_id' });
-
-                if (upsertError) {
-                    console.error('[RuleEngine] Violation Persistence Error:', upsertError);
-                }
-                continue; // Skip AI analysis for empty comments
+                };
             }
 
-            // Substitute variables in prompt
             let prompt = rule.semantic_prompt || rule.description;
             const newValue = (e.raw_payload?.status && typeof e.raw_payload.status === 'object') ? e.raw_payload.status.code : (e.raw_payload?.status || 'unknown');
             prompt = prompt.replace('{{new_value}}', newValue);
 
-            const analysis = await analyzeText(managerComment || '', prompt, 'Manager Comment');
-
-            if (analysis.is_violation) {
-                console.log(`[RuleEngine] Violation detected for Order ${orderId}! Reason: ${analysis.reasoning}`);
-                semanticViolations++;
-                const { error: upsertError } = await supabase.from('okk_violations').upsert({
-                    order_id: orderId,
-                    rule_code: rule.code,
-                    manager_id: managerId,
-                    violation_time: actualEventTime,
-                    details: analysis.reasoning,
-                    severity: rule.severity,
-                    evidence_text: analysis.evidence,
-                    call_id: null // Explicitly null for event violations
-                }, { onConflict: 'order_id, rule_code, call_id' }); // Ensure unique constraint matches DB
-
-                if (upsertError) {
-                    console.error('[RuleEngine] Violation Persistence Error:', upsertError);
+            try {
+                const analysis = await analyzeText(managerComment || '', prompt, 'Manager Comment');
+                if (analysis.is_violation) {
+                    return {
+                        order_id: orderId,
+                        rule_code: rule.code,
+                        manager_id: managerId,
+                        violation_time: actualEventTime,
+                        details: analysis.reasoning,
+                        severity: rule.severity,
+                        evidence_text: analysis.evidence,
+                        call_id: null
+                    };
                 }
+            } catch (err) {
+                console.error(`[RuleEngine] Semantic AI Error for Order ${orderId}:`, err);
             }
+            return null;
+        });
+
+        const results = await Promise.all(semanticTasks);
+        const violationsToSave = results.filter((v): v is any => v !== null);
+
+        if (violationsToSave.length > 0) {
+            const { error: upsertError } = await supabase.from('okk_violations').upsert(violationsToSave, {
+                onConflict: 'order_id, rule_code, call_id'
+            });
+            if (upsertError) console.error('[RuleEngine] Semantic Batch Upsert Error:', upsertError);
+            return violationsToSave.length;
         }
-        return semanticViolations;
+        return 0;
     }
 
     if (!events || events.length === 0) return 0;
@@ -352,36 +346,39 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
     });
 
     // --- ASYNC FILTERING FOR COMPLEX RULES ---
-    // Some rules (like Rescheduling) need Async DB checks. We do it here on the reduced set.
-    const finalViolations = [];
-    for (const v of violations) {
-        const sql = rule.condition_sql?.toLowerCase() || '';
+    // Batch process complex rules (like Rescheduling) to avoid N+1 queries
+    let finalViolations = Array.from(violations);
+    if (sql.includes("field_name = 'next_contact_date'")) {
+        console.log(`[RuleEngine] Batch checking calls for ${violations.length} potential 'next_contact_date' violations...`);
 
-        if (sql.includes("field_name = 'next_contact_date'")) {
-            // Perform the Async Call Check
-            // Verify NO CALLS in previous 24h
+        // 1. Collect all orders and time ranges
+        const orderIds = Array.from(new Set(violations.map((v: any) => v.retailcrm_order_id)));
+
+        // 2. Fetch all matches for these orders in the relevant overall range
+        // Note: For precision we could do per-event, but fetching all 24h calls for these orders is faster.
+        const { data: matches } = await supabase
+            .from('call_order_matches')
+            .select('retailcrm_order_id, raw_telphin_calls!inner(direction, started_at)')
+            .in('retailcrm_order_id', orderIds)
+            .eq('raw_telphin_calls.direction', 'outgoing')
+            .gte('raw_telphin_calls.started_at', new Date(new Date(startDate).getTime() - 24 * 60 * 60 * 1000).toISOString())
+            .lte('raw_telphin_calls.started_at', endDate);
+
+        // 3. Filter out those who actually DID have a call in their specific 24h window
+        finalViolations = violations.filter((v: any) => {
             const eventTime = new Date(v.occurred_at).getTime();
-            const oneDayAgo = new Date(eventTime - 24 * 60 * 60 * 1000).toISOString();
-            const timeOfEvent = v.occurred_at;
+            const oneDayAgo = eventTime - 24 * 60 * 60 * 1000;
 
-            // Check Outgoing Calls via Matches
-            const { count, error } = await supabase
-                .from('call_order_matches')
-                .select('match_id, raw_telphin_calls!inner(direction, started_at)', { count: 'exact', head: true })
-                .eq('retailcrm_order_id', v.retailcrm_order_id)
-                .filter('raw_telphin_calls.started_at', 'gte', oneDayAgo)
-                .filter('raw_telphin_calls.started_at', 'lte', timeOfEvent)
-                .filter('raw_telphin_calls.direction', 'eq', 'outgoing');
-            // User said "не выполнение действий", usually means outgoing. Let's stick to outgoing first.
+            const hasCall = matches?.some((m: any) => {
+                const call = Array.isArray(m.raw_telphin_calls) ? m.raw_telphin_calls[0] : m.raw_telphin_calls;
+                if (!call) return false;
+                return m.retailcrm_order_id === v.retailcrm_order_id &&
+                    new Date(call.started_at).getTime() >= oneDayAgo &&
+                    new Date(call.started_at).getTime() <= eventTime;
+            });
 
-            if (!error && count !== null && count > 0) {
-                console.log(`[RuleEngine] Order ${v.retailcrm_order_id}: Found ${count} calls. Not a violation.`);
-                continue; // Found calls, skip validation
-            }
-            // Add check for Emails later if needed...
-        }
-
-        finalViolations.push(v);
+            return !hasCall;
+        });
     }
 
     console.log(`[RuleEngine] Filtered ${finalViolations.length} violations for rule ${rule.code}.`);
@@ -396,22 +393,19 @@ async function executeEventRule(rule: any, startDate: string, endDate: string): 
         details: `Событие: ${v.event_type === 'status_changed' ? 'Смена статуса' : v.event_type}. ${rule.description || rule.name}`
     }));
 
-    let saved = 0;
-    for (const record of records) {
+    if (records.length > 0) {
         const { error: insError } = await supabase
             .from('okk_violations')
-            .upsert(record, { onConflict: 'rule_code, order_id, violation_time, call_id' });
+            .upsert(records, { onConflict: 'rule_code, order_id, violation_time, call_id' });
 
-        if (!insError) {
-            saved++;
-        } else if (insError.code === '23505') {
-            // Already exists
+        if (insError) {
+            console.error(`[RuleEngine] Error saving batch violations for ${rule.code}:`, insError);
         } else {
-            console.error(`[RuleEngine] Error saving order ${record.order_id}:`, insError);
+            console.log(`[RuleEngine] Successfully saved ${records.length} violations for rule ${rule.code}.`);
+            return records.length;
         }
     }
-    console.log(`[RuleEngine] Successfully saved ${saved} violations for rule ${rule.code}.`);
-    return saved;
+    return 0;
 }
 
 async function executeCallRule(rule: any, startDate: string, endDate: string): Promise<number> {
@@ -500,18 +494,18 @@ async function executeCallRule(rule: any, startDate: string, endDate: string): P
         })
         .filter(r => r.order_id !== null);
 
-    let saved = 0;
-    for (const record of records) {
+    if (records.length > 0) {
         const { error: insError } = await supabase
             .from('okk_violations')
-            .upsert(record, { onConflict: 'rule_code, call_id' });
+            .upsert(records, { onConflict: 'rule_code, call_id' });
 
-        if (!insError) saved++;
-        else if (insError.code !== '23505') {
-            console.error(`[RuleEngine] Error saving call violation:`, insError);
+        if (insError) {
+            console.error(`[RuleEngine] Error saving batch call violations:`, insError);
+        } else {
+            return records.length;
         }
     }
-    return saved;
+    return 0;
 }
 
 async function executeSemanticRule(rule: any, startDate: string, endDate: string): Promise<number> {
@@ -532,33 +526,27 @@ async function executeSemanticRule(rule: any, startDate: string, endDate: string
 
     if (!calls || calls.length === 0) return 0;
 
-    let saved = 0;
     const params = rule.parameters || {};
-
-    for (const c of calls) {
+    const semanticTasks = calls.map(async (c) => {
         const match = c.call_order_matches?.[0];
-        if (!match) continue;
+        if (!match) return null;
 
         const orderId = match.order_id;
         const managerId = match.orders?.manager_id;
 
-        // Filter by Manager ID
         if (params.manager_ids && params.manager_ids.length > 0) {
-            if (!managerId || !params.manager_ids.includes(managerId)) continue;
+            if (!managerId || !params.manager_ids.includes(managerId)) return null;
         }
 
-        // Filter by Order ID
         if (params.order_ids && params.order_ids.length > 0) {
-            if (!orderId || !params.order_ids.includes(orderId)) continue;
+            if (!orderId || !params.order_ids.includes(orderId)) return null;
         }
 
-        const result = await analyzeTranscript(c.transcript, rule.semantic_prompt || rule.description);
-
-        if (result.is_violation) {
-            const dirLabel = c.direction === 'incoming' ? 'входящий' : (c.direction === 'outgoing' ? 'исходящий' : c.direction);
-            const { error: insError } = await supabase
-                .from('okk_violations')
-                .upsert({
+        try {
+            const result = await analyzeTranscript(c.transcript, rule.semantic_prompt || rule.description);
+            if (result.is_violation) {
+                const dirLabel = c.direction === 'incoming' ? 'входящий' : (c.direction === 'outgoing' ? 'исходящий' : c.direction);
+                return {
                     rule_code: rule.code,
                     call_id: c.event_id,
                     order_id: match.order_id,
@@ -567,10 +555,24 @@ async function executeSemanticRule(rule: any, startDate: string, endDate: string
                     severity: rule.severity,
                     details: `Звонок: ${dirLabel}, ${c.duration_sec} сек. Анализ: ${result.reasoning}`,
                     evidence_text: result.evidence
-                }, { onConflict: 'rule_code, call_id' });
-
-            if (!insError) saved++;
+                };
+            }
+        } catch (err) {
+            console.error(`[RuleEngine] Semantic AI Error for Call ${c.event_id}:`, err);
         }
+        return null;
+    });
+
+    const results = await Promise.all(semanticTasks);
+    const violationsToSave = results.filter((v): v is any => v !== null);
+
+    if (violationsToSave.length > 0) {
+        const { error: insError } = await supabase
+            .from('okk_violations')
+            .upsert(violationsToSave, { onConflict: 'rule_code, call_id' });
+
+        if (insError) console.error('[RuleEngine] Semantic Call Batch Upsert Error:', insError);
+        return violationsToSave.length;
     }
-    return saved;
+    return 0;
 }
