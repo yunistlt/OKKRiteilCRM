@@ -17,29 +17,45 @@ export async function GET() {
     try {
         const openai = new OpenAI({ apiKey });
 
-        // Simple test: list models
-        // This is cheaper/faster than a completion
-        const models = await openai.models.list();
+        // List models to verify key and get available models
+        const list = await openai.models.list();
+        const models = list.data.map(m => m.id);
+
+        // Check for required models
+        const hasGpt4oMini = models.some(m => m.includes('gpt-4o-mini'));
+        const hasWhisper = models.some(m => m.includes('whisper'));
 
         return NextResponse.json({
             status: 'ok',
-            message: 'API Key is valid and active',
-            details: `Found ${models.data.length} models available.`
+            message: 'API Key активен',
+            key_preview: `...${apiKey.slice(-4)}`,
+            models: {
+                total: models.length,
+                has_gpt4o_mini: hasGpt4oMini,
+                has_whisper: hasWhisper
+            },
+            billing_url: 'https://platform.openai.com/settings/organization/billing/overview'
         });
     } catch (error: any) {
         console.error('[OpenAI Status Check] Failed:', error);
 
         let message = 'Ошибка при подключении к OpenAI';
+        let reason = 'network_error';
+
         if (error.status === 401) {
             message = 'Неверный API ключ (401 Unauthorized)';
+            reason = 'invalid_key';
         } else if (error.status === 429) {
-            message = 'Лимит запросов исчерпан или недостаточно средств на балансе (429 Too Many Requests)';
+            message = 'Лимит запросов исчерпан или недостаточно средств (429 Too Many Requests)';
+            reason = 'insufficient_quota';
         }
 
         return NextResponse.json({
             status: 'error',
             message: message,
-            code: error.code || error.status || 'unknown'
+            reason: reason,
+            code: error.code || error.status || 'unknown',
+            billing_url: 'https://platform.openai.com/settings/organization/billing/overview'
         });
     }
 }

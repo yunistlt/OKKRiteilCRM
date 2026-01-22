@@ -39,17 +39,6 @@ export async function GET(request: Request) {
                 report.push(`Matches: Error (${e.message})`);
             }
         }
-        if (checkBudget('Matching')) {
-            console.log('[CRON] Step 4: Matching');
-            try {
-                const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
-                const matchJson = await matchRes.json();
-                report.push(`Matches: ${matchJson.matches_found || 0} new`);
-            } catch (e: any) {
-                console.error('[CRON] Matching Error:', e);
-                report.push(`Matches: Error (${e.message})`);
-            }
-        }
 
         // 2. Run Rule Engine
         if (checkBudget('Rules')) {

@@ -13,7 +13,7 @@ async function diagnose() {
     }
 
     console.log(`Total Rules: ${data.length}`);
-    const active = data.filter(r => r.is_enabled);
+    const active = data.filter(r => r.is_active);
     console.log(`Active Rules (${active.length}):`, active.map(r => r.name));
 
     // Check Enabled column type just in case

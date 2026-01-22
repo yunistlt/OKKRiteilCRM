@@ -18,6 +18,14 @@ interface OpenAIStatus {
     status: 'ok' | 'error' | 'loading';
     message: string;
     code?: string;
+    reason?: string;
+    key_preview?: string;
+    models?: {
+        total: number;
+        has_gpt4o_mini: boolean;
+        has_whisper: boolean;
+    };
+    billing_url?: string;
 }
 
 interface DbStats {
@@ -77,7 +85,7 @@ export default function SystemStatusPage() {
     };
 
     const checkOpenAI = async () => {
-        setOpenai({ status: 'loading', message: 'Проверяем соединение...' });
+        setOpenai(prev => ({ ...prev, status: 'loading', message: 'Проверяем...' }));
         try {
             const res = await fetch('/api/debug/openai/status');
             const data = await res.json();
@@ -256,13 +264,6 @@ export default function SystemStatusPage() {
 
                 <div className="flex items-center gap-5">
                     <div className="text-right">
-                        <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">OpenAI API</div>
-                        <div className={`text-[10px] font-black ${openai.status === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-                            {openai.status === 'ok' ? 'ОНЛАЙН' : 'ОШИБКА'}
-                        </div>
-                    </div>
-                    <div className="w-px h-5 bg-gray-100"></div>
-                    <div className="text-right">
                         <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">Заказов</div>
                         <div className="text-sm font-black text-gray-900">{dbStats?.workingOrders || 0}</div>
                     </div>
@@ -275,6 +276,75 @@ export default function SystemStatusPage() {
                     </button>
                 </div>
             </div>
+
+            {/* OPENAI STATUS CARD */}
+            {openai.status !== 'loading' && (
+                <div className={`rounded-xl border shadow-sm p-4 relative overflow-hidden transition-all ${openai.status === 'ok'
+                        ? 'bg-gradient-to-br from-white to-green-50 border-green-200'
+                        : 'bg-gradient-to-br from-white to-red-50 border-red-200'
+                    }`}>
+                    <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-inner ${openai.status === 'ok' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
+                                }`}>
+                                🧠
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-gray-900 text-sm">OpenAI API Connection</h3>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <div className={`w-2 h-2 rounded-full ${openai.status === 'ok' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                                    <span className={`text-xs font-semibold uppercase tracking-wide ${openai.status === 'ok' ? 'text-green-700' : 'text-red-700'
+                                        }`}>
+                                        {openai.status === 'ok' ? 'Connected' : 'Error / Disconnected'}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {openai.status === 'ok' && openai.models && (
+                            <div className="hidden md:flex flex-col items-end gap-1">
+                                <div className="flex gap-1">
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${openai.models.has_gpt4o_mini ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>GPT-4o-mini</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${openai.models.has_whisper ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>Whisper</span>
+                                </div>
+                                <span className="text-[9px] text-gray-400 font-mono">Key: {openai.key_preview}</span>
+                            </div>
+                        )}
+
+                        {openai.status === 'error' && (
+                            <div className="text-right">
+                                <div className="bg-red-100 text-red-800 px-2 py-1 rounded text-[10px] font-bold border border-red-200 inline-block mb-1">
+                                    {openai.code || 'UNKNOWN ERROR'}
+                                </div>
+                                {openai.reason === 'insufficient_quota' && (
+                                    <div className="text-[10px] font-bold text-red-600 animate-bounce">
+                                        Check Balance! 💸
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+
+                    <div className="mt-3 pt-3 border-t border-gray-100/50 flex justify-between items-center">
+                        <p className={`text-xs ${openai.status === 'ok' ? 'text-gray-500' : 'text-red-600 font-medium'}`}>
+                            {openai.message}
+                        </p>
+
+                        {openai.billing_url && (
+                            <a
+                                href={openai.billing_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
+                            >
+                                Manage Billing
+                                <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                            </a>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* CORE MONITORING TABLE */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
