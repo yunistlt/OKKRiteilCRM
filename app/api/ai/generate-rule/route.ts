@@ -10,79 +10,69 @@ const openai = new OpenAI({
 });
 
 const SYSTEM_PROMPT = `
-You are a SQL Expert AND a Semantic Analyst for a Call Center & CRM.
-Target tables: 
-1. 'raw_telphin_calls' (VoIP Calls) - entity_type: 'call'
-2. 'raw_order_events' (History/Audit) - entity_type: 'event'
+You are an OKK Rule Architect. Your task is to convert human requirements into structured Logic Blocks.
+You do NOT write SQL code anymore. You use a library of predefined "Blocks".
 
-Schema 'raw_telphin_calls':
-- started_at (timestamp)
-- duration_sec (int)
-- direction (incoming/outgoing)
-- transcript (text)
+LIBRARY OF BLOCKS (Managed in 'okk_block_definitions'):
 
-Schema 'raw_order_events':
-- occurred_at (timestamp)
-- field_name (text) (e.g. 'status', 'manager_comment', 'delivery_date')
-- old_value (text)
-- new_value (text)
-- retailcrm_order_id (int)
+1. TRIGGER: 'status_change'
+   - Description: Fires when order status changes.
+   - Params: { "target_status": "code", "direction": "to" | "from" }
 
-Schema 'statuses' (Dictionary):
-- code (text) (primary key)
-- name (text)
-- is_working (boolean) - If true, this status is monitored for Quality Control (Анализ).
-- is_transcribable (boolean) - If true, calls in this status are transcribed.
+2. CONDITION: 'field_empty'
+   - Description: Checks for missing comment or data.
+   - Params: { "field_path": "manager_comment" | "next_contact_date" | "custom_field_code" }
 
-JOINED CONTEXT (Available for SQL):
-- om.current_status (text)
-- om.order_amount (numeric)
-- om.manager_id (int)
-- om.full_order_context (JSONB)
+3. CONDITION: 'time_elapsed'
+   - Description: Checks if event is older than X hours.
+   - Params: { "hours": number }
 
-SEMANTIC MACROS (Use these instead of complex subqueries):
-- "@monitored_statuses" -> Use when user refers to "monitored", "active", "statuses for analysis" (is_working = true).
-- "@transcribable_statuses" -> Use when user refers to statuses for transcription.
+4. CONDITION: 'call_exists'
+   - Description: Checks for a call in history.
+   - Params: { "window_hours": number, "min_duration": number }
 
-TERM MAPPING (Russian -> DB Field):
-- "Статус" -> field_name = 'status'
-- "Комментарий менеджера" -> manager_comment
-- "Сумма", "Стоимость" -> total_sum / order_amount
-- "Дата доставки" -> delivery_date
-- "Оплата", "Статус оплаты" -> payment_status
-- "Причина отмены" -> cancel_reason
+5. CONDITION: 'semantic_check'
+   - Description: GPT-based semantic analysis.
+   - Params: { "prompt": "instructions for AI" }
 
-Task:
-Convert User's requirement into a Rule Definition.
+OUTPUT STRUCTURE:
+You must return a JSON object representing the rule. Rules are evaluated as: TRIGGER -> [List of CONDITIONS (AND logic)].
 
-Rule Types:
-1. 'sql' (Default) - For checks on metadata like duration, direction, status changes, comments presence.
-2. 'semantic' - For checks that require analyzing WHAT was said in the call (quality of service, asking questions, sentiment, etc).
+{
+  "name": "Название правила (RU)",
+  "description": "Описание (RU)",
+  "entity_type": "event" | "call",
+  "rule_type": "sql" | "semantic",
+  "logic": {
+    "trigger": { "block": "status_change", "params": { ... } },
+    "conditions": [
+      { "block": "block_code", "params": { ... } }
+    ]
+  }
+}
 
-Determine 'entity_type' based on what we are looking for (Calls vs History Events).
+EXAMPLES:
+User: "If status is Cancel and no comment"
+Output: {
+  "name": "Отмена без комментария",
+  "entity_type": "event",
+  "rule_type": "sql",
+  "logic": {
+    "trigger": { "block": "status_change", "params": { "target_status": "cancel", "direction": "to" } },
+    "conditions": [{ "block": "field_empty", "params": { "field_path": "manager_comment" } }]
+  }
+}
 
-IMPORTANT (Strict rules):
-- If the check involves ANALYZING CONVERSATION/SPEECH CONTENT -> set rule_type: 'semantic'.
-- If the check is about metadata (duration, missed, just a status changed) -> set rule_type: 'sql'.
-- OUTPUT MUST BE IN RUSSIAN LANGUAGE (Name and Explanation/Description).
-- Even if the user prompt is in English, translate the explanation to Russian.
-- "name" field should be a short, professional Title in Russian (max 4-5 words).
-- Use macros like 'new_value IN (@monitored_statuses)' when applicable.
-
-Examples:
-1. User: "Short calls"
-   Output: { "entity_type": "call", "sql": "duration_sec < 10", "name": "Короткий звонок", "explanation": "Поиск звонков длительностью менее 10 секунд." }
-
-2. User: "Status changed to Cancelled"
-   Output: { "entity_type": "event", "sql": "field_name = 'status' AND new_value = 'cancel'", "name": "Смена статуса на Отмена", "explanation": "События изменения статуса заказа на 'Отмена' (cancel)." }
-
-3. User: "Manager comment is empty when status changes for monitored statuses"
-   Output: { 
-     "entity_type": "event", 
-     "sql": "field_name = 'status' AND new_value IN (@monitored_statuses) AND (om.full_order_context->>'manager_comment' IS NULL OR om.full_order_context->>'manager_comment' = '')",
-     "name": "Пустой комментарий при смене статуса",
-     "explanation": "Проверка событий смены статуса на один из отслеживаемых, где поле 'Комментарий менеджера' в текущем контексте заказа пустое."
-   }
+User: "Check if manager was polite in the call"
+Output: {
+  "name": "Вежливость менеджера",
+  "entity_type": "call",
+  "rule_type": "semantic",
+  "logic": {
+    "trigger": null,
+    "conditions": [{ "block": "semantic_check", "params": { "prompt": "Оцени вежливость..." } }]
+  }
+}
 `;
 
 export async function POST(req: Request) {
