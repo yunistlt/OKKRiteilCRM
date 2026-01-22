@@ -375,7 +375,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
             for (const match of nullChecks) {
                 const key = match[1]; // key is lowercase from sql
                 const val = getContextValue(row.om.full_order_context, key);
-                console.log(`[RuleEngine] Checking NULL for '${key}'. Value:`, val);
+                // console.log(`[RuleEngine] Checking NULL for '${key}'. Value:`, val);
 
                 if (val === undefined || val === null) {
                     matchedAny = true;
@@ -388,7 +388,7 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
                 for (const match of emptyChecks) {
                     const key = match[1];
                     const val = getContextValue(row.om.full_order_context, key);
-                    console.log(`[RuleEngine] Checking EMPTY for '${key}'. Value: '${val}'`);
+                    // console.log(`[RuleEngine] Checking EMPTY for '${key}'. Value: '${val}'`);
                     if (val === '') {
                         matchedAny = true;
                         break;
@@ -396,11 +396,25 @@ async function executeEventRule(rule: any, startDate: string, endDate: string, s
                 }
             }
 
-            console.log(`[RuleEngine] JSON Checks result: matchedAny=${matchedAny}`);
+            // console.log(`[RuleEngine] JSON Checks result: matchedAny=${matchedAny}`);
 
             // If we have checks, but NONE matched, then the event is "Clean" -> Filter OUT.
             if (!matchedAny) {
-                console.log(`[RuleEngine] Rule ${rule.code}: Order ${orderId} - All JSON checks failed. Event is clean.`);
+                // console.log(`[RuleEngine] Rule ${rule.code}: Order ${orderId} - All JSON checks failed. Event is clean.`);
+                return false;
+            }
+        }
+
+        // 6. Time-based Logic Check (NOW() - INTERVAL)
+        // Example: occurred_at < NOW() - INTERVAL '24 hours'
+        const timeMatch = sql.match(/occurred_at\s*<\s*now\(\)\s*-\s*interval\s*'(\d+)\s+hours'/i);
+        if (timeMatch) {
+            const hoursThreshold = parseInt(timeMatch[1]);
+            const eventTime = new Date(getActualEventTime(e)).getTime();
+            const thresholdTime = Date.now() - (hoursThreshold * 60 * 60 * 1000);
+
+            if (eventTime > thresholdTime) {
+                // Event is too recent -> skip
                 return false;
             }
         }

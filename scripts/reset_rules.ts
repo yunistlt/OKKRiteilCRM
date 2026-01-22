@@ -30,7 +30,7 @@ const defaultRules = [
         name: 'Незаполненные ТОП-3 поля',
         description: 'Проверка заказов в статусе "Согласование параметров заказа" более 24 часов без заполнения полей ТОП3.',
         entity_type: 'event',
-        condition_sql: "field_name = 'status' AND new_value = 'soglasovanie-parametrov-zakaza' AND occurred_at < NOW() - INTERVAL '24 hours' AND (om.full_order_context->>'ТОП3 Проходим ли по цене?' IS NULL OR om.full_order_context->>'ТОП3 Проходим по срокам?' IS NULL OR om.full_order_context->>'ТОП3 Проходим по тех. характеристикам?' IS NULL)",
+        condition_sql: "field_name = 'status' AND new_value = 'na-soglasovanii' AND occurred_at < NOW() - INTERVAL '24 hours' AND (om.full_order_context->>'ТОП3 Проходим ли по цене?' IS NULL OR om.full_order_context->>'ТОП3 Проходим по срокам?' IS NULL OR om.full_order_context->>'ТОП3 Проходим по тех. характеристикам?' IS NULL)",
         severity: 'critical',
         rule_type: 'sql',
         is_active: true,

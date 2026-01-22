@@ -106,12 +106,13 @@ export async function POST(request: Request) {
             status_name: newValue
         };
 
-        // If rule checks for "status = 'Согласование...'", ensure we use that status name
-        if (newValue === 'soglasovanie-parametrov-zakaza' || sql.includes('Согласование параметров')) {
-            // Usually the Code is slug, Name is Russian. 
-            // If SQL checks "new_value = 'Согласование...'", then new_value should be that string.
-            // But usually new_value is CODE. 
-            // Let's trust the extraction above.
+        // If rule checks for "status = '...'", ensure we use that status code
+        // Extraction is already handled by newValueEq above.
+        if (newValue) {
+            const humanFromMap = codeToName.get(newValue);
+            if (humanFromMap) {
+                contextData.status_name = humanFromMap;
+            }
         }
 
         console.log(`[RuleTest] Generated Synthetic Data: Time=${eventTime.toISOString()}, Type=${eventType}, NewVal=${newValue}`);
@@ -148,9 +149,11 @@ export async function POST(request: Request) {
                 newValue: fieldName === 'status' ? { code: newValue, name: humanName } : newValue,
                 oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
                 status: { code: newValue, name: humanName },
+                newValue_code: newValue,
+                newValue_name: humanName,
                 _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
             },
-            source: 'synthetic_test' // Explicit source
+            source: 'synthetic_test'
         });
         if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
 
