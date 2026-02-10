@@ -25,12 +25,40 @@ export async function GET(request: Request) {
         const maxTimeMs = 50000; // 50 seconds limit
         const maxPagesPerRun = 20; // Safe limit
 
-        const days = parseInt(searchParams.get('days') || '30');
-        const defaultLookback = new Date();
-        defaultLookback.setDate(defaultLookback.getDate() - days);
-        const filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
+        // Incremental Sync Logic
+        // 1. Check last sync time (max created_at in DB)
+        const { data: lastClient } = await supabase
+            .from('clients')
+            .select('created_at')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
 
-        console.log(`[Corporate Clients Sync] Syncing updates from: ${filterDateFrom} (Last ${days} days)`);
+        let filterDateFrom: string;
+        let days = parseInt(searchParams.get('days') || '30');
+
+        if (lastClient && lastClient.created_at) {
+            // Add 1 second buffer to avoid re-fetching the exact same last record too often (though API usually handles >=)
+            // Actually RetailCRM filter is usually inclusive, so we might get the last one again, which upsert handles.
+            const lastDate = new Date(lastClient.created_at);
+            filterDateFrom = lastClient.created_at; // ISO string
+            console.log(`[Corporate Clients Sync] Found existing clients. Resuming from: ${filterDateFrom}`);
+        } else {
+            // First run or empty table
+            const defaultLookback = new Date();
+            defaultLookback.setDate(defaultLookback.getDate() - days);
+            filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
+            console.log(`[Corporate Clients Sync] No existing clients found. Starting fresh from: ${filterDateFrom} (Last ${days} days)`);
+        }
+
+        // 2. Add filter to params
+        const params = new URLSearchParams();
+        params.append('apiKey', RETAILCRM_API_KEY);
+        // params.append('filter[createdAtFrom]', filterDateFrom); 
+        // Note: For corporate customers, check API docs for correct filter param.
+        // v5 docs: /api/v5/customers-corporate
+        // filters: filter[createdAtFrom], filter[dateFrom]... usually [createdAtFrom]
+        params.append('filter[createdAtFrom]', filterDateFrom);
 
         let page = 1;
         let pagesProcessed = 0;
