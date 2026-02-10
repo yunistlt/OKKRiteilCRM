@@ -64,7 +64,11 @@ export async function GET(request: Request) {
         // Note: For corporate customers, check API docs for correct filter param.
         // v5 docs: /api/v5/customers-corporate
         // filters: filter[createdAtFrom], filter[dateFrom]... usually [createdAtFrom]
-        params.append('filter[createdAtFrom]', filterDateFrom);
+        // But error says "Filter does not exist".
+        // Checking docs/common usage: often it's filter[dateFrom] for standard customers, 
+        // but for corporate it might indeed be dateFrom or createdAt.
+        // Let's try `filter[dateFrom]` as it is standard in v5 for customers.
+        params.append('filter[dateFrom]', filterDateFrom);
 
         let page = parseInt(searchParams.get('start_page') || '1');
         let pagesProcessed = 0;
