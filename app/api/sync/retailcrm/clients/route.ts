@@ -27,12 +27,18 @@ export async function GET(request: Request) {
 
         // Incremental Sync Logic
         // 1. Check last sync time (max created_at in DB)
-        const { data: lastClient } = await supabase
-            .from('clients')
-            .select('created_at')
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+        const ignoreDb = searchParams.get('ignore_db') === 'true';
+        let lastClient = null;
+
+        if (!ignoreDb) {
+            const { data } = await supabase
+                .from('clients')
+                .select('created_at')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+            lastClient = data;
+        }
 
         let filterDateFrom: string;
         let days = parseInt(searchParams.get('days') || '30');
@@ -44,11 +50,11 @@ export async function GET(request: Request) {
             filterDateFrom = lastClient.created_at; // ISO string
             console.log(`[Corporate Clients Sync] Found existing clients. Resuming from: ${filterDateFrom}`);
         } else {
-            // First run or empty table
+            // First run or empty table or forced full sync
             const defaultLookback = new Date();
             defaultLookback.setDate(defaultLookback.getDate() - days);
             filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
-            console.log(`[Corporate Clients Sync] No existing clients found. Starting fresh from: ${filterDateFrom} (Last ${days} days)`);
+            console.log(`[Corporate Clients Sync] Starting fresh/full sync from: ${filterDateFrom} (Last ${days} days)`);
         }
 
         // 2. Add filter to params
@@ -60,7 +66,7 @@ export async function GET(request: Request) {
         // filters: filter[createdAtFrom], filter[dateFrom]... usually [createdAtFrom]
         params.append('filter[createdAtFrom]', filterDateFrom);
 
-        let page = 1;
+        let page = parseInt(searchParams.get('start_page') || '1');
         let pagesProcessed = 0;
         let totalClientsFetched = 0;
         let hasMore = true;
@@ -70,10 +76,9 @@ export async function GET(request: Request) {
             const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
             const limit = 100;
 
-            const params = new URLSearchParams();
-            params.append('apiKey', RETAILCRM_API_KEY);
-            params.append('limit', String(limit));
-            params.append('page', String(page));
+            // Update params for loop
+            params.set('limit', String(limit));
+            params.set('page', String(page));
 
             // Fetch Corporate Customers
             // Endpoint: /api/v5/customers-corporate
@@ -181,7 +186,8 @@ export async function GET(request: Request) {
             method: 'corporate_clients_sync',
             pages_processed: pagesProcessed,
             total_fetched: totalClientsFetched,
-            has_more: hasMore
+            has_more: hasMore,
+            next_page: hasMore ? page : null
         });
 
     } catch (error: any) {
