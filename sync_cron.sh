@@ -21,11 +21,15 @@ curl -s "$API_URL/history" > /dev/null
 echo "Syncing RetailCRM Orders (Backfill)..."
 curl -s "$API_URL/retailcrm" > /dev/null
 
-# 5. Telphin Calls (Communication)
+# 5. Sync Clients (New)
+echo "Syncing Clients..."
+curl -s "$API_URL/retailcrm/clients" > /dev/null
+
+# 6. Telphin Calls (Communication)
 echo "Syncing Calls..."
 curl -s "http://localhost:3000/api/sync/telphin" > /dev/null
 
-# 6. Matching & AI Audit (The Intelligence)
+# 7. Matching & AI Audit (The Intelligence)
 echo "Matching Calls to Orders & Triggering AI..."
 curl -s "http://localhost:3000/api/match" > /dev/null
 

@@ -11,12 +11,16 @@ echo "------------------------------------------"
 echo "1/3 Обновление статусов заказов..."
 curl -s "$API_URL/history" | grep -q "success\":true" && echo "✅ Статусы обновлены" || echo "❌ Ошибка при обновлении статусов"
 
-# 2. Sync Telphin Calls
-echo "2/3 Загрузка новых звонков из Телфин..."
+# 2. Sync Clients 
+echo "2/4 Загрузка клиентов..."
+curl -s "http://localhost:3000/api/sync/retailcrm/clients" | grep -q "success\":true" && echo "✅ Клиенты обновлены" || echo "❌ Ошибка при обновлении клиентов"
+
+# 3. Sync Telphin Calls
+echo "3/4 Загрузка новых звонков из Телфин..."
 curl -s "$API_URL/telphin" | grep -q "success\":true" && echo "✅ Звонки загружены" || echo "❌ Ошибка при загрузке звонков"
 
-# 3. Matching
-echo "3/3 Привязка звонков к заказам..."
+# 4. Matching
+echo "4/4 Привязка звонков к заказам..."
 curl -s "http://localhost:3000/api/match" | grep -q "success\":true" && echo "✅ Матчинг завершен" || echo "❌ Ошибка при матчинге"
 
 echo "------------------------------------------"

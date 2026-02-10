@@ -24,6 +24,10 @@
         {
             "path": "/api/sync/managers",
             "schedule": "0 * * * *"
+        },
+        {
+            "path": "/api/sync/retailcrm/clients",
+            "schedule": "0 4 * * *"
         }
     ]
 }
