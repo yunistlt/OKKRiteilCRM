@@ -1,0 +1,10 @@
+Starting Full Corporate Clients Sync...
+Lookback: 3650 days
+Target: https://okk-riteil-crm-aqwq.vercel.app/api/sync/retailcrm/clients
+----------------------------------------
+Fetching batch starting at page 1...
+Response: {"error":"RetailCRM API Error: 400"}
+...
+Fetched in this batch: undefined
+Sync Complete or No More Pages.
+Done.

@@ -86,7 +86,17 @@ export async function GET(request: Request) {
             console.log(`[Corporate Clients Sync] Fetching Page ${page}:`, url);
 
             const res = await fetch(url);
-            if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
+            if (!res.ok) {
+                const errorText = await res.text();
+                console.error(`RetailCRM API Error Body: ${errorText}`);
+                // Return error details to client for debugging
+                return NextResponse.json({
+                    success: false,
+                    error: `RetailCRM API Error: ${res.status}`,
+                    details: errorText,
+                    url: url
+                }, { status: 400 });
+            }
 
             const data = await res.json();
             if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
