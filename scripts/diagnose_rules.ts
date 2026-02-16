@@ -17,7 +17,11 @@ async function diagnose() {
     console.log(`Active Rules (${active.length}):`, active.map(r => r.name));
 
     // Check Enabled column type just in case
-    console.log('Sample Rule:', data[0]);
+    console.log('Rules Logic:');
+    data.forEach(r => {
+        console.log(`--- Rule: ${r.name} (${r.code}) ---`);
+        console.log(JSON.stringify(r.logic, null, 2));
+    });
 }
 
 diagnose();

@@ -45,12 +45,14 @@ export async function POST(request: Request) {
         // 2. Create Synthetic Data (Smart adaptation to Rule SQL)
         console.log(`[RuleTest] Creating synthetic data...`);
         const sql = rule.condition_sql || '';
+        const logic = rule.logic;
         const now = new Date();
 
         let eventTime = now;
         let eventType = 'status_changed';
         let fieldName = 'status';
         let newValue = 'novyi-1';
+        let managerComment = '';
 
         // CRITICAL: Use manager from rule parameters if specified
         let managerId = 249; // Default fallback
@@ -58,56 +60,78 @@ export async function POST(request: Request) {
             managerId = Number(rule.parameters.manager_ids[0]); // Ensure number
         }
 
-        // A. Detection Logic
-        // 1. Time based (e.g. > 24 hours) check
-        if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()') || sql.includes('occurred_at')) {
-            // fast forward: make event happen 25h ago
-            eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000); // 25 hours ago
-        }
+        if (logic) {
+            // Logic V2 Branch
+            console.log('[RuleTest] Parsing Logic V2 blocks...');
 
-        // 2. Event Type & Field Name determination
-        if (sql.includes("event_type='status_changed'") || sql.includes("field_name = 'status'")) {
-            eventType = 'status_changed';
-            fieldName = 'status';
-        } else if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
-            eventType = 'data_kontakta';
-            fieldName = 'next_contact_date'; // Use rule-standard name
-            const future = new Date();
-            future.setDate(future.getDate() + 5);
-            newValue = future.toISOString().split('T')[0];
-        }
+            // 1. Trigger
+            if (logic.trigger?.block === 'status_change') {
+                eventType = 'status_changed';
+                fieldName = 'status';
+                newValue = logic.trigger.params?.target_status || newValue;
+            }
 
-        // 3. Smart Value Extraction
-        // Match specific EQUALS: new_value = 'X' (Prioritize new_value)
-        const newValueEq = sql.match(/new_value\s*=\s*'([^']+)'/i);
-        const fieldNameEq = sql.match(/field_name\s*=\s*'([^']+)'/i);
+            // 2. Conditions
+            if (logic.conditions && Array.isArray(logic.conditions)) {
+                for (const cond of logic.conditions) {
+                    if (cond.block === 'time_elapsed') {
+                        const h = cond.params?.hours || 24;
+                        eventTime = new Date(now.getTime() - (h + 1) * 60 * 60 * 1000);
+                    }
+                    if (cond.block === 'field_empty' && cond.params?.field_path === 'manager_comment') {
+                        managerComment = ''; // Ensure empty for "No comment" rule
+                    }
+                }
+            }
+        } else {
+            // Legacy SQL Branch
+            console.log('[RuleTest] Parsing Legacy SQL...');
+            // 1. Time based (e.g. > 24 hours) check
+            if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()') || sql.includes('occurred_at')) {
+                // fast forward: make event happen 25h ago
+                eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000); // 25 hours ago
+            }
 
-        if (newValueEq) {
-            const val = newValueEq[1];
-            const mappedCode = nameToCode.get(val.toLowerCase());
-            newValue = mappedCode || val;
-        } else if (fieldNameEq && fieldNameEq[1] !== 'status') {
-            newValue = fieldNameEq[1];
-        }
+            // 2. Event Type & Field Name determination
+            if (sql.includes("event_type='status_changed'") || sql.includes("field_name = 'status'")) {
+                eventType = 'status_changed';
+                fieldName = 'status';
+            } else if (sql.includes('next_contact_date') || sql.includes('data_kontakta')) {
+                eventType = 'data_kontakta';
+                fieldName = 'next_contact_date'; // Use rule-standard name
+                const future = new Date();
+                future.setDate(future.getDate() + 5);
+                newValue = future.toISOString().split('T')[0];
+            }
 
-        // Match IN clause: new_value IN ('a', 'b', ...)
-        const inMatch = sql.match(/new_value\s+IN\s*\(([^)]+)\)/i);
-        if (inMatch && !newValueEq) { // Only if not already found via =
-            const options = inMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
-            if (options.length > 0) {
-                const mappedCode = nameToCode.get(options[0].toLowerCase());
-                newValue = mappedCode || options[0];
+            // 3. Smart Value Extraction
+            const newValueEq = sql.match(/new_value\s*=\s*'([^']+)'/i);
+            const fieldNameEq = sql.match(/field_name\s*=\s*'([^']+)'/i);
+
+            if (newValueEq) {
+                const val = newValueEq[1];
+                const mappedCode = nameToCode.get(val.toLowerCase());
+                newValue = mappedCode || val;
+            } else if (fieldNameEq && fieldNameEq[1] !== 'status') {
+                newValue = fieldNameEq[1];
+            }
+
+            const inMatch = sql.match(/new_value\s+IN\s*\(([^)]+)\)/i);
+            if (inMatch && !newValueEq) {
+                const options = inMatch[1].split(',').map((s: string) => s.trim().replace(/'/g, ''));
+                if (options.length > 0) {
+                    const mappedCode = nameToCode.get(options[0].toLowerCase());
+                    newValue = mappedCode || options[0];
+                }
             }
         }
 
         // 4. Special Handling for Context/Comments
         const contextData: any = {
-            manager_comment: '', // Default empty for "No Comment" rules
+            manager_comment: managerComment,
             status_name: newValue
         };
 
-        // If rule checks for "status = '...'", ensure we use that status code
-        // Extraction is already handled by newValueEq above.
         if (newValue) {
             const humanFromMap = codeToName.get(newValue);
             if (humanFromMap) {
