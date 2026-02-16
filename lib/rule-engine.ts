@@ -146,8 +146,8 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             if (transitionEvent) {
                 occurredAt = transitionEvent.occurred_at;
             } else {
-                // Fallback to order creation if no event found
-                occurredAt = item.created_at || item.created_at_crm;
+                // Fallback to order creation if no event found, but ensure it's not too far back if we have occurred_at
+                occurredAt = item.occurred_at || item.created_at || item.created_at_crm || new Date().toISOString();
             }
         }
 
@@ -173,14 +173,19 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             if (cond.block === 'no_new_comments') {
                 const { data: activity } = await supabase
                     .from('raw_order_events')
-                    .select('event_id')
+                    .select('event_id, event_type, raw_payload')
                     .eq('retailcrm_order_id', context.orderId)
-                    .or(`event_type.eq.status,event_type.eq.status_changed`)
-                    .eq('raw_payload->field', 'manager_comment')
                     .gt('occurred_at', context.occurredAt)
-                    .limit(1);
+                    .limit(10); // Check a few to be safe
 
-                if (activity && activity.length > 0) {
+                // New activity is strictly manager comments/messages
+                const hasRealActivity = (activity || []).some(ev => {
+                    const type = String(ev.event_type);
+                    const field = String(ev.raw_payload?.field || '');
+                    return type.includes('comment') || type.includes('message') || field === 'manager_comment';
+                });
+
+                if (hasRealActivity) {
                     allMatched = false;
                     break;
                 }

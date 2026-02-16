@@ -160,7 +160,9 @@ export async function POST(request: Request) {
             id: testOrderId,
             order_id: testOrderId,
             status: fieldName === 'status' ? newValue : 'work',
-            manager_id: managerId
+            manager_id: managerId,
+            created_at: eventTime.toISOString(),
+            occurred_at: eventTime.toISOString()
         });
         if (orderErr) throw new Error(`Order upsert failed: ${orderErr.message}`);
 
