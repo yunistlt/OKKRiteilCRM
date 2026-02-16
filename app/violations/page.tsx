@@ -58,6 +58,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                             <tr>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Правило</th>
+                                <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Баллы</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Менеджер</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Детали</th>
                                 <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Заказ / Статус</th>
@@ -78,6 +79,9 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                                 {v.okk_rules?.name || v.rule_code}
                                             </span>
                                         </div>
+                                    </td>
+                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm font-bold text-gray-700">
+                                        {v.points || '—'}
                                     </td>
                                     <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-900">
                                         {v.managers ? `${v.managers.first_name || ''} ${v.managers.last_name || ''}`.trim() || 'N/A' : 'N/A'}

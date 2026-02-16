@@ -239,6 +239,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 manager_id: context.managerId,
                 violation_time: context.occurredAt,
                 severity: rule.severity,
+                points: rule.points || 10,
                 call_id: rule.entity_type === 'call' ? item.event_id : null,
                 details: semanticResult ? semanticResult.reasoning : `${rule.name}: Нарушение зафиксировано.`,
                 evidence_text: semanticResult ? semanticResult.evidence : null

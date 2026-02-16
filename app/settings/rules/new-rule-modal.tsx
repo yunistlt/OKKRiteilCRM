@@ -16,6 +16,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [name, setName] = useState('');
     const [entityType, setEntityType] = useState<'call' | 'event' | 'order'>('call');
     const [severity, setSeverity] = useState('medium');
+    const [points, setPoints] = useState(10);
     const [historyDays, setHistoryDays] = useState(0);
     const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
 
@@ -132,6 +133,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 entity_type: entityType,
                 logic, // Structured logic instead of SQL
                 severity,
+                points,
                 is_active: true
             }, historyDays);
 
@@ -256,6 +258,20 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                             <option value="event">📑 Событие (Live)</option>
                                             <option value="call">📞 Звонок</option>
                                         </select>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Штрафные баллы</label>
+                                        <div className="flex items-center gap-3">
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={points}
+                                                onChange={e => setPoints(parseInt(e.target.value) || 0)}
+                                                className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold focus:border-indigo-500 outline-none transition-all"
+                                            />
+                                            <span className="text-xs text-gray-400 font-medium whitespace-nowrap">баллов за нарушение</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
