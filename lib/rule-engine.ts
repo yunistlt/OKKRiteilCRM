@@ -162,6 +162,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         // A. Match Trigger
         if (logic.trigger) {
             const matchesTrigger = matchBlock(logic.trigger, context);
+            console.log(`[RuleEngine] [${rule.code}] Candidate ${context.orderId}: Trigger Match = ${matchesTrigger} (Status: ${context.item.status}, Target: ${logic.trigger.params?.target_status})`);
             if (!matchesTrigger) continue;
         }
 

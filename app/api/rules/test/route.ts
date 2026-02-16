@@ -261,12 +261,14 @@ export async function POST(request: Request) {
         if (logInsertErr) console.error('Log insert failed:', logInsertErr);
 
         // 6. Cleanup
-        console.log(`[RuleTest] Cleaning up...`);
-        steps.push(`🧹 Очистка временных данных`);
+        console.log(`[RuleTest] Cleaning up skipped for debugging...`);
+        steps.push(`⚠️ Очистка данных отключена для отладки (Order #${testOrderId})`);
+        /*
         await supabase.from('okk_violations').delete().eq('order_id', testOrderId);
         await supabase.from('raw_order_events').delete().eq('event_id', testEventId);
         await supabase.from('order_metrics').delete().eq('retailcrm_order_id', testOrderId);
         await supabase.from('orders').delete().eq('id', testOrderId);
+        */
 
         return NextResponse.json({
             success: isSuccess,
