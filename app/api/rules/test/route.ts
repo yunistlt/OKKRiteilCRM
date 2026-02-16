@@ -20,19 +20,33 @@ export async function POST(request: Request) {
         const body = await request.json();
         console.log('[RuleTest] Received body:', JSON.stringify(body));
         ruleId = body.ruleId;
+        const adHocLogic = body.adHocLogic;
 
-        if (!ruleId) {
-            console.error('[RuleTest] Missing ruleId in body:', body);
-            return NextResponse.json({ success: false, error: 'Missing ruleId' }, { status: 400 });
+        if (!ruleId && !adHocLogic) {
+            console.error('[RuleTest] Missing ruleId or adHocLogic in body:', body);
+            return NextResponse.json({ success: false, error: 'Missing ruleId or adHocLogic' }, { status: 400 });
         }
 
-        console.log(`[RuleTest] Starting test for rule: ${ruleId}`);
+        console.log(`[RuleTest] Starting test. ruleId: ${ruleId}, hasAdHoc: ${!!adHocLogic}`);
 
         // 1. Fetch Rule Info & Status Mappings
-        const [{ data: rule, error: ruleError }, { data: statuses }] = await Promise.all([
-            supabase.from('okk_rules').select('*').eq('code', ruleId).single(),
+        const [ruleRes, { data: statuses }] = await Promise.all([
+            adHocLogic ? Promise.resolve({
+                data: {
+                    code: ruleId || 'adhoc_test_' + Date.now(),
+                    logic: adHocLogic,
+                    entity_type: body.entity_type || 'order',
+                    severity: body.severity || 'medium',
+                    name: 'Тестовое правило'
+                }, error: null
+            }) :
+                supabase.from('okk_rules').select('*').eq('code', ruleId).single(),
             supabase.from('statuses').select('code, name')
         ]);
+
+        const rule = ruleRes.data;
+        const ruleError = ruleRes.error;
+        ruleId = rule?.code || ruleId;
 
         if (ruleError || !rule) {
             console.error('Rule Fetch Error:', ruleError);
@@ -196,7 +210,9 @@ export async function POST(request: Request) {
         const violationsFound = await runRuleEngine(
             longAgo,
             endTime.toISOString(),
-            ruleId
+            ruleId,
+            true, // dryRun = true
+            adHocLogic ? rule : undefined
         );
 
         // 4. Verify Violation Exists

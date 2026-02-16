@@ -23,6 +23,10 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [dryRunLoading, setDryRunLoading] = useState(false);
     const [dryRunResults, setDryRunResults] = useState<{ count: number, violations: any[] } | null>(null);
 
+    // Synthetic Test State
+    const [syntheticLoading, setSyntheticLoading] = useState(false);
+    const [syntheticResult, setSyntheticResult] = useState<{ success: boolean, message: string } | null>(null);
+
     // Metadata
     const [allManagers, setAllManagers] = useState<any[]>([]);
     const [statuses, setStatuses] = useState<{ code: string, name: string }[]>([]);
@@ -77,6 +81,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
     const handleDryRun = async () => {
         if (!logic) return;
+        setDryRunResults(null);
         setDryRunLoading(true);
         try {
             const res = await fetch('/api/rules/dry-run', {
@@ -90,6 +95,30 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
             console.error('Dry Run Failed:', e);
         } finally {
             setDryRunLoading(false);
+        }
+    };
+
+    const handleSyntheticTest = async () => {
+        if (!logic) return;
+        setSyntheticLoading(true);
+        setSyntheticResult(null);
+        try {
+            const res = await fetch('/api/rules/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    adHocLogic: logic,
+                    entity_type: entityType,
+                    severity: severity
+                })
+            });
+            const data = await res.json();
+            setSyntheticResult(data);
+        } catch (e) {
+            console.error('Synthetic Test Failed:', e);
+            setSyntheticResult({ success: false, message: 'Ошибка при выполнении теста' });
+        } finally {
+            setSyntheticLoading(false);
         }
     };
 
@@ -234,13 +263,31 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
                         <div className="space-y-4">
                             <div className="sticky top-0 bg-white pt-2 z-10">
-                                <button
-                                    onClick={handleDryRun}
-                                    disabled={dryRunLoading}
-                                    className="w-full bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
-                                >
-                                    {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
-                                </button>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <button
+                                        onClick={handleDryRun}
+                                        disabled={dryRunLoading}
+                                        className="w-full bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                        {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
+                                    </button>
+                                    <button
+                                        onClick={handleSyntheticTest}
+                                        disabled={syntheticLoading}
+                                        className="w-full bg-indigo-50 border-2 border-indigo-100 text-indigo-700 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {syntheticLoading ? 'Запуск теста...' : '🧪 Проверка Синтетикой'}
+                                    </button>
+                                </div>
+
+                                {syntheticResult && (
+                                    <div className={`mt-2 p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                                        <div className="flex items-center gap-2 uppercase tracking-widest">
+                                            <span>{syntheticResult.success ? '✅' : '❌'}</span>
+                                            {syntheticResult.message}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {dryRunResults && (
