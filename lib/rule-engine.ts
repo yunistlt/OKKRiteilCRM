@@ -88,18 +88,16 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     if (rule.entity_type === 'call') {
         query = supabase.from('raw_telphin_calls').select('*, call_order_matches(order_id: retailcrm_order_id, orders(manager_id))');
     } else if (rule.entity_type === 'order') {
-        // STATE-BASED: Fetch current orders
-        // Use simpler select if joined metrics cause issues
-        query = supabase.from('orders').select('*, order_metrics(current_status, manager_id, full_order_context)');
+        // STATE-BASED: Fetch current orders (NO JOIN here as FK is missing)
+        query = supabase.from('orders').select('*');
     } else {
-        query = supabase.from('raw_order_events').select('*, order_metrics(current_status, manager_id, full_order_context)');
+        query = supabase.from('raw_order_events').select('*');
     }
 
     // Apply filters specialized by entity type
     if (rule.entity_type === 'call') {
         query = query.gte('started_at', startDate).lte('started_at', endDate);
     } else if (rule.entity_type === 'order') {
-        // For orders, we filter by their current status if trigger is "status_change"
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
             if (target) {
@@ -111,9 +109,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         query = query.gte('occurred_at', startDate).lte('occurred_at', endDate);
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
-            if (target) {
-                query = query.eq('event_type', 'status_changed');
-            }
+            if (target) query = query.eq('event_type', 'status_changed');
         }
     }
 
@@ -122,9 +118,23 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         if (trace) trace.push(`[RuleEngine] [${rule.code}] DB ERROR: ${error.message}`);
         console.error(`[RuleEngine] [${rule.code}] Query error:`, error);
     }
-    if (!items) return dryRun ? [] : 0;
+    if (!items || items.length === 0) return dryRun ? [] : 0;
 
     if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidates Found: ${items.length}`);
+
+    // FETCH METRICS MANUALLY if needed
+    let metricsMap = new Map();
+    if (rule.entity_type !== 'call') {
+        const orderIds = items.map(i => i.retailcrm_order_id || i.id);
+        const { data: metricsData } = await supabase
+            .from('order_metrics')
+            .select('retailcrm_order_id, current_status, manager_id, full_order_context')
+            .in('retailcrm_order_id', orderIds);
+
+        if (metricsData) {
+            metricsData.forEach(m => metricsMap.set(m.retailcrm_order_id, m));
+        }
+    }
 
     const violations: any[] = [];
 
@@ -133,7 +143,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         const orderId = rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id);
         const metrics = rule.entity_type === 'call'
             ? item.call_order_matches?.[0]?.orders
-            : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics);
+            : metricsMap.get(orderId);
 
         let occurredAt = rule.entity_type === 'call' ? item.started_at : (item.raw_payload?._sync_metadata?.order_statusUpdatedAt || item.occurred_at);
 
