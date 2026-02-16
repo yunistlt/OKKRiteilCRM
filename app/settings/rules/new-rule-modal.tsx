@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { createRule } from '@/app/actions/rules';
+import RuleBlockEditor, { RuleLogic } from './rule-block-editor';
 
 export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt?: string, trigger?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -10,34 +11,44 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [isLoading, setIsLoading] = useState(false);
 
     // Draft State
-    const [sql, setSql] = useState('');
+    const [logic, setLogic] = useState<RuleLogic | null>(null);
     const [explanation, setExplanation] = useState('');
     const [name, setName] = useState('');
-    const [entityType, setEntityType] = useState<'call' | 'event'>('call');
+    const [entityType, setEntityType] = useState<'call' | 'event' | 'order'>('call');
     const [severity, setSeverity] = useState('medium');
     const [historyDays, setHistoryDays] = useState(0);
-    const [step, setStep] = useState(1); // 1: Input & Filters, 2: Review SQL
+    const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
 
-    // Filters State
-    const [selectedManagers, setSelectedManagers] = useState<number[]>([]);
-    const [orderIdsInput, setOrderIdsInput] = useState('');
+    // Dry Run State
+    const [dryRunLoading, setDryRunLoading] = useState(false);
+    const [dryRunResults, setDryRunResults] = useState<{ count: number, violations: any[] } | null>(null);
+
+    // Metadata
     const [allManagers, setAllManagers] = useState<any[]>([]);
+    const [statuses, setStatuses] = useState<{ code: string, name: string }[]>([]);
 
-    const fetchManagers = async () => {
+    const fetchData = async () => {
         try {
-            const mRes = await fetch('/api/managers');
+            const [mRes, sRes, stRes] = await Promise.all([
+                fetch('/api/managers'),
+                fetch('/api/managers/controlled'),
+                fetch('/api/statuses')
+            ]);
+
             const mData = await mRes.json();
-            const sRes = await fetch('/api/managers/controlled');
             const sData = await sRes.json();
+            const stData = await stRes.json();
+
             const controlledIds = new Set((sData || []).map((s: any) => s.id));
             setAllManagers((mData || []).filter((m: any) => controlledIds.has(m.id)));
+            setStatuses(stData || []);
         } catch (e) {
-            console.error('Failed to fetch managers:', e);
+            console.error('Failed to fetch data:', e);
         }
     };
 
     useEffect(() => {
-        if (isOpen) fetchManagers();
+        if (isOpen) fetchData();
     }, [isOpen]);
 
     const handleGenerate = async () => {
@@ -45,20 +56,40 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
         try {
             const res = await fetch('/api/ai/generate-rule', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ prompt })
             });
             const data = await res.json();
             if (data.error) throw new Error(data.error);
 
-            setSql(data.sql);
-            setExplanation(data.explanation);
+            setLogic(data.logic);
+            setExplanation(data.description || data.explanation);
             setName(data.name || prompt.substring(0, 30));
             setEntityType(data.entity_type || 'call');
             setStep(2);
+            setDryRunResults(null); // Reset preview
         } catch (e) {
             alert('AI Generation Failed: ' + e);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleDryRun = async () => {
+        if (!logic) return;
+        setDryRunLoading(true);
+        try {
+            const res = await fetch('/api/rules/dry-run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ logic, entity_type: entityType, days: 7 })
+            });
+            const data = await res.json();
+            setDryRunResults(data);
+        } catch (e) {
+            console.error('Dry Run Failed:', e);
+        } finally {
+            setDryRunLoading(false);
         }
     };
 
@@ -70,19 +101,15 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 name,
                 description: explanation,
                 entity_type: entityType,
-                condition_sql: sql,
+                logic, // Structured logic instead of SQL
                 severity,
-                parameters: {
-                    manager_ids: selectedManagers,
-                    order_ids: orderIdsInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-                },
                 is_active: true
             }, historyDays);
+
             setIsOpen(false);
             setStep(1);
             setPrompt('');
-            setSelectedManagers([]);
-            setOrderIdsInput('');
+            setLogic(null);
         } catch (e) {
             alert('Save Failed: ' + e);
         } finally {
@@ -91,9 +118,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     };
 
     if (!isOpen) {
-        if (trigger) {
-            return <div onClick={() => setIsOpen(true)}>{trigger}</div>;
-        }
+        if (trigger) return <div onClick={() => setIsOpen(true)}>{trigger}</div>;
         return (
             <button
                 onClick={() => setIsOpen(true)}
@@ -105,165 +130,167 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[95vh] overflow-y-auto">
-                <h2 className="text-xl font-bold mb-4">Создание правила (AI)</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8 my-8 relative animate-in fade-in zoom-in duration-200">
+                <button onClick={() => setIsOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+
+                <h2 className="text-2xl font-black mb-6 flex items-center gap-3">
+                    <span className="p-2 bg-indigo-50 rounded-xl text-indigo-600">✨</span>
+                    Создание правила
+                </h2>
 
                 {step === 1 && (
-                    <div className="space-y-4">
+                    <div className="space-y-6">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">Опишите, что искать:</label>
+                            <label className="block text-xs font-black uppercase tracking-widest text-gray-400 mb-2">Что нужно проверять?</label>
                             <textarea
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
-                                placeholder="Например: Звонки короче 10 секунд..."
-                                className="w-full border-2 border-indigo-50 rounded-lg p-3 h-24 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                placeholder="Опишите правило своими словами. Например: 'Забыли позвонить по новому заказу в течение часа' или 'Нет комментария при отмене'"
+                                className="w-full border-2 border-gray-100 rounded-2xl p-4 h-32 focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-lg font-medium resize-none shadow-inner bg-gray-50/30"
                             />
                         </div>
 
-                        {/* Filters on Home Screen */}
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-4">
-                            <h3 className="text-xs font-black uppercase tracking-widest text-gray-400">Настройки применения</h3>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center gap-2">
-                                    🕰️ Период действия
-                                </label>
-                                <select
-                                    value={historyDays}
-                                    onChange={e => setHistoryDays(Number(e.target.value))}
-                                    className="w-full border-gray-200 rounded-lg p-2 bg-white text-sm"
+                        <div className="flex flex-wrap gap-2">
+                            {['Забытый заказ', 'Отмена без комментария', 'Грубость менеджера', 'Длинная пауза'].map(tag => (
+                                <button
+                                    key={tag}
+                                    onClick={() => setPrompt(tag)}
+                                    className="px-3 py-1.5 text-xs rounded-full border border-gray-100 bg-white text-gray-500 hover:border-indigo-200 hover:text-indigo-600 transition-all font-bold"
                                 >
-                                    <option value={0}>С этого момента и всегда</option>
-                                    <option value={1}>За последние 24 часа + будущее</option>
-                                    <option value={7}>За последние 7 дней + будущее</option>
-                                    <option value={30}>За последние 30 дней + будущее</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">
-                                    👤 Менеджеры (Опционально)
-                                </label>
-                                <div className="max-h-24 overflow-y-auto border border-gray-200 rounded-lg bg-white p-2">
-                                    {allManagers.map(m => (
-                                        <label key={m.id} className="flex items-center gap-2 text-xs py-1 cursor-pointer hover:bg-indigo-50 px-1 rounded transition-colors text-gray-600">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedManagers.includes(m.id)}
-                                                onChange={(e) => {
-                                                    if (e.target.checked) setSelectedManagers([...selectedManagers, m.id]);
-                                                    else setSelectedManagers(selectedManagers.filter(id => id !== m.id));
-                                                }}
-                                                className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                            {m.first_name} {m.last_name || ''}
-                                        </label>
-                                    ))}
-                                    {allManagers.length === 0 && <span className="text-gray-400 text-[10px] italic">Нет активных менеджеров</span>}
-                                </div>
-                                <p className="text-[10px] text-gray-400 mt-1 italic">
-                                    * Если никто не выбран, проверка будет идти по всем менеджерам в списке.
-                                </p>
-                            </div>
-
-                            <div>
-                                <label className="block text-xs font-bold text-gray-700 mb-1">
-                                    📦 Номера заказов (через запятую)
-                                </label>
-                                <input
-                                    type="text"
-                                    value={orderIdsInput}
-                                    onChange={e => setOrderIdsInput(e.target.value)}
-                                    placeholder="Например: 12345, 12346"
-                                    className="w-full border-gray-200 rounded-lg p-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition-all placeholder:text-gray-300"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1 italic">
-                                    * Если не указаны, проверка пойдет по всем заказам в статусах, выбранных в настройках.
-                                </p>
-                            </div>
+                                    + {tag}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* Tags */}
-                        <div>
-                            <span className="text-[10px] text-gray-400 font-black uppercase tracking-wider block mb-2">Подсказки:</span>
-                            <div className="flex flex-wrap gap-1.5">
-                                {(() => {
-                                    const TAGS = [
-                                        { label: 'Статус заказа', value: 'поле status' },
-                                        { label: 'Комментарий', value: 'комментарий' },
-                                        { label: 'Сумма', value: 'сумма' },
-                                        { label: 'Длительность', value: 'длительность' },
-                                        { label: 'Отмена', value: 'отмена' }
-                                    ];
-                                    return TAGS.map(tag => (
-                                        <button
-                                            key={tag.value}
-                                            onClick={() => setPrompt(prev => prev ? `${prev} ${tag.label}` : tag.label)}
-                                            className="px-2 py-1 text-[10px] rounded-lg border border-gray-100 bg-white text-gray-500 hover:border-indigo-200 hover:text-indigo-600 transition-all font-bold"
-                                        >
-                                            + {tag.label}
-                                        </button>
-                                    ));
-                                })()}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-2 pt-2 border-t mt-4">
-                            <button onClick={() => setIsOpen(false)} className="px-4 py-2 text-gray-500 font-bold hover:bg-gray-50 rounded-xl transition-colors">Отмена</button>
+                        <div className="flex justify-end gap-3 pt-6 border-t font-black">
+                            <button onClick={() => setIsOpen(false)} className="px-6 py-3 text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest text-xs">Отмена</button>
                             <button
                                 onClick={handleGenerate}
                                 disabled={!prompt || isLoading}
-                                className="bg-indigo-600 text-white px-8 py-2 rounded-xl hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-200 disabled:opacity-50 transition-all font-black uppercase tracking-widest text-xs flex items-center gap-2"
+                                className="bg-black text-white px-10 py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-all uppercase tracking-widest text-xs flex items-center gap-3 shadow-lg group"
                             >
-                                {isLoading ? 'Думаю...' : 'Продолжить 🚀'}
+                                {isLoading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                        Генерирую...
+                                    </>
+                                ) : (
+                                    <>Далее <span className="group-hover:translate-x-1 transition-transform">→</span></>
+                                )}
                             </button>
                         </div>
                     </div>
                 )}
 
-                {step === 2 && (
-                    <div className="space-y-4">
-                        <div className="bg-indigo-50 p-4 rounded-xl text-sm text-indigo-900 border border-indigo-100">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">AI Анализ</span>
-                                <span className="text-gray-500 text-[10px] uppercase font-black tracking-widest">
-                                    {entityType === 'call' ? '📞 Звонки' : '📑 События'}
-                                </span>
+                {step === 2 && logic && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[70vh] overflow-y-auto pr-2">
+                        <div className="space-y-6">
+                            <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/50">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider">AI Анализ</span>
+                                </div>
+                                <p className="text-sm font-medium text-indigo-900 leading-relaxed italic">"{explanation}"</p>
                             </div>
-                            <p className="leading-relaxed">{explanation}</p>
-                        </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="col-span-2">
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Название правила</label>
-                                <input value={name} onChange={e => setName(e.target.value)} className="w-full border-gray-200 rounded-lg p-3 text-sm font-bold" />
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Критичность</label>
-                                <select value={severity} onChange={e => setSeverity(e.target.value)} className="w-full border-gray-200 rounded-lg p-3 text-sm font-bold bg-white">
-                                    <option value="low">🟡 Низкая</option>
-                                    <option value="medium">🟠 Средняя</option>
-                                    <option value="high">🔴 Высокая</option>
-                                    <option value="critical">🆘 Критическая</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Тип проверки</label>
-                                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 text-xs font-bold text-gray-600">
-                                    {entityType === 'call' ? '📞 Транскрипты' : '📑 История CRM'}
+                            <RuleBlockEditor
+                                logic={logic}
+                                onChange={setLogic}
+                                statuses={statuses}
+                            />
+
+                            <div className="pt-4 border-t space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Название правила</label>
+                                    <input value={name} onChange={e => setName(e.target.value)} className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold focus:border-indigo-500 outline-none transition-all" />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Критичность</label>
+                                        <select value={severity} onChange={e => setSeverity(e.target.value)} className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer">
+                                            <option value="low">🟡 Низкая</option>
+                                            <option value="medium">🟠 Средняя</option>
+                                            <option value="high">🔴 Высокая</option>
+                                            <option value="critical">🆘 SOS</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Сущность</label>
+                                        <select
+                                            value={entityType}
+                                            onChange={e => setEntityType(e.target.value as any)}
+                                            className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                                        >
+                                            <option value="order">📦 Заказ (State)</option>
+                                            <option value="event">📑 Событие (Live)</option>
+                                            <option value="call">📞 Звонок</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-                            <button onClick={() => setStep(1)} className="px-4 py-2 text-gray-500 font-bold">← Назад</button>
+                        <div className="space-y-4">
+                            <div className="sticky top-0 bg-white pt-2 z-10">
+                                <button
+                                    onClick={handleDryRun}
+                                    disabled={dryRunLoading}
+                                    className="w-full bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+                                >
+                                    {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
+                                </button>
+                            </div>
+
+                            {dryRunResults && (
+                                <div className="animate-in slide-in-from-top-2 duration-300">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Найдено нарушений</span>
+                                        <span className={`text-xs font-black px-2 py-1 rounded-lg ${dryRunResults.count > 0 ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
+                                            {dryRunResults.count} шт
+                                        </span>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {dryRunResults.violations.slice(0, 5).map((v, i) => (
+                                            <div key={i} className="text-[11px] p-2 bg-gray-50 rounded-lg flex justify-between border border-transparent hover:border-indigo-100 transition-all group">
+                                                <span className="font-bold">Заказ #{v.order_id || v.id}</span>
+                                                <span className="text-gray-400 group-hover:text-indigo-400">
+                                                    {new Date(v.violation_time || v.occurredAt).toLocaleDateString()}
+                                                </span>
+                                            </div>
+                                        ))}
+                                        {dryRunResults.count > 5 && (
+                                            <p className="text-center text-[9px] text-gray-400 font-bold italic py-2">...и еще {dryRunResults.count - 5} нарушений</p>
+                                        )}
+                                        {dryRunResults.count === 0 && (
+                                            <div className="text-center py-8 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-100">
+                                                <p className="text-xs text-gray-400 font-bold">Нарушений не найдено ✨</p>
+                                                <p className="text-[9px] text-gray-400 mt-1">Попробуйте изменить условия</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="pt-20">
+                                <div className="p-4 bg-yellow-50 rounded-2xl border border-yellow-100">
+                                    <h5 className="text-[10px] font-black uppercase tracking-widest text-yellow-700 mb-1">💡 Совет</h5>
+                                    <p className="text-[10px] text-yellow-800 leading-normal">
+                                        После сохранения правило начнет проверять все новые данные. Если нужно проверить старые — выберите "За последние X дней" при сохранении.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="col-span-1 md:col-span-2 flex justify-end gap-3 pt-6 border-t mt-4 sticky bottom-0 bg-white">
+                            <button onClick={() => setStep(1)} className="px-6 py-3 text-gray-400 font-black uppercase tracking-widest text-xs hover:text-gray-600">← Назад</button>
                             <button
                                 onClick={handleSave}
                                 disabled={isLoading}
-                                className="bg-green-600 text-white px-8 py-2 rounded-xl hover:bg-green-700 transition-all font-black uppercase tracking-widest text-xs"
+                                className="bg-green-600 text-white px-12 py-3 rounded-xl hover:bg-green-700 transition-all font-black uppercase tracking-widest text-xs shadow-lg shadow-green-100"
                             >
-                                {isLoading ? 'Создание...' : '💾 Сохранить и запустить'}
+                                {isLoading ? 'Сохранение...' : '🚀 Запустить правило'}
                             </button>
                         </div>
                     </div>

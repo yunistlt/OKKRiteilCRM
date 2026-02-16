@@ -27,56 +27,60 @@ export interface Rule {
 /**
  * Execute all active rules against a time range.
  */
-export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string) {
-    console.log(`[RuleEngine V2] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''}`);
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any) {
+    console.log(`[RuleEngine V2] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''} ${dryRun ? '(DRY RUN)' : ''}`);
 
     const statusesPromise = supabase.from('statuses').select('code, name');
-    let rulesQuery = supabase.from('okk_rules').select('*').eq('is_active', true);
 
-    if (targetRuleId) {
-        rulesQuery = rulesQuery.eq('code', targetRuleId);
+    // If adHocRule is provided, we use it instead of fetching from DB
+    let rules: any[] = [];
+    if (adHocRule) {
+        rules = [adHocRule];
+    } else {
+        let rulesQuery = supabase.from('okk_rules').select('*').eq('is_active', true);
+        if (targetRuleId) {
+            rulesQuery = rulesQuery.eq('code', targetRuleId);
+        }
+        const { data: dbRules, error: rulesError } = await rulesQuery;
+        if (rulesError || !dbRules) {
+            console.error('[RuleEngine] Failed to fetch rules:', rulesError);
+            return dryRun ? [] : 0;
+        }
+        rules = dbRules;
     }
 
-    const [{ data: rules, error: rulesError }, { data: statuses }] = await Promise.all([
-        rulesQuery,
-        statusesPromise
-    ]);
-
-    if (rulesError || !rules) {
-        console.error('[RuleEngine] Failed to fetch rules:', rulesError);
-        return;
-    }
-
+    const { data: statuses } = await statusesPromise;
     const statusMap = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
-    console.log(`[RuleEngine] Found ${rules.length} active rules.`);
+    console.log(`[RuleEngine] Processing ${rules.length} rules.`);
 
-    let totalViolations = 0;
+    let totalViolationsCount = 0;
+    const allViolations: any[] = [];
+
     for (const rule of rules) {
         try {
-            // Priority: Logic V2 (structured JSON) or Legacy SQL for transition
             if (rule.logic) {
-                totalViolations += await executeBlockRule(rule, startDate, endDate, statusMap);
-            } else if (rule.condition_sql) {
-                // FALLBACK TO OLD LOGIC IF NEEDED
-                if (rule.entity_type === 'event') {
-                    // Reuse old logic or simple adaptation
+                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun);
+                if (dryRun) {
+                    allViolations.push(...(results as any[]));
+                } else {
+                    totalViolationsCount += results as number;
                 }
             }
         } catch (e) {
             console.error(`[RuleEngine] Error executing rule ${rule.code}:`, e);
         }
     }
-    return totalViolations;
+    return dryRun ? allViolations : totalViolationsCount;
 }
 
 /**
  * NEW: Executes a rule based on Structured Logic Blocks
  */
-async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>): Promise<number> {
+async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false): Promise<number | any[]> {
     const logic = rule.logic as RuleLogic;
-    if (!logic) return 0;
+    if (!logic) return dryRun ? [] : 0;
 
-    console.log(`[RuleEngine] Executing Block Rule: ${rule.code} (${rule.name})`);
+    console.log(`[RuleEngine] Executing Block Rule: ${rule.code} (${rule.name}) ${dryRun ? '(DRY RUN)' : ''}`);
 
     // 1. Fetch Candidates based on Trigger
     let query;
@@ -200,15 +204,17 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     }
 
     if (violations.length > 0) {
-        const { error: insError } = await supabase
-            .from('okk_violations')
-            .upsert(violations, { onConflict: 'rule_code, order_id, violation_time, call_id' });
+        if (!dryRun) {
+            const { error: insError } = await supabase
+                .from('okk_violations')
+                .upsert(violations, { onConflict: 'rule_code, order_id, violation_time, call_id' });
 
-        if (insError) console.error(`[RuleEngine] Upsert Error for ${rule.code}:`, insError);
-        return violations.length;
+            if (insError) console.error(`[RuleEngine] Upsert Error for ${rule.code}:`, insError);
+        }
+        return dryRun ? violations : violations.length;
     }
 
-    return 0;
+    return dryRun ? [] : 0;
 }
 
 /**
