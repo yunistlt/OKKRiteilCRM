@@ -9,6 +9,8 @@ export async function GET() {
         const { data, error } = await supabase
             .from('statuses')
             .select('code, name')
+            .eq('is_working', true)
+            .eq('is_active', true)
             .order('name');
 
         if (error) throw error;

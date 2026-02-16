@@ -20,7 +20,7 @@ export async function POST(req: Request) {
 
     // 1. Fetch CRM Metadata to ground the AI
     const [statusesRes, managersRes] = await Promise.all([
-      supabase.from('statuses').select('code, name'),
+      supabase.from('statuses').select('code, name').eq('is_working', true).eq('is_active', true),
       supabase.from('managers').select('first_name, last_name')
     ]);
 
