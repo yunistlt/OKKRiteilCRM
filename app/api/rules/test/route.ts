@@ -55,6 +55,10 @@ export async function POST(request: Request) {
 
         const nameToCode = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
         const codeToName = new Map((statuses || []).map(s => [s.code, s.name]));
+        const steps: string[] = [];
+
+        steps.push(`🔍 Запуск теста для правила: ${rule.name}`);
+        if (adHocLogic) steps.push(`📝 Используется черновая логика из редактора`);
 
         // 2. Create Synthetic Data (Smart adaptation to Rule SQL)
         console.log(`[RuleTest] Creating synthetic data...`);
@@ -83,6 +87,7 @@ export async function POST(request: Request) {
                 eventType = 'status_changed';
                 fieldName = 'status';
                 newValue = logic.trigger.params?.target_status || newValue;
+                steps.push(`🎯 Триггер: Смена статуса на "${codeToName.get(newValue) || newValue}"`);
             }
 
             // 2. Conditions
@@ -91,19 +96,23 @@ export async function POST(request: Request) {
                     if (cond.block === 'time_elapsed') {
                         const h = cond.params?.hours || 24;
                         eventTime = new Date(now.getTime() - (h + 1) * 60 * 60 * 1000);
+                        steps.push(`⏰ Условие: Ожидание ${h}ч (событие создано ${h + 1}ч назад)`);
                     }
-                    if ((cond.block === 'field_empty' || cond.block === 'no_new_comments') && cond.params?.field_path === 'manager_comment') {
+                    if ((cond.block === 'no_new_comments') && cond.params?.field_path === 'manager_comment') {
                         managerComment = ''; // Ensure empty for "No comment" rule
+                        steps.push(`💬 Условие: Отсутствие новых комментариев`);
                     }
                 }
             }
         } else {
             // Legacy SQL Branch
             console.log('[RuleTest] Parsing Legacy SQL...');
+            steps.push(`🔗 Используется Legacy SQL логика для эмуляции`);
             // 1. Time based (e.g. > 24 hours) check
             if (sql.includes('> 24') || sql.includes('> 48') || sql.includes('NOW()') || sql.includes('occurred_at')) {
                 // fast forward: make event happen 25h ago
                 eventTime = new Date(now.getTime() - 25 * 60 * 60 * 1000); // 25 hours ago
+                steps.push(`⏰ Эмуляция паузы > 24ч`);
             }
 
             // 2. Event Type & Field Name determination
@@ -116,6 +125,7 @@ export async function POST(request: Request) {
                 const future = new Date();
                 future.setDate(future.getDate() + 5);
                 newValue = future.toISOString().split('T')[0];
+                steps.push(`📞 Эмуляция изменения даты контакта на ${newValue}`);
             }
 
             // 3. Smart Value Extraction
@@ -126,6 +136,7 @@ export async function POST(request: Request) {
                 const val = newValueEq[1];
                 const mappedCode = nameToCode.get(val.toLowerCase());
                 newValue = mappedCode || val;
+                steps.push(`📍 Ожидаемое значение: ${codeToName.get(newValue) || newValue}`);
             } else if (fieldNameEq && fieldNameEq[1] !== 'status') {
                 newValue = fieldNameEq[1];
             }
@@ -136,6 +147,7 @@ export async function POST(request: Request) {
                 if (options.length > 0) {
                     const mappedCode = nameToCode.get(options[0].toLowerCase());
                     newValue = mappedCode || options[0];
+                    steps.push(`📍 Ожидаемое значение из списка: ${codeToName.get(newValue) || newValue}`);
                 }
             }
         }
@@ -156,6 +168,7 @@ export async function POST(request: Request) {
         console.log(`[RuleTest] Generated Synthetic Data: Time=${eventTime.toISOString()}, Type=${eventType}, NewVal=${newValue}`);
 
         console.log('[RuleTest] Upserting Order...');
+        steps.push(`📦 Создан временный заказ #${testOrderId}`);
         const { error: orderErr } = await supabase.from('orders').upsert({
             id: testOrderId,
             order_id: testOrderId,
@@ -177,6 +190,7 @@ export async function POST(request: Request) {
 
         const humanName = codeToName.get(newValue) || newValue;
         console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
+        steps.push(`📑 Эмулировано событие "${eventType}" для заказа`);
         const { error: eventErr } = await supabase.from('raw_order_events').upsert({
             event_id: testEventId,
             retailcrm_order_id: testOrderId,
@@ -202,6 +216,7 @@ export async function POST(request: Request) {
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
+        steps.push(`⚙️ Запуск движка OKK OKKRiteilCRM...`);
         const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000);
         const endTime = new Date(now.getTime() + 60 * 1000);
 
@@ -228,6 +243,8 @@ export async function POST(request: Request) {
             ? 'Проверка пройдена: Нарушение обнаружено.'
             : 'Проверка не пройдена: Нарушение не зафиксировано.';
 
+        steps.push(isSuccess ? `✅ Результат: Нарушение зафиксировано` : `❌ Результат: Нарушений не найдено`);
+
         // 5. Log Result
         console.log('[RuleTest] Logging results...');
         const { error: logInsertErr } = await supabase.from('okk_rule_test_logs').insert({
@@ -237,13 +254,15 @@ export async function POST(request: Request) {
             details: {
                 test_order_id: testOrderId,
                 test_event_id: testEventId,
-                violations_found_count: violationsCount
+                violations_found_count: violationsCount,
+                steps: steps
             }
         });
         if (logInsertErr) console.error('Log insert failed:', logInsertErr);
 
         // 6. Cleanup
         console.log(`[RuleTest] Cleaning up...`);
+        steps.push(`🧹 Очистка временных данных`);
         await supabase.from('okk_violations').delete().eq('order_id', testOrderId);
         await supabase.from('raw_order_events').delete().eq('event_id', testEventId);
         await supabase.from('order_metrics').delete().eq('retailcrm_order_id', testOrderId);
@@ -252,7 +271,8 @@ export async function POST(request: Request) {
         return NextResponse.json({
             success: isSuccess,
             message: resultMessage,
-            violationsCount: violationsFound
+            violationsCount: violationsFound,
+            steps: steps
         });
 
     } catch (e: any) {
