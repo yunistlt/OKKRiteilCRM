@@ -25,7 +25,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
     // Synthetic Test State
     const [syntheticLoading, setSyntheticLoading] = useState(false);
-    const [syntheticResult, setSyntheticResult] = useState<{ success: boolean, message: string } | null>(null);
+    const [syntheticResult, setSyntheticResult] = useState<{ success: boolean, message?: string, error?: string } | null>(null);
 
     // Metadata
     const [allManagers, setAllManagers] = useState<any[]>([]);
@@ -284,7 +284,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                     <div className={`mt-2 p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
                                         <div className="flex items-center gap-2 uppercase tracking-widest">
                                             <span>{syntheticResult.success ? '✅' : '❌'}</span>
-                                            {syntheticResult.message}
+                                            {syntheticResult.message || syntheticResult.error || 'Ошибка проверки'}
                                         </div>
                                     </div>
                                 )}

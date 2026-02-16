@@ -92,7 +92,7 @@ export async function POST(request: Request) {
                         const h = cond.params?.hours || 24;
                         eventTime = new Date(now.getTime() - (h + 1) * 60 * 60 * 1000);
                     }
-                    if (cond.block === 'field_empty' && cond.params?.field_path === 'manager_comment') {
+                    if ((cond.block === 'field_empty' || cond.block === 'no_new_comments') && cond.params?.field_path === 'manager_comment') {
                         managerComment = ''; // Ensure empty for "No comment" rule
                     }
                 }
@@ -196,6 +196,9 @@ export async function POST(request: Request) {
             source: 'synthetic_test'
         });
         if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
+
+        // Wait a bit for Supabase to persist/index the new event
+        await new Promise(r => setTimeout(r, 500));
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
