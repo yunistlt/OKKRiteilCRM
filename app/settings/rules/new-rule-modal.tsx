@@ -273,6 +273,19 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                             <span className="text-xs text-gray-400 font-medium whitespace-nowrap">баллов за нарушение</span>
                                         </div>
                                     </div>
+                                    <div className="col-span-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Проверка истории</label>
+                                        <select
+                                            value={historyDays}
+                                            onChange={e => setHistoryDays(parseInt(e.target.value))}
+                                            className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                                        >
+                                            <option value={0}>⚡️ Только новые (с момента создания)</option>
+                                            <option value={1}>🕒 За последние 24 часа</option>
+                                            <option value={3}>📅 За последние 3 дня</option>
+                                            <option value={7}>🗓️ За последние 7 дней</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
