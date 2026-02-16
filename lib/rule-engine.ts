@@ -146,8 +146,8 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             if (transitionEvent) {
                 occurredAt = transitionEvent.occurred_at;
             } else {
-                // Fallback to order creation if no event found, but ensure it's not too far back if we have occurred_at
-                occurredAt = item.occurred_at || item.created_at || item.created_at_crm || new Date().toISOString();
+                // Fallback to order creation if no event found
+                occurredAt = item.updated_at || item.created_at || item.created_at_crm || new Date().toISOString();
             }
         }
 
