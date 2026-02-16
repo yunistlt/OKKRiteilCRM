@@ -113,14 +113,16 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     }
 
     const { data: items, error } = await query;
-    if (error || !items) return 0;
+    if (error) console.error(`[RuleEngine] [${rule.code}] Query error:`, error);
+    if (!items) return dryRun ? [] : 0;
 
-    console.log(`[RuleEngine] Rule ${rule.code}: Processing ${items.length} candidates.`);
+    console.log(`[RuleEngine] [${rule.code}] Processing ${items.length} candidates. Entity: ${rule.entity_type}`);
 
     const violations: any[] = [];
 
     // 2. Evaluate each candidate
     for (const item of items) {
+        const orderId = rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id);
         const metrics = rule.entity_type === 'call'
             ? item.call_order_matches?.[0]?.orders
             : (rule.entity_type === 'order' ? item.order_metrics : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics));
@@ -129,7 +131,6 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
         // SPECIAL LOGIC FOR ORDERS: Find when they ENTERED this state
         if (rule.entity_type === 'order') {
-            const orderId = item.order_id || item.id;
             const currentStatus = item.status;
 
             // Find latest event where status WAS changed to this one
@@ -145,16 +146,17 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
             if (transitionEvent) {
                 occurredAt = transitionEvent.occurred_at;
+                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found transition event at ${occurredAt}`);
             } else {
-                // Fallback to order creation if no event found
                 occurredAt = item.updated_at || item.created_at || item.created_at_crm || new Date().toISOString();
+                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: No transition event. Fallback occurredAt: ${occurredAt}`);
             }
         }
 
         const context = {
             item,
             metrics,
-            orderId: rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id),
+            orderId,
             managerId: metrics?.manager_id || item.manager_id,
             occurredAt: occurredAt
         };
@@ -162,7 +164,8 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         // A. Match Trigger
         if (logic.trigger) {
             const matchesTrigger = matchBlock(logic.trigger, context);
-            console.log(`[RuleEngine] [${rule.code}] Candidate ${context.orderId}: Trigger Match = ${matchesTrigger} (Status: ${context.item.status}, Target: ${logic.trigger.params?.target_status})`);
+            const targetStatus = logic.trigger.params?.target_status;
+            console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Trigger "${logic.trigger.block}" Match = ${matchesTrigger} (Status: "${item.status}", Expected: "${targetStatus}")`);
             if (!matchesTrigger) continue;
         }
 
@@ -171,47 +174,46 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         let semanticResult = null;
 
         for (const cond of logic.conditions) {
+            let condMatch = false;
             if (cond.block === 'no_new_comments') {
                 const { data: activity } = await supabase
                     .from('raw_order_events')
-                    .select('event_id, event_type, raw_payload')
+                    .select('event_id, event_type, raw_payload, occurred_at')
                     .eq('retailcrm_order_id', context.orderId)
                     .gt('occurred_at', context.occurredAt)
-                    .limit(10); // Check a few to be safe
+                    .limit(10);
 
-                // New activity is strictly manager comments/messages
                 const hasRealActivity = (activity || []).some(ev => {
                     const type = String(ev.event_type);
                     const field = String(ev.raw_payload?.field || '');
                     return type.includes('comment') || type.includes('message') || field === 'manager_comment';
                 });
 
-                if (hasRealActivity) {
-                    allMatched = false;
-                    break;
-                }
-                continue;
-            }
-
-            if (cond.block === 'semantic_check') {
-                // SPECIAL CASE: Semantic is async
+                condMatch = !hasRealActivity;
+                if (!condMatch) console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found activity after ${context.occurredAt}`, activity);
+            } else if (cond.block === 'semantic_check') {
                 const text = metrics?.full_order_context?.manager_comment || item.transcript || '';
                 if (!text) {
-                    allMatched = false;
-                    break;
+                    condMatch = false;
+                } else {
+                    const res = await analyzeText(text, cond.params.prompt || rule.description, 'Context');
+                    if (res.is_violation) {
+                        semanticResult = res;
+                        condMatch = true;
+                    }
                 }
-                const res = await analyzeText(text, cond.params.prompt || rule.description, 'Context');
-                if (!res.is_violation) {
-                    allMatched = false;
-                    break;
-                }
-                semanticResult = res;
-            } else if (!matchBlock(cond, context)) {
+            } else {
+                condMatch = matchBlock(cond, context);
+            }
+
+            console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Condition "${cond.block}" Match = ${condMatch}`);
+            if (!condMatch) {
                 allMatched = false;
                 break;
             }
         }
 
+        console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Final Match = ${allMatched}`);
         if (allMatched) {
             violations.push({
                 rule_code: rule.code,
