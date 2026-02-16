@@ -232,7 +232,8 @@ export async function POST(request: Request) {
             endTime.toISOString(),
             ruleId,
             true, // dryRun = true
-            adHocLogic ? rule : undefined
+            adHocLogic ? rule : undefined,
+            steps // Pass our steps array to collect internal engine traces
         );
 
         const violationsCount = typeof violationsFound === 'number' ? violationsFound : (Array.isArray(violationsFound) ? violationsFound.length : 0);

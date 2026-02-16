@@ -27,8 +27,8 @@ export interface Rule {
 /**
  * Execute all active rules against a time range.
  */
-export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any) {
-    console.log(`[RuleEngine V2] Running for range ${startDate} to ${endDate} ${targetRuleId ? `(Target Rule: ${targetRuleId})` : ''} ${dryRun ? '(DRY RUN)' : ''}`);
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[]) {
+    if (trace) trace.push(`[RuleEngine V2] Range: ${startDate} to ${endDate}`);
 
     const statusesPromise = supabase.from('statuses').select('code, name');
 
@@ -51,7 +51,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 
     const { data: statuses } = await statusesPromise;
     const statusMap = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
-    console.log(`[RuleEngine] Processing ${rules.length} rules.`);
+    if (trace && rules.length > 0) trace.push(`[RuleEngine] Processing ${rules.length} rules.`);
 
     let totalViolationsCount = 0;
     const allViolations: any[] = [];
@@ -59,7 +59,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     for (const rule of rules) {
         try {
             if (rule.logic) {
-                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun);
+                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun, trace);
                 if (dryRun) {
                     allViolations.push(...(results as any[]));
                 } else {
@@ -67,6 +67,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
                 }
             }
         } catch (e) {
+            if (trace) trace.push(`[RuleEngine] CRITICAL ERROR for ${rule.code}: ${e}`);
             console.error(`[RuleEngine] Error executing rule ${rule.code}:`, e);
         }
     }
@@ -76,11 +77,11 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 /**
  * NEW: Executes a rule based on Structured Logic Blocks
  */
-async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false): Promise<number | any[]> {
+async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false, trace?: string[]): Promise<number | any[]> {
     const logic = rule.logic as RuleLogic;
     if (!logic) return dryRun ? [] : 0;
 
-    console.log(`[RuleEngine] Executing Block Rule: ${rule.code} (${rule.name}) ${dryRun ? '(DRY RUN)' : ''}`);
+    if (trace) trace.push(`[RuleEngine] [${rule.code}] Executing Entity: ${rule.entity_type}`);
 
     // 1. Fetch Candidates based on Trigger
     let query;
@@ -88,9 +89,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         query = supabase.from('raw_telphin_calls').select('*, call_order_matches(order_id: retailcrm_order_id, orders(manager_id))');
     } else if (rule.entity_type === 'order') {
         // STATE-BASED: Fetch current orders
-        query = supabase.from('orders').select('*, order_metrics!left(current_status, manager_id, full_order_context)');
+        // Use simpler select if joined metrics cause issues
+        query = supabase.from('orders').select('*, order_metrics(current_status, manager_id, full_order_context)');
     } else {
-        query = supabase.from('raw_order_events').select('*, order_metrics!left(current_status, manager_id, full_order_context)');
+        query = supabase.from('raw_order_events').select('*, order_metrics(current_status, manager_id, full_order_context)');
     }
 
     // Apply filters specialized by entity type
@@ -100,23 +102,29 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         // For orders, we filter by their current status if trigger is "status_change"
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
-            if (target) query = query.eq('status', target);
+            if (target) {
+                query = query.eq('status', target);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Filter: status = ${target}`);
+            }
         }
-        // Also ensure they were active/matched recently if needed, 
-        // but for stale orders we usually want to check ALL currently matching orders.
     } else {
         query = query.gte('occurred_at', startDate).lte('occurred_at', endDate);
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
-            if (target) query = query.eq('event_type', 'status_changed');
+            if (target) {
+                query = query.eq('event_type', 'status_changed');
+            }
         }
     }
 
     const { data: items, error } = await query;
-    if (error) console.error(`[RuleEngine] [${rule.code}] Query error:`, error);
+    if (error) {
+        if (trace) trace.push(`[RuleEngine] [${rule.code}] DB ERROR: ${error.message}`);
+        console.error(`[RuleEngine] [${rule.code}] Query error:`, error);
+    }
     if (!items) return dryRun ? [] : 0;
 
-    console.log(`[RuleEngine] [${rule.code}] Processing ${items.length} candidates. Entity: ${rule.entity_type}`);
+    if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidates Found: ${items.length}`);
 
     const violations: any[] = [];
 
@@ -146,10 +154,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
             if (transitionEvent) {
                 occurredAt = transitionEvent.occurred_at;
-                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found transition event at ${occurredAt}`);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found transition event at ${occurredAt}`);
             } else {
                 occurredAt = item.updated_at || item.created_at || item.created_at_crm || new Date().toISOString();
-                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: No transition event. Fallback occurredAt: ${occurredAt}`);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: No transition event. Fallback occurredAt: ${occurredAt}`);
             }
         }
 
@@ -165,7 +173,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         if (logic.trigger) {
             const matchesTrigger = matchBlock(logic.trigger, context);
             const targetStatus = logic.trigger.params?.target_status;
-            console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Trigger "${logic.trigger.block}" Match = ${matchesTrigger} (Status: "${item.status}", Expected: "${targetStatus}")`);
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Trigger "${logic.trigger.block}" Match = ${matchesTrigger} (Status: "${item.status}", Expected: "${targetStatus}")`);
             if (!matchesTrigger) continue;
         }
 
@@ -190,7 +198,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 });
 
                 condMatch = !hasRealActivity;
-                if (!condMatch) console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found activity after ${context.occurredAt}`, activity);
+                if (!condMatch && trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found activity after ${context.occurredAt}`);
             } else if (cond.block === 'semantic_check') {
                 const text = metrics?.full_order_context?.manager_comment || item.transcript || '';
                 if (!text) {
@@ -206,14 +214,14 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 condMatch = matchBlock(cond, context);
             }
 
-            console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Condition "${cond.block}" Match = ${condMatch}`);
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Condition "${cond.block}" Match = ${condMatch}`);
             if (!condMatch) {
                 allMatched = false;
                 break;
             }
         }
 
-        console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Final Match = ${allMatched}`);
+        if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Final Match = ${allMatched}`);
         if (allMatched) {
             violations.push({
                 rule_code: rule.code,
