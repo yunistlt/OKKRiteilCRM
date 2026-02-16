@@ -29,6 +29,7 @@ export async function POST(req: Request) {
 
     const SYSTEM_PROMPT = `
 You are an OKK Rule Architect. Your task is to convert human requirements into structured Logic Blocks for RetailCRM.
+Return your response in JSON format.
 You use a library of predefined "Blocks".
 
 CRITICAL: Ground your logic in these REAL RetailCRM status codes:
