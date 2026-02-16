@@ -133,7 +133,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         const orderId = rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id);
         const metrics = rule.entity_type === 'call'
             ? item.call_order_matches?.[0]?.orders
-            : (rule.entity_type === 'order' ? item.order_metrics : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics));
+            : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics);
 
         let occurredAt = rule.entity_type === 'call' ? item.started_at : (item.raw_payload?._sync_metadata?.order_statusUpdatedAt || item.occurred_at);
 
