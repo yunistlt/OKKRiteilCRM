@@ -205,8 +205,8 @@ export async function POST(request: Request) {
         // But if utils/supabase is configured with SERVICE key in env, it should work.
         // Assuming runRuleEngine works (it seemed to work in my local test).
         // BROADEN THE SEARCH WINDOW FOR THE TEST RUN
-        // Force scan from 2 days ago to ensure we catch rules with > 24h delay
-        const longAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+        // Scan back 7 days to ensure we catch rules with long delays (e.g. 48h+)
+        const longAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const violationsFound = await runRuleEngine(
             longAgo,
             endTime.toISOString(),

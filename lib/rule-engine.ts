@@ -244,13 +244,18 @@ function matchBlock(block: RuleLogicBlock, context: any): boolean {
         case 'status_change':
             const targetStatus = block.params.target_status;
             const direction = block.params.direction || 'to';
-            const rawVal = item.raw_payload?.newValue || item.raw_payload?.status;
+
+            // For order entity, 'item' is an order row. For events, it's an event row.
+            // Support both structures
+            const rawVal = item.raw_payload?.newValue || item.raw_payload?.status || item.status;
             const actualStatus = (typeof rawVal === 'object' && rawVal !== null) ? rawVal.code : rawVal;
 
             if (direction === 'to') {
                 return actualStatus === targetStatus;
             } else if (direction === 'from') {
                 const oldRaw = item.raw_payload?.oldValue;
+                // For orders, it's hard to know 'from' without history, 
+                // but we assume if we are checking an event, it has oldValue.
                 const oldStatus = (typeof oldRaw === 'object' && oldRaw !== null) ? oldRaw.code : oldRaw;
                 return oldStatus === targetStatus;
             }
