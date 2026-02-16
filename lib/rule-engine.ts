@@ -170,6 +170,23 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         let semanticResult = null;
 
         for (const cond of logic.conditions) {
+            if (cond.block === 'no_new_comments') {
+                const { data: activity } = await supabase
+                    .from('raw_order_events')
+                    .select('event_id')
+                    .eq('retailcrm_order_id', context.orderId)
+                    .or(`event_type.eq.status,event_type.eq.status_changed`)
+                    .eq('raw_payload->field', 'manager_comment')
+                    .gt('occurred_at', context.occurredAt)
+                    .limit(1);
+
+                if (activity && activity.length > 0) {
+                    allMatched = false;
+                    break;
+                }
+                continue;
+            }
+
             if (cond.block === 'semantic_check') {
                 // SPECIAL CASE: Semantic is async
                 const text = metrics?.full_order_context?.manager_comment || item.transcript || '';

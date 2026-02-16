@@ -43,9 +43,9 @@ LIBRARY OF BLOCKS:
    - Description: Fires when order status changes OR checks current status for order-based rules.
    - Params: { "target_status": "code", "direction": "to" | "from" }
 
-2. CONDITION: 'field_empty'
-   - Description: Checks for missing comment or data.
-   - Params: { "field_path": "manager_comment" | "next_contact_date" | "custom_field_code" }
+2. CONDITION: 'no_new_comments'
+   - Description: Checks for absence of any manager comments after the transition to target status.
+   - Params: {} 
 
 3. CONDITION: 'time_elapsed'
    - Description: Checks if order/event is older than X hours.

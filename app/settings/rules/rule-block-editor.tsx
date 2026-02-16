@@ -72,7 +72,7 @@ export default function RuleBlockEditor({ logic, onChange, statuses }: RuleBlock
                             <span className="bg-gray-400 text-white text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-widest">Условие</span>
                             <span className="text-xs font-bold text-gray-700 capitalize">
                                 {cond.block === 'time_elapsed' ? 'Ожидание' :
-                                    cond.block === 'field_empty' ? 'Пустое поле' :
+                                    cond.block === 'no_new_comments' ? 'Отсутствие активности' :
                                         cond.block === 'semantic_check' ? 'AI Анализ смыслов' : cond.block}
                             </span>
                         </div>
@@ -101,18 +101,12 @@ export default function RuleBlockEditor({ logic, onChange, statuses }: RuleBlock
                             </div>
                         )}
 
-                        {cond.block === 'field_empty' && (
+                        {cond.block === 'no_new_comments' && (
                             <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-gray-400">Поле:</span>
-                                <select
-                                    value={cond.params.field_path}
-                                    onChange={(e) => updateConditionParam(idx, 'field_path', e.target.value)}
-                                    className="bg-gray-50 border border-gray-200 rounded-lg py-1 px-2 text-xs font-bold outline-none"
-                                >
-                                    <option value="manager_comment">Комментарий менеджера</option>
-                                    <option value="next_contact_date">Дата след. контакта</option>
-                                </select>
-                                <span className="text-[10px] font-bold text-gray-400">= ПУСТО</span>
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100/50 flex items-center gap-2">
+                                    <span className="animate-pulse">⦿</span>
+                                    Нет новых комментариев менеджера после перехода в статус
+                                </span>
                             </div>
                         )}
                     </div>
