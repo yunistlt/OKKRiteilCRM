@@ -82,25 +82,29 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     let query;
     if (rule.entity_type === 'call') {
         query = supabase.from('raw_telphin_calls').select('*, call_order_matches(order_id: retailcrm_order_id, orders(manager_id))');
+    } else if (rule.entity_type === 'order') {
+        // STATE-BASED: Fetch current orders
+        query = supabase.from('orders').select('*, order_metrics!left(current_status, manager_id, full_order_context)');
     } else {
         query = supabase.from('raw_order_events').select('*, order_metrics!left(current_status, manager_id, full_order_context)');
     }
 
-    // Apply time filter
-    query = query.gte('occurred_at', startDate).lte('occurred_at', endDate);
+    // Apply filters specialized by entity type
     if (rule.entity_type === 'call') {
-        // use started_at for calls
         query = query.gte('started_at', startDate).lte('started_at', endDate);
-    }
-
-    // Apply Trigger optimization (Database level filtering)
-    if (logic.trigger && logic.trigger.block === 'status_change') {
-        const target = logic.trigger.params.target_status;
-        if (target) {
-            // Filter by new_value if it's a "to" status change
-            // Note: raw_order_events schema might vary, assuming new_value stores code
-            query = query.eq('event_type', 'status_changed');
-            // Additional DB-side filtering if possible
+    } else if (rule.entity_type === 'order') {
+        // For orders, we filter by their current status if trigger is "status_change"
+        if (logic.trigger && logic.trigger.block === 'status_change') {
+            const target = logic.trigger.params.target_status;
+            if (target) query = query.eq('status', target);
+        }
+        // Also ensure they were active/matched recently if needed, 
+        // but for stale orders we usually want to check ALL currently matching orders.
+    } else {
+        query = query.gte('occurred_at', startDate).lte('occurred_at', endDate);
+        if (logic.trigger && logic.trigger.block === 'status_change') {
+            const target = logic.trigger.params.target_status;
+            if (target) query = query.eq('event_type', 'status_changed');
         }
     }
 
@@ -115,14 +119,40 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     for (const item of items) {
         const metrics = rule.entity_type === 'call'
             ? item.call_order_matches?.[0]?.orders
-            : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics);
+            : (rule.entity_type === 'order' ? item.order_metrics : (Array.isArray(item.order_metrics) ? item.order_metrics[0] : item.order_metrics));
+
+        let occurredAt = rule.entity_type === 'call' ? item.started_at : (item.raw_payload?._sync_metadata?.order_statusUpdatedAt || item.occurred_at);
+
+        // SPECIAL LOGIC FOR ORDERS: Find when they ENTERED this state
+        if (rule.entity_type === 'order') {
+            const orderId = item.order_id || item.id;
+            const currentStatus = item.status;
+
+            // Find latest event where status WAS changed to this one
+            const { data: transitionEvent } = await supabase
+                .from('raw_order_events')
+                .select('occurred_at')
+                .eq('retailcrm_order_id', orderId)
+                .or(`event_type.eq.status,event_type.eq.status_changed`)
+                .filter('raw_payload->newValue->>code', 'eq', currentStatus)
+                .order('occurred_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            if (transitionEvent) {
+                occurredAt = transitionEvent.occurred_at;
+            } else {
+                // Fallback to order creation if no event found
+                occurredAt = item.created_at || item.created_at_crm;
+            }
+        }
 
         const context = {
             item,
             metrics,
-            orderId: rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : item.retailcrm_order_id,
-            managerId: metrics?.manager_id,
-            occurredAt: rule.entity_type === 'call' ? item.started_at : (item.raw_payload?._sync_metadata?.order_statusUpdatedAt || item.occurred_at)
+            orderId: rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id),
+            managerId: metrics?.manager_id || item.manager_id,
+            occurredAt: occurredAt
         };
 
         // A. Match Trigger
