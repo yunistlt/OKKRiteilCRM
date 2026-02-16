@@ -5,6 +5,9 @@ import Header from "./components/Header";
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
     description: "RetailCRM and Telphin Analytics",
+    icons: {
+        icon: "/icon.png",
+    }
 };
 
 export default function RootLayout({
