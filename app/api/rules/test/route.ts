@@ -208,7 +208,8 @@ export async function POST(request: Request) {
 
         if (violError) console.error('Violations fetch error:', violError);
 
-        const isSuccess = (violationsFound || 0) > 0 && dbViolations && dbViolations.length > 0;
+        const violationsCount = typeof violationsFound === 'number' ? violationsFound : (Array.isArray(violationsFound) ? violationsFound.length : 0);
+        const isSuccess = violationsCount > 0 && dbViolations && dbViolations.length > 0;
         const resultMessage = isSuccess
             ? 'Проверка пройдена: Нарушение обнаружено.'
             : 'Проверка не пройдена: Нарушение не зафиксировано.';
