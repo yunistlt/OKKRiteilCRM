@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { analyzeTranscript, analyzeText } from './semantic';
+import { evaluateChecklist } from './quality-control';
 import { sendTelegramNotification } from './telegram';
 
 export interface RuleLogicBlock {
@@ -183,6 +184,43 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             occurredAt: occurredAt
         };
 
+        // --- NEW: Checklist Evaluation Logic ---
+        if (rule.checklist && rule.checklist.length > 0) {
+            const transcript = item.transcript || '';
+            if (!transcript || transcript.length < 50) {
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Transcript too short or missing.`);
+                continue; // Cannot evaluate
+            }
+
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Evaluating Checklist...`);
+
+            const qcResult = await evaluateChecklist(transcript, rule.checklist);
+
+            // If score < 100, record deviation (or if specifically violated)
+            if (qcResult.totalScore < 100) {
+                violations.push({
+                    rule_code: rule.code,
+                    order_id: context.orderId,
+                    manager_id: context.managerId,
+                    violation_time: context.occurredAt,
+                    severity: rule.severity,
+                    points: (100 - qcResult.totalScore), // Dynamic points based on loss? Or rule.points?
+                    // Let's use rule.points if defined, otherwise the mismatch.
+                    // Actually, maybe rule.points is "Points Per Rule".
+                    // Let's stick to rule.points for now if available.
+                    call_id: rule.entity_type === 'call' ? item.event_id : null,
+                    details: `${qcResult.summary} (Оценка: ${qcResult.totalScore}/100)`,
+                    evidence_text: null, // No single quote, it's a full report
+                    checklist_result: qcResult
+                });
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Checklist Score ${qcResult.totalScore}/100. Recorded violation.`);
+            } else {
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Perfect Score 100/100.`);
+            }
+            continue; // Skip standard logic
+        }
+        // ---------------------------------------
+
         // A. Match Trigger
         if (logic.trigger) {
             const matchesTrigger = matchBlock(logic.trigger, context);
@@ -268,6 +306,13 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                             const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
                             const points = v.points ? `(${v.points} баллов)` : '';
 
+                            // Custom message for Checklist (if result present)
+                            let extraInfo = '';
+                            if (v.checklist_result) {
+                                // Add breakdown of missed items?
+                                // Let's keep it simple for now as requested.
+                            }
+
                             const message = `
 <b>${emoji} Новое нарушение ${points}</b>
 <b>Правило:</b> ${rule.name}
@@ -341,3 +386,4 @@ function matchBlock(block: RuleLogicBlock, context: any): boolean {
             return false;
     }
 }
+
