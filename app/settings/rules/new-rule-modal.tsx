@@ -129,10 +129,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     };
 
     const handleSyntheticTest = async () => {
-        if (ruleMode === 'checklist') {
-            alert('Синтетический тест для чек-листов пока не доступен');
-            return;
-        }
+
 
         if (!logic) return;
         setSyntheticLoading(true);
