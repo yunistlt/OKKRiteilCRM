@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { analyzeTranscript, analyzeText } from './semantic';
+import { sendTelegramNotification } from './telegram';
 
 export interface RuleLogicBlock {
     block: string;
@@ -22,6 +23,8 @@ export interface Rule {
     name: string;
     description: string;
     condition_sql?: string; // Legacy support
+    points?: number;
+    notify_telegram?: boolean; // New field
 }
 
 /**
@@ -254,6 +257,33 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 .upsert(violations, { onConflict: 'rule_code, order_id, violation_time, call_id' });
 
             if (insError) console.error(`[RuleEngine] Upsert Error for ${rule.code}:`, insError);
+            else {
+                // Send Telegram Notification ONLY if enabled in rule
+                if (violations.length > 0 && rule.notify_telegram) {
+                    try {
+                        const emoji = rule.severity === 'critical' ? '🆘' : rule.severity === 'high' ? '🔴' : '⚠️';
+
+                        for (const v of violations) {
+                            const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
+                            const points = v.points ? `(${v.points} баллов)` : '';
+
+                            const message = `
+<b>${emoji} Новое нарушение ${points}</b>
+<b>Правило:</b> ${rule.name}
+<b>Заказ:</b> <a href="https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit">#${v.order_id}</a>
+<b>Менеджер:</b> ${v.manager_id}
+
+${details}
+                            `.trim();
+
+                            // Fire and forget to not block execution
+                            sendTelegramNotification(message).catch(e => console.error('[RuleEngine] Async notify error:', e));
+                        }
+                    } catch (notifyError) {
+                        console.error('[RuleEngine] Failed to prepare notification:', notifyError);
+                    }
+                }
+            }
         }
         return dryRun ? violations : violations.length;
     }

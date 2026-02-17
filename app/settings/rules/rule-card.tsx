@@ -11,6 +11,7 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
     const [isLoading, setIsLoading] = useState(false);
     const [params, setParams] = useState(rule.parameters);
     const [auditStatus, setAuditStatus] = useState(rule.parameters?.audit_status || 'idle');
+    const [notifyTelegram, setNotifyTelegram] = useState(rule.notify_telegram || false);
 
     // Polling while auditing
     useEffect(() => {
@@ -48,6 +49,17 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
             await updateRuleParams(rule.code, newParams);
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const handleNotifyToggle = async () => {
+        const newValue = !notifyTelegram;
+        setNotifyTelegram(newValue);
+        try {
+            await supabase.from('okk_rules').update({ notify_telegram: newValue }).eq('code', rule.code);
+        } catch (e) {
+            console.error('Failed to update notify_telegram', e);
+            setNotifyTelegram(!newValue); // manual rollback
         }
     };
 
@@ -202,6 +214,15 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                                 })()}
                             </span>
                         )}
+                        <button
+                            onClick={handleNotifyToggle}
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors ${notifyTelegram
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'
+                                : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100 grayscale'}`}
+                            title={notifyTelegram ? 'Уведомления в Telegram включены' : 'Уведомления отключены'}
+                        >
+                            {notifyTelegram ? '🔔 Notify ON' : '🔕 Notify OFF'}
+                        </button>
                     </div>
                 </div>
 
@@ -258,6 +279,16 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                         </button>
 
                         <button
+                            onClick={handleNotifyToggle}
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors ${notifyTelegram
+                                ? 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'
+                                : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100 grayscale'}`}
+                            title={notifyTelegram ? 'Уведомления в Telegram включены' : 'Уведомления отключены'}
+                        >
+                            {notifyTelegram ? '🔔' : '🔕'}
+                        </button>
+
+                        <button
                             onClick={async () => {
                                 if (confirm('Вы уверены? Правило будет перенесено в архив (выключено).')) {
                                     await updateRuleStatus(rule.code, false);
@@ -284,11 +315,13 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                 </div>
             </div>
 
-            {rule.is_active && (
-                <div className="mt-4 border-t pt-4">
-                    {renderInputs()}
-                </div>
-            )}
-        </div>
+            {
+                rule.is_active && (
+                    <div className="mt-4 border-t pt-4">
+                        {renderInputs()}
+                    </div>
+                )
+            }
+        </div >
     );
 }

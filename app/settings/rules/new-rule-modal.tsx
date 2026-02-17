@@ -17,6 +17,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [entityType, setEntityType] = useState<'call' | 'event' | 'order'>('call');
     const [severity, setSeverity] = useState('medium');
     const [points, setPoints] = useState(10);
+    const [notifyTelegram, setNotifyTelegram] = useState(false);
     const [historyDays, setHistoryDays] = useState(0);
     const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
 
@@ -134,6 +135,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 logic, // Structured logic instead of SQL
                 severity,
                 points,
+                notify_telegram: notifyTelegram,
                 is_active: true
             }, historyDays);
 
@@ -272,6 +274,22 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                             />
                                             <span className="text-xs text-gray-400 font-medium whitespace-nowrap">баллов за нарушение</span>
                                         </div>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="flex items-center justify-between p-3 border-2 border-gray-100 rounded-xl cursor-pointer hover:border-indigo-200 transition-all bg-white select-none">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-6 rounded-full p-1 transition-colors flex items-center ${notifyTelegram ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                                                    <div className={`w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${notifyTelegram ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                </div>
+                                                <span className="text-sm font-bold text-gray-700">🔔 Отправлять уведомление в Telegram</span>
+                                            </div>
+                                            <input
+                                                type="checkbox"
+                                                checked={notifyTelegram}
+                                                onChange={e => setNotifyTelegram(e.target.checked)}
+                                                className="hidden"
+                                            />
+                                        </label>
                                     </div>
                                     <div className="col-span-2">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Проверка истории</label>
