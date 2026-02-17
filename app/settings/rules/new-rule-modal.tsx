@@ -101,6 +101,27 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
         }
     };
 
+    const handleManualCreate = () => {
+        // Set defaults for manual creation
+        setLogic({
+            trigger: { block: 'status_change', params: { target_status: 'new' } },
+            conditions: []
+        });
+        setExplanation('Ручное создание правила');
+        setName(prompt || 'Новое правило');
+        setEntityType('order'); // Default to order, user can change
+        setStep(2);
+        setDryRunResults(null);
+
+        // Auto-detect checklist mode if keywords are present, otherwise default to standard
+        if (prompt.toLowerCase().includes('скрипт') || prompt.toLowerCase().includes('чек-лист')) {
+            setRuleMode('checklist');
+            setEntityType('call');
+        } else {
+            setRuleMode('standard');
+        }
+    };
+
     const handleDryRun = async () => {
         if (!logic && ruleMode === 'standard') return;
 
@@ -235,22 +256,30 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                             ))}
                         </div>
 
-                        <div className="flex justify-end gap-3 pt-6 border-t font-black">
-                            <button onClick={() => setIsOpen(false)} className="px-6 py-3 text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest text-xs">Отмена</button>
+                        <div className="flex justify-between items-center pt-6 border-t font-black">
                             <button
-                                onClick={handleGenerate}
-                                disabled={!prompt || isLoading}
-                                className="bg-black text-white px-10 py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-all uppercase tracking-widest text-xs flex items-center gap-3 shadow-lg group"
+                                onClick={handleManualCreate}
+                                className="text-indigo-600 hover:text-indigo-800 text-[10px] uppercase tracking-widest font-bold px-2"
                             >
-                                {isLoading ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        Генерирую...
-                                    </>
-                                ) : (
-                                    <>Далее <span className="group-hover:translate-x-1 transition-transform">→</span></>
-                                )}
+                                🛠 Создать вручную
                             </button>
+                            <div className="flex gap-3">
+                                <button onClick={() => setIsOpen(false)} className="px-6 py-3 text-gray-400 hover:text-gray-600 transition-colors uppercase tracking-widest text-xs">Отмена</button>
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={!prompt || isLoading}
+                                    className="bg-black text-white px-10 py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-all uppercase tracking-widest text-xs flex items-center gap-3 shadow-lg group"
+                                >
+                                    {isLoading ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            Генерирую...
+                                        </>
+                                    ) : (
+                                        <>Далее <span className="group-hover:translate-x-1 transition-transform">→</span></>
+                                    )}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
