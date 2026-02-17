@@ -72,13 +72,24 @@ export async function POST(request: Request) {
         let newValue = 'novyi-1';
         let managerComment = '';
 
+        // Checklist / Call specific
+        const isChecklist = !!rule.checklist || !!body.checklist; // Check body too
+        const mockTranscript = body.mockTranscript || '';
+
         // CRITICAL: Use manager from rule parameters if specified
         let managerId = 249; // Default fallback
         if (rule.parameters?.manager_ids && Array.isArray(rule.parameters.manager_ids) && rule.parameters.manager_ids.length > 0) {
             managerId = Number(rule.parameters.manager_ids[0]); // Ensure number
         }
 
-        if (logic) {
+        if (isChecklist || rule.entity_type === 'call') {
+            steps.push(`📞 Эмуляция звонка для проверки чек-листа/скрипта`);
+            if (mockTranscript) {
+                steps.push(`📝 Использована тестовая транскрипция (${mockTranscript.length} символов)`);
+            } else {
+                steps.push(`⚠️ Транскрипция не задана, результат может быть пустым.`);
+            }
+        } else if (logic) {
             // Logic V2 Branch
             console.log('[RuleTest] Parsing Logic V2 blocks...');
 
@@ -188,35 +199,65 @@ export async function POST(request: Request) {
         });
         if (metricErr) throw new Error(`Metrics upsert failed: ${metricErr.message}`);
 
-        const humanName = codeToName.get(newValue) || newValue;
-        console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
-        steps.push(`📑 Эмулировано событие "${eventType}" для заказа`);
-        const { error: eventErr } = await supabase.from('raw_order_events').upsert({
-            event_id: testEventId,
-            retailcrm_order_id: testOrderId,
-            event_type: eventType,
-            occurred_at: eventTime.toISOString(),
-            // Ensure manager_id is present
-            manager_id: managerId,
-            raw_payload: {
-                field: fieldName,
-                newValue: fieldName === 'status' ? { code: newValue, name: humanName } : newValue,
-                oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
-                status: { code: newValue, name: humanName },
-                newValue_code: newValue,
-                newValue_name: humanName,
-                _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
-            },
-            source: 'synthetic_test'
-        });
-        if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
+        // Handle Calls vs Events
+        const syntheticCallId = `test_call_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+        if (isChecklist || rule.entity_type === 'call') {
+            // INSERT MOCK CALL
+            console.log('[RuleTest] Inserting Mock Call...');
+            const { error: callErr } = await supabase.from('raw_telphin_calls').insert({
+                telphin_call_id: syntheticCallId,
+                direction: 'outgoing', // usually outgoing for checklist scripts?
+                from_number: '70000000001',
+                to_number: '79998887766',
+                started_at: eventTime.toISOString(),
+                duration_sec: 120,
+                raw_payload: { synthetic: true },
+                transcript: mockTranscript // HOPEFULLY THIS EXISTS
+            });
+            if (callErr) throw new Error(`Call insert failed: ${callErr.message}`);
+
+            // INSERT MATCH
+            console.log('[RuleTest] Inserting Call Match...');
+            const { error: matchErr } = await supabase.from('call_order_matches').insert({
+                telphin_call_id: syntheticCallId,
+                retailcrm_order_id: testOrderId,
+                match_type: 'manual',
+                confidence_score: 1.0,
+                explanation: 'Synthetic Test Match'
+            });
+            if (matchErr) throw new Error(`Match insert failed: ${matchErr.message}`);
+        } else {
+            const humanName = codeToName.get(newValue) || newValue;
+            console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
+            steps.push(`📑 Эмулировано событие "${eventType}" для заказа`);
+            const { error: eventErr } = await supabase.from('raw_order_events').upsert({
+                event_id: testEventId,
+                retailcrm_order_id: testOrderId,
+                event_type: eventType,
+                occurred_at: eventTime.toISOString(),
+                // Ensure manager_id is present
+                manager_id: managerId,
+                raw_payload: {
+                    field: fieldName,
+                    newValue: fieldName === 'status' ? { code: newValue, name: humanName } : newValue,
+                    oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
+                    status: { code: newValue, name: humanName },
+                    newValue_code: newValue,
+                    newValue_name: humanName,
+                    _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
+                },
+                source: 'synthetic_test'
+            });
+            if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
+        }
 
         // Wait a bit for Supabase to persist/index the new event
         await new Promise(r => setTimeout(r, 500));
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
-        steps.push(`⚙️ Запуск движка OKK OKKRiteilCRM...`);
+        steps.push(`⚙️ Запуск движка OKK (включая AI-Чеклист)...`);
         const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000);
         const endTime = new Date(now.getTime() + 60 * 1000);
 
@@ -232,14 +273,19 @@ export async function POST(request: Request) {
             endTime.toISOString(),
             ruleId,
             true, // dryRun = true
-            adHocLogic ? rule : undefined,
+            adHocLogic ? { ...rule, checklist: body.checklist || rule.checklist } : undefined, // Ensure checklist is passed
             steps // Pass our steps array to collect internal engine traces
         );
 
         const violationsCount = typeof violationsFound === 'number' ? violationsFound : (Array.isArray(violationsFound) ? violationsFound.length : 0);
 
-        // In synthetic test, reaching this point with violationsCount > 0 is evidence of success
         const isSuccess = violationsCount > 0;
+        // Collect detailed result if present (for checklist especially)
+        let detailedResult = null;
+        if (violationsCount > 0 && Array.isArray(violationsFound)) {
+            detailedResult = violationsFound.find(v => v.checklist_result)?.checklist_result;
+        }
+
         const resultMessage = isSuccess
             ? 'Проверка пройдена: Нарушение обнаружено.'
             : 'Проверка не пройдена: Нарушение не зафиксировано.';
@@ -266,6 +312,10 @@ export async function POST(request: Request) {
         await supabase.from('okk_violations').delete().eq('order_id', testOrderId);
         await supabase.from('raw_order_events').delete().eq('retailcrm_order_id', testOrderId);
         await supabase.from('order_metrics').delete().eq('retailcrm_order_id', testOrderId);
+        await supabase.from('call_order_matches').delete().eq('retailcrm_order_id', testOrderId);
+        if (syntheticCallId) {
+            await supabase.from('raw_telphin_calls').delete().eq('telphin_call_id', syntheticCallId);
+        }
         await supabase.from('orders').delete().eq('id', testOrderId);
 
         steps.push(`♻️ Очистка данных завершена (Order #${testOrderId})`);
@@ -274,7 +324,8 @@ export async function POST(request: Request) {
             success: isSuccess,
             message: resultMessage,
             violationsCount: violationsFound,
-            steps: steps
+            steps: steps,
+            checklistResult: detailedResult // Return this to UI
         });
 
     } catch (e: any) {

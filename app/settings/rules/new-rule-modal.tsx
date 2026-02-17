@@ -32,6 +32,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     // Synthetic Test State
     const [syntheticLoading, setSyntheticLoading] = useState(false);
     const [syntheticResult, setSyntheticResult] = useState<{ success: boolean, message?: string, error?: string, steps?: string[] } | null>(null);
+    const [mockTranscript, setMockTranscript] = useState('Менеджер: Добрый день, компания Окна. Меня зовут Иван. Клиент: Здравствуйте, хочу заказать окно.');
 
     // Metadata
     const [allManagers, setAllManagers] = useState<any[]>([]);
@@ -143,7 +144,9 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 body: JSON.stringify({
                     adHocLogic: logic,
                     entity_type: entityType,
-                    severity: severity
+                    severity: severity,
+                    mockTranscript: ruleMode === 'checklist' ? mockTranscript : undefined,
+                    checklist: ruleMode === 'checklist' ? checklist : undefined
                 })
             });
             const data = await res.json();
@@ -376,8 +379,22 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
                         <div className="space-y-4">
                             <div className="sticky top-0 bg-white pt-2 z-10">
-                                {ruleMode === 'standard' && (
-                                    <div className="grid grid-cols-1 gap-2">
+                                {ruleMode === 'checklist' && (
+                                    <div className="mb-3">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">
+                                            Тестовый диалог (для проверки)
+                                        </label>
+                                        <textarea
+                                            className="w-full text-xs border border-gray-200 rounded-lg p-2 h-24 focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none resize-none"
+                                            placeholder="Вставьте сюда текст диалога для проверки..."
+                                            value={mockTranscript}
+                                            onChange={(e) => setMockTranscript(e.target.value)}
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-1 gap-2">
+                                    {ruleMode === 'standard' && (
                                         <button
                                             onClick={handleDryRun}
                                             disabled={dryRunLoading}
@@ -385,23 +402,49 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                         >
                                             {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
                                         </button>
-                                        <button
-                                            onClick={handleSyntheticTest}
-                                            disabled={syntheticLoading}
-                                            className="w-full bg-indigo-50 border-2 border-indigo-100 text-indigo-700 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            {syntheticLoading ? 'Запуск теста...' : '🧪 Проверка Синтетикой'}
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+                                    <button
+                                        onClick={handleSyntheticTest}
+                                        disabled={syntheticLoading}
+                                        className="w-full bg-indigo-50 border-2 border-indigo-100 text-indigo-700 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {syntheticLoading ? 'Запуск теста...' : '🧪 Проверка Синтетикой'}
+                                    </button>
+                                </div>
+                            </div>
 
-                                {syntheticResult && (
-                                    <div className={`mt-2 p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                                        <div className="flex items-center gap-2 uppercase tracking-widest mb-1">
-                                            <span>{syntheticResult.success ? '✅' : '❌'}</span>
-                                            {syntheticResult.message || syntheticResult.error || 'Ошибка проверки'}
+                            {syntheticResult && (
+                                <div className={`mt-2 p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+                                    <div className="flex items-center gap-2 uppercase tracking-widest mb-1">
+                                        <span>{syntheticResult.success ? '✅' : '❌'}</span>
+                                        {syntheticResult.message || syntheticResult.error || 'Ошибка проверки'}
+                                    </div>
+
+                                    {/* Display Checklist Breakdown if available */}
+                                    {(syntheticResult as any).checklistResult ? (
+                                        <div className="mt-2 bg-white/50 rounded-lg p-2 border border-black/5">
+                                            <div className="flex justify-between items-center mb-2 pb-1 border-b border-black/5">
+                                                <span className="uppercase tracking-wider opacity-70">Оценка AI</span>
+                                                <span className="text-lg font-black">
+                                                    {(syntheticResult as any).checklistResult.totalScore}/100
+                                                </span>
+                                            </div>
+                                            <div className="space-y-1">
+                                                {(syntheticResult as any).checklistResult.sectionScores?.map((s: any, i: number) => (
+                                                    <div key={i} className="flex justify-between text-[9px]">
+                                                        <span>{s.section}</span>
+                                                        <span className={s.score < s.maxScore ? 'text-red-600' : 'text-green-600'}>
+                                                            {s.score}/{s.maxScore}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="mt-2 pt-1 border-t border-black/5 italic opacity-80 leading-tight">
+                                                {(syntheticResult as any).checklistResult.summary}
+                                            </div>
                                         </div>
-                                        {syntheticResult.steps && syntheticResult.steps.length > 0 && (
+                                    ) : (
+                                        syntheticResult.steps && syntheticResult.steps.length > 0 && (
                                             <div className="mt-2 space-y-1 border-t border-current/20 pt-2 opacity-80 font-medium">
                                                 {syntheticResult.steps.map((s, i) => (
                                                     <div key={i} className="flex gap-2 leading-tight">
@@ -410,10 +453,10 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                                     </div>
                                                 ))}
                                             </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                                        )
+                                    )}
+                                </div>
+                            )}
 
                             {dryRunResults && (
                                 <div className="animate-in slide-in-from-top-2 duration-300">
