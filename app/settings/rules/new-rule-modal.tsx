@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import { createRule } from '@/app/actions/rules';
 import RuleBlockEditor, { RuleLogic } from './rule-block-editor';
+import ChecklistEditor, { ChecklistSection } from './checklist-editor';
 
 export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt?: string, trigger?: React.ReactNode }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -12,6 +13,9 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
     // Draft State
     const [logic, setLogic] = useState<RuleLogic | null>(null);
+    const [checklist, setChecklist] = useState<ChecklistSection[]>([]); // New state
+    const [ruleMode, setRuleMode] = useState<'standard' | 'checklist'>('standard'); // New state
+
     const [explanation, setExplanation] = useState('');
     const [name, setName] = useState('');
     const [entityType, setEntityType] = useState<'call' | 'event' | 'order'>('call');
@@ -60,6 +64,12 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const handleGenerate = async () => {
         setIsLoading(true);
         try {
+            // If user selected "Checklist" explicitly via prompt tags or just generic, we might want to auto-detect.
+            // For now, let's just proceed to step 2 and let user choose mode if AI doesn't decide.
+            // But actually, the prompt generation is for "Standard" rules mostly.
+            // If user wants a checklist, they might skip generation?
+            // Let's keep generation for now, it populates Name/Explanation/Logic.
+
             const res = await fetch('/api/ai/generate-rule', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -74,6 +84,15 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
             setEntityType(data.entity_type || 'call');
             setStep(2);
             setDryRunResults(null); // Reset preview
+
+            // Heuristic to switch to checklist mode? 
+            if (prompt.toLowerCase().includes('скрипт') || prompt.toLowerCase().includes('чек-лист')) {
+                setRuleMode('checklist');
+                setEntityType('call');
+            } else {
+                setRuleMode('standard');
+            }
+
         } catch (e) {
             alert('AI Generation Failed: ' + e);
         } finally {
@@ -82,7 +101,15 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     };
 
     const handleDryRun = async () => {
-        if (!logic) return;
+        if (!logic && ruleMode === 'standard') return;
+
+        // For checklist, we might not have a dry run yet, or we simulate it.
+        // Let's disable dry run for checklist for now or mock it.
+        if (ruleMode === 'checklist') {
+            alert('Предпросмотр для чек-листов пока не доступен');
+            return;
+        }
+
         setDryRunResults(null);
         setDryRunLoading(true);
         try {
@@ -101,6 +128,11 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     };
 
     const handleSyntheticTest = async () => {
+        if (ruleMode === 'checklist') {
+            alert('Синтетический тест для чек-листов пока не доступен');
+            return;
+        }
+
         if (!logic) return;
         setSyntheticLoading(true);
         setSyntheticResult(null);
@@ -132,17 +164,22 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 name,
                 description: explanation,
                 entity_type: entityType,
-                logic, // Structured logic instead of SQL
+                logic: ruleMode === 'checklist' ? {
+                    trigger: { block: 'new_call_transcribed', params: {} },
+                    conditions: []
+                } : logic, // Create dummy logic for checklist rules
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
-                is_active: true
+                is_active: true,
+                checklist: ruleMode === 'checklist' ? checklist : undefined
             }, historyDays);
 
             setIsOpen(false);
             setStep(1);
             setPrompt('');
             setLogic(null);
+            setChecklist([]);
         } catch (e) {
             alert('Save Failed: ' + e);
         } finally {
@@ -187,7 +224,7 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                            {['Забытый заказ', 'Отмена без комментария', 'Грубость менеджера', 'Длинная пауза'].map(tag => (
+                            {['Забытый заказ', 'Отмена без комментария', 'Грубость менеджера', 'Длинная пауза', 'Скрипт звонка'].map(tag => (
                                 <button
                                     key={tag}
                                     onClick={() => setPrompt(tag)}
@@ -221,18 +258,48 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                 {step === 2 && logic && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-h-[70vh] overflow-y-auto pr-2">
                         <div className="space-y-6">
-                            <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/50">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider">AI Анализ</span>
-                                </div>
-                                <p className="text-sm font-medium text-indigo-900 leading-relaxed italic">"{explanation}"</p>
+
+                            {/* Mode Switcher */}
+                            <div className="bg-gray-100 p-1 rounded-xl flex">
+                                <button
+                                    onClick={() => setRuleMode('standard')}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${ruleMode === 'standard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                >
+                                    Обычное правило
+                                </button>
+                                <button
+                                    onClick={() => { setRuleMode('checklist'); setEntityType('call'); }}
+                                    className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${ruleMode === 'checklist' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                >
+                                    Контроль качества (Чек-лист)
+                                </button>
                             </div>
 
-                            <RuleBlockEditor
-                                logic={logic}
-                                onChange={setLogic}
-                                statuses={statuses}
-                            />
+                            <div className="bg-indigo-50/50 p-5 rounded-2xl border border-indigo-100/50">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className="bg-indigo-600 text-white text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider">
+                                        {ruleMode === 'checklist' ? 'Контекст' : 'AI Анализ'}
+                                    </span>
+                                </div>
+                                <textarea
+                                    value={explanation}
+                                    onChange={(e) => setExplanation(e.target.value)}
+                                    className="w-full bg-transparent text-sm font-medium text-indigo-900 leading-relaxed italic outline-none resize-none h-20"
+                                />
+                            </div>
+
+                            {ruleMode === 'standard' ? (
+                                <RuleBlockEditor
+                                    logic={logic}
+                                    onChange={setLogic}
+                                    statuses={statuses}
+                                />
+                            ) : (
+                                <ChecklistEditor
+                                    checklist={checklist}
+                                    onChange={setChecklist}
+                                />
+                            )}
 
                             <div className="pt-4 border-t space-y-4">
                                 <div>
@@ -246,7 +313,6 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                             <option value="low">🟡 Низкая</option>
                                             <option value="medium">🟠 Средняя</option>
                                             <option value="high">🔴 Высокая</option>
-                                            <option value="critical">🆘 SOS</option>
                                         </select>
                                     </div>
                                     <div>
@@ -254,10 +320,10 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
                                         <select
                                             value={entityType}
                                             onChange={e => setEntityType(e.target.value as any)}
-                                            className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                                            disabled={ruleMode === 'checklist'} // Fixed to 'call' for checklist
+                                            className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer disabled:bg-gray-50 disabled:text-gray-400"
                                         >
                                             <option value="order">📦 Заказ (State)</option>
-                                            <option value="event">📑 Событие (Live)</option>
                                             <option value="call">📞 Звонок</option>
                                         </select>
                                     </div>
@@ -310,22 +376,24 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
 
                         <div className="space-y-4">
                             <div className="sticky top-0 bg-white pt-2 z-10">
-                                <div className="grid grid-cols-1 gap-2">
-                                    <button
-                                        onClick={handleDryRun}
-                                        disabled={dryRunLoading}
-                                        className="w-full bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
-                                    >
-                                        {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
-                                    </button>
-                                    <button
-                                        onClick={handleSyntheticTest}
-                                        disabled={syntheticLoading}
-                                        className="w-full bg-indigo-50 border-2 border-indigo-100 text-indigo-700 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {syntheticLoading ? 'Запуск теста...' : '🧪 Проверка Синтетикой'}
-                                    </button>
-                                </div>
+                                {ruleMode === 'standard' && (
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <button
+                                            onClick={handleDryRun}
+                                            disabled={dryRunLoading}
+                                            className="w-full bg-white border-2 border-indigo-600 text-indigo-600 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-600 hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+                                        >
+                                            {dryRunLoading ? 'Проверка...' : '🔍 Предпросмотр (Dry Run)'}
+                                        </button>
+                                        <button
+                                            onClick={handleSyntheticTest}
+                                            disabled={syntheticLoading}
+                                            className="w-full bg-indigo-50 border-2 border-indigo-100 text-indigo-700 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] hover:bg-indigo-100 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            {syntheticLoading ? 'Запуск теста...' : '🧪 Проверка Синтетикой'}
+                                        </button>
+                                    </div>
+                                )}
 
                                 {syntheticResult && (
                                     <div className={`mt-2 p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>

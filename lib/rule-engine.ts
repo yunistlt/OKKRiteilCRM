@@ -25,6 +25,7 @@ export interface Rule {
     condition_sql?: string; // Legacy support
     points?: number;
     notify_telegram?: boolean; // New field
+    checklist?: any; // JSON structure for Quality Control
 }
 
 /**
