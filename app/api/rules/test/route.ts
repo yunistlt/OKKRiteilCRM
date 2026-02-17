@@ -2,13 +2,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runRuleEngine } from '@/lib/rule-engine';
+import crypto from 'crypto';
 
 export const maxDuration = 60; // Allow enough time for synthetic test
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-    let testOrderId = 999000 + Math.floor(Math.random() * 999);
-    let testEventId = 888000 + Math.floor(Math.random() * 999);
+    // Generate distinct identifiers
+    const testOrderUuid = crypto.randomUUID();
+    const testOrderId = 99900000 + Math.floor(Math.random() * 99999); // Ensure safe integer range
+    const testEventId = 88800000 + Math.floor(Math.random() * 99999);
     let ruleId: string;
 
     // Use Service Role Client explicitly
@@ -180,15 +183,31 @@ export async function POST(request: Request) {
 
         console.log('[RuleTest] Upserting Order...');
         steps.push(`📦 Создан временный заказ #${testOrderId}`);
+
+        // Try to determine if we should use UUID or Int for ID
+        // Strategy: Use UUID for 'id' if possible, stick to int for 'order_id'
         const { error: orderErr } = await supabase.from('orders').upsert({
-            id: testOrderId,
+            id: testOrderUuid, // TRY UUID FIRST (likely the fix)
             order_id: testOrderId,
             status: fieldName === 'status' ? newValue : 'work',
             manager_id: managerId,
             created_at: eventTime.toISOString(),
             updated_at: eventTime.toISOString()
         });
-        if (orderErr) throw new Error(`Order upsert failed: ${orderErr.message}`);
+
+        if (orderErr) {
+            console.warn(`[RuleTest] Order upsert with UUID failed (${orderErr.message}). Retrying with INT...`);
+            // Fallback: If UUID fails (invalid input syntax for integer), try INT
+            const { error: orderErr2 } = await supabase.from('orders').upsert({
+                id: testOrderId,
+                order_id: testOrderId,
+                status: fieldName === 'status' ? newValue : 'work',
+                manager_id: managerId,
+                created_at: eventTime.toISOString(),
+                updated_at: eventTime.toISOString()
+            });
+            if (orderErr2) throw new Error(`Order upsert failed (both UUID and INT): ${orderErr2.message}`);
+        }
 
         console.log('[RuleTest] Upserting Metrics...');
         const { error: metricErr } = await supabase.from('order_metrics').upsert({
@@ -232,7 +251,6 @@ export async function POST(request: Request) {
             console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
             steps.push(`📑 Эмулировано событие "${eventType}" для заказа`);
             const { error: eventErr } = await supabase.from('raw_order_events').upsert({
-                event_id: testEventId,
                 retailcrm_order_id: testOrderId,
                 event_type: eventType,
                 occurred_at: eventTime.toISOString(),
