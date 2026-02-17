@@ -253,8 +253,9 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                         {/* Edit As New Version */}
                         <NewRuleModal
                             initialPrompt={rule.description}
+                            initialRule={rule} // Pass full rule for editing
                             trigger={
-                                <button className="text-gray-400 hover:text-blue-600 p-2 md:p-1" title="Создать новую версию (Edit)">
+                                <button className="text-gray-400 hover:text-blue-600 p-2 md:p-1" title="Редактировать правило (Edit)">
                                     ✏️
                                 </button>
                             }

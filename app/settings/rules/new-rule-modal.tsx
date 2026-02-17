@@ -6,7 +6,7 @@ import { createRule } from '@/app/actions/rules';
 import RuleBlockEditor, { RuleLogic } from './rule-block-editor';
 import ChecklistEditor, { ChecklistSection } from './checklist-editor';
 
-export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt?: string, trigger?: React.ReactNode }) {
+export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { initialPrompt?: string, trigger?: React.ReactNode, initialRule?: any }) {
     const [isOpen, setIsOpen] = useState(false);
     const [prompt, setPrompt] = useState(initialPrompt || '');
     const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +24,29 @@ export default function NewRuleModal({ initialPrompt, trigger }: { initialPrompt
     const [notifyTelegram, setNotifyTelegram] = useState(false);
     const [historyDays, setHistoryDays] = useState(0);
     const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
+
+    // Initialize from initialRule when opening
+    useEffect(() => {
+        if (isOpen && initialRule) {
+            setPrompt(initialRule.description || '');
+            setLogic(initialRule.logic || {
+                trigger: { block: 'status_change', params: { target_status: 'new' } },
+                conditions: []
+            });
+            setChecklist(initialRule.checklist || []);
+            setRuleMode(!!initialRule.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
+            setExplanation(initialRule.description || '');
+            setName(initialRule.name || '');
+            setEntityType(initialRule.entity_type || 'call');
+            setSeverity(initialRule.severity || 'medium');
+            setPoints(initialRule.points || 10);
+            setNotifyTelegram(initialRule.notify_telegram || false);
+            setStep(2); // Jump straight to editor
+        } else if (isOpen && !initialRule) {
+            // Reset for new rule
+            if (initialPrompt) setPrompt(initialPrompt);
+        }
+    }, [isOpen, initialRule, initialPrompt]);
 
     // Dry Run State
     const [dryRunLoading, setDryRunLoading] = useState(false);
