@@ -9,6 +9,31 @@ interface ViolationRowProps {
 
 export default function ViolationRow({ violation: v }: ViolationRowProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const [status, setStatus] = useState(v.status || 'pending');
+    const [comment, setComment] = useState(v.controller_comment || '');
+    const [loading, setLoading] = useState(false);
+
+    const handleFeedback = async (newStatus: 'confirmed' | 'rejected') => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/analysis/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    violation_id: v.id,
+                    status: newStatus,
+                    comment: newStatus === 'rejected' ? 'AI Error marked by controller' : 'Confirmed by controller'
+                })
+            });
+            if (res.ok) {
+                setStatus(newStatus);
+            }
+        } catch (e) {
+            console.error('Failed to update status', e);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
         <>
@@ -103,11 +128,48 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                                 </div>
                             )}
 
-                            {/* Timestamps & Technical Info */}
                             <div className="text-xs text-gray-400 flex gap-4 mt-2">
                                 <span>ID: {v.id}</span>
                                 <span>Call ID: {v.call_id || 'N/A'}</span>
                                 <span>Detected At: {new Date(v.created_at || v.violation_time).toLocaleString()}</span>
+                            </div>
+
+                            {/* Feedback Controller Section */}
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                                <h4 className="font-bold text-gray-700 text-xs uppercase mb-3">Оценка Контролера:
+                                    <span className={`ml-2 px-2 py-0.5 rounded text-[10px] uppercase border ${status === 'confirmed' ? 'bg-green-100 text-green-700 border-green-200' :
+                                        status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' :
+                                            'bg-gray-100 text-gray-500 border-gray-200'
+                                        }`}>
+                                        {status === 'confirmed' ? '✅ Подтверждено' :
+                                            status === 'rejected' ? '❌ Отклонено' :
+                                                '⏳ Ожидает проверки'}
+                                    </span>
+                                </h4>
+
+                                {status === 'pending' ? (
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleFeedback('confirmed'); }}
+                                            disabled={loading}
+                                            className="flex items-center gap-2 px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-sm font-bold border border-green-200 transition-colors disabled:opacity-50"
+                                        >
+                                            {loading ? '...' : '✅ Согласен'}
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleFeedback('rejected'); }}
+                                            disabled={loading}
+                                            className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-sm font-bold border border-red-200 transition-colors disabled:opacity-50"
+                                        >
+                                            {loading ? '...' : '❌ Не согласен'}
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="text-sm text-gray-600 italic bg-gray-50 p-3 rounded border border-gray-100">
+                                        {status === 'confirmed' ? 'Вы подтвердили это нарушение.' : 'Вы пометили это как ошибку AI.'}
+                                        {comment && <div className="mt-1 font-medium not-italic">"{comment}"</div>}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </td>

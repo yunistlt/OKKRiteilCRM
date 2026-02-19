@@ -69,12 +69,14 @@ export async function getViolations(limit = 100) {
             severity,
             points,
             rule_code,
-            okk_rules ( name ),
-            managers ( first_name, last_name, email ),
+            status,
+            controller_comment,
+            okk_rules(name),
+            managers(first_name, last_name, email),
             call_id,
             order_id,
-            orders ( status, totalsumm, number )
-        `)
+            orders(status, totalsumm, number)
+            `)
         .order('violation_time', { ascending: false })
         .limit(limit);
 
@@ -104,7 +106,7 @@ export async function createRule(ruleData: any, historyDays = 0) {
     // 2. If history check requested, trigger background audit
     if (historyDays > 0 && data) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk-riteil-crm-aqwq.vercel.app'; // Fallback to current prod URL if env missing
-        fetch(`${baseUrl}/api/rules/audit-history`, {
+        fetch(`${baseUrl} /api/rules / audit - history`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
