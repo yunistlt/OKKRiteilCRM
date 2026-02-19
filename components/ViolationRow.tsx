@@ -97,23 +97,24 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                 <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
                     {new Date(v.violation_time).toLocaleString('ru-RU')}
                 </td>
-                <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                        <span className={`px-2 inline-flex text-[10px] md:text-xs leading-5 font-semibold rounded-full 
-                            ${v.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                                v.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                                    'bg-yellow-100 text-yellow-800'}`}>
-                            {v.okk_rules?.name || v.rule_code}
-                        </span>
-                    </div>
+                <td className="px-4 md:px-6 py-4">
+                    <span className={`px-2 inline-flex text-[10px] md:text-xs leading-5 font-semibold rounded-full 
+                        ${v.severity === 'critical' ? 'bg-red-100 text-red-800' :
+                            v.severity === 'high' ? 'bg-orange-100 text-orange-800' :
+                                'bg-yellow-100 text-yellow-800'}`}>
+                        {v.okk_rules?.name || v.rule_code}
+                    </span>
+                </td>
+                <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm font-bold text-indigo-600">
+                    {v.checklist_result?.totalScore ?? v.points ?? 0}
                 </td>
                 <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-900">
                     {v.managers ? `${v.managers.first_name || ''} ${v.managers.last_name || ''}`.trim() || 'N/A' : 'N/A'}
                 </td>
-                <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-xs">
+                <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-[200px]">
                     <div className="flex items-center gap-2">
                         <button
-                            className={`p-1 rounded-full hover:bg-gray-200 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                            className={`p-1 rounded-full hover:bg-gray-200 transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`}
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setIsExpanded(!isExpanded);
@@ -135,11 +136,6 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                                 <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-bold underline">
                                     #{v.orders?.number || v.order_id}
                                 </a>
-                                {v.orders?.totalsumm && (
-                                    <span className="text-gray-600 font-medium">
-                                        {v.orders.totalsumm.toLocaleString('ru-RU')} ₽
-                                    </span>
-                                )}
                             </div>
                             {v.orders?.status && (
                                 <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600 font-mono">
@@ -156,8 +152,8 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
             {/* Expanded Details Row */}
             {isExpanded && (
                 <tr className="bg-gray-50/50">
-                    <td colSpan={6} className="px-4 md:px-6 py-4 border-b border-indigo-100">
-                        <div className="flex flex-col gap-6 pl-4 md:pl-12 py-2">
+                    <td colSpan={6} className="px-2 md:px-6 py-4 border-b border-indigo-100">
+                        <div className="flex flex-col gap-6 pl-2 md:pl-8 py-2">
 
                             {/* 1. Checklist Detailed Breakdown */}
                             {v.checklist_result && v.checklist_result.sections && (
