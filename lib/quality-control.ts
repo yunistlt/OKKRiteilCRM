@@ -40,6 +40,25 @@ export interface QualityControlResult {
     // For now, let's say passed if score >= 80? Or just return the result and let rule engine decide.
 }
 
+export async function getSystemPrompt(key: string, defaultPrompt: string): Promise<{ prompt: string; model: string }> {
+    try {
+        const { supabase } = await import('@/utils/supabase');
+        const { data } = await supabase
+            .from('ai_prompts')
+            .select('system_prompt, model')
+            .eq('key', key)
+            .eq('is_active', true)
+            .single();
+
+        if (data) {
+            return { prompt: data.system_prompt, model: data.model || 'gpt-4o-mini' };
+        }
+    } catch (e) {
+        console.warn(`[AI Settings] Failed to fetch prompt for ${key}, using default.`);
+    }
+    return { prompt: defaultPrompt, model: 'gpt-4o-mini' };
+}
+
 export async function evaluateChecklist(transcript: string, checklist: ChecklistSection[]): Promise<QualityControlResult> {
     if (!transcript || transcript.length < 50) {
         return {
@@ -51,7 +70,7 @@ export async function evaluateChecklist(transcript: string, checklist: Checklist
         };
     }
 
-    const systemPrompt = `
+    const DEFAULT_SYSTEM_PROMPT = `
 You are an expert Quality Assurance Specialist for a sales department.
 Your task is to audit a sales call transcript against a strict Quality Control Checklist.
 
@@ -91,9 +110,12 @@ CRITICAL:
 - Output strict JSON.
 `;
 
+    // Fetch dynamic prompt
+    const { prompt: systemPrompt, model } = await getSystemPrompt('qc_checklist_audit', DEFAULT_SYSTEM_PROMPT);
+
     try {
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Cost-effective for larger contexts
+            model: model,
             messages: [
                 { role: "system", content: systemPrompt },
                 {
@@ -125,9 +147,6 @@ CRITICAL:
                 sectionMax += item.weight;
                 items.push(item);
             }
-
-            // Check if section max matches original checklist? 
-            // Ideally yes, but let's rely on LLM returning the structure provided.
 
             processedSections.push({
                 section: section.section,

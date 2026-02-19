@@ -4,36 +4,51 @@ import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-    const { data, error } = await supabase
-        .from('system_prompts')
-        .select('*')
-        .order('key');
+export async function GET(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const key = searchParams.get('key');
 
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        let query = supabase.from('ai_prompts').select('*').order('created_at', { ascending: false });
+        if (key) {
+            query = query.eq('key', key);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        return NextResponse.json(data);
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
     }
-
-    return NextResponse.json(data);
 }
 
 export async function POST(req: Request) {
-    const body = await req.json();
-    const { key, content, description } = body;
+    try {
+        const body = await req.json();
+        const { key, system_prompt, description, model } = body;
 
-    if (!key || !content) {
-        return NextResponse.json({ error: 'Key and content required' }, { status: 400 });
+        if (!key || !system_prompt) {
+            return NextResponse.json({ error: 'Key and System Prompt are required' }, { status: 400 });
+        }
+
+        // Upsert based on key
+        const { data, error } = await supabase
+            .from('ai_prompts')
+            .upsert({
+                key,
+                system_prompt,
+                description,
+                model,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' })
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        return NextResponse.json(data);
+    } catch (e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
     }
-
-    const { data, error } = await supabase
-        .from('system_prompts')
-        .upsert({ key, content, description, updated_at: new Date().toISOString() })
-        .select()
-        .single();
-
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(data);
 }
