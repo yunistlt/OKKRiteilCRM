@@ -67,57 +67,11 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {violations.map((v: any) => (
-<<<<<<< HEAD
-                                <tr key={v.id} className="hover:bg-gray-50">
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
-                                        {new Date(v.violation_time).toLocaleString('ru-RU')}
-                                    </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center">
-                                            <span className={`px-2 inline-flex text-[10px] md:text-xs leading-5 font-semibold rounded-full 
-                                                ${v.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                                                    v.severity === 'high' ? 'bg-orange-100 text-orange-800' :
-                                                        'bg-yellow-100 text-yellow-800'}`}>
-                                                {v.okk_rules?.name || v.rule_code}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm font-bold text-gray-700">
-                                        {v.points || '—'}
-                                    </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-900">
-                                        {v.managers ? `${v.managers.first_name || ''} ${v.managers.last_name || ''}`.trim() || 'N/A' : 'N/A'}
-                                    </td>
-                                    <td className="px-4 md:px-6 py-4 text-xs md:text-sm text-gray-500 max-w-md break-words whitespace-normal">
-                                        {v.details}
-                                    </td>
-                                    <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs">
-                                        {v.order_id ? (
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-2">
-                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 font-bold underline">
-                                                        #{v.orders?.number || v.order_id}
-                                                    </a>
-                                                    {v.orders?.totalsumm && (
-                                                        <span className="text-gray-600 font-medium">
-                                                            {v.orders.totalsumm.toLocaleString('ru-RU')} ₽
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {v.orders?.status && (
-                                                    <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600 font-mono">
-                                                        {v.orders.status}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="text-gray-400">—</span>
-                                        )}
-                                    </td>
-                                </tr>
-=======
-                                <ViolationRow key={v.id} violation={v} />
->>>>>>> 70fb473 (Улучшение детализации нарушений: локализация ошибок ИИ и раскрывающийся UI)
+                                {
+                                    violations.map((v: any) => (
+                                        <ViolationRow key={v.id} violation={v} />
+                                    ))
+                                }
                             ))}
                         </tbody>
                     </table>
