@@ -67,11 +67,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {violations.map((v: any) => (
-                                {
-                                    violations.map((v: any) => (
-                                        <ViolationRow key={v.id} violation={v} />
-                                    ))
-                                }
+                                <ViolationRow key={v.id} violation={v} />
                             ))}
                         </tbody>
                     </table>
