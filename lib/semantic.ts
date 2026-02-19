@@ -14,7 +14,7 @@ export interface SemanticResult {
 
 export async function analyzeText(text: string, rulePrompt: string, contextDescription: string = 'Text Content'): Promise<SemanticResult> {
     if (!text || text.length < 2) {
-        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Text too short' };
+        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Текст слишком короткий для анализа' };
     }
 
     // System Prompt for the Analyzer
@@ -62,7 +62,7 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
 
     } catch (e) {
         console.error('Semantic Analysis Error:', e);
-        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Error' };
+        return { is_violation: false, evidence: null, confidence: 0, reasoning: 'Ошибка во время AI анализа. Проверьте логи.' };
     }
 }
 

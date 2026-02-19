@@ -1,6 +1,7 @@
 
 import { getViolations } from '@/app/actions/rules';
 import Link from 'next/link';
+import ViolationRow from '@/components/ViolationRow';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,6 +67,7 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {violations.map((v: any) => (
+<<<<<<< HEAD
                                 <tr key={v.id} className="hover:bg-gray-50">
                                     <td className="px-4 md:px-6 py-4 whitespace-nowrap text-xs md:text-sm text-gray-500">
                                         {new Date(v.violation_time).toLocaleString('ru-RU')}
@@ -113,6 +115,9 @@ export default async function ViolationsPage({ searchParams }: { searchParams: {
                                         )}
                                     </td>
                                 </tr>
+=======
+                                <ViolationRow key={v.id} violation={v} />
+>>>>>>> 70fb473 (Улучшение детализации нарушений: локализация ошибок ИИ и раскрывающийся UI)
                             ))}
                         </tbody>
                     </table>

@@ -65,6 +65,7 @@ export async function getViolations(limit = 100) {
             id,
             violation_time,
             details,
+            evidence_text,
             severity,
             points,
             rule_code,
