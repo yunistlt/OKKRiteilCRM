@@ -71,6 +71,7 @@ export async function getViolations(limit = 100) {
             rule_code,
             status,
             controller_comment,
+            checklist_result,
             okk_rules(name),
             managers(first_name, last_name, email),
             call_id,
@@ -85,6 +86,20 @@ export async function getViolations(limit = 100) {
         return [];
     }
     return data;
+}
+
+export async function getCallTranscript(eventId: string) {
+    const { data, error } = await supabase
+        .from('raw_telphin_calls')
+        .select('transcript')
+        .eq('event_id', eventId)
+        .single();
+
+    if (error) {
+        console.error('Error fetching transcript:', error);
+        return null;
+    }
+    return data?.transcript || null;
 }
 
 export async function createRule(ruleData: any, historyDays = 0) {

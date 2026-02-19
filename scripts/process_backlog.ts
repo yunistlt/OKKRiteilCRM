@@ -1,10 +1,11 @@
-
-import { supabase } from '../utils/supabase';
-import { analyzeOrderForRouting } from '../lib/ai-router';
+import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+
+import { supabase } from '../utils/supabase';
+import { analyzeOrderForRouting } from '../lib/ai-router';
 
 const DRY_RUN = process.argv.includes('--apply') === false;
 const LIMIT = 600;

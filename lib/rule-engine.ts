@@ -189,6 +189,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             const transcript = item.transcript || '';
             if (!transcript || transcript.length < 50) {
                 if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Transcript too short or missing.`);
+                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Transcript too short or missing.`);
                 continue; // Cannot evaluate
             }
 
