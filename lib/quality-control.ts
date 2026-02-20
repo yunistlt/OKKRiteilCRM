@@ -44,9 +44,20 @@ export interface QualityControlResult {
     maxScore: number;
     sections: QCSectionResult[];
     summary: string;
-    is_violation: boolean; // True if score < 100 or some threshold? Let's say < 100 for now, but usually QC is just a score.
-    // Actually, for rule engine compatibility, we might want to flag it as "violation" if score < X.
-    // For now, let's say passed if score >= 80? Or just return the result and let rule engine decide.
+    is_violation: boolean;
+}
+
+export interface EvidenceInteraction {
+    type: 'call' | 'comment' | 'field_change';
+    timestamp: string;
+    content: string;
+    metadata?: any;
+}
+
+export interface EvidenceContext {
+    orderId: number;
+    status: string;
+    interactions: EvidenceInteraction[];
 }
 
 export async function getSystemPrompt(key: string, defaultPrompt: string): Promise<{ prompt: string; model: string }> {
@@ -187,6 +198,125 @@ CRITICAL:
             maxScore: 100,
             sections: [],
             summary: "Error during AI evaluation.",
+            is_violation: true
+        };
+    }
+}
+
+export async function evaluateStageChecklist(context: EvidenceContext, checklist: ChecklistSection[]): Promise<QualityControlResult> {
+    if (!context.interactions || context.interactions.length === 0) {
+        return {
+            totalScore: 0,
+            maxScore: 100,
+            sections: [],
+            summary: "No interactions found for this stage.",
+            is_violation: true
+        };
+    }
+
+    const DEFAULT_STAGE_SYSTEM_PROMPT = `
+You are an expert Sales Quality Auditor.
+Your task is to audit an order's progress during a specific status stage against a Quality Control Checklist.
+
+INPUT:
+1. Evidence Context: A chronological list of interactions (calls, manager comments, field changes).
+2. Structure of Sections and Criteria (Items) with weights.
+
+INSTRUCTIONS:
+- Analyze ALL interactions as a single cohesive context.
+- A criteria is considered MET if it was fulfilled in ANY of the interactions (e.g., if LPR was identified in Call 1, it's a "pass" even if not mentioned in Call 2).
+- Manager comments in CRM are strong evidence of documentation.
+- For EACH item in the checklist, determine if the manager met the criteria across the entire stage.
+- Assign the full weight if met, 0 if missed.
+- Provide a brief reasoning (in Russian) for each decision, mentioning which interaction provided the evidence.
+- Calculate the total score.
+
+OUTPUT JSON FORMAT:
+{
+  "summary": "Brief summary of the stage quality in Russian.",
+  "sections": [
+    {
+      "section": "Name of section",
+      "items": [
+        {
+          "description": "Criteria description",
+          "weight": 10,
+          "score": 10,
+          "status": "pass",
+          "reasoning": "Reasoning in Russian"
+        }
+      ]
+    }
+  ]
+}
+`;
+
+    const { prompt: systemPrompt, model } = await getSystemPrompt('qc_stage_audit', DEFAULT_STAGE_SYSTEM_PROMPT);
+
+    try {
+        const openai = getOpenAI();
+        const completion = await openai.chat.completions.create({
+            model: model,
+            messages: [
+                { role: "system", content: systemPrompt },
+                {
+                    role: "user",
+                    content: `EVIDENCE CONTEXT:\n${JSON.stringify(context, null, 2)}\n\nCHECKLIST STRUCTURE:\n${JSON.stringify(checklist, null, 2)}`
+                }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+        });
+
+        const content = completion.choices[0].message.content;
+        if (!content) throw new Error('No content from LLM');
+
+        const result = JSON.parse(content);
+
+        // Reuse point calculation logic
+        let totalScore = 0;
+        let maxScore = 0;
+        const processedSections: QCSectionResult[] = [];
+
+        for (const section of (result.sections || [])) {
+            let sectionScore = 0;
+            let sectionMax = 0;
+            const items: QCItemResult[] = [];
+
+            for (const item of (section.items || [])) {
+                sectionScore += item.score;
+                sectionMax += item.weight;
+                items.push(item);
+            }
+
+            processedSections.push({
+                section: section.section,
+                items,
+                sectionScore,
+                sectionMaxScore: sectionMax
+            });
+
+            totalScore += sectionScore;
+            maxScore += sectionMax;
+        }
+
+        if (maxScore === 0) maxScore = 100;
+
+        return {
+            totalScore,
+            maxScore,
+            sections: processedSections,
+            summary: result.summary,
+            is_violation: totalScore < 100
+        };
+
+    } catch (e) {
+        console.error('Stage QC Evaluation Error:', e);
+        return {
+            totalScore: 0,
+            maxScore: 100,
+            sections: [],
+            summary: "Error during Stage AI evaluation.",
             is_violation: true
         };
     }

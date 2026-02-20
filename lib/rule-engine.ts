@@ -15,7 +15,7 @@ export interface RuleLogic {
 
 export interface Rule {
     code: string;
-    entity_type: 'call' | 'order' | 'event';
+    entity_type: 'call' | 'order' | 'event' | 'stage';
     logic: RuleLogic;
     params: Record<string, any>;
     severity: string;
@@ -184,7 +184,64 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             occurredAt: occurredAt
         };
 
-        // --- NEW: Checklist Evaluation Logic ---
+        // --- NEW: Stage Audit Logic (Multi-Interaction) ---
+        if (rule.entity_type === 'stage') {
+            // If triggered by status_change, we usually want to audit the status we just LEFT
+            let statusToAudit = item.status;
+            let exitTime = context.occurredAt;
+
+            if (item.event_type === 'status_changed' || item.event_type === 'status') {
+                const oldVal = item.raw_payload?.oldValue;
+                statusToAudit = (typeof oldVal === 'object' && oldVal !== null) ? oldVal.code : oldVal;
+                if (!statusToAudit) {
+                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit: Could not determine previous status. Skipping.`);
+                    continue;
+                }
+            }
+
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit for Order ${orderId}, Status: ${statusToAudit}. Collecting evidence...`);
+
+            const { collectStageEvidence } = await import('./stage-collector');
+            const { evaluateStageChecklist } = await import('./quality-control');
+
+            // Find when we ENTERED the status we just left
+            const { data: entryEvent } = await supabase
+                .from('raw_order_events')
+                .select('occurred_at')
+                .eq('retailcrm_order_id', orderId)
+                .or(`event_type.eq.status,event_type.eq.status_changed`)
+                .filter('raw_payload->newValue->>code', 'eq', statusToAudit)
+                .lt('occurred_at', exitTime)
+                .order('occurred_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            const start = entryEvent?.occurred_at || item.created_at_crm || item.created_at;
+
+            const evidence = await collectStageEvidence(orderId, statusToAudit, start, exitTime);
+
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Collected ${evidence.interactions.length} interactions for stage ${statusToAudit}.`);
+
+            if (rule.checklist && rule.checklist.length > 0) {
+                const qcResult = await evaluateStageChecklist(evidence, rule.checklist);
+
+                if (qcResult.totalScore < 100) {
+                    violations.push({
+                        rule_code: rule.code,
+                        order_id: context.orderId,
+                        manager_id: context.managerId,
+                        violation_time: context.occurredAt,
+                        severity: rule.severity,
+                        points: rule.points || (100 - qcResult.totalScore),
+                        details: `${qcResult.summary} (Оценка: ${qcResult.totalScore}/100)`,
+                        checklist_result: qcResult
+                    });
+                }
+                continue;
+            }
+        }
+
+        // --- NEW: Checklist Evaluation Logic (Atomic/Call-based) ---
         if (rule.checklist && rule.checklist.length > 0) {
             const transcript = item.transcript || '';
             if (!transcript || transcript.length < 50) {
