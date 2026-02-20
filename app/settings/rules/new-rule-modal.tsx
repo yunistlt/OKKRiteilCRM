@@ -56,7 +56,13 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
 
     // Synthetic Test State
     const [syntheticLoading, setSyntheticLoading] = useState(false);
-    const [syntheticResult, setSyntheticResult] = useState<{ success: boolean, message?: string, error?: string, steps?: string[] } | null>(null);
+    const [syntheticResult, setSyntheticResult] = useState<{
+        success: boolean,
+        message?: string,
+        error?: string,
+        steps?: string[],
+        checklistResult?: any
+    } | null>(null);
     const [mockTranscript, setMockTranscript] = useState('Менеджер: Добрый день, компания Окна. Меня зовут Иван. Клиент: Здравствуйте, хочу заказать окно.');
 
     // Metadata
@@ -395,11 +401,52 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                             </div>
 
                             {syntheticResult && (
-                                <div className={`p-3 rounded-xl border text-[10px] font-bold ${syntheticResult.success ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
-                                    {syntheticResult.message || syntheticResult.error}
-                                    {(syntheticResult as any).checklistResult && (
-                                        <div className="mt-1 opacity-80">Результат: {(syntheticResult as any).checklistResult.totalScore}/100</div>
-                                    )}
+                                <div className={`space-y-3 animate-in fade-in slide-in-from-top-2 duration-300`}>
+                                    <div className={`p-4 rounded-xl border-2 font-black uppercase tracking-widest text-xs flex items-center justify-between ${syntheticResult.success ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
+                                        <span>{syntheticResult.message || syntheticResult.error}</span>
+                                        {syntheticResult.checklistResult && (
+                                            <span className="bg-white px-3 py-1 rounded-lg shadow-sm">
+                                                Результат: {syntheticResult.checklistResult.totalScore}/100
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    {/* Trace/Steps Log */}
+                                    <div className="bg-gray-900 rounded-xl p-4 font-mono text-[10px] text-gray-300 space-y-1.5 max-h-60 overflow-y-auto shadow-inner border border-gray-800">
+                                        <div className="text-gray-500 mb-2 font-bold flex items-center gap-2">
+                                            <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
+                                            LOG LOG (Действия агента):
+                                        </div>
+                                        {syntheticResult.steps?.map((step: string, i: number) => {
+                                            const isAi = step.includes('AI') || step.includes('Semantic') || step.includes('Checklist');
+                                            return (
+                                                <div key={i} className={`pl-2 border-l-2 ${isAi ? 'border-indigo-500 text-indigo-300 bg-indigo-500/5' : 'border-gray-700'}`}>
+                                                    <span className="text-gray-500 mr-2">[{i + 1}]</span>
+                                                    {step}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    {/* Detailed Checklist Breakdown if present */}
+                                    {syntheticResult.checklistResult?.sections?.map((sec: any, si: number) => (
+                                        <div key={si} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
+                                            <h5 className="text-[10px] font-black uppercase text-gray-400 mb-2">{sec.section}</h5>
+                                            <div className="space-y-2">
+                                                {sec.items.map((it: any, ii: number) => (
+                                                    <div key={ii} className="flex gap-2 text-[10px]">
+                                                        <span className={it.score > 0 ? 'text-green-500' : 'text-red-500'}>
+                                                            {it.score > 0 ? '✔️' : '❌'}
+                                                        </span>
+                                                        <div className="flex-1">
+                                                            <div className="font-bold text-gray-700">{it.description} ({it.score}/{it.weight}%)</div>
+                                                            <div className="text-gray-500 italic mt-0.5">{it.reasoning}</div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             )}
                         </div>

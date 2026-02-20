@@ -229,6 +229,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
             if (rule.checklist && rule.checklist.length > 0) {
                 const qcResult = await evaluateStageChecklist(evidence, rule.checklist);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage QC Score: ${qcResult.totalScore}/100. Summary: ${qcResult.summary}`);
 
                 if (qcResult.totalScore < 100) {
                     violations.push({
@@ -258,6 +259,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Evaluating Checklist...`);
 
             const qcResult = await evaluateChecklist(transcript, rule.checklist);
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Checklist Score: ${qcResult.totalScore}/100. Summary: ${qcResult.summary}`);
 
             // If score < 100, record deviation (or if specifically violated)
             if (qcResult.totalScore < 100) {
@@ -318,8 +320,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 const text = metrics?.full_order_context?.manager_comment || item.transcript || '';
                 if (!text) {
                     condMatch = false;
+                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Check: No text found.`);
                 } else {
                     const res = await analyzeText(text, cond.params.prompt || rule.description, 'Context');
+                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Result: ${res.is_violation ? 'VIOLATION' : 'PASS'}. Reasoning: ${res.reasoning}`);
                     if (res.is_violation) {
                         semanticResult = res;
                         condMatch = true;
