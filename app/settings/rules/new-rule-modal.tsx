@@ -23,6 +23,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
     const [points, setPoints] = useState(10);
     const [notifyTelegram, setNotifyTelegram] = useState(false);
     const [historyDays, setHistoryDays] = useState(0);
+    const [stageStatus, setStageStatus] = useState<string>('any');
     const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
 
     // Initialize from initialRule when opening
@@ -41,6 +42,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setSeverity(initialRule.severity || 'medium');
             setPoints(initialRule.points || 10);
             setNotifyTelegram(initialRule.notify_telegram || false);
+            setStageStatus(initialRule.params?.stage_status || 'any');
             setStep(2); // Jump straight to editor
         } else if (isOpen && !initialRule) {
             // Reset for new rule
@@ -217,6 +219,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                         conditions: []
                     }
                 ) : logic,
+                params: entityType === 'stage' ? { stage_status: stageStatus } : {},
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
@@ -299,6 +302,24 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                     <option value="order">📦 Заказ (State)</option>
                                 </select>
                             </div>
+                            {entityType === 'stage' && (
+                                <div className="col-span-2">
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-2">Стадия для проверки (OLD STATUS)</label>
+                                    <select
+                                        value={stageStatus}
+                                        onChange={e => setStageStatus(e.target.value)}
+                                        className="w-full border-2 border-indigo-200 rounded-xl p-3 text-sm font-bold bg-white text-indigo-900 outline-none focus:ring-4 focus:ring-indigo-500/10 transition-all cursor-pointer shadow-sm"
+                                    >
+                                        <option value="any">Все стадии (любая смена статуса)</option>
+                                        {statuses.map(s => (
+                                            <option key={s.code} value={s.code}>{s.name}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-[10px] text-gray-400 mt-1 pl-1 italic">
+                                        Проверка сработает в момент **выхода** из этой стадии.
+                                    </p>
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Критичность</label>
                                 <select value={severity} onChange={e => setSeverity(e.target.value)} className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer">

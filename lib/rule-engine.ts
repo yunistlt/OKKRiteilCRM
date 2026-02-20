@@ -197,6 +197,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                     if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit: Could not determine previous status. Skipping.`);
                     continue;
                 }
+
+                // NEW: Only audit if this rule is meant for this specific status
+                if (rule.params?.stage_status && rule.params.stage_status !== 'any' && statusToAudit !== rule.params.stage_status) {
+                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit: Status ${statusToAudit} does not match rule param ${rule.params.stage_status}. Skipping.`);
+                    continue;
+                }
             }
 
             if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit for Order ${orderId}, Status: ${statusToAudit}. Collecting evidence...`);

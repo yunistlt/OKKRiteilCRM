@@ -204,13 +204,16 @@ CRITICAL:
 }
 
 export async function evaluateStageChecklist(context: EvidenceContext, checklist: ChecklistSection[]): Promise<QualityControlResult> {
-    if (!context.interactions || context.interactions.length === 0) {
+    const interactions = context.interactions || [];
+    const hasCalls = interactions.some(i => i.type === 'call');
+
+    if (interactions.length === 0 || !hasCalls) {
         return {
-            totalScore: 0,
+            totalScore: 100, // Pass by default if no data to judge
             maxScore: 100,
             sections: [],
-            summary: "No interactions found for this stage.",
-            is_violation: true
+            summary: "Нет звонков для анализа качества квалификации на этой стадии. Проверка пропущена.",
+            is_violation: false
         };
     }
 
