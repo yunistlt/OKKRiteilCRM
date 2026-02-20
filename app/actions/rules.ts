@@ -121,7 +121,7 @@ export async function createRule(ruleData: any, historyDays = 0) {
     // 2. If history check requested, trigger background audit
     if (historyDays > 0 && data) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk-riteil-crm-aqwq.vercel.app'; // Fallback to current prod URL if env missing
-        fetch(`${baseUrl} /api/rules / audit - history`, {
+        fetch(`${baseUrl}/api/rules/audit-history`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

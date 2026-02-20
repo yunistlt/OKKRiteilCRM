@@ -219,7 +219,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                         conditions: []
                     }
                 ) : logic,
-                params: entityType === 'stage' ? { stage_status: stageStatus } : {},
+                parameters: entityType === 'stage' ? { stage_status: stageStatus } : {},
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
