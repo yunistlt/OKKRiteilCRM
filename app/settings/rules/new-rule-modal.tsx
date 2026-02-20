@@ -18,7 +18,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
 
     const [explanation, setExplanation] = useState('');
     const [name, setName] = useState('');
-    const [entityType, setEntityType] = useState<'call' | 'event' | 'order'>('call');
+    const [entityType, setEntityType] = useState<'call' | 'event' | 'order' | 'stage'>('call');
     const [severity, setSeverity] = useState('medium');
     const [points, setPoints] = useState(10);
     const [notifyTelegram, setNotifyTelegram] = useState(false);
@@ -208,10 +208,15 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 name,
                 description: explanation,
                 entity_type: entityType,
-                logic: ruleMode === 'checklist' ? {
-                    trigger: { block: 'new_call_transcribed', params: {} },
-                    conditions: []
-                } : logic, // Create dummy logic for checklist rules
+                logic: ruleMode === 'checklist' ? (
+                    entityType === 'stage' ? {
+                        trigger: { block: 'status_change', params: { target_status: 'any' } },
+                        conditions: []
+                    } : {
+                        trigger: { block: 'new_call_transcribed', params: {} },
+                        conditions: []
+                    }
+                ) : logic,
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
@@ -372,9 +377,10 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                         <select
                                             value={entityType}
                                             onChange={e => setEntityType(e.target.value as any)}
-                                            disabled={ruleMode === 'checklist'} // Fixed to 'call' for checklist
+                                            disabled={ruleMode === 'checklist' && entityType !== 'call' && entityType !== 'stage'}
                                             className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold bg-white outline-none focus:border-indigo-500 transition-all cursor-pointer disabled:bg-gray-50 disabled:text-gray-400"
                                         >
+                                            <option value="stage">🏢 Стадия (Stage Audit)</option>
                                             <option value="order">📦 Заказ (State)</option>
                                             <option value="call">📞 Звонок</option>
                                         </select>
