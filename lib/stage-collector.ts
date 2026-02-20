@@ -13,6 +13,7 @@ export interface StageEvidence {
     entryTime: string;
     exitTime: string;
     interactions: Interaction[];
+    customerOrdersCount?: number;
 }
 
 /**
@@ -20,6 +21,15 @@ export interface StageEvidence {
  */
 export async function collectStageEvidence(orderId: number, status: string, entryTime: string, exitTime?: string): Promise<StageEvidence> {
     const end = exitTime || new Date().toISOString();
+
+    // 0. Fetch Order Meta (Customer orders count)
+    const { data: order } = await supabase
+        .from('orders')
+        .select('raw_payload')
+        .eq('order_id', orderId)
+        .single();
+
+    const customerOrdersCount = (order?.raw_payload as any)?.contact?.ordersCount;
 
     // 1. Fetch Calls
     const { data: callMatches } = await supabase
@@ -88,6 +98,7 @@ export async function collectStageEvidence(orderId: number, status: string, entr
         status,
         entryTime,
         exitTime: end,
-        interactions
+        interactions,
+        customerOrdersCount
     };
 }

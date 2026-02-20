@@ -58,6 +58,7 @@ export interface EvidenceContext {
     orderId: number;
     status: string;
     interactions: EvidenceInteraction[];
+    customerOrdersCount?: number;
 }
 
 export async function getSystemPrompt(key: string, defaultPrompt: string): Promise<{ prompt: string; model: string }> {
@@ -229,6 +230,7 @@ INSTRUCTIONS:
 - Analyze ALL interactions as a single cohesive context.
 - A criteria is considered MET if it was fulfilled in ANY of the interactions (e.g., if LPR was identified in Call 1, it's a "pass" even if not mentioned in Call 2).
 - Manager comments in CRM are strong evidence of documentation.
+- **IMPORTANT**: Reference the \`customerOrdersCount\` field in the context. If the rule prompt specifies to audit only the first or second order, and \`customerOrdersCount\` is greater than that number, you should mark all criteria as passed/ignored and mention this in the summary.
 - For EACH item in the checklist, determine if the manager met the criteria across the entire stage.
 - Assign the full weight if met, 0 if missed.
 - Provide a brief reasoning (in Russian) for each decision, mentioning which interaction provided the evidence.

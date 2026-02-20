@@ -210,19 +210,18 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             const { collectStageEvidence } = await import('./stage-collector');
             const { evaluateStageChecklist } = await import('./quality-control');
 
-            // Find when we ENTERED the status we just left
-            const { data: entryEvent } = await supabase
+            // Find when we FIRST entered the status flow (for 'New' + target stage)
+            // If the user wants to audit 'New' and 'Qualified', we should start from the very first status
+            const { data: firstStatus } = await supabase
                 .from('raw_order_events')
                 .select('occurred_at')
                 .eq('retailcrm_order_id', orderId)
                 .or(`event_type.eq.status,event_type.eq.status_changed`)
-                .filter('raw_payload->newValue->>code', 'eq', statusToAudit)
-                .lt('occurred_at', exitTime)
-                .order('occurred_at', { ascending: false })
+                .order('occurred_at', { ascending: true })
                 .limit(1)
                 .single();
 
-            const start = entryEvent?.occurred_at || item.created_at_crm || item.created_at;
+            const start = firstStatus?.occurred_at || item.created_at_crm || item.created_at;
 
             const evidence = await collectStageEvidence(orderId, statusToAudit, start, exitTime);
 
