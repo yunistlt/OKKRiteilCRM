@@ -16,7 +16,8 @@ export async function GET() {
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
                 'transcription_min_duration',
-                'rule_engine_last_run'
+                'rule_engine_last_run',
+                'insight_agent_last_run'
             ]);
 
         if (syncError) throw syncError;
@@ -189,6 +190,34 @@ export async function GET() {
             inactive_rules: inactiveRules
         };
 
+        // 4.7 Insight Agent Health
+        const insightRunKey = stateMap.get('insight_agent_last_run');
+        const lastInsightRun = insightRunKey?.updated_at || null;
+        const insightRunOk = isFresh(lastInsightRun, 120); // 2 hours threshold
+
+        const insightStatus = {
+            service: 'AI Insight Agent',
+            cursor: 'Deep Analysis',
+            last_run: lastInsightRun,
+            status: insightRunOk ? 'ok' : 'warning',
+            details: insightRunOk ? 'Extracting Business Facts' : 'Idle or Stalled',
+            reason: !insightRunOk ? 'Аналитик не запускался более 2 часов.' : null
+        };
+
+        // 4.8 Fetch Recent Insights for Monitor feed
+        const { data: recentInsights } = await supabase
+            .from('order_metrics')
+            .select('retailcrm_order_id, insights, computed_at, orders(number)')
+            .not('insights', 'is', null)
+            .order('computed_at', { ascending: false })
+            .limit(5);
+
+        const logs = (recentInsights || []).map((ri: any) => ({
+            order_number: ri.orders?.number,
+            summary: ri.insights?.summary || 'Успешный анализ',
+            time: ri.computed_at
+        }));
+
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
@@ -196,10 +225,11 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
-            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus],
+            services: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus, insightStatus],
+            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus, insightStatus],
             all_rules: allRules || [],
-            settings
+            settings,
+            insight_logs: logs
         });
 
     } catch (e: any) {

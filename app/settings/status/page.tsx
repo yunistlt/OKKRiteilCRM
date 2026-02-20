@@ -55,6 +55,7 @@ export default function SystemStatusPage() {
 
     // --- State: Settings & AI ---
     const [minDuration, setMinDuration] = useState(15);
+    const [insightLogs, setInsightLogs] = useState<any[]>([]);
     const [savingSettings, setSavingSettings] = useState(false);
     const [refreshingPriorities, setRefreshingPriorities] = useState(false);
 
@@ -74,6 +75,9 @@ export default function SystemStatusPage() {
             }
             if (data.settings && data.settings.transcription_min_duration) {
                 setMinDuration(data.settings.transcription_min_duration);
+            }
+            if (data.insight_logs) {
+                setInsightLogs(data.insight_logs);
             }
             setLastUpdated(new Date());
 
@@ -136,6 +140,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Matching Service')) url = '/api/matching/process';
         if (serviceName.includes('History Sync')) url = '/api/sync/history';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute';
+        if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run';
 
         if (!url) return;
 
@@ -204,6 +209,7 @@ export default function SystemStatusPage() {
         if (name.includes('Matching Service')) return 'Служба Матчинга (Звонок + Заказ)';
         if (name.includes('History Sync')) return 'События Заказов (History API)';
         if (name.includes('Rule Engine')) return 'Движок Проверки Правил';
+        if (name.includes('AI Insight Agent')) return 'Аналитик Бизнес-Инсайтов (AI)';
         return name;
     }
 
@@ -213,6 +219,7 @@ export default function SystemStatusPage() {
         if (name.includes('Matching')) return '🔗';
         if (name.includes('History')) return '⚡️';
         if (name.includes('Rule')) return '⚙️';
+        if (name.includes('Insight')) return '🕵️‍♂️';
         return '⚙️';
     };
 
@@ -280,8 +287,8 @@ export default function SystemStatusPage() {
             {/* OPENAI STATUS CARD */}
             {openai.status !== 'loading' && (
                 <div className={`rounded-xl border shadow-sm p-4 relative overflow-hidden transition-all ${openai.status === 'ok'
-                        ? 'bg-gradient-to-br from-white to-green-50 border-green-200'
-                        : 'bg-gradient-to-br from-white to-red-50 border-red-200'
+                    ? 'bg-gradient-to-br from-white to-green-50 border-green-200'
+                    : 'bg-gradient-to-br from-white to-red-50 border-red-200'
                     }`}>
                     <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
@@ -431,6 +438,28 @@ export default function SystemStatusPage() {
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+
+                {/* AI INSIGHTS LOG - NEW */}
+                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-md p-4">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-blue-600">Лента инсайтов (Insight Agent)</h3>
+                        <div className="text-[8px] font-black text-gray-300 uppercase underline cursor-pointer hover:text-blue-500">ВСЕ ИНСАЙТЫ</div>
+                    </div>
+
+                    <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
+                        {insightLogs.length > 0 ? insightLogs.map((log, idx) => (
+                            <div key={idx} className="px-2 py-1.5 bg-blue-50/30 border border-blue-100/50 rounded-lg flex items-start gap-3">
+                                <div className="text-[9px] font-black text-blue-500 bg-white border border-blue-100 w-10 h-5 flex items-center justify-center rounded">#{log.order_number}</div>
+                                <div className="flex-1">
+                                    <div className="text-[9px] font-bold text-gray-700 leading-tight">{log.summary}</div>
+                                    <div className="text-[7px] text-gray-400 uppercase font-bold mt-0.5">{new Date(log.time).toLocaleTimeString()}</div>
+                                </div>
+                            </div>
+                        )) : (
+                            <div className="h-full flex items-center justify-center py-10 opacity-30 italic text-[10px]">Ожидание данных от Агента...</div>
+                        )}
                     </div>
                 </div>
 

@@ -194,6 +194,26 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
             }
         }
 
+        // 5. Trigger Insight Agent if Match exists
+        try {
+            const { data: match } = await supabase
+                .from('call_order_matches')
+                .select('retailcrm_order_id')
+                .or(`telphin_call_id.eq.${callId},event_id.eq.${callId}`)
+                .limit(1)
+                .single();
+
+            if (match?.retailcrm_order_id) {
+                const { runInsightAnalysis } = await import('./insight-agent');
+                // Background execution (fire and forget)
+                runInsightAnalysis(match.retailcrm_order_id).catch(e =>
+                    console.error('[InsightAgent] Post-transcribe trigger failed:', e)
+                );
+            }
+        } catch (e) {
+            // Silence match errors (might not be an order-related call)
+        }
+
         return transcription;
 
     } catch (e: any) {

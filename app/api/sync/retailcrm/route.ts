@@ -121,6 +121,14 @@ export async function GET(request: Request) {
                 }
             }
 
+            // [NEW] Trigger Insight Agent for the first order of this page (background)
+            if (eventsToUpsert.length > 0) {
+                try {
+                    const { runInsightAnalysis } = await import('@/lib/insight-agent');
+                    runInsightAnalysis(eventsToUpsert[0].order_id).catch(e => console.error('[InsightAgent] Sync trigger failed:', e));
+                } catch (e) { /* ignore import errors */ }
+            }
+
             totalOrdersFetched += orders.length;
             pagesProcessed++;
 
