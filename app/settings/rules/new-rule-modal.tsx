@@ -42,7 +42,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setSeverity(initialRule.severity || 'medium');
             setPoints(initialRule.points || 10);
             setNotifyTelegram(initialRule.notify_telegram || false);
-            setStageStatus(initialRule.params?.stage_status || 'any');
+            setStageStatus(initialRule.parameters?.stage_status || 'any');
             setStep(2); // Jump straight to editor
         } else if (isOpen && !initialRule) {
             // Reset for new rule
