@@ -9,7 +9,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { message } = body;
+        const { message, history = [] } = body;
 
         if (!message) {
             return NextResponse.json({ error: 'Message is required' }, { status: 400 });
@@ -27,8 +27,13 @@ export async function POST(req: Request) {
 Ваша задача — понять текстовую команду руководителя и вызвать соответствующую функцию для её выполнения.
 Если пользователь просит проанализировать конкретный заказ, вызовите analyze_order.
 Если он просит проанализировать заказы по какому-то признаку (например, "в работе", "критичные", "новые"), вызовите analyze_status.
-Если команда не связана с этими действиями, просто ответьте текстом, что можете сделать только эти две вещи.`
+Вы также помните контекст предыдущей беседы. Вы можете просто отвечать на вопросы пользователя, если он спрашивает о заказах из текущей сессии (например: "какие рекомендации у последнего?", "кто там ЛПР?").
+Разрешается отвечать текстом без вызова функций, если из контекста понятно, что нужно сказать (например, при ответе на обычный вопрос).`
                 },
+                ...history.map((msg: any) => ({
+                    role: msg.role === 'agent' ? 'assistant' : 'user', // Map our UI role to OpenAI role
+                    content: msg.text || msg.content || ''
+                })),
                 {
                     role: 'user',
                     content: message

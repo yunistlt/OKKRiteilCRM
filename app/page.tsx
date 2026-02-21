@@ -51,10 +51,16 @@ function PriorityWidget() {
         setChatLoading(true);
 
         try {
+            // Prepare history to send (limit to last 10 messages to avoid huge payload)
+            const historyObj = chatMessages.slice(-10).map(m => ({
+                role: m.role,
+                text: m.text
+            }));
+
             const res = await fetch('/api/ai/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userText })
+                body: JSON.stringify({ message: userText, history: historyObj })
             });
             const data = await res.json();
 
