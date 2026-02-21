@@ -124,64 +124,58 @@ function PriorityWidget() {
             </div>
 
             {view === 'team' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {agents.map((agent) => (
-                        <div key={agent.agent_id} className="bg-gray-50/50 rounded-[32px] p-6 border border-gray-100 hover:border-indigo-200 transition-all group overflow-hidden relative">
-                            <div className="flex items-start gap-5 relative z-10">
-                                <div className="relative">
-                                    <div className={`w-20 h-20 rounded-2xl bg-gradient-to-br transition-all duration-500 overflow-hidden shadow-lg ${agent.status === 'working' ? 'from-indigo-100 to-blue-100 scale-105 rotate-2' : 'from-gray-100 to-gray-200 grayscale'}`}>
-                                        <div className="absolute inset-0 flex items-center justify-center text-3xl">
-                                            {agent.agent_id === 'anna' ? '👩‍💼' : agent.agent_id === 'maxim' ? '👨‍💻' : agent.agent_id === 'igor' ? '👮‍♂️' : '🗄️'}
-                                        </div>
+                <div className="relative w-full aspect-[16/9] bg-[#f0e6d2] rounded-[32px] border-8 border-[#4a3728] shadow-2xl overflow-hidden flex flex-col items-center justify-center p-4">
+                    {/* Floor and Walls */}
+                    <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-4 border-[#8b4513]"></div>
+
+                    {/* Zones for agents */}
+                    <div className="relative w-full h-full grid grid-cols-2 grid-rows-2 gap-4 z-10">
+                        {agents.map((agent: any) => {
+                            const isWorking = agent.status === 'working';
+                            const task = agent.current_task?.toLowerCase() || '';
+
+                            return (
+                                <div key={agent.agent_id} className="relative flex flex-col items-center justify-end pb-8">
+                                    {/* Desk Prop */}
+                                    <div className="absolute bottom-4 w-32 h-16 bg-[#8b4513] rounded-t-lg border-2 border-[#5d2e0d] z-0 shadow-lg">
+                                        <div className="absolute -top-4 left-4 w-12 h-8 bg-gray-200 border-2 border-gray-400 rounded-sm shadow-sm"></div>
                                     </div>
-                                    {agent.status === 'working' && (
-                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-4 border-white animate-pulse shadow-md"></div>
-                                    )}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h3 className="text-lg font-black text-gray-900">{agent.name}</h3>
-                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${agent.status === 'working' ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}`}>
-                                            {agent.status === 'working' ? 'В работе' : 'Ожидает'}
-                                        </span>
-                                    </div>
-                                    <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-3">{agent.role}</p>
-                                    <div className="bg-white/80 rounded-2xl p-3 border border-indigo-50/50 shadow-sm min-h-[60px] flex items-center">
-                                        <p className="text-xs font-medium text-gray-600 italic">
-                                            {agent.status === 'working' ? (
-                                                <span className="flex items-center gap-2">
-                                                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping"></span>
+
+                                    {/* Character Figure */}
+                                    <div className={`relative transition-all duration-1000 transform scale-125 z-10 
+                                        ${isWorking ? 'animate-bounce' : 'animate-pulse opacity-90'}`}>
+
+                                        <img
+                                            src={`/images/agents/${agent.agent_id}.png`}
+                                            alt={agent.name}
+                                            className={`h-32 w-auto drop-shadow-2xl ${isWorking ? '' : 'grayscale-[20%]'}`}
+                                        />
+
+                                        {/* Headphones for Semyon */}
+                                        {agent.agent_id === 'semen' && (task.includes('страниц') || task.includes('разложе')) && (
+                                            <div className="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-20 flex items-center justify-center pointer-events-none">
+                                                <div className="text-4xl filter drop-shadow-md">🎧</div>
+                                            </div>
+                                        )}
+
+                                        {/* Speech Bubble */}
+                                        {isWorking && (
+                                            <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded-2xl border-2 border-gray-900 shadow-2xl z-50 min-w-[120px]">
+                                                <p className="text-[9px] font-black text-gray-900 uppercase leading-tight text-center">
                                                     {agent.current_task}
-                                                </span>
-                                            ) : 'Готов к выполнению задач'}
-                                        </p>
+                                                </p>
+                                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r-2 border-b-2 border-gray-900 rotate-45"></div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Name Plate */}
+                                    <div className="mt-2 bg-gray-900 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border-2 border-white shadow-md z-20">
+                                        {agent.name}
                                     </div>
                                 </div>
-                            </div>
-                            {/* Decorative background elements */}
-                            <div className={`absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full -mr-16 -mt-16 transition-transform duration-1000 ${agent.status === 'working' ? 'scale-150 rotate-45' : 'scale-100 opacity-0'}`}></div>
-                        </div>
-                    ))}
-                    <div className="md:col-span-2 mt-4 p-6 bg-indigo-900 rounded-[32px] text-white overflow-hidden relative group">
-                        <div className="relative z-10">
-                            <h3 className="text-lg font-black mb-2 flex items-center gap-3">
-                                <span className="w-3 h-3 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></span>
-                                Оперативный Журнал Команды
-                            </h3>
-                            <div className="space-y-2 mt-4 max-h-[120px] overflow-y-auto custom-scrollbar">
-                                {agents.filter(a => a.status === 'working').map((a, i) => (
-                                    <div key={i} className="flex items-center gap-3 text-[11px] font-medium text-indigo-100/80 animate-in fade-in slide-in-from-left duration-300">
-                                        <span className="text-gray-400 font-mono">[{new Date(a.last_active_at).toLocaleTimeString()}]</span>
-                                        <span className="font-bold text-white uppercase">{a.name}:</span>
-                                        {a.current_task}
-                                    </div>
-                                ))}
-                                {agents.every(a => a.status !== 'working') && (
-                                    <div className="text-[11px] text-indigo-200 italic">Журнал обновлен. Все системы в норме. Команда в режиме дежурства.</div>
-                                )}
-                            </div>
-                        </div>
-                        <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                            );
+                        })}
                     </div>
                 </div>
             ) : (
@@ -495,8 +489,9 @@ function PriorityWidget() {
                         </div>
                     )}
                 </>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }
 
