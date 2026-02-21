@@ -116,7 +116,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             : 'border-transparent text-gray-500 hover:text-gray-700'
                             }`}
                     >
-                        🤖 AI Аудит
+                        👩‍💼 Анна: Аудит
                     </button>
                 </div>
 
@@ -288,9 +288,17 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                             {activeTab === 'ai_audit' && (
                                 <section className="space-y-6">
-                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
-                                        🤖 Проверка качества (AI)
-                                    </h3>
+                                    <div className="flex items-center gap-3 mb-6 border-b pb-4">
+                                        <img src="/images/agents/anna.png" alt="Anna" className="w-12 h-12 rounded-full border-2 border-purple-100 shadow-sm" />
+                                        <div>
+                                            <h3 className="text-lg font-bold text-gray-900 leading-tight">
+                                                Анна: Проверка качества
+                                            </h3>
+                                            <p className="text-xs text-purple-600 font-bold uppercase tracking-widest">
+                                                Бизнес-аналитик ОКК
+                                            </p>
+                                        </div>
+                                    </div>
 
                                     {!data.priority ? (
                                         <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed flex flex-col items-center gap-3">
