@@ -261,10 +261,23 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
         // --- NEW: Checklist Evaluation Logic (Atomic/Call-based) ---
         if (rule.checklist && rule.checklist.length > 0) {
-            const transcript = item.transcript || '';
+            let transcript = item.transcript || '';
+
+            // If it's an order/event based rule, find the transcript from associated calls
+            if (!transcript && (rule.entity_type === 'order' || rule.entity_type === 'event')) {
+                const { data: callData } = await supabase
+                    .from('call_order_matches')
+                    .select('raw_telphin_calls(transcript)')
+                    .eq('retailcrm_order_id', orderId)
+                    .order('telphin_call_id', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                transcript = (callData as any)?.raw_telphin_calls?.transcript || '';
+            }
+
             if (!transcript || transcript.length < 50) {
                 if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Transcript too short or missing.`);
-                console.log(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Transcript too short or missing.`);
                 continue; // Cannot evaluate
             }
 
@@ -460,6 +473,14 @@ function matchBlock(block: RuleLogicBlock, context: any): boolean {
             // For now, simplicity: return true if we don't have call data. 
             // Better to implement this with a subquery or pre-fetching.
             return true;
+
+        case 'new_call_transcribed':
+            // If the entity is a call, it matches by definition of being processed.
+            // If the entity is an order event, check if the event type matches.
+            if (item.event_type === 'new_call_transcribed') return true;
+            // If it's a direct call entity test
+            if (item.telphin_call_id) return true;
+            return false;
 
         default:
             return false;

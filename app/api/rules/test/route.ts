@@ -246,6 +246,19 @@ export async function POST(request: Request) {
                 explanation: 'Synthetic Test Match'
             });
             if (matchErr) throw new Error(`Match insert failed: ${matchErr.message}`);
+
+            // NEW: If it's an ORDER rule with a checklist, it needs an event to trigger if using Logic Blocks
+            if (rule.entity_type === 'order' || rule.entity_type === 'event') {
+                console.log('[RuleTest] Inserting auxiliary transcription event...');
+                await supabase.from('raw_order_events').upsert({
+                    retailcrm_order_id: testOrderId,
+                    event_type: 'new_call_transcribed',
+                    occurred_at: eventTime.toISOString(),
+                    manager_id: managerId,
+                    raw_payload: { call_id: syntheticCallId, transcript: mockTranscript },
+                    source: 'synthetic_test'
+                });
+            }
         } else {
             const humanName = codeToName.get(newValue) || newValue;
             console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
