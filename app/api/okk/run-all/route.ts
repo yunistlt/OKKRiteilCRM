@@ -8,8 +8,12 @@ export const maxDuration = 300;
 // Запускается: ночным cron + кнопкой в UI
 export async function GET(request: Request) {
     try {
-        console.log('[ОКК Cron] Starting full evaluation run...');
-        const result = await runFullEvaluation();
+        const { searchParams } = new URL(request.url);
+        const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
+        const specificOrderId = searchParams.get('orderId') ? parseInt(searchParams.get('orderId')!) : undefined;
+
+        console.log(`[ОКК Cron] Starting evaluation run... limit=${limit}, orderId=${specificOrderId}`);
+        const result = await runFullEvaluation({ limit, specificOrderId });
         console.log(`[ОКК Cron] Done: ${result.processed} processed, ${result.errors} errors`);
         return NextResponse.json({ success: true, ...result });
     } catch (e: any) {

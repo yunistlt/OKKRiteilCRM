@@ -420,28 +420,38 @@ export async function evaluateOrder(orderId: number): Promise<void> {
 // ═══════════════════════════════════════════════════════
 // ПОЛНЫЙ ПРОГОН
 // ═══════════════════════════════════════════════════════
-export async function runFullEvaluation(): Promise<{ processed: number; errors: number }> {
-    const { data: settings } = await supabase
-        .from('status_settings')
-        .select('code')
-        .eq('is_working', true);
+export async function runFullEvaluation(params?: { limit?: number; specificOrderId?: number }): Promise<{ processed: number; errors: number }> {
+    let ordersToProcess: { order_id: number }[] = [];
 
-    const statusCodes: string[] = (settings || []).map((s: any) => s.code);
-    if (statusCodes.length === 0) return { processed: 0, errors: 0 };
+    if (params?.specificOrderId) {
+        ordersToProcess = [{ order_id: params.specificOrderId }];
+    } else {
+        const { data: settings } = await supabase
+            .from('status_settings')
+            .select('code')
+            .eq('is_working', true);
 
-    const { data: orders } = await supabase
-        .from('orders')
-        .select('order_id')
-        .in('status', statusCodes)
-        .lt('order_id', 99900000)
-        .limit(200);
+        const statusCodes: string[] = (settings || []).map((s: any) => s.code);
+        if (statusCodes.length === 0) return { processed: 0, errors: 0 };
+
+        const { data: orders } = await supabase
+            .from('orders')
+            .select('order_id')
+            .in('status', statusCodes)
+            .lt('order_id', 99900000)
+            .order('created_at', { ascending: false })
+            .limit(params?.limit || 100);
+
+        ordersToProcess = orders || [];
+    }
 
     let processed = 0, errors = 0;
-    for (const order of (orders || [])) {
+    for (const order of ordersToProcess) {
         try {
             await evaluateOrder(order.order_id);
             processed++;
-            if (processed % 10 === 0) await new Promise(r => setTimeout(r, 1000));
+            // Небольшая задержка чтобы не спамить OpenAI/Supabase
+            if (processed % 5 === 0) await new Promise(r => setTimeout(r, 800));
         } catch (e) {
             console.error(`[ОКК] Ошибка для #${order.order_id}:`, e);
             errors++;

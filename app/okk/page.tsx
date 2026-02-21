@@ -352,6 +352,8 @@ export default function OKKPage() {
     const [filterStatus, setFilterStatus] = useState('');
     const [sortBy, setSortBy] = useState<string>('eval_date');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+    const [runLimit, setRunLimit] = useState(50);
+    const [targetOrderId, setTargetOrderId] = useState('');
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -370,12 +372,28 @@ export default function OKKPage() {
         setRunning(true);
         setRunResult(null);
         try {
-            const res = await fetch('/api/okk/run-all');
+            const query = new URLSearchParams();
+            if (runLimit) query.append('limit', runLimit.toString());
+            if (targetOrderId) query.append('orderId', targetOrderId);
+
+            const res = await fetch(`/api/okk/run-all?${query.toString()}`);
             const json = await res.json();
             setRunResult(`✅ Обработано: ${json.processed}, ошибок: ${json.errors}`);
-            setTimeout(load, 2000);
+            setTimeout(load, 1500);
         } catch {
             setRunResult('❌ Ошибка запуска');
+        } finally {
+            setRunning(false);
+        }
+    };
+
+    const handleReEvaluate = async (orderId: number) => {
+        setRunning(true);
+        try {
+            await fetch(`/api/okk/run-all?orderId=${orderId}`);
+            await load();
+        } catch (e) {
+            console.error('Re-evaluation failed:', e);
         } finally {
             setRunning(false);
         }
@@ -427,16 +445,46 @@ export default function OKKPage() {
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Header */}
-            <div className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between flex-shrink-0">
+            <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between flex-shrink-0 shadow-sm">
                 <div className="flex items-center gap-3">
-                    <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Назад</Link>
-                    <h1 className="text-lg font-bold text-gray-900">ОКК — Контроль качества</h1>
-                    <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">{filtered.length} заказов</span>
+                    <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm p-2 bg-gray-50 rounded-lg transition-colors">←</Link>
+                    <div className="flex flex-col">
+                        <h1 className="text-base font-bold text-gray-900 leading-tight">ОКК — Контроль качества</h1>
+                        <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{filtered.length} заказов в списке</span>
+                    </div>
                 </div>
-                <button onClick={runAll} disabled={running}
-                    className="bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
-                    {running ? '⏳ Запуск...' : '▶ Запустить прогон'}
-                </button>
+
+                <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
+                    <div className="flex flex-col px-2">
+                        <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Заказ №</span>
+                        <input
+                            type="text"
+                            placeholder="Все"
+                            value={targetOrderId}
+                            onChange={(e) => setTargetOrderId(e.target.value)}
+                            className="bg-transparent border-none text-xs font-bold w-16 focus:ring-0 p-0 h-4"
+                        />
+                    </div>
+                    <div className="flex flex-col border-l border-gray-200 px-2 leading-none">
+                        <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Лимит</span>
+                        <input
+                            type="number"
+                            value={runLimit}
+                            onChange={(e) => setRunLimit(parseInt(e.target.value) || 0)}
+                            className="bg-transparent border-none text-xs font-bold w-10 focus:ring-0 p-0 h-4"
+                        />
+                    </div>
+                    <button
+                        onClick={runAll}
+                        disabled={running}
+                        className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'} px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2`}
+                    >
+                        {running ? (
+                            <div className="w-3 h-3 border-2 border-gray-400 border-t-blue-500 animate-spin rounded-full" />
+                        ) : '▶'}
+                        {targetOrderId ? 'ПРОВЕРИТЬ' : 'ЗАПУСТИТЬ'}
+                    </button>
+                </div>
             </div>
 
             {runResult && (
@@ -495,9 +543,19 @@ export default function OKKPage() {
                             </tr>
                         ) : filtered.map((s, i) => (
                             <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                                <td className="px-2 py-1.5 sticky left-0 bg-white font-mono border-r border-gray-200 z-10">
-                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer"
-                                        className="text-blue-600 hover:underline text-xs">#{s.order_id}</a>
+                                <td className="px-2 py-1.5 sticky left-0 bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleReEvaluate(s.order_id)}
+                                            disabled={running}
+                                            title="Перепроверить только этот заказ"
+                                            className="hover:scale-125 transition-transform disabled:opacity-30"
+                                        >
+                                            ↩️
+                                        </button>
+                                        <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer"
+                                            className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
+                                    </div>
                                 </td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap font-medium text-gray-800">{s.manager_name || '—'}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100">
