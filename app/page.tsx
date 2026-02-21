@@ -9,6 +9,8 @@ function PriorityWidget() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string | null>(null);
     const [crmUrl, setCrmUrl] = useState<string>('');
+    const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
+    const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
 
     useEffect(() => {
         fetch('/api/analysis/priorities')
@@ -22,6 +24,24 @@ function PriorityWidget() {
             })
             .catch(e => setLoading(false));
     }, []);
+
+    const handleAnalyze = async (e: any, orderId: number) => {
+        e.stopPropagation();
+        if (analyzingOrderId) return;
+
+        setAnalyzingOrderId(orderId);
+        try {
+            const res = await fetch(`/api/analysis/order/${orderId}`);
+            const data = await res.json();
+            if (data.success) {
+                setAnalysisResults(prev => ({ ...prev, [orderId]: data.insights }));
+            }
+        } catch (e) {
+            console.error('Analysis failed', e);
+        } finally {
+            setAnalyzingOrderId(null);
+        }
+    };
 
     const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
 
@@ -182,17 +202,28 @@ function PriorityWidget() {
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-row md:flex-col items-center md:items-end flex-wrap gap-1.5">
-                                        {order.reasons.filter((r: string) => !r.startsWith('AI:')).map((r: string, i: number) => (
-                                            <div key={i} className={`text-[9px] md:text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
-                                                order.level === 'yellow' ? 'text-yellow-600 bg-yellow-50' :
-                                                    order.level === 'green' ? 'text-green-500 bg-green-50' :
-                                                        'text-gray-500 bg-gray-100'
-                                                }`}>
-                                                {r}
-                                            </div>
-                                        ))}
-                                        {/* Don't show redundant dots if no non-AI reasons */}
+                                    <div className="flex flex-row md:flex-col items-center md:items-end flex-wrap gap-2">
+                                        <button
+                                            onClick={(e) => handleAnalyze(e, order.orderId)}
+                                            disabled={analyzingOrderId === order.orderId}
+                                            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${analyzingOrderId === order.orderId
+                                                ? 'bg-gray-100 text-gray-400 animate-pulse'
+                                                : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+                                                }`}
+                                        >
+                                            {analyzingOrderId === order.orderId ? 'Анализ...' : '🤖 ИИ разбор'}
+                                        </button>
+                                        <div className="flex flex-row md:flex-col items-center md:items-end flex-wrap gap-1.5">
+                                            {order.reasons.filter((r: string) => !r.startsWith('AI:')).map((r: string, i: number) => (
+                                                <div key={i} className={`text-[9px] md:text-[10px] font-bold px-2 py-0.5 md:py-1 rounded-lg ${order.level === 'red' ? 'text-red-500 bg-red-50' :
+                                                    order.level === 'yellow' ? 'text-yellow-600 bg-yellow-50' :
+                                                        order.level === 'green' ? 'text-green-500 bg-green-50' :
+                                                            'text-gray-500 bg-gray-100'
+                                                    }`}>
+                                                    {r}
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
 
@@ -218,6 +249,76 @@ function PriorityWidget() {
                                         </div>
                                     )}
                                 </div>
+
+                                {/* Deep Analysis Result (if available) */}
+                                {analysisResults[order.orderId] && (
+                                    <div className="mt-4 p-4 md:p-5 bg-indigo-50/50 rounded-2xl md:rounded-3xl border border-indigo-100 animate-in fade-in slide-in-from-top-2 duration-500">
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            {/* LPR & Core */}
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">ЛПР / Роль</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-sm font-bold text-gray-900">
+                                                            {analysisResults[order.orderId].lpr?.name || 'Не выявлен'}
+                                                        </span>
+                                                        {analysisResults[order.orderId].lpr?.role && (
+                                                            <span className="text-[10px] bg-white px-2 py-0.5 rounded-md border border-indigo-100 text-indigo-600 font-bold">
+                                                                {analysisResults[order.orderId].lpr.role}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">Бюджет / Сроки</p>
+                                                    <p className="text-xs font-medium text-gray-600">
+                                                        💰 {analysisResults[order.orderId].budget?.status || 'Неизвестно'}
+                                                        {analysisResults[order.orderId].budget?.constraints && ` (${analysisResults[order.orderId].budget.constraints})`}
+                                                    </p>
+                                                    <p className="text-xs font-medium text-gray-600 mt-1">
+                                                        ⏳ {analysisResults[order.orderId].timeline?.urgency === 'hot' ? '🔥 Срочно' : analysisResults[order.orderId].timeline?.urgency === 'low' ? '💨 Не горит' : '📅 Нормально'}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Pain Points & Technical */}
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">Боли клиента</p>
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {analysisResults[order.orderId].pain_points?.map((p: string, i: number) => (
+                                                            <span key={i} className="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded-md font-medium border border-red-100 italic">
+                                                                {p}
+                                                            </span>
+                                                        )) || <span className="text-xs text-gray-400">Не указаны</span>}
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">Требования / Конкуренты</p>
+                                                    <p className="text-[11px] text-gray-700 leading-relaxed line-clamp-2">
+                                                        {analysisResults[order.orderId].technical_requirements?.join(', ') || 'Стандартные'}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* AI Advice (Recommendations) */}
+                                            <div className="bg-white/80 p-4 rounded-2xl border border-indigo-100 shadow-sm self-start">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-3 flex items-center gap-2">
+                                                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                                                    Советы Консультанта
+                                                </p>
+                                                <ul className="space-y-2">
+                                                    {analysisResults[order.orderId].recommendations?.map((r: string, i: number) => (
+                                                        <li key={i} className="text-xs font-bold text-gray-900 flex items-start gap-2">
+                                                            <span className="text-emerald-500 text-sm">✓</span>
+                                                            {r}
+                                                        </li>
+                                                    )) || <li className="text-xs text-gray-400 italic">Анализируем историю...</li>}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         ))
                     )}
