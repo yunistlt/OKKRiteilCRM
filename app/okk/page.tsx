@@ -426,7 +426,19 @@ export default function OKKPage() {
             return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
         });
 
-    const uniqueStatuses = Array.from(new Set(scores.map(s => s.order_status).filter(Boolean)));
+    const statusMap = new Map<string, { label: string, color?: string }>();
+    scores.forEach(s => {
+        if (s.order_status && !statusMap.has(s.order_status)) {
+            statusMap.set(s.order_status, {
+                label: s.status_label || s.order_status,
+                color: s.status_color
+            });
+        }
+    });
+    const availableStatuses = Array.from(statusMap.entries()).map(([code, meta]) => ({
+        code,
+        ...meta
+    })).sort((a, b) => a.label.localeCompare(b.label));
 
     const handleSort = (key: string) => {
         if (sortBy === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -511,9 +523,17 @@ export default function OKKPage() {
                 <input type="text" placeholder="🔍 Менеджер" value={filterManager} onChange={e => setFilterManager(e.target.value)}
                     className="border border-gray-200 rounded px-2 py-1 text-sm w-40 focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                    className="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400">
+                    className="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium">
                     <option value="">Все статусы</option>
-                    {uniqueStatuses.map(s => <option key={s!} value={s!}>{s}</option>)}
+                    {availableStatuses.map(s => (
+                        <option
+                            key={s.code}
+                            value={s.code}
+                            style={{ backgroundColor: s.color ? s.color + '20' : undefined }}
+                        >
+                            {s.label}
+                        </option>
+                    ))}
                 </select>
                 {(filterManager || filterStatus) && (
                     <button onClick={() => { setFilterManager(''); setFilterStatus(''); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Сбросить</button>
