@@ -31,22 +31,23 @@ export async function GET() {
         );
     }
 
-    // Загружаем читаемые названия статусов из таблицы statuses
+    // Загружаем читаемые названия и цвета статусов из таблицы statuses
     const statusCodes = Array.from(new Set((scores || []).map(s => s.order_status).filter(Boolean)));
-    let statusMap: Record<string, string> = {};
+    let statusMap: Record<string, { name: string; color: string | null }> = {};
     if (statusCodes.length > 0) {
         const { data: statuses } = await supabase
             .from('statuses')
-            .select('code, name')
+            .select('code, name, color')
             .in('code', statusCodes);
 
-        statusMap = Object.fromEntries((statuses || []).map(s => [s.code, s.name]));
+        statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
     }
 
     const enriched = (scores || []).map(s => ({
         ...s,
         manager_name: s.manager_id ? (managerMap[s.manager_id] || `#${s.manager_id}`) : '—',
-        status_label: s.order_status ? (statusMap[s.order_status] || s.order_status) : '—',
+        status_label: s.order_status ? (statusMap[s.order_status]?.name || s.order_status) : '—',
+        status_color: s.order_status ? (statusMap[s.order_status]?.color || '#E5E7EB') : '#E5E7EB',
     }));
 
     return NextResponse.json({ scores: enriched });

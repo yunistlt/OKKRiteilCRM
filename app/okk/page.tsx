@@ -50,6 +50,20 @@ interface OrderScore {
     evaluator_comment: string | null;
     manager_name?: string;
     status_label?: string;
+    status_color?: string;
+}
+
+// ─── Вспомогательные функции ──────────────────────────────
+function getBadgeStyle(hex?: string) {
+    if (!hex) return { backgroundColor: '#F3F4F6', color: '#374151' };
+
+    // Пытаемся сделать цвет текста темнее для светлых фонов
+    // Но так как у нас Tailwind, просто применим инлайн стиль
+    return {
+        backgroundColor: hex + '20', // 12% прозрачности для фона
+        color: hex,
+        border: `1px solid ${hex}40`
+    };
 }
 
 // ─── Компонент подсказки ─────────────────────────────────
@@ -559,7 +573,13 @@ export default function OKKPage() {
                                 </td>
                                 <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap font-medium text-gray-800">{s.manager_name || '—'}</td>
                                 <td className="px-2 py-1.5 border-r border-gray-100">
-                                    <span className="bg-blue-50 text-blue-700 text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap" title={s.order_status || ''}>{s.status_label || s.order_status || '—'}</span>
+                                    <span
+                                        className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap"
+                                        style={getBadgeStyle(s.status_color)}
+                                        title={s.order_status || ''}
+                                    >
+                                        {s.status_label || s.order_status || '—'}
+                                    </span>
                                 </td>
                                 {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
                                 {/* Оценка выполнения */}
