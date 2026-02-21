@@ -32,7 +32,7 @@ export interface Rule {
 /**
  * Execute all active rules against a time range.
  */
-export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[]) {
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[], targetOrderId?: number | string) {
     if (trace) trace.push(`[RuleEngine V2] Range: ${startDate} to ${endDate}`);
 
     const statusesPromise = supabase.from('statuses').select('code, name');
@@ -64,7 +64,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     for (const rule of rules) {
         try {
             if (rule.logic) {
-                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun, trace);
+                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun, trace, targetOrderId);
                 if (dryRun) {
                     allViolations.push(...(results as any[]));
                 } else {
@@ -82,7 +82,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 /**
  * NEW: Executes a rule based on Structured Logic Blocks
  */
-async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false, trace?: string[]): Promise<number | any[]> {
+async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false, trace?: string[], targetOrderId?: number | string): Promise<number | any[]> {
     const logic = rule.logic as RuleLogic;
     if (!logic) return dryRun ? [] : 0;
 
@@ -115,6 +115,18 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
             if (target) query = query.eq('event_type', 'status_changed');
+        }
+    }
+
+    // Apply strict filter if testing a specific order
+    if (targetOrderId) {
+        if (rule.entity_type === 'call') {
+            // Filter via call_order_matches
+            query = query.filter('call_order_matches.retailcrm_order_id', 'eq', targetOrderId);
+        } else if (rule.entity_type === 'order') {
+            query = query.eq('id', targetOrderId);
+        } else {
+            query = query.eq('retailcrm_order_id', targetOrderId);
         }
     }
 

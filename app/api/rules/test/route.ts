@@ -292,7 +292,8 @@ export async function POST(request: Request) {
             ruleId,
             true, // dryRun = true
             adHocLogic ? { ...rule, checklist: body.checklist || rule.checklist } : undefined, // Ensure checklist is passed
-            steps // Pass our steps array to collect internal engine traces
+            steps, // Pass our steps array to collect internal engine traces
+            testOrderId // PASS TARGET ORDER ID TO OPTIMIZE
         );
 
         const violationsCount = typeof violationsFound === 'number' ? violationsFound : (Array.isArray(violationsFound) ? violationsFound.length : 0);
