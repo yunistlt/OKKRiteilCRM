@@ -101,11 +101,16 @@ export async function collectFacts(orderId: number) {
         email_sent_no_answer = true; // написать письмо нужно только если не дозвонился
     }
 
-    // Лучшая транскрипция для GPT (Максим)
-    const transcript = calls
+    // Склейка истории всех транскрипций для GPT (Максим)
+    const transcript_history = calls
         .filter((c: any) => !!c.transcript)
-        .sort((a: any, b: any) => (b.duration_sec || 0) - (a.duration_sec || 0))
-    [0]?.transcript || '';
+        .sort((a: any, b: any) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime())
+        .map((c: any) => {
+            const date = new Date(c.started_at).toLocaleString('ru-RU');
+            const dir = c.direction === 'outgoing' ? 'ИСХОДЯЩИЙ' : 'ВХОДЯЩИЙ';
+            return `--- ${dir} ЗВОНОК (${date}, ${c.duration_sec} сек) ---\n${c.transcript}`;
+        })
+        .join('\n\n');
 
     // G: lead_received_at
     const lead_received_at = order?.created_at || null;
@@ -149,7 +154,7 @@ export async function collectFacts(orderId: number) {
         calls_evaluated_count,
         // Для дальнейшей обработки
         _order: order,
-        _transcript: transcript,
+        _transcript: transcript_history,
     };
 }
 
@@ -229,32 +234,33 @@ export async function evaluateScript(transcript: string) {
             messages: [
                 {
                     role: 'system',
-                    content: `Ты — эксперт ОКК отдела продаж промышленного оборудования (печи, сушильные камеры, тепловое оборудование). 
-Проверь транскрипцию звонка по чек-листу из 14 пунктов и ответь строго в JSON.
+                    content: `Ты — эксперт ОКК отдела продаж промышленного оборудования. 
+Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (может быть как 1 звонок, так и несколько).
+Проверь выполнение чек-листа по ВСЕЙ ИСТОРИИ. Если пункт был выполнен хотя бы в одном из звонков (например, боль выявили в первом звонке, а закрыли на следующий шаг во втором) — ставь true.
 
 Чек-лист (true = выполнено, false = не выполнено):
 {
-  "script_greeting": <Приветствие клиента, представление сотрудника и компании>,
-  "script_call_purpose": <Привязка к предыдущему шагу, обозначение цели звонка>,
-  "script_company_info": <Выявлено: чем занимается организация, бюджет, НДС, кол-во сотрудников>,
-  "script_deadlines": <Выяснены сроки, когда оборудование должно уже стоять>,
-  "script_tz_confirmed": <Убедился, что ТЗ от клиента получено / параметры камеры уточнены>,
-  "script_objection_general": <Работа с возражениями присутствует>,
-  "script_objection_delays": <Если клиент тянет сроки — выяснил причину и конкурентов>,
-  "script_offer_best_tech": <Аргументировал преимущество предложения по тех. характеристикам>,
-  "script_offer_best_terms": <Аргументировал преимущество предложения по срокам>,
-  "script_offer_best_price": <Аргументировал преимущество предложения по цене>,
-  "script_cross_sell": <Кросс-продажа: информирование об иных товарах>,
-  "script_next_step_agreed": <Договорённость о следующем шаге / получение отзыва>,
-  "script_dialogue_management": <Управлял разговором, держал инициативу>,
-  "script_confident_speech": <Уверенная, спокойная речь. Грамотность.>,
-  "script_score_pct": <итоговый % выполнения скрипта от 0 до 100>,
-  "evaluator_comment": "<краткий вывод на русском, 1-2 предложения>"
+  "script_greeting": <В любом из звонков было приветствие и представление>,
+  "script_call_purpose": <Озвучена цель звонка / привязка к шагу>,
+  "script_company_info": <Выявлено: чем занимается организация, бюджет, НДС и т.д.>,
+  "script_deadlines": <Выяснены сроки готовности / поставки>,
+  "script_tz_confirmed": <Убедился, что параметры заказа понятны>,
+  "script_objection_general": <Работа с возражениями (если были)>,
+  "script_objection_delays": <Если клиент медлит — выяснил причину>,
+  "script_offer_best_tech": <Аргументация по тех. характеристикам>,
+  "script_offer_best_terms": <Аргументация по срокам>,
+  "script_offer_best_price": <Аргументация по цене>,
+  "script_cross_sell": <Информирование о доп. оборудовании / кросс-продажа>,
+  "script_next_step_agreed": <Договорённость о конкретном следующем действии>,
+  "script_dialogue_management": <Менеджер вел инициативу во всех звонках>,
+  "script_confident_speech": <Уверенная, грамотная речь в целом>,
+  "script_score_pct": <итоговый % выполнения чек-листа от 0 до 100>,
+  "evaluator_comment": "<краткий вывод: был ли прогресс по звонкам, 1-2 предложения>"
 }`
                 },
                 {
                     role: 'user',
-                    content: `Транскрипция:\n${transcript.substring(0, 5000)}`
+                    content: `История звонков:\n${transcript.substring(0, 7000)}`
                 }
             ]
         });
