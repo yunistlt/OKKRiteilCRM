@@ -25,6 +25,15 @@ function PriorityWidget() {
     const [agents, setAgents] = useState<Agent[]>([]);
     const [isOfficeOpen, setIsOfficeOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [showReaction, setShowReaction] = useState(false);
+
+    useEffect(() => {
+        if (isOfficeOpen) {
+            setShowReaction(true);
+            const timer = setTimeout(() => setShowReaction(false), 3500);
+            return () => clearTimeout(timer);
+        }
+    }, [isOfficeOpen]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -172,6 +181,36 @@ function PriorityWidget() {
                             50% { opacity: 1; }
                             100% { transform: translateY(20px) opacity: 0; }
                         }
+                        @keyframes sipTea {
+                            0%, 100% { transform: translate(0, 0) rotate(0); }
+                            20%, 50% { transform: translate(-20px, -45px) rotate(-20deg); }
+                        }
+                        @keyframes chillLean {
+                            0%, 100% { transform: rotate(0); }
+                            50% { transform: rotate(-10deg) translateY(5px); }
+                        }
+                        @keyframes talkWobble {
+                            0%, 100% { transform: scaleX(1); }
+                            50% { transform: scaleX(1.1) rotate(2deg); }
+                        }
+                        @keyframes eyeBlink {
+                            0%, 90%, 100% { transform: scaleY(1); }
+                            95% { transform: scaleY(0.1); }
+                        }
+                        @keyframes lookAtUser {
+                            0% { transform: scale(1); }
+                            100% { transform: scale(1.1); }
+                        }
+                        @keyframes steamFade {
+                            0% { transform: translateY(0) scale(0.5); opacity: 0; }
+                            50% { opacity: 0.5; }
+                            100% { transform: translateY(-20px) scale(1.5); opacity: 0; }
+                        }
+                        @keyframes zzzFloat {
+                            0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+                            50% { opacity: 1; }
+                            100% { transform: translate(20px, -40px) scale(1.2); opacity: 0; }
+                        }
                         .animate-semen-work {
                             animation: semenPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
                             z-index: 100;
@@ -182,6 +221,11 @@ function PriorityWidget() {
                         .sweat {
                             animation: sweatDrop 1s infinite;
                         }
+                        .sip-tea { animation: sipTea 4s infinite ease-in-out; }
+                        .chill { animation: chillLean 6s infinite ease-in-out; }
+                        .talk { animation: talkWobble 0.8s infinite ease-in-out; }
+                        .steam { animation: steamFade 2s infinite ease-out; }
+                        .zzz { animation: zzzFloat 3s infinite ease-in-out; }
                     `}} />
                     <div className="relative w-full h-full max-w-[90vw] max-h-[85vh] bg-[#f0e6d2] rounded-[40px] border-[12px] border-[#4a3728] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
 
@@ -290,8 +334,22 @@ function PriorityWidget() {
                                     const task = agent.current_task?.toLowerCase() || '';
                                     const isSemenSorting = agent.agent_id === 'semen' && isWorking && (task.includes('страниц') || task.includes('разлож'));
 
+                                    // Determing idle behavior based on ID hash
+                                    const hash = agent.agent_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                                    const idleVibe = !isWorking ? (hash % 3 === 0 ? 'tea' : (hash % 3 === 1 ? 'chill' : 'talk')) : null;
+
+                                    // Direction for talking
+                                    const agentIndex = agents.indexOf(agent);
+                                    const isLookingLeft = !isWorking && idleVibe === 'talk' && agentIndex % 2 === 0;
+                                    const isLookingRight = !isWorking && idleVibe === 'talk' && agentIndex % 2 !== 0;
+
                                     return (
-                                        <div key={agent.agent_id} className={`relative flex flex-col items-center justify-end pb-12 transition-all hover:scale-105 group ${isSemenSorting ? '' : ''}`}>
+                                        <div key={agent.agent_id} className={`relative flex flex-col items-center justify-end pb-12 transition-all duration-700 hover:scale-105 group 
+                                            ${isSemenSorting ? '' : ''} 
+                                            ${idleVibe === 'chill' ? 'chill' : ''} 
+                                            ${idleVibe === 'talk' ? 'talk' : ''} 
+                                            ${showReaction && !isSemenSorting ? 'z-50' : ''}
+                                            ${isLookingLeft ? '-scale-x-100' : ''}`}>
                                             {/* Enhanced Desk Prop */}
                                             <div className={`absolute bottom-6 w-48 h-24 bg-[#8b4513] rounded-t-xl border-4 border-[#5d2e0d] z-0 shadow-2xl overflow-hidden transition-opacity duration-1000 ${isSemenSorting ? 'opacity-30' : 'opacity-100'}`}>
                                                 <div className="absolute top-0 left-0 w-full h-2 bg-[#a35116]"></div>
@@ -310,7 +368,8 @@ function PriorityWidget() {
 
                                             {/* Character Figure */}
                                             <div className={`relative transition-all duration-1000 transform scale-[1.6] z-10 
-                                                ${isSemenSorting ? 'animate-semen-work' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100')}`}>
+                                                ${isSemenSorting ? 'animate-semen-work' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100')}
+                                                ${showReaction && !isSemenSorting ? 'scale-[1.8]' : ''}`}>
 
                                                 <img
                                                     src={`/images/agents/${agent.agent_id}.png`}
@@ -318,11 +377,35 @@ function PriorityWidget() {
                                                     className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all ${isWorking ? '' : 'grayscale-[15%]'}`}
                                                 />
 
+                                                {/* Eyes that look at user when showReaction is true */}
+                                                {showReaction && !isSemenSorting && (
+                                                    <div className="absolute top-[25%] left-1/2 -translate-x-1/2 w-12 h-6 flex justify-between px-1 pointer-events-none">
+                                                        <div className="w-4 h-4 bg-white rounded-full border-2 border-black relative overflow-hidden flex items-center justify-center">
+                                                            <div className="w-1.5 h-1.5 bg-black rounded-full" style={{ transform: 'translate(10%, 10%)' }}></div>
+                                                        </div>
+                                                        <div className="w-4 h-4 bg-white rounded-full border-2 border-black relative overflow-hidden flex items-center justify-center">
+                                                            <div className="w-1.5 h-1.5 bg-black rounded-full" style={{ transform: 'translate(10%, 10%)' }}></div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* Hidden Folder when sorting */}
                                                 {isSemenSorting && (
                                                     <div className="absolute top-10 left-1/2 -translate-x-1/2 w-8 h-10 bg-blue-500 border-2 border-blue-200 rounded-sm shadow-lg z-20 flex items-center justify-center overflow-hidden">
                                                         <div className="w-full h-1 bg-white/30 mb-1"></div>
                                                         <div className="w-2/3 h-1 bg-white/30"></div>
+                                                    </div>
+                                                )}
+
+                                                {/* Tea/Coffee Mug for idle tea vibe */}
+                                                {idleVibe === 'tea' && (
+                                                    <div className="absolute bottom-2 -right-4 w-6 h-8 bg-white border-2 border-gray-200 rounded-sm rounded-tr-lg z-30 sip-tea">
+                                                        <div className="absolute top-4 -right-1.5 w-3 h-3 border-2 border-gray-200 rounded-full border-l-0"></div>
+                                                        {/* Steam effect */}
+                                                        <div className="absolute -top-4 left-1 w-4 h-4 flex flex-col gap-1 items-center opacity-40">
+                                                            <div className="w-1 h-3 bg-gray-300 rounded-full steam" style={{ animationDelay: '0s' }}></div>
+                                                            <div className="w-1 h-2 bg-gray-300 rounded-full steam" style={{ animationDelay: '1s' }}></div>
+                                                        </div>
                                                     </div>
                                                 )}
 
@@ -339,12 +422,20 @@ function PriorityWidget() {
                                                 )}
 
                                                 {/* Improved Speech Bubble */}
-                                                {isWorking && (
-                                                    <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-white px-5 py-3 rounded-[24px] border-4 border-gray-900 shadow-[0_15px_30px_rgba(0,0,0,0.3)] z-50 min-w-[160px] animate-in slide-in-from-bottom-2">
+                                                {(isWorking || (showReaction && !isSemenSorting)) && (
+                                                    <div className={`absolute -top-20 left-1/2 -translate-x-1/2 bg-white px-5 py-3 rounded-[24px] border-4 border-gray-900 shadow-[0_15px_30px_rgba(0,0,0,0.3)] z-50 min-w-[160px] animate-in slide-in-from-bottom-2 ${showReaction && !isWorking ? 'scale-110' : ''}`}>
                                                         <p className="text-[10px] font-black text-gray-900 uppercase leading-tight text-center tracking-tight">
-                                                            {isSemenSorting ? (Math.random() > 0.5 ? 'Куда же эту папку...' : 'Так, это в архив...') : agent.current_task}
+                                                            {showReaction && !isWorking ? 'Чо нада?' : (isSemenSorting ? (Math.random() > 0.5 ? 'Куда же эту папку...' : 'Так, это в архив...') : agent.current_task)}
                                                         </p>
                                                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-5 h-5 bg-white border-r-4 border-b-4 border-gray-900 rotate-45"></div>
+                                                    </div>
+                                                )}
+
+                                                {/* Hands behind head simulation (chill) / Sleep ZZZ */}
+                                                {idleVibe === 'chill' && (
+                                                    <div className="absolute top-10 left-1/2 -translate-x-1/2 w-32 h-12 flex justify-between px-2 text-2xl opacity-80 pointer-events-none">
+                                                        <div className="rotate-[-45deg]">🙌</div>
+                                                        <div className="absolute -top-10 right-0 font-bold text-blue-400 zzz select-none">Zzz</div>
                                                     </div>
                                                 )}
                                             </div>
