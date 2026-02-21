@@ -4,6 +4,16 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
+interface Agent {
+    agent_id: string;
+    name: string;
+    role: string;
+    status: 'idle' | 'working' | 'busy' | 'offline';
+    current_task: string;
+    last_active_at: string;
+    avatar_url?: string;
+}
+
 function PriorityWidget() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -12,7 +22,7 @@ function PriorityWidget() {
     const [crmUrl, setCrmUrl] = useState<string>('');
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
-    const [agents, setAgents] = useState<any[]>([]);
+    const [agents, setAgents] = useState<Agent[]>([]);
 
     useEffect(() => {
         const fetchAgents = () => {
@@ -135,7 +145,7 @@ function PriorityWidget() {
                                 <p className="text-sm font-black uppercase tracking-widest text-gray-400 mb-2">Сотрудники не найдены</p>
                                 <p className="text-[10px] font-bold text-gray-400 max-w-[200px] text-center">Проверьте, запущена ли миграция `okk_agent_status.sql` в Supabase</p>
                             </div>
-                        ) : agents.map((agent: any) => {
+                        ) : agents.map((agent: Agent) => {
                             const isWorking = agent.status === 'working';
                             const task = agent.current_task?.toLowerCase() || '';
 
