@@ -146,6 +146,43 @@ function PriorityWidget() {
             {/* Full Screen Office Modal */}
             {isOfficeOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 md:p-10 transition-all duration-500 animate-in fade-in zoom-in">
+                    <style dangerouslySetInnerHTML={{
+                        __html: `
+                        @keyframes semenWaddle {
+                            0%, 100% { transform: scale(1.6) rotate(0deg) translateY(0); }
+                            25% { transform: scale(1.6) rotate(-8deg) translateY(-15px); }
+                            50% { transform: scale(1.6) rotate(0deg) translateY(0); }
+                            75% { transform: scale(1.6) rotate(8deg) translateY(-15px); }
+                        }
+                        @keyframes semenPath {
+                            0% { transform: translateX(0) scaleX(1.6); }
+                            45% { transform: translateX(-40vw) scaleX(1.6); }
+                            50% { transform: translateX(-40vw) scaleX(-1.6); }
+                            55% { transform: translateX(-40vw) scaleX(-1.6); }
+                            95% { transform: translateX(0) scaleX(-1.6); }
+                            100% { transform: translateX(0) scaleX(1.6); }
+                        }
+                        @keyframes folderAppear {
+                            0% { opacity: 0; transform: scale(0.5) rotate(0); }
+                            50% { opacity: 1; transform: scale(1.2) rotate(15deg); }
+                            100% { opacity: 0; transform: translateY(-50px) scale(0.5); }
+                        }
+                        @keyframes sweatDrop {
+                            0% { transform: translateY(0) opacity: 0; }
+                            50% { opacity: 1; }
+                            100% { transform: translateY(20px) opacity: 0; }
+                        }
+                        .animate-semen-work {
+                            animation: semenPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
+                            z-index: 100;
+                        }
+                        .folder-drop {
+                            animation: folderAppear 2s infinite;
+                        }
+                        .sweat {
+                            animation: sweatDrop 1s infinite;
+                        }
+                    `}} />
                     <div className="relative w-full h-full max-w-[90vw] max-h-[85vh] bg-[#f0e6d2] rounded-[40px] border-[12px] border-[#4a3728] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
 
                         {/* Control Bar */}
@@ -224,6 +261,21 @@ function PriorityWidget() {
                                 </div>
                             </div>
 
+                            {/* Bookshelves Decor */}
+                            <div className="absolute left-0 top-24 bottom-24 w-16 flex flex-col gap-4 z-10 pointer-events-none">
+                                {[...Array(6)].map((_, i) => (
+                                    <div key={i} className="flex-1 w-full bg-[#4a3728] border-r-4 border-[#3a2b1f] relative flex items-end justify-center p-1 gap-0.5">
+                                        {[...Array(Math.floor(Math.random() * 8) + 3)].map((_, j) => (
+                                            <div key={j} className={`w-1.5 h-[70%] rounded-t-sm shadow-sm transition-all duration-500`} style={{ backgroundColor: ['#e2e8f0', '#3b82f6', '#ef4444', '#10b981', '#f59e0b'][Math.floor(Math.random() * 5)] }}></div>
+                                        ))}
+                                        {/* Effect of folder being added */}
+                                        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
+                                            <div className="w-4 h-6 bg-blue-400 border border-white opacity-0 folder-drop"></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
                             {/* Floor and Walls */}
                             <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-8 border-[#8b4513]"></div>
 
@@ -236,11 +288,12 @@ function PriorityWidget() {
                                 ) : agents.map((agent: Agent) => {
                                     const isWorking = agent.status === 'working';
                                     const task = agent.current_task?.toLowerCase() || '';
+                                    const isSemenSorting = agent.agent_id === 'semen' && isWorking && (task.includes('страниц') || task.includes('разлож'));
 
                                     return (
-                                        <div key={agent.agent_id} className="relative flex flex-col items-center justify-end pb-12 transition-all hover:scale-105 group">
+                                        <div key={agent.agent_id} className={`relative flex flex-col items-center justify-end pb-12 transition-all hover:scale-105 group ${isSemenSorting ? '' : ''}`}>
                                             {/* Enhanced Desk Prop */}
-                                            <div className="absolute bottom-6 w-48 h-24 bg-[#8b4513] rounded-t-xl border-4 border-[#5d2e0d] z-0 shadow-2xl overflow-hidden">
+                                            <div className={`absolute bottom-6 w-48 h-24 bg-[#8b4513] rounded-t-xl border-4 border-[#5d2e0d] z-0 shadow-2xl overflow-hidden transition-opacity duration-1000 ${isSemenSorting ? 'opacity-30' : 'opacity-100'}`}>
                                                 <div className="absolute top-0 left-0 w-full h-2 bg-[#a35116]"></div>
                                                 {/* Monitor */}
                                                 <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-20 h-16 bg-gray-900 border-4 border-gray-700 rounded-md shadow-inner flex items-center justify-center">
@@ -257,13 +310,26 @@ function PriorityWidget() {
 
                                             {/* Character Figure */}
                                             <div className={`relative transition-all duration-1000 transform scale-[1.6] z-10 
-                                                ${isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100'}`}>
+                                                ${isSemenSorting ? 'animate-semen-work' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100')}`}>
 
                                                 <img
                                                     src={`/images/agents/${agent.agent_id}.png`}
                                                     alt={agent.name}
                                                     className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all ${isWorking ? '' : 'grayscale-[15%]'}`}
                                                 />
+
+                                                {/* Hidden Folder when sorting */}
+                                                {isSemenSorting && (
+                                                    <div className="absolute top-10 left-1/2 -translate-x-1/2 w-8 h-10 bg-blue-500 border-2 border-blue-200 rounded-sm shadow-lg z-20 flex items-center justify-center overflow-hidden">
+                                                        <div className="w-full h-1 bg-white/30 mb-1"></div>
+                                                        <div className="w-2/3 h-1 bg-white/30"></div>
+                                                    </div>
+                                                )}
+
+                                                {/* Sweat Drop for working agents */}
+                                                {isWorking && (
+                                                    <div className="absolute top-4 -right-4 text-2xl sweat pointer-events-none">💧</div>
+                                                )}
 
                                                 {/* Headphones for Semyon */}
                                                 {agent.agent_id === 'semen' && (task.includes('страниц') || task.includes('разложе')) && (
@@ -276,7 +342,7 @@ function PriorityWidget() {
                                                 {isWorking && (
                                                     <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-white px-5 py-3 rounded-[24px] border-4 border-gray-900 shadow-[0_15px_30px_rgba(0,0,0,0.3)] z-50 min-w-[160px] animate-in slide-in-from-bottom-2">
                                                         <p className="text-[10px] font-black text-gray-900 uppercase leading-tight text-center tracking-tight">
-                                                            {agent.current_task}
+                                                            {isSemenSorting ? (Math.random() > 0.5 ? 'Куда же эту папку...' : 'Так, это в архив...') : agent.current_task}
                                                         </p>
                                                         <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-5 h-5 bg-white border-r-4 border-b-4 border-gray-900 rotate-45"></div>
                                                     </div>
@@ -284,10 +350,10 @@ function PriorityWidget() {
                                             </div>
 
                                             {/* Professional Name Plate */}
-                                            <div className="mt-4 bg-gray-900 text-white px-5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-[0.2em] border-2 border-[#a35116] shadow-2xl z-20 group-hover:bg-indigo-600 transition-colors">
+                                            <div className={`mt-4 bg-gray-900 text-white px-5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-[0.2em] border-2 border-[#a35116] shadow-2xl z-20 transition-opacity ${isSemenSorting ? 'opacity-20' : 'opacity-100'}`}>
                                                 {agent.name}
                                             </div>
-                                            <div className="text-[9px] font-bold text-gray-500 mt-1 uppercase tracking-widest">{agent.role}</div>
+                                            <div className={`text-[9px] font-bold text-gray-500 mt-1 uppercase tracking-widest transition-opacity ${isSemenSorting ? 'opacity-20' : 'opacity-100'}`}>{agent.role}</div>
                                         </div>
                                     );
                                 })}
