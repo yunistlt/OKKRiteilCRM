@@ -130,7 +130,12 @@ function PriorityWidget() {
 
                     {/* Zones for agents */}
                     <div className="relative w-full h-full grid grid-cols-2 grid-rows-2 gap-4 z-10">
-                        {agents.map((agent: any) => {
+                        {agents.length === 0 ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-20 bg-white/50 backdrop-blur-sm rounded-3xl m-8 border-2 border-dashed border-gray-300">
+                                <p className="text-sm font-black uppercase tracking-widest text-gray-400 mb-2">Сотрудники не найдены</p>
+                                <p className="text-[10px] font-bold text-gray-400 max-w-[200px] text-center">Проверьте, запущена ли миграция `okk_agent_status.sql` в Supabase</p>
+                            </div>
+                        ) : agents.map((agent: any) => {
                             const isWorking = agent.status === 'working';
                             const task = agent.current_task?.toLowerCase() || '';
 
