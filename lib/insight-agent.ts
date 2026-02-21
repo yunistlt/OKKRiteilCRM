@@ -34,6 +34,12 @@ export interface BusinessInsights {
     dialogue_summary?: string;
     last_contact_date?: string;
     last_order_changes?: string;
+    customer_profile?: {
+        total_orders?: number;
+        client_resume?: string;
+        perspective?: string;
+        cross_sell?: string[];
+    };
     summary: string;
     last_processed_event_id?: string;
 }
@@ -75,8 +81,17 @@ OUTPUT FORMAT (JSON):
   "dialogue_summary": "Summary of all conversations in Russian",
   "last_contact_date": "ISO timestamp of last call",
   "last_order_changes": "Russian description of most recent meaningful order field changes",
+  "customer_profile": {
+    "total_orders": number,
+    "client_resume": "1-2 sentences about who the client is, including company info if INN is present",
+    "perspective": "Russian evaluation of how promising this client is long-term",
+    "cross_sell": ["product/service 1", "product/service 2"]
+  },
   "summary": "Short 1-2 sentence business summary in Russian"
 }
+
+If you see an INN (Tax ID) in the order data, use your knowledge to provide general context about this company in "client_resume".
+"total_orders" should come from the provided metadata or order history.
 
 If information is missing, omit the field or set to null.
 Be precise and use evidence from transcripts and manager comments.
@@ -105,6 +120,12 @@ ${JSON.stringify(evidence.interactions, null, 2)}
         if (!content) return null;
 
         const insights = JSON.parse(content) as BusinessInsights;
+
+        // Ensure total_orders is set from evidence if AI missed it
+        if (evidence.customerOrdersCount !== undefined && (!insights.customer_profile || insights.customer_profile.total_orders === undefined)) {
+            if (!insights.customer_profile) insights.customer_profile = {};
+            insights.customer_profile.total_orders = evidence.customerOrdersCount;
+        }
 
         // 4. Save to Database
         await supabase

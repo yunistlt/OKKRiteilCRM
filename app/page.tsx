@@ -345,6 +345,58 @@ function PriorityWidget() {
                                                 </ul>
                                             </div>
                                         </div>
+
+                                        {/* Customer Profile Section */}
+                                        {analysisResults[order.orderId].customer_profile && (
+                                            <div className="mt-6 pt-5 border-t border-indigo-100">
+                                                <div className="flex flex-col md:flex-row gap-6">
+                                                    <div className="flex-1">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-3 flex items-center gap-2">
+                                                            👤 Профиль клиента
+                                                        </p>
+                                                        <div className="bg-white/40 p-3 rounded-xl border border-indigo-50 space-y-3">
+                                                            {analysisResults[order.orderId].customer_profile?.client_resume && (
+                                                                <div>
+                                                                    <p className="text-[11px] text-gray-700 leading-relaxed">
+                                                                        {analysisResults[order.orderId].customer_profile.client_resume}
+                                                                    </p>
+                                                                </div>
+                                                            )}
+                                                            <div className="flex flex-wrap gap-4">
+                                                                <div>
+                                                                    <p className="text-[9px] uppercase font-bold text-gray-400 mb-0.5">Всего заказов</p>
+                                                                    <p className="text-sm font-black text-indigo-600">
+                                                                        {analysisResults[order.orderId].customer_profile.total_orders || 1}
+                                                                    </p>
+                                                                </div>
+                                                                {analysisResults[order.orderId].customer_profile?.perspective && (
+                                                                    <div>
+                                                                        <p className="text-[9px] uppercase font-bold text-gray-400 mb-0.5">Потенциал</p>
+                                                                        <p className="text-sm font-bold text-gray-700">
+                                                                            {analysisResults[order.orderId].customer_profile.perspective}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    {analysisResults[order.orderId].customer_profile?.cross_sell && analysisResults[order.orderId].customer_profile.cross_sell.length > 0 && (
+                                                        <div className="md:w-1/3">
+                                                            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-3 flex items-center gap-2">
+                                                                🚀 Что ещё предложить
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {analysisResults[order.orderId].customer_profile.cross_sell.map((item: string, i: number) => (
+                                                                    <span key={i} className="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-1 rounded-lg border border-emerald-100 font-bold">
+                                                                        {item}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
