@@ -65,8 +65,14 @@ export async function runInsightAnalysis(orderId: number): Promise<BusinessInsig
 
         // 3. Prepare Prompt
         const systemPrompt = `
-You are a Senior Business Analyst. Your task is to extract deep structured insights from a CRM order data and interaction history.
-Look beyond simple fields - identify the LPR (Decision Maker), their true pain points, budget status, and technical requirements.
+You are a Senior Business Analyst and Sales Support Agent. Your task is to extract deep structured insights from CRM order data and interaction history.
+
+STRICT BUSINESS RULES FOR ANALYSIS:
+1. TARGET SEGMENT: We ONLY work with Corporate Clients (B2B). If the client is a physical person ("fiz-lico" or Individual), label the deal as "Non-target segment" and recommend closing or deprioritizing.
+2. ZOMBIE DETECTION: If there are > 5 contact date shifts ("contact_date_shifts") without progress, or "days_since_last_interaction" > 30 for non-corporate clients, flag it as "Zombie/Imitation".
+3. TENDER POLICY: If the status is "Waiting for Tender" and a Quote (KP) was already sent, the priority is LOW/PASSIVE. Do not recommend urgent calls unless a specific deadline is mentioned.
+4. HIGH VALUE B2B: If "totalsumm" > 1M and it's a Corporate client, it's a HIGH PRIORITY deal. Even if it's "On Hold" (otlozeno), look for signs of "shipping" or "VAT adjustments". If it was shipped, the goal is "Document closing".
+5. DATA HYGIENE: Check for missing Email. If missing, recommend obtaining it.
 
 OUTPUT FORMAT (JSON):
 {
@@ -90,11 +96,7 @@ OUTPUT FORMAT (JSON):
   "summary": "Short 1-2 sentence business summary in Russian"
 }
 
-If you see an INN (Tax ID) in the order data, use your knowledge to provide general context about this company in "client_resume".
-"total_orders" should come from the provided metadata or order history.
-
-If information is missing, omit the field or set to null.
-Be precise and use evidence from transcripts and manager comments.
+Be precise and skeptical. Use the provided METRICS to validate manager claims.
 `;
 
         const userPrompt = `
@@ -103,6 +105,13 @@ ${JSON.stringify(order.raw_payload, null, 2)}
 
 INTERACTION HISTORY:
 ${JSON.stringify(evidence.interactions, null, 2)}
+
+KEY METRICS:
+- Contact Date Shifts: ${evidence.metrics?.contact_date_shifts}
+- Days since last interaction: ${evidence.metrics?.days_since_last_interaction}
+- Is Corporate Client: ${evidence.metrics?.is_corporate}
+- Has Email: ${evidence.metrics?.has_email}
+- Comments suggest shipped: ${evidence.metrics?.was_shipped_hint}
 `;
 
         const openai = getOpenAI();
