@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
+import { runInsightAnalysis } from '@/lib/insight-agent';
 
 export const maxDuration = 300; // 5 minutes for batch processing
 export const dynamic = 'force-dynamic';
@@ -235,13 +236,23 @@ export async function POST(request: Request) {
                 };
 
                 // 2d. Fetch Anna's Insights (Business Analyst)
-                const { data: metricsData } = await supabase
+                let { data: metricsData } = await supabase
                     .from('order_metrics')
                     .select('insights')
                     .eq('retailcrm_order_id', order.id)
                     .single();
 
-                const annaInsights = metricsData?.insights || null;
+                let annaInsights = metricsData?.insights || null;
+
+                // Ensure Anna's insights are present (Sequential Synergy)
+                if (!annaInsights || Object.keys(annaInsights).length === 0) {
+                    console.log(`[AIRouter] Missing Anna's insights for ${order.id}. Triggering sequential analysis...`);
+                    try {
+                        annaInsights = await runInsightAnalysis(Number(order.id));
+                    } catch (annaErr) {
+                        console.warn(`[AIRouter] Sequential AI Synergy failed for ${order.id}:`, annaErr);
+                    }
+                }
 
                 // 2e. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights)
                 const decision = await analyzeOrderForRouting(
