@@ -48,20 +48,29 @@ export interface BusinessInsights {
  * Runs deep analysis on an order to extract structured business insights.
  */
 export async function runInsightAnalysis(orderId: number): Promise<BusinessInsights | null> {
+    const { logAgentActivity } = await import('./agent-logger');
+    await logAgentActivity('anna', 'working', `Изучаю детали заказа #${orderId}...`);
+
     try {
-        // 1. Fetch Order Data (Everything)
-        const { data: order } = await supabase
-            .from('orders')
+        // 1. Collect Evidence
+        const { data: metrics } = await supabase
+            .from('order_metrics')
             .select('*')
-            .eq('order_id', orderId)
+            .eq('retailcrm_order_id', orderId)
             .single();
 
-        if (!order) return null;
+        if (!metrics) {
+            await logAgentActivity('anna', 'idle', 'Ожидаю данные для анализа');
+            return null; // Changed from { success: false, error: 'Metrics not found' } to null to match original return type
+        }
 
-        // 2. Fetch All Interactions (Calls + History)
+        const order = metrics.full_order_context || {}; // Renamed to 'order' to match original variable name
+        // const managerId = metrics.manager_id; // Not used in the original function, so commented out
+        const currentStatus = metrics.current_status;
+
+        // 2. Fetch stage-specific metrics
         const { collectStageEvidence } = await import('./stage-collector');
-        // We collect from the very beginning of the order (0 entry time)
-        const evidence = await collectStageEvidence(orderId, order.status, '2000-01-01T00:00:00Z');
+        const evidence = await collectStageEvidence(orderId, currentStatus, metrics.computed_at || new Date().toISOString());
 
         // 3. Prepare Prompt
         const systemPrompt = `
@@ -153,6 +162,8 @@ KEY METRICS:
                 value: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }, { onConflict: 'key' });
+
+        await logAgentActivity('anna', 'idle', 'Анализ завершен, инсайты добавлены в карточку.');
 
         return insights;
 

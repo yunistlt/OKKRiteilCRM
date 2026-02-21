@@ -103,6 +103,9 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
 
     if (orders.length === 0) return [];
 
+    const { logAgentActivity } = await import('./agent-logger');
+    await logAgentActivity('igor', 'working', `Пересчитываю приоритеты для ${orders.length} сделок...`);
+
     const priorities: OrderPriority[] = [];
     const now = new Date();
 
@@ -256,6 +259,8 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
             totalSum: order.totalsumm || 0
         });
     }
+
+    await logAgentActivity('igor', 'idle', 'Приоритеты обновлены. Все сделки под контролем.');
 
     return priorities.sort((a, b) => b.score - a.score).slice(0, limit);
 }

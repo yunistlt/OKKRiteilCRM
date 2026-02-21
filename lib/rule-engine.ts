@@ -58,6 +58,9 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     const statusMap = new Map<string, string>((statuses || []).map((s: any) => [s.name.toLowerCase(), s.code]));
     if (trace && rules.length > 0) trace.push(`[RuleEngine] Processing ${rules.length} rules.`);
 
+    const { logAgentActivity } = await import('./agent-logger');
+    await logAgentActivity('maxim', 'working', `Проверяю соблюдение ${rules.length} правил ОКК...`);
+
     let totalViolationsCount = 0;
     const allViolations: any[] = [];
 
@@ -76,6 +79,9 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
             console.error(`[RuleEngine] Error executing rule ${rule.code}:`, e);
         }
     }
+
+    await logAgentActivity('maxim', 'idle', 'Проверка правил завершена. Нарушений не обнаружено.');
+
     return dryRun ? allViolations : totalViolationsCount;
 }
 

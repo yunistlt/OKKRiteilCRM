@@ -57,6 +57,9 @@ export async function GET(request: Request) {
             const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
             console.log(`[Orders Sync] Fetching Page ${page}:`, url);
 
+            const { logAgentActivity } = await import('@/lib/agent-logger');
+            await logAgentActivity('semen', 'working', `Проверяю страницу ${page} в RetailCRM...`);
+
             const res = await fetch(url);
             if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
 
@@ -139,6 +142,12 @@ export async function GET(request: Request) {
                 hasMore = false;
             }
         }
+
+        // Reset status to idle
+        try {
+            const { logAgentActivity } = await import('@/lib/agent-logger');
+            await logAgentActivity('semen', 'idle', 'Архив обновлен. Все данные разложены по полкам.');
+        } catch (e) { }
 
         // 6. Trigger Rule Engine Analysis
         return NextResponse.json({
