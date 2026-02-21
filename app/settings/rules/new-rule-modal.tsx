@@ -250,9 +250,10 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         return (
             <button
                 onClick={() => setIsOpen(true)}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition flex items-center gap-2"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold shadow-md shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2.5 text-sm"
             >
-                ✨ Создать с ИИ
+                <img src="/images/agents/anna.png" alt="Anna" className="w-6 h-6 rounded-full border border-white/30" />
+                <span>Создать с Анной</span>
             </button>
         );
     }
@@ -284,9 +285,16 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                 <button
                                     onClick={handleGenerate}
                                     disabled={!prompt || isLoading}
-                                    className="flex-1 bg-black text-white px-4 py-2 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 shadow-sm"
+                                    className="flex-1 bg-black text-white px-4 py-3 rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-all uppercase tracking-widest text-[10px] flex items-center justify-center gap-3 shadow-md active:scale-95"
                                 >
-                                    {isLoading ? '...' : '✨ Сгенерировать ИИ'}
+                                    {isLoading ? (
+                                        'Обработка...'
+                                    ) : (
+                                        <>
+                                            <img src="/images/agents/anna.png" alt="Anna" className="w-6 h-6 rounded-full border border-white/20" />
+                                            <span>Анна: Сгенерировать ИИ</span>
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>

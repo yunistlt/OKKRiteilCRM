@@ -124,34 +124,66 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
             )}
 
             {/* Column Headers with Tooltips */}
-            <div className="hidden sm:grid grid-cols-[250px_1fr_380px] gap-4 px-5 py-3 mb-2">
+            <div className="hidden sm:grid grid-cols-[250px_1fr_380px] gap-4 px-5 py-3 mb-2 items-end">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Название статуса</div>
                 <div className="flex gap-6 justify-center">
-                    <div className="group relative min-w-[90px] cursor-help text-center">
+                    <div className="group relative min-w-[90px] cursor-help text-center flex flex-col items-center">
+                        <img src="/images/agents/igor.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Анализ</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
+                            <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                                <img src="/images/agents/igor.png" alt="" className="w-8 h-8 rounded-lg" />
+                                <div>
+                                    <div className="font-black text-[10px] uppercase">Игорь</div>
+                                    <div className="text-[8px] text-gray-400 uppercase">SLA Мониторинг</div>
+                                </div>
+                            </div>
                             {tooltips.analysis}
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
-                    <div className="group relative min-w-[120px] cursor-help text-center">
+                    <div className="group relative min-w-[120px] cursor-help text-center flex flex-col items-center">
+                        <img src="/images/agents/semen.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Транскрибация</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
+                            <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                                <img src="/images/agents/semen.png" alt="" className="w-8 h-8 rounded-lg" />
+                                <div>
+                                    <div className="font-black text-[10px] uppercase">Семён</div>
+                                    <div className="text-[8px] text-gray-400 uppercase">Сбор и обработка</div>
+                                </div>
+                            </div>
                             {tooltips.transcription}
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
-                    <div className="group relative min-w-[110px] cursor-help text-center">
+                    <div className="group relative min-w-[110px] cursor-help text-center flex flex-col items-center">
+                        <img src="/images/agents/maxim.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Роутинг ИИ</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
+                            <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                                <img src="/images/agents/maxim.png" alt="" className="w-8 h-8 rounded-lg" />
+                                <div>
+                                    <div className="font-black text-[10px] uppercase">Максим</div>
+                                    <div className="text-[8px] text-gray-400 uppercase">Операционный Аудит</div>
+                                </div>
+                            </div>
                             {tooltips.routing}
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
                 </div>
-                <div className="group relative cursor-help">
+                <div className="group relative cursor-help flex flex-col items-end">
+                    <img src="/images/agents/anna.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Описание для ИИ</span>
                     <div className="absolute bottom-full right-0 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                        <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                            <img src="/images/agents/anna.png" alt="" className="w-8 h-8 rounded-lg" />
+                            <div>
+                                <div className="font-black text-[10px] uppercase">Анна</div>
+                                <div className="text-[8px] text-gray-400 uppercase">Бизнес-Аналитик</div>
+                            </div>
+                        </div>
                         {tooltips.description}
                         <div className="absolute top-full right-4 border-8 border-transparent border-t-gray-900"></div>
                     </div>

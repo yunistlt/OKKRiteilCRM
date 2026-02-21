@@ -213,13 +213,22 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                             )}
 
                             {/* 2. Analysis Summary */}
-                            <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 shadow-sm">
-                                <h4 className="flex items-center gap-2 font-bold text-amber-800 text-xs uppercase mb-2">
-                                    <span>🧠</span> Итоговое резюме ИИ
-                                </h4>
-                                <p className="text-amber-900 text-sm whitespace-pre-wrap leading-relaxed italic">
-                                    {v.checklist_result?.summary || v.details}
+                            <div className="bg-amber-50 p-5 rounded-xl border border-amber-200 shadow-sm relative overflow-hidden">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <img src="/images/agents/anna.png" alt="Anna" className="w-10 h-10 rounded-full border-2 border-amber-200 shadow-sm" />
+                                    <div>
+                                        <h4 className="font-black text-amber-800 text-[10px] uppercase tracking-widest leading-none mb-1">
+                                            Анна: Итоговое резюме
+                                        </h4>
+                                        <p className="text-[10px] text-amber-600 font-bold uppercase tracking-tighter opacity-70">Бизнес-аналитик</p>
+                                    </div>
+                                </div>
+                                <p className="text-amber-900 text-sm whitespace-pre-wrap leading-relaxed italic relative z-10">
+                                    "{v.checklist_result?.summary || v.details}"
                                 </p>
+                                <div className="absolute -bottom-4 -right-4 opacity-5 pointer-events-none">
+                                    <img src="/images/agents/anna.png" alt="" className="w-24 h-24 grayscale" />
+                                </div>
                             </div>
 
                             {/* 3. Call Transcript Viewer */}

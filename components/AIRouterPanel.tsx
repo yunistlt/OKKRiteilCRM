@@ -197,17 +197,20 @@ export default function AIRouterPanel() {
             <div className="p-4 border-b border-gray-200">
                 <h2 className="text-lg font-bold flex items-center gap-2">
                     <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                        <img src="/images/agents/maxim.png" alt="Maxim" className="w-8 h-8 rounded-full object-cover border border-blue-200 shadow-sm" />
-                        <span className="text-blue-800">Максим (Аудитор)</span>
+                        <div className="flex -space-x-2">
+                            <img src="/images/agents/maxim.png" alt="Maxim" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
+                            <img src="/images/agents/igor.png" alt="Igor" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
+                        </div>
+                        <span className="text-blue-800 text-sm">Максим & Игорь</span>
                     </div>
                     {pendingCount !== null && (
                         <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                            Всего: {pendingCount}
+                            Очередь: {pendingCount}
                         </span>
                     )}
                 </h2>
-                <p className="text-xs text-gray-500 mt-1 ml-12">
-                    Автоматическая обработка статуса "Согласование отмены"
+                <p className="text-[10px] text-gray-500 mt-1 ml-1 font-medium uppercase tracking-tight">
+                    Контроль отмен: Аудит решения (Maxim) + Смена статуса (Igor)
                 </p>
             </div>
 
@@ -268,8 +271,11 @@ export default function AIRouterPanel() {
                             <span>Обработка...</span>
                         ) : (
                             <>
-                                <img src="/images/agents/maxim.png" alt="Maxim" className="w-7 h-7 rounded-full border border-white/30" />
-                                <span>Максим: Запустить Анализ (+ Anna)</span>
+                                <div className="flex -space-x-2">
+                                    <img src="/images/agents/maxim.png" alt="Maxim" className="w-7 h-7 rounded-full border border-white/30" />
+                                    <img src="/images/agents/igor.png" alt="Igor" className="w-7 h-7 rounded-full border border-white/30" />
+                                </div>
+                                <span>Запустить Роутинг (Синергия Maxim & Igor)</span>
                             </>
                         )}
                     </button>

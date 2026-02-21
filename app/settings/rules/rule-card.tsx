@@ -229,12 +229,16 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                 <div className="flex items-center justify-between w-full sm:w-auto gap-2 md:gap-3 shrink-0">
                     {/* Audit Progress UI */}
                     {(auditStatus === 'running' || params.audit_status === 'running') && (
-                        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full animate-pulse border border-indigo-100">
+                        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full animate-pulse border border-indigo-100 shadow-inner">
                             <span className="relative flex h-2 w-2">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
                             </span>
-                            <span className="text-[10px] font-black uppercase tracking-widest">Проверка истории...</span>
+                            <img src="/images/agents/semen.png" alt="Semen" className="w-5 h-5 rounded-full border border-indigo-200 shadow-sm" />
+                            <span className="text-[10px] font-black uppercase tracking-widest flex flex-col leading-none">
+                                <span>Семён</span>
+                                <span className="text-[7px] text-indigo-400">Архивариус</span>
+                            </span>
                         </div>
                     )}
 
@@ -263,10 +267,10 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
 
                         <button
                             onClick={handleRunAudit}
-                            className="text-gray-400 hover:text-indigo-600 p-2 md:p-1"
-                            title="Проверить историю (Audit)"
+                            className="text-gray-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all flex items-center gap-1 group"
+                            title="Семён: Проверить историю (Audit)"
                         >
-                            🕰️
+                            <img src="/images/agents/semen.png" alt="Semen" className="w-6 h-6 rounded-lg border border-gray-100 group-hover:border-indigo-200 transition-colors shadow-sm" />
                         </button>
 
                         <button

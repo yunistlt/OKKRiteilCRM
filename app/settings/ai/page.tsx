@@ -147,21 +147,23 @@ export default function AIPrimitivizationPage() {
             <div className="flex gap-4 border-b border-gray-200 mb-6 overflow-x-auto">
                 <button
                     onClick={() => setActiveTab('order_analysis_main')}
-                    className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'order_analysis_main'
+                    className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'order_analysis_main'
                         ? 'border-blue-600 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
                 >
-                    🚦 Анализ Эффективности Менеджера
+                    <img src="/images/agents/anna.png" alt="Anna" className="w-5 h-5 rounded-full" />
+                    Анна: Анализ Эффективности
                 </button>
                 <button
                     onClick={() => setActiveTab('order_routing_main')}
-                    className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === 'order_routing_main'
+                    className={`pb-3 px-1 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${activeTab === 'order_routing_main'
                         ? 'border-purple-600 text-purple-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                         }`}
                 >
-                    🤖 Маршрутизация (Смена Статусов)
+                    <img src="/images/agents/maxim.png" alt="Maxim" className="w-5 h-5 rounded-full" />
+                    Максим: Маршрутизация
                 </button>
             </div>
 
@@ -250,12 +252,9 @@ export default function AIPrimitivizationPage() {
                                                 'bg-green-50 border-green-300'
                                             }`}>
                                             <div className="flex items-center gap-3 mb-2">
-                                                <span className="text-2xl md:text-3xl">
-                                                    {testResult.result?.traffic_light === 'red' ? '🔴' :
-                                                        testResult.result?.traffic_light === 'yellow' ? '🟡' : '🟢'}
-                                                </span>
+                                                <img src="/images/agents/anna.png" alt="Anna" className="w-10 h-10 rounded-full border-2 border-white shadow-sm" />
                                                 <div>
-                                                    <h3 className="font-bold text-base md:text-lg">Оценка ИИ</h3>
+                                                    <h3 className="font-bold text-base md:text-lg">Вердикт Анны</h3>
                                                     <p className="text-xs md:text-sm text-gray-600">{testResult.result?.short_reason}</p>
                                                 </div>
                                             </div>

@@ -263,21 +263,35 @@ export default function SystemStatusPage() {
             )}
 
             {/* HEADER & GLOBAL HEALTH */}
-            <div className="flex items-center justify-between bg-white px-5 py-2.5 rounded-2xl border border-gray-100 shadow-sm">
-                <div>
-                    <h1 className="text-lg font-black text-gray-900 tracking-tighter">Системный Монитор</h1>
-                    <p className="text-[9px] font-medium text-gray-400 uppercase tracking-tight">Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}</p>
+            <div className="flex items-center justify-between bg-white px-5 py-4 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                {/* Igor Background Decor */}
+                <div className="absolute right-0 top-0 bottom-0 w-32 opacity-[0.03] pointer-events-none group-hover:opacity-[0.08] transition-opacity">
+                    <img src="/images/agents/igor.png" alt="" className="h-full object-contain object-right" />
                 </div>
 
-                <div className="flex items-center gap-5">
+                <div className="flex items-center gap-4">
+                    <div className="relative">
+                        <img src="/images/agents/igor.png" alt="Igor" className="w-12 h-12 rounded-xl object-cover border-2 border-gray-900 shadow-lg" />
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white animate-pulse"></div>
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-lg font-black text-gray-900 tracking-tighter uppercase">Игорь: Диспетчер мониторинга</h1>
+                            <span className="px-2 py-0.5 bg-gray-900 text-white text-[8px] font-bold rounded uppercase tracking-widest">SLA CONTROL</span>
+                        </div>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">Системный Монитор // Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-5 relative z-10">
                     <div className="text-right">
-                        <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">Заказов</div>
+                        <div className="text-[8px] font-black text-gray-300 uppercase tracking-widest">Заказов в базе</div>
                         <div className="text-sm font-black text-gray-900">{dbStats?.workingOrders || 0}</div>
                     </div>
                     <button
                         onClick={() => { fetchSyncStatus(); checkOpenAI(); fetchDbStats(); }}
                         disabled={loadingSync}
-                        className="w-8 h-8 bg-gray-900 text-white rounded-lg flex items-center justify-center hover:bg-blue-600 transition-all active:scale-90 text-sm"
+                        className="w-10 h-10 bg-gray-900 text-white rounded-xl flex items-center justify-center hover:bg-blue-600 transition-all active:scale-90 text-lg shadow-md"
                     >
                         {loadingSync ? '...' : '🔄'}
                     </button>
@@ -371,13 +385,27 @@ export default function SystemStatusPage() {
                                 const theme = getStatusTheme(s.status);
                                 return (
                                     <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-5 py-2 whitespace-nowrap">
-                                            <div className="flex items-center gap-2.5">
-                                                <div className="w-7 h-7 bg-white rounded shadow-sm border border-gray-100 flex items-center justify-center text-sm">
-                                                    {getIcon(s.service)}
+                                        <td className="px-5 py-3 whitespace-nowrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="relative">
+                                                    <div className="w-9 h-9 bg-white rounded-lg shadow-sm border border-gray-100 flex items-center justify-center text-sm relative z-10">
+                                                        {getIcon(s.service)}
+                                                    </div>
+                                                    <div className="absolute -top-1 -left-1 w-5 h-5 z-20">
+                                                        <img
+                                                            src={s.service.includes('Insight') ? "/images/agents/anna.png" : "/images/agents/semen.png"}
+                                                            alt=""
+                                                            className="w-full h-full object-cover rounded-full border border-white shadow-sm"
+                                                        />
+                                                    </div>
                                                 </div>
                                                 <div>
-                                                    <div className="font-black text-gray-900 leading-tight">{getRusServiceName(s.service)}</div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="font-black text-gray-900 leading-tight">{getRusServiceName(s.service)}</div>
+                                                        <span className="text-[7px] px-1 bg-gray-100 text-gray-400 rounded font-bold uppercase">
+                                                            {s.service.includes('Insight') ? 'АННА' : 'СЕМЁН'}
+                                                        </span>
+                                                    </div>
                                                     <div className="text-[8px] font-bold text-gray-400 uppercase leading-none">{s.service}</div>
                                                 </div>
                                             </div>
