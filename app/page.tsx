@@ -23,6 +23,13 @@ function PriorityWidget() {
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
     const [agents, setAgents] = useState<Agent[]>([]);
+    const [isOfficeOpen, setIsOfficeOpen] = useState(false);
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         const fetchAgents = () => {
@@ -123,7 +130,10 @@ function PriorityWidget() {
                                 🚥 Приоритеты
                             </button>
                             <button
-                                onClick={() => setView('team')}
+                                onClick={() => {
+                                    setView('team');
+                                    setIsOfficeOpen(true);
+                                }}
                                 className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all ${view === 'team' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 👥 Команда ОКК
@@ -133,64 +143,176 @@ function PriorityWidget() {
                 </div>
             </div>
 
-            {view === 'team' ? (
-                <div className="relative w-full aspect-[16/9] bg-[#f0e6d2] rounded-[32px] border-8 border-[#4a3728] shadow-2xl overflow-hidden flex flex-col items-center justify-center p-4">
-                    {/* Floor and Walls */}
-                    <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-4 border-[#8b4513]"></div>
+            {/* Full Screen Office Modal */}
+            {isOfficeOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 md:p-10 transition-all duration-500 animate-in fade-in zoom-in">
+                    <div className="relative w-full h-full max-w-[90vw] max-h-[85vh] bg-[#f0e6d2] rounded-[40px] border-[12px] border-[#4a3728] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
 
-                    {/* Zones for agents */}
-                    <div className="relative w-full h-full grid grid-cols-2 grid-rows-2 gap-4 z-10">
-                        {agents.length === 0 ? (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-20 bg-white/50 backdrop-blur-sm rounded-3xl m-8 border-2 border-dashed border-gray-300">
-                                <p className="text-sm font-black uppercase tracking-widest text-gray-400 mb-2">Сотрудники не найдены</p>
-                                <p className="text-[10px] font-bold text-gray-400 max-w-[200px] text-center">Проверьте, запущена ли миграция `okk_agent_status.sql` в Supabase</p>
+                        {/* Control Bar */}
+                        <div className="absolute top-6 right-8 z-[110] flex gap-4">
+                            <button
+                                onClick={() => setIsOfficeOpen(false)}
+                                className="bg-[#4a3728] text-white px-6 py-2 rounded-full font-black uppercase text-xs tracking-widest hover:bg-[#5d2e0d] transition-all shadow-lg"
+                            >
+                                ESC [Закрыть]
+                            </button>
+                        </div>
+
+                        {/* Wall Clock */}
+                        <div className="absolute top-12 left-1/2 -translate-x-1/2 w-28 h-28 bg-white border-4 border-[#4a3728] rounded-full shadow-inner flex items-center justify-center z-20">
+                            <div className="relative w-full h-full p-2">
+                                {/* Hour Hand */}
+                                <div
+                                    className="absolute top-1/2 left-1/2 w-1 h-8 bg-gray-600 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-1000"
+                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${(currentTime.getHours() % 12) * 30 + currentTime.getMinutes() * 0.5}deg)` }}
+                                ></div>
+                                {/* Minute Hand */}
+                                <div
+                                    className="absolute top-1/2 left-1/2 w-0.5 h-10 bg-gray-900 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-75"
+                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${currentTime.getMinutes() * 6}deg)` }}
+                                ></div>
+                                {/* Seconds Hand */}
+                                <div
+                                    className="absolute top-1/2 left-1/2 w-[0.5px] h-11 bg-red-400 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-75"
+                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${currentTime.getSeconds() * 6}deg)` }}
+                                ></div>
+                                {[...Array(12)].map((_, i) => (
+                                    <div key={i} className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${i * 30}deg)` }}>
+                                        <div className={`w-1 ${i % 3 === 0 ? 'h-3 bg-gray-400' : 'h-1.5 bg-gray-200'}`}></div>
+                                    </div>
+                                ))}
+                                <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-red-600 rounded-full -translate-x-1/2 -translate-y-1/2 z-30"></div>
                             </div>
-                        ) : agents.map((agent: Agent) => {
-                            const isWorking = agent.status === 'working';
-                            const task = agent.current_task?.toLowerCase() || '';
+                            <div className="absolute -top-6 text-[10px] font-black text-[#4a3728] opacity-50 uppercase tracking-widest">OKKRiteil Time</div>
+                        </div>
 
-                            return (
-                                <div key={agent.agent_id} className="relative flex flex-col items-center justify-end pb-8">
-                                    {/* Desk Prop */}
-                                    <div className="absolute bottom-4 w-32 h-16 bg-[#8b4513] rounded-t-lg border-2 border-[#5d2e0d] z-0 shadow-lg">
-                                        <div className="absolute -top-4 left-4 w-12 h-8 bg-gray-200 border-2 border-gray-400 rounded-sm shadow-sm"></div>
+                        {/* Office Content */}
+                        <div className="relative flex-1 overflow-hidden p-8 flex items-center justify-center">
+
+                            {/* Bookshelves (Large Decorative) */}
+                            <div className="absolute left-0 top-1/4 bottom-1/4 w-32 bg-[#5d4432] border-r-4 border-[#3d2c20] z-0 flex flex-col gap-2 p-2 shadow-2xl">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className="flex-1 border-b-2 border-[#3d2c20] flex gap-1 items-end overflow-hidden">
+                                        {[...Array(6)].map((_, j) => (
+                                            <div key={j} className={`w-3 h-${Math.floor(Math.random() * 8) + 8} rounded-t-sm`} style={{ backgroundColor: ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed'][Math.floor(Math.random() * 5)] }}></div>
+                                        ))}
                                     </div>
+                                ))}
+                            </div>
 
-                                    {/* Character Figure */}
-                                    <div className={`relative transition-all duration-1000 transform scale-125 z-10 
-                                        ${isWorking ? 'animate-bounce' : 'animate-pulse opacity-90'}`}>
-
-                                        <img
-                                            src={`/images/agents/${agent.agent_id}.png`}
-                                            alt={agent.name}
-                                            className={`h-32 w-auto object-contain drop-shadow-[0_20px_20px_rgba(0,0,0,0.3)] ${isWorking ? '' : 'grayscale-[20%] opacity-80'}`}
-                                        />
-
-                                        {/* Headphones for Semyon */}
-                                        {agent.agent_id === 'semen' && (task.includes('страниц') || task.includes('разложе')) && (
-                                            <div className="absolute top-4 left-1/2 -translate-x-1/2 w-20 h-20 flex items-center justify-center pointer-events-none">
-                                                <div className="text-4xl filter drop-shadow-md">🎧</div>
-                                            </div>
-                                        )}
-
-                                        {/* Speech Bubble */}
-                                        {isWorking && (
-                                            <div className="absolute -top-16 left-1/2 -translate-x-1/2 bg-white px-3 py-1.5 rounded-2xl border-2 border-gray-900 shadow-2xl z-50 min-w-[120px]">
-                                                <p className="text-[9px] font-black text-gray-900 uppercase leading-tight text-center">
-                                                    {agent.current_task}
-                                                </p>
-                                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border-r-2 border-b-2 border-gray-900 rotate-45"></div>
-                                            </div>
-                                        )}
+                            <div className="absolute right-0 top-1/4 bottom-1/4 w-32 bg-[#5d4432] border-l-4 border-[#3d2c20] z-0 flex flex-col gap-2 p-2 shadow-2xl">
+                                {[...Array(4)].map((_, i) => (
+                                    <div key={i} className="flex-1 border-b-2 border-[#3d2c20] flex gap-1 items-end justify-end overflow-hidden">
+                                        {[...Array(6)].map((_, j) => (
+                                            <div key={j} className={`w-3 h-${Math.floor(Math.random() * 8) + 8} rounded-t-sm`} style={{ backgroundColor: ['#212121', '#fafafa', '#4a3728', '#8b4513'][Math.floor(Math.random() * 4)] }}></div>
+                                        ))}
                                     </div>
+                                ))}
+                            </div>
 
-                                    {/* Name Plate */}
-                                    <div className="mt-2 bg-gray-900 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border-2 border-white shadow-md z-20">
-                                        {agent.name}
-                                    </div>
+                            {/* Water Cooler */}
+                            <div className="absolute bottom-12 right-40 w-16 flex flex-col items-center z-10">
+                                <div className="w-12 h-16 bg-blue-200/50 rounded-full border-2 border-blue-300 relative overflow-hidden">
+                                    <div className="absolute bottom-0 w-full h-1/2 bg-blue-400 opacity-30 animate-pulse"></div>
                                 </div>
-                            );
-                        })}
+                                <div className="w-14 h-24 bg-white border-x-4 border-b-4 border-gray-200 rounded-b-lg flex flex-col items-center justify-center gap-2 shadow-lg">
+                                    <div className="flex gap-2">
+                                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+                                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                                    </div>
+                                    <div className="w-6 h-1 bg-gray-100 rounded-full"></div>
+                                </div>
+                            </div>
+
+                            {/* Floor and Walls */}
+                            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-8 border-[#8b4513]"></div>
+
+                            {/* Grid Layout for agents - centered and spacious */}
+                            <div className="relative w-full h-full max-w-5xl grid grid-cols-2 grid-rows-2 gap-12 z-10 pt-20">
+                                {agents.length === 0 ? (
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-20 bg-white/50 backdrop-blur-sm rounded-3xl m-8 border-2 border-dashed border-gray-300">
+                                        <p className="text-xl font-black uppercase tracking-widest text-gray-400 mb-2">Общий Сбор...</p>
+                                    </div>
+                                ) : agents.map((agent: Agent) => {
+                                    const isWorking = agent.status === 'working';
+                                    const task = agent.current_task?.toLowerCase() || '';
+
+                                    return (
+                                        <div key={agent.agent_id} className="relative flex flex-col items-center justify-end pb-12 transition-all hover:scale-105 group">
+                                            {/* Enhanced Desk Prop */}
+                                            <div className="absolute bottom-6 w-48 h-24 bg-[#8b4513] rounded-t-xl border-4 border-[#5d2e0d] z-0 shadow-2xl overflow-hidden">
+                                                <div className="absolute top-0 left-0 w-full h-2 bg-[#a35116]"></div>
+                                                {/* Monitor */}
+                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-20 h-16 bg-gray-900 border-4 border-gray-700 rounded-md shadow-inner flex items-center justify-center">
+                                                    <div className="w-full h-full bg-blue-900/20 flex flex-col gap-1 p-1 overflow-hidden">
+                                                        <div className="w-1/2 h-1 bg-blue-400 animate-pulse opacity-20"></div>
+                                                        <div className="w-3/4 h-1 bg-blue-400 animate-pulse delay-75 opacity-20"></div>
+                                                    </div>
+                                                </div>
+                                                {/* Coffee Mug */}
+                                                <div className="absolute top-2 left-4 w-5 h-6 bg-white border-2 border-gray-200 rounded-b-sm rounded-tr-lg">
+                                                    <div className="absolute top-1 left-full w-2 h-3 border-2 border-gray-200 border-l-0 rounded-r-full"></div>
+                                                </div>
+                                            </div>
+
+                                            {/* Character Figure */}
+                                            <div className={`relative transition-all duration-1000 transform scale-[1.6] z-10 
+                                                ${isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100'}`}>
+
+                                                <img
+                                                    src={`/images/agents/${agent.agent_id}.png`}
+                                                    alt={agent.name}
+                                                    className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all ${isWorking ? '' : 'grayscale-[15%]'}`}
+                                                />
+
+                                                {/* Headphones for Semyon */}
+                                                {agent.agent_id === 'semen' && (task.includes('страниц') || task.includes('разложе')) && (
+                                                    <div className="absolute top-6 left-1/2 -translate-x-1/2 w-24 h-24 flex items-center justify-center pointer-events-none">
+                                                        <div className="text-5xl filter drop-shadow-xl animate-pulse">🎧</div>
+                                                    </div>
+                                                )}
+
+                                                {/* Improved Speech Bubble */}
+                                                {isWorking && (
+                                                    <div className="absolute -top-20 left-1/2 -translate-x-1/2 bg-white px-5 py-3 rounded-[24px] border-4 border-gray-900 shadow-[0_15px_30px_rgba(0,0,0,0.3)] z-50 min-w-[160px] animate-in slide-in-from-bottom-2">
+                                                        <p className="text-[10px] font-black text-gray-900 uppercase leading-tight text-center tracking-tight">
+                                                            {agent.current_task}
+                                                        </p>
+                                                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-5 h-5 bg-white border-r-4 border-b-4 border-gray-900 rotate-45"></div>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Professional Name Plate */}
+                                            <div className="mt-4 bg-gray-900 text-white px-5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-[0.2em] border-2 border-[#a35116] shadow-2xl z-20 group-hover:bg-indigo-600 transition-colors">
+                                                {agent.name}
+                                            </div>
+                                            <div className="text-[9px] font-bold text-gray-500 mt-1 uppercase tracking-widest">{agent.role}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Footer Info */}
+                        <div className="absolute bottom-6 left-12 z-[110] text-[10px] font-black text-[#8b4513] opacity-40 uppercase tracking-[0.3em]">
+                            OKKRiteil CRM // Digital Headquarters 1.3
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {view === 'team' ? (
+                <div className="relative w-full aspect-[16/9] bg-[#f0e6d2] rounded-[32px] border-8 border-[#4a3728] shadow-2xl overflow-hidden flex flex-col items-center justify-center p-4 cursor-pointer" onClick={() => setIsOfficeOpen(true)}>
+                    {/* Floor and Walls Preview */}
+                    <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-4 border-[#8b4513]"></div>
+                    <div className="z-10 text-center">
+                        <p className="text-gray-400 font-black uppercase text-xs tracking-widest mb-4">Нажмите, чтобы войти в кабинет</p>
+                        <div className="flex gap-4 opacity-50">
+                            {agents.map(a => (
+                                <img key={a.agent_id} src={`/images/agents/${a.agent_id}.png`} className="h-20 w-auto grayscale" />
+                            ))}
+                        </div>
                     </div>
                 </div>
             ) : (
