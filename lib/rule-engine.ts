@@ -91,7 +91,9 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     // 1. Fetch Candidates based on Trigger
     let query;
     if (rule.entity_type === 'call') {
-        query = supabase.from('raw_telphin_calls').select('*, call_order_matches(order_id: retailcrm_order_id, orders(manager_id))');
+        // Use !inner to ensure we only get calls that actually have an order match,
+        // which drastically reduces data transfer and fixes 504 timeouts when filtering by targetOrderId.
+        query = supabase.from('raw_telphin_calls').select('*, call_order_matches!inner(order_id: retailcrm_order_id, orders(manager_id))');
     } else if (rule.entity_type === 'order') {
         // STATE-BASED: Fetch current orders (NO JOIN here as FK is missing)
         query = supabase.from('orders').select('*');
