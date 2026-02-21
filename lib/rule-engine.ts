@@ -96,15 +96,23 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
     // 1. Fetch Candidates based on Trigger
     let query;
+    const SYNTHETIC_ORDER_ID_MIN = 99900000; // Synthetic test orders use IDs 99900000+
     if (rule.entity_type === 'call') {
         // Use !inner to ensure we only get calls that actually have an order match,
         // which drastically reduces data transfer and fixes 504 timeouts when filtering by targetOrderId.
         query = supabase.from('raw_telphin_calls').select('*, call_order_matches!inner(order_id: retailcrm_order_id, orders(manager_id))');
     } else if (rule.entity_type === 'order') {
         // STATE-BASED: Fetch current orders (NO JOIN here as FK is missing)
-        query = supabase.from('orders').select('*');
+        // Exclude synthetic test orders (ID >= 99900000) to prevent test pollution in production cron runs.
+        // Skip this filter if targetOrderId is set (we're in test mode targeting a specific order).
+        query = targetOrderId
+            ? supabase.from('orders').select('*')
+            : supabase.from('orders').select('*').lt('order_id', SYNTHETIC_ORDER_ID_MIN);
     } else {
-        query = supabase.from('raw_order_events').select('*');
+        // Also exclude synthetic events for non-targeted runs
+        query = targetOrderId
+            ? supabase.from('raw_order_events').select('*')
+            : supabase.from('raw_order_events').select('*').lt('retailcrm_order_id', SYNTHETIC_ORDER_ID_MIN);
     }
 
     // Apply filters specialized by entity type
