@@ -27,6 +27,48 @@ function PriorityWidget() {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [showReaction, setShowReaction] = useState(false);
 
+    // Chat state
+    const [chatInput, setChatInput] = useState('');
+    const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'agent', agent?: string, text: string }[]>([]);
+    const [chatLoading, setChatLoading] = useState(false);
+
+    const handleChatSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!chatInput.trim() || chatLoading) return;
+
+        const userText = chatInput;
+        setChatMessages(prev => [...prev, { role: 'user', text: userText }]);
+        setChatInput('');
+        setChatLoading(true);
+
+        try {
+            const res = await fetch('/api/ai/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: userText })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                setChatMessages(prev => [...prev, { role: 'agent', agent: data.agent, text: data.text }]);
+                // If it's a specific order analysis, we could show it below or we rely on the text response
+                if (data.action?.type === 'analyze_order' && data.action.orderId) {
+                    // Automatically click analyze button effectively or show insights
+                    // We'll just append it to the analysisResults to show in UI if tab switches back
+                    if (data.action.result) {
+                        setAnalysisResults(prev => ({ ...prev, [data.action.orderId]: data.action.result }));
+                    }
+                }
+            } else {
+                setChatMessages(prev => [...prev, { role: 'agent', agent: 'Система', text: 'Ошибка: ' + data.error }]);
+            }
+        } catch (error: any) {
+            setChatMessages(prev => [...prev, { role: 'agent', agent: 'Система', text: 'Ошибка связи с сервером.' }]);
+        } finally {
+            setChatLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (isOfficeOpen) {
             setShowReaction(true);
@@ -485,6 +527,52 @@ function PriorityWidget() {
                         {/* Footer Info */}
                         <div className="absolute bottom-6 left-12 z-[110] text-[10px] font-black text-[#8b4513] opacity-40 uppercase tracking-[0.3em]">
                             OKKRiteil CRM // Digital Headquarters 1.3
+                        </div>
+
+                        {/* AI Chat Interface */}
+                        <div className="absolute bottom-6 right-8 left-1/2 ml-12 z-[120] flex flex-col gap-2 max-w-lg w-full">
+                            {/* Chat History */}
+                            {chatMessages.length > 0 && (
+                                <div className="bg-white/90 backdrop-blur-md border-[3px] border-[#4a3728] rounded-[24px] p-4 max-h-48 overflow-y-auto shadow-2xl flex flex-col gap-3 scrollbar-hide">
+                                    {chatMessages.map((msg, i) => (
+                                        <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                            <div className={`px-4 py-2 rounded-2xl max-w-[90%] text-sm font-medium whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === 'user'
+                                                    ? 'bg-blue-600 text-white rounded-br-sm'
+                                                    : 'bg-gray-100 text-gray-900 border border-gray-200 rounded-bl-sm'
+                                                }`}>
+                                                {msg.role === 'agent' && <div className="text-[10px] font-black uppercase text-indigo-600 mb-1">{msg.agent}</div>}
+                                                {msg.text}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {chatLoading && (
+                                        <div className="flex items-start">
+                                            <div className="px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 rounded-2xl rounded-bl-sm text-sm animate-pulse">
+                                                Думает...
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Chat Input */}
+                            <form onSubmit={handleChatSubmit} className="relative w-full">
+                                <input
+                                    type="text"
+                                    value={chatInput}
+                                    onChange={(e) => setChatInput(e.target.value)}
+                                    placeholder="Напишите задачу команде (напр., 'ребята проанализируйте заказ 12345')..."
+                                    className="w-full bg-white/90 backdrop-blur-md border-[3px] border-[#4a3728] rounded-full pl-6 pr-14 py-4 text-sm font-bold text-gray-900 shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/50 transition-all placeholder:text-gray-400"
+                                    disabled={chatLoading}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!chatInput.trim() || chatLoading}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-full flex items-center justify-center transition-all shadow-md"
+                                >
+                                    <span className="text-xl leading-none -mt-0.5">↑</span>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </div>

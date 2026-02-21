@@ -111,5 +111,5 @@ async function fetchFullHistory(orderId: number) {
     console.log(`\n=== КОНЕЦ ОТЧЕТА ===\n`);
 }
 
-const orderId = 51492;
+const orderId = parseInt(process.argv[2] || '51492');
 fetchFullHistory(orderId);

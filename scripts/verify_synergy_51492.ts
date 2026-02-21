@@ -12,7 +12,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function verifySequentialSynergy() {
-    const orderId = 51492;
+    const orderId = parseInt(process.argv[2] || '51492');
     console.log(`--- VERIFYING SEQUENTIAL SYNERGY FOR ORDER ${orderId} ---`);
 
     // 1. Run Anna's Analysis
