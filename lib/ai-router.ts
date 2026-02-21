@@ -62,7 +62,8 @@ export async function analyzeOrderForRouting(
     allowedStatuses: Map<string, string>,
     systemContext?: { currentTime: string, orderUpdatedAt: string },
     auditContext?: { latestCallTranscript?: string, latestEmailText?: string },
-    customSystemPrompt?: string
+    customSystemPrompt?: string,
+    annaInsights?: any
 ): Promise<RoutingDecision> {
     const comment = cleanComment(rawComment);
 
@@ -83,6 +84,13 @@ ${auditContext.latestCallTranscript ? `- ТРАНСКРИПТ ПОСЛЕДНЕГ
 ${auditContext.latestEmailText ? `- ПОСЛЕДНЯЯ ПЕРЕПИСКА (EMAIL/ЧАТ): "${auditContext.latestEmailText}"` : '- Свежей переписки с клиентом не найдено.'}
 \n` : '';
 
+    const annaPrompt = annaInsights
+        ? `\nЗАКЛЮЧЕНИЕ БИЗНЕС-АНАЛИТИКА (АННЫ):
+"${annaInsights.summary || JSON.stringify(annaInsights)}"
+${annaInsights.customer_profile?.client_resume ? `О клиенте: ${annaInsights.customer_profile.client_resume}` : ''}
+${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recommendations.join(', ')}` : ''}
+\n` : '\n(Заключение аналитика отсутствует)\n';
+
     // Use custom prompt if provided, otherwise default
     // Replace {{placeholders}} with actual data
     let promptTemplate = customSystemPrompt || DEFAULT_ROUTING_PROMPT;
@@ -95,7 +103,8 @@ ${auditContext.latestEmailText ? `- ПОСЛЕДНЯЯ ПЕРЕПИСКА (EMAIL
     const systemPrompt = promptTemplate
         .replace('{{contextPrompt}}', contextPrompt)
         .replace('{{auditPrompt}}', auditPrompt)
-        .replace('{{statusList}}', statusList);
+        .replace('{{statusList}}', statusList)
+        .replace('{{annaInsights}}', annaPrompt);
 
     try {
         const openai = getOpenAI();

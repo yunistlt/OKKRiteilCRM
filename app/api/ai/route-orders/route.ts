@@ -234,13 +234,23 @@ export async function POST(request: Request) {
                     orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
                 };
 
-                // 2c. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt)
+                // 2d. Fetch Anna's Insights (Business Analyst)
+                const { data: metricsData } = await supabase
+                    .from('order_metrics')
+                    .select('insights')
+                    .eq('retailcrm_order_id', order.id)
+                    .single();
+
+                const annaInsights = metricsData?.insights || null;
+
+                // 2e. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights)
                 const decision = await analyzeOrderForRouting(
                     comment,
                     allowedStatusMap,
                     systemContext,
                     auditContext,
-                    customRoutingPrompt
+                    customRoutingPrompt,
+                    annaInsights
                 );
 
                 console.log(`[AIRouter] Order ${order.id} Audit Context:`, {
