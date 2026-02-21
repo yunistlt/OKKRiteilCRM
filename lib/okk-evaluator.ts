@@ -31,13 +31,44 @@ export async function collectFacts(orderId: number) {
 
     const raw = (order?.raw_payload as any) || {};
 
-    // Все звонки по заказу
+    // --- Умный поиск звонков ---
+    let calls: any[] = [];
     const { data: callMatches } = await supabase
         .from('call_order_matches')
         .select('telphin_call_id, raw_telphin_calls(started_at, duration_sec, recording_url, direction, transcript)')
         .eq('retailcrm_order_id', orderId);
 
-    const calls = (callMatches || []).map((m: any) => m.raw_telphin_calls).filter(Boolean);
+    calls = (callMatches || []).map((m: any) => m.raw_telphin_calls).filter(Boolean);
+
+    // Фолбек: если привязок нет, ищем по номеру телефона клиента
+    if (calls.length === 0) {
+        const clientPhones: string[] = [];
+        if (raw.phone) clientPhones.push(String(raw.phone));
+        if (raw.additionalPhone) clientPhones.push(String(raw.additionalPhone));
+        if (raw.contact?.phones) (raw.contact.phones as any[]).forEach(p => clientPhones.push(String(p.number)));
+
+        // Оставляем только значимые цифры (последние 10)
+        const searchParts = Array.from(new Set(clientPhones.map(p => p.replace(/\D/g, '').slice(-10)).filter(p => p.length >= 7)));
+
+        if (searchParts.length > 0 && order?.created_at) {
+            const startLimit = new Date(new Date(order.created_at).getTime() - 24 * 60 * 60 * 1000).toISOString();
+            const endLimit = new Date(new Date(order.created_at).getTime() + 12 * 60 * 60 * 1000).toISOString();
+
+            let query = supabase.from('raw_telphin_calls')
+                .select('started_at, duration_sec, recording_url, direction, transcript')
+                .gte('started_at', startLimit)
+                .lte('started_at', endLimit);
+
+            // Строим фильтр OR для всех найденных частей номера
+            const orFilter = searchParts.map(p => `from_number.ilike.%${p}%,to_number.ilike.%${p}%`).join(',');
+            const { data: fallbackCalls } = await query.or(orFilter);
+
+            if (fallbackCalls && fallbackCalls.length > 0) {
+                calls = fallbackCalls;
+            }
+        }
+    }
+
     const outgoing = calls.filter((c: any) => c.direction === 'outgoing');
     const connectedCalls = calls.filter((c: any) => (c.duration_sec || 0) > 15);
 
