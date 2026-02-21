@@ -26,7 +26,7 @@ async function verifySequentialSynergy() {
         .select('raw_telphin_calls(*)')
         .eq('retailcrm_order_id', orderId);
 
-    const callTranscript = matchedCalls?.[0]?.raw_telphin_calls?.transcript;
+    const callTranscript = (matchedCalls?.[0]?.raw_telphin_calls as any)?.transcript;
 
     const { data: comms } = await supabase
         .from('raw_order_events')
@@ -60,7 +60,7 @@ async function verifySequentialSynergy() {
     const allowedStatuses = new Map([
         ['otmenen-propala-neobkhodimost', 'Пропала необходимость'],
         ['novyi-1', 'Новый'],
-        ['cancel-other', 'Другая причина отмены']
+        ['cancel-other', 'Купили в другом месте']
     ]);
 
     const decision = await analyzeOrderForRouting(
