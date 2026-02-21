@@ -10,7 +10,7 @@
             "schedule": "*/10 * * * *"
         },
         {
-            "path": "/api/sync/history",
+            "path": "/api/sync/retailcrm/history",
             "schedule": "*/30 * * * *"
         },
         {
