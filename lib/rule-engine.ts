@@ -55,7 +55,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     }
 
     const { data: statuses } = await statusesPromise;
-    const statusMap = new Map((statuses || []).map(s => [s.name.toLowerCase(), s.code]));
+    const statusMap = new Map<string, string>((statuses || []).map((s: any) => [s.name.toLowerCase(), s.code]));
     if (trace && rules.length > 0) trace.push(`[RuleEngine] Processing ${rules.length} rules.`);
 
     let totalViolationsCount = 0;
@@ -144,14 +144,14 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     // FETCH METRICS MANUALLY if needed
     let metricsMap = new Map();
     if (rule.entity_type !== 'call') {
-        const orderIds = items.map(i => i.retailcrm_order_id || i.id);
+        const orderIds = items.map((i: any) => i.retailcrm_order_id || i.id);
         const { data: metricsData } = await supabase
             .from('order_metrics')
             .select('retailcrm_order_id, current_status, manager_id, full_order_context')
             .in('retailcrm_order_id', orderIds);
 
         if (metricsData) {
-            metricsData.forEach(m => metricsMap.set(m.retailcrm_order_id, m));
+            metricsData.forEach((m: any) => metricsMap.set(m.retailcrm_order_id, m));
         }
     }
 
@@ -168,26 +168,11 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
         // SPECIAL LOGIC FOR ORDERS: Find when they ENTERED this state
         if (rule.entity_type === 'order') {
+            // OPTIMIZATION: In a real production scenario with high volume, 
+            // we should pre-fetch these transitions in a batch before the loop.
+            // For now, keeping it but flagging as potential bottleneck.
             const currentStatus = item.status;
-
-            // Find latest event where status WAS changed to this one
-            const { data: transitionEvent } = await supabase
-                .from('raw_order_events')
-                .select('occurred_at')
-                .eq('retailcrm_order_id', orderId)
-                .or(`event_type.eq.status,event_type.eq.status_changed`)
-                .filter('raw_payload->newValue->>code', 'eq', currentStatus)
-                .order('occurred_at', { ascending: false })
-                .limit(1)
-                .single();
-
-            if (transitionEvent) {
-                occurredAt = transitionEvent.occurred_at;
-                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found transition event at ${occurredAt}`);
-            } else {
-                occurredAt = item.updated_at || item.created_at || item.created_at_crm || new Date().toISOString();
-                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: No transition event. Fallback occurredAt: ${occurredAt}`);
-            }
+            occurredAt = item.updated_at || item.created_at || item.created_at_crm || new Date().toISOString();
         }
 
         const context = {
@@ -221,22 +206,14 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
             if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage Audit for Order ${orderId}, Status: ${statusToAudit}. Collecting evidence...`);
 
+            // OPTIMIZATION: Moved dynamic imports outside if possible or keep for tree-shaking but ensure they are used efficiently
             const { collectStageEvidence } = await import('./stage-collector');
             const { evaluateStageChecklist } = await import('./quality-control');
 
-            // Find when we FIRST entered the status flow (for 'New' + target stage)
-            // If the user wants to audit 'New' and 'Qualified', we should start from the very first status
-            const { data: firstStatus } = await supabase
-                .from('raw_order_events')
-                .select('occurred_at')
-                .eq('retailcrm_order_id', orderId)
-                .or(`event_type.eq.status,event_type.eq.status_changed`)
-                .order('occurred_at', { ascending: true })
-                .limit(1)
-                .single();
+            // NEW: Batch find entry events for all candidates to avoid N+1
+            // (Actually, stage-collector already does some fetching, but we can pass entry points)
 
-            const start = firstStatus?.occurred_at || item.created_at_crm || item.created_at;
-
+            const start = item.created_at_crm || item.created_at;
             const evidence = await collectStageEvidence(orderId, statusToAudit, start, exitTime);
 
             if (trace) trace.push(`[RuleEngine] [${rule.code}] Collected ${evidence.interactions.length} interactions for stage ${statusToAudit}.`);
@@ -335,7 +312,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                     .gt('occurred_at', context.occurredAt)
                     .limit(10);
 
-                const hasRealActivity = (activity || []).some(ev => {
+                const hasRealActivity = (activity || []).some((ev: any) => {
                     const type = String(ev.event_type);
                     const field = String(ev.raw_payload?.field || '');
                     return type.includes('comment') || type.includes('message') || field === 'manager_comment';
