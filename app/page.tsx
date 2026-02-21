@@ -391,23 +391,24 @@ function PriorityWidget() {
                                                  ${isSemenSorting ? 'animate-semen-work' : (isWalkingToCooler ? 'animate-cooler-walk' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100'))}
                                                  ${showReaction && !isSemenSorting ? 'scale-[1.8]' : ''}`}>
 
-                                                <img
-                                                    src={`/images/agents/${agent.agent_id}.png`}
-                                                    alt={agent.name}
-                                                    className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all 
-                                                        ${isWorking ? '' : 'grayscale-[15%]'}
-                                                        [mix-blend-mode:multiply]`}
-                                                />
+                                                <div className="[mix-blend-mode:multiply]">
+                                                    <img
+                                                        src={`/images/agents/${agent.agent_id}.png`}
+                                                        alt={agent.name}
+                                                        className={`h-40 w-auto object-contain transition-all 
+                                                             ${isWorking ? 'brightness(1.02) contrast(1.1)' : 'grayscale-[15%] brightness(1.05)'}`}
+                                                    />
+                                                </div>
 
-                                                {/* Expressive Integrated Eyes */}
-                                                <div className="absolute top-[28%] left-1/2 -translate-x-1/2 w-14 h-6 flex justify-between px-1 pointer-events-none z-30">
-                                                    <div className="w-5 h-5 bg-white rounded-full border-[1.5px] border-black/20 flex items-center justify-center eye-blink shadow-sm">
-                                                        <div className={`w-2.5 h-2.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110 translate-y-[-1px]' : 'scale-100'}`}
-                                                            style={{ transform: showReaction ? 'translate(0, -10%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 20)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 20)}%)` }}></div>
+                                                {/* Expressive Integrated Eyes - Smaller and more precise */}
+                                                <div className="absolute top-[28%] left-1/2 -translate-x-1/2 w-9 h-4 flex justify-between px-0 pointer-events-none z-30 opacity-95">
+                                                    <div className="w-3.5 h-3.5 bg-white rounded-full border-[1.5px] border-black/10 flex items-center justify-center eye-blink shadow-sm overflow-hidden">
+                                                        <div className={`w-1.5 h-1.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110' : 'scale-90'}`}
+                                                            style={{ transform: showReaction ? 'translate(0, -5%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 30)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 30)}%)` }}></div>
                                                     </div>
-                                                    <div className="w-5 h-5 bg-white rounded-full border-[1.5px] border-black/20 flex items-center justify-center eye-blink shadow-sm">
-                                                        <div className={`w-2.5 h-2.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110 translate-y-[-1px]' : 'scale-100'}`}
-                                                            style={{ transform: showReaction ? 'translate(0, -10%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 20)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 20)}%)` }}></div>
+                                                    <div className="w-3.5 h-3.5 bg-white rounded-full border-[1.5px] border-black/10 flex items-center justify-center eye-blink shadow-sm overflow-hidden">
+                                                        <div className={`w-1.5 h-1.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110' : 'scale-90'}`}
+                                                            style={{ transform: showReaction ? 'translate(0, -5%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 30)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 30)}%)` }}></div>
                                                     </div>
                                                 </div>
 
