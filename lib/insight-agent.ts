@@ -29,6 +29,7 @@ export interface BusinessInsights {
     pain_points?: string[];
     competitors?: string[];
     technical_requirements?: string[];
+    recommendations?: string[];
     summary: string;
     last_processed_event_id?: string;
 }
@@ -65,6 +66,7 @@ OUTPUT FORMAT (JSON):
   "pain_points": ["point 1", "point 2"],
   "competitors": ["name 1", "name 2"],
   "technical_requirements": ["req 1", "req 2"],
+  "recommendations": ["Actionable advice 1 in Russian", "Actionable advice 2 in Russian"],
   "summary": "Short 1-2 sentence business summary in Russian"
 }
 
