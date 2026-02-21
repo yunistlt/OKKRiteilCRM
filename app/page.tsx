@@ -163,7 +163,7 @@ function PriorityWidget() {
                                         <img
                                             src={`/images/agents/${agent.agent_id}.png`}
                                             alt={agent.name}
-                                            className={`h-32 w-auto drop-shadow-2xl ${isWorking ? '' : 'grayscale-[20%]'}`}
+                                            className={`h-32 w-auto object-contain drop-shadow-[0_20px_20px_rgba(0,0,0,0.3)] ${isWorking ? '' : 'grayscale-[20%] opacity-80'}`}
                                         />
 
                                         {/* Headphones for Semyon */}
