@@ -195,6 +195,11 @@ function PriorityWidget() {
                                                 <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-white px-2 py-0.5 rounded-lg border border-gray-100">
                                                     {order.managerName}
                                                 </span>
+                                                {order.status && (
+                                                    <span className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
+                                                        {order.status}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-xs md:text-sm font-medium text-gray-500">
                                                 {formatMoney(order.totalSum)}
@@ -279,6 +284,19 @@ function PriorityWidget() {
                                                         ⏳ {analysisResults[order.orderId].timeline?.urgency === 'hot' ? '🔥 Срочно' : analysisResults[order.orderId].timeline?.urgency === 'low' ? '💨 Не горит' : '📅 Нормально'}
                                                     </p>
                                                 </div>
+                                                {analysisResults[order.orderId].dialogue_count !== undefined && (
+                                                    <div className="pt-2 border-t border-indigo-100">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-1">Коммуникация</p>
+                                                        <p className="text-xs font-bold text-gray-700">
+                                                            📞 {analysisResults[order.orderId].dialogue_count} звонков
+                                                        </p>
+                                                        {analysisResults[order.orderId].last_contact_date && (
+                                                            <p className="text-[9px] text-gray-400 mt-0.5">
+                                                                Контакт: {new Date(analysisResults[order.orderId].last_contact_date).toLocaleDateString('ru-RU')}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Pain Points & Technical */}
@@ -293,12 +311,22 @@ function PriorityWidget() {
                                                         )) || <span className="text-xs text-gray-400">Не указаны</span>}
                                                     </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">Требования / Конкуренты</p>
-                                                    <p className="text-[11px] text-gray-700 leading-relaxed line-clamp-2">
-                                                        {analysisResults[order.orderId].technical_requirements?.join(', ') || 'Стандартные'}
-                                                    </p>
-                                                </div>
+                                                {analysisResults[order.orderId].dialogue_summary && (
+                                                    <div>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-2">История диалогов</p>
+                                                        <p className="text-[11px] text-gray-600 italic leading-relaxed">
+                                                            {analysisResults[order.orderId].dialogue_summary}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {analysisResults[order.orderId].last_order_changes && (
+                                                    <div className="pt-2 border-t border-indigo-100">
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-1">Последние изменения</p>
+                                                        <p className="text-[10px] text-gray-500 leading-snug">
+                                                            {analysisResults[order.orderId].last_order_changes}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* AI Advice (Recommendations) */}

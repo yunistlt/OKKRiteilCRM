@@ -30,6 +30,10 @@ export interface BusinessInsights {
     competitors?: string[];
     technical_requirements?: string[];
     recommendations?: string[];
+    dialogue_count?: number;
+    dialogue_summary?: string;
+    last_contact_date?: string;
+    last_order_changes?: string;
     summary: string;
     last_processed_event_id?: string;
 }
@@ -67,6 +71,10 @@ OUTPUT FORMAT (JSON):
   "competitors": ["name 1", "name 2"],
   "technical_requirements": ["req 1", "req 2"],
   "recommendations": ["Actionable advice 1 in Russian", "Actionable advice 2 in Russian"],
+  "dialogue_count": number,
+  "dialogue_summary": "Summary of all conversations in Russian",
+  "last_contact_date": "ISO timestamp of last call",
+  "last_order_changes": "Russian description of most recent meaningful order field changes",
   "summary": "Short 1-2 sentence business summary in Russian"
 }
 
