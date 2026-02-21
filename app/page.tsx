@@ -164,12 +164,18 @@ function PriorityWidget() {
                             75% { transform: scale(1.6) rotate(8deg) translateY(-15px); }
                         }
                         @keyframes semenPath {
-                            0% { transform: translateX(0) scaleX(1.6); }
-                            45% { transform: translateX(-40vw) scaleX(1.6); }
-                            50% { transform: translateX(-40vw) scaleX(-1.6); }
-                            55% { transform: translateX(-40vw) scaleX(-1.6); }
-                            95% { transform: translateX(0) scaleX(-1.6); }
-                            100% { transform: translateX(0) scaleX(1.6); }
+                            0% { transform: translateX(0) scaleX(1); }
+                            45% { transform: translateX(-35vw) scaleX(1); }
+                            50% { transform: translateX(-35vw) scaleX(-1); }
+                            55% { transform: translateX(-35vw) scaleX(-1); }
+                            95% { transform: translateX(0) scaleX(-1); }
+                            100% { transform: translateX(0) scaleX(1); }
+                        }
+                        @keyframes coolerPath {
+                            0% { transform: translateX(0) scaleX(1); }
+                            40% { transform: translate(30vw, 15vh) scaleX(1); }
+                            60% { transform: translate(30vw, 15vh) scaleX(-1); }
+                            100% { transform: translateX(0) scaleX(-1); }
                         }
                         @keyframes folderAppear {
                             0% { opacity: 0; transform: scale(0.5) rotate(0); }
@@ -197,10 +203,12 @@ function PriorityWidget() {
                             0%, 90%, 100% { transform: scaleY(1); }
                             95% { transform: scaleY(0.1); }
                         }
-                        @keyframes lookAtUser {
-                            0% { transform: scale(1); }
-                            100% { transform: scale(1.1); }
+                        @keyframes clockRotate {
+                            from { transform: rotate(0deg); }
+                            to { transform: rotate(360deg); }
                         }
+                        .clock-hour { animation: clockRotate 43200s linear infinite; transform-origin: bottom center; }
+                        .clock-minute { animation: clockRotate 3600s linear infinite; transform-origin: bottom center; }
                         @keyframes steamFade {
                             0% { transform: translateY(0) scale(0.5); opacity: 0; }
                             50% { opacity: 0.5; }
@@ -211,8 +219,16 @@ function PriorityWidget() {
                             50% { opacity: 1; }
                             100% { transform: translate(20px, -40px) scale(1.2); opacity: 0; }
                         }
+                        @keyframes legMove {
+                            0%, 100% { transform: translateY(0); }
+                            50% { transform: translateY(-5px); }
+                        }
                         .animate-semen-work {
                             animation: semenPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
+                            z-index: 100;
+                        }
+                        .animate-cooler-walk {
+                            animation: coolerPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
                             z-index: 100;
                         }
                         .folder-drop {
@@ -221,6 +237,7 @@ function PriorityWidget() {
                         .sweat {
                             animation: sweatDrop 1s infinite;
                         }
+                        .eye-blink { animation: eyeBlink 4s infinite linear; }
                         .sip-tea { animation: sipTea 4s infinite ease-in-out; }
                         .chill { animation: chillLean 6s infinite ease-in-out; }
                         .talk { animation: talkWobble 0.8s infinite ease-in-out; }
@@ -336,7 +353,10 @@ function PriorityWidget() {
 
                                     // Determing idle behavior based on ID hash
                                     const hash = agent.agent_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                                    const idleVibe = !isWorking ? (hash % 3 === 0 ? 'tea' : (hash % 3 === 1 ? 'chill' : 'talk')) : null;
+                                    const currentTimeSec = Math.floor(Date.now() / 1000);
+                                    const isWalkingToCooler = !isWorking && (currentTimeSec + hash) % 30 < 12; // 12 seconds walk every 30 seconds
+
+                                    const idleVibe = !isWorking && !isWalkingToCooler ? (hash % 3 === 0 ? 'tea' : (hash % 3 === 1 ? 'chill' : 'talk')) : null;
 
                                     // Direction for talking
                                     const agentIndex = agents.indexOf(agent);
@@ -368,26 +388,28 @@ function PriorityWidget() {
 
                                             {/* Character Figure */}
                                             <div className={`relative transition-all duration-1000 transform scale-[1.6] z-10 
-                                                ${isSemenSorting ? 'animate-semen-work' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100')}
-                                                ${showReaction && !isSemenSorting ? 'scale-[1.8]' : ''}`}>
+                                                 ${isSemenSorting ? 'animate-semen-work' : (isWalkingToCooler ? 'animate-cooler-walk' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100'))}
+                                                 ${showReaction && !isSemenSorting ? 'scale-[1.8]' : ''}`}>
 
                                                 <img
                                                     src={`/images/agents/${agent.agent_id}.png`}
                                                     alt={agent.name}
-                                                    className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all ${isWorking ? '' : 'grayscale-[15%]'}`}
+                                                    className={`h-40 w-auto object-contain drop-shadow-[0_25px_25px_rgba(0,0,0,0.4)] transition-all 
+                                                        ${isWorking ? '' : 'grayscale-[15%]'}
+                                                        [mix-blend-mode:multiply]`}
                                                 />
 
-                                                {/* Eyes that look at user when showReaction is true */}
-                                                {showReaction && !isSemenSorting && (
-                                                    <div className="absolute top-[25%] left-1/2 -translate-x-1/2 w-12 h-6 flex justify-between px-1 pointer-events-none">
-                                                        <div className="w-4 h-4 bg-white rounded-full border-2 border-black relative overflow-hidden flex items-center justify-center">
-                                                            <div className="w-1.5 h-1.5 bg-black rounded-full" style={{ transform: 'translate(10%, 10%)' }}></div>
-                                                        </div>
-                                                        <div className="w-4 h-4 bg-white rounded-full border-2 border-black relative overflow-hidden flex items-center justify-center">
-                                                            <div className="w-1.5 h-1.5 bg-black rounded-full" style={{ transform: 'translate(10%, 10%)' }}></div>
-                                                        </div>
+                                                {/* Expressive Integrated Eyes */}
+                                                <div className="absolute top-[28%] left-1/2 -translate-x-1/2 w-14 h-6 flex justify-between px-1 pointer-events-none z-30">
+                                                    <div className="w-5 h-5 bg-white rounded-full border-[1.5px] border-black/20 flex items-center justify-center eye-blink shadow-sm">
+                                                        <div className={`w-2.5 h-2.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110 translate-y-[-1px]' : 'scale-100'}`}
+                                                            style={{ transform: showReaction ? 'translate(0, -10%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 20)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 20)}%)` }}></div>
                                                     </div>
-                                                )}
+                                                    <div className="w-5 h-5 bg-white rounded-full border-[1.5px] border-black/20 flex items-center justify-center eye-blink shadow-sm">
+                                                        <div className={`w-2.5 h-2.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110 translate-y-[-1px]' : 'scale-100'}`}
+                                                            style={{ transform: showReaction ? 'translate(0, -10%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 20)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 20)}%)` }}></div>
+                                                    </div>
+                                                </div>
 
                                                 {/* Hidden Folder when sorting */}
                                                 {isSemenSorting && (
@@ -434,8 +456,16 @@ function PriorityWidget() {
                                                 {/* Hands behind head simulation (chill) / Sleep ZZZ */}
                                                 {idleVibe === 'chill' && (
                                                     <div className="absolute top-10 left-1/2 -translate-x-1/2 w-32 h-12 flex justify-between px-2 text-2xl opacity-80 pointer-events-none">
-                                                        <div className="rotate-[-45deg]">🙌</div>
+                                                        <div className="rotate-[-45deg] animate-bounce">🙌</div>
                                                         <div className="absolute -top-10 right-0 font-bold text-blue-400 zzz select-none">Zzz</div>
+                                                    </div>
+                                                )}
+
+                                                {/* Animated Legs for "Real Cartoon" walking effect */}
+                                                {(isWalkingToCooler || isSemenSorting) && (
+                                                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-10 h-2 flex justify-between px-1 z-0">
+                                                        <div className="w-3 h-3 bg-black rounded-full animate-[legMove_0.3s_infinite_linear]"></div>
+                                                        <div className="w-3 h-3 bg-black rounded-full animate-[legMove_0.3s_infinite_linear_delay-150ms]" style={{ animationDelay: '0.15s' }}></div>
                                                     </div>
                                                 )}
                                             </div>
