@@ -57,12 +57,36 @@ interface OrderScore {
 function getBadgeStyle(hex?: string) {
     if (!hex) return { backgroundColor: '#F3F4F6', color: '#374151' };
 
-    // Делаем "сочную" кнопку: фон сочного цвета, белый текст
+    // Проверяем контрастность (YIQ)
+    let r = 0, g = 0, b = 0;
+    if (hex.startsWith('#')) {
+        if (hex.length === 7) {
+            r = parseInt(hex.slice(1, 3), 16);
+            g = parseInt(hex.slice(3, 5), 16);
+            b = parseInt(hex.slice(5, 7), 16);
+        } else if (hex.length === 4) {
+            r = parseInt(hex[1] + hex[1], 16);
+            g = parseInt(hex[2] + hex[2], 16);
+            b = parseInt(hex[3] + hex[3], 16);
+        }
+    } else if (hex.startsWith('rgb')) {
+        const parts = hex.match(/\d+/g);
+        if (parts) {
+            r = parseInt(parts[0]);
+            g = parseInt(parts[1]);
+            b = parseInt(parts[2]);
+        }
+    }
+
+    const yiq = ((r * 299) + (g * 587) + (b * 114)) / 1000;
+    const isLight = yiq >= 170;
+    const textColor = isLight ? '#111827' : '#FFFFFF';
+
     return {
         backgroundColor: hex,
-        color: '#FFFFFF',
-        textShadow: '0 1px 2px rgba(0,0,0,0.2)',
-        boxShadow: `0 2px 4px ${hex}40`, // Тень цвета кнопки
+        color: textColor,
+        textShadow: textColor === '#FFFFFF' ? '0 1px 1px rgba(0,0,0,0.2)' : 'none',
+        boxShadow: `0 1px 2px ${hex}30`,
         letterSpacing: '0.01em',
     };
 }
@@ -369,6 +393,19 @@ export default function OKKPage() {
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [runLimit, setRunLimit] = useState(50);
     const [targetOrderId, setTargetOrderId] = useState('');
+    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown on outside click
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setStatusDropdownOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -522,19 +559,55 @@ export default function OKKPage() {
             <div className="px-4 py-2 flex gap-2 bg-white border-b border-gray-100 flex-shrink-0">
                 <input type="text" placeholder="🔍 Менеджер" value={filterManager} onChange={e => setFilterManager(e.target.value)}
                     className="border border-gray-200 rounded px-2 py-1 text-sm w-40 focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                    className="border border-gray-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 font-medium">
-                    <option value="">Все статусы</option>
-                    {availableStatuses.map(s => (
-                        <option
-                            key={s.code}
-                            value={s.code}
-                            style={{ backgroundColor: s.color ? s.color + '20' : undefined }}
-                        >
-                            {s.label}
-                        </option>
-                    ))}
-                </select>
+                {/* Custom Status Dropdown */}
+                <div className="relative" ref={dropdownRef}>
+                    <button
+                        onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
+                        className="bg-white border border-gray-200 rounded-lg px-3 py-1.5 min-w-[160px] flex items-center justify-between hover:bg-gray-50 transition-colors shadow-sm active:scale-95 duration-75"
+                    >
+                        {(() => {
+                            const active = availableStatuses.find(s => s.code === filterStatus);
+                            if (!active) return <span className="text-gray-500 text-sm font-medium">✨ Все статусы</span>;
+                            return (
+                                <span
+                                    className="text-[10px] px-2 py-0.5 rounded-full font-black shadow-sm"
+                                    style={getBadgeStyle(active.color)}
+                                >
+                                    {active.label}
+                                </span>
+                            );
+                        })()}
+                        <span className={`text-[10px] text-gray-400 ml-2 transition-transform duration-200 ${statusDropdownOpen ? 'rotate-180' : ''}`}>▼</span>
+                    </button>
+
+                    {statusDropdownOpen && (
+                        <div className="absolute top-full left-0 mt-2 w-64 bg-white border border-gray-200 rounded-xl shadow-2xl z-[100] p-1 flex flex-col gap-0.5 animate-in fade-in zoom-in duration-150 origin-top">
+                            <button
+                                onClick={() => { setFilterStatus(''); setStatusDropdownOpen(false); }}
+                                className="w-full text-left px-3 py-2 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded-lg transition-colors flex items-center justify-between"
+                            >
+                                Все статусы
+                                {filterStatus === '' && <span className="text-blue-500 font-bold">✓</span>}
+                            </button>
+                            <div className="h-px bg-gray-100 my-1 mx-2" />
+                            {availableStatuses.map(s => (
+                                <button
+                                    key={s.code}
+                                    onClick={() => { setFilterStatus(s.code); setStatusDropdownOpen(false); }}
+                                    className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded-lg transition-colors flex items-center justify-between group"
+                                >
+                                    <span
+                                        className="text-[10px] px-2 py-0.5 rounded-full font-black shadow-sm group-hover:scale-105 transition-transform"
+                                        style={getBadgeStyle(s.color)}
+                                    >
+                                        {s.label}
+                                    </span>
+                                    {filterStatus === s.code && <span className="text-blue-500 text-xs font-bold mr-1">✓</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
                 {(filterManager || filterStatus) && (
                     <button onClick={() => { setFilterManager(''); setFilterStatus(''); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Сбросить</button>
                 )}
