@@ -57,12 +57,13 @@ interface OrderScore {
 function getBadgeStyle(hex?: string) {
     if (!hex) return { backgroundColor: '#F3F4F6', color: '#374151' };
 
-    // Пытаемся сделать цвет текста темнее для светлых фонов
-    // Но так как у нас Tailwind, просто применим инлайн стиль
+    // Делаем "сочную" кнопку: фон сочного цвета, белый текст
     return {
-        backgroundColor: hex + '20', // 12% прозрачности для фона
-        color: hex,
-        border: `1px solid ${hex}40`
+        backgroundColor: hex,
+        color: '#FFFFFF',
+        textShadow: '0 1px 2px rgba(0,0,0,0.2)',
+        boxShadow: `0 2px 4px ${hex}40`, // Тень цвета кнопки
+        letterSpacing: '0.01em',
     };
 }
 
