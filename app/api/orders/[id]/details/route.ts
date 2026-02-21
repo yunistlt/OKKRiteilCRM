@@ -83,6 +83,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .eq('order_id', order.id) // This is the internal UUID (orders.id), check if table uses internal id
             .maybeSingle();
 
+        // 6. Fetch Anna's Insights
+        const { data: metrics } = await supabase
+            .from('order_metrics')
+            .select('insights')
+            .eq('retailcrm_order_id', order.order_id)
+            .maybeSingle();
+
         // Return structured data
         return NextResponse.json({
             order: {
@@ -90,6 +97,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 manager_name: order.managers ? `${order.managers.first_name || ''} ${order.managers.last_name || ''}`.trim() : 'Не определен'
             },
             priority: priority, // Return priority data
+            insights: metrics?.insights || null,
             calls: calls.map(c => ({
                 id: c.telphin_call_id,
                 date: c.started_at,

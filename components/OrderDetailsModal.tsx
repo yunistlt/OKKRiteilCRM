@@ -14,6 +14,7 @@ interface OrderDetails {
     emails: any[];
     history: any[];
     priority?: any; // [NEW] Added priority field
+    insights?: any; // [NEW] Added Anna's insights
     raw_payload: any;
 }
 
@@ -361,7 +362,45 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                 </div>
                                             </div>
 
-                                            {/* Analysis Steps (New) */}
+                                            {/* Anna's Deep Insights (New) */}
+                                            {data.insights && (
+                                                <div className="bg-white rounded-lg border border-purple-200 overflow-hidden mt-6 shadow-sm">
+                                                    <div className="bg-purple-50 px-4 py-3 border-b border-purple-100 flex items-center gap-2">
+                                                        <span className="text-purple-600">📊</span>
+                                                        <h4 className="text-sm font-bold text-purple-900">Аналитика и Хронология (Анна)</h4>
+                                                    </div>
+                                                    <div className="p-4 space-y-4">
+                                                        {data.insights.summary && (
+                                                            <div>
+                                                                <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Резюме сделки</h5>
+                                                                <p className="text-sm text-gray-800 leading-relaxed font-medium bg-gray-50 p-3 rounded">
+                                                                    {data.insights.summary}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {data.insights.dialogue_summary && (
+                                                            <div>
+                                                                <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Хронология коммуникаций</h5>
+                                                                <div className="text-sm text-gray-700 leading-relaxed bg-white border border-gray-100 p-3 rounded italic border-l-4 border-l-purple-400">
+                                                                    {data.insights.dialogue_summary}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {data.insights.recommendations && data.insights.recommendations.length > 0 && (
+                                                            <div>
+                                                                <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Рекомендации</h5>
+                                                                <ul className="list-disc list-inside text-sm text-gray-800 bg-green-50/50 p-3 rounded border border-green-100">
+                                                                    {data.insights.recommendations.map((rec: string, idx: number) => (
+                                                                        <li key={idx} className="mb-1 last:mb-0">{rec}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Analysis Steps (Maxim's Logic) */}
                                             {data.priority.reasons?.analysis_steps && (
                                                 <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                                                     <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
