@@ -620,12 +620,19 @@ function PriorityWidget() {
                                                 <button
                                                     onClick={(e) => handleAnalyze(e, order.orderId)}
                                                     disabled={analyzingOrderId === order.orderId}
-                                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 ${analyzingOrderId === order.orderId
+                                                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2 ${analyzingOrderId === order.orderId
                                                         ? 'bg-gray-100 text-gray-400 animate-pulse'
                                                         : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
                                                         }`}
                                                 >
-                                                    {analyzingOrderId === order.orderId ? 'Анализ...' : '🤖 ИИ разбор'}
+                                                    {analyzingOrderId === order.orderId ? (
+                                                        'Анализ...'
+                                                    ) : (
+                                                        <>
+                                                            <img src="/images/agents/anna.png" alt="Anna" className="w-5 h-5 rounded-full border border-white/30" />
+                                                            <span>Анна: ИИ разбор</span>
+                                                        </>
+                                                    )}
                                                 </button>
                                                 <div className="flex flex-row md:flex-col items-center md:items-end flex-wrap gap-1.5">
                                                     {order.reasons.filter((r: string) => !r.startsWith('AI:')).map((r: string, i: number) => (
@@ -644,10 +651,10 @@ function PriorityWidget() {
                                         {/* AI Resume & Recommendation Section */}
                                         <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {order.summary && order.summary !== 'Ожидание анализа' && (
-                                                <div className="flex items-start gap-3">
-                                                    <span className="text-lg">🤖</span>
+                                                <div className="flex items-center gap-2">
+                                                    <img src="/images/agents/anna.png" alt="Anna" className="w-8 h-8 rounded-full border-2 border-purple-100 shadow-sm" />
                                                     <div>
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 mb-1">AI Резюме</p>
+                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-purple-500 mb-0.5">Анна: Резюме</p>
                                                         <p className="text-sm font-medium text-gray-700 italic">"{order.summary}"</p>
                                                     </div>
                                                 </div>
@@ -741,8 +748,8 @@ function PriorityWidget() {
                                                     {/* AI Advice (Recommendations) */}
                                                     <div className="bg-white/80 p-4 rounded-2xl border border-indigo-100 shadow-sm self-start">
                                                         <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 mb-3 flex items-center gap-2">
-                                                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                                                            Советы Консультанта
+                                                            <img src="/images/agents/anna.png" alt="Anna" className="w-6 h-6 rounded-full border border-emerald-100" />
+                                                            Анна: Советы Консультанта
                                                         </p>
                                                         <ul className="space-y-2">
                                                             {analysisResults[order.orderId].recommendations?.map((r: string, i: number) => (

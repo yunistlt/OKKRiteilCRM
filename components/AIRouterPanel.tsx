@@ -196,15 +196,18 @@ export default function AIRouterPanel() {
 
             <div className="p-4 border-b border-gray-200">
                 <h2 className="text-lg font-bold flex items-center gap-2">
-                    🤖 Маршрутизация
+                    <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                        <img src="/images/agents/maxim.png" alt="Maxim" className="w-8 h-8 rounded-full object-cover border border-blue-200 shadow-sm" />
+                        <span className="text-blue-800">Максим (Аудитор)</span>
+                    </div>
                     {pendingCount !== null && (
                         <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
                             Всего: {pendingCount}
                         </span>
                     )}
                 </h2>
-                <p className="text-xs text-gray-500 mt-1">
-                    Обработа статуса "Согласование отмены"
+                <p className="text-xs text-gray-500 mt-1 ml-12">
+                    Автоматическая обработка статуса "Согласование отмены"
                 </p>
             </div>
 
@@ -259,9 +262,16 @@ export default function AIRouterPanel() {
                     <button
                         onClick={runRouting}
                         disabled={isRunning}
-                        className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                        className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-3"
                     >
-                        {isRunning ? 'Обработка...' : '▶ Запустить Анализ'}
+                        {isRunning ? (
+                            <span>Обработка...</span>
+                        ) : (
+                            <>
+                                <img src="/images/agents/maxim.png" alt="Maxim" className="w-7 h-7 rounded-full border border-white/30" />
+                                <span>Максим: Запустить Анализ (+ Anna)</span>
+                            </>
+                        )}
                     </button>
 
                     {/* Compact Status Text */}
