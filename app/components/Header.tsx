@@ -32,6 +32,10 @@ export default function Header() {
 
                 {/* Desktop Navigation */}
                 <div className="hidden md:flex items-center gap-4">
+                    <Link href="/okk" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
+                        <span className="text-base">📋</span>
+                        Контроль качества
+                    </Link>
                     <Link href="/?office=true" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
                         <span className="text-base">👥</span>
                         Команда ОКК
@@ -70,6 +74,14 @@ export default function Header() {
 
                     <div className="flex flex-col gap-4">
                         <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Навигация</span>
+                        <Link
+                            href="/okk"
+                            onClick={() => setIsMenuOpen(false)}
+                            className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
+                        >
+                            <span className="flex items-center gap-2"><span className="text-xl">📋</span> Контроль качества</span>
+                            <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                        </Link>
                         <Link
                             href="/?office=true"
                             onClick={() => setIsMenuOpen(false)}
