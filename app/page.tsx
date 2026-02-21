@@ -27,6 +27,15 @@ function PriorityWidget() {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [showReaction, setShowReaction] = useState(false);
 
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        if (searchParams.get('office') === 'true') {
+            setView('team');
+            setIsOfficeOpen(true);
+        }
+    }, [searchParams]);
+
     // Chat state
     const [chatInput, setChatInput] = useState('');
     const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'agent', agent?: string, text: string }[]>([]);
@@ -537,8 +546,8 @@ function PriorityWidget() {
                                     {chatMessages.map((msg, i) => (
                                         <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                             <div className={`px-4 py-2 rounded-2xl max-w-[90%] text-sm font-medium whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === 'user'
-                                                    ? 'bg-blue-600 text-white rounded-br-sm'
-                                                    : 'bg-gray-100 text-gray-900 border border-gray-200 rounded-bl-sm'
+                                                ? 'bg-blue-600 text-white rounded-br-sm'
+                                                : 'bg-gray-100 text-gray-900 border border-gray-200 rounded-bl-sm'
                                                 }`}>
                                                 {msg.role === 'agent' && <div className="text-[10px] font-black uppercase text-indigo-600 mb-1">{msg.agent}</div>}
                                                 {msg.text}
