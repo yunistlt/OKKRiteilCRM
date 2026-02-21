@@ -67,14 +67,47 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             source: e.raw_payload?.source || 'unknown'
         })) || [];
 
-        // 4. Fetch Order History
-        const { data: history } = await supabase
-            .from('order_history_log')
+        // 4. Fetch Order History (Using raw_order_events as order_history_log is deprecated)
+        const { data: rawHistory } = await supabase
+            .from('raw_order_events')
             .select(`
-                field, old_value, new_value, user_data, occurred_at
+                event_type, raw_payload, occurred_at
             `)
-            .eq('retailcrm_order_id', order.order_id) // Assuming order.order_id is the RetailCRM ID stored in 'orders' table
+            .eq('retailcrm_order_id', order.order_id)
             .order('occurred_at', { ascending: false });
+
+        const formatVal = (v: any) => {
+            if (v === null || v === undefined) return '';
+            if (typeof v === 'object') {
+                return v.name || v.text || v.code || JSON.stringify(v);
+            }
+            return String(v);
+        };
+
+        // Map raw_order_events back to the expected structure for the frontend
+        const history = rawHistory?.map(h => {
+            const payload = h.raw_payload || {};
+            // If it's a simple change event with oldValue/newValue
+            if (payload.oldValue !== undefined || payload.newValue !== undefined) {
+                return {
+                    field: h.event_type,
+                    old_value: formatVal(payload.oldValue),
+                    new_value: formatVal(payload.newValue),
+                    user_data: { firstName: 'RetailCRM', lastName: 'Sync' }, // Mocking user since it's not in raw_events usually, or extract if available
+                    occurred_at: h.occurred_at
+                };
+            }
+            // For other events like comments, order creation
+            return {
+                field: h.event_type,
+                old_value: null,
+                new_value: typeof payload.text === 'string' ? payload.text :
+                    typeof payload.message === 'string' ? payload.message :
+                        Object.keys(payload).length > 0 ? 'Событие: ' + Object.keys(payload).join(', ') : 'Событие зафиксировано',
+                user_data: { firstName: 'Система', lastName: '' },
+                occurred_at: h.occurred_at
+            };
+        }) || [];
 
         // 5. Fetch AI Priority Analysis
         const { data: priority } = await supabase
