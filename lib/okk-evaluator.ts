@@ -202,7 +202,23 @@ export async function collectFacts(orderId: number) {
     const tz_received = tzCheck.tz_received;
 
     // O: Покупатель заполнен
-    const field_buyer_filled = !!(raw?.company?.name || raw?.contact?.name || raw?.customer?.firstName);
+    // Встречаются разные структуры в raw_payload:
+    // - retailcrm может сохранять компанию в raw.company.name или raw.contact.name
+    // - для физических лиц используется raw.customer.firstName/lastName,
+    // - для корпоративных клиентов часто попадает в raw.customer.companyName или raw.customer.nickName,
+    //   а иногда просто присутствует поле type/customer_corporate без имени.
+    // Чтобы не пропускать заполненные карточки, расширяем проверку.
+    const field_buyer_filled = !!(
+        raw?.company?.name ||
+        raw?.contact?.name ||
+        raw?.customer?.firstName ||
+        raw?.customer?.lastName ||
+        raw?.customer?.companyName ||
+        raw?.customer?.nickName ||
+        raw?.customer?.name ||
+        // если сам объект customer есть и имеет тип, считаем, что клиент задан
+        (raw?.customer && typeof raw.customer === 'object' && !!raw.customer.type)
+    );
 
     // P: Категория товара
     const field_product_category = !!(raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category);
@@ -247,7 +263,9 @@ export async function collectFacts(orderId: number) {
     // Сбор обоснований от Семёна (технические поля)
     const reasons: Record<string, string> = {
         tz_received: tzCheck.reason,
-        field_buyer_filled: field_buyer_filled ? `Поле 'Покупатель' заполнено: ${raw?.customer?.type === 'customer' ? 'Частное лицо' : 'Юр. лицо'}.` : "Поле 'Покупатель' не заполнено в RetailCRM.",
+        field_buyer_filled: field_buyer_filled
+            ? `Поле 'Покупатель' заполнено${raw?.customer?.type ? (raw.customer.type === 'customer' ? ': частное лицо' : ': юр. лицо') : ''}.`
+            : "Поле 'Покупатель' не заполнено в RetailCRM.",
         field_product_category: field_product_category ? `Категория товара указана (${raw?.customFields?.category || 'стандартное поле'}).` : "Категория товара не выбрана в карточке заказа.",
         field_contact_data: field_contact_data ? "Контактные данные (телефон/email) присутствуют в карточке клиента." : "В карточке клиента отсутствуют контактные данные.",
         relevant_number_found: relevant_number_found ? `Найдены звонки (${outgoing.length} исх.) по номеру клиента в базе Telphin.` : "Исходящих звонков по номеру клиента не найдено.",

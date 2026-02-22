@@ -245,7 +245,7 @@ const COL_GROUPS: Group[] = [
             },
             {
                 key: 'field_buyer_filled', label: 'Заполнение поля «Покупатель» — данные организации', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет company.name или contact.name в данных заказа', data: 'raw_payload.company / raw_payload.contact' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Проверяет поля company.name, contact.name или customer.* (firstName/lastName/companyName) в данных заказа', data: 'raw_payload.company / raw_payload.contact / raw_payload.customer' }
             },
             {
                 key: 'field_product_category', label: 'Заполнено поле «Категория товара»', type: 'bool',
