@@ -32,6 +32,7 @@ export async function GET(request: Request) {
             console.log('[CRON] Step 1: Matching');
             try {
                 const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
+                if (!matchRes.ok) throw new Error(`HTTP ${matchRes.status}: ${await matchRes.text().then(t => t.substring(0, 200))}`);
                 const matchJson = await matchRes.json();
                 report.push(`Matches: ${matchJson.matches_found || 0} new`);
             } catch (e: any) {
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
             console.log('[CRON] Step 2: Rules');
             try {
                 const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
+                if (!rulesRes.ok) throw new Error(`HTTP ${rulesRes.status}: ${await rulesRes.text().then(t => t.substring(0, 200))}`);
                 const rulesJson = await rulesRes.json();
                 report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
             } catch (e: any) {
@@ -57,6 +59,7 @@ export async function GET(request: Request) {
             console.log('[CRON] Step 3: Priorities');
             try {
                 const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
+                if (!prioRes.ok) throw new Error(`HTTP ${prioRes.status}: ${await prioRes.text().then(t => t.substring(0, 200))}`);
                 const prioJson = await prioRes.json();
                 report.push(`Priorities: ${prioJson.count || 0} updated`);
             } catch (e: any) {

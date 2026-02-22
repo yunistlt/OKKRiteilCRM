@@ -49,7 +49,7 @@ export async function GET(request: Request) {
             params.append('limit', String(limit));
             params.append('page', String(page));
             params.append('filter[updatedAtFrom]', filterDateFrom);
-            params.append('paginator', 'page');
+            // Note: paginator=page is incompatible with updatedAtFrom filter in RetailCRM API v5
 
             // To ensure we get everything cleanly, we let standard ordering apply (usually by ID or CreatedAt desc)
             // Since we filter by date, eventually we will exhaust the list.
