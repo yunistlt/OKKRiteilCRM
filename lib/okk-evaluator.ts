@@ -331,9 +331,24 @@ export async function collectFacts(orderId: number) {
     // G: lead_received_at
     const lead_received_at = order?.created_at || null;
 
-    // H: дата первой попытки звонка
+    // H: дата первой попытки звонка ИЛИ другого касания (комментарий, статус)
     const sortedOutgoing = [...outgoing].sort((a: any, b: any) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
-    const first_contact_attempt_at = sortedOutgoing[0]?.started_at || null;
+    let first_contact_attempt_at = sortedOutgoing[0]?.started_at || null;
+
+    // Если звонков нет, ищем первое действие менеджера в истории
+    if (!first_contact_attempt_at) {
+        const { data: firstTouch } = await supabase
+            .from('order_history_log')
+            .select('occurred_at, field')
+            .eq('retailcrm_order_id', orderId)
+            .in('field', ['status', 'manager_comment', 'custom_change_name_manager', 'email'])
+            .order('occurred_at', { ascending: true })
+            .limit(1);
+
+        if (firstTouch?.[0]) {
+            first_contact_attempt_at = firstTouch[0].occurred_at;
+        }
+    }
 
     // I: время ожидания
     let time_to_first_contact: string | null = null;
