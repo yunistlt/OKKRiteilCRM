@@ -29,12 +29,16 @@ const CustomFieldsSchema = z
     tovarnaya_kategoriya: z.any().optional(),
     product_category: z.any().optional(),
     category: z.any().optional(),
+    typ_castomer: z.any().optional(),
     purchase_form: z.any().optional(),
     forma_zakupki: z.any().optional(),
+    vy_dlya_sebya_ili_dlya_zakazchika_priobretaete: z.any().optional(),
     expected_amount: z.any().optional(),
     ozhidaemaya_summa: z.any().optional(),
     sphere_of_activity: z.any().optional(),
     sfera_deyatelnosti: z.any().optional(),
+    sfera_deiatelnosti: z.any().optional(),
+    typ_customer_margin: z.any().optional(),
     // etc. Add new known custom fields here for documentation
   })
   .passthrough();
@@ -79,9 +83,10 @@ export function normalizeOrderPayload(raw: any) {
       payload.customer?.type === 'customer'
         ? 'customer'
         : payload.customer?.type === 'customer_corporate'
-        ? 'corporate'
-        : null,
+          ? 'corporate'
+          : null,
     productCategory:
+      payload.customFields?.typ_castomer ||
       payload.customFields?.tovarnaya_kategoriya ||
       payload.customFields?.product_category ||
       payload.customFields?.category ||
@@ -109,8 +114,13 @@ export function normalizeOrderPayload(raw: any) {
       payload.customFields?.expected_amount || payload.customFields?.ozhidaemaya_summa ||
       payload.totalSumm || null,
     purchaseForm:
-      payload.customFields?.purchase_form || payload.customFields?.forma_zakupki || null,
+      payload.customFields?.typ_customer_margin ||
+      payload.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete ||
+      payload.customFields?.purchase_form ||
+      payload.customFields?.forma_zakupki ||
+      null,
     sphere:
+      payload.customFields?.sfera_deiatelnosti ||
       payload.customFields?.sphere_of_activity ||
       payload.customFields?.sfera_deyatelnosti ||
       null,

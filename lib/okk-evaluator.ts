@@ -75,6 +75,12 @@ async function checkTZWithAI(
     }
 }
 
+function getManagerShortName(raw: any): string {
+    const fullName = raw?.customFields?.change_name_manager || raw?.change_name_manager || raw?.manager?.firstName || 'Менеджер';
+    // Берем только имя
+    return fullName.split(' ')[0];
+}
+
 // ═══════════════════════════════════════════════════════
 // СЕМЁН: Сбор фактов (без AI)
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
@@ -218,27 +224,27 @@ export async function collectFacts(orderId: number) {
         raw.__normalized?.buyerExists !== undefined
             ? !!raw.__normalized.buyerExists
             : !!(
-                  raw?.company?.name ||
-                  raw?.contact?.name ||
-                  raw?.customer?.firstName ||
-                  raw?.customer?.lastName ||
-                  raw?.customer?.companyName ||
-                  raw?.customer?.nickName ||
-                  raw?.customer?.name ||
-                  (raw?.customer && typeof raw.customer === 'object' && !!raw.customer.type)
-              );
+                raw?.company?.name ||
+                raw?.contact?.name ||
+                raw?.customer?.firstName ||
+                raw?.customer?.lastName ||
+                raw?.customer?.companyName ||
+                raw?.customer?.nickName ||
+                raw?.customer?.name ||
+                (raw?.customer && typeof raw.customer === 'object' && !!raw.customer.type)
+            );
 
     // P: Категория товара
-    // если мы уже нормализовали payload, берем результат оттуда
-    let field_product_category =
-        raw.__normalized?.productCategory !== undefined
-            ? !!raw.__normalized.productCategory
-            : !!(
-                  raw?.customFields?.tovarnaya_kategoriya ||
-                  raw?.customFields?.product_category ||
-                  raw?.customFields?.category ||
-                  raw?.category
-              );
+    // Если мы уже нормализовали payload в начале collectFacts, берем результат оттуда.
+    // Если нормализация упала (например, из-за zod), проверяем поля напрямую.
+    const field_product_category = !!(
+        raw.__normalized?.productCategory ||
+        raw?.customFields?.typ_castomer ||
+        raw?.customFields?.tovarnaya_kategoriya ||
+        raw?.customFields?.product_category ||
+        raw?.customFields?.category ||
+        raw?.category
+    );
 
     // debug output: if category not found but UI clearly has it, log raw payload snapshot
     if (!field_product_category) {
@@ -255,10 +261,18 @@ export async function collectFacts(orderId: number) {
     const field_expected_amount = !!(raw?.customFields?.expected_amount || raw?.customFields?.ozhidaemaya_summa || (raw?.totalSumm || 0) > 0);
 
     // T: Форма закупки
-    const field_purchase_form = !!(raw?.customFields?.purchase_form || raw?.customFields?.forma_zakupki);
+    // T: Форма закупки — реальные ключи: typ_customer_margin, vy_dlya_sebya_ili_dlya_zakazchika_priobretaete
+    const field_purchase_form = !!(
+        raw.__normalized?.purchaseForm ||
+        raw?.customFields?.typ_customer_margin ||
+        raw?.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete ||
+        raw?.customFields?.purchase_form ||
+        raw?.customFields?.forma_zakupki
+    );
 
     // U: Сфера деятельности
-    const field_sphere_correct = !!(raw?.customFields?.sphere_of_activity || raw?.customFields?.sfera_deyatelnosti || raw?.customFields?.industry);
+    // U: Сфера деятельности — реальный ключ: sfera_deiatelnosti (через -ei-, не -ya-)
+    const field_sphere_correct = !!(raw?.customFields?.sfera_deiatelnosti || raw?.customFields?.sphere_of_activity || raw?.customFields?.industry);
 
     // V: Обязательные комментарии — есть ли события с комментариями
     const { count: commentCount } = await supabase
@@ -283,21 +297,24 @@ export async function collectFacts(orderId: number) {
     }
 
     // Сбор обоснований от Семёна (технические поля)
+    const mName = getManagerShortName(raw);
     const reasons: Record<string, string> = {
         tz_received: tzCheck.reason,
         field_buyer_filled: field_buyer_filled
-            ? `Поле 'Покупатель' заполнено${raw?.customer?.type ? (raw.customer.type === 'customer' ? ': частное лицо' : ': юр. лицо') : ''}.`
-            : "Поле 'Покупатель' не заполнено в RetailCRM.",
+            ? `Семён: Поле 'Покупатель' заполнено; ${mName} заполнил(а) данные ${raw?.company?.name || raw?.contact?.name || raw?.customer?.firstName || 'клиента'}.`
+            : "Семён: Поле 'Покупатель' не заполнено в RetailCRM.",
         field_product_category: field_product_category
-            ? `Категория товара указана (${raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category || raw?.customFields?.category || raw?.category || 'неизвестное поле'}).`
-            : "Категория товара не выбрана в карточке заказа.",
-        field_contact_data: field_contact_data ? "Контактные данные (телефон/email) присутствуют в карточке клиента." : "В карточке клиента отсутствуют контактные данные.",
-        relevant_number_found: relevant_number_found ? `Найдены звонки (${outgoing.length} исх.) по номеру клиента в базе Telphin.` : "Исходящих звонков по номеру клиента не найдено.",
-        field_expected_amount: field_expected_amount ? `Ожидаемая сумма указана (${raw?.totalSumm || raw?.customFields?.expected_amount || '0'} руб).` : "Сумма сделки (бюджет) не заполнена.",
-        field_purchase_form: field_purchase_form ? "Форма закупки указана в соответствующем поле." : "Форма закупки не заполнена.",
-        field_sphere_correct: field_sphere_correct ? "Сфера деятельности клиента определена и заполнена." : "Сфера деятельности клиента не указана.",
-        mandatory_comments: mandatory_comments ? `В истории найдено ${commentCount} комментариев от менеджера.` : "Менеджер не оставил ни одного существенного комментария к заказу.",
-        email_sent_no_answer: email_sent_no_answer ? (missedCalls.length > 0 ? "После неудачного звонка клиенту было отправлено письмо/сообщение." : "Дозвон состоялся, отправка письма не требовалась.") : `Было пропущено ${missedCalls.length} вызовов, но письмо/сообщение не отправлено.`
+            ? `Семён: Категория товара заполнена; ${mName} написал(а) — ${raw?.customFields?.typ_castomer || raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category || 'категория указана'}.`
+            : "Семён: Категория товара не заполнена в карточке заказа.",
+        field_contact_data: field_contact_data
+            ? `Семён: Контактные данные есть (${raw?.phone || raw?.email || 'телефон/email указаны'}).`
+            : "Семён: В карточке клиента отсутствуют контактные данные.",
+        relevant_number_found: relevant_number_found ? `Семён: Найдены звонки (${outgoing.length} исх.) по номеру клиента.` : "Семён: Исходящих звонков по номеру клиента не найдено.",
+        field_expected_amount: field_expected_amount ? `Семён: Ожидаемая сумма указана; ${mName} оценил(а) сделку в ${raw?.totalSumm || raw?.customFields?.expected_amount || '0'} руб.` : "Семён: Сумма сделки (бюджет) не заполнена.",
+        field_purchase_form: field_purchase_form ? `Семён: Форма закупки заполнена; ${mName} указал(а) — ${raw?.customFields?.typ_customer_margin || raw?.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || 'заполнено'}.` : "Семён: Форма закупки не заполнена.",
+        field_sphere_correct: field_sphere_correct ? `Семён: Сфера деятельности заполнена; ${mName} указал(а) — ${raw?.customFields?.sfera_deiatelnosti || raw?.customFields?.sphere_of_activity || 'указано'}.` : "Семён: Сфера деятельности клиента не указана.",
+        mandatory_comments: mandatory_comments ? `Семён: ${mName} оставил(а) ${commentCount} комментариев к заказу.` : "Семён: Менеджер не оставил ни одного существенного комментария к заказу.",
+        email_sent_no_answer: email_sent_no_answer ? (missedCalls.length > 0 ? `Семён: После неудачного звонка ${mName} отправил(а) письмо/сообщение.` : "Семён: Дозвон состоялся, отправка письма не требовалась.") : `Семён: Было пропущено ${missedCalls.length} вызовов, но ${mName} не отправил(а) письмо.`
     };
 
     // Склейка истории всех транскрипций для GPT (Максим)
@@ -369,23 +386,24 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     // J: Лид в работе менее суток с даты поступления
     // Правильная логика: сравниваем время первого контакта с датой поступления лида.
     // Если разница <= 24ч (или <=0 — контакт был ещё до создания заказа) — норма.
+    const mName = getManagerShortName(order?.raw_payload);
     let lead_in_work_lt_1_day: boolean | null = null;
-    let lead_in_work_reason = "Данных о первом контакте нет";
+    let lead_in_work_reason = `Игорь: Данных о первом контакте ${mName} нет`;
     if (leadReceivedAt && firstContactAt) {
         const diffH = (new Date(firstContactAt).getTime() - new Date(leadReceivedAt).getTime()) / (1000 * 60 * 60);
         lead_in_work_lt_1_day = diffH <= 24; // включая отрицательные (контакт до заказа = ✅)
         const diffRounded = Math.round(Math.abs(diffH));
         if (diffH <= 0) {
-            lead_in_work_reason = `Контакт был ещё до создания заказа (опережение ${diffRounded}ч) — норма`;
+            lead_in_work_reason = `Игорь: ${mName} связался(ась) ещё до создания заказа (опережение ${diffRounded}ч) — норма`;
         } else if (lead_in_work_lt_1_day) {
-            lead_in_work_reason = `Первый контакт через ${diffRounded}ч после поступления — норма`;
+            lead_in_work_reason = `Игорь: ${mName} взял(а) лид в работу через ${diffRounded}ч — норма`;
         } else {
-            lead_in_work_reason = `Первый контакт через ${diffRounded}ч после поступления — нарушение (норма до 24ч)`;
+            lead_in_work_reason = `Игорь: Первый контакт ${mName} через ${diffRounded}ч — нарушение (норма до 24ч)`;
         }
     } else if (leadReceivedAt && !firstContactAt) {
         // Нет данных о звонках — не можем судить
         lead_in_work_lt_1_day = null;
-        lead_in_work_reason = "Звонков не найдено, оценить нельзя";
+        lead_in_work_reason = `Игорь: Звонков от ${mName} не найдено, оценить нельзя`;
     }
 
     // K: Дата следующего контакта не просрочена
@@ -485,6 +503,12 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 - script_next_step_agreed: Четкая фиксация следующего шага с датой.
 - script_dialogue_management: Менеджер вел инициативу (задавал вопросы, а не только отвечал).
 - script_confident_speech: Уверенность, отсутствие слов-паразитов.
+
+ПЕРСОНАЛИЗАЦИЯ:
+В обосновании (reason) обязательно упоминай менеджера по имени (имя будет в контексте Анны или просто используй имя из транскрипции).
+Примеры: 
+- "Максим: Евгения отлично поприветствовала клиента, назвав компанию..."
+- "Максим: Иван забыл уточнить сроки поставки, хотя клиент..."
 
 Также верни:
 - script_score_pct: общий % (0-100).
