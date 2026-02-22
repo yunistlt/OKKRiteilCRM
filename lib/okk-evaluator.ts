@@ -10,6 +10,7 @@
 
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
+import { runInsightAnalysis } from './insight-agent';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -309,7 +310,7 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 // Заполняет: Установление контакта, Выявление потребностей,
 //            Работа с возражениями, В конце диалога, Ведение диалога
 // ═══════════════════════════════════════════════════════
-export async function evaluateScript(transcript: string) {
+export async function evaluateScript(transcript: string, annaInsights: any = null) {
     const empty = {
         script_greeting: { result: null, reason: null },
         script_call_purpose: { result: null, reason: null },
@@ -370,11 +371,16 @@ export async function evaluateScript(transcript: string) {
 
 Также верни:
 - script_score_pct: общий % (0-100).
-- evaluator_comment: общий вывод.`
+- evaluator_comment: общий вывод.
+`
                 },
                 {
                     role: 'user',
-                    content: `История звонков:\n${transcript.substring(0, 15000)}`
+                    content: `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
+${annaInsights ? JSON.stringify(annaInsights, null, 2) : 'Данные аналитики по сделке отсутствуют.'}
+
+ИСТОРИЯ ЗВОНКОВ:
+${transcript.substring(0, 15000)}`
                 }
             ]
         });
@@ -482,8 +488,11 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     // Игорь проверяет SLA
     const sla = await checkSLA(orderId, facts._order, facts.lead_received_at);
 
-    // Максим оценивает скрипт
-    const script = await evaluateScript(facts._transcript);
+    // [СИНЕРГИЯ] Анна готовит глубокую аналитику для Максима
+    const annaInsights = await runInsightAnalysis(orderId);
+
+    // Максим оценивает скрипт (используя данные от Анны)
+    const script = await evaluateScript(facts._transcript, annaInsights);
 
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
