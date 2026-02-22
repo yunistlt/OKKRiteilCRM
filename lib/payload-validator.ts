@@ -100,7 +100,11 @@ export function normalizeOrderPayload(raw: any) {
       })() ||
       null,
     contactDataExists:
-      !!(payload.phone || payload.email || (payload.contact?.phones?.length > 0)),
+      !!(
+        payload.phone ||
+        payload.email ||
+        (payload.contact?.phones && payload.contact.phones.length > 0)
+      ),
     expectedAmount:
       payload.customFields?.expected_amount || payload.customFields?.ozhidaemaya_summa ||
       payload.totalSumm || null,
