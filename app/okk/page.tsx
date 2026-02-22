@@ -430,6 +430,7 @@ export default function OKKPage() {
     const [targetOrderId, setTargetOrderId] = useState('');
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
     const [activeExplain, setActiveExplain] = useState<{ label: string, info: any, pos: { top: number, left: number } } | null>(null);
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown and popover on outside click
@@ -476,15 +477,53 @@ export default function OKKPage() {
         }
     };
 
-    const handleReEvaluate = async (orderId: number) => {
+    const handleSingleRun = async (orderId: number) => {
         setRunning(true);
+        setRunResult(`Перепроверка заказа #${orderId}...`);
         try {
             await fetch(`/api/okk/run-all?orderId=${orderId}`);
-            await load();
+            setRunResult(`✅ Заказ #${orderId} обновлен`);
+            load();
         } catch (e) {
-            console.error('Re-evaluation failed:', e);
-        } finally {
-            setRunning(false);
+            setRunResult(`❌ Ошибка #${orderId}`);
+        }
+        setRunning(false);
+    };
+
+    const handleBatchRun = async () => {
+        if (selectedIds.size === 0) return;
+        setRunning(true);
+        const ids = Array.from(selectedIds);
+        let done = 0;
+        let errs = 0;
+
+        for (const id of ids) {
+            setRunResult(`Пакетная проверка: ${done + errs + 1}/${ids.length} (ID #${id})`);
+            try {
+                await fetch(`/api/okk/run-all?orderId=${id}`);
+                done++;
+            } catch (e) {
+                errs++;
+            }
+        }
+        setRunResult(`✅ Пакетная проверка завершена. Успешно: ${done}, Ошибок: ${errs}`);
+        setSelectedIds(new Set());
+        load();
+        setRunning(false);
+    };
+
+    const toggleSelect = (id: number) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setSelectedIds(next);
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === filtered.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(filtered.map(s => s.order_id)));
         }
     };
 
@@ -607,6 +646,15 @@ export default function OKKPage() {
                         ) : '▶'}
                         {targetOrderId ? 'ПРОВЕРИТЬ' : 'ЗАПУСТИТЬ'}
                     </button>
+                    {selectedIds.size > 0 && (
+                        <button
+                            onClick={handleBatchRun}
+                            disabled={running}
+                            className={`${running ? 'bg-gray-100 text-gray-400' : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-100'} px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 animate-in slide-in-from-right-2`}
+                        >
+                            ♻️ ПЕРЕПРОВЕРИТЬ ВЫБРАННЫЕ ({selectedIds.size})
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -678,8 +726,16 @@ export default function OKKPage() {
                 <table className="text-xs border-collapse min-w-max">
                     <thead className="sticky top-0 z-10">
                         {/* Row 1: groups */}
-                        <tr className="bg-gray-100 border-b border-gray-200">
-                            <th rowSpan={2} className="px-2 py-2 text-left sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold text-gray-700 min-w-[60px]">Заказ</th>
+                        <tr className="bg-gray-100 border-b border-gray-200 text-gray-700">
+                            <th rowSpan={2} className="px-2 py-2 text-left sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[30px]">
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.size === filtered.length && filtered.length > 0}
+                                    onChange={toggleSelectAll}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                            </th>
+                            <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[60px]">Заказ</th>
                             <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[100px]">МОП</th>
                             <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[80px]">Статус лида</th>
                             {COL_GROUPS.map(g => (
@@ -709,11 +765,19 @@ export default function OKKPage() {
                                 </td>
                             </tr>
                         ) : filtered.map((s, i) => (
-                            <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                                <td className="px-2 py-1.5 sticky left-0 bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                            <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${selectedIds.has(s.order_id) ? 'bg-blue-50/50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}`}>
+                                <td className="px-2 py-1.5 sticky left-0 bg-white border-r border-gray-200 z-10 text-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(s.order_id)}
+                                        onChange={() => toggleSelect(s.order_id)}
+                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                </td>
+                                <td className="px-2 py-1.5 sticky left-[40px] bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => handleReEvaluate(s.order_id)}
+                                            onClick={() => handleSingleRun(s.order_id)}
                                             disabled={running}
                                             title="Перепроверить только этот заказ"
                                             className="hover:scale-125 transition-transform disabled:opacity-30"
