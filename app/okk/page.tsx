@@ -539,6 +539,14 @@ export default function OKKPage() {
             return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
         });
 
+    // Средний балл по всему ОП (все заказы с оценкой)
+    const scoredOrders = scores.filter(s => s.deal_score_pct !== null && s.deal_score_pct !== undefined);
+    const avgScore = scoredOrders.length > 0
+        ? Math.round(scoredOrders.reduce((sum, s) => sum + (s.deal_score_pct ?? 0), 0) / scoredOrders.length)
+        : null;
+    const avgScoreColor = avgScore === null ? '#94a3b8' : avgScore >= 75 ? '#16a34a' : avgScore >= 50 ? '#d97706' : '#dc2626';
+
+
     const statusMap = new Map<string, { label: string, color?: string }>();
     scores.forEach(s => {
         if (s.order_status && !statusMap.has(s.order_status)) {
@@ -614,6 +622,17 @@ export default function OKKPage() {
                         <h1 className="text-base font-bold text-gray-900 leading-tight">ОКК — Контроль качества</h1>
                         <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{filtered.length} заказов в списке</span>
                     </div>
+                </div>
+
+                {/* Средний балл по ОП */}
+                <div className="flex flex-col items-center gap-0.5">
+                    <div style={{ color: avgScoreColor, fontVariantNumeric: 'tabular-nums' }} className="text-5xl font-black leading-none tracking-tight">
+                        {avgScore !== null ? `${avgScore}%` : '—'}
+                    </div>
+                    <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Средний % по ОП</span>
+                    {scoredOrders.length > 0 && (
+                        <span className="text-[9px] text-gray-300">{scoredOrders.length} оценённых</span>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
