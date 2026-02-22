@@ -116,10 +116,6 @@ export function normalizeOrderPayload(raw: any) {
 
   return normalized;
 }
-  };
-
-  return normalized;
-}
 
 /**
  * Run the schema in 'strict' mode to detect totally unknown keys and log them.
