@@ -249,7 +249,7 @@ const COL_GROUPS: Group[] = [
             },
             {
                 key: 'field_product_category', label: 'Заполнено поле «Категория товара»', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Наличие customFields.tovarnaya_kategoriya', data: 'raw_payload.customFields.tovarnaya_kategoriya' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Наличие customFields.tovarnaya_kategoriya / product_category / category', data: 'raw_payload.customFields' }
             },
             {
                 key: 'field_contact_data', label: 'Внесены «Контактные данные клиента»', type: 'bool',

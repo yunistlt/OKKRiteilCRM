@@ -221,7 +221,14 @@ export async function collectFacts(orderId: number) {
     );
 
     // P: Категория товара
-    const field_product_category = !!(raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category);
+    // в разных версиях CRM поле может называться по‑разному:
+    // tovarnaya_kategoriya, product_category, category или просто category
+    const field_product_category = !!(
+        raw?.customFields?.tovarnaya_kategoriya ||
+        raw?.customFields?.product_category ||
+        raw?.customFields?.category ||
+        raw?.category
+    );
 
     // Q: Контактные данные
     const field_contact_data = !!(raw?.phone || raw?.email || raw?.contact?.phones?.length);
@@ -266,7 +273,9 @@ export async function collectFacts(orderId: number) {
         field_buyer_filled: field_buyer_filled
             ? `Поле 'Покупатель' заполнено${raw?.customer?.type ? (raw.customer.type === 'customer' ? ': частное лицо' : ': юр. лицо') : ''}.`
             : "Поле 'Покупатель' не заполнено в RetailCRM.",
-        field_product_category: field_product_category ? `Категория товара указана (${raw?.customFields?.category || 'стандартное поле'}).` : "Категория товара не выбрана в карточке заказа.",
+        field_product_category: field_product_category
+            ? `Категория товара указана (${raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category || raw?.customFields?.category || raw?.category || 'неизвестное поле'}).`
+            : "Категория товара не выбрана в карточке заказа.",
         field_contact_data: field_contact_data ? "Контактные данные (телефон/email) присутствуют в карточке клиента." : "В карточке клиента отсутствуют контактные данные.",
         relevant_number_found: relevant_number_found ? `Найдены звонки (${outgoing.length} исх.) по номеру клиента в базе Telphin.` : "Исходящих звонков по номеру клиента не найдено.",
         field_expected_amount: field_expected_amount ? `Ожидаемая сумма указана (${raw?.totalSumm || raw?.customFields?.expected_amount || '0'} руб).` : "Сумма сделки (бюджет) не заполнена.",
