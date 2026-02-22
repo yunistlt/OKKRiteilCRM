@@ -21,6 +21,58 @@ function getOpenAI() {
 // СЕМЁН: Сбор фактов (без AI)
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
 // ═══════════════════════════════════════════════════════
+async function syncOrderFromRetailCRM(orderId: number) {
+    const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
+    const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
+
+    if (!RETAILCRM_URL || !RETAILCRM_API_KEY) return null;
+
+    try {
+        const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
+        const url = `${baseUrl}/api/v5/orders/${orderId}?apiKey=${RETAILCRM_API_KEY}&by=id`;
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.success && data.order) {
+            const order = data.order;
+
+            // Собираем телефоны как в основном синхронизаторе
+            const phones = new Set<string>();
+            const clean = (v: any) => String(v || '').replace(/[^\d+]/g, '');
+            if (order.phone) phones.add(clean(order.phone));
+            if (order.additionalPhone) phones.add(clean(order.additionalPhone));
+            if (order.customer?.phones) order.customer.phones.forEach((p: any) => phones.add(clean(p.number)));
+            if (order.contact?.phones) order.contact.phones.forEach((p: any) => phones.add(clean(p.number)));
+
+            const mapped = {
+                id: order.id,
+                order_id: order.id,
+                created_at: order.createdAt,
+                updated_at: new Date().toISOString(),
+                number: order.number || String(order.id),
+                status: order.status,
+                site: order.site || null,
+                event_type: 'snapshot',
+                manager_id: order.managerId ? String(order.managerId) : null,
+                phone: clean(order.phone) || null,
+                customer_phones: Array.from(phones),
+                totalsumm: order.totalSumm || 0,
+                raw_payload: order
+            };
+
+            // Используем RPC для надежного апдейта
+            await supabase.rpc('upsert_orders_v2', {
+                orders_data: [mapped]
+            });
+
+            return order;
+        }
+    } catch (e) {
+        console.error(`[ОКК Sync] Ошибка синхронизации #${orderId}:`, e);
+    }
+    return null;
+}
+
 export async function collectFacts(orderId: number) {
     // Данные заказа
     const { data: order } = await supabase
@@ -223,8 +275,15 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     const nextContactRaw = (order?.raw_payload as any)?.customFields?.next_contact_date
         || (order?.raw_payload as any)?.customFields?.data_kontakta;
     let next_contact_not_overdue = true;
+    let next_contact_reason = "Дата следующего контакта актуальна или не задана";
+
     if (nextContactRaw) {
-        next_contact_not_overdue = new Date(nextContactRaw) >= now;
+        const d = new Date(nextContactRaw);
+        next_contact_not_overdue = d >= now;
+        const dateStr = d.toLocaleDateString('ru-RU');
+        next_contact_reason = next_contact_not_overdue
+            ? `Дата следующего контакта актуальна (${dateStr})`
+            : `Дата следующего контакта просрочена (${dateStr})`;
     }
 
     // L: Лид в работе менее суток с даты получения ТЗ (если ТЗ есть — новый отсчёт)
@@ -240,6 +299,7 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
         next_contact_not_overdue,
         lead_in_work_lt_1_day_after_tz,
         deal_in_status_lt_5_days,
+        _next_contact_reason: next_contact_reason,
         _days_in_status: Math.round(daysInStatus),
     };
 }
@@ -395,7 +455,7 @@ function calcScores(data: Record<string, any>) {
 
     // Часть SLA (Игорь)
     score_breakdown.lead_in_work_lt_1_day = { result: !!data.lead_in_work_lt_1_day, reason: data.lead_in_work_lt_1_day ? "Лид взят в работу быстрее 24 часов" : "Более 24 часов до взятия в работу" };
-    score_breakdown.next_contact_not_overdue = { result: !!data.next_contact_not_overdue, reason: data.next_contact_not_overdue ? "Дата следующего контакта актуальна" : "Дата следующего контакта просрочена" };
+    score_breakdown.next_contact_not_overdue = { result: !!data.next_contact_not_overdue, reason: data._next_contact_reason || (data.next_contact_not_overdue ? "Дата следующего контакта актуальна" : "Дата следующего контакта просрочена") };
     score_breakdown.deal_in_status_lt_5_days = { result: !!data.deal_in_status_lt_5_days, reason: data.deal_in_status_lt_5_days ? `Сделка в статусе ${data._days_in_status} дн. (норма до 5)` : `Сделка зависла в статусе на ${data._days_in_status} дн.` };
 
     // Скрипт (Максим)
@@ -412,6 +472,9 @@ function calcScores(data: Record<string, any>) {
 // ═══════════════════════════════════════════════════════
 export async function evaluateOrder(orderId: number): Promise<void> {
     console.log(`[ОКК] Оцениваем заказ #${orderId}`);
+
+    // [LIVE SYNC] Перед оценкой обновляем данные из RetailCRM
+    await syncOrderFromRetailCRM(orderId);
 
     // Семён собирает факты
     const facts = await collectFacts(orderId);
