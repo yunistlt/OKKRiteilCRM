@@ -48,6 +48,7 @@ interface OrderScore {
     script_score_pct: number | null;
     total_score: number | null;
     evaluator_comment: string | null;
+    score_breakdown: Record<string, { result: boolean | null, reason: string | null }> | null;
     manager_name?: string;
     status_label?: string;
     status_color?: string;
@@ -153,12 +154,46 @@ function ColTooltip({ label, info, children }: { label: string; info: TooltipInf
     );
 }
 
+// ─── Окно объяснения (Popover) ───────────────────────────
+function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { result: boolean | null, reason: string | null }, onClose: () => void, pos: { top: number, left: number } }) {
+    return (
+        <div
+            className="fixed z-[200] w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 origin-top"
+            style={{ top: pos.top, left: pos.left }}
+        >
+            <div className="flex items-center justify-between mb-3">
+                <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">Обоснование</div>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div className="font-bold text-gray-800 text-sm mb-2 leading-tight">{label}</div>
+            <div className="flex items-center gap-2 mb-3">
+                {info.result === null ? (
+                    <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold">НЕ ПРОВЕРЯЛОСЬ</span>
+                ) : info.result ? (
+                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ ВЫПОЛНЕНО</span>
+                ) : (
+                    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">❌ НЕ ВЫПОЛНЕНО</span>
+                )}
+            </div>
+            <div className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-100 italic">
+                {info.reason || "Подробное обоснование не найдено. Возможно, это старая запись."}
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-50 text-[9px] text-gray-300 text-center font-medium">Кликните в любом месте, чтобы закрыть</div>
+        </div>
+    );
+}
+
 // ─── Значок ячейки ───────────────────────────────────────
-function C({ v }: { v: boolean | null }) {
+function C({ v, onClick }: { v: boolean | null, onClick?: (e: React.MouseEvent) => void }) {
     if (v === null || v === undefined) return <span className="text-gray-300 select-none">—</span>;
-    return v
-        ? <span className="text-green-600 select-none">✅</span>
-        : <span className="text-red-500 select-none">❌</span>;
+    return (
+        <span
+            onClick={onClick}
+            className={`select-none cursor-pointer hover:scale-150 transition-transform inline-block ${onClick ? 'active:opacity-50' : ''}`}
+        >
+            {v ? <span className="text-green-600">✅</span> : <span className="text-red-500">❌</span>}
+        </span>
+    );
 }
 
 function Pct({ n }: { n: number | null }) {
@@ -394,14 +429,16 @@ export default function OKKPage() {
     const [runLimit, setRunLimit] = useState(50);
     const [targetOrderId, setTargetOrderId] = useState('');
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
+    const [activeExplain, setActiveExplain] = useState<{ label: string, info: any, pos: { top: number, left: number } } | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
-    // Close dropdown on outside click
+    // Close dropdown and popover on outside click
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setStatusDropdownOpen(false);
             }
+            setActiveExplain(null);
         }
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -499,10 +536,32 @@ export default function OKKPage() {
 
     const renderCell = (s: OrderScore, col: ColDef, cellBg: string) => {
         const val = (s as any)[col.key];
+        const breakdown = s.score_breakdown?.[col.key];
+
+        const handleCellClick = (e: React.MouseEvent) => {
+            if (!breakdown) return;
+            e.stopPropagation();
+
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            let top = rect.bottom + window.scrollY + 10;
+            let left = rect.left + window.scrollX - 100;
+
+            if (left < 10) left = 10;
+            if (left + 300 > window.innerWidth) left = window.innerWidth - 310;
+            if (top + 200 > window.innerHeight + window.scrollY) top = rect.top + window.scrollY - 200;
+
+            setActiveExplain({
+                label: col.label,
+                info: breakdown,
+                pos: { top, left }
+            });
+        };
+
         let content;
-        if (col.type === 'bool') content = <C v={val} />;
+        if (col.type === 'bool') content = <C v={val} onClick={breakdown ? handleCellClick : undefined} />;
         else if (col.type === 'num') content = <span className="text-gray-600 text-xs">{val ?? '—'}</span>;
         else content = <span className="text-gray-600 text-xs" title={val}>{val ?? '—'}</span>;
+
         return <td key={col.key} className={`px-1 py-1.5 text-center border-r border-gray-100 ${cellBg}`}>{content}</td>;
     };
 
@@ -694,6 +753,15 @@ export default function OKKPage() {
                     </tbody>
                 </table>
             </div>
+
+            {activeExplain && (
+                <ExplainPopover
+                    label={activeExplain.label}
+                    info={activeExplain.info}
+                    onClose={() => setActiveExplain(null)}
+                    pos={activeExplain.pos}
+                />
+            )}
         </div>
     );
 }

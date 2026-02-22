@@ -132,6 +132,20 @@ export async function collectFacts(orderId: number) {
         email_sent_no_answer = true; // написать письмо нужно только если не дозвонился
     }
 
+    // Сбор обоснований от Семёна (технические поля)
+    const reasons: Record<string, string> = {
+        tz_received: tz_received ? "Файл ТЗ найден в истории событий или прикреплен к заказу" : "В истории событий не найдено файлов ТЗ",
+        field_buyer_filled: field_buyer_filled ? "Поле 'Покупатель' в RetailCRM заполнено" : "Поле 'Покупатель' в RetailCRM пусто",
+        field_product_category: field_product_category ? "Категория товара указана" : "Категория товара не выбрана",
+        field_contact_data: field_contact_data ? "Контактные данные клиента (телефон/email) присутствуют" : "Контактные данные клиента отсутствуют",
+        relevant_number_found: relevant_number_found ? "Найдены исходящие вызовы по номеру клиента" : "В базе нет зарегистрированных звонков по номеру клиента",
+        field_expected_amount: field_expected_amount ? "Ожидаемая сумма сделки указана (customField или totalSumm)" : "Сумма сделки не указана",
+        field_purchase_form: field_purchase_form ? "Форма закупки заполнена" : "Форма закупки не указана",
+        field_sphere_correct: field_sphere_correct ? "Сфера деятельности клиента указана" : "Сфера деятельности клиента не заполнена",
+        mandatory_comments: mandatory_comments ? "В заказе есть комментарии от менеджера" : "В заказе нет ни одного комментария",
+        email_sent_no_answer: email_sent_no_answer ? (missedCalls.length > 0 ? "Отправлено письмо после неудачного звонка" : "Дозвон был, письмо не обязательно") : "Был пропущенный звонок, но письмо не отправлено"
+    };
+
     // Склейка истории всех транскрипций для GPT (Максим)
     const transcript_history = calls
         .filter((c: any) => !!c.transcript)
@@ -186,6 +200,7 @@ export async function collectFacts(orderId: number) {
         // Для дальнейшей обработки
         _order: order,
         _transcript: transcript_history,
+        _reasons: reasons
     };
 }
 
@@ -236,25 +251,25 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 // ═══════════════════════════════════════════════════════
 export async function evaluateScript(transcript: string) {
     const empty = {
-        script_greeting: null as boolean | null,
-        script_call_purpose: null as boolean | null,
-        script_company_info: null as boolean | null,
-        script_deadlines: null as boolean | null,
-        script_tz_confirmed: null as boolean | null,
-        script_objection_general: null as boolean | null,
-        script_objection_delays: null as boolean | null,
-        script_offer_best_tech: null as boolean | null,
-        script_offer_best_terms: null as boolean | null,
-        script_offer_best_price: null as boolean | null,
-        script_cross_sell: null as boolean | null,
-        script_next_step_agreed: null as boolean | null,
-        script_dialogue_management: null as boolean | null,
-        script_confident_speech: null as boolean | null,
+        script_greeting: { result: null, reason: null },
+        script_call_purpose: { result: null, reason: null },
+        script_company_info: { result: null, reason: null },
+        script_deadlines: { result: null, reason: null },
+        script_tz_confirmed: { result: null, reason: null },
+        script_objection_general: { result: null, reason: null },
+        script_objection_delays: { result: null, reason: null },
+        script_offer_best_tech: { result: null, reason: null },
+        script_offer_best_terms: { result: null, reason: null },
+        script_offer_best_price: { result: null, reason: null },
+        script_cross_sell: { result: null, reason: null },
+        script_next_step_agreed: { result: null, reason: null },
+        script_dialogue_management: { result: null, reason: null },
+        script_confident_speech: { result: null, reason: null },
         script_score_pct: null as number | null,
         evaluator_comment: null as string | null,
     };
 
-    if (!transcript || transcript.length < 50) return empty;
+    if (!transcript || transcript.length < 50) return empty as any;
 
     try {
         const openai = getOpenAI();
@@ -266,58 +281,66 @@ export async function evaluateScript(transcript: string) {
                 {
                     role: 'system',
                     content: `Ты — эксперт ОКК отдела продаж промышленного оборудования. 
-Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (может быть как 1 звонок, так и несколько).
-Проверь выполнение чек-листа по ВСЕЙ ИСТОРИИ. Если пункт был выполнен хотя бы в одном из звонков (например, боль выявили в первом звонке, а закрыли на следующий шаг во втором) — ставь true.
+Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (1 или несколько звонков).
+Проверь выполнение чек-листа по ВСЕЙ ИСТОРИИ. 
 
-Чек-лист (true = выполнено, false = не выполнено):
-{
-  "script_greeting": <В любом из звонков было приветствие и представление>,
-  "script_call_purpose": <Озвучена цель звонка / привязка к шагу>,
-  "script_company_info": <Выявлено: чем занимается организация, бюджет, НДС и т.д.>,
-  "script_deadlines": <Выяснены сроки готовности / поставки>,
-  "script_tz_confirmed": <Убедился, что параметры заказа понятны>,
-  "script_objection_general": <Работа с возражениями (если были)>,
-  "script_objection_delays": <Если клиент медлит — выяснил причину>,
-  "script_offer_best_tech": <Аргументация по тех. характеристикам>,
-  "script_offer_best_terms": <Аргументация по срокам>,
-  "script_offer_best_price": <Аргументация по цене>,
-  "script_cross_sell": <Информирование о доп. оборудовании / кросс-продажа>,
-  "script_next_step_agreed": <Договорённость о конкретном следующем действии>,
-  "script_dialogue_management": <Менеджер вел инициативу во всех звонках>,
-  "script_confident_speech": <Уверенная, грамотная речь в целом>,
-  "script_score_pct": <итоговый % выполнения чек-листа от 0 до 100>,
-  "evaluator_comment": "<краткий вывод: был ли прогресс по звонкам, 1-2 предложения>"
-}`
+Для каждого пункта верни объект: {"result": true/false, "reason": "краткое объяснение ПОЧЕМУ такая оценка"}.
+В "reason" старайся приводить косвенные цитаты или факты (например, "Клиент сказал ..., менеджер ответил ...").
+
+Критерии:
+- script_greeting: Приветствие и название компании.
+- script_call_purpose: Озвучена причина звонка.
+- script_company_info: Выявлены потребности/сфера деятельности.
+- script_deadlines: Выяснены сроки.
+- script_tz_confirmed: Параметры ТЗ подтверждены.
+- script_objection_general: Отработка возражений.
+- script_objection_delays: Выяснение причин пауз/задержек.
+- script_offer_best_tech: Аргументация по технике.
+- script_offer_best_terms: Аргументация по срокам.
+- script_offer_best_price: Аргументация по цене.
+- script_cross_sell: Предложение доп. оборудования.
+- script_next_step_agreed: Четкая договоренность о шаге.
+- script_dialogue_management: Инициатива у менеджера.
+- script_confident_speech: Уверенность и грамотность.
+
+Также верни:
+- script_score_pct: общий % (0-100).
+- evaluator_comment: общий вывод.`
                 },
                 {
                     role: 'user',
-                    content: `История звонков:\n${transcript.substring(0, 7000)}`
+                    content: `История звонков:\n${transcript.substring(0, 15000)}`
                 }
             ]
         });
 
         const parsed = JSON.parse(res.choices[0].message.content || '{}');
+        const getVal = (key: string) => ({
+            result: parsed[key]?.result ?? null,
+            reason: parsed[key]?.reason ?? null
+        });
+
         return {
-            script_greeting: parsed.script_greeting ?? null,
-            script_call_purpose: parsed.script_call_purpose ?? null,
-            script_company_info: parsed.script_company_info ?? null,
-            script_deadlines: parsed.script_deadlines ?? null,
-            script_tz_confirmed: parsed.script_tz_confirmed ?? null,
-            script_objection_general: parsed.script_objection_general ?? null,
-            script_objection_delays: parsed.script_objection_delays ?? null,
-            script_offer_best_tech: parsed.script_offer_best_tech ?? null,
-            script_offer_best_terms: parsed.script_offer_best_terms ?? null,
-            script_offer_best_price: parsed.script_offer_best_price ?? null,
-            script_cross_sell: parsed.script_cross_sell ?? null,
-            script_next_step_agreed: parsed.script_next_step_agreed ?? null,
-            script_dialogue_management: parsed.script_dialogue_management ?? null,
-            script_confident_speech: parsed.script_confident_speech ?? null,
+            script_greeting: getVal('script_greeting'),
+            script_call_purpose: getVal('script_call_purpose'),
+            script_company_info: getVal('script_company_info'),
+            script_deadlines: getVal('script_deadlines'),
+            script_tz_confirmed: getVal('script_tz_confirmed'),
+            script_objection_general: getVal('script_objection_general'),
+            script_objection_delays: getVal('script_objection_delays'),
+            script_offer_best_tech: getVal('script_offer_best_tech'),
+            script_offer_best_terms: getVal('script_offer_best_terms'),
+            script_offer_best_price: getVal('script_offer_best_price'),
+            script_cross_sell: getVal('script_cross_sell'),
+            script_next_step_agreed: getVal('script_next_step_agreed'),
+            script_dialogue_management: getVal('script_dialogue_management'),
+            script_confident_speech: getVal('script_confident_speech'),
             script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.min(100, Math.max(0, parsed.script_score_pct)) : null,
             evaluator_comment: parsed.evaluator_comment ?? null,
         };
     } catch (e) {
         console.error('[Максим/GPT] Script evaluation failed:', e);
-        return empty;
+        return empty as any;
     }
 }
 
@@ -327,40 +350,56 @@ export async function evaluateScript(transcript: string) {
 function calcScores(data: Record<string, any>) {
     // Оценка заполнения сделки (col Y: % правил заполнения/ведения)
     const dealChecks = [
-        data.tz_received,
-        data.field_buyer_filled,
-        data.field_product_category,
-        data.field_contact_data,
-        data.relevant_number_found,
-        data.field_expected_amount,
-        data.field_purchase_form,
-        data.field_sphere_correct,
-        data.mandatory_comments,
-        data.email_sent_no_answer,
-        data.lead_in_work_lt_1_day,
-        data.next_contact_not_overdue,
-        data.deal_in_status_lt_5_days,
-    ].filter(v => v !== null && v !== undefined);
+        { key: 'tz_received', val: data.tz_received },
+        { key: 'field_buyer_filled', val: data.field_buyer_filled },
+        { key: 'field_product_category', val: data.field_product_category },
+        { key: 'field_contact_data', val: data.field_contact_data },
+        { key: 'relevant_number_found', val: data.relevant_number_found },
+        { key: 'field_expected_amount', val: data.field_expected_amount },
+        { key: 'field_purchase_form', val: data.field_purchase_form },
+        { key: 'field_sphere_correct', val: data.field_sphere_correct },
+        { key: 'mandatory_comments', val: data.mandatory_comments },
+        { key: 'email_sent_no_answer', val: data.email_sent_no_answer },
+        { key: 'lead_in_work_lt_1_day', val: data.lead_in_work_lt_1_day },
+        { key: 'next_contact_not_overdue', val: data.next_contact_not_overdue },
+        { key: 'deal_in_status_lt_5_days', val: data.deal_in_status_lt_5_days },
+    ].filter(chk => chk.val !== null && chk.val !== undefined);
 
-    const dealPassed = dealChecks.filter(Boolean).length;
+    const dealPassed = dealChecks.filter(chk => !!chk.val).length;
     const deal_score = dealChecks.length > 0 ? dealPassed : 0;
     const deal_score_pct = dealChecks.length > 0 ? Math.round((dealPassed / dealChecks.length) * 100) : null;
 
-    // Оценка скрипта (col AS: % скрипта) — берём из GPT или считаем вручную
+    // Скрипт (Максим возвращает {result, reason})
     const script_score_pct = data.script_score_pct ?? null;
-    const script_score = script_score_pct !== null ? Math.round((script_score_pct / 100) * 14) : null; // из 14 пунктов
+    const script_score = script_score_pct !== null ? Math.round((script_score_pct / 100) * 14) : null;
 
-    // Общий % (среднее двух оценок)
+    // Общий %
     let total_score: number | null = null;
     if (deal_score_pct !== null && script_score_pct !== null) {
         total_score = Math.round((deal_score_pct + script_score_pct) / 2);
-    } else if (deal_score_pct !== null) {
-        total_score = deal_score_pct;
-    } else if (script_score_pct !== null) {
-        total_score = script_score_pct;
-    }
+    } else if (deal_score_pct !== null) total_score = deal_score_pct;
+    else if (script_score_pct !== null) total_score = script_score_pct;
 
-    return { deal_score, deal_score_pct, script_score, total_score };
+    // Сборка breakdown для UI
+    const score_breakdown: Record<string, any> = {};
+
+    // Техническая часть (Семён)
+    Object.keys(data._reasons || {}).forEach(k => {
+        score_breakdown[k] = { result: !!data[k], reason: data._reasons[k] };
+    });
+
+    // Часть SLA (Игорь)
+    score_breakdown.lead_in_work_lt_1_day = { result: !!data.lead_in_work_lt_1_day, reason: data.lead_in_work_lt_1_day ? "Лид взят в работу быстрее 24 часов" : "Более 24 часов до взятия в работу" };
+    score_breakdown.next_contact_not_overdue = { result: !!data.next_contact_not_overdue, reason: data.next_contact_not_overdue ? "Дата следующего контакта актуальна" : "Дата следующего контакта просрочена" };
+    score_breakdown.deal_in_status_lt_5_days = { result: !!data.deal_in_status_lt_5_days, reason: data.deal_in_status_lt_5_days ? `Сделка в статусе ${data._days_in_status} дн. (норма до 5)` : `Сделка зависла в статусе на ${data._days_in_status} дн.` };
+
+    // Скрипт (Максим)
+    const scriptKeys = ['script_greeting', 'script_call_purpose', 'script_company_info', 'script_deadlines', 'script_tz_confirmed', 'script_objection_general', 'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech'];
+    scriptKeys.forEach(k => {
+        if (data[k]) score_breakdown[k] = data[k];
+    });
+
+    return { deal_score, deal_score_pct, script_score, total_score, score_breakdown };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -412,20 +451,20 @@ export async function evaluateOrder(orderId: number): Promise<void> {
         calls_attempts_count: facts.calls_attempts_count,
         calls_evaluated_count: facts.calls_evaluated_count,
         // AD-AQ (Максим/GPT)
-        script_greeting: script.script_greeting,
-        script_call_purpose: script.script_call_purpose,
-        script_company_info: script.script_company_info,
-        script_deadlines: script.script_deadlines,
-        script_tz_confirmed: script.script_tz_confirmed,
-        script_objection_general: script.script_objection_general,
-        script_objection_delays: script.script_objection_delays,
-        script_offer_best_tech: script.script_offer_best_tech,
-        script_offer_best_terms: script.script_offer_best_terms,
-        script_offer_best_price: script.script_offer_best_price,
-        script_cross_sell: script.script_cross_sell,
-        script_next_step_agreed: script.script_next_step_agreed,
-        script_dialogue_management: script.script_dialogue_management,
-        script_confident_speech: script.script_confident_speech,
+        script_greeting: script.script_greeting?.result,
+        script_call_purpose: script.script_call_purpose?.result,
+        script_company_info: script.script_company_info?.result,
+        script_deadlines: script.script_deadlines?.result,
+        script_tz_confirmed: script.script_tz_confirmed?.result,
+        script_objection_general: script.script_objection_general?.result,
+        script_objection_delays: script.script_objection_delays?.result,
+        script_offer_best_tech: script.script_offer_best_tech?.result,
+        script_offer_best_terms: script.script_offer_best_terms?.result,
+        script_offer_best_price: script.script_offer_best_price?.result,
+        script_cross_sell: script.script_cross_sell?.result,
+        script_next_step_agreed: script.script_next_step_agreed?.result,
+        script_dialogue_management: script.script_dialogue_management?.result,
+        script_confident_speech: script.script_confident_speech?.result,
         // X-Y, AR-AS (Максим — итог)
         deal_score: scores.deal_score,
         deal_score_pct: scores.deal_score_pct,
@@ -433,6 +472,7 @@ export async function evaluateOrder(orderId: number): Promise<void> {
         script_score_pct: script.script_score_pct,
         total_score: scores.total_score,
         evaluator_comment: script.evaluator_comment,
+        score_breakdown: scores.score_breakdown, // <--- Наша новая детализация
         evaluated_by: 'maxim',
         eval_date: new Date().toISOString(),
     };
