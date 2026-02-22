@@ -19,6 +19,63 @@ function getOpenAI() {
 }
 
 // ═══════════════════════════════════════════════════════
+// AI-ПОМОЩНИК СЕМЁНА: GPT-проверка наличия ТЗ в комментариях
+// ═══════════════════════════════════════════════════════
+async function checkTZWithAI(
+    customerComment: string,
+    managerComment: string,
+    customFields: any
+): Promise<{ tz_received: boolean; reason: string }> {
+    // Быстрый путь: custom-поля имеют приоритет
+    const tzFields = ['tz', 'technical_specification', 'width', 'height', 'depth', 'temperature'];
+    if (tzFields.some(f => !!(customFields?.[f]))) {
+        return { tz_received: true, reason: 'Техническое задание найдено в полях заказа RetailCRM.' };
+    }
+
+    const parts: string[] = [];
+    if (customerComment?.trim()) parts.push(`Комментарий клиента: «${customerComment.trim()}»`);
+    if (managerComment?.trim()) parts.push(`Комментарий оператора: «${managerComment.trim()}»`);
+
+    if (parts.length === 0) {
+        return { tz_received: false, reason: 'Комментарии клиента и оператора отсутствуют; ТЗ не найдено.' };
+    }
+
+    try {
+        const openai = getOpenAI();
+        const res = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: `Ты — ОКК-аналитик отдела продаж промышленного оборудования.
+Определи, содержится ли в тексте достаточно информации для расчёта коммерческого предложения.
+Признаки наличия ТЗ: размеры (мм, м, см), количество штук, температура, тип нагрева, нагрузка, материал, модель.
+Верни JSON: {"tz_received": true/false, "reason": "одно предложение с цитатой из текста если нашёл"}`
+                },
+                {
+                    role: 'user',
+                    content: parts.join('\n\n').substring(0, 2000)
+                }
+            ]
+        });
+
+        const parsed = JSON.parse(res.choices[0].message.content || '{}');
+        return {
+            tz_received: !!parsed.tz_received,
+            reason: parsed.reason ||
+                (parsed.tz_received
+                    ? 'ТЗ найдено в комментариях к заказу.'
+                    : 'ТЗ не обнаружено ни в комментариях, ни в полях заказа.')
+        };
+    } catch (e) {
+        console.error('[Семён/GPT checkTZ] Ошибка:', e);
+        return { tz_received: false, reason: 'Ошибка AI-проверки ТЗ; проверьте вручную.' };
+    }
+}
+
+// ═══════════════════════════════════════════════════════
 // СЕМЁН: Сбор фактов (без AI)
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
 // ═══════════════════════════════════════════════════════
@@ -138,9 +195,11 @@ export async function collectFacts(orderId: number) {
     // AC: Оцененных звонков (с транскрипцией)
     const calls_evaluated_count = calls.filter((c: any) => !!c.transcript).length;
 
-    // N: ТЗ получено — ищем в комментариях или полях
-    const tzFields = ['tz', 'technical_specification', 'width', 'height', 'depth', 'temperature'];
-    const tz_received = tzFields.some(f => !!(raw?.customFields?.[f]));
+    // N: ТЗ получено — AI-проверка по комментариям клиента, оператора и полям заказа
+    const customerComment: string = raw?.customerComment || '';
+    const managerComment: string = raw?.managerComment || '';
+    const tzCheck = await checkTZWithAI(customerComment, managerComment, raw?.customFields);
+    const tz_received = tzCheck.tz_received;
 
     // O: Покупатель заполнен
     const field_buyer_filled = !!(raw?.company?.name || raw?.contact?.name || raw?.customer?.firstName);
@@ -187,7 +246,7 @@ export async function collectFacts(orderId: number) {
 
     // Сбор обоснований от Семёна (технические поля)
     const reasons: Record<string, string> = {
-        tz_received: tz_received ? "В истории событий или файлах заказа обнаружено техническое задание." : "Техническое задание не найдено (проверены история событий и прикрепленные файлы).",
+        tz_received: tzCheck.reason,
         field_buyer_filled: field_buyer_filled ? `Поле 'Покупатель' заполнено: ${raw?.customer?.type === 'customer' ? 'Частное лицо' : 'Юр. лицо'}.` : "Поле 'Покупатель' не заполнено в RetailCRM.",
         field_product_category: field_product_category ? `Категория товара указана (${raw?.customFields?.category || 'стандартное поле'}).` : "Категория товара не выбрана в карточке заказа.",
         field_contact_data: field_contact_data ? "Контактные данные (телефон/email) присутствуют в карточке клиента." : "В карточке клиента отсутствуют контактные данные.",
