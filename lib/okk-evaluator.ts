@@ -139,7 +139,19 @@ export async function collectFacts(orderId: number) {
         .eq('order_id', orderId)
         .single();
 
-    const raw = (order?.raw_payload as any) || {};
+    let raw = (order?.raw_payload as any) || {};
+
+    // validate structure and normalize for easier downstream logic
+    try {
+        const { validateOrderPayload, normalizeOrderPayload } = await import('./payload-validator');
+        validateOrderPayload(raw);
+        const norm = normalizeOrderPayload(raw);
+        // merge normalized properties back into raw for backwards compatibility
+        raw = { ...raw, __normalized: norm };
+    } catch (e) {
+        // if validator module fails, we still continue with original raw
+        console.warn('[ОКК] payload-validator failed:', e);
+    }
 
     // --- Умный поиск звонков ---
     let calls: any[] = [];
@@ -202,33 +214,36 @@ export async function collectFacts(orderId: number) {
     const tz_received = tzCheck.tz_received;
 
     // O: Покупатель заполнен
-    // Встречаются разные структуры в raw_payload:
-    // - retailcrm может сохранять компанию в raw.company.name или raw.contact.name
-    // - для физических лиц используется raw.customer.firstName/lastName,
-    // - для корпоративных клиентов часто попадает в raw.customer.companyName или raw.customer.nickName,
-    //   а иногда просто присутствует поле type/customer_corporate без имени.
-    // Чтобы не пропускать заполненные карточки, расширяем проверку.
-    const field_buyer_filled = !!(
-        raw?.company?.name ||
-        raw?.contact?.name ||
-        raw?.customer?.firstName ||
-        raw?.customer?.lastName ||
-        raw?.customer?.companyName ||
-        raw?.customer?.nickName ||
-        raw?.customer?.name ||
-        // если сам объект customer есть и имеет тип, считаем, что клиент задан
-        (raw?.customer && typeof raw.customer === 'object' && !!raw.customer.type)
-    );
+    const field_buyer_filled =
+        raw.__normalized?.buyerExists !== undefined
+            ? !!raw.__normalized.buyerExists
+            : !!(
+                  raw?.company?.name ||
+                  raw?.contact?.name ||
+                  raw?.customer?.firstName ||
+                  raw?.customer?.lastName ||
+                  raw?.customer?.companyName ||
+                  raw?.customer?.nickName ||
+                  raw?.customer?.name ||
+                  (raw?.customer && typeof raw.customer === 'object' && !!raw.customer.type)
+              );
 
     // P: Категория товара
-    // в разных версиях CRM поле может называться по‑разному:
-    // tovarnaya_kategoriya, product_category, category или просто category
-    const field_product_category = !!(
-        raw?.customFields?.tovarnaya_kategoriya ||
-        raw?.customFields?.product_category ||
-        raw?.customFields?.category ||
-        raw?.category
-    );
+    // если мы уже нормализовали payload, берем результат оттуда
+    let field_product_category =
+        raw.__normalized?.productCategory !== undefined
+            ? !!raw.__normalized.productCategory
+            : !!(
+                  raw?.customFields?.tovarnaya_kategoriya ||
+                  raw?.customFields?.product_category ||
+                  raw?.customFields?.category ||
+                  raw?.category
+              );
+
+    // debug output: if category not found but UI clearly has it, log raw payload snapshot
+    if (!field_product_category) {
+        console.debug('[ОКК] category flag false for order', orderId, 'normalized:', raw.__normalized?.productCategory, 'customFields:', raw.customFields);
+    }
 
     // Q: Контактные данные
     const field_contact_data = !!(raw?.phone || raw?.email || raw?.contact?.phones?.length);
