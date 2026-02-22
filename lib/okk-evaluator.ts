@@ -495,7 +495,11 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
         evaluator_comment: null as string | null,
     };
 
-    if (!transcript || transcript.length < 50) return empty as any;
+    console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
+    if (!transcript || transcript.length < 50) {
+        console.warn('[Максим/GPT] Transcript too short or empty, skipping AI evaluation.');
+        return empty as any;
+    }
 
     try {
         const openai = getOpenAI();
@@ -510,6 +514,7 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (1 или несколько звонков).
 Проверь выполнение чек-листа по ВСЕЙ ИСТОРИИ. 
 
+ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON. 
 Для каждого пункта верни объект: {"result": true/false, "reason": "ПОДРОБНОЕ обоснование"}.
 
 КРИТИЧЕСКОЕ ТРЕБОВАНИЕ к "reason":
@@ -556,7 +561,9 @@ ${transcript.substring(0, 15000)}`
             ]
         });
 
-        const parsed = JSON.parse(res.choices[0].message.content || '{}');
+        const rawContent = res.choices[0].message.content || '{}';
+        console.log('[Максим/GPT] Raw AI response received:', rawContent);
+        const parsed = JSON.parse(rawContent);
         const getVal = (key: string) => ({
             result: parsed[key]?.result ?? null,
             reason: parsed[key]?.reason ?? null
@@ -577,7 +584,7 @@ ${transcript.substring(0, 15000)}`
             script_next_step_agreed: getVal('script_next_step_agreed'),
             script_dialogue_management: getVal('script_dialogue_management'),
             script_confident_speech: getVal('script_confident_speech'),
-            script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.min(100, Math.max(0, parsed.script_score_pct)) : null,
+            script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.round(Math.min(100, Math.max(0, parsed.script_score_pct))) : null,
             evaluator_comment: parsed.evaluator_comment ?? null,
         };
     } catch (e) {
