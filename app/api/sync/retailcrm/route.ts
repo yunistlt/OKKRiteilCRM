@@ -48,7 +48,7 @@ export async function GET(request: Request) {
             params.append('apiKey', RETAILCRM_API_KEY);
             params.append('limit', String(limit));
             params.append('page', String(page));
-            params.append('filter[statusUpdatedAtFrom]', filterDateFrom);
+            params.append('filter[updatedAtFrom]', filterDateFrom);
             params.append('paginator', 'page');
 
             // To ensure we get everything cleanly, we let standard ordering apply (usually by ID or CreatedAt desc)
