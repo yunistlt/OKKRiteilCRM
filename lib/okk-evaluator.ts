@@ -161,8 +161,8 @@ export async function collectFacts(orderId: number) {
         const searchParts = Array.from(new Set(clientPhones.map(p => p.replace(/\D/g, '').slice(-10)).filter(p => p.length >= 7)));
 
         if (searchParts.length > 0 && order?.created_at) {
-            const startLimit = new Date(new Date(order.created_at).getTime() - 24 * 60 * 60 * 1000).toISOString();
-            const endLimit = new Date(new Date(order.created_at).getTime() + 12 * 60 * 60 * 1000).toISOString();
+            const startLimit = new Date(new Date(order.created_at).getTime() - 48 * 60 * 60 * 1000).toISOString();
+            const endLimit = new Date(new Date(order.created_at).getTime() + 48 * 60 * 60 * 1000).toISOString();
 
             let query = supabase.from('raw_telphin_calls')
                 .select('started_at, duration_sec, recording_url, direction, transcript')
