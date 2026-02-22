@@ -426,7 +426,22 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     const lead_in_work_lt_1_day_after_tz = lead_in_work_lt_1_day;
 
     // M: Сделка в одном статусе менее 5 дней
-    const daysInStatus = (now.getTime() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+    // Сначала пробуем найти дату последней смены статуса в истории
+    const { data: statusHistory } = await supabase
+        .from('order_history_log')
+        .select('occurred_at')
+        .eq('retailcrm_order_id', orderId)
+        .eq('field', 'status')
+        .order('occurred_at', { ascending: false })
+        .limit(1);
+
+    const statusChangedAtRaw = statusHistory?.[0]?.occurred_at;
+    const statusChangedAt = statusChangedAtRaw
+        ? new Date(statusChangedAtRaw)
+        : new Date(order?.created_at || (order?.raw_payload as any)?.createdAt || Date.now());
+
+    const diffMs = now.getTime() - statusChangedAt.getTime();
+    const daysInStatus = diffMs / (1000 * 60 * 60 * 24);
     const deal_in_status_lt_5_days = daysInStatus < 5;
 
     return {
