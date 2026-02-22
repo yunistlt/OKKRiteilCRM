@@ -261,15 +261,30 @@ export async function collectFacts(orderId: number) {
 // ИГОРЬ: Проверка SLA (без AI)
 // Заполняет: Статус и время ожидания лида (col J-M)
 // ═══════════════════════════════════════════════════════
-export async function checkSLA(orderId: number, order: any, leadReceivedAt: string | null) {
+export async function checkSLA(orderId: number, order: any, leadReceivedAt: string | null, firstContactAt?: string | null) {
     const now = new Date();
     const updatedAt = new Date(order?.updated_at || Date.now());
 
     // J: Лид в работе менее суток с даты поступления
+    // Правильная логика: сравниваем время первого контакта с датой поступления лида.
+    // Если разница <= 24ч (или <=0 — контакт был ещё до создания заказа) — норма.
     let lead_in_work_lt_1_day: boolean | null = null;
-    if (leadReceivedAt) {
-        const diffH = (now.getTime() - new Date(leadReceivedAt).getTime()) / (1000 * 60 * 60);
-        lead_in_work_lt_1_day = diffH <= 24;
+    let lead_in_work_reason = "Данных о первом контакте нет";
+    if (leadReceivedAt && firstContactAt) {
+        const diffH = (new Date(firstContactAt).getTime() - new Date(leadReceivedAt).getTime()) / (1000 * 60 * 60);
+        lead_in_work_lt_1_day = diffH <= 24; // включая отрицательные (контакт до заказа = ✅)
+        const diffRounded = Math.round(Math.abs(diffH));
+        if (diffH <= 0) {
+            lead_in_work_reason = `Контакт был ещё до создания заказа (опережение ${diffRounded}ч) — норма`;
+        } else if (lead_in_work_lt_1_day) {
+            lead_in_work_reason = `Первый контакт через ${diffRounded}ч после поступления — норма`;
+        } else {
+            lead_in_work_reason = `Первый контакт через ${diffRounded}ч после поступления — нарушение (норма до 24ч)`;
+        }
+    } else if (leadReceivedAt && !firstContactAt) {
+        // Нет данных о звонках — не можем судить
+        lead_in_work_lt_1_day = null;
+        lead_in_work_reason = "Звонков не найдено, оценить нельзя";
     }
 
     // K: Дата следующего контакта не просрочена
@@ -300,6 +315,7 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
         next_contact_not_overdue,
         lead_in_work_lt_1_day_after_tz,
         deal_in_status_lt_5_days,
+        _lead_in_work_reason: lead_in_work_reason,
         _next_contact_reason: next_contact_reason,
         _days_in_status: Math.round(daysInStatus),
     };
@@ -460,7 +476,7 @@ function calcScores(data: Record<string, any>) {
     });
 
     // Часть SLA (Игорь)
-    score_breakdown.lead_in_work_lt_1_day = { result: !!data.lead_in_work_lt_1_day, reason: data.lead_in_work_lt_1_day ? "Лид взят в работу быстрее 24 часов" : "Более 24 часов до взятия в работу" };
+    score_breakdown.lead_in_work_lt_1_day = { result: data.lead_in_work_lt_1_day ?? null, reason: data._lead_in_work_reason || (data.lead_in_work_lt_1_day ? "Лид взят в работу быстрее 24 часов" : "Более 24 часов до взятия в работу") };
     score_breakdown.next_contact_not_overdue = { result: !!data.next_contact_not_overdue, reason: data._next_contact_reason || (data.next_contact_not_overdue ? "Дата следующего контакта актуальна" : "Дата следующего контакта просрочена") };
     score_breakdown.deal_in_status_lt_5_days = { result: !!data.deal_in_status_lt_5_days, reason: data.deal_in_status_lt_5_days ? `Сделка в статусе ${data._days_in_status} дн. (норма до 5)` : `Сделка зависла в статусе на ${data._days_in_status} дн.` };
 
@@ -485,8 +501,8 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     // Семён собирает факты
     const facts = await collectFacts(orderId);
 
-    // Игорь проверяет SLA
-    const sla = await checkSLA(orderId, facts._order, facts.lead_received_at);
+    // Игорь проверяет SLA (получает firstContactAt от Семёна)
+    const sla = await checkSLA(orderId, facts._order, facts.lead_received_at, facts.first_contact_attempt_at);
 
     // [СИНЕРГИЯ] Анна готовит глубокую аналитику для Максима
     const annaInsights = await runInsightAnalysis(orderId);
