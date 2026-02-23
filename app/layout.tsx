@@ -7,6 +7,7 @@ export const metadata: Metadata = {
     description: "RetailCRM and Telphin Analytics",
     icons: {
         icon: "/favicon-v2.png",
+        apple: "/favicon-v2.png",
     }
 };
 
