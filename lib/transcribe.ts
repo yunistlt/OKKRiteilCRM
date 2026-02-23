@@ -109,6 +109,8 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
 
 export async function transcribeCall(callId: string, recordingUrl: string) {
     try {
+        console.log(`[Transcribe] Processing ${callId}...`);
+
         // 0. Ensure audio is synced to internal storage
         const internalUrl = await syncRecordingToStorage(callId, recordingUrl);
         const sourceUrl = internalUrl || recordingUrl;
@@ -125,79 +127,59 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
             response_format: "text"
         });
 
-        // 3. Optional: AMD Classification (only if text is short or suspicious?) 
-        // For now, let's always do it if version 1.2+
-        const amd = await analyzeAnsweringMachine(transcription);
-
-        // 4. Update DB
-        const { error, count, data } = await supabase
-            .from('raw_telphin_calls')
-            .update({
-                transcript: transcription,
-                transcription_status: 'completed',
-                // We store AMD in raw_payload if columns don't exist, 
-                // but let's try to update them as if they exist (or use jsonb merge)
-                is_answering_machine: amd.isAnsweringMachine,
-                am_detection_result: {
-                    reason: amd.reason,
-                    processed_at: new Date().toISOString()
-                }
-            })
-            .eq('event_id', callId)
-            .select(); // Select to see if rows matched
-
-        let successUpdate = !error && ((count !== null && count > 0) || ((data as any)?.length > 0));
-
-        // Fallback: Try ID as telphin_call_id (UUID)
-        if (!successUpdate && !error) {
-            const { error: uuidError, data: uuidData } = await supabase
-                .from('raw_telphin_calls')
-                .update({
-                    transcript: transcription,
-                    transcription_status: 'completed',
-                    is_answering_machine: amd.isAnsweringMachine,
-                    am_detection_result: {
-                        reason: amd.reason,
-                        processed_at: new Date().toISOString()
-                    }
-                })
-                .eq('telphin_call_id', callId)
-                .select();
-
-            if (!uuidError && (uuidData as any)?.length > 0) {
-                successUpdate = true;
-            }
+        // 3. AMD Classification (only if transcription succeeded)
+        let amd: any = null;
+        try {
+            amd = await analyzeAnsweringMachine(transcription);
+        } catch (e) {
+            console.error('[Transcribe] AMD failed, skipping classification:', e);
         }
 
+        // 4. Update DB Robustly
+        const payload: any = {
+            transcript: transcription,
+            transcription_status: 'completed'
+        };
 
-        if (error) {
-            // Handle missing columns by falling back to transcript only
-            // Supabase/PostgREST might return 42703 or a message about missing column
-            if (error.code === '42703' || error.message?.includes('am_detection_result') || error.message?.includes('column')) {
-                console.warn('[Transcribe] AMD columns missing, saving only transcript...');
-                const { error: matchError, count: matchCount, data: matchData } = await supabase
-                    .from('raw_telphin_calls')
-                    .update({
-                        transcript: transcription,
-                        transcription_status: 'completed'
-                    })
-                    .eq('event_id', callId)
-                    .select();
+        if (amd) {
+            payload.is_answering_machine = amd.isAnsweringMachine;
+            payload.am_detection_result = {
+                reason: amd.reason,
+                processed_at: new Date().toISOString()
+            };
+        }
 
-                // If that also failed (0 rows), try telphin_call_id
-                if (!matchError && (!matchData || (matchData as any).length === 0)) {
-                    const { error: uuidError2, data: uuidData2 } = await supabase
-                        .from('raw_telphin_calls')
-                        .update({
-                            transcript: transcription,
-                            transcription_status: 'completed'
-                        })
-                        .eq('telphin_call_id', callId)
-                        .select();
-                }
-            } else {
-                throw error;
+        const tryUpdate = async (col: string, val: any, p: any) => {
+            const { data, error } = await supabase
+                .from('raw_telphin_calls')
+                .update(p)
+                .eq(col, val)
+                .select();
+
+            if (error && (error.code === '42703' || error.message?.includes('column'))) {
+                // Retry without AMD columns
+                const { is_answering_machine, am_detection_result, ...fallback } = p;
+                return supabase.from('raw_telphin_calls').update(fallback).eq(col, val).select();
             }
+            return { data, error };
+        };
+
+        // Attempt 1: by UUID (most common for manual)
+        let { data, error } = await tryUpdate('telphin_call_id', callId, payload);
+
+        // Attempt 2: by numeric event_id if 1st failed and callId is numeric
+        if ((!data || data.length === 0) && /^\d+$/.test(callId)) {
+            const numericId = parseInt(callId);
+            const secondAttempt = await tryUpdate('event_id', numericId, payload);
+            data = secondAttempt.data;
+            error = secondAttempt.error;
+        }
+
+        if (error) throw error;
+        if (!data || data.length === 0) {
+            console.warn(`[Transcribe] Transcript generated but no matching row found for ${callId}`);
+        } else {
+            console.log(`[Transcribe] Successfully updated DB for ${callId}`);
         }
 
         // 5. Trigger Insight Agent if Match exists
@@ -205,32 +187,27 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
             const { data: match } = await supabase
                 .from('call_order_matches')
                 .select('retailcrm_order_id')
-                .or(`telphin_call_id.eq.${callId},event_id.eq.${callId}`)
+                .or(`telphin_call_id.eq.${callId}${/^\d+$/.test(callId) ? `,event_id.eq.${callId}` : ''}`)
                 .limit(1)
                 .single();
 
             if (match?.retailcrm_order_id) {
                 const { runInsightAnalysis } = await import('./insight-agent');
-                // Background execution (fire and forget)
                 runInsightAnalysis(match.retailcrm_order_id).catch(e =>
                     console.error('[InsightAgent] Post-transcribe trigger failed:', e)
                 );
             }
-        } catch (e) {
-            // Silence match errors (might not be an order-related call)
-        }
+        } catch (e) { }
 
         return transcription;
 
     } catch (e: any) {
-        console.error(`[Transcribe] Failed for ${callId}:`, e);
+        console.error(`[Transcribe] Failed for ${callId}:`, e.message);
 
-        await supabase
-            .from('raw_telphin_calls')
-            .update({
-                transcription_status: 'failed',
-            })
-            .eq('event_id', callId);
+        // Try to mark as failed
+        const isNumeric = /^\d+$/.test(callId);
+        await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('telphin_call_id', callId);
+        if (isNumeric) await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('event_id', parseInt(callId));
 
         throw e;
     }
