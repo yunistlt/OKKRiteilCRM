@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Матчинг звонков из телефонии с заказами в CRM.
 import { supabase } from '@/utils/supabase';
 import { normalizePhone, phonesMatch, phonesPartialMatch } from './phone-utils';
 

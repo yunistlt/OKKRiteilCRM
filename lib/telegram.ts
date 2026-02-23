@@ -1,8 +1,6 @@
-
-
-export async function sendTelegramNotification(message: string) {
+// ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Внешняя коммуникация, отправка алертов и отчетов в Telegram.
+export async function sendTelegramMessage(chatId: string, text: string) {
     const token = process.env.TELEGRAM_BOT_TOKEN;
-    const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!token || !chatId) {
         console.warn('[Telegram] Credentials not found. Skipping notification.');
@@ -13,7 +11,7 @@ export async function sendTelegramNotification(message: string) {
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
         const payload = {
             chat_id: chatId,
-            text: message,
+            text: text,
             parse_mode: 'HTML',
             disable_web_page_preview: true
         };

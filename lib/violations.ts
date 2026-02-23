@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Детекция нарушений регламентов и скриптов.
 import { supabase } from '@/utils/supabase';
 
 export type ViolationType =

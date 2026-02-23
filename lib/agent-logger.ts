@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Логирование активности агентов и мониторинг здоровья системы.
 import { supabase } from '@/utils/supabase';
 
 export type AgentId = 'anna' | 'maxim' | 'igor' | 'semen';

@@ -1,4 +1,5 @@
 
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Техническая расшифровка звонков (Whisper) и AMD.
 import OpenAI from 'openai';
 import { getTelphinToken } from './telphin';
 import { supabase } from '@/utils/supabase';

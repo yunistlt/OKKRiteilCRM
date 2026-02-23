@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Глубокий анализ сделок, поиск ЛПР и инсайтов.
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 

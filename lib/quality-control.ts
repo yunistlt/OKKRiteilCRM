@@ -1,5 +1,6 @@
-
+// ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Сборка чек-листов и финальная оценка качества.
 import OpenAI from 'openai';
+import { supabase } from '@/utils/supabase';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -63,7 +64,6 @@ export interface EvidenceContext {
 
 export async function getSystemPrompt(key: string, defaultPrompt: string): Promise<{ prompt: string; model: string }> {
     try {
-        const { supabase } = await import('@/utils/supabase');
         const { data } = await supabase
             .from('ai_prompts')
             .select('system_prompt, model')

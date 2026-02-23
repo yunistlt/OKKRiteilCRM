@@ -8,6 +8,7 @@
  *   ИГОРЬ  (checkSLA)       — SLA без AI (просрочки, статус, контакт)
  */
 
+// ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Тройная проверка качества, оценка звонков и сценариев.
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { runInsightAnalysis } from './insight-agent';

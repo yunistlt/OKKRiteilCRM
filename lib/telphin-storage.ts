@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Синхронизация записей звонков и наполнение медиа-архива.
 import { supabase } from '@/utils/supabase';
 import { getTelphinToken } from './telphin';
 

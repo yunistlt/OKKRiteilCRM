@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Рабочее место аудитора (Дашборд ОКК).
 'use client';
 
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';

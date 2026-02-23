@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Маппинг и нормализация данных из RetailCRM.
 
 const ORDER_METHODS: Record<string, string> = {
     'shopping-cart': 'Через корзину',

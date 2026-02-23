@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Сбор улик и истории изменений заказа из RetailCRM.
 import { supabase } from '@/utils/supabase';
 
 export interface Interaction {
