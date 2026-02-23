@@ -20,25 +20,6 @@ export async function GET(req: Request) {
 
     const workingStatuses = (settings || []).map(s => s.code);
 
-    // 1.5. Find matching managers if filterManager is provided
-    let matchingManagerIds: number[] | null = null;
-    if (filterManager) {
-        const { data: managers } = await supabase
-            .from('managers')
-            .select('id')
-            .or(`first_name.ilike.%${filterManager}%,last_name.ilike.%${filterManager}%`);
-
-        matchingManagerIds = (managers || []).map(m => m.id);
-
-        // If no managers match, return early with empty results
-        if (matchingManagerIds.length === 0) {
-            return NextResponse.json({
-                scores: [],
-                pagination: { totalCount: 0, page, pageSize, totalPages: 0 }
-            });
-        }
-    }
-
     // 2. Базовый запрос к orders (все активные)
     let ordersQuery = supabase
         .from('orders')
@@ -49,7 +30,14 @@ export async function GET(req: Request) {
     if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
     if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
     if (filterStatus) ordersQuery = ordersQuery.eq('status', filterStatus);
-    if (matchingManagerIds) ordersQuery = ordersQuery.in('manager_id', matchingManagerIds);
+
+    // Exact match for manager ID now that frontend uses a select dropdown
+    if (filterManager) {
+        const managerId = parseInt(filterManager, 10);
+        if (!isNaN(managerId)) {
+            ordersQuery = ordersQuery.eq('manager_id', managerId);
+        }
+    }
 
     // Пагинация
     const fromIdx = (page - 1) * pageSize;

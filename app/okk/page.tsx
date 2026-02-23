@@ -467,7 +467,18 @@ function OKKContent() {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 });
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
+    const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Fetch active managers for dropdown
+    useEffect(() => {
+        fetch('/api/okk/managers')
+            .then(res => res.json())
+            .then(data => {
+                if (Array.isArray(data)) setActiveManagers(data);
+            })
+            .catch(console.error);
+    }, []);
 
     // Close dropdown and popover on outside click
     useEffect(() => {
@@ -729,15 +740,25 @@ function OKKContent() {
 
             {/* Filter Row (Single line on mobile) */}
             <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0">
-                <div className="relative flex-1 md:flex-none">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none">🔍</span>
-                    <input
-                        type="text"
-                        placeholder="Менеджер..."
+                <div className="relative flex-shrink-0">
+                    <select
                         value={filterManager}
                         onChange={(e) => setFilterManager(e.target.value)}
-                        className="block w-full md:w-48 pl-6 pr-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 transition-all"
-                    />
+                        className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[120px] outline-none focus:ring-1 focus:ring-blue-400"
+                    >
+                        <option value="">Все менеджеры</option>
+                        {activeManagers.map(m => (
+                            <option key={m.id} value={m.id.toString()}>
+                                {m.name}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
+                        👤
+                    </div>
+                    <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
                 </div>
 
                 <div className="relative flex-shrink-0">
