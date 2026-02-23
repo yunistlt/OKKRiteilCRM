@@ -446,6 +446,7 @@ function OKKContent() {
     const [activeExplain, setActiveExplain] = useState<{ label: string, info: any, pos: { top: number, left: number } } | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 });
+    const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown and popover on outside click
@@ -629,10 +630,32 @@ function OKKContent() {
             });
         };
 
+        const handleCallStatusClick = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            setSelectedCallOrder(s);
+        };
+
         let content;
-        if (col.type === 'bool') content = <C v={val} onClick={breakdown ? handleCellClick : undefined} />;
-        else if (col.type === 'num') content = <span className="text-gray-600 text-xs">{val ?? '—'}</span>;
-        else content = <span className="text-gray-600 text-xs" title={val}>{val ?? '—'}</span>;
+        if (col.key === 'calls_status') {
+            const hasCalls = val === 'Дозвон есть' || val === 'Попытки без ответа';
+            content = (
+                <button
+                    onClick={hasCalls ? handleCallStatusClick : undefined}
+                    className={`text-xs px-1.5 py-0.5 rounded transition-colors ${hasCalls
+                        ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold underline decoration-blue-300 underline-offset-2'
+                        : 'text-gray-400'
+                        }`}
+                >
+                    {val ?? '—'}
+                </button>
+            );
+        } else if (col.type === 'bool') {
+            content = <C v={val} onClick={breakdown ? handleCellClick : undefined} />;
+        } else if (col.type === 'num') {
+            content = <span className="text-gray-600 text-xs">{val ?? '—'}</span>;
+        } else {
+            content = <span className="text-gray-600 text-xs" title={val}>{val ?? '—'}</span>;
+        }
 
         return <td key={col.key} className={`px-1 py-1.5 text-center border-r border-gray-100 ${cellBg}`}>{content}</td>;
     };
@@ -956,6 +979,223 @@ function OKKContent() {
                     pos={activeExplain.pos}
                 />
             )}
+
+            {selectedCallOrder && (
+                <CallDetailModal
+                    order={selectedCallOrder}
+                    onClose={() => setSelectedCallOrder(null)}
+                />
+            )}
+        </div>
+    );
+}
+
+function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () => void }) {
+    const [calls, setCalls] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedCallIndex, setSelectedCallIndex] = useState(0);
+
+    useEffect(() => {
+        const fetchCalls = async () => {
+            setLoading(true);
+            try {
+                const res = await fetch(`/api/okk/scores/${order.order_id}/calls`);
+                const data = await res.json();
+                setCalls(data.calls || []);
+                if (data.calls?.length > 0) {
+                    // Select first call with transcript if available
+                    const firstWithTranscript = data.calls.findIndex((c: any) => !!c.transcript);
+                    setSelectedCallIndex(firstWithTranscript !== -1 ? firstWithTranscript : 0);
+                }
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchCalls();
+    }, [order.order_id]);
+
+    const activeCall = calls[selectedCallIndex];
+
+    return (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="p-4 border-b flex justify-between items-center bg-gray-50/80">
+                    <div>
+                        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <span>📞 Детали звонков по заказу</span>
+                            <span className="text-blue-600">#{order.order_id}</span>
+                        </h2>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                            Менеджер: <strong>{order.manager_name}</strong> • Статус: <strong>{order.status_label}</strong>
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+
+                <div className="flex-1 flex overflow-hidden">
+                    {/* Sidebar: Call List */}
+                    <div className="w-80 border-r bg-gray-50/30 overflow-y-auto flex flex-col">
+                        <div className="p-3 border-b bg-white/50">
+                            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h3>
+                        </div>
+                        {loading ? (
+                            <div className="flex-1 flex items-center justify-center py-12">
+                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                            </div>
+                        ) : calls.length === 0 ? (
+                            <div className="p-8 text-center text-gray-400 text-xs italic">Звонки не найдены</div>
+                        ) : (
+                            <div className="divide-y divide-gray-100">
+                                {calls.map((call, idx) => (
+                                    <button
+                                        key={idx}
+                                        onClick={() => setSelectedCallIndex(idx)}
+                                        className={`w-full text-left p-4 hover:bg-white/80 transition-all border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 shadow-sm' : 'border-transparent'}`}
+                                    >
+                                        <div className="flex justify-between items-start mb-1">
+                                            <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                {call.direction === 'outgoing' ? 'Исходящий' : 'Входящий'}
+                                            </span>
+                                            <span className="text-[10px] text-gray-400 font-mono">
+                                                {call.duration_sec}с
+                                            </span>
+                                        </div>
+                                        <div className="text-xs font-bold text-gray-800">
+                                            {new Date(call.started_at).toLocaleDateString('ru-RU')}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500">
+                                            {new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                        </div>
+                                        {call.transcript && (
+                                            <div className="mt-2 text-[10px] text-blue-500 flex items-center gap-1">
+                                                <span>📝 Транскрибация</span>
+                                            </div>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Content: Transcription + Analysis */}
+                    <div className="flex-1 flex flex-col min-w-0 bg-white">
+                        {loading ? (
+                            <div className="flex-1" />
+                        ) : activeCall ? (
+                            <div className="flex-1 flex flex-col overflow-hidden">
+                                {/* Call Stats Header */}
+                                <div className="p-4 border-b bg-white flex items-center justify-between">
+                                    <div className="flex items-center gap-6">
+                                        <div>
+                                            <span className="text-[9px] text-gray-400 uppercase font-black block">Откуда/Куда</span>
+                                            <span className="text-xs font-mono font-bold text-gray-700">{activeCall.from_number} → {activeCall.to_number}</span>
+                                        </div>
+                                        {activeCall.recording_url && (
+                                            <a
+                                                href={activeCall.recording_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors"
+                                            >
+                                                🎧 Слушать запись
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex-1 flex overflow-hidden">
+                                    {/* Left: Transcription */}
+                                    <div className="flex-1 flex flex-col border-r overflow-hidden">
+                                        <div className="p-3 bg-gray-50/50 border-b">
+                                            <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Текст разговора</h4>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/20">
+                                            {activeCall.transcript ? (
+                                                <div className="text-xs text-gray-700 leading-relaxed font-sans whitespace-pre-wrap">
+                                                    {activeCall.transcript}
+                                                </div>
+                                            ) : (
+                                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
+                                                    <span className="text-2xl">🔇</span>
+                                                    <p className="text-xs italic">Транскрибация недоступна</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right: Maxim's Analysis */}
+                                    <div className="w-96 flex flex-col overflow-hidden bg-gray-50/10">
+                                        <div className="p-3 bg-fuchsia-50 border-b border-fuchsia-100 flex items-center gap-2">
+                                            <span className="text-lg">🤓</span>
+                                            <div>
+                                                <h4 className="text-xs font-bold text-fuchsia-900">Анализ Максима</h4>
+                                                <p className="text-[9px] text-fuchsia-600 font-black uppercase tracking-tighter leading-none">Сводный срез по всем звонкам</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                                            {/* Summary */}
+                                            {order.evaluator_comment && (
+                                                <div>
+                                                    <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                        <span>📋</span> Общее резюме
+                                                    </h5>
+                                                    <div className="text-xs text-gray-800 bg-white p-3 rounded-xl border border-gray-100 shadow-sm leading-relaxed font-medium">
+                                                        {order.evaluator_comment}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Criteria reasoning */}
+                                            <div>
+                                                <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                                    <span>🔍</span> Ключевые моменты (Обоснование)
+                                                </h5>
+                                                <div className="space-y-3">
+                                                    {Object.entries(order.score_breakdown || {})
+                                                        .filter(([_, data]) => !!data.reason)
+                                                        .map(([key, data]) => (
+                                                            <div key={key} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                                    <span className={data.result ? 'text-green-500' : 'text-red-500'}>
+                                                                        {data.result ? '✅' : '❌'}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-bold text-gray-700">
+                                                                        {/* Simple key normalization for display */}
+                                                                        {key.replace('script_', '').replace(/_/g, ' ')}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-[11px] text-gray-600 leading-normal italic">
+                                                                    «{data.reason}»
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+                                Выберите звонок для просмотра
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95"
+                    >
+                        Понятно
+                    </button>
+                </div>
+            </div>
         </div>
     );
 }

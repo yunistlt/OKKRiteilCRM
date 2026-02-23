@@ -746,7 +746,11 @@ export async function evaluateOrder(orderId: number): Promise<void> {
 // ═══════════════════════════════════════════════════════
 // ПОЛНЫЙ ПРОГОН
 // ═══════════════════════════════════════════════════════
-export async function runFullEvaluation(params?: { limit?: number; specificOrderId?: number }): Promise<{ processed: number; errors: number }> {
+export async function runFullEvaluation(params?: {
+    limit?: number;
+    specificOrderId?: number;
+    onlyMissing?: boolean;
+}): Promise<{ processed: number; errors: number }> {
     let ordersToProcess: { order_id: number }[] = [];
 
     if (params?.specificOrderId) {
@@ -760,15 +764,36 @@ export async function runFullEvaluation(params?: { limit?: number; specificOrder
         const statusCodes: string[] = (settings || []).map((s: any) => s.code);
         if (statusCodes.length === 0) return { processed: 0, errors: 0 };
 
-        const { data: orders } = await supabase
+        // 1. Получаем ID всех активных заказов
+        let query = supabase
             .from('orders')
             .select('order_id')
             .in('status', statusCodes)
             .lt('order_id', 99900000)
-            .order('created_at', { ascending: false })
-            .limit(params?.limit || 100);
+            .order('created_at', { ascending: false });
 
-        ordersToProcess = orders || [];
+        if (params?.limit) {
+            query = query.limit(params.limit);
+        }
+
+        const { data: orders } = await query;
+        let candidates = orders || [];
+
+        // 2. Если нужно только пропущено, фильтруем по отсутствию оценки скрипта
+        if (params?.onlyMissing && candidates.length > 0) {
+            const ids = candidates.map(c => c.order_id);
+            const { data: existingScores } = await supabase
+                .from('okk_order_scores')
+                .select('order_id')
+                .in('order_id', ids)
+                .not('script_score_pct', 'is', null);
+
+            const hasScore = new Set((existingScores || []).map(s => s.order_id));
+            candidates = candidates.filter(c => !hasScore.has(c.order_id));
+            console.log(`[ОКК] Найдено ${candidates.length} заказов без оценки скрипта из ${ids.length} кандидатов.`);
+        }
+
+        ordersToProcess = candidates;
     }
 
     let processed = 0, errors = 0;
