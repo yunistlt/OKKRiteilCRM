@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     title: "OKKRiteilCRM",
     description: "RetailCRM and Telphin Analytics",
     icons: {
-        icon: "/icon.png",
+        icon: "/favicon-v2.png",
     }
 };
 
