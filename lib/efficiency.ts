@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Оценка эффективности и скорости работы менеджера.
 import { supabase } from '@/utils/supabase';
 
 export interface EfficiencyReport {

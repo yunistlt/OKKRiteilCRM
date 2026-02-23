@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Движок правил: автоматическая проверка всех условий и триггеров.
 import { supabase } from '@/utils/supabase';
 import { analyzeTranscript, analyzeText } from './semantic';
 import { evaluateChecklist } from './quality-control';

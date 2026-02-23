@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Глубокий анализ истории и трендов сделки.
 import { supabase } from '@/utils/supabase';
 
 export interface Violation {

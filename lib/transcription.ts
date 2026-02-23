@@ -1,4 +1,5 @@
 import { OpenAI } from 'openai';
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Управление очередью и статусами транскрибации звонков.
 import { supabase } from '@/utils/supabase';
 
 const openai = new OpenAI({

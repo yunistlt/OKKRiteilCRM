@@ -1,3 +1,4 @@
+// ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Валидация и проверка целостности входящих данных из CRM.
 import { z } from 'zod';
 
 // This schema represents the *expected* shape of order.raw_payload coming

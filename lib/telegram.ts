@@ -9,27 +9,34 @@ export async function sendTelegramMessage(chatId: string, text: string) {
 
     try {
         const url = `https://api.telegram.org/bot${token}/sendMessage`;
-        const payload = {
-            chat_id: chatId,
-            text: text,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true
-        };
-
-        const response = await fetch(url, {
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: text,
+                parse_mode: 'HTML',
+                disable_web_page_preview: true
+            })
         });
 
-        const data = await response.json();
-        if (!data.ok) {
-            console.error('[Telegram] Failed to send message:', data);
-        } else {
-            // console.log('[Telegram] Message sent successfully.');
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Telegram error: ${res.status} ${errText}`);
         }
-
-    } catch (error) {
-        console.error('[Telegram] Error sending message:', error);
+    } catch (e) {
+        console.error('[Telegram] Failed to send message:', e);
     }
+}
+
+/**
+ * Legacy wrapper for Igor's notifications using default TELEGRAM_CHAT_ID
+ */
+export async function sendTelegramNotification(message: string) {
+    const chatId = process.env.TELEGRAM_CHAT_ID;
+    if (!chatId) {
+        console.warn('[Telegram] TELEGRAM_CHAT_ID not set for default notification.');
+        return;
+    }
+    return sendTelegramMessage(chatId, message);
 }

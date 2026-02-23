@@ -1,4 +1,5 @@
 
+// ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Системный аудитор: проверка здоровья базы и зависших процессов.
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { sendTelegramNotification } from '@/lib/telegram';
