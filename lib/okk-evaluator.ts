@@ -440,6 +440,9 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     // L: Лид в работе менее суток с даты получения ТЗ (если ТЗ есть — новый отсчёт)
     // Упрощение: берём updated_at как прокси
     const lead_in_work_lt_1_day_after_tz = lead_in_work_lt_1_day;
+    const lead_in_work_after_tz_reason = lead_in_work_lt_1_day_after_tz !== null
+        ? (lead_in_work_lt_1_day_after_tz ? `Игорь: Лид взят в работу вовремя после получения ТЗ` : `Игорь: Нарушение сроков после получения ТЗ`)
+        : `Игорь: Нет данных для оценки скорости после ТЗ`;
 
     // M: Сделка в одном статусе менее 5 дней
     // Сначала пробуем найти дату последней смены статуса в истории
@@ -648,18 +651,28 @@ function calcScores(data: Record<string, any>) {
 
     // Техническая часть (Семён)
     Object.keys(data._reasons || {}).forEach(k => {
-        score_breakdown[k] = { result: !!data[k], reason: data._reasons[k] };
+        score_breakdown[k] = { result: data[k] === true, reason: data._reasons[k] };
     });
 
     // Часть SLA (Игорь)
-    score_breakdown.lead_in_work_lt_1_day = { result: data.lead_in_work_lt_1_day ?? null, reason: data._lead_in_work_reason || (data.lead_in_work_lt_1_day ? "Лид взят в работу быстрее 24 часов" : "Более 24 часов до взятия в работу") };
-    score_breakdown.next_contact_not_overdue = { result: !!data.next_contact_not_overdue, reason: data._next_contact_reason || (data.next_contact_not_overdue ? "Дата следующего контакта актуальна" : "Дата следующего контакта просрочена") };
-    score_breakdown.deal_in_status_lt_5_days = { result: !!data.deal_in_status_lt_5_days, reason: data.deal_in_status_lt_5_days ? `Сделка в статусе ${data._days_in_status} дн. (норма до 5)` : `Сделка зависла в статусе на ${data._days_in_status} дн.` };
+    score_breakdown.lead_in_work_lt_1_day = { result: data.lead_in_work_lt_1_day, reason: data.lead_in_work_reason };
+    score_breakdown.next_contact_not_overdue = { result: data.next_contact_not_overdue, reason: data.next_contact_reason };
+    score_breakdown.lead_in_work_lt_1_day_after_tz = { result: data.lead_in_work_lt_1_day_after_tz, reason: data.lead_in_work_after_tz_reason };
+    score_breakdown.deal_in_status_lt_5_days = { result: data.deal_in_status_lt_5_days, reason: data.deal_in_status_reason };
 
     // Скрипт (Максим)
-    const scriptKeys = ['script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified', 'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed', 'script_objection_general', 'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech'];
+    const scriptKeys = [
+        'script_greeting', 'script_call_purpose', 'script_company_info',
+        'script_lpr_identified', 'script_budget_confirmed', 'script_urgency_identified',
+        'script_deadlines', 'script_tz_confirmed', 'script_objection_general',
+        'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms',
+        'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed',
+        'script_dialogue_management', 'script_confident_speech'
+    ];
     scriptKeys.forEach(k => {
-        if (data[k]) score_breakdown[k] = data[k];
+        if (data[k] && typeof data[k] === 'object') {
+            score_breakdown[k] = data[k];
+        }
     });
 
     return { deal_score, deal_score_pct, script_score, total_score, score_breakdown };
