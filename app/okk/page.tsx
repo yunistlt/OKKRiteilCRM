@@ -859,7 +859,15 @@ function OKKContent() {
                             <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between h-full">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-1.5">
-                                        <span className="text-[11px] font-black text-gray-900 leading-none">#{s.order_id}</span>
+                                        <a
+                                            href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-[11px] font-black text-blue-600 hover:text-blue-800 hover:underline leading-none"
+                                        >
+                                            #{s.order_id}
+                                        </a>
                                         <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-1 rounded">
                                             {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'}₽
                                         </span>
@@ -995,7 +1003,14 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                     <div>
                         <h2 className="text-base md:text-lg font-bold text-gray-900 flex items-center gap-1.5 md:gap-2">
                             <span>📞 <span className="hidden md:inline">Детали звонков</span></span>
-                            <span className="text-blue-600">#{order.order_id}</span>
+                            <a
+                                href={`https://zmktlt.retailcrm.ru/orders/${order.order_id}/edit`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                                #{order.order_id}
+                            </a>
                         </h2>
                         <p className="text-[10px] md:text-xs text-gray-500 mt-0.5 max-w-[200px] md:max-w-none truncate">
                             {order.manager_name} • {order.status_label}
