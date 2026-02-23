@@ -740,37 +740,25 @@ function OKKContent() {
                     />
                 </div>
 
-                <div className="relative" ref={dropdownRef}>
-                    <button
-                        onClick={() => setStatusDropdownOpen(!statusDropdownOpen)}
-                        className="flex items-center gap-1 px-2 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[100px]"
+                <div className="relative flex-shrink-0">
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[100px] outline-none focus:ring-1 focus:ring-blue-400"
                     >
-                        <span>✨</span>
-                        <span className="flex-1 text-left truncate">
-                            {filterStatus ? (availableStatuses.find(s => s.code === filterStatus)?.label || filterStatus) : 'Статус'}
-                        </span>
-                    </button>
-
-                    {statusDropdownOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-[100] p-1 flex flex-col gap-0.5">
-                            <button
-                                onClick={() => { setFilterStatus(''); setStatusDropdownOpen(false); }}
-                                className="w-full text-left px-2 py-1 text-xs font-bold text-gray-500 hover:bg-gray-50 rounded transition-colors"
-                            >
-                                Все
-                            </button>
-                            {availableStatuses.map(s => (
-                                <button
-                                    key={s.code}
-                                    onClick={() => { setFilterStatus(s.code); setStatusDropdownOpen(false); }}
-                                    className="w-full text-left px-2 py-1 hover:bg-gray-50 rounded transition-colors flex items-center justify-between"
-                                >
-                                    <span className="text-[10px] px-1.5 py-0.5 rounded font-black" style={getBadgeStyle(s.color)}>{s.label}</span>
-                                    {filterStatus === s.code && <span className="text-blue-500 text-[10px]">✓</span>}
-                                </button>
-                            ))}
-                        </div>
-                    )}
+                        <option value="">Все статусы</option>
+                        {availableStatuses.map(s => (
+                            <option key={s.code} value={s.code}>
+                                {s.label}
+                            </option>
+                        ))}
+                    </select>
+                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
+                        ✨
+                    </div>
+                    <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </div>
                 </div>
 
                 {/* Pagination (Compact inline) */}
