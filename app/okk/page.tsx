@@ -681,31 +681,38 @@ function OKKContent() {
     };
 
     return (
-        <div className="min-h-screen bg-gray-50 flex flex-col">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between flex-shrink-0 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <Link href="/" className="text-gray-400 hover:text-gray-600 text-sm p-2 bg-gray-50 rounded-lg transition-colors">←</Link>
-                    <div className="flex flex-col">
-                        <h1 className="text-base font-bold text-gray-900 leading-tight">ОКК — Контроль качества</h1>
-                        <span className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">{filtered.length} заказов в списке</span>
+        <div className="flex flex-col h-screen bg-gray-50">
+            {/* Header / Stats / Run Bar */}
+            <div className="bg-white border-b border-gray-100 flex flex-col md:flex-row md:items-center justify-between px-4 py-4 gap-4 flex-shrink-0">
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <Link href="/" className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+                            ←
+                        </Link>
+                        <div>
+                            <h1 className="text-lg font-black text-gray-800 leading-tight">ОКК — Контроль качества</h1>
+                            <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">{pagination.totalCount} ЗАКАЗОВ В СПИСКЕ</div>
+                        </div>
+                    </div>
+
+                    <div className="flex md:hidden items-center gap-2">
+                        <div className="text-right">
+                            <div className="text-xl font-black text-green-600 leading-none">{avgScore ?? 0}%</div>
+                            <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний %</div>
+                        </div>
                     </div>
                 </div>
 
-                {/* Средний балл по ОП */}
-                <div className="flex flex-col items-center gap-0.5">
-                    <div style={{ color: avgScoreColor, fontVariantNumeric: 'tabular-nums' }} className="text-5xl font-black leading-none tracking-tight">
-                        {avgScore !== null ? `${avgScore}%` : '—'}
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
+                    <div className="hidden md:block text-right mr-4">
+                        <div className="text-2xl font-black text-green-600 leading-none">{avgScore ?? 0}%</div>
+                        <div className="text-[9px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
+                        <div className="text-[9px] text-gray-300 font-medium">{scoredOrders.length} оцененных</div>
                     </div>
-                    <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest">Средний % по ОП</span>
-                    {scoredOrders.length > 0 && (
-                        <span className="text-[9px] text-gray-300">{scoredOrders.length} оценённых</span>
-                    )}
-                </div>
 
-                <div className="flex items-center gap-4 ml-auto">
+                    {/* Pagination for Desktop (Top) */}
                     {pagination.totalPages > 1 && (
-                        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg p-1 shadow-sm">
+                        <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100 mr-2 shrink-0">
                             <button
                                 onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
                                 disabled={pagination.page === 1}
@@ -713,7 +720,7 @@ function OKKContent() {
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
                             </button>
-                            <span className="text-[11px] font-bold text-gray-600 px-2 min-w-[80px] text-center">
+                            <span className="text-[11px] font-bold text-gray-600 px-2 min-w-[80px] text-center whitespace-nowrap">
                                 Стр. {pagination.page} из {pagination.totalPages}
                             </span>
                             <button
@@ -725,58 +732,50 @@ function OKKContent() {
                             </button>
                         </div>
                     )}
-                </div>
 
-                <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
-                    <div className="flex flex-col px-2">
-                        <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Заказ №</span>
-                        <input
-                            type="text"
-                            placeholder="Все"
-                            value={targetOrderId}
-                            onChange={(e) => setTargetOrderId(e.target.value)}
-                            className="bg-transparent border-none text-xs font-bold w-16 focus:ring-0 p-0 h-4"
-                        />
-                    </div>
-                    <div className="flex flex-col border-l border-gray-200 px-2 leading-none">
-                        <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Лимит</span>
-                        <input
-                            type="number"
-                            value={runLimit}
-                            onChange={(e) => setRunLimit(parseInt(e.target.value) || 0)}
-                            className="bg-transparent border-none text-xs font-bold w-10 focus:ring-0 p-0 h-4"
-                        />
-                    </div>
-                    <button
-                        onClick={runAll}
-                        disabled={running}
-                        className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'} px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2`}
-                    >
-                        {running ? (
-                            <div className="w-3 h-3 border-2 border-gray-400 border-t-blue-500 animate-spin rounded-full" />
-                        ) : '▶'}
-                        {targetOrderId ? 'ПРОВЕРИТЬ' : 'ЗАПУСТИТЬ'}
-                    </button>
-                    {selectedIds.size > 0 && (
+                    <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100 shrink-0">
+                        <div className="flex flex-col px-2">
+                            <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Заказ №</span>
+                            <input
+                                type="text"
+                                placeholder="Все"
+                                value={targetOrderId}
+                                onChange={(e) => setTargetOrderId(e.target.value)}
+                                className="bg-transparent border-none text-xs font-bold w-16 focus:ring-0 p-0 h-4"
+                            />
+                        </div>
+                        <div className="flex flex-col border-l border-gray-200 px-2 leading-none">
+                            <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Лимит</span>
+                            <input
+                                type="number"
+                                value={runLimit}
+                                onChange={(e) => setRunLimit(parseInt(e.target.value) || 0)}
+                                className="bg-transparent border-none text-xs font-bold w-10 focus:ring-0 p-0 h-4"
+                            />
+                        </div>
                         <button
-                            onClick={handleBatchRun}
+                            onClick={runAll}
                             disabled={running}
-                            className={`${running ? 'bg-gray-100 text-gray-400' : 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-100'} px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2 animate-in slide-in-from-right-2`}
+                            className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-100'} px-4 py-2 rounded-lg text-xs font-black transition-all flex items-center gap-2`}
                         >
-                            ♻️ ПЕРЕПРОВЕРИТЬ ВЫБРАННЫЕ ({selectedIds.size})
+                            {running ? (
+                                <div className="w-3 h-3 border-2 border-gray-400 border-t-blue-500 animate-spin rounded-full" />
+                            ) : '▶'}
+                            {targetOrderId ? 'ПРОВЕРИТЬ' : 'ЗАПУСТИТЬ'}
                         </button>
-                    )}
+                    </div>
                 </div>
             </div>
 
             {runResult && (
-                <div className="mx-4 mt-2 bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-1.5 rounded-lg flex-shrink-0">{runResult}</div>
+                <div className="mx-4 mt-2 bg-green-50 border border-green-200 text-green-800 text-sm px-3 py-1.5 rounded-lg flex-shrink-0 animate-in slide-in-from-top-2">{runResult}</div>
             )}
 
             {/* Filters */}
-            <div className="px-4 py-2 flex items-center gap-2 bg-white border-b border-gray-100 flex-shrink-0">
+            <div className="px-4 py-2 flex flex-wrap items-center gap-2 bg-white border-b border-gray-100 flex-shrink-0">
                 <input type="text" placeholder="🔍 Менеджер" value={filterManager} onChange={e => setFilterManager(e.target.value)}
-                    className="border border-gray-200 rounded px-2 py-1 text-sm w-40 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    className="border border-gray-200 rounded px-2 py-1 text-sm w-full md:w-40 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+
                 {/* Custom Status Dropdown */}
                 <div className="relative" ref={dropdownRef}>
                     <button
@@ -826,16 +825,17 @@ function OKKContent() {
                         </div>
                     )}
                 </div>
+
                 {(filterManager || filterStatus) && (
                     <button onClick={() => { setFilterManager(''); setFilterStatus(''); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Сбросить</button>
                 )}
 
                 <div className="ml-auto flex items-center gap-3">
-                    <span className="text-[10px] text-gray-400 font-bold uppercase">На странице:</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase hidden md:block">На странице:</span>
                     <select
                         value={pagination.pageSize}
                         onChange={e => setPagination(prev => ({ ...prev, pageSize: parseInt(e.target.value), page: 1 }))}
-                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-400 hidden md:block"
                     >
                         <option value={20}>20</option>
                         <option value={50}>50</option>
@@ -845,170 +845,177 @@ function OKKContent() {
                 </div>
             </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-auto">
-                <table className="text-xs border-collapse min-w-max">
-                    <thead className="sticky top-0 z-10">
-                        {/* Row 1: groups */}
-                        <tr className="bg-gray-100 border-b border-gray-200 text-gray-700">
-                            <th rowSpan={2} className="px-2 py-2 text-left sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[30px]">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedIds.size === filtered.length && filtered.length > 0}
-                                    onChange={toggleSelectAll}
-                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                />
-                            </th>
-                            <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[60px]">Заказ</th>
-                            <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[100px]">МОП</th>
-                            <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[80px]">Статус лида</th>
-                            {COL_GROUPS.map(g => (
-                                <th key={g.label} colSpan={g.cols.length}
-                                    className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-gray-200 ${g.color}`}>
-                                    {g.label}
-                                </th>
-                            ))}
-                            <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-gray-200">
-                                Оценка выполнения
-                            </th>
-                        </tr>
-                        {/* Row 2: column headers with wrap + tooltip */}
-                        <tr className="bg-gray-50 border-b border-gray-200">
-                            {COL_GROUPS.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
-                            {SCORE_COLS.map(col => <ColTh key={col.key} col={col as any} />)}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {loading ? (
-                            <tr><td colSpan={100} className="text-center py-12 text-gray-400">Загрузка...</td></tr>
-                        ) : filtered.length === 0 ? (
-                            <tr>
-                                <td colSpan={100} className="text-center py-12 text-gray-400">
-                                    Нет данных.{' '}
-                                    <button onClick={runAll} className="text-blue-600 underline">Запустить прогон</button>
-                                </td>
-                            </tr>
-                        ) : filtered.map((s, i) => (
-                            <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${selectedIds.has(s.order_id) ? 'bg-blue-50/50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}`}>
-                                <td className="px-2 py-1.5 sticky left-0 bg-white border-r border-gray-200 z-10 text-center">
+            {/* Data Area: Table (Desktop) / Cards (Mobile) */}
+            <div className="flex-grow overflow-auto bg-gray-100/30 font-sans">
+                {/* Desktop View */}
+                <div className="hidden md:block">
+                    <table className="text-xs border-collapse min-w-max w-full">
+                        <thead className="sticky top-0 z-10">
+                            {/* Row 1: groups */}
+                            <tr className="bg-gray-100 border-b border-gray-200 text-gray-700">
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[30px]">
                                     <input
                                         type="checkbox"
-                                        checked={selectedIds.has(s.order_id)}
-                                        onChange={() => toggleSelect(s.order_id)}
+                                        checked={selectedIds.size === filtered.length && filtered.length > 0}
+                                        onChange={toggleSelectAll}
                                         className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                     />
-                                </td>
-                                <td className="px-2 py-1.5 sticky left-[40px] bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            onClick={() => handleSingleRun(s.order_id)}
-                                            disabled={running}
-                                            title="Перепроверить только этот заказ"
-                                            className="hover:scale-125 transition-transform disabled:opacity-30"
-                                        >
-                                            ↩️
-                                        </button>
-                                        <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer"
-                                            className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
-                                    </div>
-                                </td>
-                                <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap font-medium text-gray-800">{s.manager_name || '—'}</td>
-                                <td className="px-2 py-1.5 border-r border-gray-100">
-                                    <span
-                                        className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap"
-                                        style={getBadgeStyle(s.status_color)}
-                                        title={s.order_status || ''}
-                                    >
-                                        {s.status_label || s.order_status || '—'}
-                                    </span>
-                                </td>
-                                {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
-                                {/* Оценка выполнения */}
-                                <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">
-                                    <span className="text-xs text-gray-600">{s.deal_score ?? '—'}</span>
-                                </td>
-                                <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">
-                                    <Pct n={s.deal_score_pct} />
-                                </td>
-                                <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">
-                                    <span className="text-xs text-gray-600">{s.script_score ?? '—'}</span>
-                                </td>
-                                <td className="px-2 py-1.5 text-center bg-gray-50">
-                                    <Pct n={s.script_score_pct} />
-                                </td>
+                                </th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[60px]">Заказ</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[100px]">МОП</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[80px]">Статус лида</th>
+                                {COL_GROUPS.map(g => (
+                                    <th key={g.label} colSpan={g.cols.length}
+                                        className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-gray-200 ${g.color}`}>
+                                        {g.label}
+                                    </th>
+                                ))}
+                                <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-gray-200">
+                                    Оценка выполнения
+                                </th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                            {/* Row 2: column headers with wrap + tooltip */}
+                            <tr className="bg-gray-50 border-b border-gray-200">
+                                {COL_GROUPS.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
+                                {SCORE_COLS.map(col => <ColTh key={col.key} col={col as any} />)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                <tr><td colSpan={100} className="text-center py-12 text-gray-400">Загрузка...</td></tr>
+                            ) : filtered.length === 0 ? (
+                                <tr>
+                                    <td colSpan={100} className="text-center py-12 text-gray-400">
+                                        Нет данных. <button onClick={runAll} className="text-blue-600 underline">Запустить прогон</button>
+                                    </td>
+                                </tr>
+                            ) : filtered.map((s, i) => (
+                                <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${selectedIds.has(s.order_id) ? 'bg-blue-50/50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}`}>
+                                    <td className="px-2 py-1.5 sticky left-0 bg-white border-r border-gray-200 z-10 text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(s.order_id)}
+                                            onChange={() => toggleSelect(s.order_id)}
+                                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                    </td>
+                                    <td className="px-2 py-1.5 sticky left-[40px] bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={() => handleSingleRun(s.order_id)} disabled={running} title="Перепроверить" className="hover:scale-125 transition-transform disabled:opacity-30">↩️</button>
+                                            <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer"
+                                                className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
+                                        </div>
+                                    </td>
+                                    <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap font-medium text-gray-800">{s.manager_name || '—'}</td>
+                                    <td className="px-2 py-1.5 border-r border-gray-100">
+                                        <span
+                                            className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap"
+                                            style={getBadgeStyle(s.status_color)}
+                                        >
+                                            {s.status_label || s.order_status || '—'}
+                                        </span>
+                                    </td>
+                                    {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
+                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><span className="text-xs text-gray-600">{s.deal_score ?? '—'}</span></td>
+                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={s.deal_score_pct} /></td>
+                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><span className="text-xs text-gray-600">{s.script_score ?? '—'}</span></td>
+                                    <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={s.script_score_pct} /></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile View */}
+                <div className="block md:hidden p-4 space-y-4">
+                    {loading ? (
+                        <div className="text-center py-12 text-gray-400">Загрузка...</div>
+                    ) : filtered.length === 0 ? (
+                        <div className="text-center py-12 text-gray-400">Нет данных.</div>
+                    ) : filtered.map((s) => (
+                        <div
+                            key={s.order_id}
+                            onClick={() => setSelectedCallOrder(s)}
+                            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 active:scale-[0.98] transition-all cursor-pointer relative overflow-hidden group"
+                        >
+                            <div className="absolute top-0 left-0 w-1.5 h-full" style={{ backgroundColor: s.status_color || '#e5e7eb' }} />
+                            <div className="flex items-start justify-between mb-3 pl-2">
+                                <div>
+                                    <div onClick={(e) => e.stopPropagation()} className="inline-block">
+                                        <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer"
+                                            className="text-lg font-black text-blue-600 hover:underline">#{s.order_id}</a>
+                                    </div>
+                                    <div className="text-gray-400 text-[10px] font-bold uppercase tracking-widest mt-0.5">{s.manager_name || 'Без менеджера'}</div>
+                                </div>
+                                <div className="text-right">
+                                    <Pct n={s.script_score_pct} />
+                                    <div className="text-[8px] font-black text-gray-400 uppercase tracking-tighter mt-1">Рейтинг</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between pl-2">
+                                <span className="text-[10px] px-2 py-1 rounded-lg font-black shadow-sm" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span>
+                                <div className="text-blue-500 text-xs font-bold flex items-center gap-1">Аналитика <span className="group-hover:translate-x-1 transition-transform">→</span></div>
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* Mobile Pagination (Bottom) */}
+                    {pagination.totalPages > 1 && (
+                        <div className="flex flex-col items-center gap-3 py-4">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={pagination.page === 1}
+                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 disabled:opacity-30">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                                </button>
+                                <span className="text-sm font-black text-gray-700">{pagination.page} / {pagination.totalPages}</span>
+                                <button onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))} disabled={pagination.page === pagination.totalPages}
+                                    className="w-10 h-10 flex items-center justify-center bg-white rounded-xl shadow-sm border border-gray-100 disabled:opacity-30">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {/* Bottom Pagination */}
+            {/* Bottom Pagination (Desktop) */}
             {pagination.totalPages > 1 && (
-                <div className="px-4 py-3 bg-white border-t border-gray-100 flex items-center justify-between flex-shrink-0">
-                    <span className="text-[11px] text-gray-500 font-medium">
-                        Показано {scores.length} из {pagination.totalCount} заказов
-                    </span>
+                <div className="hidden md:flex px-4 py-3 bg-white border-t border-gray-100 items-center justify-between flex-shrink-0">
+                    <span className="text-[11px] text-gray-500 font-medium">Показано {scores.length} из {pagination.totalCount} заказов</span>
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
-                            disabled={pagination.page === 1}
-                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors"
-                        >
-                            Назад
-                        </button>
+                        <button onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={pagination.page === 1}
+                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors">Назад</button>
                         <div className="flex items-center gap-1">
                             {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
                                 let pageNum = i + 1;
-                                // Sliding window logic for page numbers
-                                if (pagination.totalPages > 5) {
-                                    if (pagination.page > 3) {
-                                        pageNum = pagination.page - 2 + i;
-                                        if (pageNum + (4 - i) > pagination.totalPages) {
-                                            pageNum = pagination.totalPages - 4 + i;
-                                        }
-                                    }
+                                if (pagination.totalPages > 5 && pagination.page > 3) {
+                                    pageNum = pagination.page - 2 + i;
+                                    if (pageNum + (4 - i) > pagination.totalPages) pageNum = pagination.totalPages - 4 + i;
                                 }
                                 if (pageNum > pagination.totalPages) return null;
                                 return (
-                                    <button
-                                        key={pageNum}
-                                        onClick={() => setPagination(prev => ({ ...prev, page: pageNum }))}
-                                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${pagination.page === pageNum ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200'}`}
-                                    >
-                                        {pageNum}
-                                    </button>
+                                    <button key={pageNum} onClick={() => setPagination(prev => ({ ...prev, page: pageNum }))}
+                                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${pagination.page === pageNum ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200'}`}>{pageNum}</button>
                                 );
                             })}
                         </div>
-                        <button
-                            onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
-                            disabled={pagination.page === pagination.totalPages}
-                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors"
-                        >
-                            Вперед
-                        </button>
+                        <button onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))} disabled={pagination.page === pagination.totalPages}
+                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors">Вперед</button>
                     </div>
                 </div>
             )}
 
             {activeExplain && (
-                <ExplainPopover
-                    label={activeExplain.label}
-                    info={activeExplain.info}
-                    onClose={() => setActiveExplain(null)}
-                    pos={activeExplain.pos}
-                />
+                <ExplainPopover label={activeExplain.label} info={activeExplain.info} onClose={() => setActiveExplain(null)} pos={activeExplain.pos} />
             )}
 
             {selectedCallOrder && (
-                <CallDetailModal
-                    order={selectedCallOrder}
-                    onClose={() => setSelectedCallOrder(null)}
-                />
+                <CallDetailModal order={selectedCallOrder} onClose={() => setSelectedCallOrder(null)} />
             )}
         </div>
     );
 }
+
 
 function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () => void }) {
     const [calls, setCalls] = useState<any[]>([]);
