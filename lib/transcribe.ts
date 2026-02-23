@@ -107,6 +107,47 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
     }
 }
 
+/**
+ * Enhances a raw monologue transcript with speaker tags (Manager/Client) using AI
+ */
+export async function diarizeTranscript(transcript: string): Promise<string> {
+    try {
+        const openai = getOpenAI();
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are an expert transcript editor. Your goal is to take a raw, one-sided transcript of a phone call (Russian) between a Sales Manager (Менеджер) and a Client (Клиент) and format it as a dialogue.
+
+RULES:
+- Identify who is speaking based on the content of the phrases.
+- Label them as "Менеджер:" and "Клиент:".
+- Mantain the exact same words as in the input, do not summarize.
+- If it's a very short call or impossible to distinguish, do your best.
+- Typical Manager phrases: "Компания ОКК", "меня зовут...", "какое оборудование?", "выставим счет".
+- Typical Client phrases: "я хотел бы узнать цену", "а какие сроки?", "нам нужно для производства".
+
+Output format:
+Менеджер: Приветствие...
+Клиент: Ответ...
+Менеджер: Вопрос...`
+                },
+                {
+                    role: "user",
+                    content: `Raw transcript: ${transcript}`
+                }
+            ],
+            temperature: 0
+        });
+
+        return response.choices[0].message.content || transcript;
+    } catch (e) {
+        console.error('[Diarize] AI pass failed, returning raw transcript:', e);
+        return transcript;
+    }
+}
+
 export async function transcribeCall(callId: string, recordingUrl: string) {
     try {
         console.log(`[Transcribe] Processing ${callId}...`);
@@ -120,12 +161,16 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
 
         // 2. Transcribe (Whisper)
         const openai = getOpenAI();
-        const transcription = await openai.audio.transcriptions.create({
+        const rawTranscription = await openai.audio.transcriptions.create({
             file: file,
             model: "whisper-1",
             language: "ru",
             response_format: "text"
         });
+
+        // 2.5 Diarization pass (New step)
+        console.log(`[Transcribe] Diarizing ${callId}...`);
+        const transcription = await diarizeTranscript(rawTranscription);
 
         // 3. AMD Classification (only if transcription succeeded)
         let amd: any = null;

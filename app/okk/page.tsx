@@ -323,20 +323,32 @@ const COL_GROUPS: Group[] = [
         ]
     },
     {
-        label: 'Выявление потребностей',
+        label: 'Выявление потребностей и БА',
         color: 'bg-teal-50 text-teal-700',
         cellBg: 'bg-teal-50/40',
         cols: [
             {
-                key: 'script_company_info', label: 'Чем занимается организация, Бюджет, НДС, Кол-во сотрудников', type: 'bool',
-                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT: выявлены ли ключевые данные о компании клиента', data: 'raw_telphin_calls.transcript → GPT-4o-mini' }
+                key: 'script_company_info', label: 'Чем занимается организация', type: 'bool',
+                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT: выявлена ли сфера деятельности клиента', data: 'raw_telphin_calls.transcript → GPT-4o-mini' }
             },
             {
-                key: 'script_deadlines', label: 'Сроки, когда оборудование должно уже стоять', type: 'bool',
-                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT: уточнены ли сроки установки оборудования', data: 'raw_telphin_calls.transcript → GPT-4o-mini' }
+                key: 'script_lpr_identified', label: 'Выявление ЛПР', type: 'bool',
+                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT/Анна: выявлено ли лицо, принимающее решение', data: 'Anna.lpr / GPT' }
             },
             {
-                key: 'script_tz_confirmed', label: 'Убедиться, что ТЗ от клиента получено (параметры камеры)', type: 'bool',
+                key: 'script_budget_confirmed', label: 'Подтверждение бюджета', type: 'bool',
+                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT/Анна: обсуждался ли финансовый вопрос', data: 'Anna.budget / GPT' }
+            },
+            {
+                key: 'script_urgency_identified', label: 'Срочность покупки', type: 'bool',
+                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT/Анна: выяснено ли "когда нужно" оборудование', data: 'Anna.urgency / GPT' }
+            },
+            {
+                key: 'script_deadlines', label: 'Сроки поставки', type: 'bool',
+                tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT: уточнены ли конкретные сроки установки/готовности', data: 'raw_telphin_calls.transcript → GPT-4o-mini' }
+            },
+            {
+                key: 'script_tz_confirmed', label: 'Параметры ТЗ (камера)', type: 'bool',
                 tip: { agent: 'Максим', agentEmoji: '🤓', how: 'GPT: подтверждено получение ТЗ с параметрами (ш×д×в, t°, нагрев)', data: 'raw_telphin_calls.transcript → GPT-4o-mini' }
             },
         ]
@@ -609,8 +621,8 @@ function OKKContent() {
     );
 
     const renderCell = (s: OrderScore, col: ColDef, cellBg: string) => {
-        const val = (s as any)[col.key];
         const breakdown = s.score_breakdown?.[col.key];
+        const val = (s as any)[col.key] ?? (breakdown?.result !== undefined ? breakdown.result : undefined);
 
         const handleCellClick = (e: React.MouseEvent) => {
             if (!breakdown) return;
@@ -1154,8 +1166,29 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                         </div>
                                         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/20">
                                             {activeCall.transcript ? (
-                                                <div className="text-xs text-gray-700 leading-relaxed font-sans whitespace-pre-wrap">
-                                                    {activeCall.transcript}
+                                                <div className="text-xs text-gray-700 leading-relaxed font-sans space-y-1">
+                                                    {activeCall.transcript.split('\n').map((line: string, i: number) => {
+                                                        const isManager = line.startsWith('Менеджер:');
+                                                        const isClient = line.startsWith('Клиент:');
+
+                                                        if (isManager) {
+                                                            return (
+                                                                <div key={i}>
+                                                                    <span className="text-blue-700 font-bold italic">Менеджер:</span>
+                                                                    {line.replace('Менеджер:', '')}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        if (isClient) {
+                                                            return (
+                                                                <div key={i}>
+                                                                    <span className="text-orange-600 font-bold italic">Клиент:</span>
+                                                                    {line.replace('Клиент:', '')}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        return <div key={i}>{line}</div>;
+                                                    })}
                                                 </div>
                                             ) : (
                                                 <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">

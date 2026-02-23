@@ -481,6 +481,9 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
         script_greeting: { result: null, reason: null },
         script_call_purpose: { result: null, reason: null },
         script_company_info: { result: null, reason: null },
+        script_lpr_identified: { result: null, reason: null },
+        script_budget_confirmed: { result: null, reason: null },
+        script_urgency_identified: { result: null, reason: null },
         script_deadlines: { result: null, reason: null },
         script_tz_confirmed: { result: null, reason: null },
         script_objection_general: { result: null, reason: null },
@@ -512,44 +515,50 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
                 {
                     role: 'system',
                     content: `Ты — эксперт ОКК отдела продаж промышленного оборудования. 
-Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (1 или несколько звонков).
-Проверь выполнение чек-листа по ВСЕЙ ИСТОРИИ. 
+Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (все звонки в рамках сделки).
+Твоя задача: оценить качество работы менеджера по чек-листу, используя сквозной анализ всей истории.
+
+ОСНОВНЫЕ ПРАВИЛА:
+1. ХОЛИСТИЧЕСКИЙ АНАЛИЗ: Если действие произошло в любом из звонков истории — оно считается выполненным (true).
+2. ОБРАБОТКА N/A (НЕ ТРЕБОВАЛОСЬ): Если ситуация для критерия не возникла, ОБЯЗАТЕЛЬНО ставь "result": null и "reason": "Не требовалось". 
+3. ИНТЕГРАЦИЯ С АННОЙ: Используй данные бизнес-аналитика Анны как "земную истину":
+   - Если Анна нашла 'lpr' (имя или должность), значит менеджер выяснил ЛПР (true). Если Анна не нашла ЛПР и в диалоге нет попыток это выяснить — false.
+   - Если Анна нашла 'budget' (сумму или готовность), значит бюджет затронут (true). Если в диалоге нет ни цифр, ни обсуждения денег — false.
+   - Если Анна нашла 'urgency' или 'timeline', значит менеджер выяснил сроки (true).
 
 ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON. 
-Для каждого пункта верни объект: {"result": true/false, "reason": "ПОДРОБНОЕ обоснование"}.
+Для каждого пункта верни объект: {"result": true/false/null, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
 
-КРИТИЧЕСКОЕ ТРЕБОВАНИЕ к "reason":
-Ты должен ДОКАЗАТЬ свою оценку. 
-- Если ставишь TRUE: приведи прямую или косвенную цитату (например: Менеджер сказал: "Рассчитаем за 2 дня", поэтому сроки выяснены).
-- Если ставишь FALSE: опиши, чего именно не хватило или что менеджер сделал не так (например: Менеджер не спросил о сроках, хотя клиент упоминал спешку).
-- Будь конкретным. Избегай общих фраз "критерий выполнен".
-
-Критерии:
+КРИТЕРИИ И СПЕЦИФИКА КЛАССИФИКАЦИИ:
 - script_greeting: Приветствие и название компании.
-- script_call_purpose: Озвучена причина звонка (привязка к заказу или этапу).
-- script_company_info: Выявлены потребности, бюджет, НДС или сфера деятельности клиента.
-- script_deadlines: Выяснены сроки готовности или поставки.
-- script_tz_confirmed: Параметры тех. задания подтверждены и понятны.
-- script_objection_general: Работа с возражениями (дорого, долго, подумаем).
-- script_objection_delays: Если клиент молчит или тянет — выяснена причина.
-- script_offer_best_tech: Аргументация через технические преимущества.
-- script_offer_best_terms: Аргументы по срокам/наличию.
-- script_offer_best_price: Аргументы по цене/скидкам.
-- script_cross_sell: Предложение сопутствующих товаров (печи -> расходники и т.п.).
-- script_next_step_agreed: Четкая фиксация следующего шага с датой.
-- script_dialogue_management: Менеджер вел инициативу (задавал вопросы, а не только отвечал).
-- script_confident_speech: Уверенность, отсутствие слов-паразитов.
+- script_call_purpose: Озвучена причина звонка (привязка к заказу/этапу).
+- script_company_info: Выявлена сфера деятельности клиента и чем занимается организация.
+- script_lpr_identified: Выявлено Лицо, Принимающее Решение (кто еще участвует в выборе?).
+- script_budget_confirmed: Обсужден финансовый вопрос или наличие бюджета.
+- script_urgency_identified: Менеджер выяснил срочность покупки (нужно "вчера" или "к осени").
+- script_deadlines: Выяснены конкретные сроки готовности или поставки (не путать со срочностью).
+- script_tz_confirmed: Параметры тех. задания (размеры, температура) подтверждены.
+- script_objection_general: Работа с возражениями. Если возражений не было — null. Если были и отработаны хоть раз в истории — true.
+- script_objection_delays: Если клиент тянет сроки или Анна видит конкурентов — выяснил ли менеджер "с кем сравнивают?". Если Анна видит конкурентов, а вопроса не было — false. Если сравнения нет — null.
+- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества (мощность, ресурс, ГОСТ), особенно по болям от Анны. Если тех. требований не было — null.
+- script_offer_best_terms: Аргументы по СРОКАМ (наличие, ускорение), особенно если 'urgency: hot'. Если сроки не критичны — null.
+- script_offer_best_price: Обоснование ЦЕНЫ (ценность, сервис, условия оплаты). Если клиент не торговался — null.
+- script_cross_sell: Предложение сопутствующих товаров (печи -> расходники).
+- script_next_step_agreed: Фиксация следующего шага с ДАТОЙ.
+- script_dialogue_management: Менеджер держал инициативу и вел по структуре.
+- script_confident_speech: Уверенность, грамотность, отсутствие слов-паразитов.
 
 ПЕРСОНАЛИЗАЦИЯ:
-В обосновании (reason) обязательно упоминай менеджера по имени (имя будет в контексте Анны или просто используй имя из транскрипции).
-Примеры: 
-- "Максим: Евгения отлично поприветствовала клиента, назвав компанию..."
-- "Максим: Иван забыл уточнить сроки поставки, хотя клиент..."
+В "reason" всегда упоминай менеджера по имени (из контекста).
+
+РАСЧЕТ script_score_pct:
+- Рассчитывай % только по тем пунктам, где result НЕ null. 
+- (Кол-во true / Кол-во (true + false)) * 100.
+- Если все пункты null, верни 100.
 
 Также верни:
-- script_score_pct: общий % (0-100).
-- evaluator_comment: общий вывод.
-`
+- script_score_pct: число (0-100).
+- evaluator_comment: аналитическое резюме по всей сделке.`
                 },
                 {
                     role: 'user',
@@ -574,6 +583,9 @@ ${transcript.substring(0, 15000)}`
             script_greeting: getVal('script_greeting'),
             script_call_purpose: getVal('script_call_purpose'),
             script_company_info: getVal('script_company_info'),
+            script_lpr_identified: getVal('script_lpr_identified'),
+            script_budget_confirmed: getVal('script_budget_confirmed'),
+            script_urgency_identified: getVal('script_urgency_identified'),
             script_deadlines: getVal('script_deadlines'),
             script_tz_confirmed: getVal('script_tz_confirmed'),
             script_objection_general: getVal('script_objection_general'),
@@ -588,6 +600,7 @@ ${transcript.substring(0, 15000)}`
             script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.round(Math.min(100, Math.max(0, parsed.script_score_pct))) : null,
             evaluator_comment: parsed.evaluator_comment ?? null,
         };
+
     } catch (e) {
         console.error('[Максим/GPT] Script evaluation failed:', e);
         return empty as any;
@@ -644,7 +657,7 @@ function calcScores(data: Record<string, any>) {
     score_breakdown.deal_in_status_lt_5_days = { result: !!data.deal_in_status_lt_5_days, reason: data.deal_in_status_lt_5_days ? `Сделка в статусе ${data._days_in_status} дн. (норма до 5)` : `Сделка зависла в статусе на ${data._days_in_status} дн.` };
 
     // Скрипт (Максим)
-    const scriptKeys = ['script_greeting', 'script_call_purpose', 'script_company_info', 'script_deadlines', 'script_tz_confirmed', 'script_objection_general', 'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech'];
+    const scriptKeys = ['script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified', 'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed', 'script_objection_general', 'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech'];
     scriptKeys.forEach(k => {
         if (data[k]) score_breakdown[k] = data[k];
     });
