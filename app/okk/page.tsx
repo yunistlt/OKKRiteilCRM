@@ -160,29 +160,35 @@ function ColTooltip({ label, info, children }: { label: string; info: TooltipInf
 // ─── Окно объяснения (Popover) ───────────────────────────
 function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { result: boolean | null, reason: string | null }, onClose: () => void, pos: { top: number, left: number } }) {
     return (
-        <div
-            className="fixed z-[200] w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 origin-top"
-            style={{ top: pos.top, left: pos.left }}
-        >
-            <div className="flex items-center justify-between mb-3">
-                <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">Обоснование</div>
-                <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        <>
+            {/* Overlay to catch clicks outside */}
+            <div className="fixed inset-0 z-[190] bg-black/5" onClick={onClose} />
+
+            <div
+                className="fixed z-[200] w-72 bg-white border border-gray-200 rounded-2xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 origin-top"
+                style={{ top: pos.top, left: pos.left }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex items-center justify-between mb-3">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-gray-400">Обоснование</div>
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+                <div className="font-bold text-gray-800 text-sm mb-2 leading-tight">{label}</div>
+                <div className="flex items-center gap-2 mb-3">
+                    {info.result === null ? (
+                        <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold">НЕ ПРОВЕРЯЛОСЬ</span>
+                    ) : info.result ? (
+                        <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ ВЫПОЛНЕНО</span>
+                    ) : (
+                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">❌ НЕ ВЫПОЛНЕНО</span>
+                    )}
+                </div>
+                <div className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-100 italic">
+                    {info.reason || "Подробное обоснование не найдено. Возможно, это старая запись."}
+                </div>
+                <div className="mt-3 pt-3 border-t border-gray-50 text-[9px] text-gray-400 text-center font-medium">Кликните за пределами окна, чтобы закрыть</div>
             </div>
-            <div className="font-bold text-gray-800 text-sm mb-2 leading-tight">{label}</div>
-            <div className="flex items-center gap-2 mb-3">
-                {info.result === null ? (
-                    <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold">НЕ ПРОВЕРЯЛОСЬ</span>
-                ) : info.result ? (
-                    <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ ВЫПОЛНЕНО</span>
-                ) : (
-                    <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">❌ НЕ ВЫПОЛНЕНО</span>
-                )}
-            </div>
-            <div className="text-xs text-gray-600 leading-relaxed bg-gray-50 p-2.5 rounded-xl border border-gray-100 italic">
-                {info.reason || "Подробное обоснование не найдено. Возможно, это старая запись."}
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-50 text-[9px] text-gray-300 text-center font-medium">Кликните в любом месте, чтобы закрыть</div>
-        </div>
+        </>
     );
 }
 
@@ -626,6 +632,7 @@ function OKKContent() {
 
         const handleCellClick = (e: React.MouseEvent) => {
             if (!breakdown) return;
+            e.preventDefault();
             e.stopPropagation();
 
             const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
