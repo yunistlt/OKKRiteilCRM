@@ -2,6 +2,7 @@
 import OpenAI from 'openai';
 import { getTelphinToken } from './telphin';
 import { supabase } from '@/utils/supabase';
+import { syncRecordingToStorage } from './telphin-storage';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -107,8 +108,12 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
 
 export async function transcribeCall(callId: string, recordingUrl: string) {
     try {
-        // 1. Download
-        const file = await downloadAudio(recordingUrl);
+        // 0. Ensure audio is synced to internal storage
+        const internalUrl = await syncRecordingToStorage(callId, recordingUrl);
+        const sourceUrl = internalUrl || recordingUrl;
+
+        // 1. Download (from internal or external)
+        const file = await downloadAudio(sourceUrl);
 
         // 2. Transcribe (Whisper)
         const openai = getOpenAI();

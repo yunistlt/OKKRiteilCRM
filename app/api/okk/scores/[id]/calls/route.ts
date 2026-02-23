@@ -29,7 +29,8 @@ export async function GET(
                     from_number,
                     to_number,
                     from_number_normalized,
-                    to_number_normalized
+                    to_number_normalized,
+                    raw_payload
                 )
             `)
             .eq('retailcrm_order_id', orderId)
