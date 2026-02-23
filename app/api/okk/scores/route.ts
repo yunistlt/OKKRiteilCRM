@@ -20,6 +20,25 @@ export async function GET(req: Request) {
 
     const workingStatuses = (settings || []).map(s => s.code);
 
+    // 1.5. Find matching managers if filterManager is provided
+    let matchingManagerIds: number[] | null = null;
+    if (filterManager) {
+        const { data: managers } = await supabase
+            .from('managers')
+            .select('id')
+            .or(`first_name.ilike.%${filterManager}%,last_name.ilike.%${filterManager}%`);
+
+        matchingManagerIds = (managers || []).map(m => m.id);
+
+        // If no managers match, return early with empty results
+        if (matchingManagerIds.length === 0) {
+            return NextResponse.json({
+                scores: [],
+                pagination: { totalCount: 0, page, pageSize, totalPages: 0 }
+            });
+        }
+    }
+
     // 2. Базовый запрос к orders (все активные)
     let ordersQuery = supabase
         .from('orders')
@@ -30,6 +49,7 @@ export async function GET(req: Request) {
     if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
     if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
     if (filterStatus) ordersQuery = ordersQuery.eq('status', filterStatus);
+    if (matchingManagerIds) ordersQuery = ordersQuery.in('manager_id', matchingManagerIds);
 
     // Пагинация
     const fromIdx = (page - 1) * pageSize;
@@ -99,11 +119,6 @@ export async function GET(req: Request) {
             total_sum: o.totalsumm || 0,
         };
     });
-
-    if (filterManager) {
-        const lowFilter = filterManager.toLowerCase();
-        enriched = enriched.filter(e => e.manager_name.toLowerCase().includes(lowFilter));
-    }
 
     return NextResponse.json({
         scores: enriched,
