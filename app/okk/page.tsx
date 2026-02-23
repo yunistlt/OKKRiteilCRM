@@ -1120,12 +1120,14 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                     <div className="flex items-center gap-6">
                                         <div>
                                             <span className="text-[9px] text-gray-400 uppercase font-black block">Откуда/Куда</span>
-                                            <span className="text-xs font-mono font-bold text-gray-700">{activeCall.from_number} → {activeCall.to_number}</span>
+                                            <span className="text-xs font-mono font-bold text-gray-700">
+                                                {activeCall.from_username || activeCall.from_number_normalized} → {activeCall.to_username || activeCall.to_number_normalized}
+                                            </span>
                                         </div>
                                         {activeCall.recording_url && (
                                             <div className="flex items-center gap-3">
                                                 <audio
-                                                    src={activeCall.recording_url}
+                                                    src={`/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
                                                     controls
                                                     className="h-8 w-64 accent-blue-600"
                                                 />

@@ -20,13 +20,16 @@ export async function GET(
             .select(`
                 telphin_call_id,
                 raw_telphin_calls (
+                    telphin_call_id,
                     started_at,
                     duration_sec,
                     recording_url,
                     direction,
                     transcript,
-                    from_number,
-                    to_number
+                    from_username,
+                    to_username,
+                    from_number_normalized,
+                    to_number_normalized
                 )
             `)
             .eq('retailcrm_order_id', orderId)
