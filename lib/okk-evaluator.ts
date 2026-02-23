@@ -463,14 +463,19 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
     const daysInStatus = diffMs / (1000 * 60 * 60 * 24);
     const deal_in_status_lt_5_days = daysInStatus < 5;
 
+    const deal_in_status_reason = deal_in_status_lt_5_days
+        ? `Игорь: Сделка в статусе ${Math.round(daysInStatus)} дн. (норма до 5)`
+        : `Игорь: Сделка зависла в статусе на ${Math.round(daysInStatus)} дн.`;
+
     return {
         lead_in_work_lt_1_day,
+        lead_in_work_reason,
         next_contact_not_overdue,
+        next_contact_reason,
         lead_in_work_lt_1_day_after_tz,
+        lead_in_work_after_tz_reason,
         deal_in_status_lt_5_days,
-        _lead_in_work_reason: lead_in_work_reason,
-        _next_contact_reason: next_contact_reason,
-        _days_in_status: Math.round(daysInStatus),
+        deal_in_status_reason
     };
 }
 
