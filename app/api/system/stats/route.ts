@@ -13,9 +13,6 @@ export async function GET() {
 
         const workingCodes = (workingSettings || []).map(s => s.code);
 
-        // Limit to 50 items for '.in()' filter to be safe, or just pass array
-        // Supabase handles arrays fine usually.
-
         // 2. Count "Working Orders"
         const { count: workingOrdersCount, error: e1 } = await supabase
             .from('orders')
@@ -24,11 +21,7 @@ export async function GET() {
 
         if (e1) throw e1;
 
-        // 3. Count "Matched Calls" (calls linked to working orders)
-        // We use !inner join to filter calls by the related order's status
-
         // 3. Count "Matched Calls" (TOTAL)
-        // Changed to show ALL matches to verify system performance, not just active ones.
         const { count: matchedCallsCount, error: e2 } = await supabase
             .from('call_order_matches')
             .select('*', { count: 'exact', head: true });
@@ -42,7 +35,7 @@ export async function GET() {
 
         const transcribableCodes = (transcribableSettings || []).map(s => s.code);
 
-        // 4. Count "Transcribed Matches" (linked to TRANSCRIBABLE orders + transcript exists + last 30 days)
+        // 4. Count "Transcribed Matches"
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -62,7 +55,7 @@ export async function GET() {
 
         if (e3) throw e3;
 
-        // 5. Count "Pending Matches" (linked to TRANSCRIBABLE orders + transcript is null + last 30 days)
+        // 5. Count "Pending Matches"
         const { count: pendingCount, error: e4 } = await supabase
             .from('raw_telphin_calls')
             .select(`
@@ -80,15 +73,63 @@ export async function GET() {
 
         if (e4) throw e4;
 
+        // 6. Hourly Trends for the last 24 hours
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+        // 6.1 Matches Trend
+        const { data: matchedTrend } = await supabase
+            .from('call_order_matches')
+            .select('matched_at')
+            .gte('matched_at', twentyFourHoursAgo);
+
+        // 6.2 Transcriptions Trend
+        const { data: transcribedTrend } = await supabase
+            .from('raw_telphin_calls')
+            .select('started_at')
+            .gte('started_at', twentyFourHoursAgo)
+            .not('transcript', 'is', null);
+
+        // 6.3 Evaluations Trend
+        const { data: evalTrend } = await supabase
+            .from('okk_order_scores')
+            .select('eval_date')
+            .gte('eval_date', twentyFourHoursAgo);
+
+        const groupStatsByHour = (data: any[] | null, key: string) => {
+            const counts: Record<number, number> = {};
+            const now = new Date();
+            for (let i = 0; i < 24; i++) {
+                const hour = new Date(now.getTime() - i * 3600000).getHours();
+                counts[hour] = 0;
+            }
+
+            data?.forEach(item => {
+                const hour = new Date(item[key]).getHours();
+                if (counts[hour] !== undefined) counts[hour]++;
+            });
+
+            return Object.entries(counts)
+                .sort((a, b) => {
+                    const hA = (parseInt(a[0]) - now.getHours() + 24) % 24;
+                    const hB = (parseInt(b[0]) - now.getHours() + 24) % 24;
+                    return hB - hA;
+                })
+                .map(entry => entry[1]);
+        };
+
         return NextResponse.json({
             ok: true,
-            version: 'v2-total-count',
-            debug_table: 'call_order_matches',
+            version: 'v3-live-monitor',
             stats: {
                 workingOrders: workingOrdersCount || 0,
                 matchedCalls: matchedCallsCount || 0,
                 transcribedCalls: transcribedCount || 0,
-                pendingCalls: pendingCount || 0
+                pendingCalls: pendingCount || 0,
+                trends: {
+                    matches: groupStatsByHour(matchedTrend, 'matched_at'),
+                    transcriptions: groupStatsByHour(transcribedTrend, 'started_at'),
+                    evaluations: groupStatsByHour(evalTrend, 'eval_date')
+                }
             }
         });
 

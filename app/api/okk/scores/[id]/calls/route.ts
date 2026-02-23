@@ -19,6 +19,7 @@ export async function GET(
             .from('call_order_matches')
             .select(`
                 telphin_call_id,
+                explanation,
                 raw_telphin_calls (
                     telphin_call_id,
                     started_at,
@@ -39,7 +40,13 @@ export async function GET(
         if (error) throw error;
 
         const calls = (matches || [])
-            .map((m: any) => m.raw_telphin_calls)
+            .map((m: any) => {
+                if (!m.raw_telphin_calls) return null;
+                return {
+                    ...m.raw_telphin_calls,
+                    match_explanation: m.explanation || ''
+                };
+            })
             .filter(Boolean);
 
         return NextResponse.json({ calls });

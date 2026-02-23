@@ -13,6 +13,7 @@ export interface RawCall {
     to_number_normalized: string | null;
     started_at: string;
     direction: string;
+    raw_payload?: any;
 }
 
 export interface OrderCandidate {
@@ -34,6 +35,7 @@ export interface MatchResult {
         partial_phone_match: boolean;
         time_diff_sec: number | null;
         manager_match: boolean;
+        conflict_manager?: boolean;
         direction: string;
     };
 }
@@ -73,13 +75,14 @@ export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCa
     }
 
     // 2. Add candidates directly from ORDERS table (Fallback if events missing)
-    // Checking main phone
+    // Checking main phone and additionalPhone from raw_payload
+    // We use .descendant-style match (%suffix%) to handle orders with extensions like ...1234567-ext
     const { data: orders } = await supabase
         .from('orders')
-        .select('id, phone, customer_phones, manager_id, created_at')
-        .ilike('phone', `%${suffix}`)
+        .select('id, phone, customer_phones, manager_id, created_at, raw_payload')
+        .or(`phone.ilike.%${suffix}%,raw_payload->>additionalPhone.ilike.%${suffix}%`)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(10);
 
     if (orders) {
         for (const o of orders) {
@@ -87,7 +90,7 @@ export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCa
                 candidatesMap.set(o.id, {
                     retailcrm_order_id: o.id,
                     phone: o.phone || (o.customer_phones?.[0] || null),
-                    additional_phone: null,
+                    additional_phone: o.raw_payload?.additionalPhone || null,
                     manager_id: o.manager_id,
                     last_event_at: o.created_at // Use creation time as event time
                 });
@@ -96,6 +99,24 @@ export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCa
     }
 
     return Array.from(candidatesMap.values());
+}
+
+let cachedManagerMap: Map<number, { first_name: string; last_name: string; full_name: string; reverse_name: string }> | null = null;
+async function getManagerMap() {
+    if (cachedManagerMap) return cachedManagerMap;
+    const { data } = await supabase.from('managers').select('id, first_name, last_name');
+    const map = new Map();
+    if (data) {
+        for (const m of data) {
+            const first = (m.first_name || '').trim();
+            const last = (m.last_name || '').trim();
+            const full_name = `${first} ${last}`.trim().toLowerCase();
+            const reverse_name = `${last} ${first}`.trim().toLowerCase();
+            map.set(m.id, { first_name: first, last_name: last, full_name, reverse_name });
+        }
+    }
+    cachedManagerMap = map;
+    return map;
 }
 
 /**
@@ -114,6 +135,7 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
 
     // Находим кандидатов
     const candidates = await findOrderCandidatesByPhone(clientPhone);
+    const managerMap = await getManagerMap();
 
     for (const order of candidates) {
         const factors = {
@@ -121,6 +143,7 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
             partial_phone_match: false,
             time_diff_sec: null as number | null,
             manager_match: false,
+            conflict_manager: false,
             direction: call.direction
         };
 
@@ -133,6 +156,18 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
 
         factors.phone_match = phoneMatch;
         factors.partial_phone_match = phoneMatch;
+
+        // Сравниваем менеджеров
+        const orderManager = order.manager_id ? managerMap.get(order.manager_id) : null;
+        const callManagerName = call.raw_payload?.from_screen_name?.trim().toLowerCase();
+
+        if (orderManager && callManagerName) {
+            if (callManagerName === orderManager.full_name || callManagerName === orderManager.reverse_name) {
+                factors.manager_match = true;
+            } else {
+                factors.conflict_manager = true;
+            }
+        }
 
         // Вычисляем разницу во времени
         if (order.last_event_at) {
@@ -168,6 +203,11 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
             confidence = 0.70;
             matchType = 'by_phone_manager';
             explanation = `Совпадение последних 7 цифр номера`;
+        }
+
+        // Добавляем к explanation инфу о конфликте манагеров
+        if (factors.conflict_manager) {
+            explanation += ' [Внимание: звонил другой менеджер]';
         }
 
         // Добавляем матч (минимальный порог 0.70)

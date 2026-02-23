@@ -10,7 +10,16 @@
 export function normalizePhone(phone: string | null | undefined): string | null {
     if (!phone) return null;
 
-    const cleaned = String(phone).replace(/[^\d+]/g, '');
+    let cleaned = String(phone).replace(/[^\d+]/g, '');
+
+    // Handling extensions: If number is too long (e.g. 84959262678158), 
+    // we suspect the last digits are an extension. 
+    // Standard Russian mobile/landline is 11 digits (starting with 8 or 7).
+    // If it's 13-15 digits and starts with 8 or 7, we take the first 11 digits.
+    if (!cleaned.startsWith('+') && cleaned.length > 11 && (cleaned.startsWith('8') || cleaned.startsWith('7'))) {
+        // Only trim if it looks like a standard Ru number + extension
+        cleaned = cleaned.substring(0, 11);
+    }
 
     // Если номер начинается с 8, заменяем на +7
     if (cleaned.startsWith('8') && cleaned.length === 11) {

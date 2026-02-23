@@ -120,7 +120,7 @@ export async function GET() {
         const transActive = isFresh(transLastRun, 10);
 
         const transStatus = {
-            service: 'Transcription Backfill',
+            service: 'Transcription Cron',
             cursor: transCursor.includes('T') ? transCursor.split('T')[0] : transCursor,
             last_run: transLastRun,
             status: transActive ? 'ok' : 'warning',
@@ -225,8 +225,8 @@ export async function GET() {
         };
 
         return NextResponse.json({
-            services: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus, insightStatus],
-            dashboard: [telphinStatus, retailStatus, matchStatus, historyStatus, rulesStatus, insightStatus],
+            services: [telphinStatus, retailStatus, matchStatus, transStatus, historyStatus, rulesStatus, insightStatus],
+            dashboard: [telphinStatus, retailStatus, matchStatus, transStatus, historyStatus, rulesStatus, insightStatus],
             all_rules: allRules || [],
             settings,
             insight_logs: logs

@@ -1077,6 +1077,11 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                 {new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </div>
+                                        {call.match_explanation?.includes('[Внимание: звонил другой менеджер]') && (
+                                            <div className="mt-1 text-[9px] font-black text-red-600 bg-red-50 rounded px-1.5 py-0.5 inline-block border border-red-100 uppercase tracking-tight">
+                                                ⚠️ Другой менеджер
+                                            </div>
+                                        )}
                                         {call.transcript && (
                                             <div className="mt-2 text-[10px] text-blue-500 flex items-center gap-1">
                                                 <span>📝 Транскрибация</span>

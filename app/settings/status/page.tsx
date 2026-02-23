@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -33,6 +32,11 @@ interface DbStats {
     matchedCalls: number;
     transcribedCalls: number;
     pendingCalls: number;
+    trends?: {
+        matches: number[];
+        transcriptions: number[];
+        evaluations: number[];
+    };
 }
 
 interface RuleItem {
@@ -104,12 +108,61 @@ export default function SystemStatusPage() {
         try {
             const res = await fetch('/api/system/stats');
             const json = await res.json();
-            if (json.ok) setDbStats(json.stats);
+            if (json.ok) {
+                console.log('Fetched Stats:', json.stats);
+                setDbStats(json.stats);
+            }
         } catch (e) {
             console.error(e);
         } finally {
             setLoadingStats(false);
         }
+    };
+
+    // --- Components ---
+
+    const MiniChart = ({ data, color, label }: { data: number[], color: string, label: string }) => {
+        const max = Math.max(...data, 1);
+        const points = data.map((v, i) => `${(i / 23) * 100},${100 - (v / max) * 100}`).join(' ');
+
+        return (
+            <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm hover:shadow-md transition-shadow group overflow-hidden relative">
+                <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <div className="text-2xl">📊</div>
+                </div>
+                <div className="flex justify-between items-end mb-3 relative z-10">
+                    <div className="flex-1">
+                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-tight mb-1">{label}</div>
+                        <div className="text-2xl font-black text-gray-900 leading-none">
+                            {data[data.length - 1]} <span className="text-[11px] text-gray-400 font-bold ml-1">ЗА ЧАС</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="h-16 w-full mt-2 relative">
+                    <svg viewBox="0 0 100 100" className="w-full h-full" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id={`grad-${label.substring(0, 5)}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stopColor={color.replace('text-', '')} stopOpacity="0.4" />
+                                <stop offset="100%" stopColor={color.replace('text-', '')} stopOpacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <polyline
+                            fill="none"
+                            stroke={color.includes('blue') ? '#2563eb' : color.includes('purple') ? '#a855f7' : '#10b981'}
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            points={points}
+                            className="drop-shadow-sm"
+                        />
+                        <polygon
+                            fill={`url(#grad-${label.substring(0, 5)})`}
+                            points={`0,100 ${points} 100,100`}
+                        />
+                    </svg>
+                </div>
+            </div>
+        );
     };
 
     // --- Actions ---
@@ -207,6 +260,7 @@ export default function SystemStatusPage() {
         if (name.includes('Telphin Main')) return 'Синхронизация Звонков (Телфин)';
         if (name.includes('RetailCRM')) return 'Синхронизация Заказов (RetailCRM)';
         if (name.includes('Matching Service')) return 'Служба Матчинга (Звонок + Заказ)';
+        if (name.includes('Transcription Cron')) return 'Служба Транскрибации (Semen)';
         if (name.includes('History Sync')) return 'События Заказов (History API)';
         if (name.includes('Rule Engine')) return 'Движок Проверки Правил';
         if (name.includes('AI Insight Agent')) return 'Аналитик Бизнес-Инсайтов (AI)';
@@ -217,6 +271,7 @@ export default function SystemStatusPage() {
         if (name.includes('Telphin')) return '☎️';
         if (name.includes('RetailCRM')) return '🛍️';
         if (name.includes('Matching')) return '🔗';
+        if (name.includes('Transcription')) return '🎙️';
         if (name.includes('History')) return '⚡️';
         if (name.includes('Rule')) return '⚙️';
         if (name.includes('Insight')) return '🕵️‍♂️';
@@ -241,7 +296,7 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <div className="max-w-7xl mx-auto py-1 px-4 space-y-3">
+        <div className="max-w-7xl mx-auto py-1 px-4 space-y-4">
 
             {/* ALERT: Technical Failure Log */}
             {lastRunError && (
@@ -264,7 +319,6 @@ export default function SystemStatusPage() {
 
             {/* HEADER & GLOBAL HEALTH */}
             <div className="flex items-center justify-between bg-white px-5 py-4 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
-                {/* Igor Background Decor */}
                 <div className="absolute right-0 top-0 bottom-0 w-32 opacity-[0.03] pointer-events-none group-hover:opacity-[0.08] transition-opacity">
                     <img src="/images/agents/igor.png" alt="" className="h-full object-contain object-right" />
                 </div>
@@ -277,7 +331,7 @@ export default function SystemStatusPage() {
                     <div>
                         <div className="flex items-center gap-2">
                             <h1 className="text-lg font-black text-gray-900 tracking-tighter uppercase">Игорь: Диспетчер мониторинга</h1>
-                            <span className="px-2 py-0.5 bg-gray-900 text-white text-[8px] font-bold rounded uppercase tracking-widest">SLA CONTROL</span>
+                            <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-bold rounded uppercase tracking-widest shadow-sm">LIVE MONITOR V1.3</span>
                         </div>
                         <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">Системный Монитор // Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}</p>
                     </div>
@@ -297,6 +351,31 @@ export default function SystemStatusPage() {
                     </button>
                 </div>
             </div>
+
+            {/* LIVE MONITOR: Trends Section - MOVED ABOVE OPENAI FOR VISIBILITY */}
+            {dbStats?.trends ? (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <MiniChart
+                        label="СЕМЁН: Матчинг (Звонок + Заказ)"
+                        data={dbStats.trends.matches}
+                        color="text-blue-600"
+                    />
+                    <MiniChart
+                        label="СЕМЁН: Транскрибация"
+                        data={dbStats.trends.transcriptions}
+                        color="text-purple-600"
+                    />
+                    <MiniChart
+                        label="МАКСИМ & ИГОРЬ: Проверка Quality"
+                        data={dbStats.trends.evaluations}
+                        color="text-emerald-600"
+                    />
+                </div>
+            ) : (
+                <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                    Загрузка живых метрик...
+                </div>
+            )}
 
             {/* OPENAI STATUS CARD */}
             {openai.status !== 'loading' && (
@@ -393,7 +472,7 @@ export default function SystemStatusPage() {
                                                     </div>
                                                     <div className="absolute -top-1 -left-1 w-5 h-5 z-20">
                                                         <img
-                                                            src={s.service.includes('Insight') ? "/images/agents/anna.png" : "/images/agents/semen.png"}
+                                                            src={(s.service.includes('Insight') || s.service.includes('Rule')) ? "/images/agents/anna.png" : "/images/agents/semen.png"}
                                                             alt=""
                                                             className="w-full h-full object-cover rounded-full border border-white shadow-sm"
                                                         />
