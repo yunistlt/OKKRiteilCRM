@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import OrderDetailsModal from './OrderDetailsModal';
 
 interface RoutingResult {
@@ -66,10 +66,10 @@ export default function AIRouterPanel() {
     };
 
     // Initial fetch
-    useState(() => {
+    useEffect(() => {
         fetchStatuses();
         fetchPendingCount();
-    });
+    }, []);
 
     const runRouting = async () => {
         setIsRunning(true);

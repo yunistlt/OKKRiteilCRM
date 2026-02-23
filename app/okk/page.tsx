@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
@@ -420,6 +420,14 @@ const SCORE_COLS: Array<{ key: string; label: string; tip: TooltipInfo }> = [
 ];
 
 export default function OKKPage() {
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-gray-400">Загрузка...</div>}>
+            <OKKContent />
+        </Suspense>
+    );
+}
+
+function OKKContent() {
     const searchParams = useSearchParams();
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
