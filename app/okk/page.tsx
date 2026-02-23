@@ -1121,7 +1121,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                         <div>
                                             <span className="text-[9px] text-gray-400 uppercase font-black block">Откуда/Куда</span>
                                             <span className="text-xs font-mono font-bold text-gray-700">
-                                                {activeCall.from_username || activeCall.from_number_normalized} → {activeCall.to_username || activeCall.to_number_normalized}
+                                                {activeCall.from_number || activeCall.from_number_normalized} → {activeCall.to_number || activeCall.to_number_normalized}
                                             </span>
                                         </div>
                                         {activeCall.recording_url && (

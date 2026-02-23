@@ -26,8 +26,8 @@ export async function GET(
                     recording_url,
                     direction,
                     transcript,
-                    from_username,
-                    to_username,
+                    from_number,
+                    to_number,
                     from_number_normalized,
                     to_number_normalized
                 )
