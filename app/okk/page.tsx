@@ -924,8 +924,8 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
     const [calls, setCalls] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedCallIndex, setSelectedCallIndex] = useState(0);
-
     const [transcribing, setTranscribing] = useState(false);
+    const [mobileTab, setMobileTab] = useState<'calls' | 'transcript' | 'analysis'>('calls');
 
     const fetchCalls = useCallback(async () => {
         setLoading(true);
@@ -967,6 +967,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
             if (data.success) {
                 // Refresh calls to get the new transcript
                 await fetchCalls();
+                setMobileTab('transcript'); // Auto-switch to transcript tab on mobile
             } else {
                 alert(`Ошибка транскрибации: ${data.error}`);
             }
@@ -978,26 +979,48 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
     };
 
     return (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-white md:bg-black/60 md:backdrop-blur-sm md:p-4 animate-in fade-in duration-200">
+            <div className="bg-white md:rounded-2xl shadow-none md:shadow-2xl w-full h-full md:max-h-[90vh] md:max-w-5xl flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center bg-gray-50/80">
+                <div className="p-3 md:p-4 border-b flex justify-between items-center bg-gray-50/80">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                            <span>📞 Детали звонков по заказу</span>
+                        <h2 className="text-base md:text-lg font-bold text-gray-900 flex items-center gap-1.5 md:gap-2">
+                            <span>📞 <span className="hidden md:inline">Детали звонков</span></span>
                             <span className="text-blue-600">#{order.order_id}</span>
                         </h2>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                            Менеджер: <strong>{order.manager_name}</strong> • Статус: <strong>{order.status_label}</strong>
+                        <p className="text-[10px] md:text-xs text-gray-500 mt-0.5 max-w-[200px] md:max-w-none truncate">
+                            {order.manager_name} • {order.status_label}
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-400 hover:text-gray-600">✕</button>
+                    <button onClick={onClose} className="p-2 md:bg-white md:hover:bg-gray-100 rounded-full transition-colors text-gray-500 hover:text-gray-900 absolute right-2 top-2 md:relative md:right-auto md:top-auto z-10">✕</button>
                 </div>
 
-                <div className="flex-1 flex overflow-hidden">
+                {/* Mobile Tabs */}
+                <div className="flex md:hidden border-b bg-white text-[10px] font-black uppercase tracking-widest text-gray-500 flex-shrink-0">
+                    <button
+                        onClick={() => setMobileTab('calls')}
+                        className={`flex-1 py-3 text-center border-b-2 transition-colors ${mobileTab === 'calls' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
+                    >
+                        Звонки
+                    </button>
+                    <button
+                        onClick={() => setMobileTab('transcript')}
+                        className={`flex-1 py-3 text-center border-b-2 transition-colors ${mobileTab === 'transcript' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
+                    >
+                        Текст
+                    </button>
+                    <button
+                        onClick={() => setMobileTab('analysis')}
+                        className={`flex-1 py-3 text-center border-b-2 transition-colors ${mobileTab === 'analysis' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
+                    >
+                        Анализ
+                    </button>
+                </div>
+
+                <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
                     {/* Sidebar: Call List */}
-                    <div className="w-80 border-r bg-gray-50/30 overflow-y-auto flex flex-col">
-                        <div className="p-3 border-b bg-white/50">
+                    <div className={`${mobileTab === 'calls' ? 'flex' : 'hidden'} md:flex w-full md:w-80 border-r bg-gray-50/30 overflow-y-auto flex-col`}>
+                        <div className="p-2 md:p-3 border-b bg-white/50 sticky top-0">
                             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h3>
                         </div>
                         {loading ? (
@@ -1011,8 +1034,10 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                 {calls.map((call, idx) => (
                                     <button
                                         key={idx}
-                                        onClick={() => setSelectedCallIndex(idx)}
-                                        className={`w-full text-left p-4 hover:bg-white/80 transition-all border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 shadow-sm' : 'border-transparent'}`}
+                                        onClick={() => {
+                                            setSelectedCallIndex(idx);
+                                        }}
+                                        className={`w-full text-left p-3 md:p-4 hover:bg-white/80 transition-all border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 shadow-sm' : 'border-transparent'}`}
                                     >
                                         <div className="flex justify-between items-start mb-1">
                                             <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
@@ -1022,15 +1047,20 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                 {call.duration_sec}с
                                             </span>
                                         </div>
-                                        <div className="text-xs font-bold text-gray-800">
-                                            {new Date(call.started_at).toLocaleDateString('ru-RU')}
-                                        </div>
-                                        <div className="text-[10px] text-gray-500">
-                                            {new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                        <div className="text-xs font-bold text-gray-800 flex justify-between">
+                                            <span>{new Date(call.started_at).toLocaleDateString('ru-RU')}</span>
+                                            <span className="text-[10px] text-gray-500 font-normal">
+                                                {new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
                                         </div>
                                         {call.transcript && (
                                             <div className="mt-2 text-[10px] text-blue-500 flex items-center gap-1">
                                                 <span>📝 Транскрибация</span>
+                                            </div>
+                                        )}
+                                        {selectedCallIndex === idx && (
+                                            <div className="mt-2 text-[9px] text-blue-600 font-bold md:hidden text-right">
+                                                Выбран ✔
                                             </div>
                                         )}
                                     </button>
@@ -1040,14 +1070,14 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                     </div>
 
                     {/* Content: Transcription + Analysis */}
-                    <div className="flex-1 flex flex-col min-w-0 bg-white">
+                    <div className={`${mobileTab !== 'calls' ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 bg-white`}>
                         {loading ? (
                             <div className="flex-1" />
                         ) : activeCall ? (
                             <div className="flex-1 flex flex-col overflow-hidden">
-                                {/* Call Stats Header */}
-                                <div className="p-4 border-b bg-white flex items-center justify-between">
-                                    <div className="flex items-center gap-6">
+                                {/* Call Stats Header (Always visible when not in 'calls' tab on mobile) */}
+                                <div className="p-3 md:p-4 border-b bg-white flex flex-col md:flex-row md:items-center justify-between gap-2 flex-shrink-0">
+                                    <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6 w-full">
                                         <div>
                                             <span className="text-[9px] text-gray-400 uppercase font-black block">Откуда/Куда</span>
                                             <span className="text-xs font-mono font-bold text-gray-700">
@@ -1055,56 +1085,56 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                             </span>
                                         </div>
                                         {activeCall.recording_url && (
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 w-full md:w-auto">
                                                 <audio
                                                     src={activeCall.raw_payload?.storage_url || `/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
                                                     controls
-                                                    className="h-8 w-64 accent-blue-600"
+                                                    className="h-10 md:h-8 md:w-64 w-full accent-blue-600"
                                                 />
                                                 <a
                                                     href={activeCall.raw_payload?.storage_url || activeCall.recording_url}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
-                                                    title="Открыть в новом окне"
-                                                    className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600 transition-colors"
+                                                    title="Скачать/Открыть"
+                                                    className="p-1.5 px-3 text-xs font-bold hover:bg-gray-100 rounded-xl text-gray-400 hover:text-blue-600 transition-colors flex items-center gap-1 whitespace-nowrap border border-gray-100 hidden md:flex"
                                                 >
-                                                    🔗
+                                                    <span>Скачать</span>
                                                 </a>
                                             </div>
                                         )}
                                     </div>
                                 </div>
 
-                                <div className="flex-1 flex overflow-hidden">
+                                <div className="flex-1 flex overflow-hidden flex-col md:flex-row">
                                     {/* Left: Transcription */}
-                                    <div className="flex-1 flex flex-col border-r overflow-hidden">
-                                        <div className="p-3 bg-gray-50/50 border-b">
+                                    <div className={`${mobileTab === 'transcript' ? 'flex' : 'hidden'} md:flex flex-1 flex-col border-r overflow-hidden`}>
+                                        <div className="p-2 md:p-3 bg-gray-50/50 border-b flex-shrink-0 hidden md:block">
                                             <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Текст разговора</h4>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50/20">
+                                        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 bg-gray-50/20">
                                             {activeCall.transcript ? (
-                                                <div className="text-xs text-gray-700 leading-relaxed font-sans space-y-1">
+                                                <div className="text-xs md:text-sm text-gray-700 leading-relaxed font-sans space-y-1">
                                                     {activeCall.transcript.split('\n').map((line: string, i: number) => {
                                                         const isManager = line.startsWith('Менеджер:');
                                                         const isClient = line.startsWith('Клиент:');
 
                                                         if (isManager) {
                                                             return (
-                                                                <div key={i}>
-                                                                    <span className="text-blue-700 font-bold italic">Менеджер:</span>
+                                                                <div key={i} className="mb-2">
+                                                                    <span className="text-blue-700 font-bold italic">Менеджер: </span>
                                                                     {line.replace('Менеджер:', '')}
                                                                 </div>
                                                             );
                                                         }
                                                         if (isClient) {
                                                             return (
-                                                                <div key={i}>
-                                                                    <span className="text-orange-600 font-bold italic">Клиент:</span>
+                                                                <div key={i} className="mb-2">
+                                                                    <span className="text-orange-600 font-bold italic">Клиент: </span>
                                                                     {line.replace('Клиент:', '')}
                                                                 </div>
                                                             );
                                                         }
-                                                        return <div key={i}>{line}</div>;
+                                                        return <div key={i} className="mb-2">{line}</div>;
                                                     })}
                                                 </div>
                                             ) : (
@@ -1133,67 +1163,75 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                     </div>
 
                                     {/* Right: Maxim's Analysis */}
-                                    <div className="w-96 flex flex-col overflow-hidden bg-gray-50/10">
-                                        <div className="p-3 bg-fuchsia-50 border-b border-fuchsia-100 flex items-center gap-2">
+                                    <div className={`${mobileTab === 'analysis' ? 'flex' : 'hidden'} md:flex w-full md:w-96 flex-col overflow-hidden bg-gray-50/10`}>
+                                        <div className="p-2 md:p-3 bg-fuchsia-50 border-b border-fuchsia-100 flex items-center gap-2 flex-shrink-0">
                                             <span className="text-lg">🤓</span>
                                             <div>
                                                 <h4 className="text-xs font-bold text-fuchsia-900">Анализ Максима</h4>
                                                 <p className="text-[9px] text-fuchsia-600 font-black uppercase tracking-tighter leading-none">Сводный срез по всем звонкам</p>
                                             </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                                        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 md:space-y-6">
                                             {/* Summary */}
-                                            {order.evaluator_comment && (
+                                            {order.evaluator_comment ? (
                                                 <div>
                                                     <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                                                         <span>📋</span> Общее резюме
                                                     </h5>
-                                                    <div className="text-xs text-gray-800 bg-white p-3 rounded-xl border border-gray-100 shadow-sm leading-relaxed font-medium">
+                                                    <div className="text-xs text-gray-800 bg-white p-3 md:p-4 rounded-xl border border-gray-100 shadow-sm leading-relaxed font-medium">
                                                         {order.evaluator_comment}
                                                     </div>
+                                                </div>
+                                            ) : (
+                                                <div className="text-center text-xs text-gray-400 italic py-8">
+                                                    Никакого анализа по этому заказу еще нет.
                                                 </div>
                                             )}
 
                                             {/* Criteria reasoning */}
-                                            <div>
-                                                <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
-                                                    <span>🔍</span> Ключевые моменты (Обоснование)
-                                                </h5>
-                                                <div className="space-y-3">
-                                                    {Object.entries(order.score_breakdown || {})
-                                                        .filter(([_, data]) => !!data.reason)
-                                                        .map(([key, data]) => (
-                                                            <div key={key} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-                                                                <div className="flex items-center gap-1.5 mb-1.5">
-                                                                    <span className={data.result ? 'text-green-500' : 'text-red-500'}>
-                                                                        {data.result ? '✅' : '❌'}
-                                                                    </span>
-                                                                    <span className="text-[10px] font-bold text-gray-700">
-                                                                        {/* Simple key normalization for display */}
-                                                                        {key.replace('script_', '').replace(/_/g, ' ')}
-                                                                    </span>
+                                            {order.score_breakdown && Object.keys(order.score_breakdown).length > 0 && (
+                                                <div>
+                                                    <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                                        <span>🔍</span> Ключевые моменты
+                                                    </h5>
+                                                    <div className="space-y-2 md:space-y-3">
+                                                        {Object.entries(order.score_breakdown || {})
+                                                            .filter(([_, data]) => !!data.reason)
+                                                            .map(([key, data]) => (
+                                                                <div key={key} className="bg-white p-2.5 md:p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                                    <div className="flex items-center gap-1.5 mb-1.5">
+                                                                        <span className={data.result ? 'text-green-500' : 'text-red-500'}>
+                                                                            {data.result ? '✅' : '❌'}
+                                                                        </span>
+                                                                        <span className="text-[10px] font-bold text-gray-700">
+                                                                            {key.replace('script_', '').replace(/_/g, ' ')}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[11px] text-gray-600 leading-normal italic">
+                                                                        «{data.reason}»
+                                                                    </p>
                                                                 </div>
-                                                                <p className="text-[11px] text-gray-600 leading-normal italic">
-                                                                    «{data.reason}»
-                                                                </p>
-                                                            </div>
-                                                        ))}
+                                                            ))}
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-                                Выберите звонок для просмотра
+                            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-8 text-center bg-gray-50">
+                                <div className="max-w-xs">
+                                    <div className="text-4xl mb-4">👆</div>
+                                    Выберите звонок из списка на вкладке "Звонки", чтобы просмотреть детали.
+                                </div>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                <div className="hidden md:flex p-4 border-t bg-gray-50 flex-shrink-0 justify-end">
                     <button
                         onClick={onClose}
                         className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold text-xs hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95"
