@@ -3,19 +3,51 @@ import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-    const { data: scores, error } = await supabase
-        .from('okk_order_scores')
-        .select('*')
-        .order('eval_date', { ascending: false })
-        .limit(500);
+export async function GET(req: Request) {
+    const { searchParams } = new URL(req.url);
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
 
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    // 1. Получаем рабочие статусы
+    const { data: settings } = await supabase
+        .from('status_settings')
+        .select('code')
+        .eq('is_working', true);
+
+    const workingStatuses = (settings || []).map(s => s.code);
+
+    // 2. Базовый запрос к orders (все активные)
+    let ordersQuery = supabase
+        .from('orders')
+        .select('order_id, status, created_at, manager_id')
+        .in('status', workingStatuses)
+        .lt('order_id', 99900000); // Игнорируем тестовые
+
+    if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
+    if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
+
+    const { data: activeOrders, error: ordersError } = await ordersQuery
+        .order('created_at', { ascending: false })
+        .limit(1000);
+
+    if (ordersError) {
+        return NextResponse.json({ error: ordersError.message }, { status: 500 });
     }
 
-    // Загружаем имена менеджеров (first_name + last_name)
-    const managerIds = Array.from(new Set((scores || []).map(s => s.manager_id).filter(Boolean)));
+    // 3. Получаем оценки для этих заказов
+    const orderIds = (activeOrders || []).map(o => o.order_id);
+    let scoresMap: Record<number, any> = {};
+    if (orderIds.length > 0) {
+        const { data: scores } = await supabase
+            .from('okk_order_scores')
+            .select('*')
+            .in('order_id', orderIds);
+
+        scoresMap = Object.fromEntries((scores || []).map(s => [s.order_id, s]));
+    }
+
+    // 4. Загружаем имена менеджеров
+    const managerIds = Array.from(new Set((activeOrders || []).map(o => o.manager_id).filter(Boolean)));
     let managerMap: Record<number, string> = {};
     if (managerIds.length > 0) {
         const { data: managers } = await supabase
@@ -31,8 +63,8 @@ export async function GET() {
         );
     }
 
-    // Загружаем читаемые названия и цвета статусов из таблицы statuses
-    const statusCodes = Array.from(new Set((scores || []).map(s => s.order_status).filter(Boolean)));
+    // 5. Загружаем статусы
+    const statusCodes = Array.from(new Set((activeOrders || []).map(o => o.status).filter(Boolean)));
     let statusMap: Record<string, { name: string; color: string | null }> = {};
     if (statusCodes.length > 0) {
         const { data: statuses } = await supabase
@@ -43,12 +75,20 @@ export async function GET() {
         statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
     }
 
-    const enriched = (scores || []).map(s => ({
-        ...s,
-        manager_name: s.manager_id ? (managerMap[s.manager_id] || `#${s.manager_id}`) : '—',
-        status_label: s.order_status ? (statusMap[s.order_status]?.name || s.order_status) : '—',
-        status_color: s.order_status ? (statusMap[s.order_status]?.color || '#E5E7EB') : '#E5E7EB',
-    }));
+    // 6. Обогащаем список заказов оценками
+    const enriched = (activeOrders || []).map(o => {
+        const score = scoresMap[o.order_id] || {};
+        return {
+            ...score,
+            order_id: o.order_id,
+            order_status: o.status,
+            manager_id: o.manager_id,
+            eval_date: score.eval_date || null,
+            manager_name: o.manager_id ? (managerMap[o.manager_id] || `#${o.manager_id}`) : '—',
+            status_label: o.status ? (statusMap[o.status]?.name || o.status) : '—',
+            status_color: o.status ? (statusMap[o.status]?.color || '#E5E7EB') : '#E5E7EB',
+        };
+    });
 
     return NextResponse.json({ scores: enriched });
 }

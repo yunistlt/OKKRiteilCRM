@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 interface OrderScore {
     order_id: number;
+    created_at?: string;
     manager_id: number | null;
     mop_name: string | null;
     order_status: string | null;
@@ -418,13 +420,17 @@ const SCORE_COLS: Array<{ key: string; label: string; tip: TooltipInfo }> = [
 ];
 
 export default function OKKPage() {
+    const searchParams = useSearchParams();
+    const from = searchParams.get('from') || '';
+    const to = searchParams.get('to') || '';
+
     const [scores, setScores] = useState<OrderScore[]>([]);
     const [loading, setLoading] = useState(true);
     const [running, setRunning] = useState(false);
     const [runResult, setRunResult] = useState<string | null>(null);
     const [filterManager, setFilterManager] = useState('');
     const [filterStatus, setFilterStatus] = useState('');
-    const [sortBy, setSortBy] = useState<string>('eval_date');
+    const [sortBy, setSortBy] = useState<string>('order_id');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [runLimit, setRunLimit] = useState(50);
     const [targetOrderId, setTargetOrderId] = useState('');
@@ -448,15 +454,19 @@ export default function OKKPage() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch('/api/okk/scores');
+            const query = new URLSearchParams();
+            if (from) query.set('from', from);
+            if (to) query.set('to', to);
+
+            const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
             setScores(json.scores || []);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [from, to]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => { load(); }, [load, from, to]);
 
     const runAll = async () => {
         setRunning(true);
