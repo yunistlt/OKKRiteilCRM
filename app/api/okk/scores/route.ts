@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     // 2. Базовый запрос к orders (все активные)
     let ordersQuery = supabase
         .from('orders')
-        .select('order_id, status, created_at, manager_id', { count: 'exact' })
+        .select('order_id, status, created_at, manager_id, totalsumm', { count: 'exact' })
         .in('status', workingStatuses)
         .lt('order_id', 99900000); // Игнорируем тестовые
 
@@ -96,6 +96,7 @@ export async function GET(req: Request) {
             manager_name: o.manager_id ? (managerMap[o.manager_id] || `#${o.manager_id}`) : '—',
             status_label: o.status ? (statusMap[o.status]?.name || o.status) : '—',
             status_color: o.status ? (statusMap[o.status]?.color || '#E5E7EB') : '#E5E7EB',
+            total_sum: o.totalsumm || 0,
         };
     });
 
