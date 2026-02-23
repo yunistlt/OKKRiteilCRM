@@ -995,28 +995,57 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
     const [loading, setLoading] = useState(true);
     const [selectedCallIndex, setSelectedCallIndex] = useState(0);
 
-    useEffect(() => {
-        const fetchCalls = async () => {
-            setLoading(true);
-            try {
-                const res = await fetch(`/api/okk/scores/${order.order_id}/calls`);
-                const data = await res.json();
-                setCalls(data.calls || []);
-                if (data.calls?.length > 0) {
-                    // Select first call with transcript if available
-                    const firstWithTranscript = data.calls.findIndex((c: any) => !!c.transcript);
-                    setSelectedCallIndex(firstWithTranscript !== -1 ? firstWithTranscript : 0);
-                }
-            } catch (e) {
-                console.error(e);
-            } finally {
-                setLoading(false);
+    const [transcribing, setTranscribing] = useState(false);
+
+    const fetchCalls = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/okk/scores/${order.order_id}/calls`);
+            const data = await res.json();
+            setCalls(data.calls || []);
+            if (data.calls?.length > 0) {
+                // Select first call with transcript if available
+                const firstWithTranscript = data.calls.findIndex((c: any) => !!c.transcript);
+                setSelectedCallIndex(firstWithTranscript !== -1 ? firstWithTranscript : 0);
             }
-        };
-        fetchCalls();
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
     }, [order.order_id]);
 
+    useEffect(() => {
+        fetchCalls();
+    }, [fetchCalls]);
+
     const activeCall = calls[selectedCallIndex];
+
+    const handleTranscribe = async () => {
+        if (!activeCall?.recording_url || transcribing) return;
+        setTranscribing(true);
+        try {
+            const res = await fetch('/api/okk/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    callId: activeCall.telphin_call_id,
+                    recordingUrl: activeCall.recording_url
+                })
+            });
+            const data = await res.json();
+            if (data.success) {
+                // Refresh calls to get the new transcript
+                await fetchCalls();
+            } else {
+                alert(`Ошибка транскрибации: ${data.error}`);
+            }
+        } catch (e: any) {
+            alert(`Ошибка: ${e.message}`);
+        } finally {
+            setTranscribing(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -1094,14 +1123,22 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                             <span className="text-xs font-mono font-bold text-gray-700">{activeCall.from_number} → {activeCall.to_number}</span>
                                         </div>
                                         {activeCall.recording_url && (
-                                            <a
-                                                href={activeCall.recording_url}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors"
-                                            >
-                                                🎧 Слушать запись
-                                            </a>
+                                            <div className="flex items-center gap-3">
+                                                <audio
+                                                    src={activeCall.recording_url}
+                                                    controls
+                                                    className="h-8 w-64 accent-blue-600"
+                                                />
+                                                <a
+                                                    href={activeCall.recording_url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title="Открыть в новой вкладке"
+                                                    className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600 transition-colors"
+                                                >
+                                                    🔗
+                                                </a>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -1118,9 +1155,25 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                     {activeCall.transcript}
                                                 </div>
                                             ) : (
-                                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-2">
-                                                    <span className="text-2xl">🔇</span>
-                                                    <p className="text-xs italic">Транскрибация недоступна</p>
+                                                <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+                                                    <span className="text-3xl">🔇</span>
+                                                    <div className="text-center">
+                                                        <p className="text-xs italic mb-4">Транскрибация недоступна</p>
+                                                        {activeCall.recording_url && (
+                                                            <button
+                                                                onClick={handleTranscribe}
+                                                                disabled={transcribing}
+                                                                className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 disabled:opacity-50 transition-all active:scale-95 border border-blue-100 shadow-sm"
+                                                            >
+                                                                {transcribing ? (
+                                                                    <span className="flex items-center gap-2">
+                                                                        <div className="w-3 h-3 border-2 border-blue-300 border-b-blue-600 rounded-full animate-spin"></div>
+                                                                        Обработка...
+                                                                    </span>
+                                                                ) : 'Запустить транскрибацию'}
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
