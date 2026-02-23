@@ -445,6 +445,7 @@ function OKKContent() {
     const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
     const [activeExplain, setActiveExplain] = useState<{ label: string, info: any, pos: { top: number, left: number } } | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 });
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Close dropdown and popover on outside click
@@ -465,16 +466,28 @@ function OKKContent() {
             const query = new URLSearchParams();
             if (from) query.set('from', from);
             if (to) query.set('to', to);
+            query.set('page', pagination.page.toString());
+            query.set('pageSize', pagination.pageSize.toString());
+            if (filterManager) query.set('manager', filterManager);
+            if (filterStatus) query.set('status', filterStatus);
 
             const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
             setScores(json.scores || []);
+            if (json.pagination) {
+                setPagination(prev => ({ ...prev, ...json.pagination }));
+            }
         } finally {
             setLoading(false);
         }
-    }, [from, to]);
+    }, [from, to, pagination.page, pagination.pageSize, filterManager, filterStatus]);
 
-    useEffect(() => { load(); }, [load, from, to]);
+    useEffect(() => { load(); }, [load, from, to, pagination.page, pagination.pageSize]);
+
+    // Reset page to 1 when filters change
+    useEffect(() => {
+        setPagination(prev => ({ ...prev, page: 1 }));
+    }, [from, to, filterManager, filterStatus]);
 
     const runAll = async () => {
         setRunning(true);
@@ -545,17 +558,11 @@ function OKKContent() {
         }
     };
 
-    const filtered = scores
-        .filter(s => {
-            if (filterManager && !(s.manager_name || s.mop_name || '')?.toLowerCase().includes(filterManager.toLowerCase())) return false;
-            if (filterStatus && s.order_status !== filterStatus) return false;
-            return true;
-        })
-        .sort((a, b) => {
-            const va = (a as any)[sortBy] ?? '';
-            const vb = (b as any)[sortBy] ?? '';
-            return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
-        });
+    const filtered = [...scores].sort((a, b) => {
+        const va = (a as any)[sortBy] ?? '';
+        const vb = (b as any)[sortBy] ?? '';
+        return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
+    });
 
     // Средний балл по всему ОП (все заказы с оценкой)
     const scoredOrders = scores.filter(s => s.deal_score_pct !== null && s.deal_score_pct !== undefined);
@@ -653,6 +660,30 @@ function OKKContent() {
                     )}
                 </div>
 
+                <div className="flex items-center gap-4 ml-auto">
+                    {pagination.totalPages > 1 && (
+                        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg p-1 shadow-sm">
+                            <button
+                                onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                                disabled={pagination.page === 1}
+                                className="p-1 hover:bg-gray-50 disabled:opacity-30 rounded transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                            </button>
+                            <span className="text-[11px] font-bold text-gray-600 px-2 min-w-[80px] text-center">
+                                Стр. {pagination.page} из {pagination.totalPages}
+                            </span>
+                            <button
+                                onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
+                                disabled={pagination.page === pagination.totalPages}
+                                className="p-1 hover:bg-gray-50 disabled:opacity-30 rounded transition-colors"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                        </div>
+                    )}
+                </div>
+
                 <div className="flex items-center gap-3 bg-gray-50 p-1.5 rounded-xl border border-gray-100">
                     <div className="flex flex-col px-2">
                         <span className="text-[9px] text-gray-400 font-black uppercase tracking-tighter">Заказ №</span>
@@ -700,7 +731,7 @@ function OKKContent() {
             )}
 
             {/* Filters */}
-            <div className="px-4 py-2 flex gap-2 bg-white border-b border-gray-100 flex-shrink-0">
+            <div className="px-4 py-2 flex items-center gap-2 bg-white border-b border-gray-100 flex-shrink-0">
                 <input type="text" placeholder="🔍 Менеджер" value={filterManager} onChange={e => setFilterManager(e.target.value)}
                     className="border border-gray-200 rounded px-2 py-1 text-sm w-40 focus:outline-none focus:ring-1 focus:ring-blue-400" />
                 {/* Custom Status Dropdown */}
@@ -755,7 +786,20 @@ function OKKContent() {
                 {(filterManager || filterStatus) && (
                     <button onClick={() => { setFilterManager(''); setFilterStatus(''); }} className="text-xs text-gray-400 hover:text-gray-600">✕ Сбросить</button>
                 )}
-                <span className="ml-auto text-xs text-gray-400 self-center">💡 Наведите на заголовок колонки для подсказки</span>
+
+                <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase">На странице:</span>
+                    <select
+                        value={pagination.pageSize}
+                        onChange={e => setPagination(prev => ({ ...prev, pageSize: parseInt(e.target.value), page: 1 }))}
+                        className="border border-gray-200 rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    >
+                        <option value={20}>20</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value={200}>200</option>
+                    </select>
+                </div>
             </div>
 
             {/* Table */}
@@ -854,6 +898,55 @@ function OKKContent() {
                     </tbody>
                 </table>
             </div>
+
+            {/* Bottom Pagination */}
+            {pagination.totalPages > 1 && (
+                <div className="px-4 py-3 bg-white border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+                    <span className="text-[11px] text-gray-500 font-medium">
+                        Показано {scores.length} из {pagination.totalCount} заказов
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))}
+                            disabled={pagination.page === 1}
+                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                        >
+                            Назад
+                        </button>
+                        <div className="flex items-center gap-1">
+                            {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                                let pageNum = i + 1;
+                                // Sliding window logic for page numbers
+                                if (pagination.totalPages > 5) {
+                                    if (pagination.page > 3) {
+                                        pageNum = pagination.page - 2 + i;
+                                        if (pageNum + (4 - i) > pagination.totalPages) {
+                                            pageNum = pagination.totalPages - 4 + i;
+                                        }
+                                    }
+                                }
+                                if (pageNum > pagination.totalPages) return null;
+                                return (
+                                    <button
+                                        key={pageNum}
+                                        onClick={() => setPagination(prev => ({ ...prev, page: pageNum }))}
+                                        className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${pagination.page === pageNum ? 'bg-blue-600 text-white shadow-lg shadow-blue-100' : 'hover:bg-gray-100 text-gray-600 border border-transparent hover:border-gray-200'}`}
+                                    >
+                                        {pageNum}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <button
+                            onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))}
+                            disabled={pagination.page === pagination.totalPages}
+                            className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                        >
+                            Вперед
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {activeExplain && (
                 <ExplainPopover

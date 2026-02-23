@@ -7,6 +7,10 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const filterManager = searchParams.get('manager');
+    const filterStatus = searchParams.get('status');
 
     // 1. Получаем рабочие статусы
     const { data: settings } = await supabase
@@ -19,16 +23,21 @@ export async function GET(req: Request) {
     // 2. Базовый запрос к orders (все активные)
     let ordersQuery = supabase
         .from('orders')
-        .select('order_id, status, created_at, manager_id')
+        .select('order_id, status, created_at, manager_id', { count: 'exact' })
         .in('status', workingStatuses)
         .lt('order_id', 99900000); // Игнорируем тестовые
 
     if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
     if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
+    if (filterStatus) ordersQuery = ordersQuery.eq('status', filterStatus);
 
-    const { data: activeOrders, error: ordersError } = await ordersQuery
+    // Пагинация
+    const fromIdx = (page - 1) * pageSize;
+    const toIdx = fromIdx + pageSize - 1;
+
+    const { data: activeOrders, error: ordersError, count: totalCount } = await ordersQuery
         .order('created_at', { ascending: false })
-        .limit(1000);
+        .range(fromIdx, toIdx);
 
     if (ordersError) {
         return NextResponse.json({ error: ordersError.message }, { status: 500 });
@@ -75,8 +84,8 @@ export async function GET(req: Request) {
         statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
     }
 
-    // 6. Обогащаем список заказов оценками
-    const enriched = (activeOrders || []).map(o => {
+    // 6. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
+    let enriched = (activeOrders || []).map(o => {
         const score = scoresMap[o.order_id] || {};
         return {
             ...score,
@@ -90,5 +99,18 @@ export async function GET(req: Request) {
         };
     });
 
-    return NextResponse.json({ scores: enriched });
+    if (filterManager) {
+        const lowFilter = filterManager.toLowerCase();
+        enriched = enriched.filter(e => e.manager_name.toLowerCase().includes(lowFilter));
+    }
+
+    return NextResponse.json({
+        scores: enriched,
+        pagination: {
+            totalCount: totalCount || 0,
+            page,
+            pageSize,
+            totalPages: Math.ceil((totalCount || 0) / pageSize)
+        }
+    });
 }
