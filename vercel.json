@@ -32,6 +32,10 @@
         {
             "path": "/api/cron/system-audit",
             "schedule": "0 */4 * * *"
+        },
+        {
+            "path": "/api/cron/telegram-notify",
+            "schedule": "*/10 * * * *"
         }
     ]
 }

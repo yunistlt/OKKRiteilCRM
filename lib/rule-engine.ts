@@ -393,50 +393,11 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             } else {
                 // Send Telegram Notification ONLY if enabled in rule
                 if (rule.notify_telegram) {
-                    try {
-                        const { generateHumanNotification } = await import('./semantic');
-
-                        // Fetch manager names and potential telegram usernames
-                        const managerIds = Array.from(new Set(violations.map((v: any) => v.manager_id).filter(Boolean)));
-                        const managerMap = new Map();
-                        if (managerIds.length > 0) {
-                            // Querying * so we don't crash if telegram_username column doesn't exist yet
-                            const { data: managers } = await supabase.from('managers').select('*').in('id', managerIds);
-                            if (managers) managers.forEach((m: any) => managerMap.set(m.id, m));
-                        }
-
-                        // We only process up to 30 notifications per rule run to prevent Vercel 300s timeout
-                        const notifyViolations = violations.slice(0, 30);
-                        if (violations.length > 30) {
-                            console.warn(`[RuleEngine] Truncated notifications from ${violations.length} to 30 to prevent timeout.`);
-                        }
-
-                        // Await the messages sequentially to respect rate limits and keep Vercel alive
-                        for (const v of notifyViolations) {
-                            const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
-
-                            const managerData = managerMap.get(v.manager_id);
-                            const managerName = managerData?.first_name || '';
-                            const telegramUsername = managerData?.raw_data?.telegram_username || managerData?.telegram_username || '';
-                            const persona = Math.random() > 0.5 ? 'anna' : 'igor';
-
-                            const aiMessage = await generateHumanNotification(
-                                managerName,
-                                v.order_id.toString(),
-                                rule.name,
-                                details,
-                                telegramUsername,
-                                persona
-                            );
-
-                            await sendTelegramNotification(aiMessage);
-
-                            // Artificial delay of 1.5 seconds to bypass Telegram Rate-Limit (max 1 msg/sec/chat)
-                            await new Promise(r => setTimeout(r, 1500));
-                        }
-                    } catch (notifyError) {
-                        console.error('[RuleEngine] Failed to prepare notification:', notifyError);
-                    }
+                    // [UPDATED] Immediate dispatch disabled due to Telegram 429 rate limits and 
+                    // Vercel execution timeouts on large audits. 
+                    // Notifications are now paced and handled asynchronously by the Vercel Cron Job 
+                    // at /api/cron/telegram-notify using the okk_violations.telegram_notified flag.
+                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Notifications queued for background Cron processing.`);
                 }
             }
         }
