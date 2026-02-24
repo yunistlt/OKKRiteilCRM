@@ -117,6 +117,11 @@ export async function POST(request: Request) {
                         managerComment = ''; // Ensure empty for "No comment" rule
                         steps.push(`💬 Условие: Отсутствие новых комментариев`);
                     }
+                    if (cond.block === 'reschedule_policy_check') {
+                        eventType = 'custom_data_kontakta';
+                        fieldName = 'data_kontakta';
+                        steps.push(`📅 Условие: Проверка регламента переноса даты контакта`);
+                    }
                 }
             }
         } else {
