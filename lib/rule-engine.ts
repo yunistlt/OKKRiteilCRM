@@ -396,12 +396,13 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                     try {
                         const { generateHumanNotification } = await import('./semantic');
 
-                        // Fetch manager names
+                        // Fetch manager names and potential telegram usernames
                         const managerIds = Array.from(new Set(violations.map((v: any) => v.manager_id).filter(Boolean)));
                         const managerMap = new Map();
                         if (managerIds.length > 0) {
-                            const { data: managers } = await supabase.from('managers').select('id, first_name').in('id', managerIds);
-                            if (managers) managers.forEach((m: any) => managerMap.set(m.id, m.first_name));
+                            // Querying * so we don't crash if telegram_username column doesn't exist yet
+                            const { data: managers } = await supabase.from('managers').select('*').in('id', managerIds);
+                            if (managers) managers.forEach((m: any) => managerMap.set(m.id, m));
                         }
 
                         // We only process up to 30 notifications per rule run to prevent Vercel 300s timeout
@@ -413,13 +414,19 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                         // Await the messages sequentially to respect rate limits and keep Vercel alive
                         for (const v of notifyViolations) {
                             const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
-                            const managerName = managerMap.get(v.manager_id) || '';
+
+                            const managerData = managerMap.get(v.manager_id);
+                            const managerName = managerData?.first_name || '';
+                            const telegramUsername = managerData?.telegram_username || '';
+                            const persona = Math.random() > 0.5 ? 'anna' : 'igor';
 
                             const aiMessage = await generateHumanNotification(
                                 managerName,
                                 v.order_id.toString(),
                                 rule.name,
-                                details
+                                details,
+                                telegramUsername,
+                                persona
                             );
 
                             await sendTelegramNotification(aiMessage);
