@@ -76,7 +76,8 @@ export async function POST(request: Request) {
         let managerComment = '';
 
         // Checklist / Call specific
-        const isChecklist = !!rule.checklist || !!body.checklist; // Check body too
+        const hasChecklist = (arr: any) => Array.isArray(arr) && arr.length > 0;
+        const isChecklist = hasChecklist(rule.checklist) || hasChecklist(body.checklist);
         const mockTranscript = body.mockTranscript || '';
 
         // CRITICAL: Use manager from rule parameters if specified
@@ -283,8 +284,8 @@ export async function POST(request: Request) {
             if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
         }
 
-        // Wait a bit for Supabase to persist/index the new event
-        await new Promise(r => setTimeout(r, 500));
+        // Wait for Supabase to persist/index the new event (Increased from 500 to 1500ms to fix race conditions)
+        await new Promise(r => setTimeout(r, 1500));
 
         // 3. Run Rule Engine
         console.log(`[RuleTest] Executing Rule Engine...`);
@@ -292,11 +293,6 @@ export async function POST(request: Request) {
         const startTime = new Date(eventTime.getTime() - 2 * 60 * 60 * 1000);
         const endTime = new Date(now.getTime() + 60 * 1000);
 
-        // runRuleEngine needs to use our service client ideally, but it imports utils/supabase. 
-        // We cannot change runRuleEngine signature easily here. 
-        // But if utils/supabase is configured with SERVICE key in env, it should work.
-        // Assuming runRuleEngine works (it seemed to work in my local test).
-        // BROADEN THE SEARCH WINDOW FOR THE TEST RUN
         // Scan back 7 days to ensure we catch rules with long delays (e.g. 48h+)
         const longAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const violationsFound = await runRuleEngine(
