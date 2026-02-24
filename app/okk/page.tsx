@@ -801,7 +801,7 @@ function OKKContent() {
                     <table className="text-xs border-collapse min-w-max w-full">
                         <thead className="sticky top-0 z-10">
                             <tr className="bg-gray-100 border-b border-gray-200 text-gray-700">
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[30px]">
+                                <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[60px]">Заказ</th>
@@ -822,7 +822,7 @@ function OKKContent() {
                                 <tr><td colSpan={100} className="text-center py-12 text-gray-400">Нет данных.</td></tr>
                             ) : filtered.map((s, i) => (
                                 <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${selectedIds.has(s.order_id) ? 'bg-blue-50/50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}`}>
-                                    <td className="px-2 py-1.5 sticky left-0 bg-white border-r border-gray-200 z-10 text-center"><input type="checkbox" checked={selectedIds.has(s.order_id)} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
+                                    <td className="w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 bg-white border-r border-gray-200 z-10 text-center align-middle"><input type="checkbox" checked={selectedIds.has(s.order_id)} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
                                     <td className="px-2 py-1.5 sticky left-[40px] bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                         <div className="flex items-center gap-2">
                                             <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
