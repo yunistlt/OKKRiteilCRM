@@ -30,9 +30,24 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
     const [historyDays, setHistoryDays] = useState(0);
     const [stageStatus, setStageStatus] = useState<string>(initialRule?.parameters?.stage_status || 'any');
 
-    // Reset when modal opens if not editing an existing rule
+    // Sync state when modal opens
     useEffect(() => {
-        if (isOpen && !initialRule) {
+        if (isOpen && initialRule) {
+            setPrompt(initialRule.description || '');
+            setLogic(initialRule.logic || {
+                trigger: { block: 'status_change', params: { target_status: 'new' } },
+                conditions: []
+            });
+            setChecklist(initialRule.checklist || []);
+            setRuleMode(!!initialRule.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
+            setExplanation(initialRule.description || '');
+            setName(initialRule.name || '');
+            setEntityType(initialRule.entity_type || 'call');
+            setSeverity(initialRule.severity || 'medium');
+            setPoints(initialRule.points || 10);
+            setNotifyTelegram(initialRule.notify_telegram || false);
+            setStageStatus(initialRule.parameters?.stage_status || 'any');
+        } else if (isOpen && !initialRule) {
             setPrompt(initialPrompt || '');
             setLogic({
                 trigger: { block: 'status_change', params: { target_status: 'new' } },
