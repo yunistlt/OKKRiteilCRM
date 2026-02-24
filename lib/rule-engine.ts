@@ -394,23 +394,39 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 // Send Telegram Notification ONLY if enabled in rule
                 if (rule.notify_telegram) {
                     try {
-                        const emoji = rule.severity === 'critical' ? '🆘' : rule.severity === 'high' ? '🔴' : '⚠️';
+                        const { generateHumanNotification } = await import('./semantic');
 
-                        for (const v of violations) {
+                        // Fetch manager names
+                        const managerIds = Array.from(new Set(violations.map((v: any) => v.manager_id).filter(Boolean)));
+                        const managerMap = new Map();
+                        if (managerIds.length > 0) {
+                            const { data: managers } = await supabase.from('managers').select('id, first_name').in('id', managerIds);
+                            if (managers) managers.forEach((m: any) => managerMap.set(m.id, m.first_name));
+                        }
+
+                        // We only process up to 30 notifications per rule run to prevent Vercel 300s timeout
+                        const notifyViolations = violations.slice(0, 30);
+                        if (violations.length > 30) {
+                            console.warn(`[RuleEngine] Truncated notifications from ${violations.length} to 30 to prevent timeout.`);
+                        }
+
+                        // Await the messages sequentially to respect rate limits and keep Vercel alive
+                        for (const v of notifyViolations) {
                             const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
-                            const points = v.points ? `(${v.points} баллов)` : '';
+                            const managerName = managerMap.get(v.manager_id) || '';
 
-                            const message = `
-<b>${emoji} Новое нарушение ${points}</b>
-<b>Правило:</b> ${rule.name}
-<b>Заказ:</b> <a href="https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit">#${v.order_id}</a>
-<b>Менеджер:</b> ${v.manager_id || 'Неизвестен'}
+                            const aiMessage = await generateHumanNotification(
+                                managerName,
+                                v.order_id.toString(),
+                                rule.name,
+                                details,
+                                v.points || 10
+                            );
 
-${details}
-                            `.trim();
+                            await sendTelegramNotification(aiMessage);
 
-                            // Fire and forget to not block execution
-                            sendTelegramNotification(message).catch(e => console.error('[RuleEngine] Async notify error:', e));
+                            // Artificial delay of 1.5 seconds to bypass Telegram Rate-Limit (max 1 msg/sec/chat)
+                            await new Promise(r => setTimeout(r, 1500));
                         }
                     } catch (notifyError) {
                         console.error('[RuleEngine] Failed to prepare notification:', notifyError);

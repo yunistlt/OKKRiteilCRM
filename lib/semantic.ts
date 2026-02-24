@@ -70,3 +70,48 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
 export async function analyzeTranscript(transcript: string, rulePrompt: string): Promise<SemanticResult> {
     return analyzeText(transcript, rulePrompt, 'Call Transcript');
 }
+
+export async function generateHumanNotification(managerName: string, orderId: string, ruleName: string, details: string, points: number): Promise<string> {
+    const systemPrompt = `
+You are a caring but strict Head of Quality Control.
+Your task is to write a single short, human-like Telegram message to a manager about a violation they committed.
+
+Requirements:
+1. Address the manager by name kindly/friendly (e.g., "${managerName}, привет!", "${managerName}, обрати внимание"). If the name is unknown or empty, use a polite gender-neutral fallback like "Коллега".
+2. Clearly state the order number: #${orderId}.
+3. Explain the violation simply and naturally based on the rule name ("${ruleName}") and details ("${details}"). No technical jargon. Make it sound like a human noticed it.
+4. Mention the penalty: -${points} points.
+5. Add a motivational or educational ending (e.g., "Такие нарушения снижают общий рейтинг отдела. Пожалуйста, будь внимательнее в будущем").
+6. The tone must be empathetic but firm. NEVER BE ROBOTIC. 
+7. DO NOT use Markdown bolding/italics excessively. Keep it clean.
+8. VARY YOUR RESPONSES. Do not use the exact same template every time. Change the opening, the phrasing, and the closing.
+
+Example 1:
+"Оль, по заказу №45818 я нашла нарушение. Ты перевела в статус 'Заявка квалифицирована', но не заполнила данные клиента. Обрати, пожалуйста, на это внимание. Списано 10 баллов. Такие ситуации снижают рейтинг всего отдела."
+
+Example 2:
+"Саша, привет! Посмотрела заказ №1234. Вижу, что сделка висит без звонка слишком долго. Пришлось списать 5 баллов. Давай не забывать про регламент, чтобы мы держали качество на высоте!"
+
+Generate the message now for manager "${managerName}" regarding order "${orderId}".
+    `;
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: `Rule: ${ruleName}\nDetails: ${details}\nPoints: ${points}` }
+            ],
+            temperature: 0.7, // Higher temperature for variety
+        });
+
+        const content = completion.choices[0].message.content;
+        if (!content) throw new Error('No content from LLM');
+
+        return content.trim();
+    } catch (e) {
+        console.error('Human Notification Generation Error:', e);
+        // Fallback to strict template if AI fails
+        return `⚠️ Коллега, зафиксировано нарушение по заказу #${orderId}.\nПравило: ${ruleName}\nПодробности: ${details}\nШтраф: ${points} баллов.`;
+    }
+}
