@@ -92,33 +92,33 @@ export async function GET(req: Request) {
         statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
     }
 
-    // 6. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
-    let enriched = (activeOrders || []).map((o, idx) => {
-        const score = scoresMap[o.order_id] || {};
+    // 6. Получаем реальные нарушения из okk_violations
+    let violationsMap: Record<number, any[]> = {};
+    if (orderIds.length > 0) {
+        const { data: violationsData } = await supabase
+            .from('okk_violations')
+            .select('*')
+            .in('order_id', orderIds)
+            .order('detected_at', { ascending: false });
 
-        // ВРЕМЕННЫЙ МОК ДЛЯ ДЕМОНСТРАЦИИ НАРУШЕНИЙ
-        // TODO: Заменить на реальный запрос к таблице okk_violations
-        const mockViolations = [];
-        if (o.order_id % 3 === 0) {
-            mockViolations.push({
-                description: 'Перевод в статус "Заявка квалифицирована" без заполнения контактных данных',
-                penalty_points: 20,
-                created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-                status_from: 'Новый',
-                status_to: 'Заявка квалифицирована',
-                manager_name: managerMap[o.manager_id] || 'Менеджер'
+        if (violationsData) {
+            violationsData.forEach(v => {
+                if (!violationsMap[v.order_id]) violationsMap[v.order_id] = [];
+                violationsMap[v.order_id].push({
+                    description: v.details || 'Нарушение правила',
+                    penalty_points: v.points || 0,
+                    created_at: v.detected_at || v.violation_time || new Date().toISOString(),
+                    status_from: null, // У нас нет этих данных в текущей схеме
+                    status_to: null,
+                    manager_name: managerMap[v.manager_id] || 'Менеджер'
+                });
             });
         }
-        if (o.order_id % 5 === 0) {
-            mockViolations.push({
-                description: 'Просрочен дедлайн первого контакта (SLA)',
-                penalty_points: 15,
-                created_at: new Date(Date.now() - 86400000).toISOString(),
-                status_from: null,
-                status_to: null,
-                manager_name: managerMap[o.manager_id] || 'Менеджер'
-            });
-        }
+    }
+
+    // 7. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
+    let enriched = (activeOrders || []).map(o => {
+        const score = scoresMap[o.order_id] || {};
 
         return {
             ...score,
@@ -130,7 +130,7 @@ export async function GET(req: Request) {
             status_label: o.status ? (statusMap[o.status]?.name || o.status) : '—',
             status_color: o.status ? (statusMap[o.status]?.color || '#E5E7EB') : '#E5E7EB',
             total_sum: o.totalsumm || 0,
-            violations: mockViolations // Временно отдаем моки
+            violations: violationsMap[o.order_id] || []
         };
     });
 

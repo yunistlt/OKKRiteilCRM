@@ -618,7 +618,7 @@ ${transcript.substring(0, 15000)}`
 // ═══════════════════════════════════════════════════════
 // Расчёт итогового % (X, Y, AR, AS)
 // ═══════════════════════════════════════════════════════
-function calcScores(data: Record<string, any>) {
+function calcScores(data: Record<string, any>, totalPenalty: number = 0) {
     // Оценка заполнения сделки (col Y: % правил заполнения/ведения)
     const dealChecks = [
         { key: 'tz_received', val: data.tz_received },
@@ -638,10 +638,10 @@ function calcScores(data: Record<string, any>) {
 
     const dealPassed = dealChecks.filter(chk => !!chk.val).length;
     const deal_score = dealChecks.length > 0 ? dealPassed : 0;
-    const deal_score_pct = dealChecks.length > 0 ? Math.round((dealPassed / dealChecks.length) * 100) : null;
+    let deal_score_pct = dealChecks.length > 0 ? Math.round((dealPassed / dealChecks.length) * 100) : null;
 
     // Скрипт (Максим возвращает {result, reason})
-    const script_score_pct = data.script_score_pct ?? null;
+    let script_score_pct = data.script_score_pct ?? null;
     const script_score = script_score_pct !== null ? Math.round((script_score_pct / 100) * 14) : null;
 
     // Общий %
@@ -650,6 +650,15 @@ function calcScores(data: Record<string, any>) {
         total_score = Math.round((deal_score_pct + script_score_pct) / 2);
     } else if (deal_score_pct !== null) total_score = deal_score_pct;
     else if (script_score_pct !== null) total_score = script_score_pct;
+
+    // Вычитаем штрафные баллы
+    if (total_score !== null && totalPenalty > 0) {
+        total_score = Math.max(0, total_score - totalPenalty);
+        // Также уменьшаем deal_score_pct пропорционально, чтобы отразить нарушения на графиках если нужно
+        if (deal_score_pct !== null) {
+            deal_score_pct = Math.max(0, deal_score_pct - totalPenalty);
+        }
+    }
 
     // Сборка breakdown для UI
     const score_breakdown: Record<string, any> = {};
@@ -704,9 +713,17 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     // Максим оценивает скрипт (используя данные от Анны)
     const script = await evaluateScript(facts._transcript, annaInsights);
 
+    // Получаем список нарушений из Rule Engine, чтобы вычесть штрафные баллы
+    const { data: orderViolations } = await supabase
+        .from('okk_violations')
+        .select('points')
+        .eq('order_id', orderId);
+
+    const totalPenalty = (orderViolations || []).reduce((sum, v) => sum + (v.points || 0), 0);
+
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
-    const scores = calcScores(allData);
+    const scores = calcScores(allData, totalPenalty);
 
     const record = {
         order_id: orderId,
@@ -772,7 +789,7 @@ export async function evaluateOrder(orderId: number): Promise<void> {
         console.error(`[ОКК] Ошибка записи для #${orderId}:`, error.message);
         throw error;
     }
-    console.log(`[ОКК] #${orderId} → сделка ${scores.deal_score_pct}%, скрипт ${script.script_score_pct ?? '—'}%, итог ${scores.total_score}%`);
+    console.log(`[ОКК] #${orderId} → сделка ${scores.deal_score_pct}%, скрипт ${script.script_score_pct ?? '—'}%, штраф -${totalPenalty}, итог ${scores.total_score}%`);
 }
 
 // ═══════════════════════════════════════════════════════

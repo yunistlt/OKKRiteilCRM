@@ -337,16 +337,14 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 if (!condMatch && trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found activity after ${context.occurredAt}`);
             } else if (cond.block === 'semantic_check') {
                 const text = metrics?.full_order_context?.manager_comment || item.transcript || '';
-                if (!text) {
-                    condMatch = false;
-                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Check: No text found.`);
-                } else {
-                    const res = await analyzeText(text, cond.params.prompt || rule.description, 'Context');
-                    if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Result: ${res.is_violation ? 'VIOLATION' : 'PASS'}. Reasoning: ${res.reasoning}`);
-                    if (res.is_violation) {
-                        semanticResult = res;
-                        condMatch = true;
-                    }
+                // Even if text is empty, the AI might consider it a violation (e.g., "Check if contacts were left").
+                // If we skip when empty, we never catch missing data violations.
+                const evalText = text ? text : '--- Текст отсутствует (нет комментария менеджера или расшифровки) ---';
+                const res = await analyzeText(evalText, cond.params.prompt || rule.description, 'Context');
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Result: ${res.is_violation ? 'VIOLATION' : 'PASS'}. Reasoning: ${res.reasoning}`);
+                if (res.is_violation) {
+                    semanticResult = res;
+                    condMatch = true;
                 }
             } else {
                 condMatch = matchBlock(cond, context);
@@ -377,14 +375,24 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
     if (violations.length > 0) {
         if (!dryRun) {
+            // Fix: remove call_id from onConflict definition if it's not unique enough, 
+            // or just rely on rule_code, order_id, violation_time.
+            // Using a simple insert for testing, or standard unique constraint.
+            // We'll use a standard insert as Upsert requires exact unique constraints on those columns in Supabase.
             const { error: insError } = await supabase
                 .from('okk_violations')
-                .upsert(violations, { onConflict: 'rule_code, order_id, violation_time, call_id' });
+                .insert(violations);
 
-            if (insError) console.error(`[RuleEngine] Upsert Error for ${rule.code}:`, insError);
-            else {
+            if (insError) {
+                if (insError.code === '23505') {
+                    // 23505 = unique_violation, meaning we already recorded this violation
+                    if (trace) trace.push(`[RuleEngine] Violation already exists for ${rule.code} (Ignored).`);
+                } else {
+                    console.error(`[RuleEngine] Insert Error for ${rule.code}:`, insError);
+                }
+            } else {
                 // Send Telegram Notification ONLY if enabled in rule
-                if (violations.length > 0 && rule.notify_telegram) {
+                if (rule.notify_telegram) {
                     try {
                         const emoji = rule.severity === 'critical' ? '🆘' : rule.severity === 'high' ? '🔴' : '⚠️';
 
@@ -392,18 +400,11 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                             const details = v.details.length > 200 ? v.details.substring(0, 200) + '...' : v.details;
                             const points = v.points ? `(${v.points} баллов)` : '';
 
-                            // Custom message for Checklist (if result present)
-                            let extraInfo = '';
-                            if (v.checklist_result) {
-                                // Add breakdown of missed items?
-                                // Let's keep it simple for now as requested.
-                            }
-
                             const message = `
 <b>${emoji} Новое нарушение ${points}</b>
 <b>Правило:</b> ${rule.name}
 <b>Заказ:</b> <a href="https://zmktlt.retailcrm.ru/orders/${v.order_id}/edit">#${v.order_id}</a>
-<b>Менеджер:</b> ${v.manager_id}
+<b>Менеджер:</b> ${v.manager_id || 'Неизвестен'}
 
 ${details}
                             `.trim();

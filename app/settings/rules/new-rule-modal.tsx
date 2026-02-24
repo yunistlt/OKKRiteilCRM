@@ -8,45 +8,45 @@ import ChecklistEditor, { ChecklistSection } from './checklist-editor';
 
 export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { initialPrompt?: string, trigger?: React.ReactNode, initialRule?: any }) {
     const [isOpen, setIsOpen] = useState(false);
-    const [prompt, setPrompt] = useState(initialPrompt || '');
+
+    // Initialize directly from initialRule to avoid visual flashes
+    const [prompt, setPrompt] = useState(initialRule?.description || initialPrompt || '');
     const [isLoading, setIsLoading] = useState(false);
 
     // Draft State
-    const [logic, setLogic] = useState<RuleLogic | null>(null);
-    const [checklist, setChecklist] = useState<ChecklistSection[]>([]); // New state
-    const [ruleMode, setRuleMode] = useState<'standard' | 'checklist'>('standard'); // New state
+    const [logic, setLogic] = useState<RuleLogic | null>(initialRule?.logic || {
+        trigger: { block: 'status_change', params: { target_status: 'new' } },
+        conditions: []
+    });
+    const [checklist, setChecklist] = useState<ChecklistSection[]>(initialRule?.checklist || []);
+    const [ruleMode, setRuleMode] = useState<'standard' | 'checklist'>(initialRule?.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
 
-    const [explanation, setExplanation] = useState('');
-    const [name, setName] = useState('');
-    const [entityType, setEntityType] = useState<'call' | 'event' | 'order' | 'stage'>('call');
-    const [severity, setSeverity] = useState('medium');
-    const [points, setPoints] = useState(10);
-    const [notifyTelegram, setNotifyTelegram] = useState(false);
+    const [explanation, setExplanation] = useState(initialRule?.description || '');
+    const [name, setName] = useState(initialRule?.name || '');
+    const [entityType, setEntityType] = useState<'call' | 'event' | 'order' | 'stage'>(initialRule?.entity_type || 'call');
+    const [severity, setSeverity] = useState(initialRule?.severity || 'medium');
+    const [points, setPoints] = useState(initialRule?.points || 10);
+    const [notifyTelegram, setNotifyTelegram] = useState(initialRule?.notify_telegram || false);
     const [historyDays, setHistoryDays] = useState(0);
-    const [stageStatus, setStageStatus] = useState<string>('any');
-    const [step, setStep] = useState(1); // 1: Input, 2: Review & Edit
+    const [stageStatus, setStageStatus] = useState<string>(initialRule?.parameters?.stage_status || 'any');
 
-    // Initialize from initialRule when opening
+    // Reset when modal opens if not editing an existing rule
     useEffect(() => {
-        if (isOpen && initialRule) {
-            setPrompt(initialRule.description || '');
-            setLogic(initialRule.logic || {
+        if (isOpen && !initialRule) {
+            setPrompt(initialPrompt || '');
+            setLogic({
                 trigger: { block: 'status_change', params: { target_status: 'new' } },
                 conditions: []
             });
-            setChecklist(initialRule.checklist || []);
-            setRuleMode(!!initialRule.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
-            setExplanation(initialRule.description || '');
-            setName(initialRule.name || '');
-            setEntityType(initialRule.entity_type || 'call');
-            setSeverity(initialRule.severity || 'medium');
-            setPoints(initialRule.points || 10);
-            setNotifyTelegram(initialRule.notify_telegram || false);
-            setStageStatus(initialRule.parameters?.stage_status || 'any');
-            setStep(2); // Jump straight to editor
-        } else if (isOpen && !initialRule) {
-            // Reset for new rule
-            if (initialPrompt) setPrompt(initialPrompt);
+            setChecklist([]);
+            setRuleMode('standard');
+            setExplanation('');
+            setName('');
+            setEntityType('call');
+            setSeverity('medium');
+            setPoints(10);
+            setNotifyTelegram(false);
+            setStageStatus('any');
         }
     }, [isOpen, initialRule, initialPrompt]);
 
@@ -114,7 +114,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setExplanation(data.description || data.explanation);
             setName(data.name || prompt.substring(0, 30));
             setEntityType(data.entity_type || 'call');
-            setStep(2);
             setDryRunResults(null); // Reset preview
 
             // Heuristic to switch to checklist mode? 
@@ -141,7 +140,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         setExplanation('Ручное создание правила');
         setName(prompt || 'Новое правило');
         setEntityType('order'); // Default to order, user can change
-        setStep(2);
         setDryRunResults(null);
 
         // Auto-detect checklist mode if keywords are present, otherwise default to standard
@@ -233,8 +231,13 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 checklist: ruleMode === 'checklist' ? checklist : undefined
             }, historyDays);
 
+            // If we are editing an existing rule, archive the old one (Immutable pattern)
+            if (initialRule && initialRule.code) {
+                const { updateRuleStatus } = await import('@/app/actions/rules');
+                await updateRuleStatus(initialRule.code, false);
+            }
+
             setIsOpen(false);
-            setStep(1);
             setPrompt('');
             setLogic(null);
             setChecklist([]);
