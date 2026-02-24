@@ -804,9 +804,9 @@ function OKKContent() {
                                 <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-20 border-r border-gray-200 font-semibold">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[60px]">Заказ</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[100px]">МОП</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left bg-gray-100 border-r border-gray-200 font-semibold text-gray-700 min-w-[80px]">Статус лида</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-20 border-r border-gray-200 font-semibold min-w-[80px] w-[80px]">Заказ</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] bg-gray-100 z-20 border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px]">МОП</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] bg-gray-100 z-20 border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
                                 {COL_GROUPS.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-gray-200 ${g.color}`}>{g.label}</th>))}
                                 <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-gray-200">Оценка выполнения</th>
                             </tr>
@@ -820,24 +820,29 @@ function OKKContent() {
                                 <tr><td colSpan={100} className="text-center py-12 text-gray-400">Загрузка...</td></tr>
                             ) : filtered.length === 0 ? (
                                 <tr><td colSpan={100} className="text-center py-12 text-gray-400">Нет данных.</td></tr>
-                            ) : filtered.map((s, i) => (
-                                <tr key={s.order_id} className={`border-b border-gray-100 hover:bg-yellow-50/30 ${selectedIds.has(s.order_id) ? 'bg-blue-50/50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50')}`}>
-                                    <td className="w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 bg-white border-r border-gray-200 z-10 text-center align-middle"><input type="checkbox" checked={selectedIds.has(s.order_id)} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
-                                    <td className="px-2 py-1.5 sticky left-[40px] bg-white font-mono border-r border-gray-200 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
-                                            <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
-                                        </div>
-                                    </td>
-                                    <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap font-medium text-gray-800">{s.manager_name || '—'}</td>
-                                    <td className="px-2 py-1.5 border-r border-gray-100"><span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
-                                    {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
-                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{s.deal_score ?? '—'}</td>
-                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={s.deal_score_pct} /></td>
-                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{s.script_score ?? '—'}</td>
-                                    <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={s.script_score_pct} /></td>
-                                </tr>
-                            ))}
+                            ) : filtered.map((s, i) => {
+                                const isSelected = selectedIds.has(s.order_id);
+                                const rowBg = isSelected ? 'bg-blue-50' : (i % 2 === 0 ? 'bg-white' : 'bg-gray-50');
+                                const stickyClass = `${rowBg} group-hover:bg-yellow-50 z-10`;
+                                return (
+                                    <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
+                                        <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
+                                        <td className={`px-2 py-1.5 sticky left-[40px] min-w-[80px] w-[80px] max-w-[80px] font-mono border-r border-gray-200 ${stickyClass}`}>
+                                            <div className="flex items-center gap-2">
+                                                <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
+                                                <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
+                                            </div>
+                                        </td>
+                                        <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
+                                        <td className={`px-2 py-1.5 sticky left-[260px] min-w-[160px] w-[160px] max-w-[160px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
+                                        {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
+                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{s.deal_score ?? '—'}</td>
+                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={s.deal_score_pct} /></td>
+                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{s.script_score ?? '—'}</td>
+                                        <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={s.script_score_pct} /></td>
+                                    </tr>
+                                )
+                            })}
                         </tbody>
                     </table>
                 </div>
