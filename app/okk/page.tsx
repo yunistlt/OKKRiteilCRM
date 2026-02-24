@@ -56,6 +56,7 @@ interface OrderScore {
     status_label?: string;
     status_color?: string;
     total_sum?: number;
+    violations?: any[];
 }
 
 // ─── Вспомогательные функции ──────────────────────────────
@@ -467,6 +468,7 @@ function OKKContent() {
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 });
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
+    const [selectedViolationsOrder, setSelectedViolationsOrder] = useState<OrderScore | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -808,6 +810,7 @@ function OKKContent() {
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] bg-gray-100 z-20 border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px]">МОП</th>
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] bg-gray-100 z-20 border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
                                 {COL_GROUPS.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-gray-200 ${g.color}`}>{g.label}</th>))}
+                                <th rowSpan={2} className="px-2 py-2 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-xs min-w-[70px] w-[70px]">Нарушения</th>
                                 <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-gray-200">Оценка выполнения</th>
                             </tr>
                             <tr className="bg-gray-50 border-b border-gray-200">
@@ -836,6 +839,15 @@ function OKKContent() {
                                         <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
                                         <td className={`px-2 py-1.5 sticky left-[260px] min-w-[160px] w-[160px] max-w-[160px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
                                         {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
+                                        <td className="px-2 py-1.5 text-center border-r border-gray-200 bg-red-50/30">
+                                            {s.violations && s.violations.length > 0 ? (
+                                                <button onClick={() => setSelectedViolationsOrder(s)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-0.5 rounded text-xs font-bold transition-colors">
+                                                    🔴 {s.violations.length}
+                                                </button>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs font-semibold">0</span>
+                                            )}
+                                        </td>
                                         <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{s.deal_score ?? '—'}</td>
                                         <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={s.deal_score_pct} /></td>
                                         <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{s.script_score ?? '—'}</td>
@@ -937,9 +949,64 @@ function OKKContent() {
             {selectedCallOrder && (
                 <CallDetailModal order={selectedCallOrder} onClose={() => setSelectedCallOrder(null)} />
             )}
+
+            {selectedViolationsOrder && (
+                <ViolationsModal order={selectedViolationsOrder} onClose={() => setSelectedViolationsOrder(null)} />
+            )}
         </div>
     );
 }
+
+function ViolationsModal({ order, onClose }: { order: OrderScore, onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4 transition-opacity" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b border-red-100 flex items-center justify-between bg-red-50">
+                    <div>
+                        <h3 className="font-black text-red-800 text-lg">Нарушения процесса</h3>
+                        <div className="text-sm font-semibold text-red-600/80">По заказу #{order.order_id}</div>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-red-100 text-red-500 hover:bg-red-200 hover:text-red-700 transition-colors">✕</button>
+                </div>
+                <div className="p-5 max-h-[60vh] overflow-y-auto bg-gray-50/50">
+                    {order.violations && order.violations.length > 0 ? (
+                        <div className="space-y-3">
+                            {order.violations.map((v, i) => (
+                                <div key={i} className="bg-white p-4 rounded-xl border border-red-100 shadow-sm flex flex-col gap-2 relative overflow-hidden group">
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-red-400 to-red-600"></div>
+                                    <div className="flex justify-between items-start pl-2">
+                                        <span className="text-sm font-bold text-gray-800 leading-snug">{v.description || 'Нарушение правила'}</span>
+                                        <span className="text-xs font-black text-red-600 bg-red-50 px-2 py-1 rounded-md ml-4 shrink-0 shadow-[inset_0_0_0_1px_#fee2e2]">-{v.penalty_points || 0} баллов</span>
+                                    </div>
+                                    <div className="text-xs text-gray-500 flex gap-2 items-center pl-2">
+                                        <span className="font-medium bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">📅 {new Date(v.created_at).toLocaleString('ru-RU')}</span>
+                                        <span>•</span>
+                                        <span className="font-medium">👤 Менеджер: {v.manager_name || order.manager_name || 'Неизвестен'}</span>
+                                    </div>
+                                    {v.status_from && v.status_to && (
+                                        <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded-lg border border-gray-100 mt-1 ml-2 inline-flex items-center gap-2">
+                                            <span className="text-gray-400">Переход:</span>
+                                            <span className="font-bold text-gray-700">{v.status_from}</span>
+                                            <span className="text-blue-500">→</span>
+                                            <span className="font-bold text-gray-700">{v.status_to}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 flex flex-col items-center justify-center bg-white rounded-xl border border-gray-100 border-dashed">
+                            <span className="text-4xl mb-3">✨</span>
+                            <div className="text-gray-700 font-bold mb-1">Нет зафиксированных нарушений</div>
+                            <div className="text-gray-400 text-sm max-w-xs mx-auto">По этому заказу менеджер всё делал по правилам или система не зафиксировала ошибок.</div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 
 
 function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () => void }) {

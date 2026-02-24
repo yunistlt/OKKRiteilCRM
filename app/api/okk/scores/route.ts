@@ -93,8 +93,33 @@ export async function GET(req: Request) {
     }
 
     // 6. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
-    let enriched = (activeOrders || []).map(o => {
+    let enriched = (activeOrders || []).map((o, idx) => {
         const score = scoresMap[o.order_id] || {};
+
+        // ВРЕМЕННЫЙ МОК ДЛЯ ДЕМОНСТРАЦИИ НАРУШЕНИЙ
+        // TODO: Заменить на реальный запрос к таблице okk_violations
+        const mockViolations = [];
+        if (o.order_id % 3 === 0) {
+            mockViolations.push({
+                description: 'Перевод в статус "Заявка квалифицирована" без заполнения контактных данных',
+                penalty_points: 20,
+                created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+                status_from: 'Новый',
+                status_to: 'Заявка квалифицирована',
+                manager_name: managerMap[o.manager_id] || 'Менеджер'
+            });
+        }
+        if (o.order_id % 5 === 0) {
+            mockViolations.push({
+                description: 'Просрочен дедлайн первого контакта (SLA)',
+                penalty_points: 15,
+                created_at: new Date(Date.now() - 86400000).toISOString(),
+                status_from: null,
+                status_to: null,
+                manager_name: managerMap[o.manager_id] || 'Менеджер'
+            });
+        }
+
         return {
             ...score,
             order_id: o.order_id,
@@ -105,6 +130,7 @@ export async function GET(req: Request) {
             status_label: o.status ? (statusMap[o.status]?.name || o.status) : '—',
             status_color: o.status ? (statusMap[o.status]?.color || '#E5E7EB') : '#E5E7EB',
             total_sum: o.totalsumm || 0,
+            violations: mockViolations // Временно отдаем моки
         };
     });
 
