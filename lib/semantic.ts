@@ -71,28 +71,28 @@ export async function analyzeTranscript(transcript: string, rulePrompt: string):
     return analyzeText(transcript, rulePrompt, 'Call Transcript');
 }
 
-export async function generateHumanNotification(managerName: string, orderId: string, ruleName: string, details: string, points: number): Promise<string> {
+export async function generateHumanNotification(managerName: string, orderId: string, ruleName: string, details: string): Promise<string> {
     const systemPrompt = `
 You are a caring but strict Head of Quality Control.
 Your task is to write a single short, human-like Telegram message to a manager about a violation they committed.
 
 Requirements:
-1. Address the manager by name kindly/friendly (e.g., "${managerName}, привет!", "${managerName}, обрати внимание"). If the name is unknown or empty, use a polite gender-neutral fallback like "Коллега".
-2. Clearly state the order number: #${orderId}.
-3. Explain the violation simply and naturally based on the rule name ("${ruleName}") and details ("${details}"). No technical jargon. Make it sound like a human noticed it.
-4. Mention the penalty: -${points} points.
-5. Add a motivational or educational ending (e.g., "Такие нарушения снижают общий рейтинг отдела. Пожалуйста, будь внимательнее в будущем").
-6. The tone must be empathetic but firm. NEVER BE ROBOTIC. 
-7. DO NOT use Markdown bolding/italics excessively. Keep it clean.
-8. VARY YOUR RESPONSES. Do not use the exact same template every time. Change the opening, the phrasing, and the closing.
+1. Address the manager by name kindly/friendly (e.g., "${managerName}, привет! 👋"). If the name is unknown, use "Коллега".
+2. You MUST include an @-tag for the manager to ping them. If you don't know their exact handle, generate one based on their name (e.g., @${managerName || 'manager'}).
+3. The order number MUST be a clickable HTML link exactly in this format: <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a> (DO NOT use markdown [text](url) for the link, ONLY HTML).
+4. Explain the violation simply and naturally based on the rule name ("${ruleName}") and details ("${details}"). No technical jargon. Make it sound like a human noticed it.
+5. DO NOT mention any penalty points or scores.
+6. Add a friendly, motivational ending with relatable emojis (e.g., "Пожалуйста, будь внимательнее в будущем 🙏✨", "Давай подтянем этот момент 💪").
+7. Sign the message at the very end with either "— Аня (Бизнес-аналитик)" or "— Игорь (Диспетчер)". Choose one randomly.
+8. The tone must be friendly, empathetic, but clear about the mistake.
+9. VARY YOUR RESPONSES. Do not use the exact same template. Change the greeting, phrasing, and emojis.
+10. The output string MUST be strictly valid HTML for Telegram's parse_mode="HTML" (only <b>, <i>, <a>, <code>, <pre> are allowed. NO markdown!).
 
 Example 1:
-"Оль, по заказу №45818 я нашла нарушение. Ты перевела в статус 'Заявка квалифицирована', но не заполнила данные клиента. Обрати, пожалуйста, на это внимание. Списано 10 баллов. Такие ситуации снижают рейтинг всего отдела."
+@${managerName || 'Olya'} Оль, привет! 👋 Обратила внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/45818/edit">#45818</a>. Ты перевела его в статус 'Заявка квалифицирована', но не указала данные клиента – ни имя, ни название организации. Пожалуйста, поправь это и будь внимательнее в будущем 🙏😊
+— Аня (Бизнес-аналитик)
 
-Example 2:
-"Саша, привет! Посмотрела заказ №1234. Вижу, что сделка висит без звонка слишком долго. Пришлось списать 5 баллов. Давай не забывать про регламент, чтобы мы держали качество на высоте!"
-
-Generate the message now for manager "${managerName}" regarding order "${orderId}".
+Generate the HTML message now for manager "${managerName}" regarding order "${orderId}".
     `;
 
     try {
@@ -100,9 +100,9 @@ Generate the message now for manager "${managerName}" regarding order "${orderId
             model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: systemPrompt },
-                { role: "user", content: `Rule: ${ruleName}\nDetails: ${details}\nPoints: ${points}` }
+                { role: "user", content: `Rule: ${ruleName}\nDetails: ${details}` }
             ],
-            temperature: 0.7, // Higher temperature for variety
+            temperature: 0.8, // Higher temperature for variety
         });
 
         const content = completion.choices[0].message.content;
@@ -112,6 +112,6 @@ Generate the message now for manager "${managerName}" regarding order "${orderId
     } catch (e) {
         console.error('Human Notification Generation Error:', e);
         // Fallback to strict template if AI fails
-        return `⚠️ Коллега, зафиксировано нарушение по заказу #${orderId}.\nПравило: ${ruleName}\nПодробности: ${details}\nШтраф: ${points} баллов.`;
+        return `⚠️ @${managerName || 'Коллега'}, обратите внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.\nПравило: ${ruleName}\nПодробности: ${details}\n— Игорь (Диспетчер)`;
     }
 }

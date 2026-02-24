@@ -419,8 +419,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                                 managerName,
                                 v.order_id.toString(),
                                 rule.name,
-                                details,
-                                v.points || 10
+                                details
                             );
 
                             await sendTelegramNotification(aiMessage);
