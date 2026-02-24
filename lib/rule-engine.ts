@@ -132,6 +132,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
             if (target) query = query.eq('event_type', 'status_changed');
+        } else if (logic.trigger && logic.trigger.block === 'field_change') {
+            const field = logic.trigger.params.field_code;
+            if (field) {
+                const eventType = field.startsWith('custom_') ? field : `custom_${field}`;
+                query = query.eq('event_type', eventType);
+            }
         }
     }
 
@@ -346,6 +352,26 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                     semanticResult = res;
                     condMatch = true;
                 }
+            } else if (cond.block === 'reschedule_policy_check') {
+                const { collectStageEvidence } = await import('./stage-collector');
+
+                // Context Window: 48 hours before the reschedule
+                const entryTime = new Date(new Date(context.occurredAt).getTime() - 48 * 60 * 60 * 1000).toISOString();
+                const evidence = await collectStageEvidence(context.orderId, 'any', entryTime, context.occurredAt);
+
+                const successfulCall = (evidence.interactions || []).find(i => i.type === 'call' && (i.metadata?.duration || 0) > 0);
+                const failedCall = (evidence.interactions || []).find(i => i.type === 'call' && (i.metadata?.duration || 0) === 0);
+                const comment = (evidence.interactions || []).find(i => i.type === 'comment');
+
+                if (successfulCall) {
+                    condMatch = false; // Valid, not a violation
+                } else if (failedCall && comment) {
+                    condMatch = false; // Valid (comment for failed attempt), not a violation
+                } else {
+                    condMatch = true; // VIOLATION
+                    const reason = !failedCall ? 'Нет зафиксированных попыток контакта (звонка) перед переносом.' : 'При недозвоне отсутствует комментарий с причиной переноса даты.';
+                    semanticResult = { is_violation: true, reasoning: reason, evidence: null, confidence: 1 };
+                }
             } else {
                 condMatch = matchBlock(cond, context);
             }
@@ -458,6 +484,15 @@ function matchBlock(block: RuleLogicBlock, context: any): boolean {
             if (item.event_type === 'new_call_transcribed') return true;
             // If it's a direct call entity test
             if (item.telphin_call_id) return true;
+            return false;
+
+        case 'field_change':
+            const field = block.params.field_code;
+            if (!field) return false;
+            const eventType = field.startsWith('custom_') ? field : `custom_${field}`;
+            if (item.event_type) {
+                return item.event_type === eventType || item.event_type === field;
+            }
             return false;
 
         default:

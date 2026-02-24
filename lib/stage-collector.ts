@@ -45,7 +45,7 @@ export async function collectStageEvidence(orderId: number, status: string, entr
     // 1. Fetch Calls
     const { data: callMatches } = await supabase
         .from('call_order_matches')
-        .select('telphin_call_id, raw_telphin_calls(started_at, transcript, event_id)')
+        .select('telphin_call_id, raw_telphin_calls(started_at, transcript, event_id, duration, status)')
         .eq('retailcrm_order_id', orderId);
 
     const calls = (callMatches || [])
@@ -104,14 +104,16 @@ export async function collectStageEvidence(orderId: number, status: string, entr
     // Add calls
     if (calls) {
         calls.forEach((call: any) => {
-            if (call.transcript) {
-                interactions.push({
-                    type: 'call',
-                    timestamp: call.started_at,
-                    content: call.transcript,
-                    metadata: { call_id: call.event_id }
-                });
-            }
+            interactions.push({
+                type: 'call',
+                timestamp: call.started_at,
+                content: call.transcript || `Звонок (Длительность: ${call.duration} сек., Статус: ${call.status})`,
+                metadata: {
+                    call_id: call.event_id,
+                    duration: call.duration,
+                    status: call.status
+                }
+            });
         });
     }
 
