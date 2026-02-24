@@ -417,7 +417,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
                             const managerData = managerMap.get(v.manager_id);
                             const managerName = managerData?.first_name || '';
-                            const telegramUsername = managerData?.telegram_username || '';
+                            const telegramUsername = managerData?.raw_data?.telegram_username || managerData?.telegram_username || '';
                             const persona = Math.random() > 0.5 ? 'anna' : 'igor';
 
                             const aiMessage = await generateHumanNotification(
