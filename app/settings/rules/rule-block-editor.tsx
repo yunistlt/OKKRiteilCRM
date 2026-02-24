@@ -38,7 +38,8 @@ export default function RuleBlockEditor({ logic, onChange, statuses }: RuleBlock
                     <div className="flex items-center gap-2 mb-2">
                         <span className="bg-indigo-600 text-white text-[8px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-widest">Триггер</span>
                         <span className="text-xs font-bold text-indigo-900 capitalize">
-                            {logic.trigger.block === 'status_change' ? 'Смена статуса' : logic.trigger.block}
+                            {logic.trigger.block === 'status_change' ? 'Смена статуса' :
+                                logic.trigger.block === 'new_call_transcribed' ? 'Новый звонок' : logic.trigger.block}
                         </span>
                     </div>
 
@@ -73,7 +74,8 @@ export default function RuleBlockEditor({ logic, onChange, statuses }: RuleBlock
                             <span className="text-xs font-bold text-gray-700 capitalize">
                                 {cond.block === 'time_elapsed' ? 'Ожидание' :
                                     cond.block === 'no_new_comments' ? 'Отсутствие активности' :
-                                        cond.block === 'semantic_check' ? 'AI Анализ смыслов' : cond.block}
+                                        cond.block === 'semantic_check' ? 'AI Анализ смыслов' :
+                                            cond.block === 'custom_contact_check' ? 'Системное правило' : cond.block}
                             </span>
                         </div>
 
@@ -107,6 +109,23 @@ export default function RuleBlockEditor({ logic, onChange, statuses }: RuleBlock
                                     <span className="animate-pulse">⦿</span>
                                     Нет новых комментариев менеджера после перехода в статус
                                 </span>
+                            </div>
+                        )}
+                        {cond.block === 'custom_contact_check' && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100/50 flex items-center gap-2">
+                                    <span className="animate-pulse">⦿</span>
+                                    Проверка наличия контактов (Email и Телефон)
+                                </span>
+                            </div>
+                        )}
+
+                        {!['time_elapsed', 'semantic_check', 'no_new_comments', 'custom_contact_check'].includes(cond.block) && (
+                            <div className="space-y-1">
+                                <span className="text-[10px] font-bold text-gray-400">Параметры (Системный блок):</span>
+                                <pre className="w-full bg-gray-50 border border-gray-200 rounded-lg py-2 px-2 text-[10px] font-mono text-gray-600 overflow-x-auto">
+                                    {JSON.stringify(cond.params, null, 2)}
+                                </pre>
                             </div>
                         )}
                     </div>
