@@ -24,7 +24,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
     const [severity, setSeverity] = useState(initialRule?.severity || 'medium');
     const [points, setPoints] = useState(initialRule?.points || 10);
     const [notifyTelegram, setNotifyTelegram] = useState(initialRule?.notify_telegram || false);
-    const [historyDays, setHistoryDays] = useState(0);
     const [stageStatus, setStageStatus] = useState<string>(initialRule?.parameters?.stage_status || 'any');
 
     // Sync state when modal opens
@@ -130,10 +129,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         }
     };
 
-    setExplanation('Ручное создание правила');
-    setName(prompt || 'Новое правило');
-    setEntityType('order'); // Default to order, user can change
-    setDryRunResults(null);
 
     const handleDryRun = async () => {
         if (!logic) return;
@@ -195,7 +190,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 points,
                 notify_telegram: notifyTelegram,
                 is_active: true
-            }, historyDays);
+            });
 
             // If we are editing an existing rule, archive the old one (Immutable pattern)
             if (initialRule && initialRule.code) {
