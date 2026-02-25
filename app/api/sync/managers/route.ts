@@ -23,19 +23,31 @@ export async function GET() {
 
         const users = data.users || [];
 
-        const upsertData = users.map((u: any) => ({
-            id: u.id, // RetailCRM ID matches DB ID
-            first_name: u.firstName,
-            last_name: u.lastName,
-            email: u.email,
-            active: u.active,
-            // Try to guess extension or look for it in common fields?
-            // Usually internal number is not standard. Storing raw data for inspection.
-            raw_data: u
-        }));
+        // Fetch existing nicknames to preserve them
+        const { data: existingManagers } = await supabase
+            .from('managers')
+            .select('id, raw_data');
+
+        const nicknameMap = new Map();
+        existingManagers?.forEach(em => {
+            if (em.raw_data?.telegram_username) {
+                nicknameMap.set(em.id, em.raw_data.telegram_username);
+            }
+        });
+
+        const upsertData = users.map((u: any) => {
+            const existingNick = nicknameMap.get(u.id);
+            return {
+                id: u.id,
+                first_name: u.firstName,
+                last_name: u.lastName,
+                email: u.email,
+                active: u.active,
+                raw_data: existingNick ? { ...u, telegram_username: existingNick } : u
+            };
+        });
 
         if (upsertData.length > 0) {
-            // Use RPC to bypass potential schema cache/permission issues
             const { error } = await supabase.rpc('upsert_managers_v2', {
                 managers_data: upsertData
             });

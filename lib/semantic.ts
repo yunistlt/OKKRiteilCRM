@@ -81,24 +81,30 @@ export async function generateHumanNotification(managerName: string, orderId: st
 You are a caring but strict Head of Quality Control. ${genderRule}
 Your task is to write a single short, human-like Telegram message to a manager about a violation they committed.
 
+Structure of the message:
+1. First line: EXACTLY the manager's tag: ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}
+2. Second line: A friendly greeting (e.g., "${managerName}, привет! 👋").
+3. Third line and onwards: Explanation of what exactly was violated in the order <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.
+
 Requirements:
-1. Address the manager by name kindly (e.g., "${managerName}, привет! 👋"). If the name is unknown, use "Коллега".
-2. You MUST start the message by pinging the manager. Use EXACTLY this tag: ${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}.
-3. The order number MUST be a clickable HTML link exactly in this format: <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a> (DO NOT use markdown [text](url) for the link, ONLY HTML).
-4. Explain the violation simply and naturally based on the rule name ("${ruleName}") and details ("${details}"). No technical jargon. Make it sound like a human noticed it.
-5. DO NOT mention any penalty points or scores.
-6. Add a friendly, motivational ending with relatable emojis (e.g., "Пожалуйста, будь внимательнее в будущем 🙏✨", "Давай подтянем этот момент 💪").
-7. Sign the message at the very end with: "${signature}"
-8. The tone must be friendly, empathetic, but clear about the mistake.
-9. VARY YOUR RESPONSES. Do not use the exact same template. Change the greeting, phrasing, and emojis.
-10. The output string MUST be strictly valid HTML for Telegram's parse_mode="HTML" (only <b>, <i>, <a>, <code>, <pre> are allowed. NO markdown!).
+1. You MUST start the message with the tag on the first line.
+2. The order number MUST be a clickable HTML link exactly in this format: <a href="https://zmktlt.retailcrm.ru/orders/${orderId}/edit">#${orderId}</a>.
+3. Be EXPLICIT about what was violated. Use the rule name ("${ruleName}") and specific details ("${details}") to explain the mistake naturally.
+4. DO NOT mention any penalty points or scores.
+5. Add a friendly, motivational ending with relatable emojis.
+6. Sign the message at the very end with: "${signature}"
+7. The tone must be friendly, empathetic, but clear.
+8. VARY YOUR RESPONSES. Do not use the exact same template.
+9. The output string MUST be strictly valid HTML for Telegram's parse_mode="HTML" (only <b>, <i>, <a>, <code>, <pre> are allowed. NO markdown!).
 
 Example 1:
-${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`} Оль, привет! 👋 ${senderPersona === 'anna' ? 'Обратила' : 'Обратил'} внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/45818/edit">#45818</a>. Ты перевела его в статус 'Заявка квалифицирована', но не указала данные клиента – ни имя, ни название организации. Пожалуйста, поправь это 🙏😊
+${telegramUsername ? `@${telegramUsername}` : `@${managerName || 'manager'}`}
+Оль, привет! 👋
+${senderPersona === 'anna' ? 'Обратила' : 'Обратил'} внимание на заказ <a href="https://zmktlt.retailcrm.ru/orders/45818/edit">#45818</a>. Там зафиксировано нарушение: "${ruleName}". По деталям: ${details}. Пожалуйста, поправь это 🙏😊
 ${signature}
 
 Generate the HTML message now for manager "${managerName}" regarding order "${orderId}".
-    `;
+`;
 
     try {
         const completion = await openai.chat.completions.create({
