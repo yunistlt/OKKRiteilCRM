@@ -4,7 +4,6 @@
 import { useState, useEffect } from 'react';
 import { createRule } from '@/app/actions/rules';
 import RuleBlockEditor, { RuleLogic } from './rule-block-editor';
-import ChecklistEditor, { ChecklistSection } from './checklist-editor';
 
 export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { initialPrompt?: string, trigger?: React.ReactNode, initialRule?: any }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -18,8 +17,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         trigger: { block: 'status_change', params: { target_status: 'new' } },
         conditions: []
     });
-    const [checklist, setChecklist] = useState<ChecklistSection[]>(initialRule?.checklist || []);
-    const [ruleMode, setRuleMode] = useState<'standard' | 'checklist'>(initialRule?.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
 
     const [explanation, setExplanation] = useState(initialRule?.description || '');
     const [name, setName] = useState(initialRule?.name || '');
@@ -38,8 +35,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 trigger: { block: 'status_change', params: { target_status: 'new' } },
                 conditions: []
             });
-            setChecklist(initialRule.checklist || []);
-            setRuleMode(!!initialRule.checklist && initialRule.checklist.length > 0 ? 'checklist' : 'standard');
             setExplanation(initialRule.description || '');
             setName(initialRule.name || '');
             setEntityType(initialRule.entity_type || 'call');
@@ -53,8 +48,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 trigger: { block: 'status_change', params: { target_status: 'new' } },
                 conditions: []
             });
-            setChecklist([]);
-            setRuleMode('standard');
             setExplanation('');
             setName('');
             setEntityType('call');
@@ -76,7 +69,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         message?: string,
         error?: string,
         steps?: string[],
-        checklistResult?: any
     } | null>(null);
     const [mockTranscript, setMockTranscript] = useState('Менеджер: Добрый день, компания Окна. Меня зовут Иван. Клиент: Здравствуйте, хочу заказать окно.');
 
@@ -131,14 +123,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setEntityType(data.entity_type || 'call');
             setDryRunResults(null); // Reset preview
 
-            // Heuristic to switch to checklist mode? 
-            if (prompt.toLowerCase().includes('скрипт') || prompt.toLowerCase().includes('чек-лист')) {
-                setRuleMode('checklist');
-                setEntityType('call');
-            } else {
-                setRuleMode('standard');
-            }
-
         } catch (e) {
             alert('AI Generation Failed: ' + e);
         } finally {
@@ -146,35 +130,13 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
         }
     };
 
-    const handleManualCreate = () => {
-        // Set defaults for manual creation
-        setLogic({
-            trigger: { block: 'status_change', params: { target_status: 'new' } },
-            conditions: []
-        });
-        setExplanation('Ручное создание правила');
-        setName(prompt || 'Новое правило');
-        setEntityType('order'); // Default to order, user can change
-        setDryRunResults(null);
-
-        // Auto-detect checklist mode if keywords are present, otherwise default to standard
-        if (prompt.toLowerCase().includes('скрипт') || prompt.toLowerCase().includes('чек-лист')) {
-            setRuleMode('checklist');
-            setEntityType('call');
-        } else {
-            setRuleMode('standard');
-        }
-    };
+    setExplanation('Ручное создание правила');
+    setName(prompt || 'Новое правило');
+    setEntityType('order'); // Default to order, user can change
+    setDryRunResults(null);
 
     const handleDryRun = async () => {
-        if (!logic && ruleMode === 'standard') return;
-
-        // For checklist, we might not have a dry run yet, or we simulate it.
-        // Let's disable dry run for checklist for now or mock it.
-        if (ruleMode === 'checklist') {
-            alert('Предпросмотр для чек-листов пока не доступен');
-            return;
-        }
+        if (!logic) return;
 
         setDryRunResults(null);
         setDryRunLoading(true);
@@ -206,9 +168,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 body: JSON.stringify({
                     adHocLogic: logic,
                     entity_type: entityType,
-                    severity: severity,
-                    mockTranscript: ruleMode === 'checklist' ? mockTranscript : undefined,
-                    checklist: ruleMode === 'checklist' ? checklist : undefined
+                    severity: severity
                 })
             });
             const data = await res.json();
@@ -229,21 +189,12 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 name,
                 description: explanation,
                 entity_type: entityType,
-                logic: ruleMode === 'checklist' ? (
-                    entityType === 'stage' ? {
-                        trigger: { block: 'status_change', params: { target_status: 'any' } },
-                        conditions: []
-                    } : {
-                        trigger: { block: 'new_call_transcribed', params: {} },
-                        conditions: []
-                    }
-                ) : logic,
+                logic: logic,
                 parameters: entityType === 'stage' ? { stage_status: stageStatus } : {},
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
-                is_active: true,
-                checklist: ruleMode === 'checklist' ? checklist : undefined
+                is_active: true
             }, historyDays);
 
             // If we are editing an existing rule, archive the old one (Immutable pattern)
@@ -255,7 +206,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setIsOpen(false);
             setPrompt('');
             setLogic(null);
-            setChecklist([]);
         } catch (e) {
             alert('Save Failed: ' + e);
         } finally {
@@ -378,37 +328,14 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                         </div>
                     </div>
 
-                    {/* Right Column: Logic / Checklist Editor */}
+                    {/* Right Column: Logic Editor */}
                     <div className="lg:col-span-8 space-y-6 border-l lg:pl-8">
-                        {/* Mode Switcher */}
-                        <div className="bg-gray-100 p-1 rounded-xl flex max-w-md">
-                            <button
-                                onClick={() => setRuleMode('standard')}
-                                className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${ruleMode === 'standard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                            >
-                                Обычное правило
-                            </button>
-                            <button
-                                onClick={() => { setRuleMode('checklist'); }}
-                                className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${ruleMode === 'checklist' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
-                            >
-                                Чек-лист (Контроль качества)
-                            </button>
-                        </div>
-
                         <div className="max-h-[50vh] overflow-y-auto pr-4 scrollbar-thin">
-                            {ruleMode === 'standard' ? (
-                                <RuleBlockEditor
-                                    logic={logic || { trigger: { block: 'status_change', params: { target_status: 'new' } }, conditions: [] }}
-                                    onChange={setLogic}
-                                    statuses={statuses}
-                                />
-                            ) : (
-                                <ChecklistEditor
-                                    checklist={checklist}
-                                    onChange={setChecklist}
-                                />
-                            )}
+                            <RuleBlockEditor
+                                logic={logic || { trigger: { block: 'status_change', params: { target_status: 'new' } }, conditions: [] }}
+                                onChange={setLogic}
+                                statuses={statuses}
+                            />
                         </div>
 
                         {/* Test Area */}
@@ -430,11 +357,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                 <div className={`space-y-3 animate-in fade-in slide-in-from-top-2 duration-300`}>
                                     <div className={`p-4 rounded-xl border-2 font-black uppercase tracking-widest text-xs flex items-center justify-between ${syntheticResult.success ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
                                         <span>{syntheticResult.message || syntheticResult.error}</span>
-                                        {syntheticResult.checklistResult && (
-                                            <span className="bg-white px-3 py-1 rounded-lg shadow-sm">
-                                                Результат: {syntheticResult.checklistResult.totalScore}/100
-                                            </span>
-                                        )}
                                     </div>
 
                                     {/* Trace/Steps Log */}
@@ -444,7 +366,7 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                             LOG LOG (Действия агента):
                                         </div>
                                         {syntheticResult.steps?.map((step: string, i: number) => {
-                                            const isAi = step.includes('AI') || step.includes('Semantic') || step.includes('Checklist');
+                                            const isAi = step.includes('AI') || step.includes('Semantic');
                                             return (
                                                 <div key={i} className={`pl-2 border-l-2 ${isAi ? 'border-indigo-500 text-indigo-300 bg-indigo-500/5' : 'border-gray-700'}`}>
                                                     <span className="text-gray-500 mr-2">[{i + 1}]</span>
@@ -453,26 +375,6 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                             );
                                         })}
                                     </div>
-
-                                    {/* Detailed Checklist Breakdown if present */}
-                                    {syntheticResult.checklistResult?.sections?.map((sec: any, si: number) => (
-                                        <div key={si} className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
-                                            <h5 className="text-[10px] font-black uppercase text-gray-400 mb-2">{sec.section}</h5>
-                                            <div className="space-y-2">
-                                                {sec.items.map((it: any, ii: number) => (
-                                                    <div key={ii} className="flex gap-2 text-[10px]">
-                                                        <span className={it.score > 0 ? 'text-green-500' : 'text-red-500'}>
-                                                            {it.score > 0 ? '✔️' : '❌'}
-                                                        </span>
-                                                        <div className="flex-1">
-                                                            <div className="font-bold text-gray-700">{it.description} ({it.score}/{it.weight}%)</div>
-                                                            <div className="text-gray-500 italic mt-0.5">{it.reasoning}</div>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
                                 </div>
                             )}
                         </div>
