@@ -342,10 +342,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 condMatch = !hasRealActivity;
                 if (!condMatch && trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Found activity after ${context.occurredAt}`);
             } else if (cond.block === 'semantic_check') {
-                const text = metrics?.full_order_context?.manager_comment || item.transcript || '';
-                // Even if text is empty, the AI might consider it a violation (e.g., "Check if contacts were left").
-                // If we skip when empty, we never catch missing data violations.
-                const evalText = text ? text : '--- Текст отсутствует (нет комментария менеджера или расшифровки) ---';
+                const comment = metrics?.full_order_context?.manager_comment || '';
+                const transcript = item.transcript || '';
+                const orderData = metrics?.full_order_context ? JSON.stringify(metrics.full_order_context, null, 2) : '';
+
+                const evalText = `--- MANAGER COMMENT ---\n${comment || 'None'}\n\n--- CALL TRANSCRIPT ---\n${transcript || 'None'}\n\n--- CRM ORDER FIELDS ---\n${orderData || 'None'}`;
+
                 const res = await analyzeText(evalText, cond.params.prompt || rule.description, 'Context');
                 if (trace) trace.push(`[RuleEngine] [${rule.code}] Semantic Result: ${res.is_violation ? 'VIOLATION' : 'PASS'}. Reasoning: ${res.reasoning}`);
                 if (res.is_violation) {
