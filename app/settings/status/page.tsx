@@ -44,6 +44,16 @@ interface RuleItem {
     is_active: boolean;
 }
 
+interface ThroughputMetric {
+    role: string;
+    label: string;
+    table: string;
+    '15m': number;
+    '1h': number;
+    '4h': number;
+    last_activity: string | null;
+}
+
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
@@ -60,8 +70,10 @@ export default function SystemStatusPage() {
     // --- State: Settings & AI ---
     const [minDuration, setMinDuration] = useState(15);
     const [insightLogs, setInsightLogs] = useState<any[]>([]);
+    const [throughput, setThroughput] = useState<ThroughputMetric[]>([]);
     const [savingSettings, setSavingSettings] = useState(false);
     const [refreshingPriorities, setRefreshingPriorities] = useState(false);
+    const [loadingThroughput, setLoadingThroughput] = useState(true);
 
     // --- Fetchers ---
 
@@ -116,6 +128,21 @@ export default function SystemStatusPage() {
             console.error(e);
         } finally {
             setLoadingStats(false);
+        }
+    };
+
+    const fetchThroughput = async () => {
+        setLoadingThroughput(true);
+        try {
+            const res = await fetch('/api/system/activity');
+            const data = await res.json();
+            if (data.ok) {
+                setThroughput(data.throughput);
+            }
+        } catch (e) {
+            console.error('Failed to fetch throughput', e);
+        } finally {
+            setLoadingThroughput(false);
         }
     };
 
@@ -240,8 +267,12 @@ export default function SystemStatusPage() {
         fetchSyncStatus();
         checkOpenAI();
         fetchDbStats();
+        fetchThroughput();
 
-        const interval = setInterval(fetchSyncStatus, 30000);
+        const interval = setInterval(() => {
+            fetchSyncStatus();
+            fetchThroughput();
+        }, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -353,29 +384,63 @@ export default function SystemStatusPage() {
             </div>
 
             {/* LIVE MONITOR: Trends Section - MOVED ABOVE OPENAI FOR VISIBILITY */}
-            {dbStats?.trends ? (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <MiniChart
-                        label="СЕМЁН: Матчинг (Звонок + Заказ)"
-                        data={dbStats.trends.matches}
-                        color="text-blue-600"
-                    />
-                    <MiniChart
-                        label="СЕМЁН: Транскрибация"
-                        data={dbStats.trends.transcriptions}
-                        color="text-purple-600"
-                    />
-                    <MiniChart
-                        label="МАКСИМ & ИГОРЬ: Проверка Quality"
-                        data={dbStats.trends.evaluations}
-                        color="text-emerald-600"
-                    />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Пульс Системы: Работа Агентов</h3>
+                        <div className="flex gap-4 text-[9px] font-black uppercase text-gray-300">
+                            <span>15 минут</span>
+                            <span>1 час</span>
+                            <span>4 часа</span>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        {loadingThroughput ? (
+                            <div className="py-10 text-center opacity-20 italic text-[10px] font-bold uppercase tracking-widest">Анализ активности...</div>
+                        ) : throughput.map((m, idx) => {
+                            const diffMin = m.last_activity ? Math.floor((Date.now() - new Date(m.last_activity).getTime()) / 60000) : null;
+                            let statusColor = 'bg-gray-200';
+                            if (diffMin !== null) {
+                                if (diffMin < 10) statusColor = 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]';
+                                else if (diffMin < 60) statusColor = 'bg-yellow-500';
+                            }
+
+                            return (
+                                <div key={idx} className="flex items-center gap-4 group">
+                                    <div className="w-24 flex-shrink-0">
+                                        <div className="text-[8px] font-black text-gray-400 uppercase truncate" title={m.role}>{m.role.split(' ')[0]}</div>
+                                        <div className="text-[10px] font-black text-gray-900 truncate">{m.label}</div>
+                                    </div>
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusColor}`}></div>
+                                    <div className="flex-1 h-8 bg-gray-50 rounded-lg border border-gray-100/50 flex items-center px-4 justify-between group-hover:bg-white transition-all">
+                                        <div className="grid grid-cols-3 w-48 text-center text-[11px] font-black text-gray-400">
+                                            <span className={m['15m'] > 0 ? 'text-blue-600' : ''}>{m['15m']}</span>
+                                            <span className={m['1h'] > 0 ? 'text-gray-900' : ''}>{m['1h']}</span>
+                                            <span>{m['4h']}</span>
+                                        </div>
+                                        <div className="text-[9px] font-bold text-gray-400 uppercase">
+                                            {m.last_activity ? new Date(m.last_activity).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
-            ) : (
-                <div className="bg-gray-50 rounded-xl border border-dashed border-gray-200 p-8 text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                    Загрузка живых метрик...
+
+                {/* Vertical Mini Stats for Quick Look */}
+                <div className="space-y-4">
+                    <div className="bg-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-100">
+                        <div className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">Матчи (24ч)</div>
+                        <div className="text-3xl font-black">{dbStats?.matchedCalls || 0}</div>
+                    </div>
+                    <div className="bg-purple-600 rounded-2xl p-4 text-white shadow-lg shadow-purple-100">
+                        <div className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">Транскрипции</div>
+                        <div className="text-3xl font-black">{dbStats?.transcribedCalls || 0}</div>
+                    </div>
                 </div>
-            )}
+            </div>
 
             {/* OPENAI STATUS CARD */}
             {openai.status !== 'loading' && (
