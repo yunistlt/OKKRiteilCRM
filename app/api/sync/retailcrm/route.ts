@@ -79,7 +79,11 @@ export async function GET(request: Request) {
             await logAgentActivity('semen', 'working', `Проверяю страницу ${page} в RetailCRM...`);
 
             const res = await fetch(url);
-            if (!res.ok) throw new Error(`RetailCRM API Error: ${res.status}`);
+            if (!res.ok) {
+                const errorBody = await res.text();
+                console.error(`[Orders Sync] RetailCRM Error ${res.status}:`, errorBody);
+                throw new Error(`RetailCRM API Error ${res.status}: ${errorBody.substring(0, 200)}`);
+            }
 
             const data = await res.json();
             if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
