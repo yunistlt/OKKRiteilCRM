@@ -440,6 +440,42 @@ const SCORE_COLS: Array<{ key: string; label: string; tip: TooltipInfo }> = [
     },
 ];
 
+// ─── Таймер обратного отсчета до Cron проверки ──────────
+function CountdownTimer() {
+    const [timeLeft, setTimeLeft] = useState('');
+
+    useEffect(() => {
+        const calculate = () => {
+            const now = new Date();
+            const mins = now.getMinutes();
+            const secs = now.getSeconds();
+
+            // Крон запускается каждые 30 минут (00 и 30)
+            let nextMins = mins < 30 ? 30 : 60;
+            let diffMins = nextMins - mins - 1;
+            let diffSecs = 60 - secs;
+
+            if (diffSecs === 60) {
+                diffSecs = 0;
+                diffMins += 1;
+            }
+
+            setTimeLeft(`${String(diffMins).padStart(2, '0')}:${String(diffSecs).padStart(2, '0')}`);
+        };
+
+        calculate();
+        const timer = setInterval(calculate, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    return (
+        <div className="flex flex-col items-center px-2 border-l border-gray-100">
+            <span className="text-[10px] font-black text-blue-500 tabular-nums leading-none tracking-tighter">{timeLeft}</span>
+            <span className="text-[7px] text-gray-400 font-bold uppercase tracking-tighter whitespace-nowrap">до проверки</span>
+        </div>
+    );
+}
+
 export default function OKKPage() {
     return (
         <Suspense fallback={<div className="p-8 text-center text-gray-400">Загрузка...</div>}>
@@ -726,6 +762,7 @@ function OKKContent() {
                         >
                             {running ? '..' : targetOrderId ? 'FIX' : 'RUN'}
                         </button>
+                        <CountdownTimer />
                     </div>
 
                     <div className="text-right ml-2 md:block hidden">
