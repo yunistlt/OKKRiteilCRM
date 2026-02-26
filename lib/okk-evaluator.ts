@@ -76,6 +76,49 @@ async function checkTZWithAI(
     }
 }
 
+// ═══════════════════════════════════════════════════════
+// AI-ПОМОЩНИК СЕМЁНА: GPT-проверка состоялся ли реальный разговор
+// ═══════════════════════════════════════════════════════
+async function detectRealConversation(
+    transcript: string
+): Promise<{ is_human: boolean; reason: string }> {
+    if (!transcript || transcript.trim().length < 20) {
+        return { is_human: false, reason: 'Текст слишком короткий или отсутствует.' };
+    }
+
+    try {
+        const openai = getOpenAI();
+        const res = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0,
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: `Ты — ассистент ОКК (Семён). Определи по расшифровке телефонного звонка:
+Это реальный разговор с живым человеком (клиентом) или звонок попал на автоответчик / голосовое меню (IVR) / фоновую музыку / тишину?
+Учти, что автоответчики могут долго говорить (Например: "Ваш звонок очень важен для нас..."). Если человек поговорил с живым оператором на стороне клиента (например, секретарь) - это тоже живой человек.
+Верни JSON: {"is_human": true/false, "reason": "Краткое обоснование, почему ты так решил"}`
+                },
+                {
+                    role: 'user',
+                    content: `Транскрипция звонка:\n${transcript.substring(0, 1500)}`
+                }
+            ]
+        });
+
+        const parsed = JSON.parse(res.choices[0].message.content || '{}');
+        return {
+            is_human: !!parsed.is_human,
+            reason: parsed.reason || (parsed.is_human ? 'Похоже на диалог с человеком' : 'Похоже на автоответчик')
+        };
+    } catch (e) {
+        console.error('[Семён/GPT detectRealConversation] Ошибка:', e);
+        // Fallback: if AI fails, assume it's human if it's long enough, just to be safe it's not strictly failed
+        return { is_human: transcript.length > 50, reason: 'Ошибка AI, резервная оценка по длине текста.' };
+    }
+}
+
 function getManagerShortName(raw: any): string {
     const fullName = raw?.customFields?.change_name_manager || raw?.change_name_manager || raw?.manager?.firstName || 'Менеджер';
     // Берем только имя
@@ -199,7 +242,29 @@ export async function collectFacts(orderId: number) {
     }
 
     const outgoing = calls.filter((c: any) => c.direction === 'outgoing');
-    const connectedCalls = calls.filter((c: any) => (c.duration_sec || 0) > 15);
+
+    // Определяем "реальные" разговоры (Семён + ИИ)
+    // Сохраняем результат классификации, чтобы использовать в обосновании
+    const callAnalysisResults: Record<string, { is_human: boolean; reason: string }> = {};
+
+    // Сначала фильтруем звонки > 15 секунд, так как короткие очевидно недозвон
+    const potentialConnectedCalls = calls.filter((c: any) => (c.duration_sec || 0) > 15);
+    const connectedCalls: any[] = [];
+
+    for (const call of potentialConnectedCalls) {
+        if (!call.transcript) {
+            // Если транскрипции нет, но разговор долгий (>15с), считаем дозвоном по старой логике (на всякий случай)
+            connectedCalls.push(call);
+            continue;
+        }
+
+        const analysis = await detectRealConversation(call.transcript);
+        callAnalysisResults[call.recording_url || call.started_at] = analysis;
+
+        if (analysis.is_human) {
+            connectedCalls.push(call);
+        }
+    }
 
     // Z: Статус звонков
     const calls_status = connectedCalls.length > 0 ? 'Дозвон есть' : outgoing.length > 0 ? 'Попытки без ответа' : 'Нет звонков';
@@ -284,17 +349,49 @@ export async function collectFacts(orderId: number) {
     const mandatory_comments = (commentCount || 0) > 0;
 
     // W: Письма при неответе
-    const missedCalls = outgoing.filter((c: any) => (c.duration_sec || 0) === 0);
+    // Недозвоны - это все исходящие, которые НЕ попали в список connectedCalls
+    // Мы можем найти их просто вычитая.
+    const connectedRecordingUrls = new Set(connectedCalls.map(c => c.recording_url || c.started_at));
+    const missedCalls = outgoing.filter((c: any) => !connectedRecordingUrls.has(c.recording_url || c.started_at));
+    const hasConnectedCalls = connectedCalls.length > 0;
+
     let email_sent_no_answer = false;
-    if (missedCalls.length > 0) {
+    let email_reason = "";
+
+    if (hasConnectedCalls) {
+        // Успешный разговор состоялся
+        email_sent_no_answer = true;
+        email_reason = "Семён: Дозвон состоялся (подтверждено ИИ), отправка письма не требовалась.";
+    } else {
+        // Звонков не было вообще, либо все попали на автоответчик/недозвон.
         const { count: emailCount } = await supabase
             .from('raw_order_events')
             .select('event_id', { count: 'exact', head: true })
             .eq('retailcrm_order_id', orderId)
             .ilike('event_type', '%email%');
-        email_sent_no_answer = (emailCount || 0) > 0;
-    } else {
-        email_sent_no_answer = true; // написать письмо нужно только если не дозвонился
+
+        const hasEmails = (emailCount || 0) > 0;
+        email_sent_no_answer = hasEmails;
+
+        if (missedCalls.length > 0) {
+            // Был недозвон (или автоответчик распознанный ИИ)
+            // Пытаемся найти причину, если это был автоответчик
+            const aiReasons = missedCalls
+                .map(c => callAnalysisResults[c.recording_url || c.started_at])
+                .filter(Boolean)
+                .map(r => r.reason);
+
+            const aiNote = aiReasons.length > 0 ? ` (Срабатывал автоответчик)` : '';
+
+            email_reason = hasEmails
+                ? `Семён: После неудачного звонка${aiNote} менеджер отправил(а) письмо/сообщение.`
+                : `Семён: Было пропущено ${missedCalls.length} вызовов${aiNote}, но менеджер не отправил(а) письмо.`;
+        } else {
+            // Менеджер вообще не пытался звонить
+            email_reason = hasEmails
+                ? `Семён: Звонков не было, но менеджер ведет переписку по email.`
+                : `Семён: Звонки не совершались, письма клиенту не отправлялись.`;
+        }
     }
 
     // Сбор обоснований от Семёна (технические поля)
@@ -315,7 +412,7 @@ export async function collectFacts(orderId: number) {
         field_purchase_form: field_purchase_form ? `Семён: Форма закупки заполнена; ${mName} указал(а) — ${raw?.customFields?.typ_customer_margin || raw?.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || 'заполнено'}.` : "Семён: Форма закупки не заполнена.",
         field_sphere_correct: field_sphere_correct ? `Семён: Сфера деятельности заполнена; ${mName} указал(а) — ${raw?.customFields?.sfera_deiatelnosti || raw?.customFields?.sphere_of_activity || 'указано'}.` : "Семён: Сфера деятельности клиента не указана.",
         mandatory_comments: mandatory_comments ? `Семён: ${mName} оставил(а) ${commentCount} комментариев к заказу.` : "Семён: Менеджер не оставил ни одного существенного комментария к заказу.",
-        email_sent_no_answer: email_sent_no_answer ? (missedCalls.length > 0 ? `Семён: После неудачного звонка ${mName} отправил(а) письмо/сообщение.` : "Семён: Дозвон состоялся, отправка письма не требовалась.") : `Семён: Было пропущено ${missedCalls.length} вызовов, но ${mName} не отправил(а) письмо.`
+        email_sent_no_answer: email_reason
     };
 
     // Склейка истории всех транскрипций для GPT (Максим)
