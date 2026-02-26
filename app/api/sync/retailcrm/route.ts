@@ -70,7 +70,7 @@ export async function GET(request: Request) {
             params.append('apiKey', RETAILCRM_API_KEY);
             params.append('limit', String(limit));
             params.append('page', String(page));
-            params.append('filter[updatedAtFrom]', filterDateFrom);
+            params.append('filter[createdAtFrom]', filterDateFrom);
 
             const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
             console.log(`[Orders Sync] Fetching Page ${page}:`, url);
