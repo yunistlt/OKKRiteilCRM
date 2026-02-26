@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { syncOrderFromRetailCRM } from '@/lib/okk-evaluator';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -93,6 +94,19 @@ export async function GET(request: Request) {
                     console.error('Upsert Error:', error);
                     throw error;
                 }
+
+                // [Universal Sync] Re-sync unique orders to update the main 'orders' table
+                const uniqueOrderIds = Array.from(new Set(rowsToUpsert.map(r => r.retailcrm_order_id)));
+                console.log(`[History Sync] Re-syncing ${uniqueOrderIds.length} orders to update main table...`);
+
+                for (const orderId of uniqueOrderIds) {
+                    try {
+                        await syncOrderFromRetailCRM(orderId);
+                    } catch (e) {
+                        console.error(`[History Sync] Failed a re-sync for #${orderId}:`, e);
+                    }
+                }
+
                 totalProcessed += rowsToUpsert.length;
             }
 

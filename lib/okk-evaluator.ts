@@ -86,7 +86,7 @@ function getManagerShortName(raw: any): string {
 // СЕМЁН: Сбор фактов (без AI)
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
 // ═══════════════════════════════════════════════════════
-async function syncOrderFromRetailCRM(orderId: number) {
+export async function syncOrderFromRetailCRM(orderId: number) {
     const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
     const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 
