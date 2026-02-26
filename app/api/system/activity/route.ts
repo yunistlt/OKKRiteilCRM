@@ -50,7 +50,7 @@ export async function GET() {
                 .limit(1)
                 .single();
 
-            stats.last_activity = lastItem ? lastItem[m.field] : null;
+            stats.last_activity = lastItem ? (lastItem as any)[m.field] : null;
             results.push(stats);
         }
 
