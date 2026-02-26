@@ -16,6 +16,7 @@ export async function GET() {
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
                 'transcription_min_duration',
+                'transcription_last_run',
                 'rule_engine_last_run',
                 'insight_agent_last_run'
             ]);
@@ -112,19 +113,21 @@ export async function GET() {
             reason: matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.'
         };
 
-        // --- Transcription Backfill ---
+        // --- Transcription (Semen) ---
+        const transLastRunKey = stateMap.get('transcription_last_run');
         const transCursorKey = stateMap.get('transcription_backfill_cursor');
-        const transCursor = transCursorKey?.value || 'Starts Sept 1';
-        const transLastRun = transCursorKey?.updated_at || null;
-        // Logic: If updated recently (< 10m), it's active. (Cron schedule is 2m, so 10m is safe buffer)
-        const transActive = isFresh(transLastRun, 10);
+
+        const transLastRun = transLastRunKey?.updated_at || transCursorKey?.updated_at || null;
+        const transActive = isFresh(transLastRun, 65); // 1 hour + buffer
+
+        const transCursor = transCursorKey?.value || 'Active Sync';
 
         const transStatus = {
             service: 'Transcription Cron',
             cursor: transCursor.includes('T') ? transCursor.split('T')[0] : transCursor,
             last_run: transLastRun,
             status: transActive ? 'ok' : 'warning',
-            details: transActive ? 'Processing...' : 'Idle / Finished',
+            details: transActive ? 'Processing Calls' : 'Idle / Stalled',
             reason: transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.'
         };
 
