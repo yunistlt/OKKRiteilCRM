@@ -7,7 +7,7 @@ export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // Protect everything except explicit public routes
-    const isPublicRoute = pathname === '/login' || pathname.startsWith('/api/cron') || pathname.startsWith('/api/sync/telphin');
+    const isPublicRoute = pathname === '/login' || pathname.startsWith('/api/auth') || pathname.startsWith('/api/cron') || pathname.startsWith('/api/sync/telphin');
     const isAuthRoute = pathname === '/login';
     const isProtectedRoute = !isPublicRoute;
 
