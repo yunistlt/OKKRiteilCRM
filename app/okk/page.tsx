@@ -746,7 +746,7 @@ function OKKContent() {
     };
 
     return (
-        <div className="flex-1 flex flex-col min-h-0 bg-gray-50 relative">
+        <div className="flex flex-col bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-2">
