@@ -746,9 +746,9 @@ function OKKContent() {
     };
 
     return (
-        <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
+        <div className="flex-1 flex flex-col min-h-0 bg-gray-50 relative">
             {/* Header / Run Bar (Ultra Compact) */}
-            <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0">
+            <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-2">
                     <Link href="/" className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
                         ←
@@ -817,7 +817,7 @@ function OKKContent() {
             </div>
 
             {/* Filter Row (Single line on mobile) */}
-            <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0">
+            <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0 relative z-20 shadow-sm">
                 {user?.role === 'admin' && (
                     <div className="relative flex-shrink-0">
                         <select
@@ -875,7 +875,7 @@ function OKKContent() {
             </div>
 
             {/* Data Area: High Contrast for Mobile */}
-            <div className={`flex-grow overflow-auto font-sans ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
+            <div className={`flex-1 overflow-auto font-sans relative z-10 ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
                 {/* Desktop View */}
                 <div className="hidden md:block">
                     <table className="text-xs border-collapse min-w-max w-full">
