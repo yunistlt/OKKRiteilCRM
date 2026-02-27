@@ -21,7 +21,22 @@ export async function middleware(request: NextRequest) {
         }
 
         try {
-            await decrypt(sessionCookie);
+            const payload = await decrypt(sessionCookie);
+            const role = payload?.role;
+
+            if (role === 'manager') {
+                // Allowed routes for manager
+                const isOkkRoute = pathname === '/okk' || pathname.startsWith('/okk/');
+                const isOkkApiRoute = pathname.startsWith('/api/okk');
+
+                if (!isOkkRoute && !isOkkApiRoute) {
+                    if (pathname.startsWith('/api')) {
+                        return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
+                    }
+                    return NextResponse.redirect(new URL('/okk', request.url));
+                }
+            }
+
             return NextResponse.next();
         } catch (e) {
             // Invalid token
