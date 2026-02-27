@@ -13,6 +13,16 @@ interface EfficiencyRow {
 
 export default function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [user, setUser] = useState<{ username: string; role: string } | null>(null);
+
+    useEffect(() => {
+        fetch('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.authenticated) setUser(data.user);
+            })
+            .catch(console.error);
+    }, []);
 
     return (
         <header className="bg-gray-900 text-white shadow-md sticky top-0 z-50">
@@ -36,14 +46,18 @@ export default function Header() {
                         <span className="text-base">📋</span>
                         Контроль качества
                     </Link>
-                    <Link href="/?office=true" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
-                        <span className="text-base">👥</span>
-                        Команда ОКК
-                    </Link>
-                    <Link href="/settings" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        Настройки
-                    </Link>
+                    {user?.role !== 'manager' && (
+                        <>
+                            <Link href="/?office=true" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
+                                <span className="text-base">👥</span>
+                                Команда ОКК
+                            </Link>
+                            <Link href="/settings" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                Настройки
+                            </Link>
+                        </>
+                    )}
                     <div className="text-[10px] text-gray-600 font-black">v1.2</div>
                 </div>
 
@@ -82,30 +96,34 @@ export default function Header() {
                             <span className="flex items-center gap-2"><span className="text-xl">📋</span> Контроль качества</span>
                             <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                         </Link>
-                        <Link
-                            href="/?office=true"
-                            onClick={() => setIsMenuOpen(false)}
-                            className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
-                        >
-                            <span className="flex items-center gap-2"><span className="text-xl">👥</span> Команда ОКК</span>
-                            <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        </Link>
-                        <Link
-                            href="/settings"
-                            onClick={() => setIsMenuOpen(false)}
-                            className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
-                        >
-                            <span>Настройки</span>
-                            <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        </Link>
-                        <Link
-                            href="/analytics"
-                            onClick={() => setIsMenuOpen(false)}
-                            className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
-                        >
-                            <span>Аналитика</span>
-                            <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
-                        </Link>
+                        {user?.role !== 'manager' && (
+                            <>
+                                <Link
+                                    href="/?office=true"
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
+                                >
+                                    <span className="flex items-center gap-2"><span className="text-xl">👥</span> Команда ОКК</span>
+                                    <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                </Link>
+                                <Link
+                                    href="/settings"
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
+                                >
+                                    <span>Настройки</span>
+                                    <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                </Link>
+                                <Link
+                                    href="/analytics"
+                                    onClick={() => setIsMenuOpen(false)}
+                                    className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
+                                >
+                                    <span>Аналитика</span>
+                                    <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                                </Link>
+                            </>
+                        )}
                     </div>
 
                     <div className="text-[10px] text-gray-600 font-black text-center pt-4">OKKRiteilCRM v1.2</div>

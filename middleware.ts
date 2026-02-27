@@ -22,7 +22,7 @@ export async function middleware(request: NextRequest) {
 
         try {
             const payload = await decrypt(sessionCookie);
-            const role = payload?.role;
+            const role = payload?.user?.role || payload?.role;
 
             if (role === 'manager') {
                 // Allowed routes for manager
