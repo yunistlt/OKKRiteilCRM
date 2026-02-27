@@ -679,7 +679,7 @@ function OKKContent() {
     // Рендер заголовка колонки с переносом по словам и тултипом
     const ColTh = ({ col }: { col: ColDef | typeof SCORE_COLS[0] }) => (
         <th
-            className={`px-2 py-2 text-center text-[11px] font-normal text-gray-600 border-r border-gray-100 cursor-pointer hover:bg-gray-100 min-w-[72px] max-w-[100px] align-top sticky top-[28px] z-[30] bg-gray-50 shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)] ${sortBy === col.key ? 'text-blue-600 font-semibold bg-blue-50' : ''}`}
+            className={`px-2 py-2 text-center text-[11px] font-normal text-gray-600 border-r border-gray-100 cursor-pointer hover:bg-gray-100 min-w-[72px] max-w-[100px] align-top relative bg-gray-50 ${sortBy === col.key ? 'text-blue-600 font-semibold bg-blue-50' : ''}`}
             onClick={() => handleSort(col.key)}
         >
             <ColTooltip label={col.label} info={col.tip}>
@@ -879,19 +879,19 @@ function OKKContent() {
                 {/* Desktop View */}
                 <div className="hidden md:block">
                     <table className="text-xs border-collapse min-w-max w-full">
-                        <thead className="sticky top-0 z-10">
-                            <tr className="bg-gray-100 border-b border-gray-200 text-gray-700">
-                                <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 top-0 bg-gray-100 z-[40] border-r border-gray-200 font-semibold shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)]">
+                        <thead className="sticky top-0 z-[50]">
+                            <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 shadow-sm">
+                                <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-[60] border-r border-gray-200 font-semibold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] top-0 bg-gray-100 z-[40] border-r border-gray-200 font-semibold min-w-[80px] w-[80px] shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)]">Заказ</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] top-0 bg-gray-100 z-[40] border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px] shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)]">МОП</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] top-0 bg-gray-100 z-[40] border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_2px_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
-                                {COL_GROUPS.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-b border-gray-200 sticky top-0 z-[30] shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)] ${g.color}`}>{g.label}</th>))}
-                                <th rowSpan={2} className="px-2 py-2 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-xs min-w-[70px] w-[70px] sticky top-0 z-[30] shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)]">Нарушения</th>
-                                <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-b border-gray-200 sticky top-0 z-[30] shadow-[0_2px_5px_-2px_rgba(0,0,0,0.1)]">Оценка выполнения</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[80px] w-[80px]">Заказ</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px]">МОП</th>
+                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
+                                {COL_GROUPS.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
+                                <th rowSpan={2} className="px-2 py-2 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-xs min-w-[70px] w-[70px] relative">Нарушения</th>
+                                <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
                             </tr>
-                            <tr className="bg-gray-50 border-b border-gray-200">
+                            <tr className="bg-gray-50 border-b border-gray-200 shadow-sm">
                                 {COL_GROUPS.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
                                 {SCORE_COLS.map(col => <ColTh key={col.key} col={col as any} />)}
                             </tr>
