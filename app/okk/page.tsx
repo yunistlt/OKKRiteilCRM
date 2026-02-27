@@ -789,7 +789,9 @@ function OKKContent() {
 
                     <div className="text-right ml-2 md:block hidden">
                         <div className="text-xl font-black text-green-600 leading-none">{avgScore ?? 0}%</div>
-                        <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
+                        <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
+                            {user?.role === 'manager' ? 'ваш средний %' : filterManager ? 'средний % менеджера' : 'средний % по ОП'}
+                        </div>
                     </div>
 
                     <div className="text-right md:hidden flex flex-col items-end">
