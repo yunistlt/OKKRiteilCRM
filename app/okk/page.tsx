@@ -1156,6 +1156,15 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                         <div className="p-2 md:p-3 border-b bg-white/50 sticky top-0">
                             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h3>
                         </div>
+                        {calls.some(c => c.is_fallback) && (
+                            <div className="p-3 m-2 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800 leading-tight shadow-sm animate-pulse flex gap-2 items-start">
+                                <span className="text-sm">⏳</span>
+                                <div>
+                                    <span className="font-bold block">Звонки найдены, но еще не обработаны!</span>
+                                    Семен скачивает звонки и делает транскрибацию. Развернутая оценка появится чуть позже.
+                                </div>
+                            </div>
+                        )}
                         {loading ? (
                             <div className="flex-1 flex items-center justify-center py-12">
                                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
