@@ -24,6 +24,11 @@ export default function Header() {
             .catch(console.error);
     }, []);
 
+    const handleLogout = async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/login';
+    };
+
     return (
         <header className="bg-gray-900 text-white shadow-md sticky top-0 z-50">
             <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -60,6 +65,26 @@ export default function Header() {
                     )}
                     <div className="text-[10px] text-gray-600 font-black">v1.2</div>
                 </div>
+
+                {/* Desktop User Profile / Logout */}
+                {user && (
+                    <div className="hidden md:flex items-center gap-3 ml-4 pl-4 border-l border-gray-800">
+                        <div className="flex flex-col items-end">
+                            <span className="text-sm font-bold text-gray-200">{user.username}</span>
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">{user.role}</span>
+                        </div>
+                        <div className="w-8 h-8 rounded-full bg-blue-900 text-blue-300 flex items-center justify-center font-bold text-xs shrink-0">
+                            {user.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <button
+                            onClick={handleLogout}
+                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-900/30 rounded-lg transition-colors ml-2"
+                            title="Выйти"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        </button>
+                    </div>
+                )}
 
                 {/* Mobile Menu Button */}
                 <button
@@ -127,6 +152,27 @@ export default function Header() {
                     </div>
 
                     <div className="text-[10px] text-gray-600 font-black text-center pt-4">OKKRiteilCRM v1.2</div>
+
+                    {/* Mobile User Profile / Logout */}
+                    {user && (
+                        <div className="flex items-center justify-between border-t border-gray-800 pt-4 mt-2">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-blue-900 text-blue-300 flex items-center justify-center font-bold text-sm shrink-0">
+                                    {user.username.substring(0, 2).toUpperCase()}
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-white">{user.username}</span>
+                                    <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">{user.role}</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleLogout}
+                                className="p-3 text-red-400 hover:bg-red-900/30 rounded-xl transition-colors bg-gray-800"
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
         </header>
