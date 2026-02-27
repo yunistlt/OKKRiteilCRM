@@ -126,7 +126,38 @@ export async function GET(req: Request) {
         }
     }
 
-    // 7. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
+    // 7. Calculate Global Averages
+    let totalAvgScore = 0;
+    let filteredAvgScore = 0;
+
+    // A. Средний по всему ОП (игнорирует from, to, фильтр менеджера)
+    const { data: allScores } = await supabase
+        .from('okk_order_scores')
+        .select('deal_score_pct')
+        .not('deal_score_pct', 'is', null);
+
+    if (allScores && allScores.length > 0) {
+        totalAvgScore = Math.round(allScores.reduce((sum, s) => sum + (s.deal_score_pct || 0), 0) / allScores.length);
+    }
+
+    // B. Средний по текущим фильтрам (но без учета пагинации, то есть для ВСЕХ заказов под фильтрами)
+    // First, get all order IDs matching the current FILTERS (ignoring page/pageSize)
+    const { data: filteredOrdersAllPages } = await ordersQuery.select('order_id');
+    const filteredOrderIds = (filteredOrdersAllPages || []).map(o => o.order_id);
+
+    if (filteredOrderIds.length > 0) {
+        const { data: filteredScoresData } = await supabase
+            .from('okk_order_scores')
+            .select('deal_score_pct')
+            .in('order_id', filteredOrderIds)
+            .not('deal_score_pct', 'is', null);
+
+        if (filteredScoresData && filteredScoresData.length > 0) {
+            filteredAvgScore = Math.round(filteredScoresData.reduce((sum, s) => sum + (s.deal_score_pct || 0), 0) / filteredScoresData.length);
+        }
+    }
+
+    // 8. Обогащаем список заказов оценками и фильтруем по менеджеру если нужно
     let enriched = (activeOrders || []).map(o => {
         const score = scoresMap[o.order_id] || {};
 
@@ -146,6 +177,10 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
         scores: enriched,
+        averages: {
+            totalAvgScore,
+            filteredAvgScore
+        },
         pagination: {
             totalCount: totalCount || 0,
             page,

@@ -508,6 +508,7 @@ function OKKContent() {
     const [activeExplain, setActiveExplain] = useState<{ label: string, info: any, pos: { top: number, left: number } } | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [pagination, setPagination] = useState({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 });
+    const [averages, setAverages] = useState({ totalAvgScore: 0, filteredAvgScore: 0 });
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
     const [selectedViolationsOrder, setSelectedViolationsOrder] = useState<OrderScore | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
@@ -562,6 +563,9 @@ function OKKContent() {
             setScores(json.scores || []);
             if (json.pagination) {
                 setPagination(prev => ({ ...prev, ...json.pagination }));
+            }
+            if (json.averages) {
+                setAverages(json.averages);
             }
         } finally {
             setLoading(false);
@@ -650,12 +654,7 @@ function OKKContent() {
         return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
     });
 
-    // Средний балл по всему ОП (все заказы с оценкой)
-    const scoredOrders = scores.filter(s => s.deal_score_pct !== null && s.deal_score_pct !== undefined);
-    const avgScore = scoredOrders.length > 0
-        ? Math.round(scoredOrders.reduce((sum, s) => sum + (s.deal_score_pct ?? 0), 0) / scoredOrders.length)
-        : null;
-    const avgScoreColor = avgScore === null ? '#94a3b8' : avgScore >= 75 ? '#16a34a' : avgScore >= 50 ? '#d97706' : '#dc2626';
+    // Удален локальный расчет avgScore так как получаем его с бекенда
 
 
     const statusMap = new Map<string, { label: string, color?: string }>();
@@ -787,16 +786,32 @@ function OKKContent() {
                         )}
                     </div>
 
-                    <div className="text-right ml-2 md:block hidden">
-                        <div className="text-xl font-black text-green-600 leading-none">{avgScore ?? 0}%</div>
-                        <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
-                            {user?.role === 'manager' ? 'ваш средний %' : filterManager ? 'средний % менеджера' : 'средний % по ОП'}
+                    <div className="flex gap-4 ml-2 md:flex hidden">
+                        <div className="text-right">
+                            <div className="text-xl font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
+                            <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
+                                {user?.role === 'manager' ? 'ваш средний %' : filterManager ? 'средний % менеджера' : 'текущий фильтр %'}
+                            </div>
+                        </div>
+                        <div className="w-px h-8 bg-gray-200" />
+                        <div className="text-right">
+                            <div className="text-xl font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
+                            <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
                         </div>
                     </div>
 
-                    <div className="text-right md:hidden flex flex-col items-end">
-                        <div className="text-sm font-black text-green-600 leading-none">{avgScore ?? 0}%</div>
-                        <div className="text-[8px] font-black text-gray-400 uppercase leading-none">avg</div>
+                    <div className="flex gap-3 md:hidden flex items-end">
+                        <div className="text-right flex flex-col items-end">
+                            <div className="text-sm font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
+                            <div className="text-[8px] font-black text-gray-400 uppercase leading-none">
+                                {user?.role === 'manager' ? 'ваш' : 'фильтр'}
+                            </div>
+                        </div>
+                        <div className="w-px h-6 bg-gray-200" />
+                        <div className="text-right flex flex-col items-end">
+                            <div className="text-sm font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
+                            <div className="text-[8px] font-black text-gray-400 uppercase leading-none">оп</div>
+                        </div>
                     </div>
                 </div>
             </div>
