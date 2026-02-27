@@ -1,0 +1,51 @@
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { decrypt } from '@/lib/auth';
+
+export async function middleware(request: NextRequest) {
+    const sessionCookie = request.cookies.get('auth_session')?.value;
+    const { pathname } = request.nextUrl;
+
+    // By default all routes inside /okk and /api/okk are protected
+    // /login is the entry point
+    const isProtectedRoute = pathname.startsWith('/okk') || pathname.startsWith('/api/okk');
+    const isAuthRoute = pathname === '/login';
+
+    if (isProtectedRoute) {
+        if (!sessionCookie) {
+            // Redirect to login if accessing protected route without a cookie
+            if (pathname.startsWith('/api')) {
+                return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+            }
+            return NextResponse.redirect(new URL('/login', request.url));
+        }
+
+        try {
+            await decrypt(sessionCookie);
+            return NextResponse.next();
+        } catch (e) {
+            // Invalid token
+            if (pathname.startsWith('/api')) {
+                return NextResponse.json({ error: 'Недействительная сессия' }, { status: 401 });
+            }
+            return NextResponse.redirect(new URL('/login', request.url));
+        }
+    }
+
+    if (isAuthRoute) {
+        if (sessionCookie) {
+            try {
+                await decrypt(sessionCookie);
+                return NextResponse.redirect(new URL('/okk', request.url));
+            } catch (e) {
+                // Ignore expired token on login page
+            }
+        }
+    }
+
+    return NextResponse.next();
+}
+
+export const config = {
+    matcher: ['/((?!_next/static|_next/image|favicon-v2\\.png|images|.*\\.svg).*)'],
+};

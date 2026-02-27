@@ -5,6 +5,11 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
+interface User {
+    username: string;
+    role: string;
+}
+
 interface OrderScore {
     order_id: number;
     created_at?: string;
@@ -506,6 +511,7 @@ function OKKContent() {
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
     const [selectedViolationsOrder, setSelectedViolationsOrder] = useState<OrderScore | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
+    const [user, setUser] = useState<User | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // Fetch active managers for dropdown
@@ -514,6 +520,16 @@ function OKKContent() {
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) setActiveManagers(data);
+            })
+            .catch(console.error);
+    }, []);
+
+    // Fetch user role
+    useEffect(() => {
+        fetch('/api/auth/me')
+            .then(res => res.json())
+            .then(data => {
+                if (data.authenticated) setUser(data.user);
             })
             .catch(console.error);
     }, []);
@@ -747,22 +763,28 @@ function OKKContent() {
                 <div className="flex items-center gap-2">
                     {/* Compact Run Controls */}
                     <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
-                        <input
-                            type="text"
-                            placeholder="Заказ..."
-                            value={targetOrderId}
-                            onChange={(e) => setTargetOrderId(e.target.value)}
-                            className="bg-transparent border-none text-[10px] font-bold w-12 focus:ring-0 p-0 h-4"
-                        />
-                        <div className="w-px h-3 bg-gray-200" />
-                        <button
-                            onClick={runAll}
-                            disabled={running}
-                            className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'} px-2 py-0.5 rounded text-[9px] font-black transition-all`}
-                        >
-                            {running ? '..' : targetOrderId ? 'FIX' : 'RUN'}
-                        </button>
-                        <CountdownTimer />
+                        {user?.role === 'admin' ? (
+                            <>
+                                <input
+                                    type="text"
+                                    placeholder="Заказ..."
+                                    value={targetOrderId}
+                                    onChange={(e) => setTargetOrderId(e.target.value)}
+                                    className="bg-transparent border-none text-[10px] font-bold w-12 focus:ring-0 p-0 h-4"
+                                />
+                                <div className="w-px h-3 bg-gray-200" />
+                                <button
+                                    onClick={runAll}
+                                    disabled={running}
+                                    className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'} px-2 py-0.5 rounded text-[9px] font-black transition-all`}
+                                >
+                                    {running ? '..' : targetOrderId ? 'FIX' : 'RUN'}
+                                </button>
+                                <CountdownTimer />
+                            </>
+                        ) : (
+                            <CountdownTimer />
+                        )}
                     </div>
 
                     <div className="text-right ml-2 md:block hidden">
@@ -779,26 +801,28 @@ function OKKContent() {
 
             {/* Filter Row (Single line on mobile) */}
             <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0">
-                <div className="relative flex-shrink-0">
-                    <select
-                        value={filterManager}
-                        onChange={(e) => setFilterManager(e.target.value)}
-                        className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[120px] outline-none focus:ring-1 focus:ring-blue-400"
-                    >
-                        <option value="">Все менеджеры</option>
-                        {activeManagers.map(m => (
-                            <option key={m.id} value={m.id.toString()}>
-                                {m.name}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
-                        👤
+                {user?.role === 'admin' && (
+                    <div className="relative flex-shrink-0">
+                        <select
+                            value={filterManager}
+                            onChange={(e) => setFilterManager(e.target.value)}
+                            className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[120px] outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                            <option value="">Все менеджеры</option>
+                            {activeManagers.map(m => (
+                                <option key={m.id} value={m.id.toString()}>
+                                    {m.name}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
+                            👤
+                        </div>
+                        <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
+                            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </div>
                     </div>
-                    <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
-                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </div>
-                </div>
+                )}
 
                 <div className="relative flex-shrink-0">
                     <select

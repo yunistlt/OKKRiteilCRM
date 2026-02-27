@@ -1,16 +1,26 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
+    const session = await getSession();
+    const userRole = session?.user?.role || 'admin';
+    const retailCrmId = session?.user?.retail_crm_manager_id;
+
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');
     const to = searchParams.get('to');
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '50');
-    const filterManager = searchParams.get('manager');
+    let filterManager = searchParams.get('manager');
     const filterStatus = searchParams.get('status');
+
+    // Насильно применяем фильтр для менеджера
+    if (userRole === 'manager' && retailCrmId) {
+        filterManager = String(retailCrmId);
+    }
 
     // 1. Получаем рабочие статусы
     const { data: settings } = await supabase
