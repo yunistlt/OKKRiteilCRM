@@ -6,10 +6,10 @@ export async function middleware(request: NextRequest) {
     const sessionCookie = request.cookies.get('auth_session')?.value;
     const { pathname } = request.nextUrl;
 
-    // By default all routes inside /okk and /api/okk are protected
-    // /login is the entry point
-    const isProtectedRoute = pathname.startsWith('/okk') || pathname.startsWith('/api/okk');
+    // Protect everything except explicit public routes
+    const isPublicRoute = pathname === '/login' || pathname.startsWith('/api/cron') || pathname.startsWith('/api/sync/telphin');
     const isAuthRoute = pathname === '/login';
+    const isProtectedRoute = !isPublicRoute;
 
     if (isProtectedRoute) {
         if (!sessionCookie) {
