@@ -817,8 +817,8 @@ function OKKContent() {
                 </div>
             </div>
 
-            {/* Filter Row (Single line on mobile) */}
-            <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0 relative z-20 shadow-sm">
+            {/* Filter Row */}
+            <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex flex-wrap items-center gap-2 flex-shrink-0 relative z-40 shadow-sm">
                 {user?.role === 'admin' && (
                     <MultiSelect
                         options={activeManagers.map(m => ({ value: m.id.toString(), label: m.name }))}
