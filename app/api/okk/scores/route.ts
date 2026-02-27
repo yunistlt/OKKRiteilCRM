@@ -39,13 +39,17 @@ export async function GET(req: Request) {
 
     if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
     if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
-    if (filterStatus) ordersQuery = ordersQuery.eq('status', filterStatus);
+    if (filterStatus) {
+        const statuses = filterStatus.split(',').filter(Boolean);
+        if (statuses.length > 0) {
+            ordersQuery = ordersQuery.in('status', statuses);
+        }
+    }
 
-    // Exact match for manager ID now that frontend uses a select dropdown
     if (filterManager) {
-        const managerId = parseInt(filterManager, 10);
-        if (!isNaN(managerId)) {
-            ordersQuery = ordersQuery.eq('manager_id', managerId);
+        const managerIds = filterManager.split(',').map(m => parseInt(m, 10)).filter(m => !isNaN(m));
+        if (managerIds.length > 0) {
+            ordersQuery = ordersQuery.in('manager_id', managerIds);
         }
     }
 

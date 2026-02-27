@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import { MultiSelect } from '../components/MultiSelect';
 
 interface User {
     username: string;
@@ -498,8 +499,8 @@ function OKKContent() {
     const [loading, setLoading] = useState(true);
     const [running, setRunning] = useState(false);
     const [runResult, setRunResult] = useState<string | null>(null);
-    const [filterManager, setFilterManager] = useState('');
-    const [filterStatus, setFilterStatus] = useState('');
+    const [filterManager, setFilterManager] = useState<string[]>([]);
+    const [filterStatus, setFilterStatus] = useState<string[]>([]);
     const [sortBy, setSortBy] = useState<string>('order_id');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [runLimit, setRunLimit] = useState(50);
@@ -555,8 +556,8 @@ function OKKContent() {
             if (to) query.set('to', to);
             query.set('page', pagination.page.toString());
             query.set('pageSize', pagination.pageSize.toString());
-            if (filterManager) query.set('manager', filterManager);
-            if (filterStatus) query.set('status', filterStatus);
+            if (filterManager.length > 0) query.set('manager', filterManager.join(','));
+            if (filterStatus.length > 0) query.set('status', filterStatus.join(','));
 
             const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
@@ -790,7 +791,7 @@ function OKKContent() {
                         <div className="text-right">
                             <div className="text-xl font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
                             <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
-                                {user?.role === 'manager' ? 'ваш средний %' : filterManager ? 'средний % менеджера' : 'текущий фильтр %'}
+                                {user?.role === 'manager' ? 'ваш средний %' : filterManager.length > 0 ? 'средний % менеджера' : 'текущий фильтр %'}
                             </div>
                         </div>
                         <div className="w-px h-8 bg-gray-200" />
@@ -819,48 +820,22 @@ function OKKContent() {
             {/* Filter Row (Single line on mobile) */}
             <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex items-center gap-2 overflow-x-auto scrollbar-hide flex-shrink-0 relative z-20 shadow-sm">
                 {user?.role === 'admin' && (
-                    <div className="relative flex-shrink-0">
-                        <select
-                            value={filterManager}
-                            onChange={(e) => setFilterManager(e.target.value)}
-                            className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[120px] outline-none focus:ring-1 focus:ring-blue-400"
-                        >
-                            <option value="">Все менеджеры</option>
-                            {activeManagers.map(m => (
-                                <option key={m.id} value={m.id.toString()}>
-                                    {m.name}
-                                </option>
-                            ))}
-                        </select>
-                        <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
-                            👤
-                        </div>
-                        <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
-                            <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                    </div>
+                    <MultiSelect
+                        options={activeManagers.map(m => ({ value: m.id.toString(), label: m.name }))}
+                        selectedValues={filterManager}
+                        onChange={setFilterManager}
+                        placeholder="Все менеджеры"
+                        icon={<span className="text-[10px]">👤</span>}
+                    />
                 )}
 
-                <div className="relative flex-shrink-0">
-                    <select
-                        value={filterStatus}
-                        onChange={(e) => setFilterStatus(e.target.value)}
-                        className="appearance-none flex items-center gap-1 pl-6 pr-5 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-600 hover:bg-gray-100 transition-all min-w-[100px] outline-none focus:ring-1 focus:ring-blue-400"
-                    >
-                        <option value="">Все статусы</option>
-                        {availableStatuses.map(s => (
-                            <option key={s.code} value={s.code}>
-                                {s.label}
-                            </option>
-                        ))}
-                    </select>
-                    <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-[10px]">
-                        ✨
-                    </div>
-                    <div className="absolute inset-y-0 right-1 flex items-center pointer-events-none">
-                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </div>
-                </div>
+                <MultiSelect
+                    options={availableStatuses.map(s => ({ value: s.code, label: s.label }))}
+                    selectedValues={filterStatus}
+                    onChange={setFilterStatus}
+                    placeholder="Все статусы"
+                    icon={<span className="text-[10px]">✨</span>}
+                />
 
                 {/* Pagination (Compact inline) */}
                 {pagination.totalPages > 1 && (
