@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { matchCallToOrder } from '@/lib/call-matching';
+import { matchCallToOrders, RawCall } from '@/lib/call-matching';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -9,24 +9,43 @@ export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
 
-    const {
-      call_id,
-      from_number,
-      to_number,
-      timestamp,
-      status,
-    } = payload;
+    const { call_id, from_number, to_number, timestamp, status } = payload;
 
     // Нормализуем номер телефона
     const normalizedNumber = from_number.replace(/\D/g, '');
+    const toNumberNormalized = to_number.replace(/\D/g, '');
+
+    const rawCall: RawCall = {
+      telphin_call_id: call_id,
+      from_number,
+      to_number,
+      from_number_normalized: normalizedNumber,
+      to_number_normalized: toNumberNormalized,
+      started_at: new Date(timestamp).toISOString(),
+      direction: 'incoming',
+      raw_payload: payload,
+    };
 
     // Ищем совпадающий заказ
-    const matchedOrder = await matchCallToOrder(normalizedNumber, new Date(timestamp));
+    const matches = await matchCallToOrders(rawCall);
+    const bestMatch = matches[0];
 
     // Назначаем менеджера (если найден заказ)
-    let assignedManagerId = null;
-    if (matchedOrder) {
-      assignedManagerId = matchedOrder.manager_id;
+    let assignedManagerId: number | null = null;
+    let matchedOrderId: number | null = null;
+
+    if (bestMatch) {
+      matchedOrderId = bestMatch.retailcrm_order_id;
+      const { data: orderRecords } = await supabase
+        .from('orders')
+        .select('id, manager_id')
+        .eq('id', matchedOrderId)
+        .limit(1);
+
+      const orderRecord = orderRecords?.[0];
+      if (orderRecord?.manager_id) {
+        assignedManagerId = orderRecord.manager_id;
+      }
     }
 
     // Логируем входящий звонок
@@ -36,7 +55,7 @@ export async function POST(req: NextRequest) {
         call_sid: call_id,
         from_number: normalizedNumber,
         to_number: to_number,
-        order_id: matchedOrder?.id || null,
+        order_id: matchedOrderId,
         assigned_manager_id: assignedManagerId,
         status: 'ringing',
         created_at: new Date().toISOString(),
@@ -50,19 +69,21 @@ export async function POST(req: NextRequest) {
 
     // Уведомляем менеджера в Telegram
     if (assignedManagerId) {
-      await sendTelegramNotification({
-        type: 'incoming_call',
-        callId: call_id,
-        fromNumber: normalizedNumber,
-        orderId: matchedOrder?.id,
-      });
+      const message = [
+        '📞 Входящий звонок',
+        `Call SID: ${call_id}`,
+        `От: ${normalizedNumber}`,
+        `Заказ: ${matchedOrderId ?? 'не найден'}`,
+      ].join('\n');
+
+      await sendTelegramNotification(message);
     }
 
     return NextResponse.json({
       success: true,
       callId: call_id,
-      matched: !!matchedOrder,
-      orderId: matchedOrder?.id || null,
+      matched: !!matchedOrderId,
+      orderId: matchedOrderId,
     });
   } catch (error) {
     console.error('Incoming call webhook error:', error);
