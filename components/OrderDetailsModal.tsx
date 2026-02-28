@@ -1,8 +1,7 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import CallInitiator from './calls/CallInitiator';
-import CallHistory from './calls/CallHistory';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -40,14 +39,9 @@ const sectionNavItems = [
     { id: 'order-custom-fields', label: 'Доп. данные' }
 ] as const;
 
-const qualityTabs = [
-    { id: 'info', label: 'Информация' },
-    { id: 'history', label: 'История' },
-    { id: 'ai', label: 'Аудит Анны' },
-] as const;
-
 type ViewTab = typeof viewTabs[number]['id'];
-type QualityTab = typeof qualityTabs[number]['id'];
+type QualityMobileTab = 'calls' | 'transcript' | 'analysis';
+type ScoreBreakdownEntry = { result?: boolean | null; reason?: string | null };
 
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
     <div className="space-y-1">
@@ -118,14 +112,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
-    const [qualityTab, setQualityTab] = useState<QualityTab>('info');
-    const [analyzing, setAnalyzing] = useState(false);
+    const [qualityCalls, setQualityCalls] = useState<any[]>([]);
+    const [qualityScore, setQualityScore] = useState<any | null>(null);
+    const [qualityCallsLoading, setQualityCallsLoading] = useState(false);
+    const [qualityScoreLoading, setQualityScoreLoading] = useState(false);
+    const [qualityError, setQualityError] = useState<string | null>(null);
+    const [selectedCallIndex, setSelectedCallIndex] = useState(0);
+    const [qualityMobileTab, setQualityMobileTab] = useState<QualityMobileTab>('calls');
+    const [transcribing, setTranscribing] = useState(false);
+    const [qualityFetched, setQualityFetched] = useState(false);
 
     useEffect(() => {
         if (isOpen && orderId) {
             fetchDetails();
             setViewTab('card');
-            setQualityTab('info');
+            setQualityCalls([]);
+            setQualityScore(null);
+            setQualityError(null);
+            setSelectedCallIndex(0);
+            setQualityMobileTab('calls');
+            setQualityFetched(false);
+            setTranscribing(false);
         }
     }, [isOpen, orderId]);
 
@@ -144,20 +151,91 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         }
     };
 
-    const handleRunAnalysis = async () => {
+    const fetchQualityScore = useCallback(async () => {
         if (!orderId) return;
-        setAnalyzing(true);
+        setQualityScoreLoading(true);
         try {
-            const res = await fetch(`/api/orders/${orderId}/analyze`, { method: 'POST' });
-            if (!res.ok) throw new Error('Analysis failed');
-            await fetchDetails();
-        } catch (e) {
+            const res = await fetch(`/api/okk/scores/${orderId}`);
+            const json = await res.json();
+            if (!res.ok || json.error) {
+                throw new Error(json.error || 'Не удалось загрузить оценку');
+            }
+            setQualityScore(json.order || json.score || null);
+        } catch (e: any) {
             console.error(e);
-            alert('Ошибка при запуске анализа');
+            setQualityError(e.message || 'Не удалось загрузить качество');
         } finally {
-            setAnalyzing(false);
+            setQualityScoreLoading(false);
         }
-    };
+    }, [orderId]);
+
+    const fetchQualityCalls = useCallback(async () => {
+        if (!orderId) return;
+        setQualityCallsLoading(true);
+        try {
+            const res = await fetch(`/api/okk/scores/${orderId}/calls`);
+            const json = await res.json();
+            if (!res.ok || json.error) {
+                throw new Error(json.error || 'Не удалось загрузить звонки');
+            }
+            const calls = Array.isArray(json.calls) ? json.calls : [];
+            setQualityCalls(calls);
+            if (calls.length > 0) {
+                const firstWithTranscript = calls.findIndex((call: any) => Boolean(call.transcript));
+                setSelectedCallIndex(firstWithTranscript >= 0 ? firstWithTranscript : 0);
+            } else {
+                setSelectedCallIndex(0);
+            }
+            setQualityMobileTab('calls');
+        } catch (e: any) {
+            console.error(e);
+            setQualityError(e.message || 'Не удалось загрузить качество');
+        } finally {
+            setQualityCallsLoading(false);
+        }
+    }, [orderId]);
+
+    const loadQualityData = useCallback(async () => {
+        setQualityError(null);
+        await Promise.allSettled([fetchQualityScore(), fetchQualityCalls()]);
+        setQualityFetched(true);
+    }, [fetchQualityScore, fetchQualityCalls]);
+
+    const handleQualityRefresh = useCallback(() => {
+        setQualityFetched(false);
+    }, []);
+
+    const handleTranscribeCall = useCallback(async () => {
+        const activeCall = qualityCalls[selectedCallIndex];
+        if (!activeCall?.recording_url || !activeCall?.telphin_call_id || transcribing) return;
+        setTranscribing(true);
+        try {
+            const res = await fetch('/api/okk/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    callId: activeCall.telphin_call_id,
+                    recordingUrl: activeCall.recording_url
+                })
+            });
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                throw new Error(json.error || 'Ошибка при транскрибации');
+            }
+            await fetchQualityCalls();
+            setQualityMobileTab('transcript');
+        } catch (e: any) {
+            alert(`Ошибка транскрибации: ${e.message || 'неизвестная ошибка'}`);
+        } finally {
+            setTranscribing(false);
+        }
+    }, [qualityCalls, selectedCallIndex, transcribing, fetchQualityCalls]);
+
+    useEffect(() => {
+        if (!isOpen || viewTab !== 'quality' || !orderId) return;
+        if (qualityFetched) return;
+        loadQualityData();
+    }, [isOpen, viewTab, orderId, qualityFetched, loadQualityData]);
 
     const headerPayload = data?.raw_payload ?? null;
     const headerContact = headerPayload?.contact ?? {};
@@ -560,301 +638,325 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         }
     };
 
-    const renderQualityPanel = () => (
-        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-4">
-                <div>
-                    <p className="text-xs uppercase text-gray-400">AI + Телефония</p>
-                    <h3 className="text-xl font-semibold text-gray-900">Качество обработки заявки</h3>
-                </div>
-                <div className="flex flex-wrap gap-2 text-sm">
-                    {qualityTabs.map((tab) => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setQualityTab(tab.id)}
-                            className={`px-3 py-1.5 rounded-full border ${qualityTab === tab.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-            <div className="px-6 py-6 bg-slate-50 space-y-6">{renderQualityContent()}</div>
-        </section>
-    );
-
-    const renderQualityContent = () => {
+    const renderQualityView = () => {
         if (!data) return null;
 
-        if (qualityTab === 'info') {
-            return (
-                <div className="space-y-6">
-                    <section>
-                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">📞 Звонки и транскрибация</h4>
-                        {data.calls.length === 0 ? (
-                            <p className="text-sm text-gray-500 italic">Звонков по заказу не найдено.</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {data.calls.map((call: any) => (
-                                    <div key={call.id} className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                                                <span className={`px-2 py-0.5 rounded uppercase font-bold ${call.type === 'incoming' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                    {call.type === 'incoming' ? 'Входящий' : 'Исходящий'}
-                                                </span>
-                                                <span className="text-gray-500">{new Date(call.date).toLocaleString('ru-RU')}</span>
-                                                <span className="text-gray-400">({Math.floor(call.duration / 60)}м {call.duration % 60}с)</span>
-                                            </div>
-                                            {call.link && (
-                                                <a
-                                                    href={call.link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                                                >
-                                                    🎧 Запись
-                                                </a>
-                                            )}
-                                        </div>
-                                        {call.summary && (
-                                            <div className="mb-3 p-3 bg-fuchsia-50 rounded border border-fuchsia-100 text-sm text-gray-800">
-                                                <strong className="text-fuchsia-700 text-xs block mb-1">AI Summary:</strong>
-                                                {call.summary}
-                                            </div>
-                                        )}
-                                        {call.transcription ? (
-                                            <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed font-mono bg-gray-50 p-3 rounded border">
-                                                {call.transcription}
-                                            </div>
-                                        ) : (
-                                            <div className="text-xs text-gray-400 italic">Транскрибация отсутствует...</div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </section>
-
-                    <section>
-                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">☎️ Управление звонками</h4>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            <div className="bg-white rounded-lg p-4 border border-gray-200">
-                                <h5 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">Совершить звонок</h5>
-                                {data.order?.phone ? (
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="block text-xs font-medium text-gray-600 mb-1">Номер телефона</label>
-                                            <input
-                                                type="tel"
-                                                value={data.order.phone}
-                                                readOnly
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
-                                            />
-                                        </div>
-                                        <CallInitiator
-                                            phoneNumber={data.order.phone}
-                                            managerId={String(data.order.manager_id)}
-                                            orderId={String(orderId)}
-                                            customerName={`${data.raw_payload?.firstName || ''} ${data.raw_payload?.lastName || ''}`.trim()}
-                                        />
-                                    </div>
-                                ) : (
-                                    <p className="text-xs text-gray-500 italic">Номер телефона не найден</p>
-                                )}
-                            </div>
-
-                            <div className="bg-white rounded-lg p-4 border border-gray-200">
-                                <h5 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">История звонков</h5>
-                                <CallHistory orderId={String(orderId)} limit={5} />
-                            </div>
-                        </div>
-                    </section>
-
-                    <section>
-                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">💬 Комментарии менеджера</h4>
-                        {data.raw_payload?.managerComment ? (
-                            <div className="p-4 bg-yellow-50 border border-yellow-100 rounded-lg text-sm text-gray-800">
-                                {data.raw_payload.managerComment}
-                            </div>
-                        ) : (
-                            <p className="text-sm text-gray-500 italic">Комментариев нет.</p>
-                        )}
-                    </section>
-
-                    <section>
-                        <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">👤 Клиент</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div className="p-3 bg-white rounded border border-gray-200">
-                                <span className="text-gray-500 text-xs block">Имя</span>
-                                <span className="font-medium text-gray-900">{data.raw_payload?.firstName} {data.raw_payload?.lastName}</span>
-                            </div>
-                            <div className="p-3 bg-white rounded border border-gray-200">
-                                <span className="text-gray-500 text-xs block">Телефон</span>
-                                <span className="font-medium text-gray-900 font-mono">{data.raw_payload?.phone}</span>
-                            </div>
-                            <div className="p-3 bg-white rounded border border-gray-200 col-span-2">
-                                <span className="text-gray-500 text-xs block">Адрес / Доставка</span>
-                                <span className="font-medium text-gray-900">{data.raw_payload?.delivery?.address?.text || 'Не указан'}</span>
-                            </div>
-                        </div>
-                    </section>
-                </div>
-            );
-        }
-
-        if (qualityTab === 'history') {
-            return (
-                <section className="space-y-4">
-                    <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">📜 История изменений</h4>
-                    {(!data.history || data.history.length === 0) ? (
-                        <div className="text-center py-8 text-gray-500 text-sm">История изменений не найдена или еще не синхронизирована.</div>
-                    ) : (
-                        <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden text-sm">
-                            <table className="w-full text-left">
-                                <thead className="bg-gray-50 border-b">
-                                    <tr>
-                                        <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Дата</th>
-                                        <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Пользователь</th>
-                                        <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Поле</th>
-                                        <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Старое</th>
-                                        <th className="px-4 py-3 font-medium text-gray-500 text-xs uppercase">Новое</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {data.history.map((h: any, i: number) => (
-                                        <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{new Date(h.occurred_at).toLocaleString('ru-RU')}</td>
-                                            <td className="px-4 py-3 text-gray-800">{h.user_data?.firstName} {h.user_data?.lastName}</td>
-                                            <td className="px-4 py-3 font-medium text-gray-700">{h.field}</td>
-                                            <td className="px-4 py-3 text-red-600 bg-red-50/30">{h.old_value}</td>
-                                            <td className="px-4 py-3 text-green-600 bg-green-50/30">{h.new_value}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </section>
-            );
-        }
+        const activeCall = qualityCalls[selectedCallIndex] || null;
+        const primaryClientNumber = activeCall
+            ? activeCall.direction === 'incoming'
+                ? (activeCall.from_number || activeCall.from_number_normalized)
+                : (activeCall.to_number || activeCall.to_number_normalized)
+            : null;
+        const secondaryClientNumber = activeCall
+            ? activeCall.direction === 'incoming'
+                ? (activeCall.to_number || activeCall.to_number_normalized)
+                : (activeCall.from_number || activeCall.from_number_normalized)
+            : null;
+        const callNumbers = activeCall
+            ? Array.from(new Set([primaryClientNumber, secondaryClientNumber].filter((num): num is string => Boolean(num))))
+            : [];
+        const managerIdString = typeof data.order?.manager_id === 'number'
+            ? String(data.order.manager_id)
+            : (typeof qualityScore?.manager_id === 'number' ? String(qualityScore.manager_id) : null);
+        const orderIdString = String(orderId);
+        const breakdown = qualityScore?.score_breakdown as Record<string, ScoreBreakdownEntry> | undefined;
+        const scoreBreakdownEntries = breakdown
+            ? Object.entries(breakdown).filter(([, info]) => info && info.reason)
+            : [];
+        const isInitialLoading = !qualityFetched && (qualityCallsLoading || qualityScoreLoading);
 
         return (
-            <section className="space-y-6">
-                <div className="flex items-center gap-3 mb-2">
-                    <img src="/images/agents/anna.png" alt="Anna" className="w-12 h-12 rounded-full border-2 border-purple-100 shadow-sm" />
+            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                <div className="px-6 py-5 border-b bg-white flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
-                        <h4 className="text-lg font-bold text-gray-900 leading-tight">Анна: Проверка качества</h4>
-                        <p className="text-xs text-purple-600 font-bold uppercase tracking-widest">Бизнес-аналитик ОКК</p>
+                        <p className="text-xs uppercase text-gray-400">ОКК · Контроль качества</p>
+                        <h3 className="text-2xl font-semibold text-gray-900">Звонки и анализ #{orderId}</h3>
+                        <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-600">
+                            <span>Менеджер: <strong className="text-gray-900">{qualityScore?.manager_name || data.order?.manager_name || '—'}</strong></span>
+                            <span className="flex items-center gap-2">
+                                Статус:
+                                <span
+                                    className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    style={{ backgroundColor: qualityScore?.status_color || '#E0E7FF', color: '#111827' }}
+                                >
+                                    {qualityScore?.status_label || data.order?.status || '—'}
+                                </span>
+                            </span>
+                            <span>Сумма: <strong>{formatCurrency(qualityScore?.total_sum || data.order?.totalsumm)}</strong></span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-center">
+                            <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Deal Score</p>
+                            <p className="text-3xl font-black text-blue-600">
+                                {qualityScore?.deal_score_pct !== undefined && qualityScore?.deal_score_pct !== null ? `${qualityScore.deal_score_pct}%` : '—'}
+                            </p>
+                            {qualityScore?.deal_score !== undefined && qualityScore?.deal_score !== null && (
+                                <p className="text-xs text-gray-500">({qualityScore.deal_score}/100)</p>
+                            )}
+                        </div>
+                        <button
+                            onClick={handleQualityRefresh}
+                            disabled={qualityCallsLoading || qualityScoreLoading}
+                            className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            ↻ Обновить
+                        </button>
                     </div>
                 </div>
 
-                {!data.priority ? (
-                    <div className="text-center py-8 text-gray-500 bg-white rounded-lg border border-dashed flex flex-col items-center gap-3">
-                        <p>AI-анализ для этого заказа ещё не проводился.</p>
-                        <button
-                            onClick={handleRunAnalysis}
-                            disabled={analyzing}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm font-medium"
-                        >
-                            {analyzing ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                    Анализирую...
-                                </>
-                            ) : (
-                                '⚡ Запустить анализ'
-                            )}
-                        </button>
+                {qualityError && (
+                    <div className="px-6 py-3 bg-red-50 text-red-600 text-sm border-b border-red-100">{qualityError}</div>
+                )}
+
+                {isInitialLoading ? (
+                    <div className="flex items-center justify-center py-16 bg-slate-50">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                     </div>
                 ) : (
-                    <div className="space-y-6">
-                        <div className="flex justify-end">
+                    <div className="flex flex-col min-h-[560px] bg-slate-50/60">
+                        <div className="flex md:hidden border-b bg-white text-[10px] font-black uppercase tracking-widest text-gray-500">
                             <button
-                                onClick={handleRunAnalysis}
-                                disabled={analyzing}
-                                className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                                onClick={() => setQualityMobileTab('calls')}
+                                className={`flex-1 py-3 text-center border-b-2 ${qualityMobileTab === 'calls' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
                             >
-                                {analyzing ? <span className="animate-spin">↻</span> : <span>↻</span>}
-                                Обновить анализ
+                                Звонки
+                            </button>
+                            <button
+                                onClick={() => setQualityMobileTab('transcript')}
+                                className={`flex-1 py-3 text-center border-b-2 ${qualityMobileTab === 'transcript' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
+                            >
+                                Текст
+                            </button>
+                            <button
+                                onClick={() => setQualityMobileTab('analysis')}
+                                className={`flex-1 py-3 text-center border-b-2 ${qualityMobileTab === 'analysis' ? 'border-blue-600 text-blue-600 bg-blue-50/30' : 'border-transparent'}`}
+                            >
+                                Анализ
                             </button>
                         </div>
 
-                        <div className={`p-6 rounded-lg border flex items-start gap-4 ${data.priority.level === 'green' ? 'bg-green-50 border-green-200' : data.priority.level === 'yellow' ? 'bg-yellow-50 border-yellow-200' : 'bg-red-50 border-red-200'}`}>
-                            <div className={`text-4xl ${data.priority.level === 'green' ? 'text-green-500' : data.priority.level === 'yellow' ? 'text-yellow-500' : 'text-red-500'}`}>
-                                {data.priority.level === 'green' ? '🟢' : data.priority.level === 'yellow' ? '🟡' : '🔴'}
-                            </div>
-                            <div className="flex-1">
-                                <h5 className="text-lg font-bold text-gray-900 mb-1">Вердикт ИИ: {data.priority.summary}</h5>
-                                <p className="text-gray-700 font-medium">Рекомендация: {data.priority.recommended_action}</p>
-                                <div className="mt-2 text-xs text-gray-500">
-                                    Score: {data.priority.score} · Обновлено: {new Date(data.priority.updated_at).toLocaleString('ru-RU')}
+                        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+                            <aside className={`${qualityMobileTab === 'calls' ? 'flex' : 'hidden'} md:flex w-full md:w-80 border-r bg-gray-50/60 overflow-y-auto flex-col`}>
+                                <div className="p-3 border-b bg-white/70 sticky top-0">
+                                    <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h4>
                                 </div>
+                                {qualityCalls.some((call) => call.is_fallback) && (
+                                    <div className="m-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+                                        <strong className="block mb-1">Звонки ещё обрабатываются</strong>
+                                        Семён подтягивает записи, детальный анализ появится чуть позже.
+                                    </div>
+                                )}
+                                {qualityCallsLoading && qualityCalls.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center py-12">
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                    </div>
+                                ) : qualityCalls.length === 0 ? (
+                                    <div className="p-8 text-center text-gray-400 text-xs italic">Звонки не найдены</div>
+                                ) : (
+                                    <div className="divide-y divide-gray-100">
+                                        {qualityCalls.map((call, idx) => (
+                                            <button
+                                                key={`${call.telphin_call_id || call.started_at || idx}`}
+                                                onClick={() => {
+                                                    setSelectedCallIndex(idx);
+                                                    if (qualityMobileTab !== 'calls') {
+                                                        setQualityMobileTab('transcript');
+                                                    }
+                                                }}
+                                                className={`w-full text-left p-3 md:p-4 hover:bg-white transition-colors border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 shadow-sm' : 'border-transparent'}`}
+                                            >
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                        {call.direction === 'outgoing' ? 'Исходящий' : 'Входящий'}
+                                                    </span>
+                                                    <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
+                                                </div>
+                                                <div className="text-xs font-semibold text-gray-800 flex justify-between">
+                                                    <span>{new Date(call.started_at).toLocaleDateString('ru-RU')}</span>
+                                                    <span className="text-[10px] text-gray-500 font-normal">{new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                {call.match_explanation?.includes('[Внимание: звонил другой менеджер]') && (
+                                                    <div className="mt-1 text-[9px] font-black text-red-600 bg-red-50 rounded px-1.5 py-0.5 inline-block">⚠️ Другой менеджер</div>
+                                                )}
+                                                {call.transcript && (
+                                                    <div className="mt-2 text-[10px] text-blue-500 flex items-center gap-1">
+                                                        <span>📝 Транскрибация</span>
+                                                    </div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </aside>
+
+                            <div className={`${qualityMobileTab !== 'calls' ? 'flex' : 'hidden'} md:flex flex-1 flex-col min-w-0 bg-white`}>
+                                {qualityCalls.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-8 text-center">
+                                        <div>
+                                            <div className="text-4xl mb-4">👆</div>
+                                            Добавьте звонки, чтобы появился разбор.
+                                        </div>
+                                    </div>
+                                ) : activeCall ? (
+                                    <div className="flex-1 flex flex-col overflow-hidden">
+                                        <div className="p-3 md:p-4 border-b bg-white flex flex-col md:flex-row md:items-center gap-3">
+                                            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6 w-full">
+                                                <div>
+                                                    <span className="text-[9px] text-gray-400 uppercase font-black block">Откуда · Куда</span>
+                                                    <span className="text-xs font-mono font-bold text-gray-700">
+                                                        {(activeCall.from_number || activeCall.from_number_normalized) || '—'} → {(activeCall.to_number || activeCall.to_number_normalized) || '—'}
+                                                    </span>
+                                                </div>
+                                                {activeCall.recording_url && (
+                                                    <div className="flex items-center gap-2 w-full md:w-auto">
+                                                        <audio
+                                                            src={activeCall.raw_payload?.storage_url || `/api/okk/proxy-audio?url=${encodeURIComponent(activeCall.recording_url)}`}
+                                                            controls
+                                                            className="h-10 md:h-8 md:w-64 w-full accent-blue-600"
+                                                        />
+                                                        <a
+                                                            href={activeCall.raw_payload?.storage_url || activeCall.recording_url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="hidden md:flex p-1.5 px-3 text-xs font-bold border border-gray-200 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200"
+                                                        >
+                                                            Скачать
+                                                        </a>
+                                                    </div>
+                                                )}
+                                                <div className="flex flex-col gap-1 w-full md:w-auto">
+                                                    <span className="text-[9px] text-gray-400 uppercase font-black">Позвонить клиенту</span>
+                                                    {managerIdString ? (
+                                                        callNumbers.length > 0 ? (
+                                                            <div className="flex flex-wrap items-center gap-4">
+                                                                {callNumbers.map((number, idx) => (
+                                                                    <div key={`${number}-${idx}`} className="flex flex-col gap-1 min-w-[150px]">
+                                                                        <span className="text-[10px] text-gray-500 uppercase">{idx === 0 ? 'Основной' : 'Дополнительный'}</span>
+                                                                        <span className="text-xs font-mono text-gray-900">{number}</span>
+                                                                        <CallInitiator phoneNumber={number} managerId={managerIdString} orderId={orderIdString} />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[11px] text-gray-400">Телефон не найден</span>
+                                                        )
+                                                    ) : (
+                                                        <span className="text-[11px] text-gray-400">Назначьте менеджера, чтобы звонить прямо отсюда</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                                            <div className={`${qualityMobileTab === 'transcript' ? 'flex' : 'hidden'} md:flex flex-1 flex-col border-r overflow-hidden`}>
+                                                <div className="p-3 bg-gray-50/70 border-b hidden md:block">
+                                                    <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Текст разговора</h5>
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 bg-gray-50/40">
+                                                    {activeCall.transcript ? (
+                                                        <div className="text-xs md:text-sm text-gray-700 leading-relaxed space-y-2">
+                                                            {activeCall.transcript.split('\n').map((line: string, i: number) => {
+                                                                const managerLine = line.startsWith('Менеджер:');
+                                                                const clientLine = line.startsWith('Клиент:');
+                                                                if (managerLine) {
+                                                                    return (
+                                                                        <div key={i} className="bg-white rounded-lg border border-blue-100 px-3 py-2">
+                                                                            <span className="text-blue-700 font-bold">Менеджер:</span> {line.replace('Менеджер:', '').trim()}
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                if (clientLine) {
+                                                                    return (
+                                                                        <div key={i} className="bg-white rounded-lg border border-orange-100 px-3 py-2">
+                                                                            <span className="text-orange-600 font-bold">Клиент:</span> {line.replace('Клиент:', '').trim()}
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <div key={i} className="px-3 py-1 text-gray-600">{line}</div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+                                                            <span className="text-3xl">🔇</span>
+                                                            {activeCall.recording_url ? (
+                                                                <button
+                                                                    onClick={handleTranscribeCall}
+                                                                    disabled={transcribing}
+                                                                    className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 disabled:opacity-50 border border-blue-100"
+                                                                >
+                                                                    {transcribing ? 'Обработка...' : 'Запустить транскрибацию'}
+                                                                </button>
+                                                            ) : (
+                                                                <p className="text-xs italic">Нет записи — нечего расшифровывать</p>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className={`${qualityMobileTab === 'analysis' ? 'flex' : 'hidden'} md:flex w-full md:w-96 flex-col bg-gray-50/40 overflow-hidden`}>
+                                                <div className="p-3 bg-fuchsia-50 border-b border-fuchsia-100 flex items-center gap-2">
+                                                    <span className="text-lg">🤓</span>
+                                                    <div>
+                                                        <h5 className="text-xs font-bold text-fuchsia-900">Анализ Максима</h5>
+                                                        <p className="text-[9px] text-fuchsia-600 font-black uppercase tracking-widest">Сводный срез по всем звонкам</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4">
+                                                    {qualityScore?.evaluator_comment ? (
+                                                        <div>
+                                                            <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                                <span>📋</span> Общее резюме
+                                                            </h6>
+                                                            <div className="text-xs text-gray-800 bg-white p-3 rounded-xl border border-gray-100 shadow-sm leading-relaxed">
+                                                                {qualityScore.evaluator_comment}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="text-center text-xs text-gray-400 italic py-6">
+                                                            Анализ ещё не выполнен.
+                                                        </div>
+                                                    )}
+
+                                                    {scoreBreakdownEntries.length > 0 && (
+                                                        <div>
+                                                            <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
+                                                                <span>🔍</span> Ключевые моменты
+                                                            </h6>
+                                                            <div className="space-y-2">
+                                                                {scoreBreakdownEntries.map(([key, info]) => (
+                                                                    <div key={key} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                                        <div className="flex items-center gap-1.5 mb-1.5">
+                                                                            <span className={info?.result ? 'text-green-500' : 'text-red-500'}>
+                                                                                {info?.result ? '✅' : '❌'}
+                                                                            </span>
+                                                                            <span className="text-[10px] font-bold text-gray-700">
+                                                                                {key.replace('script_', '').replace(/_/g, ' ')}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[11px] text-gray-600 leading-normal italic">{info?.reason}</p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-8 text-center">
+                                        <div>
+                                            <div className="text-4xl mb-4">👆</div>
+                                            Выберите звонок слева, чтобы увидеть детали.
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-
-                        {data.insights && (
-                            <div className="bg-white rounded-lg border border-purple-200 overflow-hidden shadow-sm">
-                                <div className="bg-purple-50 px-4 py-3 border-b border-purple-100 flex items-center gap-2">
-                                    <span className="text-purple-600">📊</span>
-                                    <h5 className="text-sm font-bold text-purple-900">Аналитика и хронология (Анна)</h5>
-                                </div>
-                                <div className="p-4 space-y-4">
-                                    {data.insights.summary && (
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Резюме сделки</p>
-                                            <p className="text-sm text-gray-800 leading-relaxed font-medium bg-gray-50 p-3 rounded">{data.insights.summary}</p>
-                                        </div>
-                                    )}
-                                    {data.insights.dialogue_summary && (
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Хронология коммуникаций</p>
-                                            <div className="text-sm text-gray-700 leading-relaxed bg-white border border-gray-100 p-3 rounded italic border-l-4 border-l-purple-400">{data.insights.dialogue_summary}</div>
-                                        </div>
-                                    )}
-                                    {data.insights.recommendations && data.insights.recommendations.length > 0 && (
-                                        <div>
-                                            <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Рекомендации</p>
-                                            <ul className="list-disc list-inside text-sm text-gray-800 bg-green-50/50 p-3 rounded border border-green-100">
-                                                {data.insights.recommendations.map((rec: string, idx: number) => (
-                                                    <li key={idx} className="mb-1 last:mb-0">{rec}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {data.priority.reasons?.analysis_steps && (
-                            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                                <div className="bg-gray-50 px-4 py-3 border-b flex items-center gap-2">
-                                    <span className="text-gray-500">📋</span>
-                                    <h5 className="text-sm font-bold text-gray-700">Детальный разбор (логика РОПа)</h5>
-                                </div>
-                                <div className="divide-y divide-gray-100">
-                                    <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
-                                        <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">1. Сумма</div>
-                                        <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.sum_check}</div>
-                                    </div>
-                                    <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
-                                        <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">2. Товар</div>
-                                        <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.product_check}</div>
-                                    </div>
-                                    <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
-                                        <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">3. Сверка</div>
-                                        <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.manager_check}</div>
-                                    </div>
-                                    <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
-                                        <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">4. История</div>
-                                        <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.history_check}</div>
-                                    </div>
-                                    <div className="px-4 py-3 flex gap-4 hover:bg-gray-50">
-                                        <div className="w-32 flex-shrink-0 text-xs font-bold text-gray-400 uppercase pt-1">5. Звонки</div>
-                                        <div className="text-sm text-gray-800">{data.priority.reasons.analysis_steps.calls_check}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 )}
             </section>
@@ -940,7 +1042,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         {renderCardContent()}
                                     </>
                                 ) : (
-                                    renderQualityPanel()
+                                    renderQualityView()
                                 )}
                             </div>
                         )
