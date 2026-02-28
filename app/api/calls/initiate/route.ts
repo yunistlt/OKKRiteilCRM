@@ -4,9 +4,17 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const isMockMode = process.env.TELPHIN_MOCK_MODE === 'true';
+
 export async function POST(req: NextRequest) {
   try {
-    const { phoneNumber, managerId, orderId } = await req.json();
+    const {
+      phoneNumber,
+      managerId,
+      orderId,
+      simulateError = false,
+      mockErrorMessage,
+    } = await req.json();
 
     if (!phoneNumber || !managerId) {
       return NextResponse.json(
@@ -15,27 +23,38 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Инициируем исходящий звонок через Telphin API
-    const telphinResponse = await axios.post(
-      `${process.env.TELPHIN_API_URL}/calls/initiate`,
-      {
-        phone_number: phoneNumber.replace(/\D/g, ''), // Очищаем номер
-        manager_id: managerId,
-        record: true,
-        on_connect_url: `${process.env.BASE_URL}/api/calls/webhooks/connected`,
-      },
-      {
-        headers: {
-          'X-API-Key': process.env.TELPHIN_API_KEY,
-          'Content-Type': 'application/json',
-        },
+    let callSid: string;
+
+    if (isMockMode) {
+      if (simulateError) {
+        return NextResponse.json(
+          { error: mockErrorMessage || 'Telphin mock error: failed to initiate call' },
+          { status: 500 }
+        );
       }
-    );
 
-    const callSid = (telphinResponse.data as any).call_id;
+      callSid = `mock-${Date.now()}`;
+    } else {
+      const telphinResponse = await axios.post(
+        `${process.env.TELPHIN_API_URL}/calls/initiate`,
+        {
+          phone_number: phoneNumber.replace(/\D/g, ''),
+          manager_id: managerId,
+          record: true,
+          on_connect_url: `${process.env.BASE_URL}/api/calls/webhooks/connected`,
+        },
+        {
+          headers: {
+            'X-API-Key': process.env.TELPHIN_API_KEY,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-    // Логируем исходящий звонок в БД
-    const { data: callLog, error } = await supabase
+      callSid = (telphinResponse.data as any).call_id;
+    }
+
+    const { error } = await supabase
       .from('outgoing_calls')
       .insert({
         call_sid: callSid,
@@ -44,9 +63,7 @@ export async function POST(req: NextRequest) {
         phone_number: phoneNumber,
         status: 'initiated',
         created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
+      });
 
     if (error) {
       console.error('Failed to log call:', error);
@@ -55,8 +72,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       callSid,
-      status: 'initiated',
+      status: isMockMode ? 'mock_initiated' : 'initiated',
       timestamp: new Date().toISOString(),
+      mock: isMockMode,
     });
   } catch (error) {
     console.error('Call initiation error:', error);
