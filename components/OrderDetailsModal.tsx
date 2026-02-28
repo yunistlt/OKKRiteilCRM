@@ -26,13 +26,18 @@ interface InfoFieldProps {
     required?: boolean;
 }
 
-const primaryTabs = [
-    { id: 'overview', label: 'Основное' },
-    { id: 'client', label: 'Клиент' },
-    { id: 'items', label: 'Состав заказа' },
-    { id: 'shipping', label: 'Отгрузка и доставка' },
-    { id: 'payment', label: 'Оплата' },
-    { id: 'extra', label: 'Дополнительные данные' },
+const viewTabs = [
+    { id: 'card', label: 'Карточка заказа' },
+    { id: 'quality', label: 'Качество заявки' }
+] as const;
+
+const sectionNavItems = [
+    { id: 'order-common', label: 'Основное' },
+    { id: 'order-customer', label: 'Клиент' },
+    { id: 'order-list', label: 'Состав заказа' },
+    { id: 'order-delivery', label: 'Отгрузка и доставка' },
+    { id: 'order-payment', label: 'Оплата' },
+    { id: 'order-custom-fields', label: 'Доп. данные' }
 ] as const;
 
 const qualityTabs = [
@@ -41,7 +46,7 @@ const qualityTabs = [
     { id: 'ai', label: 'Аудит Анны' },
 ] as const;
 
-type PrimaryTab = typeof primaryTabs[number]['id'];
+type ViewTab = typeof viewTabs[number]['id'];
 type QualityTab = typeof qualityTabs[number]['id'];
 
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
@@ -112,14 +117,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [primaryTab, setPrimaryTab] = useState<PrimaryTab>('overview');
+    const [viewTab, setViewTab] = useState<ViewTab>('card');
     const [qualityTab, setQualityTab] = useState<QualityTab>('info');
     const [analyzing, setAnalyzing] = useState(false);
 
     useEffect(() => {
         if (isOpen && orderId) {
             fetchDetails();
-            setPrimaryTab('overview');
+            setViewTab('card');
             setQualityTab('info');
         }
     }, [isOpen, orderId]);
@@ -194,7 +199,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         return new Date(value).toLocaleString('ru-RU');
     };
 
-    const renderPrimaryContent = () => {
+    const renderCardContent = () => {
         if (!data) return null;
 
         const order = data.order ?? {};
@@ -270,86 +275,82 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             return sum + price * qty;
         }, 0);
 
-        switch (primaryTab) {
-            case 'overview':
-                return (
-                    <div className="space-y-6">
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
-                                <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
-                                    {orderStatusCode ? statusLabels[orderStatusCode] || orderStatusCode : 'Статус не задан'}
-                                </span>
-                            </div>
-                            <div className="grid gap-4 md:grid-cols-2">
-                                <InfoField label="Страна" required value={countryValue} />
-                                <InfoField label="Тип заказа" value={payload.orderType || 'Не указан'} />
-                                <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
-                                <InfoField label="Магазин" required value={payload.site || order.site || payload.slug || '—'} />
-                                <InfoField label="Способ оформления" value={payload.orderMethod || payload.orderMethodName || 'Не указан'} />
-                                <InfoField label="Дата поступления" value={createdDate} />
-                                <InfoField label="Обновлён" value={statusUpdated} />
-                                <InfoField label="Привилегия" value={privilegeType || '—'} />
-                            </div>
-                        </section>
-
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Контроль</h3>
-                            <div className="grid md:grid-cols-3 gap-4">
-                                <InfoField label="Категория товара" required value={productCategory || '—'} />
-                                <InfoField label="Дата следующего контакта" value={formatDate(nextContact)} />
-                                <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
-                                <InfoField label="Сегмент клиента" value={segments || '—'} />
-                                <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
-                                <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
-                                <InfoField label="VIP" value={formatBooleanYesNo(contact.vip || customer.vip)} />
-                                <InfoField label="BAD" value={formatBooleanYesNo(contact.bad || customer.bad)} />
-                                <InfoField label="Сумма" value={formatCurrency(totalSummValue)} />
-                                <InfoField label="Ожидаемая сумма" value={expectedAmountValue !== null ? formatCurrency(expectedAmountValue) : '—'} />
-                                <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
-                                <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
-                            </div>
-                        </section>
+        return (
+            <div className="space-y-12">
+                <section id="order-common" className="space-y-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
+                            <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                                {orderStatusCode ? statusLabels[orderStatusCode] || orderStatusCode : 'Статус не задан'}
+                            </span>
+                        </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <InfoField label="Страна" required value={countryValue} />
+                            <InfoField label="Тип заказа" value={payload.orderType || 'Не указан'} />
+                            <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
+                            <InfoField label="Магазин" required value={payload.site || order.site || payload.slug || '—'} />
+                            <InfoField label="Способ оформления" value={payload.orderMethod || payload.orderMethodName || 'Не указан'} />
+                            <InfoField label="Дата поступления" value={createdDate} />
+                            <InfoField label="Обновлён" value={statusUpdated} />
+                            <InfoField label="Привилегия" value={privilegeType || '—'} />
+                        </div>
                     </div>
-                );
-            case 'client':
-                return (
-                    <div className="space-y-6">
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Клиент</h3>
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
-                                <InfoField label="Компания" value={companyName || '—'} />
-                                <InfoField label="Контакт" value={contactName || '—'} />
-                                <InfoField label="Email" value={payload.email || contact.email || customer.email || '—'} />
-                                <InfoField label="Основной телефон" value={primaryPhone || '—'} />
-                                <InfoField label="Доп. телефон (2)" value={secondaryPhone || '—'} />
-                                <InfoField label="Доп. телефон (3)" value={thirdPhone || '—'} />
-                                <InfoField label="Доп. Email" value={additionalEmail || '—'} />
-                                <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
-                                <InfoField label="Партнёр" value={customer.partner || '—'} />
-                            </div>
-                        </section>
 
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <InfoField label="Должность" value={customFields.dolzhnost || payload.position || '—'} />
-                                <InfoField label="Сегмент клиента" value={segments || '—'} />
-                                <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
-                                <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
-                                <InfoField label="Документооборот" value={documentsViaEDO} />
-                                <InfoField label="Основание подписи" value={contractBasis || '—'} />
-                                <InfoField label="Когда нужно оборудование" value={logisticNeedBy || '—'} />
-                                <InfoField label="Для кого закупка" value={logisticBuyerType || '—'} />
-                                <InfoField label="Адрес фактический" value={logisticAddress || '—'} />
-                                <InfoField label="Комментарий клиента" value={clientComment || '—'} />
-                            </div>
-                        </section>
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Контроль</h3>
+                        <div className="grid md:grid-cols-3 gap-4">
+                            <InfoField label="Категория товара" required value={productCategory || '—'} />
+                            <InfoField label="Дата следующего контакта" value={formatDate(nextContact)} />
+                            <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
+                            <InfoField label="Сегмент клиента" value={segments || '—'} />
+                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
+                            <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
+                            <InfoField label="VIP" value={formatBooleanYesNo(contact.vip || customer.vip)} />
+                            <InfoField label="BAD" value={formatBooleanYesNo(contact.bad || customer.bad)} />
+                            <InfoField label="Сумма" value={formatCurrency(totalSummValue)} />
+                            <InfoField label="Ожидаемая сумма" value={expectedAmountValue !== null ? formatCurrency(expectedAmountValue) : '—'} />
+                            <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
+                            <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
+                        </div>
                     </div>
-                );
-            case 'items':
-                return (
-                    <section className="bg-white border border-gray-200 rounded-xl p-0 overflow-hidden shadow-sm">
+                </section>
+
+                <section id="order-customer" className="space-y-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Клиент</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
+                            <InfoField label="Компания" value={companyName || '—'} />
+                            <InfoField label="Контакт" value={contactName || '—'} />
+                            <InfoField label="Email" value={payload.email || contact.email || customer.email || '—'} />
+                            <InfoField label="Основной телефон" value={primaryPhone || '—'} />
+                            <InfoField label="Доп. телефон (2)" value={secondaryPhone || '—'} />
+                            <InfoField label="Доп. телефон (3)" value={thirdPhone || '—'} />
+                            <InfoField label="Доп. Email" value={additionalEmail || '—'} />
+                            <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
+                            <InfoField label="Партнёр" value={customer.partner || '—'} />
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Должность" value={customFields.dolzhnost || payload.position || '—'} />
+                            <InfoField label="Сегмент клиента" value={segments || '—'} />
+                            <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
+                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
+                            <InfoField label="Документооборот" value={documentsViaEDO} />
+                            <InfoField label="Основание подписи" value={contractBasis || '—'} />
+                            <InfoField label="Когда нужно оборудование" value={logisticNeedBy || '—'} />
+                            <InfoField label="Для кого закупка" value={logisticBuyerType || '—'} />
+                            <InfoField label="Адрес фактический" value={logisticAddress || '—'} />
+                            <InfoField label="Комментарий клиента" value={clientComment || '—'} />
+                        </div>
+                    </div>
+                </section>
+
+                <section id="order-list">
+                    <div className="bg-white border border-gray-200 rounded-xl p-0 overflow-hidden shadow-sm">
                         <div className="p-6 border-b">
                             <h3 className="text-lg font-semibold text-gray-900">Состав заказа</h3>
                         </div>
@@ -408,156 +409,179 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
                             <div className="font-semibold text-gray-900">Итого: {formatCurrency((totalSummValue || 0) + (logisticCost || 0))}</div>
                         </div>
-                    </section>
-                );
-            case 'shipping':
-                return (
-                    <div className="space-y-6">
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <div className="flex items-center gap-3 mb-4">
-                                <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Склад</span>
-                                <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
-                            </div>
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <InfoField label="Склад отгрузки" value={logisticWarehouse || 'Не указан'} />
-                                <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
-                                <InfoField label="Платное хранение" value={formatBooleanYesNo(shipping.paidStorage)} />
-                                <InfoField label="Срок изготовления (дни)" value={logisticDeadline || '—'} />
-                                <InfoField label="Комментарий логисту" value={logisticComment || '—'} />
-                                <InfoField label="Склад / адрес" value={shipping.address || logisticAddress || '—'} />
-                            </div>
-                        </section>
-
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <InfoField label="Тип доставки" value={delivery.code || delivery.type || 'Не указан'} />
-                                <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
-                                <InfoField label="Время доставки" value={logisticTime || '—'} />
-                                <InfoField label="Стоимость" value={formatCurrency(logisticCost)} />
-                                <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
-                                <InfoField label="Регион" value={logisticRegion || '—'} />
-                                <InfoField label="Город" value={logisticCity || '—'} />
-                                <InfoField label="Метро" value={logisticMetro || '—'} />
-                                <InfoField label="Индекс" value={logisticIndex || '—'} />
-                                <InfoField label="Адрес" value={logisticAddress || '—'} />
-                                <InfoField label="Получатель" value={logisticReceiver || '—'} />
-                                <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
-                            </div>
-                        </section>
-
-                        <section className="grid lg:grid-cols-2 gap-6">
-                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                                <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии клиента</h4>
-                                <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
-                                    {clientComment || 'Комментариев нет.'}
-                                </div>
-                            </div>
-                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                                <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии оператора</h4>
-                                <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
-                                    {operatorComment || 'Комментариев нет.'}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <div className="flex items-center justify-between mb-4">
-                                <div>
-                                    <p className="text-xs uppercase text-gray-400">Коммуникации</p>
-                                    <h4 className="text-lg font-semibold text-gray-900">Письма и сообщения</h4>
-                                </div>
-                                <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
-                                    + Новое письмо
-                                </button>
-                            </div>
-                            {data.emails && data.emails.length > 0 ? (
-                                <div className="space-y-3">
-                                    {data.emails.map((email) => (
-                                        <div key={email.id || email.date} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
-                                            <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-                                                <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
-                                                <span className="px-2 py-0.5 bg-gray-100 rounded-full uppercase font-semibold">{email.type}</span>
-                                            </div>
-                                            <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-gray-500">Писем по заказу ещё нет.</p>
-                            )}
-                        </section>
                     </div>
-                );
-            case 'payment':
-                return (
-                    <div className="space-y-6">
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Оплата</h3>
-                            <div className="grid md:grid-cols-3 gap-4">
-                                <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
-                                <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
-                                <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                                <InfoField label="Статус оплаты" value={payload.payment?.status || 'Не указан'} />
-                                <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
-                                <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
-                                <InfoField label="Приоритет" value={priorityNumber || '—'} />
-                                <InfoField label="Roistat" value={roistat || '—'} />
-                                <InfoField label="Дата передачи в производство" value={formatDate(customFields.data_peredachi_v_proizvodstvo || payload.productionDate)} />
-                            </div>
-                        </section>
+                </section>
 
-                        {paymentsSummary.length > 0 && (
-                            <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Оплаты в CRM</h4>
-                                <div className="space-y-3">
-                                    {paymentsSummary.map((payment: any) => (
-                                        <div key={payment.id || payment.type} className="border border-gray-100 rounded-lg p-4 flex flex-col gap-1 bg-gray-50">
-                                            <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
-                                                <span>{payment.type || 'Оплата'}</span>
-                                                <span>{formatCurrency(payment.amount)}</span>
-                                            </div>
-                                            {payment.date && <span className="text-xs text-gray-500">Дата: {formatDate(payment.date)}</span>}
-                                            {payment.status && <span className="text-xs text-gray-500">Статус: {payment.status}</span>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
+                <section id="order-delivery" className="space-y-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="flex items-center gap-3 mb-4">
+                            <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Склад</span>
+                            <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
+                        </div>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Склад отгрузки" value={logisticWarehouse || 'Не указан'} />
+                            <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
+                            <InfoField label="Платное хранение" value={formatBooleanYesNo(shipping.paidStorage)} />
+                            <InfoField label="Срок изготовления (дни)" value={logisticDeadline || '—'} />
+                            <InfoField label="Комментарий логисту" value={logisticComment || '—'} />
+                            <InfoField label="Склад / адрес" value={shipping.address || logisticAddress || '—'} />
+                        </div>
                     </div>
-                );
-            case 'extra':
-                return (
-                    <div className="space-y-6">
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
-                            <div className="grid md:grid-cols-2 gap-4">
-                                <InfoField label="Roistat" value={roistat || '—'} />
-                                <InfoField label="Причина отмены" value={payload.cancelReason || '—'} />
-                                <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
-                                <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
-                                <InfoField label="Маржа" value={marginValue ? `${marginValue} %` : '—'} />
-                                <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
-                                <InfoField label="Датасчёт" value={dsDocument || '—'} />
-                                <InfoField label="Изменение менеджера" value={changeManager || '—'} />
-                                <InfoField label="Контрагент" value={payload.contragent?.contragentType || '—'} />
-                                <InfoField label="Email" value={payload.email || '—'} />
-                                <InfoField label="Телефон" value={primaryPhone || '—'} />
-                                <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />
-                            </div>
-                        </section>
 
-                        <section className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Тип доставки" value={delivery.code || delivery.type || 'Не указан'} />
+                            <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
+                            <InfoField label="Время доставки" value={logisticTime || '—'} />
+                            <InfoField label="Стоимость" value={formatCurrency(logisticCost)} />
+                            <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
+                            <InfoField label="Регион" value={logisticRegion || '—'} />
+                            <InfoField label="Город" value={logisticCity || '—'} />
+                            <InfoField label="Метро" value={logisticMetro || '—'} />
+                            <InfoField label="Индекс" value={logisticIndex || '—'} />
+                            <InfoField label="Адрес" value={logisticAddress || '—'} />
+                            <InfoField label="Получатель" value={logisticReceiver || '—'} />
+                            <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
+                        </div>
+                    </div>
+
+                    <div className="grid lg:grid-cols-2 gap-6">
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии клиента</h4>
+                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
+                                {clientComment || 'Комментариев нет.'}
+                            </div>
+                        </div>
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии оператора</h4>
                             <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
                                 {operatorComment || 'Комментариев нет.'}
                             </div>
-                        </section>
+                        </div>
                     </div>
-                );
-            default:
-                return null;
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="flex items-center justify-between mb-4">
+                            <div>
+                                <p className="text-xs uppercase text-gray-400">Коммуникации</p>
+                                <h4 className="text-lg font-semibold text-gray-900">Письма и сообщения</h4>
+                            </div>
+                            <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                                + Новое письмо
+                            </button>
+                        </div>
+                        {data.emails && data.emails.length > 0 ? (
+                            <div className="space-y-3">
+                                {data.emails.map((email) => (
+                                    <div key={email.id || email.date} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                                            <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
+                                            <span className="px-2 py-0.5 bg-gray-100 rounded-full uppercase font-semibold">{email.type}</span>
+                                        </div>
+                                        <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-gray-500">Писем по заказу ещё нет.</p>
+                        )}
+                    </div>
+                </section>
+
+                <section id="order-payment" className="space-y-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Оплата</h3>
+                        <div className="grid md:grid-cols-3 gap-4">
+                            <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
+                            <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
+                            <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
+                            <InfoField label="Статус оплаты" value={payload.payment?.status || 'Не указан'} />
+                            <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
+                            <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
+                            <InfoField label="Приоритет" value={priorityNumber || '—'} />
+                            <InfoField label="Roistat" value={roistat || '—'} />
+                            <InfoField label="Дата передачи в производство" value={formatDate(customFields.data_peredachi_v_proizvodstvo || payload.productionDate)} />
+                        </div>
+                    </div>
+
+                    {paymentsSummary.length > 0 && (
+                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Оплаты в CRM</h4>
+                            <div className="space-y-3">
+                                {paymentsSummary.map((payment: any) => (
+                                    <div key={payment.id || payment.type} className="border border-gray-100 rounded-lg p-4 flex flex-col gap-1 bg-gray-50">
+                                        <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
+                                            <span>{payment.type || 'Оплата'}</span>
+                                            <span>{formatCurrency(payment.amount)}</span>
+                                        </div>
+                                        {payment.date && <span className="text-xs text-gray-500">Дата: {formatDate(payment.date)}</span>}
+                                        {payment.status && <span className="text-xs text-gray-500">Статус: {payment.status}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                <section id="order-custom-fields" className="space-y-6">
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Roistat" value={roistat || '—'} />
+                            <InfoField label="Причина отмены" value={payload.cancelReason || '—'} />
+                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
+                            <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
+                            <InfoField label="Маржа" value={marginValue ? `${marginValue} %` : '—'} />
+                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
+                            <InfoField label="Датасчёт" value={dsDocument || '—'} />
+                            <InfoField label="Изменение менеджера" value={changeManager || '—'} />
+                            <InfoField label="Контрагент" value={payload.contragent?.contragentType || '—'} />
+                            <InfoField label="Email" value={payload.email || '—'} />
+                            <InfoField label="Телефон" value={primaryPhone || '—'} />
+                            <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
+                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
+                            {operatorComment || 'Комментариев нет.'}
+                        </div>
+                    </div>
+                </section>
+            </div>
+        );
+    };
+
+    const handleSectionNavClick = (sectionId: string) => {
+        const target = document.getElementById(sectionId);
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     };
+
+    const renderQualityPanel = () => (
+        <section className="bg-white border border-gray-200 rounded-2xl shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-4">
+                <div>
+                    <p className="text-xs uppercase text-gray-400">AI + Телефония</p>
+                    <h3 className="text-xl font-semibold text-gray-900">Качество обработки заявки</h3>
+                </div>
+                <div className="flex flex-wrap gap-2 text-sm">
+                    {qualityTabs.map((tab) => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setQualityTab(tab.id)}
+                            className={`px-3 py-1.5 rounded-full border ${qualityTab === tab.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="px-6 py-6 bg-slate-50 space-y-6">{renderQualityContent()}</div>
+        </section>
+    );
 
     const renderQualityContent = () => {
         if (!data) return null;
@@ -877,11 +901,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                 <nav className="border-b bg-white px-6">
                     <div className="flex overflow-x-auto text-sm">
-                        {primaryTabs.map((tab) => (
+                        {viewTabs.map((tab) => (
                             <button
                                 key={tab.id}
-                                onClick={() => setPrimaryTab(tab.id)}
-                                className={`py-4 px-4 border-b-2 -mb-px transition-colors ${primaryTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                onClick={() => setViewTab(tab.id)}
+                                className={`py-4 px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                             >
                                 {tab.label}
                             </button>
@@ -899,28 +923,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     ) : (
                         data && (
                             <div className="space-y-8">
-                                {renderPrimaryContent()}
-
-                                <section className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-                                    <div className="flex flex-wrap items-center justify-between gap-4 border-b px-6 py-4">
-                                        <div>
-                                            <p className="text-xs uppercase text-gray-400">AI + Телефония</p>
-                                            <h3 className="text-xl font-semibold text-gray-900">Качество обработки заявки</h3>
-                                        </div>
-                                        <div className="flex flex-wrap gap-2 text-sm">
-                                            {qualityTabs.map((tab) => (
+                                {viewTab === 'card' ? (
+                                    <>
+                                        <div className="bg-white border border-gray-200 rounded-full px-4 py-2 flex flex-wrap gap-2 text-sm shadow-sm">
+                                            {sectionNavItems.map((item) => (
                                                 <button
-                                                    key={tab.id}
-                                                    onClick={() => setQualityTab(tab.id)}
-                                                    className={`px-3 py-1.5 rounded-full border ${qualityTab === tab.id ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
+                                                    key={item.id}
+                                                    type="button"
+                                                    onClick={() => handleSectionNavClick(item.id)}
+                                                    className="px-3 py-1 rounded-full text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                                 >
-                                                    {tab.label}
+                                                    {item.label}
                                                 </button>
                                             ))}
                                         </div>
-                                    </div>
-                                    <div className="px-6 py-6 bg-slate-50 space-y-6">{renderQualityContent()}</div>
-                                </section>
+                                        {renderCardContent()}
+                                    </>
+                                ) : (
+                                    renderQualityPanel()
+                                )}
                             </div>
                         )
                     )}
