@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import CallInitiator from './calls/CallInitiator';
+import CallHistory from './calls/CallHistory';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -196,7 +198,53 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         )}
                                     </section>
 
-                                    {/* 2. Manager Comments */}
+                                    {/* 2. Call Controls & History (NEW) */}
+                                    <section>
+                                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
+                                            ☎️ Управление звонками
+                                        </h3>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            {/* Call Initiator */}
+                                            <div className="bg-white rounded-lg p-4 border border-gray-200">
+                                                <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">
+                                                    Совершить звонок
+                                                </h4>
+                                                {data.order?.phone ? (
+                                                    <div className="space-y-3">
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                                                                Номер телефона
+                                                            </label>
+                                                            <input
+                                                                type="tel"
+                                                                value={data.order.phone}
+                                                                readOnly
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-sm font-mono"
+                                                            />
+                                                        </div>
+                                                        <CallInitiator
+                                                            phoneNumber={data.order.phone}
+                                                            managerId={String(data.order.manager_id)}
+                                                            orderId={String(orderId)}
+                                                            customerName={`${data.raw_payload?.firstName || ''} ${data.raw_payload?.lastName || ''}`.trim()}
+                                                        />
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-xs text-gray-500 italic">Номер телефона не найден</p>
+                                                )}
+                                            </div>
+
+                                            {/* Call History */}
+                                            <div className="bg-white rounded-lg p-4 border border-gray-200">
+                                                <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">
+                                                    История звонков
+                                                </h4>
+                                                <CallHistory orderId={String(orderId)} limit={5} />
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    {/* 3. Manager Comments */}
                                     <section>
                                         <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 border-b pb-2">
                                             💬 Комментарии Менеджера
