@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MultiSelect } from '../components/MultiSelect';
+import CallInitiator from '@/components/calls/CallInitiator';
 
 interface User {
     username: string;
@@ -1093,6 +1094,29 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
 
     const activeCall = calls[selectedCallIndex];
 
+    const primaryClientNumber = activeCall
+        ? activeCall.direction === 'incoming'
+            ? (activeCall.from_number || activeCall.from_number_normalized)
+            : (activeCall.to_number || activeCall.to_number_normalized)
+        : null;
+
+    const secondaryClientNumber = activeCall
+        ? activeCall.direction === 'incoming'
+            ? (activeCall.to_number || activeCall.to_number_normalized)
+            : (activeCall.from_number || activeCall.from_number_normalized)
+        : null;
+
+    const callNumbers = Array.from(
+        new Set(
+            [primaryClientNumber, secondaryClientNumber].filter(
+                (num): num is string => Boolean(num)
+            )
+        )
+    );
+
+    const managerIdString = typeof order.manager_id === 'number' ? String(order.manager_id) : null;
+    const orderIdString = String(order.order_id);
+
     const handleTranscribe = async () => {
         if (!activeCall?.recording_url || transcribing) return;
         setTranscribing(true);
@@ -1265,6 +1289,31 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                 </a>
                                             </div>
                                         )}
+                                        <div className="flex flex-col gap-1 w-full md:w-auto">
+                                            <span className="text-[9px] text-gray-400 uppercase font-black">Позвонить клиенту</span>
+                                            {managerIdString ? (
+                                                callNumbers.length > 0 ? (
+                                                    <div className="flex flex-wrap items-center gap-3">
+                                                        {callNumbers.map((number, idx) => (
+                                                            <div key={`${number}-${idx}`} className="flex flex-col gap-1">
+                                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                                    {idx === 0 ? 'Основной номер' : 'Дополнительный'}
+                                                                </span>
+                                                                <CallInitiator
+                                                                    phoneNumber={number}
+                                                                    managerId={managerIdString}
+                                                                    orderId={orderIdString}
+                                                                />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[11px] text-gray-400">Номер телефона не найден</span>
+                                                )
+                                            ) : (
+                                                <span className="text-[11px] text-gray-400">Назначьте менеджера, чтобы позвонить клиенту</span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
 
