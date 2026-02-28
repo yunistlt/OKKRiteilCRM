@@ -39,8 +39,8 @@ export async function POST(req: NextRequest) {
       .from('outgoing_calls')
       .insert({
         call_sid: callSid,
-        order_id: orderId || null,
-        manager_id: managerId,
+        order_id: orderId ? parseInt(String(orderId)) : null,
+        manager_id: parseInt(String(managerId)),
         phone_number: phoneNumber,
         status: 'initiated',
         created_at: new Date().toISOString(),

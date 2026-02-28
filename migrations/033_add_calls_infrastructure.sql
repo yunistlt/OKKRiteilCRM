@@ -1,8 +1,8 @@
 -- Таблица исходящих звонков
 CREATE TABLE IF NOT EXISTS outgoing_calls (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
-  manager_id UUID NOT NULL REFERENCES managers(id) ON DELETE CASCADE,
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT REFERENCES orders(id) ON DELETE SET NULL,
+  manager_id BIGINT NOT NULL REFERENCES managers(id) ON DELETE CASCADE,
   call_sid TEXT UNIQUE NOT NULL,
   phone_number TEXT NOT NULL,
   status TEXT DEFAULT 'initiated', -- initiated, ringing, connected, completed, failed
@@ -10,51 +10,51 @@ CREATE TABLE IF NOT EXISTS outgoing_calls (
   recording_url TEXT,
   transcription_text TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  answered_at TIMESTAMP,
-  ended_at TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  answered_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Таблица входящих звонков
 CREATE TABLE IF NOT EXISTS incoming_calls (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID REFERENCES orders(id) ON DELETE SET NULL,
+  id BIGSERIAL PRIMARY KEY,
+  order_id BIGINT REFERENCES orders(id) ON DELETE SET NULL,
   call_sid TEXT UNIQUE NOT NULL,
   from_number TEXT NOT NULL,
   to_number TEXT NOT NULL,
-  assigned_manager_id UUID REFERENCES managers(id) ON DELETE SET NULL,
+  assigned_manager_id BIGINT REFERENCES managers(id) ON DELETE SET NULL,
   status TEXT DEFAULT 'ringing', -- ringing, connected, completed, missed, failed
   duration_seconds INT,
   recording_url TEXT,
   transcription_text TEXT,
   notes TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  answered_at TIMESTAMP,
-  ended_at TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  answered_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Таблица очереди транскрибации
 CREATE TABLE IF NOT EXISTS transcription_queue (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id BIGSERIAL PRIMARY KEY,
   call_id TEXT NOT NULL,
   recording_url TEXT NOT NULL,
   type TEXT DEFAULT 'incoming_call', -- incoming_call, outgoing_call
   status TEXT DEFAULT 'pending', -- pending, processing, completed, failed
   transcription_text TEXT,
   error_message TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  processed_at TIMESTAMP
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  processed_at TIMESTAMPTZ
 );
 
 -- История всех событий звонков
 CREATE TABLE IF NOT EXISTS call_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id BIGSERIAL PRIMARY KEY,
   call_sid TEXT NOT NULL,
   event_type TEXT NOT NULL, -- initiated, ringing, connected, completed, failed, recording_ready
   event_data JSONB,
-  created_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Индексы для быстрого поиска
