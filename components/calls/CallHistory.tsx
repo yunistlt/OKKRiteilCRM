@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Phone, PhoneIncoming, PhoneOutgoing, Clock, Music } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/utils/supabase';
 
 interface CallRecord {
   id: string;

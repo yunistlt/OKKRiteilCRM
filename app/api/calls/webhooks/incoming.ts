@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/utils/supabase';
 import { matchCallToOrder } from '@/lib/call-matching';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { NextRequest, NextResponse } from 'next/server';

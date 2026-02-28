@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase } from '@/utils/supabase';
 import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 
