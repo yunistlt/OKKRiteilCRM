@@ -4,7 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const isMockMode = process.env.TELPHIN_MOCK_MODE === 'true';
+const envMockFlag = process.env.TELPHIN_MOCK_MODE === 'true';
+const telphinApiUrl = process.env.TELPHIN_API_URL;
+const telphinApiKey = process.env.TELPHIN_API_KEY;
+const shouldMock =
+  envMockFlag || !telphinApiUrl || !telphinApiKey;
+const mockReason = !envMockFlag && shouldMock
+  ? 'Telphin credentials missing, auto-mock enabled'
+  : undefined;
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,10 +32,10 @@ export async function POST(req: NextRequest) {
 
     let callSid: string;
 
-    if (isMockMode) {
+    if (shouldMock) {
       if (simulateError) {
         return NextResponse.json(
-          { error: mockErrorMessage || 'Telphin mock error: failed to initiate call' },
+          { error: mockErrorMessage || 'Telphin mock error: failed to initiate call', mock: true },
           { status: 500 }
         );
       }
@@ -36,7 +43,7 @@ export async function POST(req: NextRequest) {
       callSid = `mock-${Date.now()}`;
     } else {
       const telphinResponse = await axios.post(
-        `${process.env.TELPHIN_API_URL}/calls/initiate`,
+        `${telphinApiUrl}/calls/initiate`,
         {
           phone_number: phoneNumber.replace(/\D/g, ''),
           manager_id: managerId,
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
         },
         {
           headers: {
-            'X-API-Key': process.env.TELPHIN_API_KEY,
+            'X-API-Key': telphinApiKey,
             'Content-Type': 'application/json',
           },
         }
@@ -72,9 +79,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       callSid,
-      status: isMockMode ? 'mock_initiated' : 'initiated',
+      status: shouldMock ? 'mock_initiated' : 'initiated',
       timestamp: new Date().toISOString(),
-      mock: isMockMode,
+      mock: shouldMock,
+      mockReason,
     });
   } catch (error) {
     console.error('Call initiation error:', error);
