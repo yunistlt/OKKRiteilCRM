@@ -379,7 +379,7 @@ export default function AIRouterPanel() {
                                             <tr key={result.order_id} className={`border-t hover:bg-gray-50 ${state.done ? 'bg-green-50' : ''}`}>
                                                 <td className="px-2 py-2">
                                                     <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-1">
+                                                        <div className="flex items-center gap-2">
                                                             <a
                                                                 href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
                                                                 target={result.retail_crm_url ? "_blank" : undefined}
@@ -391,10 +391,10 @@ export default function AIRouterPanel() {
                                                             </a>
                                                             <button
                                                                 onClick={() => setSelectedOrderId(result.order_id)}
-                                                                className="text-gray-400 hover:text-blue-600"
-                                                                title="Подробнее"
+                                                                className="px-2 py-0.5 text-[10px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                                                title="Открыть карточку заказа"
                                                             >
-                                                                ℹ️
+                                                                Карточка
                                                             </button>
                                                         </div>
                                                         <span className="text-[11px] font-bold text-gray-600">
