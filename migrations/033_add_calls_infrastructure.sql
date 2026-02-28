@@ -76,21 +76,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_outgoing_calls_timestamp ON outgoing_calls;
-CREATE TRIGGER update_outgoing_calls_timestamp
-BEFORE UPDATE ON outgoing_calls
-FOR EACH ROW
-EXECUTE FUNCTION update_call_timestamp();
+-- Создаём триггеры только если их ещё нет (безопасно)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.triggers 
+    WHERE trigger_name = 'update_outgoing_calls_timestamp'
+  ) THEN
+    CREATE TRIGGER update_outgoing_calls_timestamp
+    BEFORE UPDATE ON outgoing_calls
+    FOR EACH ROW
+    EXECUTE FUNCTION update_call_timestamp();
+  END IF;
+END $$;
 
-DROP TRIGGER IF EXISTS update_incoming_calls_timestamp ON incoming_calls;
-CREATE TRIGGER update_incoming_calls_timestamp
-BEFORE UPDATE ON incoming_calls
-FOR EACH ROW
-EXECUTE FUNCTION update_call_timestamp();
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.triggers 
+    WHERE trigger_name = 'update_incoming_calls_timestamp'
+  ) THEN
+    CREATE TRIGGER update_incoming_calls_timestamp
+    BEFORE UPDATE ON incoming_calls
+    FOR EACH ROW
+    EXECUTE FUNCTION update_call_timestamp();
+  END IF;
+END $$;
 
--- Unified view для временной шкалы всех звонков
-DROP VIEW IF EXISTS call_timeline CASCADE;
-CREATE VIEW call_timeline AS
+-- Unified view для временной шкалы всех звонков (безопасное создание/обновление)
+CREATE OR REPLACE VIEW call_timeline AS
 SELECT 
   'outgoing' as direction,
   oc.id,
