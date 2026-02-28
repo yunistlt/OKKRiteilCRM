@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
       }
     );
 
-    const callSid = telphinResponse.data.call_id;
+    const callSid = (telphinResponse.data as any).call_id;
 
     // Логируем исходящий звонок в БД
     const { data: callLog, error } = await supabase
