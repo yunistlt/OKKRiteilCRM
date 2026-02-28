@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
+import OrderDetailsModal from '@/components/OrderDetailsModal';
 
 interface User {
     username: string;
@@ -513,6 +514,7 @@ function OKKContent() {
     const [averages, setAverages] = useState({ totalAvgScore: 0, filteredAvgScore: 0 });
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
     const [selectedViolationsOrder, setSelectedViolationsOrder] = useState<OrderScore | null>(null);
+    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const [user, setUser] = useState<User | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -748,7 +750,15 @@ function OKKContent() {
     };
 
     return (
-        <div className="flex flex-col bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
+        <>
+            {selectedOrderId && (
+                <OrderDetailsModal
+                    orderId={selectedOrderId}
+                    isOpen={!!selectedOrderId}
+                    onClose={() => setSelectedOrderId(null)}
+                />
+            )}
+            <div className="flex flex-col bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-2">
@@ -884,10 +894,18 @@ function OKKContent() {
                                 return (
                                     <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
                                         <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
-                                        <td className={`px-2 py-1.5 sticky left-[40px] min-w-[80px] w-[80px] max-w-[80px] font-mono border-r border-gray-200 ${stickyClass}`}>
-                                            <div className="flex items-center gap-2">
-                                                <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
-                                                <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-xs font-bold font-sans">#{s.order_id}</a>
+                                        <td className={`px-2 py-1.5 sticky left-[40px] min-w-[80px] w-[80px] max-w-[90px] font-mono border-r border-gray-200 ${stickyClass}`}>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1">
+                                                    <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
+                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[11px] font-bold font-sans">#{s.order_id}</a>
+                                                </div>
+                                                <button
+                                                    onClick={() => setSelectedOrderId(s.order_id)}
+                                                    className="px-1.5 py-0.5 text-[9px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                                >
+                                                    Карточка
+                                                </button>
                                             </div>
                                         </td>
                                         <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
@@ -928,8 +946,8 @@ function OKKContent() {
                             <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: s.status_color || '#e5e7eb' }} />
 
                             <div className="flex-1 min-w-0 px-2.5 py-1.5 flex flex-col justify-between h-full">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-1.5">
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
                                         <a
                                             href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`}
                                             target="_blank"
@@ -942,6 +960,15 @@ function OKKContent() {
                                         <span className="text-[9px] font-black text-blue-600 bg-blue-50 px-1 rounded">
                                             {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'}₽
                                         </span>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedOrderId(s.order_id);
+                                            }}
+                                            className="px-1.5 py-0.5 text-[9px] font-bold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
+                                        >
+                                            Карточка
+                                        </button>
                                     </div>
                                     <div className="flex items-center gap-1 scale-90 origin-right">
                                         <span className="text-[8px] font-black text-gray-400 uppercase leading-none">SCORE</span>
@@ -1008,6 +1035,7 @@ function OKKContent() {
                 <ViolationsModal order={selectedViolationsOrder} onClose={() => setSelectedViolationsOrder(null)} />
             )}
         </div>
+        </>
     );
 }
 
