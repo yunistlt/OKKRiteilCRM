@@ -122,35 +122,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [transcribing, setTranscribing] = useState(false);
     const [qualityFetched, setQualityFetched] = useState(false);
 
-    useEffect(() => {
-        if (isOpen && orderId) {
-            fetchDetails();
-            setViewTab('card');
-            setQualityCalls([]);
-            setQualityScore(null);
-            setQualityError(null);
-            setSelectedCallIndex(0);
-            setQualityMobileTab('calls');
-            setQualityFetched(false);
-            setTranscribing(false);
-        }
-    }, [isOpen, orderId]);
-
-    const fetchDetails = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-            const res = await fetch(`/api/orders/${orderId}/details`);
-            const json = await res.json();
-            if (json.error) throw new Error(json.error);
-            setData(json);
-        } catch (e: any) {
-            setError(e.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
     const fetchQualityScore = useCallback(async () => {
         if (!orderId) return;
         setQualityScoreLoading(true);
@@ -168,6 +139,36 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             setQualityScoreLoading(false);
         }
     }, [orderId]);
+
+    useEffect(() => {
+        if (isOpen && orderId) {
+            fetchDetails();
+            fetchQualityScore(); // Fetch score immediately on open for the header
+            setViewTab('card');
+            setQualityCalls([]);
+            // setQualityScore(null); -> Commented out so we don't clear right before fetch
+            setQualityError(null);
+            setSelectedCallIndex(0);
+            setQualityMobileTab('calls');
+            setQualityFetched(false);
+            setTranscribing(false);
+        }
+    }, [isOpen, orderId, fetchQualityScore]);
+
+    const fetchDetails = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/details`);
+            const json = await res.json();
+            if (json.error) throw new Error(json.error);
+            setData(json);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const fetchQualityCalls = useCallback(async () => {
         if (!orderId) return;
@@ -197,9 +198,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     const loadQualityData = useCallback(async () => {
         setQualityError(null);
-        await Promise.allSettled([fetchQualityScore(), fetchQualityCalls()]);
+        await Promise.allSettled([fetchQualityCalls()]);
         setQualityFetched(true);
-    }, [fetchQualityScore, fetchQualityCalls]);
+    }, [fetchQualityCalls]);
 
     const handleQualityRefresh = useCallback(() => {
         setQualityFetched(false);
@@ -686,15 +687,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
-                        <div className="text-center">
-                            <p className="text-[10px] uppercase tracking-widest font-black text-gray-400">Deal Score</p>
-                            <p className="text-3xl font-black text-blue-600">
-                                {qualityScore?.deal_score_pct !== undefined && qualityScore?.deal_score_pct !== null ? `${qualityScore.deal_score_pct}%` : '—'}
-                            </p>
-                            {qualityScore?.deal_score !== undefined && qualityScore?.deal_score !== null && (
-                                <p className="text-xs text-gray-500">({qualityScore.deal_score}/100)</p>
-                            )}
-                        </div>
                         <button
                             onClick={handleQualityRefresh}
                             disabled={qualityCallsLoading || qualityScoreLoading}
@@ -979,7 +971,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 </div>
                             )}
                         </div>
-                        <div className="flex gap-2">
+
+                        {/* Deal Score Header Block */}
+                        <div className="flex items-center gap-4 ml-auto mr-4 group relative">
+                            <div className="text-right">
+                                <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-0.5">Deal Score</p>
+                                {qualityScoreLoading ? (
+                                    <div className="h-9 w-16 bg-gray-100 animate-pulse rounded ml-auto"></div>
+                                ) : (
+                                    <>
+                                        <p className="text-3xl font-black text-blue-600 leading-none">
+                                            {qualityScore?.deal_score_pct !== undefined && qualityScore?.deal_score_pct !== null ? `${qualityScore.deal_score_pct}%` : '—'}
+                                        </p>
+                                        {qualityScore?.deal_score !== undefined && qualityScore?.deal_score !== null && (
+                                            <p className="text-xs text-gray-500 mt-0.5">({qualityScore.deal_score}/100)</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2 shrink-0">
                             <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Печать</button>
                             <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Действия</button>
                             <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
