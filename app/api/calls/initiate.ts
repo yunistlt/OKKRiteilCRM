@@ -60,8 +60,37 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Call initiation error:', error);
+
+    let errorMessage = 'Failed to initiate call';
+    let errorDetails: unknown = undefined;
+
+    const axiosError = error as {
+      isAxiosError?: boolean;
+      response?: { data?: any };
+      message?: string;
+    };
+
+    if (axiosError?.isAxiosError) {
+      errorDetails = axiosError.response?.data;
+
+      if (typeof axiosError.response?.data === 'string') {
+        errorMessage = axiosError.response.data;
+      } else if (axiosError.response?.data?.error) {
+        errorMessage =
+          typeof axiosError.response.data.error === 'string'
+            ? axiosError.response.data.error
+            : JSON.stringify(axiosError.response.data.error);
+      } else if (axiosError.response?.data?.message) {
+        errorMessage = axiosError.response.data.message;
+      } else if (axiosError.message) {
+        errorMessage = axiosError.message;
+      }
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
     return NextResponse.json(
-      { error: 'Failed to initiate call' },
+      { error: errorMessage, details: errorDetails },
       { status: 500 }
     );
   }

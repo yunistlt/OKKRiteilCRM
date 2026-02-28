@@ -1293,12 +1293,13 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                             <span className="text-[9px] text-gray-400 uppercase font-black">Позвонить клиенту</span>
                                             {managerIdString ? (
                                                 callNumbers.length > 0 ? (
-                                                    <div className="flex flex-wrap items-center gap-3">
+                                                    <div className="flex flex-wrap items-center gap-4">
                                                         {callNumbers.map((number, idx) => (
-                                                            <div key={`${number}-${idx}`} className="flex flex-col gap-1">
-                                                                <span className="text-[10px] text-gray-500 font-medium">
+                                                            <div key={`${number}-${idx}`} className="flex flex-col gap-1 min-w-[160px]">
+                                                                <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wide">
                                                                     {idx === 0 ? 'Основной номер' : 'Дополнительный'}
                                                                 </span>
+                                                                <span className="text-xs font-mono text-gray-900">{number}</span>
                                                                 <CallInitiator
                                                                     phoneNumber={number}
                                                                     managerId={managerIdString}

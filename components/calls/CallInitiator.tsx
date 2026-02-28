@@ -38,13 +38,31 @@ export default function CallInitiator({
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to initiate call');
+      let data: any = null;
+
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.warn('Failed to parse call initiation response:', parseError);
       }
 
-      const data = await response.json();
+      if (!response.ok) {
+        const apiError =
+          typeof data?.error === 'string'
+            ? data.error
+            : typeof data?.error?.message === 'string'
+            ? data.error.message
+            : data?.details
+            ? JSON.stringify(data.details)
+            : null;
+
+        throw new Error(apiError || 'Failed to initiate call');
+      }
+
       setStatus('success');
-      console.log('✅ Call initiated:', data.callSid);
+      if (data?.callSid) {
+        console.log('✅ Call initiated:', data.callSid);
+      }
 
       // Сбросим статус через 3 секунды
       setTimeout(() => setStatus('idle'), 3000);
@@ -58,13 +76,13 @@ export default function CallInitiator({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-col gap-2">
       <button
         onClick={initiateCall}
         disabled={isLoading || status === 'calling'}
         className={`
           flex items-center gap-2 px-4 py-2 rounded-lg font-medium
-          transition-all duration-300
+          transition-all duration-300 w-fit
           ${status === 'success'
             ? 'bg-green-500 text-white'
             : status === 'error'
@@ -86,7 +104,7 @@ export default function CallInitiator({
       </button>
 
       {errorMessage && (
-        <div className="text-red-500 text-sm">
+        <div className="text-red-500 text-xs md:text-sm max-w-sm">
           Ошибка: {errorMessage}
         </div>
       )}
