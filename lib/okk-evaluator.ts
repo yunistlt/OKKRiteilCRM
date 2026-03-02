@@ -583,25 +583,25 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 // ═══════════════════════════════════════════════════════
 export async function evaluateScript(transcript: string, annaInsights: any = null) {
     const empty = {
-        script_greeting: { result: null, reason: null },
-        script_call_purpose: { result: null, reason: null },
-        script_company_info: { result: null, reason: null },
-        script_lpr_identified: { result: null, reason: null },
-        script_budget_confirmed: { result: null, reason: null },
-        script_urgency_identified: { result: null, reason: null },
-        script_deadlines: { result: null, reason: null },
-        script_tz_confirmed: { result: null, reason: null },
-        script_objection_general: { result: null, reason: null },
-        script_objection_delays: { result: null, reason: null },
-        script_offer_best_tech: { result: null, reason: null },
-        script_offer_best_terms: { result: null, reason: null },
-        script_offer_best_price: { result: null, reason: null },
-        script_cross_sell: { result: null, reason: null },
-        script_next_step_agreed: { result: null, reason: null },
-        script_dialogue_management: { result: null, reason: null },
-        script_confident_speech: { result: null, reason: null },
-        script_score_pct: null as number | null,
-        evaluator_comment: null as string | null,
+        script_greeting: { result: false, reason: "Нет данных для анализа (нет звонков/транскрипции)" },
+        script_call_purpose: { result: false, reason: "Нет данных для анализа" },
+        script_company_info: { result: false, reason: "Нет данных для анализа" },
+        script_lpr_identified: { result: false, reason: "Нет данных для анализа" },
+        script_budget_confirmed: { result: false, reason: "Нет данных для анализа" },
+        script_urgency_identified: { result: false, reason: "Нет данных для анализа" },
+        script_deadlines: { result: false, reason: "Нет данных для анализа" },
+        script_tz_confirmed: { result: false, reason: "Нет данных для анализа" },
+        script_objection_general: { result: false, reason: "Нет данных для анализа (возражения не отработаны)" },
+        script_objection_delays: { result: false, reason: "Нет данных для анализа" },
+        script_offer_best_tech: { result: false, reason: "Нет данных для анализа" },
+        script_offer_best_terms: { result: false, reason: "Нет данных для анализа" },
+        script_offer_best_price: { result: false, reason: "Нет данных для анализа" },
+        script_cross_sell: { result: false, reason: "Нет данных для анализа" },
+        script_next_step_agreed: { result: false, reason: "Нет данных для анализа" },
+        script_dialogue_management: { result: false, reason: "Нет данных для анализа" },
+        script_confident_speech: { result: false, reason: "Нет данных для анализа" },
+        script_score_pct: 0,
+        evaluator_comment: "Звонки не найдены или слишком короткие для анализа. Оценка 0.",
     };
 
     console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
@@ -625,39 +625,44 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 
 ОСНОВНЫЕ ПРАВИЛА:
 1. ХОЛИСТИЧЕСКИЙ АНАЛИЗ: Если действие произошло в любом из звонков истории — оно считается выполненным (true).
-2. ОБРАБОТКА N/A (НЕ ТРЕБОВАЛОСЬ): Если ситуация для критерия не возникла, ОБЯЗАТЕЛЬНО ставь "result": null и "reason": "Не требовалось". 
+2. СТРОГАЯ ОЦЕНКА (БЕЗ N/A): Вариант "null" (Не требовалось) ЗАПРЕЩЕН. Все критерии должны быть оценены как true (выполнено) или false (не выполнено).
+   - Если информации нет, ситуация не возникла или менеджер промолчал — ставь false.
+   - Пример: Если клиент не возражал, а пункт "Работа с возражениями" требует оценки — ставь false (так как навык не проявлен/не проверен), либо true, только если менеджер предвосхитил возражения. В данном случае, СЧИТАЙ ОТСУТСТВИЕ РАБОТЫ С ВОЗРАЖЕНИЯМИ КАК false.
+   - Любое сомнение трактуй как false (в пользу строгости).
+
 3. ИНТЕГРАЦИЯ С АННОЙ: Используй данные бизнес-аналитика Анны как "земную истину":
    - Если Анна нашла 'lpr' (имя или должность), значит менеджер выяснил ЛПР (true). Если Анна не нашла ЛПР и в диалоге нет попыток это выяснить — false.
    - Если Анна нашла 'budget' (сумму или готовность), значит бюджет затронут (true). Если в диалоге нет ни цифр, ни обсуждения денег — false.
    - Если Анна нашла 'urgency' или 'timeline', значит менеджер выяснил сроки (true).
 
 ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON. 
-Для каждого пункта верни объект: {"result": true/false/null, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
+Для каждого пункта верни объект: {"result": true/false, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
 
 КРИТЕРИИ И СПЕЦИФИКА КЛАССИФИКАЦИИ:
-- script_greeting: Приветствие и название компании.
-- script_call_purpose: Озвучена причина звонка (привязка к заказу/этапу).
-- script_company_info: Выявлена сфера деятельности клиента и чем занимается организация.
-- script_lpr_identified: Выявлено Лицо, Принимающее Решение (кто еще участвует в выборе?).
-- script_budget_confirmed: Обсужден финансовый вопрос или наличие бюджета.
-- script_urgency_identified: Менеджер выяснил срочность покупки (нужно "вчера" или "к осени").
-- script_deadlines: Выяснены конкретные сроки готовности или поставки (не путать со срочностью).
-- script_tz_confirmed: Параметры тех. задания (размеры, температура) подтверждены.
-- script_objection_general: Работа с возражениями. Если возражений не было — null. Если были и отработаны хоть раз в истории — true.
-- script_objection_delays: Если клиент тянет сроки или Анна видит конкурентов — выяснил ли менеджер "с кем сравнивают?". Если Анна видит конкурентов, а вопроса не было — false. Если сравнения нет — null.
-- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества (мощность, ресурс, ГОСТ), особенно по болям от Анны. Если тех. требований не было — null.
-- script_offer_best_terms: Аргументы по СРОКАМ (наличие, ускорение), особенно если 'urgency: hot'. Если сроки не критичны — null.
-- script_offer_best_price: Обоснование ЦЕНЫ (ценность, сервис, условия оплаты). Если клиент не торговался — null.
-- script_cross_sell: Предложение сопутствующих товаров (печи -> расходники).
-- script_next_step_agreed: Фиксация следующего шага с ДАТОЙ.
-- script_dialogue_management: Менеджер держал инициативу и вел по структуре.
-- script_confident_speech: Уверенность, грамотность, отсутствие слов-паразитов.
+- script_greeting: Приветствие и название компании. (Есть - true, Нет - false)
+- script_call_purpose: Озвучена причина звонка (привязка к заказу/этапу). (Есть - true, Нет - false)
+- script_company_info: Выявлена сфера деятельности клиента и чем занимается организация. (Есть - true, Нет - false)
+- script_lpr_identified: Выявлено Лицо, Принимающее Решение (кто еще участвует в выборе?). (Есть - true, Нет - false)
+- script_budget_confirmed: Обсужден финансовый вопрос или наличие бюджета. (Есть - true, Нет - false)
+- script_urgency_identified: Менеджер выяснил срочность покупки (нужно "вчера" или "к осени"). (Есть - true, Нет - false)
+- script_deadlines: Выяснены конкретные сроки готовности или поставки (не путать со срочностью). (Есть - true, Нет - false)
+- script_tz_confirmed: Параметры тех. задания (размеры, температура) подтверждены. (Есть - true, Нет - false)
+- script_objection_general: Работа с возражениями. Если были возражения и отработаны — true. Если возражений НЕ было или они не отработаны — false.
+- script_objection_delays: Выяснение причин задержек/сравнения. Если клиент тянет время — выяснил ли менеджер причину? (Да - true, Нет/Не спросил - false).
+- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Нет - false).
+- script_offer_best_terms: Аргументы по СРОКАМ. (Были - true, Нет - false).
+- script_offer_best_price: Обоснование ЦЕНЫ. (Было - true, Нет - false).
+- script_cross_sell: Предложение сопутствующих товаров. (Было - true, Нет - false).
+- script_next_step_agreed: Фиксация следующего шага с ДАТОЙ. (Есть дата след. касания - true, Нет - false).
+- script_dialogue_management: Менеджер держал инициативу. (Да - true, Нет/Плыл по течению - false).
+- script_confident_speech: Уверенная речь. (Да - true, Нет - false).
 
 ПЕРСОНАЛИЗАЦИЯ:
 В "reason" всегда упоминай менеджера по имени (из контекста).
 
 РАСЧЕТ script_score_pct:
-- Рассчитывай % только по тем пунктам, где result НЕ null. 
+- Рассчитывай % как (Кол-во true / Общее кол-во пунктов) * 100.
+- Все пункты должны быть либо true, либо false. 
 - (Кол-во true / Кол-во (true + false)) * 100.
 - Если все пункты null, верни 100.
 
