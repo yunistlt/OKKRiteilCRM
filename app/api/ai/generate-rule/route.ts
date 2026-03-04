@@ -1,14 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 
 // Force dynamic to avid caching
 export const dynamic = 'force-dynamic';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// const openai = new OpenAI({
+//   apiKey: process.env.OPENAI_API_KEY,
+// });
 
 export async function POST(req: Request) {
   try {
@@ -26,6 +26,7 @@ export async function POST(req: Request) {
 
     const statuses = statusesRes.data || [];
     const managers = managersRes.data || [];
+    const openai = getOpenAIClient();
 
     const SYSTEM_PROMPT = `
 You are an OKK Rule Architect. Your task is to convert human requirements into structured Logic Blocks for RetailCRM.

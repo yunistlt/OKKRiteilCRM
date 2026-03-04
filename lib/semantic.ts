@@ -1,10 +1,10 @@
 
 // ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Семантическая проверка текста и выявление смыслов.
-import OpenAI from 'openai';
+import { getOpenAIClient } from '@/utils/openai';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// const openai = new OpenAI({
+//     apiKey: process.env.OPENAI_API_KEY,
+// });
 
 export interface SemanticResult {
     is_violation: boolean;
@@ -40,6 +40,7 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
     `;
 
     try {
+        const openai = getOpenAIClient();
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini", // Efficient model for analysis
             messages: [
@@ -107,6 +108,7 @@ Generate the HTML message now for manager "${managerName}" regarding order "${or
 `;
 
     try {
+        const openai = getOpenAIClient();
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [

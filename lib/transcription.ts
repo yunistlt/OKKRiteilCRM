@@ -1,10 +1,12 @@
 import { OpenAI } from 'openai';
+import { getOpenAIClient } from '@/utils/openai';
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Управление очередью и статусами транскрибации звонков.
 import { supabase } from '@/utils/supabase';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// const openai = new OpenAI({
+//     apiKey: process.env.OPENAI_API_KEY,
+// });
+
 
 /**
  * Downloads audio from Telphin Storage
@@ -22,6 +24,7 @@ async function downloadAudio(url: string, telphinToken: string): Promise<Buffer>
  * Transcribes audio using OpenAI Whisper
  */
 async function transcribe(audioBuffer: Buffer): Promise<string> {
+    const openai = getOpenAIClient();
     // Convert Buffer to a File object compatible with OpenAI SDK
     const file = await OpenAI.toFile(audioBuffer, 'audio.mp3', { type: 'audio/mpeg' });
 
@@ -37,6 +40,7 @@ async function transcribe(audioBuffer: Buffer): Promise<string> {
  * Classifies if the transcript sounds like an answering machine
  */
 async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnsweringMachine: boolean; reason: string }> {
+    const openai = getOpenAIClient();
     const response = await openai.chat.completions.create({
         model: "gpt-4o-mini", // Cost efficient for classification
         messages: [
