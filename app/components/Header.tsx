@@ -51,6 +51,10 @@ export default function Header() {
                         <span className="text-base">📋</span>
                         Контроль качества
                     </Link>
+                    <Link href="/messenger" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
+                        <span className="text-base">💬</span>
+                        Мессенджер
+                    </Link>
                     {user?.role !== 'manager' && (
                         <>
                             <Link href="/?office=true" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
@@ -119,6 +123,14 @@ export default function Header() {
                             className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
                         >
                             <span className="flex items-center gap-2"><span className="text-xl">📋</span> Контроль качества</span>
+                            <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
+                        </Link>
+                        <Link
+                            href="/messenger"
+                            onClick={() => setIsMenuOpen(false)}
+                            className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
+                        >
+                            <span className="flex items-center gap-2"><span className="text-xl">💬</span> Мессенджер</span>
                             <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                         </Link>
                         {user?.role !== 'manager' && (
