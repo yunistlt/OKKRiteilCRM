@@ -65,9 +65,13 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                     context_order_id: contextOrderId ? parseInt(contextOrderId) : null
                 })
             });
+
             const data = await res.json();
-            if (data.id) {
+
+            if (res.ok && data.id) {
                 onCreated(data.id);
+            } else {
+                alert(`Ошибка: ${data.error || 'Не удалось создать чат'}`);
             }
         } catch (error) {
             console.error('Failed to create chat:', error);

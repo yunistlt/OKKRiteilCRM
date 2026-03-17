@@ -125,6 +125,7 @@ export async function POST(req: Request) {
 
         if (type === 'direct') {
             if (!participant_ids || participant_ids.length !== 1) {
+                console.error('[Messenger API] Direct chat invalid participants:', participant_ids);
                 return NextResponse.json({ error: 'Direct chat requires exactly one other participant' }, { status: 400 });
             }
             const otherUserId = participant_ids[0];
@@ -138,9 +139,7 @@ export async function POST(req: Request) {
                 });
 
             if (searchError) {
-                // Fallback if RPC doesn't exist yet (logic manually)
-                // We'll implement the RPC in a separate migration if needed, 
-                // but for now, let's assume we need to handle it.
+                console.error('[Messenger API] find_direct_chat RPC Error:', searchError);
             }
 
             if (existingChats && existingChats.length > 0) {
@@ -159,7 +158,10 @@ export async function POST(req: Request) {
             .select()
             .single();
 
-        if (createError) throw createError;
+        if (createError) {
+            console.error('[Messenger API] Create Chat Error:', createError);
+            throw createError;
+        }
 
         // Add participants
         const participants = [
@@ -175,7 +177,10 @@ export async function POST(req: Request) {
             .from('chat_participants')
             .insert(participants);
 
-        if (partError) throw partError;
+        if (partError) {
+            console.error('[Messenger API] Add Participants Error:', partError);
+            throw partError;
+        }
 
         return NextResponse.json(newChat);
     } catch (error: any) {
