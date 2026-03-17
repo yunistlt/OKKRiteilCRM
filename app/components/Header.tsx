@@ -14,15 +14,34 @@ interface EfficiencyRow {
 export default function Header() {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [user, setUser] = useState<{ username: string; role: string } | null>(null);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     useEffect(() => {
         fetch('/api/auth/me')
             .then(res => res.json())
             .then(data => {
-                if (data.authenticated) setUser(data.user);
+                if (data.authenticated) {
+                    setUser(data.user);
+                    fetchUnreadCount();
+                }
             })
             .catch(console.error);
+
+        const interval = setInterval(fetchUnreadCount, 30000); // Check every 30s
+        return () => clearInterval(interval);
     }, []);
+
+    const fetchUnreadCount = async () => {
+        try {
+            const res = await fetch('/api/messenger/chats?count=true');
+            if (res.ok) {
+                const data = await res.json();
+                setUnreadCount(data.count || 0);
+            }
+        } catch (e) {
+            console.error('Failed to fetch unread count:', e);
+        }
+    };
 
     const handleLogout = async () => {
         await fetch('/api/auth/logout', { method: 'POST' });
@@ -51,9 +70,14 @@ export default function Header() {
                         <span className="text-base">📋</span>
                         Контроль качества
                     </Link>
-                    <Link href="/messenger" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2">
+                    <Link href="/messenger" className="text-gray-400 hover:text-white transition-colors text-sm font-bold flex items-center gap-2 relative">
                         <span className="text-base">💬</span>
                         Мессенджер
+                        {unreadCount > 0 && (
+                            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black px-1 rounded-full min-w-[16px] h-4 flex items-center justify-center border-2 border-gray-900 animate-pulse">
+                                {unreadCount > 9 ? '9+' : unreadCount}
+                            </span>
+                        )}
                     </Link>
                     {user?.role !== 'manager' && (
                         <>
@@ -130,7 +154,15 @@ export default function Header() {
                             onClick={() => setIsMenuOpen(false)}
                             className="bg-gray-800 p-4 rounded-2xl text-white font-bold flex items-center justify-between group active:bg-blue-600 transition-colors"
                         >
-                            <span className="flex items-center gap-2"><span className="text-xl">💬</span> Мессенджер</span>
+                            <span className="flex items-center gap-2 relative">
+                                <span className="text-xl">💬</span> 
+                                Мессенджер
+                                {unreadCount > 0 && (
+                                    <span className="ml-2 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                                        {unreadCount}
+                                    </span>
+                                )}
+                            </span>
                             <svg className="w-5 h-5 text-gray-500 group-hover:text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" /></svg>
                         </Link>
                         {user?.role !== 'manager' && (

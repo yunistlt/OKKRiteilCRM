@@ -8,10 +8,12 @@ export const dynamic = 'force-dynamic';
  * GET /api/messenger/chats
  * Returns a list of chats for the current user including last message and participant details.
  */
-export async function GET() {
+export async function GET(req: Request) {
     try {
         const session = await getSession();
         const userId = session?.user?.retail_crm_manager_id;
+        const { searchParams } = new URL(req.url);
+        const onlyCount = searchParams.get('count') === 'true';
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -20,12 +22,27 @@ export async function GET() {
         // 1. Get chat IDs where user is a participant
         const { data: participantRecords, error: participantError } = await supabase
             .from('chat_participants')
-            .select('chat_id')
+            .select('chat_id, last_read_at')
             .eq('user_id', userId);
 
         if (participantError) throw participantError;
+
         if (!participantRecords || participantRecords.length === 0) {
-            return NextResponse.json([]);
+            return NextResponse.json(onlyCount ? { count: 0 } : []);
+        }
+
+        if (onlyCount) {
+            // Efficiently count all unread messages across all chats
+            let totalUnread = 0;
+            await Promise.all(participantRecords.map(async (p) => {
+                const { count } = await supabase
+                    .from('messages')
+                    .select('*', { count: 'exact', head: true })
+                    .eq('chat_id', p.chat_id)
+                    .gt('created_at', p.last_read_at);
+                totalUnread += (count || 0);
+            }));
+            return NextResponse.json({ count: totalUnread });
         }
 
         const chatIds = participantRecords.map(p => p.chat_id);
@@ -56,8 +73,8 @@ export async function GET() {
 
         if (chatsError) throw chatsError;
 
-        // 3. Fetch last message for each chat
-        const chatsWithLastMessage = await Promise.all(chats.map(async (chat) => {
+        // 3. Fetch last message and unread count for each chat
+        const chatsWithMetadata = await Promise.all(chats.map(async (chat) => {
             const { data: lastMessages } = await supabase
                 .from('messages')
                 .select('content, created_at, sender_id')
@@ -65,13 +82,25 @@ export async function GET() {
                 .order('created_at', { ascending: false })
                 .limit(1);
 
+            // Get current user's last_read_at for this chat
+            const userParticipant = (chat.chat_participants as any[]).find(p => p.user_id === userId);
+            const lastReadAt = userParticipant?.last_read_at || new Date(0).toISOString();
+
+            // Count messages created after lastReadAt
+            const { count: unreadCount } = await supabase
+                .from('messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('chat_id', chat.id)
+                .gt('created_at', lastReadAt);
+
             return {
                 ...chat,
-                last_message: lastMessages?.[0] || null
+                last_message: lastMessages?.[0] || null,
+                unread_count: unreadCount || 0
             };
         }));
 
-        return NextResponse.json(chatsWithLastMessage);
+        return NextResponse.json(chatsWithMetadata);
     } catch (error: any) {
         console.error('[Chats API GET] Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });

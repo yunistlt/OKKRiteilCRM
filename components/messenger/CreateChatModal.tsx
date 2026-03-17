@@ -18,6 +18,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
     const [managers, setManagers] = useState<Manager[]>([]);
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
     const [groupName, setGroupName] = useState('');
+    const [contextOrderId, setContextOrderId] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [creating, setCreating] = useState(false);
     const [search, setSearch] = useState('');
@@ -60,7 +61,8 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                 body: JSON.stringify({
                     type,
                     name: type === 'group' ? (groupName || 'Групповой чат') : null,
-                    participant_ids: selectedIds
+                    participant_ids: selectedIds,
+                    context_order_id: contextOrderId ? parseInt(contextOrderId) : null
                 })
             });
             const data = await res.json();
@@ -114,6 +116,18 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                             />
                         </div>
                     )}
+
+                    {/* Order Context */}
+                    <div>
+                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1 ml-1">Привязать к заказу (ID)</label>
+                        <input 
+                            type="number"
+                            placeholder="Например: 51492 (необязательно)"
+                            className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            value={contextOrderId}
+                            onChange={(e) => setContextOrderId(e.target.value)}
+                        />
+                    </div>
 
                     <div className="flex flex-col gap-1">
                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1 ml-1">Выберите участников ({selectedIds.length})</label>

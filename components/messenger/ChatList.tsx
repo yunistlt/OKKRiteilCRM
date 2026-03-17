@@ -57,7 +57,11 @@ export default function ChatList({ chats, selectedId, onSelect }: ChatListProps)
                             <p className="text-xs text-gray-500 truncate flex-1 min-h-[1rem]">
                                 {lastMsg?.content || 'Нет сообщений'}
                             </p>
-                            {/* TODO: Add Unread Badge */}
+                            {chat.unread_count > 0 && (
+                                <span className="mb-0.5 px-1.5 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded-full min-w-[18px] text-center shadow-sm shadow-blue-100">
+                                    {chat.unread_count > 99 ? '99+' : chat.unread_count}
+                                </span>
+                            )}
                         </div>
 
                         {chat.context_order_id && (
