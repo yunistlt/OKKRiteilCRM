@@ -3,12 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import ChatList from './ChatList';
 import MessageView from './MessageView';
+import CreateChatModal from './CreateChatModal';
 import { supabase } from '@/utils/supabase';
 
 export default function MessengerPanel() {
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [chats, setChats] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
     useEffect(() => {
         fetchChats();
@@ -53,15 +55,22 @@ export default function MessengerPanel() {
         }
     };
 
+    const handleChatCreated = (chatId: string) => {
+        setSelectedChatId(chatId);
+        setIsCreateModalOpen(false);
+        fetchChats();
+    };
+
     return (
-        <div className="flex h-[600px] w-full bg-white border rounded-lg overflow-hidden shadow-lg">
+        <div className="flex h-[600px] w-full bg-white border rounded-lg overflow-hidden shadow-lg relative">
             {/* Sidebar / Chat List */}
             <div className="w-1/3 border-r flex flex-col bg-gray-50">
                 <div className="p-4 border-b bg-white flex justify-between items-center">
                     <h2 className="font-bold text-lg text-gray-800">Чаты</h2>
                     <button 
                         className="p-1 hover:bg-gray-100 rounded-full text-blue-600 transition-colors"
-                        onClick={() => {/* TODO: Open Create Group Modal */}}
+                        onClick={() => setIsCreateModalOpen(true)}
+                        title="Создать чат"
                     >
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -98,6 +107,14 @@ export default function MessengerPanel() {
                     </div>
                 )}
             </div>
+
+            {/* Modal */}
+            {isCreateModalOpen && (
+                <CreateChatModal 
+                    onClose={() => setIsCreateModalOpen(false)} 
+                    onCreated={handleChatCreated}
+                />
+            )}
         </div>
     );
 }
