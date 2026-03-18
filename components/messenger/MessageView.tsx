@@ -19,7 +19,6 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
     useEffect(() => {
         fetchMessages();
 
-        // Subscribe to real-time messages for this specific chat
         const channel = supabaseBrowser
             .channel(`chat-${chatId}`)
             .on('postgres_changes', {
@@ -29,7 +28,7 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
                 filter: `chat_id=eq.${chatId}`
             }, (payload) => {
                 console.log('[Realtime] New message received:', payload.new);
-                setMessages(prev => [payload.new, ...prev]);
+                setMessages(prev => [...prev, payload.new]);
             })
             .subscribe((status) => {
                 console.log('[Realtime] Subscription status:', status);
@@ -53,8 +52,8 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
             const res = await fetch(`/api/messenger/messages?chat_id=${chatId}`);
             const data = await res.json();
             if (data.messages) {
-                // Reverse because we fetch descending created_at
-                setMessages(data.messages);
+                // API returns descending, reverse for chronological display
+                setMessages([...data.messages].reverse());
                 markMessagesAsRead();
             }
         } catch (error) {
@@ -77,127 +76,245 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
         }
     };
 
+    const formatTime = (dateStr: string) => {
+        return new Date(dateStr).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    // Group messages by date
+    const groupedMessages = messages.reduce((acc: { date: string; msgs: any[] }[], msg) => {
+        const date = new Date(msg.created_at).toLocaleDateString('ru-RU', {
+            day: 'numeric', month: 'long', year: 'numeric'
+        });
+        const last = acc[acc.length - 1];
+        if (last && last.date === date) {
+            last.msgs.push(msg);
+        } else {
+            acc.push({ date, msgs: [msg] });
+        }
+        return acc;
+    }, []);
+
     return (
-        <div className="flex-1 flex flex-col h-full bg-white">
-            {/* Header */}
-            <div className="p-4 border-b flex items-center justify-between bg-gray-50/50 backdrop-blur-sm sticky top-0 z-10 transition-all duration-300">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shadow-md">
-                        {chatName ? chatName[0].toUpperCase() : 'C'}
+        <div className="flex-1 flex flex-col h-full" style={{ background: '#eae6df' }}>
+            {/* Header — Telegram style */}
+            <div style={{
+                background: '#fff',
+                borderBottom: '1px solid #e0e0e0',
+                padding: '10px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+                position: 'sticky',
+                top: 0,
+                zIndex: 10
+            }}>
+                <div style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #4fa3e3, #1c7ed6)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: 18,
+                    flexShrink: 0
+                }}>
+                    {chatName ? chatName[0].toUpperCase() : 'Ч'}
+                </div>
+                <div>
+                    <div style={{ fontWeight: 600, fontSize: 15, color: '#000', lineHeight: 1.2 }}>
+                        {chatName || 'Чат'}
                     </div>
-                    <div>
-                        <h3 className="font-semibold text-gray-900 leading-none mb-1">
-                            {chatName || 'Чат'}
-                        </h3>
-                        <div className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                            <span className="text-[10px] text-gray-500 font-medium">
-                                {participants ? `${participants.length} участников` : 'В сети'}
-                            </span>
-                        </div>
+                    <div style={{ fontSize: 12, color: '#4fa3e3', marginTop: 2 }}>
+                        {participants ? `${participants.length} участников` : 'в сети'}
                     </div>
                 </div>
             </div>
 
             {/* Messages Area */}
-            <div 
+            <div
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto p-4 flex flex-col-reverse gap-4 bg-gray-50/30"
+                style={{
+                    flex: 1,
+                    overflowY: 'auto',
+                    padding: '12px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2
+                }}
             >
                 {loading ? (
-                    <div className="flex-1 flex items-center justify-center text-gray-400">
+                    <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888' }}>
                         Загрузка сообщений...
                     </div>
                 ) : messages.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-300 py-12">
-                         <p className="text-sm">Нет сообщений. Напишите первым!</p>
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#aaa' }}>
+                        <div style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            color: '#fff',
+                            borderRadius: 12,
+                            padding: '6px 16px',
+                            fontSize: 13
+                        }}>
+                            Нет сообщений. Напишите первым!
+                        </div>
                     </div>
                 ) : (
-                    messages.map((msg) => {
-                        const isSystem = msg.sender_id === null;
-                        const isMine = msg.sender_id === currentUserId;
-                        
-                        // Logic for read status
-                        const otherParticipants = participants?.filter(p => p.user_id !== currentUserId) || [];
-                        const latestReadAt = otherParticipants.length > 0 
-                            ? Math.max(...otherParticipants.map(p => new Date(p.last_read_at).getTime()))
-                            : 0;
-                        const isRead = new Date(msg.created_at).getTime() <= latestReadAt;
+                    groupedMessages.map((group) => (
+                        <React.Fragment key={group.date}>
+                            {/* Date divider */}
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'center',
+                                margin: '8px 0'
+                            }}>
+                                <span style={{
+                                    background: 'rgba(0,0,0,0.28)',
+                                    color: '#fff',
+                                    borderRadius: 10,
+                                    padding: '3px 10px',
+                                    fontSize: 12,
+                                    fontWeight: 500
+                                }}>
+                                    {group.date}
+                                </span>
+                            </div>
 
-                        return (
-                            <div 
-                                key={msg.id} 
-                                className={`flex w-full ${isSystem ? 'justify-center' : isMine ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`
-                                    py-2 px-4 rounded-2xl shadow-sm max-w-[85%] group relative
-                                    ${isSystem 
-                                        ? 'bg-amber-50 text-amber-800 text-xs font-medium border border-amber-100 rounded-lg' 
-                                        : isMine
-                                            ? 'bg-blue-600 text-white rounded-br-sm'
-                                            : 'bg-white text-gray-800 border border-gray-100 rounded-bl-sm'
-                                    }
-                                `}>
-                                    {!isSystem && !isMine && (
-                                        <div className="text-[10px] font-bold text-blue-500 mb-1 opacity-70">
-                                            {participants?.find(p => p.user_id === msg.sender_id)?.managers?.first_name || 'Сотрудник'}
-                                        </div>
-                                    )}
+                            {group.msgs.map((msg, idx) => {
+                                const isSystem = msg.sender_id === null;
+                                const isMine = msg.sender_id === currentUserId;
 
-                                    {msg.content && <p className="whitespace-pre-wrap leading-tight text-sm">{msg.content}</p>}
-                                    
-                                    {msg.attachments && msg.attachments.length > 0 && (
-                                        <div className="mt-2 flex flex-col gap-1.5">
-                                            {msg.attachments.map((att: any, idx: number) => (
-                                                <a 
-                                                    key={idx}
-                                                    href={att.url} 
-                                                    target="_blank" 
-                                                    rel="noreferrer"
-                                                    className={`flex items-center gap-2 p-2 rounded-lg border transition-colors group ${
-                                                        isMine ? 'bg-blue-700/50 border-blue-500 hover:bg-blue-700' : 'bg-gray-50 border-gray-100 hover:bg-gray-100'
-                                                    }`}
-                                                >
-                                                    <svg className={`w-4 h-4 ${isMine ? 'text-blue-200' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                                                    </svg>
-                                                    <span className={`text-xs font-medium truncate max-w-[150px] ${isMine ? 'text-blue-50' : 'text-gray-700'}`}>
-                                                        {att.name || 'Файл'}
-                                                    </span>
-                                                </a>
-                                            ))}
-                                        </div>
-                                    )}
-                                    
-                                    {!isSystem && (
-                                        <div className="flex justify-end items-center gap-1 mt-1 opacity-70">
-                                            <span className={`text-[9px] font-medium ${isMine ? 'text-blue-100' : 'text-gray-400'}`}>
-                                                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                // Read status
+                                const otherParticipants = participants?.filter(p => p.user_id !== currentUserId) || [];
+                                const latestReadAt = otherParticipants.length > 0
+                                    ? Math.max(...otherParticipants.map(p => new Date(p.last_read_at).getTime()))
+                                    : 0;
+                                const isRead = new Date(msg.created_at).getTime() <= latestReadAt;
+
+                                // Show sender name only if changed from previous
+                                const prevMsg = group.msgs[idx - 1];
+                                const showSenderName = !isMine && !isSystem && msg.sender_id !== prevMsg?.sender_id;
+
+                                if (isSystem) {
+                                    return (
+                                        <div key={msg.id} style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+                                            <span style={{
+                                                background: 'rgba(0,0,0,0.28)',
+                                                color: '#fff',
+                                                borderRadius: 10,
+                                                padding: '3px 12px',
+                                                fontSize: 12
+                                            }}>
+                                                {msg.content}
                                             </span>
-                                            {isMine && (
-                                                <div className="flex">
-                                                    {isRead ? (
-                                                        <svg className="w-3 h-3 text-blue-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M20 6L9 17l-5-5"></path>
-                                                            <path d="M12 17l11-11" className="opacity-70"></path>
-                                                        </svg>
-                                                    ) : (
-                                                        <svg className="w-3 h-3 text-blue-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                                                            <path d="M20 6L9 17l-5-5"></path>
-                                                        </svg>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div key={msg.id} style={{
+                                        display: 'flex',
+                                        justifyContent: isMine ? 'flex-end' : 'flex-start',
+                                        marginBottom: 2,
+                                        paddingLeft: isMine ? '15%' : 0,
+                                        paddingRight: isMine ? 0 : '15%',
+                                    }}>
+                                        <div style={{ maxWidth: '100%', display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start' }}>
+                                            {/* Sender name for group chats */}
+                                            {showSenderName && (
+                                                <span style={{
+                                                    fontSize: 12,
+                                                    fontWeight: 600,
+                                                    color: '#1c7ed6',
+                                                    marginBottom: 2,
+                                                    marginLeft: 10,
+                                                }}>
+                                                    {participants?.find(p => p.user_id === msg.sender_id)?.managers?.first_name || 'Сотрудник'}
+                                                </span>
+                                            )}
+
+                                            {/* Bubble */}
+                                            <div style={{
+                                                position: 'relative',
+                                                // Telegram outgoing: #dcf8c6 (light green), incoming: #fff
+                                                background: isMine ? '#dcf8c6' : '#ffffff',
+                                                color: '#111',
+                                                borderRadius: isMine
+                                                    ? '12px 12px 4px 12px'
+                                                    : '12px 12px 12px 4px',
+                                                padding: '6px 10px 4px 10px',
+                                                boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
+                                                fontSize: 14,
+                                                lineHeight: 1.45,
+                                                wordBreak: 'break-word'
+                                            }}>
+                                                {/* Message text */}
+                                                {msg.content && (
+                                                    <p style={{ margin: 0, paddingRight: 44, whiteSpace: 'pre-wrap' }}>
+                                                        {msg.content}
+                                                    </p>
+                                                )}
+
+                                                {/* Attachments */}
+                                                {msg.attachments && msg.attachments.length > 0 && (
+                                                    <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                        {msg.attachments.map((att: any, i: number) => (
+                                                            <a
+                                                                key={i}
+                                                                href={att.url}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                style={{
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 6,
+                                                                    padding: '4px 8px',
+                                                                    background: isMine ? 'rgba(0,0,0,0.06)' : 'rgba(0,0,0,0.04)',
+                                                                    borderRadius: 8,
+                                                                    textDecoration: 'none',
+                                                                    color: '#1c7ed6',
+                                                                    fontSize: 13,
+                                                                    fontWeight: 500
+                                                                }}
+                                                            >
+                                                                📎 {att.name || 'Файл'}
+                                                            </a>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Time + read status — bottom right inside bubble */}
+                                                <div style={{
+                                                    position: 'absolute',
+                                                    bottom: 4,
+                                                    right: 8,
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    gap: 2,
+                                                }}>
+                                                    <span style={{ fontSize: 11, color: '#7d8b92', whiteSpace: 'nowrap' }}>
+                                                        {formatTime(msg.created_at)}
+                                                    </span>
+                                                    {isMine && (
+                                                        <span style={{ fontSize: 13, color: isRead ? '#4fa3e3' : '#aaa', lineHeight: 1 }}>
+                                                            {isRead ? '✓✓' : '✓'}
+                                                        </span>
                                                     )}
                                                 </div>
-                                            )}
+                                            </div>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })
+                                    </div>
+                                );
+                            })}
+                        </React.Fragment>
+                    ))
                 )}
             </div>
 
-            {/* Input Area */}
+            {/* Input */}
             <MessageInput chatId={chatId} onMessageSent={fetchMessages} />
         </div>
     );

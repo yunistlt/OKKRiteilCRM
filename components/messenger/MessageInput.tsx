@@ -45,7 +45,6 @@ export default function MessageInput({ chatId, onMessageSent }: MessageInputProp
 
         setUploading(true);
         try {
-            // 1. Get signed URL
             const urlRes = await fetch('/api/messenger/attachments', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -57,7 +56,6 @@ export default function MessageInput({ chatId, onMessageSent }: MessageInputProp
             });
             const { upload_url, file_path } = await urlRes.json();
 
-            // 2. Upload to Storage
             const uploadRes = await fetch(upload_url, {
                 method: 'PUT',
                 body: file,
@@ -66,9 +64,6 @@ export default function MessageInput({ chatId, onMessageSent }: MessageInputProp
 
             if (!uploadRes.ok) throw new Error('Upload failed');
 
-            // 3. Send message with attachment
-            // Note: In a real app, we'd construct the public URL or use a proxy
-            // Here we'll just save the path and metadata
             await fetch('/api/messenger/messages', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -84,7 +79,7 @@ export default function MessageInput({ chatId, onMessageSent }: MessageInputProp
                     }]
                 })
             });
-
+            onMessageSent?.();
         } catch (error) {
             console.error('File upload failed:', error);
             alert('Ошибка при загрузке файла');
@@ -94,61 +89,143 @@ export default function MessageInput({ chatId, onMessageSent }: MessageInputProp
         }
     };
 
+    const canSend = content.trim().length > 0 && !sending;
+
     return (
-        <div className="p-4 border-t bg-white">
-            <form onSubmit={handleSend} className="flex items-end gap-2">
-                <input 
-                    type="file" 
-                    className="hidden" 
-                    ref={fileInputRef} 
-                    onChange={handleFileUpload}
+        <div style={{
+            background: '#f0f0f0',
+            borderTop: '1px solid #ddd',
+            padding: '8px 12px',
+            display: 'flex',
+            alignItems: 'flex-end',
+            gap: 8
+        }}>
+            <input
+                type="file"
+                className="hidden"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+            />
+
+            {/* Attach button */}
+            <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '6px',
+                    borderRadius: '50%',
+                    color: uploading ? '#4fa3e3' : '#8b9499',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginBottom: 2,
+                    transition: 'color 0.15s'
+                }}
+                title="Прикрепить файл"
+            >
+                {uploading ? (
+                    <div style={{
+                        width: 22,
+                        height: 22,
+                        border: '2px solid #4fa3e3',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 0.7s linear infinite'
+                    }} />
+                ) : (
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+                    </svg>
+                )}
+            </button>
+
+            {/* Text input */}
+            <div style={{ flex: 1, position: 'relative' }}>
+                <textarea
+                    rows={1}
+                    value={content}
+                    onChange={(e) => {
+                        setContent(e.target.value);
+                        // Auto-resize
+                        e.target.style.height = 'auto';
+                        e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                    }}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                        }
+                    }}
+                    placeholder="Сообщение"
+                    style={{
+                        width: '100%',
+                        padding: '9px 14px',
+                        background: '#fff',
+                        border: '1px solid #ddd',
+                        borderRadius: 22,
+                        outline: 'none',
+                        fontSize: 14,
+                        color: '#111',
+                        resize: 'none',
+                        lineHeight: 1.45,
+                        maxHeight: 120,
+                        overflowY: 'auto',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                        transition: 'border-color 0.15s',
+                        display: 'block',
+                        boxSizing: 'border-box'
+                    }}
+                    onFocus={(e) => { e.target.style.borderColor = '#4fa3e3'; }}
+                    onBlur={(e) => { e.target.style.borderColor = '#ddd'; }}
                 />
-                
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                    className="mb-1 p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
-                >
-                    {uploading ? (
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent animate-spin rounded-full" />
-                    ) : (
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                        </svg>
-                    )}
-                </button>
+            </div>
 
-                <div className="flex-1 relative">
-                    <textarea
-                        rows={1}
-                        value={content}
-                        onChange={(e) => setContent(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSend();
-                            }
-                        }}
-                        placeholder="Напишите сообщение..."
-                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none max-h-32 text-gray-800"
-                    />
-                </div>
+            {/* Send button — Telegram blue circle */}
+            <button
+                type="button"
+                onClick={() => handleSend()}
+                disabled={!canSend}
+                style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    background: canSend ? '#2ca5e0' : '#c5d8e6',
+                    border: 'none',
+                    cursor: canSend ? 'pointer' : 'default',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    marginBottom: 1,
+                    transition: 'background 0.15s',
+                    boxShadow: canSend ? '0 2px 6px rgba(44,165,224,0.4)' : 'none'
+                }}
+            >
+                {sending ? (
+                    <div style={{
+                        width: 18,
+                        height: 18,
+                        border: '2px solid #fff',
+                        borderTopColor: 'transparent',
+                        borderRadius: '50%',
+                        animation: 'spin 0.7s linear infinite'
+                    }} />
+                ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 2 }}>
+                        <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                )}
+            </button>
 
-                <button
-                    type="submit"
-                    disabled={!content.trim() || sending}
-                    className="mb-1 p-3 bg-blue-600 text-white rounded-2xl hover:bg-blue-700 transition-all disabled:opacity-50 disabled:bg-gray-300 shadow-sm shadow-blue-200"
-                >
-                    {sending ? (
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
-                    ) : (
-                        <svg className="w-6 h-6 rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                    )}
-                </button>
-            </form>
+            <style>{`
+                @keyframes spin { to { transform: rotate(360deg); } }
+            `}</style>
         </div>
     );
 }
