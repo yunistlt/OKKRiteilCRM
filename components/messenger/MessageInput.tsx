@@ -4,9 +4,10 @@ import React, { useState, useRef } from 'react';
 
 interface MessageInputProps {
     chatId: string;
+    onMessageSent?: () => void;
 }
 
-export default function MessageInput({ chatId }: MessageInputProps) {
+export default function MessageInput({ chatId, onMessageSent }: MessageInputProps) {
     const [content, setContent] = useState('');
     const [sending, setSending] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -29,6 +30,7 @@ export default function MessageInput({ chatId }: MessageInputProps) {
 
             if (res.ok) {
                 setContent('');
+                onMessageSent?.();
             }
         } catch (error) {
             console.error('Failed to send message:', error);
