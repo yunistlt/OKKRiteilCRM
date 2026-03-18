@@ -16,6 +16,9 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
     const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
 
+    // Debug: log currentUserId to verify it arrives correctly
+    console.log('[MessageView] currentUserId =', currentUserId, typeof currentUserId);
+
     useEffect(() => {
         fetchMessages();
 
@@ -184,8 +187,8 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
                             </div>
 
                             {group.msgs.map((msg, idx) => {
-                                const isSystem = msg.sender_id === null;
-                                const isMine = msg.sender_id === currentUserId;
+                                const isSystem = msg.sender_id === null || msg.sender_id === undefined;
+                                const isMine = !isSystem && Number(msg.sender_id) === Number(currentUserId);
 
                                 // Read status
                                 const otherParticipants = participants?.filter(p => p.user_id !== currentUserId) || [];

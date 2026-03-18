@@ -4,20 +4,21 @@ import React, { useState, useEffect } from 'react';
 import ChatList from './ChatList';
 import MessageView from './MessageView';
 import CreateChatModal from './CreateChatModal';
-import { supabase } from '@/utils/supabase';
+import { supabaseBrowser } from '@/utils/supabase-browser';
 
 export default function MessengerPanel() {
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [chats, setChats] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
     useEffect(() => {
+        fetchSession();
         fetchChats();
-        
         // Realtime subscription for chat updates (new messages, etc.)
-        const channel = supabase
-            .channel('messenger-updates')
+        const channel = supabaseBrowser
+            .channel('messenger-panel-updates')
             .on('postgres_changes', { 
                 event: '*', 
                 schema: 'public', 
@@ -30,16 +31,26 @@ export default function MessengerPanel() {
                 schema: 'public', 
                 table: 'messages' 
             }, () => {
-                // If we get an insert in messages, we might want to refresh chats list 
-                // to update last message preview and sort order.
                 fetchChats();
             })
             .subscribe();
 
         return () => {
-            supabase.removeChannel(channel);
+            supabaseBrowser.removeChannel(channel);
         };
     }, []);
+
+    const fetchSession = async () => {
+        try {
+            const res = await fetch('/api/auth/me');
+            const data = await res.json();
+            if (data.authenticated) {
+                setCurrentUser(data.user);
+            }
+        } catch (error) {
+            console.error('Failed to fetch session:', error);
+        }
+    };
 
     const fetchChats = async () => {
         try {
@@ -60,6 +71,8 @@ export default function MessengerPanel() {
         setIsCreateModalOpen(false);
         fetchChats();
     };
+
+    const currentChat = chats.find(c => c.id === selectedChatId);
 
     return (
         <div className="flex h-[600px] w-full bg-white border rounded-lg overflow-hidden shadow-lg relative">
@@ -94,7 +107,12 @@ export default function MessengerPanel() {
             {/* Main Window / Message View */}
             <div className="flex-1 flex flex-col bg-white">
                 {selectedChatId ? (
-                    <MessageView chatId={selectedChatId} />
+                    <MessageView 
+                        chatId={selectedChatId} 
+                        currentUserId={currentUser?.retail_crm_manager_id}
+                        chatName={currentChat?.name}
+                        participants={currentChat?.chat_participants}
+                    />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 text-center">
                         <div className="mb-4 p-6 bg-gray-50 rounded-full">
