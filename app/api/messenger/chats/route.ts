@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id ?? session?.user?.id;
+        const userId = session?.user?.retail_crm_manager_id;
         const { searchParams } = new URL(req.url);
         const onlyCount = searchParams.get('count') === 'true';
 
@@ -114,7 +114,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id ?? session?.user?.id;
+        const userId = session?.user?.retail_crm_manager_id;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -192,7 +192,7 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id ?? session?.user?.id;
+        const userId = session?.user?.retail_crm_manager_id;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const { chat_id } = await req.json();
