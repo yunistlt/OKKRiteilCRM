@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: Request) {
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        const userId = session?.user?.retail_crm_manager_id ?? session?.user?.id;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
