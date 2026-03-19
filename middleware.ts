@@ -28,8 +28,10 @@ export async function middleware(request: NextRequest) {
                 // Allowed routes for manager
                 const isOkkRoute = pathname === '/okk' || pathname.startsWith('/okk/');
                 const isOkkApiRoute = pathname.startsWith('/api/okk');
+                const isMessengerRoute = pathname === '/messenger' || pathname.startsWith('/messenger/');
+                const isMessengerApiRoute = pathname.startsWith('/api/messenger');
 
-                if (!isOkkRoute && !isOkkApiRoute) {
+                if (!isOkkRoute && !isOkkApiRoute && !isMessengerRoute && !isMessengerApiRoute) {
                     if (pathname.startsWith('/api')) {
                         return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
                     }
@@ -50,8 +52,10 @@ export async function middleware(request: NextRequest) {
     if (isAuthRoute) {
         if (sessionCookie) {
             try {
-                await decrypt(sessionCookie);
-                return NextResponse.redirect(new URL('/okk', request.url));
+                const payload = await decrypt(sessionCookie);
+                const role = payload?.user?.role || payload?.role;
+                const target = role === 'manager' ? '/okk' : '/messenger';
+                return NextResponse.redirect(new URL(target, request.url));
             } catch (e) {
                 // Ignore expired token on login page
             }

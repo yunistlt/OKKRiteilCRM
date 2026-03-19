@@ -77,15 +77,15 @@ export default function SettingsIndexPage() {
                         Редактирование инструкций для ИИ (Светофор и Роутинг).
                     </p>
                 </Link>
-            </div>
 
-            <Link href="/settings/ai/training-examples" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-pink-100 hover:border-pink-100 transition-all">
-                <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">📚</div>
-                <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Примеры Обучения</h3>
-                <p className="text-gray-500 text-sm leading-relaxed">
-                    База знаний (Few-Shot) для обучения модели.
-                </p>
-            </Link>
+                <Link href="/settings/ai/training-examples" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-pink-100 hover:border-pink-100 transition-all relative overflow-hidden">
+                    <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">📚</div>
+                    <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Примеры Обучения</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        База знаний (Few-Shot) для обучения модели.
+                    </p>
+                </Link>
+            </div>
         </div>
     );
 }
