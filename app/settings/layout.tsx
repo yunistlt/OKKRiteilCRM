@@ -22,12 +22,18 @@ export default function SettingsLayout({
             .catch(console.error);
     }, []);
 
+    const handleLogout = async () => {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        router.push('/login');
+    };
+
     const tabs = [
         { name: 'Менеджеры', href: '/settings/managers', icon: '👤' },
         { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📊' },
         { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️' },
         { name: 'AI Инструменты', href: '/settings/ai-tools', icon: '🤖' },
         { name: 'Статус Систем', href: '/settings/status', icon: '⚡️' },
+        { name: 'Профиль', href: '/settings/profile', icon: '🔑' },
     ];
 
     const aiTabs = [
@@ -110,6 +116,25 @@ export default function SettingsLayout({
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7 7-7" /></svg>
                         Вернуться в Аналитику
                     </Link>
+                    {user && (
+                        <div className="flex items-center gap-2 px-2 mt-1">
+                            <Link href="/settings/profile" className="flex items-center gap-2 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+                                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-black flex-shrink-0">
+                                    {user.username[0].toUpperCase()}
+                                </div>
+                                <span className="text-xs font-bold text-gray-600 truncate">{user.username}</span>
+                            </Link>
+                            <button
+                                onClick={handleLogout}
+                                title="Выйти"
+                                className="ml-auto p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                </svg>
+                            </button>
+                        </div>
+                    )}
                 </div>
             </aside>
 
