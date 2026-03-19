@@ -3,17 +3,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import MessageInput from './MessageInput';
+import ChatMembersModal from './ChatMembersModal';
 
 interface MessageViewProps {
     chatId: string;
     currentUserId?: number;
     chatName?: string;
     participants?: any[];
+    chatType?: string;
+    onMembersChanged?: () => void;
 }
 
-export default function MessageView({ chatId, currentUserId, chatName, participants }: MessageViewProps) {
+export default function MessageView({ chatId, currentUserId, chatName, participants, chatType, onMembersChanged }: MessageViewProps) {
     const [messages, setMessages] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isMembersModalOpen, setIsMembersModalOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Debug: log currentUserId to verify it arrives correctly
@@ -131,9 +135,23 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
                     <div style={{ fontWeight: 600, fontSize: 15, color: '#000', lineHeight: 1.2 }}>
                         {chatName || 'Чат'}
                     </div>
-                    <div style={{ fontSize: 12, color: '#4fa3e3', marginTop: 2 }}>
-                        {participants ? `${participants.length} участников` : 'в сети'}
-                    </div>
+                    {chatType === 'group' ? (
+                        <button
+                            onClick={() => setIsMembersModalOpen(true)}
+                            style={{
+                                fontSize: 12, color: '#4fa3e3', marginTop: 2,
+                                background: 'none', border: 'none', padding: 0,
+                                cursor: 'pointer', textDecoration: 'underline dotted',
+                                textUnderlineOffset: 2
+                            }}
+                        >
+                            {participants ? `${participants.length} участник${participants.length === 1 ? '' : participants.length < 5 ? 'а' : 'ов'}` : 'участники'}
+                        </button>
+                    ) : (
+                        <div style={{ fontSize: 12, color: '#4fa3e3', marginTop: 2 }}>
+                            {participants ? `${participants.length} участников` : 'в сети'}
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -319,6 +337,19 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
 
             {/* Input */}
             <MessageInput chatId={chatId} onMessageSent={fetchMessages} />
+
+            {/* Members Modal */}
+            {isMembersModalOpen && (
+                <ChatMembersModal
+                    chatId={chatId}
+                    currentUserId={currentUserId}
+                    onClose={() => setIsMembersModalOpen(false)}
+                    onMembersChanged={() => {
+                        onMembersChanged?.();
+                        setIsMembersModalOpen(false);
+                    }}
+                />
+            )}
         </div>
     );
 }

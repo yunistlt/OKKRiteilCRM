@@ -112,6 +112,8 @@ export default function MessengerPanel() {
                         currentUserId={currentUser?.retail_crm_manager_id}
                         chatName={currentChat?.name}
                         participants={currentChat?.chat_participants}
+                        chatType={currentChat?.type}
+                        onMembersChanged={fetchChats}
                     />
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 text-center">
