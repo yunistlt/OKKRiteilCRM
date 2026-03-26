@@ -13,3 +13,4 @@ description: System-wide constraints and rules for the agent
     - **No Hardcoding**: Avoid hardcoding name strings or lists of values. All mappings and configurations must be fetched dynamically from the database (Supabase).
 - **Role Awareness**: The file `AI_STAFF_ROLES.txt` is the **Source of Truth** for all AI agent roles, responsibilities, and synergies. You MUST read this file and strictly adhere to its definitions when writing or modifying logic related to AI agents.
 - **Universal Sync Policy**: Ensure all data synchronization logic (RetailCRM or other sources) captures ANY updates (based on `updatedAt` or similar) to ensure 100% data integrity without waiting for status changes.
+- **RetailCRM API v5 Constraints**: В API RetailCRM v5 параметр `limit` ОБЯЗАТЕЛЬНО должен быть равен **20**, **50** или **100**. Использование других значений (например, 1, 5, 10) приведет к ошибке **400 Bad Request**.
