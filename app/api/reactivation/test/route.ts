@@ -2,13 +2,11 @@
 import { NextResponse } from 'next/server';
 import { generateReactivationEmail } from '@/lib/reactivation';
 import { sendTelegramNotification } from '@/lib/telegram';
-// @ts-ignore
-import axios from 'axios';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const RETAILCRM_URL = process.env.RETAILCRM_URL;
+const RETAILCRM_URL = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
 const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY;
 
 export async function POST(request: Request) {
@@ -21,35 +19,45 @@ export async function POST(request: Request) {
         
         // 1. Получаем случайного клиента из RetailCRM (для теста)
         if (!RETAILCRM_URL || !RETAILCRM_KEY) {
-            throw new Error('Конфигурация RetailCRM (URL или API Key) отсутствует в переменных окружения');
+            throw new Error(`Конфигурация RetailCRM отсутствует. URL: ${RETAILCRM_URL ? 'OK' : 'MISSING'}, Key: ${RETAILCRM_KEY ? 'OK' : 'MISSING'}`);
         }
 
         steps.push('👤 Поиск случайного клиента в RetailCRM...');
-        const customersRes = await axios.get(`${RETAILCRM_URL}/api/v5/customers`, {
-            params: { 
-                apiKey: RETAILCRM_KEY,
-                limit: 1,
-                'filter[ordersCountMin]': 1 // Хотя бы один заказ
-            }
-        });
+        
+        // Пробуем максимально простой запрос без доп. фильтров для проверки связи
+        const customersUrl = `${RETAILCRM_URL}/api/v5/customers?apiKey=${RETAILCRM_KEY}&limit=1`;
+        console.log('[Reactivation Test] Fetching customer:', customersUrl.replace(RETAILCRM_KEY, '***'));
+        
+        const cRes = await fetch(customersUrl);
+        if (!cRes.ok) {
+            const errText = await cRes.text();
+            throw new Error(`CRM API Error customers: ${cRes.status} — ${errText.substring(0, 300)}`);
+        }
 
-        const customer = (customersRes.data as any).customers?.[0];
+        const cData = await cRes.json();
+        if (!cData.success) {
+            throw new Error(`CRM Success False: ${JSON.stringify(cData)}`);
+        }
+
+        const customer = cData.customers?.[0];
         if (!customer) {
-            throw new Error('Клиенты не найдены в RetailCRM');
+            throw new Error('Клиенты не найдены в RetailCRM (пустой список)');
         }
 
         steps.push(`✅ Выбран клиент: ${customer.company || customer.firstName || 'Без имени'} (ID: ${customer.id})`);
 
         // 2. Получаем историю заказов
         steps.push('📦 Загрузка истории заказов...');
-        const ordersRes = await axios.get(`${RETAILCRM_URL}/api/v5/orders`, {
-            params: {
-                apiKey: RETAILCRM_KEY,
-                'filter[customer]': customer.id,
-                limit: 5
-            }
-        });
-        const orders = (ordersRes.data as any).orders || [];
+        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customer]=${customer.id}&limit=5`;
+        const oRes = await fetch(ordersUrl);
+
+        if (!oRes.ok) {
+            const errText = await oRes.text();
+            throw new Error(`CRM Orders Error: ${oRes.status} — ${errText.substring(0, 300)}`);
+        }
+
+        const oData = await oRes.json();
+        const orders = oData.orders || [];
         steps.push(`📊 Найдено заказов: ${orders.length}`);
 
         // 3. Формируем контекст для ИИ
