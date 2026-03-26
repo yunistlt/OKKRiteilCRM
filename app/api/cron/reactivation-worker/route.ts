@@ -105,7 +105,7 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
         .join('\n') || '(комментарии менеджеров отсутствуют)';
 
     // 4. Генерировать письмо (промпт из настроек кампании)
-    const emailText = await generateReactivationEmail({
+    const result = await generateReactivationEmail({
         company_name,
         orders_history,
         manager_comments,
@@ -125,9 +125,9 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
     const lastOrderNumber = orders[0]?.number ?? orders[0]?.id ?? null;
 
     // 7. Записать в RetailCRM (кастомные поля → триггер отправляет письмо)
-    await updateCustomerFields(customerId, emailText, lastOrderNumber);
+    await updateCustomerFields(customerId, result.body, lastOrderNumber);
 
-    return emailText;
+    return result.body;
 }
 
 // Записать текст письма и номер заказа в кастомные поля клиента.
