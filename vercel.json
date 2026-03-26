@@ -40,6 +40,10 @@
         {
             "path": "/api/okk/run-all",
             "schedule": "*/30 * * * *"
+        },
+        {
+            "path": "/api/cron/reactivation-worker",
+            "schedule": "*/15 * * * *"
         }
     ]
 }
