@@ -174,11 +174,11 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
 // Test Modal (Synthetic Check)
 // ─────────────────────────────────────────────
 
-function TestModal({ steps, email, reasoning, customerName, onClose }: { 
+function TestModal({ steps, email, reasoning, customerData, onClose }: { 
     steps: string[]; 
     email: string | null; 
     reasoning: string | null;
-    customerName: string | null; 
+    customerData: any | null; 
     onClose: () => void 
 }) {
     return (
@@ -208,6 +208,36 @@ function TestModal({ steps, email, reasoning, customerName, onClose }: {
                         </div>
                     </div>
 
+                    {/* Customer Info Card */}
+                    {customerData && (
+                        <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                            <div className="col-span-2 md:col-span-1">
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Компания / Клиент</p>
+                                <p className="text-sm text-white font-medium">{customerData.name}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Сайт</p>
+                                <p className="text-sm text-indigo-400 truncate">{customerData.site}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Телефон</p>
+                                <p className="text-sm text-zinc-300">{customerData.phones}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Контактное лицо</p>
+                                <p className="text-sm text-zinc-300">{customerData.contactPerson}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Заказов</p>
+                                <p className="text-sm text-white">{customerData.ordersCount}</p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Средний чек</p>
+                                <p className="text-sm text-emerald-400">{customerData.averageCheck.toLocaleString()} ₽</p>
+                            </div>
+                        </div>
+                    )}
+
                     {/* AI Reasoning */}
                     {reasoning && (
                         <div className="space-y-2">
@@ -222,7 +252,7 @@ function TestModal({ steps, email, reasoning, customerName, onClose }: {
                     {email && (
                         <div className="space-y-2">
                             <p className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold flex items-center gap-1">
-                                💌 Сгенерированное письмо для: <span className="text-white normal-case">{customerName}</span>
+                                💌 Сгенерированное письмо для: <span className="text-white normal-case">{customerData?.name}</span>
                             </p>
                             <div className="bg-zinc-800/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed border border-zinc-700 italic">
                                 {email}
@@ -287,7 +317,7 @@ export default function ReactivationPage() {
     const [testSteps, setTestSteps] = useState<string[]>([]);
     const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
     const [testReasoning, setTestReasoning] = useState<string | null>(null);
-    const [testCustomerName, setTestCustomerName] = useState<string | null>(null);
+    const [testCustomerData, setTestCustomerData] = useState<any | null>(null);
     const [showTestModal, setShowTestModal] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
 
@@ -296,7 +326,7 @@ export default function ReactivationPage() {
         setTestSteps(['🚀 Инициализация теста...']);
         setTestEmailResult(null);
         setTestReasoning(null);
-        setTestCustomerName(null);
+        setTestCustomerData(null);
         setShowTestModal(true);
 
         try {
@@ -310,7 +340,7 @@ export default function ReactivationPage() {
             if (data.steps) setTestSteps(data.steps);
             if (data.generatedEmail) setTestEmailResult(data.generatedEmail);
             if (data.reasoning) setTestReasoning(data.reasoning);
-            if (data.customerName) setTestCustomerName(data.customerName);
+            if (data.customerData) setTestCustomerData(data.customerData);
             
             if (!data.success) throw new Error(data.error || 'Ошибка теста');
         } catch (e: any) {
@@ -673,7 +703,7 @@ export default function ReactivationPage() {
                     steps={testSteps} 
                     email={testEmailResult} 
                     reasoning={testReasoning}
-                    customerName={testCustomerName}
+                    customerData={testCustomerData}
                     onClose={() => setShowTestModal(false)} 
                 />
             )}

@@ -45,7 +45,10 @@ export async function POST(request: Request) {
             throw new Error('Клиенты не найдены в RetailCRM (пустой список)');
         }
 
-        steps.push(`✅ Выбран клиент: ${customer.company || customer.firstName || 'Без имени'} (ID: ${customer.id})`);
+        const contactName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || '—';
+        const phones = customer.phones?.map((p: any) => p.number).join(', ') || '—';
+        
+        steps.push(`✅ Выбран клиент: ${customer.company || contactName} (ID: ${customer.id})`);
 
         // 2. Получаем историю заказов
         steps.push('📦 Загрузка истории заказов...');
@@ -59,11 +62,11 @@ export async function POST(request: Request) {
 
         const oData = await oRes.json();
         const orders = oData.orders || [];
-        steps.push(`📊 Найдено заказов: ${orders.length}`);
+        steps.push(`📊 Найдено заказов в базе: ${orders.length}`);
 
         // 3. Формируем контекст для ИИ
         const ctx = {
-            company_name: customer.company || `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || `Клиент #${customer.id}`,
+            company_name: customer.company || contactName || `Клиент #${customer.id}`,
             orders_history: orders.map((o: any) => ({
                 number: o.number,
                 createdAt: o.createdAt,
@@ -84,6 +87,11 @@ export async function POST(request: Request) {
         const telegramMessage = `
 🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА ВИКТОРИИ</b>
 <b>Клиент:</b> ${ctx.company_name} (ID: ${customer.id})
+<b>Сайт:</b> ${customer.site || '—'}
+<b>Телефоны:</b> ${phones}
+<b>Контакт:</b> ${contactName}
+<b>Заказов:</b> ${customer.ordersCount ?? 0}
+<b>Средний чек:</b> ${customer.averageSumm ?? 0} ₽
 <b>Тестовый Email:</b> ${testEmail}
 
 <b>ОБОСНОВАНИЕ:</b>
@@ -102,7 +110,15 @@ ${result.body}
         return NextResponse.json({
             success: true,
             steps,
-            customerName: ctx.company_name,
+            customerData: {
+                id: customer.id,
+                name: ctx.company_name,
+                site: customer.site || '—',
+                phones: phones,
+                contactPerson: contactName,
+                ordersCount: customer.ordersCount ?? 0,
+                averageCheck: customer.averageSumm ?? 0
+            },
             generatedEmail: result.body,
             reasoning: result.reasoning,
             message: `Синтетическая проверка завершена. Копия письма отправлена в Telegram.`
