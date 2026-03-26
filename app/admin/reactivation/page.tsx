@@ -171,6 +171,65 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
 }
 
 // ─────────────────────────────────────────────
+// Test Modal (Synthetic Check)
+// ─────────────────────────────────────────────
+
+function TestModal({ steps, email, customerName, onClose }: { steps: string[]; email: string | null; customerName: string | null; onClose: () => void }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border-t-indigo-500 border-t-2">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
+                    <div>
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                            <span className="text-xl">🧪</span> Синтетическая проверка Виктории
+                        </h3>
+                        <p className="text-xs text-zinc-500">Симуляция процесса от поиска клиента до генерации письма</p>
+                    </div>
+                    <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors text-xl">✕</button>
+                </div>
+                
+                <div className="flex-1 overflow-auto p-6 space-y-6">
+                    {/* Steps Log */}
+                    <div className="space-y-2">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Лог выполнения</p>
+                        <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-indigo-300/80 space-y-1.5 border border-zinc-800">
+                            {steps.map((s, i) => (
+                                <div key={i} className="flex gap-2">
+                                    <span className="text-zinc-700 shrink-0">[{i+1}]</span>
+                                    <span>{s}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Result Email */}
+                    {email && (
+                        <div className="space-y-2">
+                            <p className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold flex items-center gap-1">
+                                💌 Сгенерированное письмо для: <span className="text-white normal-case">{customerName}</span>
+                            </p>
+                            <div className="bg-zinc-800/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed border border-zinc-700 italic">
+                                {email}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="px-6 py-4 border-t border-zinc-800 bg-black/20 flex justify-between items-center">
+                    <p className="text-[10px] text-zinc-500">Письмо также отправлено в Telegram бот @OKKzmk</p>
+                    <button 
+                        onClick={onClose}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
+                    >
+                        Понятно
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────
 // Main Page
 // ─────────────────────────────────────────────
 
@@ -203,10 +262,39 @@ export default function ReactivationPage() {
     const [customFields, setCustomFields] = useState<Array<{ field: string; value: string }>>([]);
 
     // ── Form: Agent Settings ──
-    const [victoriaPrompt, setVictoriaPrompt] = useState('');
-    const [replyPrompt, setReplyPrompt] = useState('');
-    const [onPositive, setOnPositive] = useState<'create_order' | 'send_reply'>('create_order');
-    const [newOrderStatus, setNewOrderStatus] = useState('new');
+    // ── Synthetic Check State ──
+    const [testSteps, setTestSteps] = useState<string[]>([]);
+    const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+    const [testCustomerName, setTestCustomerName] = useState<string | null>(null);
+    const [showTestModal, setShowTestModal] = useState(false);
+    const [isTesting, setIsTesting] = useState(false);
+
+    const handleSyntheticCheck = async () => {
+        setIsTesting(true);
+        setTestSteps(['🚀 Инициализация теста...']);
+        setTestEmailResult(null);
+        setTestCustomerName(null);
+        setShowTestModal(true);
+
+        try {
+            const res = await fetch('/api/reactivation/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ testEmail: 'yunistgl@gmail.com' })
+            });
+            const data = await res.json();
+            
+            if (data.steps) setTestSteps(data.steps);
+            if (data.generatedEmail) setTestEmailResult(data.generatedEmail);
+            if (data.customerName) setTestCustomerName(data.customerName);
+            
+            if (!data.success) throw new Error(data.error || 'Ошибка теста');
+        } catch (e: any) {
+            setTestSteps(p => [...p, `❌ ОШИБКА: ${e.message}`]);
+        } finally {
+            setIsTesting(false);
+        }
+    };
 
     const fetchAll = useCallback(async () => {
         setLoading(true);
@@ -299,7 +387,20 @@ export default function ReactivationPage() {
                         <h1 className="text-3xl font-bold">Виктория — Реактиватор B2B</h1>
                         <p className="text-zinc-500 mt-1 text-sm">Автоматические персональные письма для возврата «отказников»</p>
                     </div>
-                    <button onClick={fetchAll} className="text-xs text-zinc-500 hover:text-white border border-zinc-800 rounded-lg px-3 py-1.5">↻ Обновить</button>
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleSyntheticCheck}
+                            disabled={isTesting}
+                            className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
+                                isTesting 
+                                ? 'bg-zinc-800 border-zinc-700 text-zinc-500' 
+                                : 'bg-indigo-600/10 border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/20 shadow-lg shadow-indigo-500/5'
+                            }`}
+                        >
+                            {isTesting ? '⏳ Проверка...' : '🧪 Синтетическая проверка'}
+                        </button>
+                        <button onClick={fetchAll} className="text-xs text-zinc-500 hover:text-white border border-zinc-800 rounded-xl px-3 py-2">↻ Обновить</button>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -542,6 +643,15 @@ export default function ReactivationPage() {
             </div>
 
             {selectedLog && <LogModal log={selectedLog} onClose={() => setSelectedLog(null)} />}
+            
+            {showTestModal && (
+                <TestModal 
+                    steps={testSteps} 
+                    email={testEmailResult} 
+                    customerName={testCustomerName}
+                    onClose={() => setShowTestModal(false)} 
+                />
+            )}
         </div>
     );
 }
