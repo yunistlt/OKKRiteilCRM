@@ -20,12 +20,16 @@ export async function POST(request: Request) {
         steps.push('🔍 Запуск синтетической проверки Виктории...');
         
         // 1. Получаем случайного клиента из RetailCRM (для теста)
+        if (!RETAILCRM_URL || !RETAILCRM_KEY) {
+            throw new Error('Конфигурация RetailCRM (URL или API Key) отсутствует в переменных окружения');
+        }
+
         steps.push('👤 Поиск случайного клиента в RetailCRM...');
         const customersRes = await axios.get(`${RETAILCRM_URL}/api/v5/customers`, {
             params: { 
                 apiKey: RETAILCRM_KEY,
                 limit: 1,
-                'filter[anyOrderCount]': 1 // Хотя бы один заказ
+                'filter[ordersCountMin]': 1 // Хотя бы один заказ
             }
         });
 
