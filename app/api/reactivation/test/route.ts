@@ -25,7 +25,8 @@ export async function POST(request: Request) {
         steps.push('👤 Поиск случайного клиента в RetailCRM...');
         
         // Пробуем максимально простой запрос без доп. фильтров для проверки связи
-        const customersUrl = `${RETAILCRM_URL}/api/v5/customers?apiKey=${RETAILCRM_KEY}&limit=1`;
+        // ВАЖНО: RetailCRM v5 требует лимит 20, 50 или 100
+        const customersUrl = `${RETAILCRM_URL}/api/v5/customers?apiKey=${RETAILCRM_KEY}&limit=20`;
         console.log('[Reactivation Test] Fetching customer:', customersUrl.replace(RETAILCRM_KEY, '***'));
         
         const cRes = await fetch(customersUrl);
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
 
         // 2. Получаем историю заказов
         steps.push('📦 Загрузка истории заказов...');
-        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customer]=${customer.id}&limit=5`;
+        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customer]=${customer.id}&limit=20`;
         const oRes = await fetch(ordersUrl);
 
         if (!oRes.ok) {
