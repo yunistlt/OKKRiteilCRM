@@ -174,7 +174,13 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
 // Test Modal (Synthetic Check)
 // ─────────────────────────────────────────────
 
-function TestModal({ steps, email, customerName, onClose }: { steps: string[]; email: string | null; customerName: string | null; onClose: () => void }) {
+function TestModal({ steps, email, reasoning, customerName, onClose }: { 
+    steps: string[]; 
+    email: string | null; 
+    reasoning: string | null;
+    customerName: string | null; 
+    onClose: () => void 
+}) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
             <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border-t-indigo-500 border-t-2">
@@ -201,6 +207,16 @@ function TestModal({ steps, email, customerName, onClose }: { steps: string[]; e
                             ))}
                         </div>
                     </div>
+
+                    {/* AI Reasoning */}
+                    {reasoning && (
+                        <div className="space-y-2">
+                            <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold">🧠 Обоснование ИИ (Почему так?)</p>
+                            <div className="bg-indigo-950/20 rounded-xl p-4 text-xs text-indigo-200 border border-indigo-500/20 leading-relaxed">
+                                {reasoning}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Result Email */}
                     {email && (
@@ -270,6 +286,7 @@ export default function ReactivationPage() {
     // ── Synthetic Check State ──
     const [testSteps, setTestSteps] = useState<string[]>([]);
     const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
+    const [testReasoning, setTestReasoning] = useState<string | null>(null);
     const [testCustomerName, setTestCustomerName] = useState<string | null>(null);
     const [showTestModal, setShowTestModal] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
@@ -278,6 +295,7 @@ export default function ReactivationPage() {
         setIsTesting(true);
         setTestSteps(['🚀 Инициализация теста...']);
         setTestEmailResult(null);
+        setTestReasoning(null);
         setTestCustomerName(null);
         setShowTestModal(true);
 
@@ -291,6 +309,7 @@ export default function ReactivationPage() {
             
             if (data.steps) setTestSteps(data.steps);
             if (data.generatedEmail) setTestEmailResult(data.generatedEmail);
+            if (data.reasoning) setTestReasoning(data.reasoning);
             if (data.customerName) setTestCustomerName(data.customerName);
             
             if (!data.success) throw new Error(data.error || 'Ошибка теста');
@@ -653,6 +672,7 @@ export default function ReactivationPage() {
                 <TestModal 
                     steps={testSteps} 
                     email={testEmailResult} 
+                    reasoning={testReasoning}
                     customerName={testCustomerName}
                     onClose={() => setShowTestModal(false)} 
                 />

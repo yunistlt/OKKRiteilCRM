@@ -76,8 +76,9 @@ export async function POST(request: Request) {
 
         // 4. Генерация письма
         steps.push('✍️ Виктория-Писатель формирует письмо...');
-        const generatedEmail = await generateReactivationEmail(ctx);
+        const result = await generateReactivationEmail(ctx);
         steps.push('✅ Письмо успешно сформировано');
+        steps.push(`💡 Обоснование ИИ: ${result.reasoning.substring(0, 100)}...`);
 
         // 5. "Отправка" на почту через лог и Telegram (так как прямого SMTP нет)
         const telegramMessage = `
@@ -85,9 +86,12 @@ export async function POST(request: Request) {
 <b>Клиент:</b> ${ctx.company_name} (ID: ${customer.id})
 <b>Тестовый Email:</b> ${testEmail}
 
+<b>ОБОСНОВАНИЕ:</b>
+${result.reasoning}
+
 <b>ТЕКСТ ПИСЬМА:</b>
 -------------------
-${generatedEmail}
+${result.body}
 -------------------
 `;
 
@@ -99,7 +103,8 @@ ${generatedEmail}
             success: true,
             steps,
             customerName: ctx.company_name,
-            generatedEmail,
+            generatedEmail: result.body,
+            reasoning: result.reasoning,
             message: `Синтетическая проверка завершена. Копия письма отправлена в Telegram.`
         });
 
