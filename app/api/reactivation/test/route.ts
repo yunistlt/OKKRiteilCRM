@@ -29,7 +29,7 @@ export async function POST(request: Request) {
             }
         });
 
-        const customer = customersRes.data.customers?.[0];
+        const customer = (customersRes.data as any).customers?.[0];
         if (!customer) {
             throw new Error('Клиенты не найдены в RetailCRM');
         }
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
                 limit: 5
             }
         });
-        const orders = ordersRes.data.orders || [];
+        const orders = (ordersRes.data as any).orders || [];
         steps.push(`📊 Найдено заказов: ${orders.length}`);
 
         // 3. Формируем контекст для ИИ

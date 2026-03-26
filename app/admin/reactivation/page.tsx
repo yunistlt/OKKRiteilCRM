@@ -262,6 +262,11 @@ export default function ReactivationPage() {
     const [customFields, setCustomFields] = useState<Array<{ field: string; value: string }>>([]);
 
     // ── Form: Agent Settings ──
+    const [victoriaPrompt, setVictoriaPrompt] = useState('');
+    const [replyPrompt, setReplyPrompt] = useState('');
+    const [onPositive, setOnPositive] = useState<'create_order' | 'send_reply'>('create_order');
+    const [newOrderStatus, setNewOrderStatus] = useState('new');
+
     // ── Synthetic Check State ──
     const [testSteps, setTestSteps] = useState<string[]>([]);
     const [testEmailResult, setTestEmailResult] = useState<string | null>(null);
