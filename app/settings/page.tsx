@@ -78,6 +78,17 @@ export default function SettingsIndexPage() {
                     </p>
                 </Link>
 
+                <Link href="/admin/reactivation" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-indigo-100 hover:border-indigo-100 transition-all relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
+                        <span className="text-4xl">💌</span>
+                    </div>
+                    <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">💌</div>
+                    <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Реактивация (Виктория)</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        Возврат клиентов через персональные письма от лица менеджера.
+                    </p>
+                </Link>
+
                 <Link href="/settings/ai/training-examples" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-pink-100 hover:border-pink-100 transition-all relative overflow-hidden">
                     <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">📚</div>
                     <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Примеры Обучения</h3>
