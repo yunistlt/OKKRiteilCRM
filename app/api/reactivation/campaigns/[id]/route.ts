@@ -4,7 +4,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getCampaignById, updateCampaignStatus, getLogs, getStats } from '@/lib/reactivation-db';
+import { getCampaignById, updateCampaignStatus, getLogs, getStats, deleteCampaign } from '@/lib/reactivation-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +40,18 @@ export async function PATCH(
         }
 
         await updateCampaignStatus(params.id, status);
+        return NextResponse.json({ success: true });
+    } catch (e: any) {
+        return NextResponse.json({ success: false, error: e.message }, { status: 500 });
+    }
+}
+
+export async function DELETE(
+    _request: Request,
+    { params }: { params: { id: string } }
+) {
+    try {
+        await deleteCampaign(params.id);
         return NextResponse.json({ success: true });
     } catch (e: any) {
         return NextResponse.json({ success: false, error: e.message }, { status: 500 });

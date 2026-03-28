@@ -310,3 +310,21 @@ export async function getStats(campaignId?: string): Promise<ReactivationStats> 
 
     return { total_sent, total_replied, total_positive, reply_rate, conversion_rate };
 }
+
+export async function deleteCampaign(id: string): Promise<void> {
+    // 1. Удаляем логи рассылки
+    const { error: logsError } = await supabase
+        .from('ai_outreach_logs')
+        .delete()
+        .eq('campaign_id', id);
+    
+    if (logsError) throw logsError;
+
+    // 2. Удаляем саму кампанию
+    const { error: campaignError } = await supabase
+        .from('ai_reactivation_campaigns')
+        .delete()
+        .eq('id', id);
+
+    if (campaignError) throw campaignError;
+}

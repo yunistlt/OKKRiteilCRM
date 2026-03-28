@@ -43,6 +43,17 @@ async function run() {
             console.log("\nokk_violations structure:");
             checkViolations.rows.forEach(r => console.log(` - ${r.column_name} (${r.data_type})`));
         }
+
+        // Check clients table structure
+        const checkClients = await client.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'clients';
+    `);
+        if (checkClients.rows.length > 0) {
+            console.log("\nclients structure:");
+            checkClients.rows.forEach(r => console.log(` - ${r.column_name} (${r.data_type})`));
+        }
     } catch (e) {
         console.error("DB Error:", e.message);
     } finally {

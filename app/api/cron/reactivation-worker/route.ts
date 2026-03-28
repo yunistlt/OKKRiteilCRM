@@ -89,25 +89,40 @@ export async function GET() {
 async function processCustomer(log: OutreachLog, settings: CampaignSettings): Promise<void> {
     const customerId = log.customer_id;
 
-    // 1. Карточка корпоративного клиента (Добавляем by=id в URL)
-    const customerRes = await retailcrmFetch(`/api/v5/customers-corporate/${customerId}?by=id`);
-    const customer = customerRes.customerCorporate ?? {};
-
-    // 2. История заказов
-    const ordersRes = await retailcrmFetch(
-        `/api/v5/orders?filter[customerCorporate]=${customerId}&limit=10&page=1`
-    );
-    const orders: any[] = ordersRes.orders ?? [];
-
-    const mainContact = customer.mainCustomerContact || (customer.contactPersons && customer.contactPersons[0]);
-    const contactPersonName = mainContact ? `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() : undefined;
-
-    // 3. Контекст из БД (LTV, Сфера, Категория)
-    const { data: dbClient } = await supabase
+    // 1. Карточка клиента и история заказов из Supabase
+    const { data: client } = await supabase
         .from('clients')
-        .select('orders_count, total_summ, average_check, category, industry, phones')
+        .select('*')
         .eq('id', customerId)
         .single();
+    
+    if (!client) throw new Error(`Клиент #${customerId} не найден в базе OKK`);
+
+    // 2. История заказов из Supabase (используем новую колонку client_id)
+    const { data: dbOrders } = await supabase
+        .from('orders')
+        .select('raw_payload')
+        .eq('client_id', customerId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+    
+    const orders = (dbOrders ?? []).map(o => o.raw_payload);
+
+    // Маппинг под формат, ожидаемый промптами
+    const customer = {
+        ...client,
+        companyName: client.company_name,
+        mainCustomerContact: {
+            firstName: client.first_name,
+            lastName: client.last_name,
+            patronymic: client.patronymic
+        }
+    };
+
+    const contactPersonName = `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim() || undefined;
+
+    // 3. Контекст из БД (уже есть в объекте client)
+    const dbClient = client;
 
     // 4. История звонков
     let call_transcripts = '';

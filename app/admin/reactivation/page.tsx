@@ -446,6 +446,19 @@ export default function ReactivationPage() {
         await fetchAll();
     };
 
+    const handleDeleteCampaign = async (id: string) => {
+        if (!window.confirm('🚨 Вы уверены? Это действие удалит кампанию и всю историю её рассылок навсегда.')) return;
+        try {
+            const res = await fetch(`/api/reactivation/campaigns/${id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('Ошибка удаления');
+            setSuccess('✅ Кампания удалена');
+            if (selectedCampaignId === id) setSelectedCampaignId('');
+            await fetchAll();
+        } catch (e: any) {
+            setError(e.message);
+        }
+    };
+
     const replyRate = stats.total_sent > 0 ? Math.round((stats.total_replied / stats.total_sent) * 100) : 0;
     const convRate = stats.total_sent > 0 ? Math.round((stats.total_positive / stats.total_sent) * 100) : 0;
 
@@ -649,6 +662,7 @@ export default function ReactivationPage() {
                                             {c.status !== 'active' && <button onClick={() => handleStatusChange(c.id, 'active')} className="text-emerald-400 hover:text-emerald-300">Возобновить</button>}
                                             {c.status === 'active' && <button onClick={() => handleStatusChange(c.id, 'paused')} className="text-yellow-400 hover:text-yellow-300">Пауза</button>}
                                             {c.status !== 'completed' && <button onClick={() => handleStatusChange(c.id, 'completed')} className="text-zinc-500 hover:text-zinc-400">Завершить</button>}
+                                            <button onClick={() => handleDeleteCampaign(c.id)} className="text-red-500/50 hover:text-red-400 ml-auto">Удалить</button>
                                         </div>
                                     </div>
                                 ))}
