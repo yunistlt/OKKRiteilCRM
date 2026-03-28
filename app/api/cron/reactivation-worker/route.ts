@@ -242,7 +242,7 @@ async function updateCorporateFields(
 
 async function retailcrmFetch(path: string): Promise<any> {
     const sep = path.includes('?') ? '&' : '?';
-    const url = `${RETAILCRM_URL}${path}${sep}apiKey=${RETAILCRM_API_KEY}`;
+    const url = `${RETAILCRM_URL}${path}${sep}apiKey=${RETAILCRM_API_KEY}&by=id`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`RetailCRM ${path} → HTTP ${res.status}`);
     return res.json();
