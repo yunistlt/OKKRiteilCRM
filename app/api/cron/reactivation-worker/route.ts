@@ -89,8 +89,8 @@ export async function GET() {
 async function processCustomer(log: OutreachLog, settings: CampaignSettings): Promise<void> {
     const customerId = log.customer_id;
 
-    // 1. Карточка корпоративного клиента
-    const customerRes = await retailcrmFetch(`/api/v5/customers-corporate/${customerId}`);
+    // 1. Карточка корпоративного клиента (Добавляем by=id в URL)
+    const customerRes = await retailcrmFetch(`/api/v5/customers-corporate/${customerId}?by=id`);
     const customer = customerRes.customerCorporate ?? {};
 
     // 2. История заказов
@@ -242,7 +242,7 @@ async function updateCorporateFields(
 
 async function retailcrmFetch(path: string): Promise<any> {
     const sep = path.includes('?') ? '&' : '?';
-    const url = `${RETAILCRM_URL}${path}${sep}apiKey=${RETAILCRM_API_KEY}&by=id`;
+    const url = `${RETAILCRM_URL}${path}${sep}apiKey=${RETAILCRM_API_KEY}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`RetailCRM ${path} → HTTP ${res.status}`);
     return res.json();
