@@ -3,18 +3,37 @@ import { supabase } from '@/utils/supabase';
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status') || 'awaiting_approval';
+    const campaignId = searchParams.get('campaign_id');
+    const status = searchParams.get('status');
+    const limit = parseInt(searchParams.get('limit') || '50');
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('ai_outreach_logs')
-        .select('*')
-        .eq('status', status)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .select('*', { count: 'exact' });
 
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    // Фильтр по кампании
+    if (campaignId) {
+        query = query.eq('campaign_id', campaignId);
     }
 
-    return NextResponse.json({ success: true, logs: data });
+    // Фильтр по статусу (если не передан, показываем все важные для очереди)
+    if (status) {
+        query = query.eq('status', status);
+    }
+
+    const { data, error, count } = await query
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+    if (error) {
+        console.error('[LogsAPI] Error:', error.message);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    // Возвращаем в формате, который ожидает фронтенд (data + total)
+    return NextResponse.json({ 
+        success: true, 
+        data: data || [], 
+        total: count || 0 
+    });
 }
