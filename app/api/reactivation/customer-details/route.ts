@@ -10,11 +10,11 @@ export async function GET(req: Request) {
     }
 
     try {
-        // 1. Fetch Client Profile (using external_id which is the CRM customer ID)
+        // 1. Fetch Client Profile (using id which is the primary CRM ID)
         const { data: client, error: clientErr } = await supabase
             .from('clients')
             .select('*')
-            .eq('external_id', customerId)
+            .eq('id', customerId)
             .single();
 
         if (clientErr && clientErr.code !== 'PGRST116') {
@@ -63,6 +63,11 @@ export async function GET(req: Request) {
             name,
             ...stat
         })).sort((a, b) => b.count - a.count);
+
+        // 4. Force stats recalculation across all updated clients
+        // This ensures Supabase stats are the ground truth based on orders table
+        const { error: rpcError } = await supabase.rpc('recalculate_all_client_stats');
+        if (rpcError) console.error('Recalculation RPC Error:', rpcError);
 
         return NextResponse.json({
             success: true,

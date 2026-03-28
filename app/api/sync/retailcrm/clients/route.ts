@@ -221,6 +221,11 @@ export async function GET(request: Request) {
             }
         }
 
+        // 4. Force stats recalculation across all updated clients
+        // This ensures Supabase stats are the ground truth based on orders table
+        const { error: rpcError } = await supabase.rpc('recalculate_all_client_stats');
+        if (rpcError) console.error('Recalculation RPC Error:', rpcError);
+
         return NextResponse.json({
             success: true,
             method: 'corporate_clients_sync',
