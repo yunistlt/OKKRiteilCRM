@@ -320,6 +320,25 @@ export default function ReactivationPage() {
     const [testCustomerData, setTestCustomerData] = useState<any | null>(null);
     const [showTestModal, setShowTestModal] = useState(false);
     const [isTesting, setIsTesting] = useState(false);
+    const [isProcessingAgent, setIsProcessingAgent] = useState(false);
+
+    const handleRunWorker = async () => {
+        setIsProcessingAgent(true);
+        try {
+            const res = await fetch('/api/cron/reactivation-worker');
+            const data = await res.json();
+            if (data.success) {
+                setSuccess(`📝 Виктория обработала ${data.processed} писем!`);
+                await fetchAll();
+            } else {
+                throw new Error(data.error || 'Ошибка воркера');
+            }
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setIsProcessingAgent(false);
+        }
+    };
 
     const handleSyntheticCheck = async () => {
         setIsTesting(true);
@@ -442,6 +461,17 @@ export default function ReactivationPage() {
                         <p className="text-zinc-500 mt-1 text-sm">Автоматические персональные письма для возврата «отказников»</p>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button 
+                            onClick={handleRunWorker}
+                            disabled={isProcessingAgent}
+                            className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all flex items-center gap-2 ${
+                                isProcessingAgent
+                                ? 'bg-zinc-800 border-zinc-700 text-zinc-500 animate-pulse'
+                                : 'bg-emerald-600/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-600/20 shadow-lg shadow-emerald-500/5'
+                            }`}
+                        >
+                            {isProcessingAgent ? '✍️ Виктория пишет...' : '🚀 Запустить Агента'}
+                        </button>
                         <button 
                             onClick={handleSyntheticCheck}
                             disabled={isTesting}
