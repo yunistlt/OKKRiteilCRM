@@ -127,7 +127,17 @@ function Select({ ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
 // ─────────────────────────────────────────────
 
 function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
-    const [details, setDetails] = useState<{ client: any; orders: any[]; products: any[] } | null>(null);
+    const [details, setDetails] = useState<{ 
+        client: any; 
+        orders: any[]; 
+        products: any[];
+        analytics?: {
+            lastOrderDate: string | null;
+            daysSinceLastOrder: number | null;
+            ordersPerYear: number;
+            avgIntervalDays: number | null;
+        }
+    } | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -175,18 +185,26 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                 {/* Stats Section */}
                                 <div className="p-5 flex flex-col gap-4">
                                     <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Статистика CRM</p>
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                                         <div>
-                                            <p className="text-xs text-zinc-500 mb-1">Всего заказов</p>
-                                            <p className="text-xl font-bold text-white">{details?.orders.length || 0}</p>
+                                            <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Заказов</p>
+                                            <p className="text-lg font-bold text-white">{details?.client?.orders_count || 0}</p>
                                         </div>
                                         <div>
-                                            <p className="text-xs text-zinc-500 mb-1">Ср. чек</p>
-                                            <p className="text-xl font-bold text-emerald-400">{(details?.client?.average_check || 0).toLocaleString()} ₽</p>
+                                            <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Ср. чек</p>
+                                            <p className="text-lg font-bold text-emerald-400">{(details?.client?.average_check || 0).toLocaleString()} ₽</p>
                                         </div>
-                                        <div className="col-span-2">
-                                            <p className="text-xs text-zinc-500 mb-1">Общий LTV</p>
-                                            <p className="text-xl font-bold text-indigo-400">{(details?.client?.total_summ || 0).toLocaleString()} ₽</p>
+                                        <div>
+                                            <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Частота</p>
+                                            <p className="text-lg font-bold text-amber-400">{details?.analytics?.ordersPerYear || 0} <span className="text-[10px] font-normal text-zinc-500">зак/год</span></p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Последний</p>
+                                            <p className="text-lg font-bold text-indigo-400">{details?.analytics?.daysSinceLastOrder ?? '—'} <span className="text-[10px] font-normal text-zinc-500">дн. назад</span></p>
+                                        </div>
+                                        <div className="col-span-2 pt-1 border-t border-zinc-800/50">
+                                            <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Общий LTV</p>
+                                            <p className="text-lg font-bold text-white">{(details?.client?.total_summ || 0).toLocaleString()} ₽</p>
                                         </div>
                                     </div>
                                 </div>
@@ -194,15 +212,20 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                 {/* Orders Section */}
                                 <div className="p-5 flex flex-col gap-3">
                                     <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Последние заказы</p>
-                                    <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[120px] pr-2 scrollbar-thin">
+                                    <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[140px] pr-2 scrollbar-thin">
                                         {details?.orders.map((o: any) => (
                                             <a key={o.order_id} 
                                                href={`${RETAILCRM_BASE || 'https://zmktlt.retailcrm.ru'}/orders/${o.order_id}/edit`} 
                                                target="_blank" rel="noopener noreferrer"
-                                               className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-2 py-1 rounded text-[11px] text-indigo-400 transition-colors flex flex-col"
+                                               className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-2 py-1.5 rounded text-[11px] text-indigo-400 transition-colors flex flex-col min-w-[100px]"
                                             >
-                                                <span className="font-bold">#{o.number}</span>
-                                                <span className="text-zinc-500 text-[9px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
+                                                <div className="flex justify-between items-start mb-0.5">
+                                                    <span className="font-bold">#{o.number}</span>
+                                                    <span className="text-[9px] text-zinc-500 font-normal">
+                                                        {new Date(o.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                                    </span>
+                                                </div>
+                                                <span className="text-zinc-400 text-[10px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
                                             </a>
                                         ))}
                                         {(!details?.orders || details.orders.length === 0) && <p className="text-xs text-zinc-600 italic">Заказы не найдены</p>}

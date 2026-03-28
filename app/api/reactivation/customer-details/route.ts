@@ -59,13 +59,45 @@ export async function GET(req: Request) {
             });
         });
 
+        // 4. Advanced Analytics
+        let lastOrderDate = null;
+        let daysSinceLastOrder = null;
+        let ordersPerYear = 0;
+        let avgIntervalDays = null;
+
+        if (orders && orders.length > 0) {
+            const sortedOrders = [...orders].sort((a, b) => 
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+            );
+            
+            const firstDate = new Date(sortedOrders[0].created_at);
+            const lastDate = new Date(sortedOrders[sortedOrders.length - 1].created_at);
+            lastOrderDate = lastDate.toISOString();
+            
+            const now = new Date();
+            daysSinceLastOrder = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            const diffMs = lastDate.getTime() - firstDate.getTime();
+            const diffYears = diffMs / (1000 * 60 * 60 * 24 * 365.25);
+            const diffDays = diffMs / (1000 * 60 * 60 * 24);
+            
+            if (diffYears > 0.01) {
+                ordersPerYear = Number((orders.length / diffYears).toFixed(1));
+            } else {
+                ordersPerYear = orders.length; // If all orders in a short span, just count them
+            }
+
+            if (orders.length > 1) {
+                avgIntervalDays = Math.floor(diffDays / (orders.length - 1));
+            }
+        }
+
         const products = Array.from(productsMap.entries()).map(([name, stat]) => ({
             name,
             ...stat
         })).sort((a, b) => b.count - a.count);
 
-        // 4. Force stats recalculation across all updated clients
-        // This ensures Supabase stats are the ground truth based on orders table
+        // 5. Force stats recalculation across all updated clients
         const { error: rpcError } = await supabase.rpc('recalculate_all_client_stats');
         if (rpcError) console.error('Recalculation RPC Error:', rpcError);
 
@@ -73,7 +105,13 @@ export async function GET(req: Request) {
             success: true,
             client: clientData,
             orders: orders || [],
-            products: products || []
+            products: products || [],
+            analytics: {
+                lastOrderDate,
+                daysSinceLastOrder,
+                ordersPerYear,
+                avgIntervalDays
+            }
         });
 
     } catch (error: any) {
