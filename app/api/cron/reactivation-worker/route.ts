@@ -153,6 +153,19 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
     const manager_comments = orders.filter(o => o.managerComment).slice(0, 5).map(o => `[#${o.number}]: ${o.managerComment}`).join('\n') 
         || (customer.notes ?? '(комментарии отсутствуют)');
 
+    // 4.5 СРОЧНЫЙ ЗАПРОС К ЕЛЕНЕ (Продуктологу)
+    // Если каких-то товаров нет в базе знаний, просим Елену изучить их немедленно
+    try {
+        const { Productologist } = await import('@/lib/productologist');
+        const allItems = orders.flatMap(o => (o.items ?? []).map((it: any) => it.offer?.name ?? it.productName ?? '').filter(Boolean));
+        const uniqueItems = Array.from(new Set(allItems)).slice(0, 5); // Ограничим 5 товарами для скорости
+        for (const itemName of uniqueItems) {
+            await Productologist.ensureKnowledge(itemName);
+        }
+    } catch (e) {
+        console.error('[ReactivationWorker] Productologist on-demand failed:', e);
+    }
+
     // 5. Генерировать письмо + Обоснование
     const result = await generateReactivationEmail({
         company_name,

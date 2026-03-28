@@ -5,6 +5,7 @@
  */
 
 import OpenAI from 'openai';
+import { supabase } from '@/utils/supabase';
 
 let _openai: OpenAI | null = null;
 
@@ -83,6 +84,28 @@ ${basePrompt}
 }
 `;
 
+    // 0. Интеграция с Еленой (Продуктологом): поиск документации
+    let productSpecsContext = '';
+    try {
+        const { data: knowledge } = await supabase
+            .from('product_knowledge')
+            .select('name, category, description, tech_specs, pain_points, solved_tasks, use_cases');
+        
+        // Маппинг для тех товаров, что упоминаются в истории
+        const relevantSpecs = knowledge?.filter(k => ctx.orders_history.includes(k.name)) || [];
+        if (relevantSpecs.length > 0) {
+            productSpecsContext = `\nИНСАЙТЫ ПО ПРОДУКЦИИ ОТ ЕЛЕНЫ (ПРОДУКТОЛОГА):\n` +
+                relevantSpecs.map(k => 
+                    `- ${k.name} [${k.category}]: ${k.description}.\n` +
+                    `  * Боли клиента: ${k.pain_points?.join(', ') || '—'}\n` +
+                    `  * Решаемые задачи: ${k.solved_tasks?.join(', ') || '—'}\n` +
+                    `  * Тех. данные (ТТХ): ${JSON.stringify(k.tech_specs)}`
+                ).join('\n');
+        }
+    } catch (e) {
+        console.error('[Reactivation] Elena Lookup Error:', e);
+    }
+
     const userMessage = `Информация о компании: ${ctx.company_name}
 ${ctx.contact_person ? `Контактное лицо (обращайся по имени): ${ctx.contact_person}` : ''}
 
@@ -96,6 +119,8 @@ ${ctx.category ? `Основная категория интереса: ${ctx.ca
 
 История заказов клиента:
 ${ctx.orders_history}
+
+${productSpecsContext}
 
 Последние комментарии наших менеджеров по этому клиенту:
 ${ctx.manager_comments || '(комментарии отсутствуют)'}

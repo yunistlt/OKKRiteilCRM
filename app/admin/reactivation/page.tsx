@@ -48,6 +48,7 @@ interface OutreachLog {
     intent_status: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
     justification: string | null;
     sent_at: string | null;
+    opened_at: string | null;
     replied_at: string | null;
     created_at: string;
 }
@@ -825,6 +826,8 @@ export default function ReactivationPage() {
                                             <tr className="text-xs text-zinc-500 border-b border-zinc-800">
                                                 <th className="text-left px-4 py-3 font-medium">Клиент</th>
                                                 <th className="text-left px-4 py-3 font-medium">Email</th>
+                                                <th className="text-left px-4 py-3 font-medium text-center">Отправлено</th>
+                                                <th className="text-left px-4 py-3 font-medium text-center">Прочитано</th>
                                                 <th className="text-left px-4 py-3 font-medium">Статус</th>
                                                 <th className="text-left px-4 py-3 font-medium">Намерение</th>
                                                 <th className="px-4 py-3" />
@@ -849,6 +852,26 @@ export default function ReactivationPage() {
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3 text-zinc-400 text-xs truncate max-w-[160px]">{log.customer_email ?? '—'}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        {log.sent_at ? (
+                                                            <div className="flex flex-col items-center">
+                                                                <span className="text-indigo-400">✅</span>
+                                                                <span className="text-[9px] text-zinc-500">{new Date(log.sent_at).toLocaleDateString('ru', { day: '2-digit', month: '2-digit' })}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-zinc-700">—</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        {log.opened_at ? (
+                                                            <div className="flex flex-col items-center" title={`Прочитано: ${new Date(log.opened_at).toLocaleString('ru')}`}>
+                                                                <span className="text-blue-400 text-lg">👁️</span>
+                                                                <span className="text-[9px] text-zinc-500">{new Date(log.opened_at).toLocaleTimeString('ru', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-zinc-800 text-lg grayscale opacity-30">👁️</span>
+                                                        )}
+                                                    </td>
                                                     <td className="px-4 py-3"><StatusBadge status={log.status} /></td>
                                                     <td className="px-4 py-3"><IntentBadge intent={log.intent_status} /></td>
                                                     <td className="px-4 py-3 text-right">
