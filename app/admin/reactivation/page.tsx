@@ -196,8 +196,8 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                     <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Последние заказы</p>
                                     <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[120px] pr-2 scrollbar-thin">
                                         {details?.orders.map((o: any) => (
-                                            <a key={o.number} 
-                                               href={`${RETAILCRM_BASE}/orders/${o.number}/edit`} 
+                                            <a key={o.order_id} 
+                                               href={`${RETAILCRM_BASE || 'https://zmktlt.retailcrm.ru'}/orders/${o.order_id}/edit`} 
                                                target="_blank" rel="noopener noreferrer"
                                                className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-2 py-1 rounded text-[11px] text-indigo-400 transition-colors flex flex-col"
                                             >

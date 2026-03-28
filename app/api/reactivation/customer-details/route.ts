@@ -22,16 +22,30 @@ export async function GET(req: Request) {
         }
 
         // 2. Fetch All Orders
-        // Note: client.id is the internal UUID, but we also linked orders by client_id (integer CRM ID) in upsert_orders_v2
         const { data: orders, error: ordersErr } = await supabase
             .from('orders')
-            .select('number, totalsumm, created_at, raw_payload')
+            .select('order_id, number, totalsumm, created_at, raw_payload')
             .eq('client_id', customerId)
             .order('created_at', { ascending: false });
 
         if (ordersErr) throw ordersErr;
 
-        // 3. Extract Unique Products
+        // 3. Fallback for stats if client record is zero/missing
+        const calculatedLtv = orders?.reduce((sum, o) => sum + (Number(o.totalsumm) || 0), 0) || 0;
+        const calculatedAvg = orders?.length ? calculatedLtv / orders.length : 0;
+
+        const clientData = client ? {
+            ...client,
+            total_summ: Number(client.total_summ) || calculatedLtv,
+            average_check: Number(client.average_check) || calculatedAvg,
+            orders_count: client.orders_count || orders?.length || 0
+        } : {
+            total_summ: calculatedLtv,
+            average_check: calculatedAvg,
+            orders_count: orders?.length || 0
+        };
+
+        // 4. Extract Unique Products
         const productsMap = new Map<string, { count: number; lastPrice?: number }>();
         orders?.forEach(order => {
             const items = (order.raw_payload as any)?.items || [];
@@ -52,7 +66,7 @@ export async function GET(req: Request) {
 
         return NextResponse.json({
             success: true,
-            client: client || null,
+            client: clientData,
             orders: orders || [],
             products: products || []
         });
