@@ -33,7 +33,7 @@ export async function GET(req: Request) {
     // 2. Базовый запрос к orders (все активные)
     let ordersQuery = supabase
         .from('orders')
-        .select('order_id, status, created_at, manager_id, totalsumm', { count: 'exact' })
+        .select('order_id, status, created_at, manager_id, totalsumm, raw_payload', { count: 'exact' })
         .in('status', workingStatuses)
         .lt('order_id', 99900000); // Игнорируем тестовые
 
@@ -130,6 +130,31 @@ export async function GET(req: Request) {
         }
     }
 
+    // 6b. Получаем данные о реактивации (Виктория)
+    let reactivationMap: Record<number, any> = {};
+    const customerIds = Array.from(new Set(
+        (activeOrders || [])
+            .map(o => (o.raw_payload as any)?.customer?.id)
+            .filter(Boolean)
+    )) as number[];
+
+    if (customerIds.length > 0) {
+        const { data: outreachData } = await supabase
+            .from('ai_outreach_logs')
+            .select('customer_id, status, sent_at, opened_at, replied_at, intent_status, generated_email, client_reply')
+            .in('customer_id', customerIds)
+            .order('created_at', { ascending: false });
+
+        if (outreachData) {
+            outreachData.forEach(log => {
+                // Берем только самую свежую запись для каждого клиента (т.к. мы уже отсортировали по created_at desc)
+                if (!reactivationMap[log.customer_id]) {
+                    reactivationMap[log.customer_id] = log;
+                }
+            });
+        }
+    }
+
     // 7. Calculate Global Averages
     let totalAvgScore = 0;
     let filteredAvgScore = 0;
@@ -175,7 +200,8 @@ export async function GET(req: Request) {
             status_label: o.status ? (statusMap[o.status]?.name || o.status) : '—',
             status_color: o.status ? (statusMap[o.status]?.color || '#E5E7EB') : '#E5E7EB',
             total_sum: o.totalsumm || 0,
-            violations: violationsMap[o.order_id] || []
+            violations: violationsMap[o.order_id] || [],
+            reactivation: reactivationMap[(o.raw_payload as any)?.customer?.id] || null
         };
     });
 

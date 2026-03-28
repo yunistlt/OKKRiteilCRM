@@ -65,6 +65,15 @@ interface OrderScore {
     status_color?: string;
     total_sum?: number;
     violations?: any[];
+    reactivation?: {
+        status: string;
+        sent_at: string | null;
+        opened_at: string | null;
+        replied_at: string | null;
+        intent_status: string | null;
+        generated_email: string | null;
+        client_reply: string | null;
+    } | null;
 }
 
 // ─── Вспомогательные функции ──────────────────────────────
@@ -426,6 +435,17 @@ const COL_GROUPS: Group[] = [
             },
         ]
     },
+    {
+        label: 'Реактивация (Виктория)',
+        color: 'bg-emerald-50 text-emerald-700',
+        cellBg: 'bg-emerald-50/40',
+        cols: [
+            {
+                key: 'reactivation_status', label: 'Статус рассылки', type: 'text' as any,
+                tip: { agent: 'Виктория', agentEmoji: '👩‍💼', how: 'Отслеживает: отправлено (✉️), прочитано (👁️), ответил (💬)', data: 'ai_outreach_logs (status, opened_at)' }
+            }
+        ]
+    }
 ];
 
 // Подсказки для итоговых колонок
@@ -725,7 +745,40 @@ function OKKContent() {
         };
 
         let content;
-        if (col.key === 'calls_status') {
+        if (col.key === 'reactivation_status') {
+            const r = s.reactivation;
+            if (!r) {
+                content = <span className="text-gray-300">—</span>;
+            } else {
+                content = (
+                    <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {/* Письмо отправлено */}
+                        <span title={`Отправлено: ${r.sent_at ? new Date(r.sent_at).toLocaleString('ru') : '?'}\n\n${r.generated_email?.substring(0, 200)}...`} className="cursor-help">
+                            ✉️
+                        </span>
+                        
+                        {/* Письмо прочитано */}
+                        {r.opened_at ? (
+                            <span title={`Прочитано: ${new Date(r.opened_at).toLocaleString('ru')}`} className="cursor-help">
+                                👁️
+                            </span>
+                        ) : (
+                            <span className="opacity-20 grayscale" title="Еще не прочитано">👁️</span>
+                        )}
+
+                        {/* Ответ клиента */}
+                        {r.status === 'replied' && (
+                            <span 
+                                title={`Ответ: ${r.replied_at ? new Date(r.replied_at).toLocaleString('ru') : '?'}\n\n${r.client_reply}`} 
+                                className="cursor-help flex items-center gap-0.5"
+                            >
+                                💬 {r.intent_status === 'POSITIVE' ? '🔥' : r.intent_status === 'NEGATIVE' ? '🚫' : '⏳'}
+                            </span>
+                        )}
+                    </div>
+                );
+            }
+        } else if (col.key === 'calls_status') {
             const hasCalls = val === 'Дозвон есть' || val === 'Попытки без ответа';
             content = (
                 <button
@@ -984,6 +1037,14 @@ function OKKContent() {
                                         <span className="text-[8px] px-1 py-0.5 rounded font-black uppercase leading-none truncate max-w-[80px]" style={getBadgeStyle(s.status_color)}>
                                             {s.status_label || 'Status'}
                                         </span>
+                                        {/* Реактивация в мобилке */}
+                                        {s.reactivation && (
+                                            <div className="flex items-center gap-0.5 ml-1">
+                                                <span>✉️</span>
+                                                {s.reactivation.opened_at && <span>👁️</span>}
+                                                {s.reactivation.status === 'replied' && <span>💬</span>}
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center text-blue-500 gap-0.5">
                                         <span className="text-[9px] font-black uppercase">АНАЛИЗ</span>

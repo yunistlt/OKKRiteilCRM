@@ -170,12 +170,26 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
 async function sendApprovedEmail(log: OutreachLog): Promise<void> {
     const customerId = log.customer_id;
     
-    // Получаем последней номер заказа для контекста
+    // Получаем карточку клиента для определения его сайта и последнего заказа
+    const customerRes = await retailcrmFetch(`/api/v5/customers-corporate/${customerId}`);
+    const customer = customerRes.customerCorporate ?? {};
+    const customerSite = customer.site || process.env.RETAILCRM_SITE || 'zmktlt-ru';
+    
     const ordersRes = await retailcrmFetch(`/api/v5/orders?filter[customerCorporate]=${customerId}&limit=1&page=1`);
     const lastOrderNumber = ordersRes.orders?.[0]?.number ?? null;
 
+    // Добавляем пиксель отслеживания (Tracking Pixel)
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com';
+    const pixelUrl = `${baseUrl.replace(/\/+$/, '')}/api/reactivation/track?id=${log.id}`;
+    const emailBodyWithPixel = `${log.generated_email || ''}\n\n<img src="${pixelUrl}" width="1" height="1" style="display:none;" />`;
+
     // Записываем в CRM (триггер в CRM сам отправит письмо)
-    await updateCorporateFields(customerId, log.generated_email || '', lastOrderNumber);
+    await updateCorporateFields(
+        customerId, 
+        emailBodyWithPixel, 
+        customerSite,
+        lastOrderNumber
+    );
 
     // Помечаем как отправлено
     const { error } = await supabase
@@ -196,27 +210,33 @@ async function sendApprovedEmail(log: OutreachLog): Promise<void> {
 async function updateCorporateFields(
     customerId: number,
     emailBody: string,
+    site: string,
     lastOrderNumber?: string | number | null
 ): Promise<void> {
-    const params = new URLSearchParams();
-    params.set('apiKey', RETAILCRM_API_KEY);
-    if (RETAILCRM_SITE) params.set('site', RETAILCRM_SITE);
-    
-    params.set('customerCorporate[customFields][ai_reactivation_text]', emailBody);
-    if (lastOrderNumber) {
-        params.set('customerCorporate[customFields][ai_last_order_number]', String(lastOrderNumber));
-    }
+    // ВАЖНО: RetailCRM API v5 требует by=id в URL и сериализованный JSON в теле
+    const customerData = {
+        customFields: {
+            ai_reactivation_text: emailBody,
+            ai_last_order_number: lastOrderNumber ? String(lastOrderNumber) : undefined
+        }
+    };
 
-    const url = `${RETAILCRM_URL}/api/v5/customers-corporate/${customerId}/edit`;
+    const url = `${RETAILCRM_URL}/api/v5/customers-corporate/${customerId}/edit?apiKey=${RETAILCRM_API_KEY}&by=id&site=${site}`;
+    
     const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
+        body: `customerCorporate=${encodeURIComponent(JSON.stringify(customerData))}`,
     });
 
     if (!res.ok) {
         const errText = await res.text();
         throw new Error(`RetailCRM corporate/edit failed: ${res.status} — ${errText.substring(0, 300)}`);
+    }
+
+    const data = await res.json();
+    if (!data.success) {
+        throw new Error(`RetailCRM API error: ${data.errorMsg || 'Unknown error'}`);
     }
 }
 

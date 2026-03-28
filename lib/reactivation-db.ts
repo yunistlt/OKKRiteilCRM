@@ -50,6 +50,7 @@ export interface OutreachLog {
     client_reply: string | null;
     intent_status: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
     sent_at: string | null;
+    opened_at: string | null;
     replied_at: string | null;
     created_at: string;
 }
@@ -182,6 +183,34 @@ export async function markLogReplied(
             replied_at: new Date().toISOString(),
         })
         .eq('id', id);
+
+    if (error) throw error;
+}
+
+export async function markLogOpened(customerId: number): Promise<void> {
+    const { error } = await supabase
+        .from('ai_outreach_logs')
+        .update({
+            opened_at: new Date().toISOString(),
+        })
+        .eq('customer_id', customerId)
+        .eq('status', 'sent')
+        .is('opened_at', null);
+
+    if (error) throw error;
+}
+
+/**
+ * Отмечает прочтение по ID лога (используется пикселем отслеживания)
+ */
+export async function markLogOpenedById(id: string): Promise<void> {
+    const { error } = await supabase
+        .from('ai_outreach_logs')
+        .update({
+            opened_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .is('opened_at', null);
 
     if (error) throw error;
 }

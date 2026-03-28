@@ -11,7 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { analyzeClientReply, generateReplyEmail } from '@/lib/reactivation';
-import { getLogByCustomerId, markLogReplied, getCampaignById } from '@/lib/reactivation-db';
+import { getLogByCustomerId, markLogReplied, markLogOpened, getCampaignById } from '@/lib/reactivation-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,19 +26,34 @@ export async function POST(request: Request) {
 
         // Поддержка JSON и form-encoded от RetailCRM
         const contentType = request.headers.get('content-type') ?? '';
+        let eventType: 'reply' | 'read' = 'reply';
+
         if (contentType.includes('application/json')) {
             const body = await request.json().catch(() => null);
-            customerId = body?.customerId ?? body?.customer?.id ?? null;
+            customerId = body?.customerId ?? body?.customer?.id ?? body?.email?.customer?.id ?? null;
             replyText = body?.text ?? body?.message?.body ?? body?.comment ?? null;
+            // Если в body есть открытый email, это событие прочтения
+            if (body?.email?.id && !replyText) eventType = 'read';
         } else {
             const formText = await request.text().catch(() => '');
             const form = new URLSearchParams(formText);
-            customerId = parseInt(form.get('customerId') ?? '0') || null;
+            customerId = parseInt(form.get('customerId') ?? form.get('email[customer][id]') ?? '0') || null;
             replyText = (form.get('text') ?? form.get('comment')) ?? null;
+            if (form.get('email[id]') && !replyText) eventType = 'read';
         }
 
-        if (!customerId || !replyText) {
-            return NextResponse.json({ success: false, error: 'customerId and text are required' }, { status: 400 });
+        if (!customerId) {
+            return NextResponse.json({ success: false, error: 'customerId is required' }, { status: 400 });
+        }
+
+        // 0. Если это прочтение — просто отмечаем и выходим
+        if (eventType === 'read') {
+            await markLogOpened(customerId);
+            return NextResponse.json({ success: true, action: 'marked_read' });
+        }
+
+        if (!replyText) {
+            return NextResponse.json({ success: false, error: 'text is required for replies' }, { status: 400 });
         }
 
         // 1. Найти запись в логах
