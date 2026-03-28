@@ -46,6 +46,7 @@ interface OutreachLog {
     status: 'pending' | 'processing' | 'sent' | 'replied' | 'error';
     client_reply: string | null;
     intent_status: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
+    justification: string | null;
     sent_at: string | null;
     replied_at: string | null;
     created_at: string;
@@ -126,13 +127,36 @@ function Select({ ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
 // ─────────────────────────────────────────────
 
 function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
+    const [details, setDetails] = useState<{ client: any; orders: any[]; products: any[] } | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchDetails = async () => {
+            try {
+                const res = await fetch(`/api/reactivation/customer-details?customer_id=${log.customer_id}`);
+                const data = await res.json();
+                if (data.success) setDetails(data);
+            } catch (err) {
+                console.error('Error fetching details:', err);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchDetails();
+    }, [log.customer_id]);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
                     <div>
-                        <p className="font-semibold text-white">{log.company_name ?? `Клиент #${log.customer_id}`}</p>
-                        <p className="text-xs text-zinc-500">{log.customer_email}</p>
+                        <p className="font-semibold text-white text-lg">{log.company_name ?? `Клиент #${log.customer_id}`}</p>
+                        <div className="flex items-center gap-3 mt-1">
+                            <p className="text-xs text-zinc-500">{log.customer_email}</p>
+                            {details?.client?.inn && (
+                                <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700">ИНН: {details.client.inn}</span>
+                            )}
+                        </div>
                     </div>
                     <div className="flex items-center gap-3">
                         <StatusBadge status={log.status} />
@@ -140,30 +164,111 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                         <button onClick={onClose} className="ml-2 text-zinc-500 hover:text-white transition-colors text-xl">✕</button>
                     </div>
                 </div>
-                <div className="overflow-auto flex-1 p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="flex flex-col gap-2">
-                        <p className="text-xs uppercase tracking-widest text-zinc-500">📤 Наше письмо</p>
-                        <div className="bg-zinc-800 rounded-xl p-4 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed flex-1 min-h-[200px]">
-                            {log.generated_email ?? <span className="text-zinc-500 italic">Не сгенерировано</span>}
+
+                <div className="flex-1 overflow-auto">
+                    {/* Customer Insights & History */}
+                    <div className="border-b border-zinc-800/50">
+                        {loading ? (
+                            <div className="px-6 py-4 text-xs text-zinc-500 animate-pulse">Загрузка истории клиента...</div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-zinc-800">
+                                {/* Stats Section */}
+                                <div className="p-5 flex flex-col gap-4">
+                                    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Статистика CRM</p>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-xs text-zinc-500 mb-1">Всего заказов</p>
+                                            <p className="text-xl font-bold text-white">{details?.orders.length || 0}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-zinc-500 mb-1">Ср. чек</p>
+                                            <p className="text-xl font-bold text-emerald-400">{(details?.client?.average_check || 0).toLocaleString()} ₽</p>
+                                        </div>
+                                        <div className="col-span-2">
+                                            <p className="text-xs text-zinc-500 mb-1">Общий LTV</p>
+                                            <p className="text-xl font-bold text-indigo-400">{(details?.client?.total_summ || 0).toLocaleString()} ₽</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Orders Section */}
+                                <div className="p-5 flex flex-col gap-3">
+                                    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Последние заказы</p>
+                                    <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[120px] pr-2 scrollbar-thin">
+                                        {details?.orders.map((o: any) => (
+                                            <a key={o.number} 
+                                               href={`${RETAILCRM_BASE}/orders/${o.number}/edit`} 
+                                               target="_blank" rel="noopener noreferrer"
+                                               className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-2 py-1 rounded text-[11px] text-indigo-400 transition-colors flex flex-col"
+                                            >
+                                                <span className="font-bold">#{o.number}</span>
+                                                <span className="text-zinc-500 text-[9px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
+                                            </a>
+                                        ))}
+                                        {(!details?.orders || details.orders.length === 0) && <p className="text-xs text-zinc-600 italic">Заказы не найдены</p>}
+                                    </div>
+                                </div>
+
+                                {/* Products Section */}
+                                <div className="p-5 flex flex-col gap-3">
+                                    <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Купленные товары</p>
+                                    <div className="space-y-1.5 overflow-y-auto max-h-[120px] pr-2 scrollbar-thin">
+                                        {details?.products.slice(0, 15).map((p: any, i: number) => (
+                                            <div key={i} className="flex items-center justify-between text-[11px]">
+                                                <span className="text-zinc-300 truncate mr-2" title={p.name}>{p.name}</span>
+                                                <span className="text-zinc-500 whitespace-nowrap bg-zinc-800 px-1 rounded">{p.count} шт.</span>
+                                            </div>
+                                        ))}
+                                        {details?.products.length === 0 && <p className="text-xs text-zinc-600 italic">Товары не найдены</p>}
+                                        {(details?.products.length || 0) > 15 && (
+                                            <p className="text-[9px] text-zinc-600 text-center italic">...и еще {details!.products.length - 15} позиций</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* AI Justification (Reasoning) */}
+                    <div className="px-6 py-5 bg-indigo-600/5 border-b border-zinc-800/50 flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center flex-shrink-0 border border-indigo-500/20">
+                            <span className="text-xl">🤖</span>
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-1.5">Обоснование Агента</p>
+                            <p className="text-sm text-zinc-300 leading-relaxed italic">
+                                {log.justification || "Анализ был проведен на основе истории заказов и профиля клиента. Агент выявил ключевые потребности и адаптировал текст для возврата лояльности."}
+                            </p>
                         </div>
                     </div>
-                    <div className="flex flex-col gap-2">
-                        <p className="text-xs uppercase tracking-widest text-zinc-500">📩 Ответ клиента</p>
-                        <div className="bg-zinc-800 rounded-xl p-4 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed flex-1 min-h-[200px]">
-                            {log.client_reply ?? <span className="text-zinc-500 italic">Не получен</span>}
+
+                    <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="flex flex-col gap-3">
+                            <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">📤 Наше письмо</p>
+                            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed flex-1 min-h-[300px]">
+                                {log.generated_email ?? <span className="text-zinc-500 italic">Не сгенерировано</span>}
+                            </div>
                         </div>
-                        {log.intent_status && <IntentBadge intent={log.intent_status} />}
+                        <div className="flex flex-col gap-3">
+                            <p className="text-xs uppercase tracking-widest text-zinc-500 font-bold">📩 Ответ клиента</p>
+                            <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed flex-1 min-h-[300px]">
+                                {log.client_reply ?? <span className="text-zinc-500 italic text-center block mt-20">Письмо еще не получено или находится в обработке</span>}
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div className="px-6 py-3 border-t border-zinc-800 flex items-center gap-4 text-xs text-zinc-500">
-                    {log.sent_at && <span>Отправлено: {new Date(log.sent_at).toLocaleString('ru')}</span>}
-                    {log.replied_at && <span>Ответ: {new Date(log.replied_at).toLocaleString('ru')}</span>}
-                    {RETAILCRM_BASE && (
-                        <a href={`${RETAILCRM_BASE}/customers/${log.customer_id}/edit`} target="_blank" rel="noopener noreferrer"
-                            className="ml-auto text-indigo-400 hover:text-indigo-300">
-                            Открыть в RetailCRM →
-                        </a>
-                    )}
+
+                <div className="px-6 py-3 border-t border-zinc-800 flex items-center gap-4 text-xs text-zinc-500 bg-zinc-900/50">
+                    {log.sent_at && <span>📅 Отправлено: {new Date(log.sent_at).toLocaleString('ru')}</span>}
+                    {log.replied_at && <span>💬 Ответ: {new Date(log.replied_at).toLocaleString('ru')}</span>}
+                    <div className="ml-auto flex items-center gap-4">
+                        {RETAILCRM_BASE && (
+                            <a href={`${RETAILCRM_BASE}/customers/${log.customer_id}/edit`} target="_blank" rel="noopener noreferrer"
+                                className="text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1">
+                                Открыть клиента в RetailCRM ↗
+                            </a>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
