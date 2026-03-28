@@ -7,12 +7,14 @@
  */
 
 import { NextResponse } from 'next/server';
-import { getCampaigns, createCampaign, createOutreachLog, CampaignFilters, CampaignSettings } from '@/lib/reactivation-db';
-
-export const dynamic = 'force-dynamic';
-
-const RETAILCRM_URL = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
-const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY ?? '';
+import { supabase } from '@/utils/supabase';
+import { 
+    getCampaigns, 
+    createCampaign, 
+    createOutreachLog, 
+    CampaignFilters, 
+    CampaignSettings 
+} from '@/lib/reactivation-db';
 
 // ──────────────────────────────────────────
 // GET — список кампаний
@@ -45,22 +47,18 @@ export async function POST(request: Request) {
         // 1. Создать кампанию
         const campaign = await createCampaign(title, filters ?? {}, settings ?? {});
 
-        // 2. Найти клиентов в RetailCRM по фильтрам
+        // 2. Найти клиентов в SUPABASE по фильтрам (теперь это источник истины)
         const customers = await fetchEligibleCustomers(filters ?? {});
 
         // 3. Создать записи очереди
         let queued = 0;
         for (const customer of customers) {
             try {
-                const mainContact = customer.mainCustomerContact || (customer.contactPersons && customer.contactPersons[0]);
-                const email = customer.email || mainContact?.email || null;
-                const contactName = mainContact ? `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() : null;
-                
                 await createOutreachLog({
                     campaign_id: campaign.id,
                     customer_id: customer.id,
-                    company_name: customer.nickName || customer.legalName || contactName || `Клиент #${customer.id}`,
-                    customer_email: email ?? undefined,
+                    company_name: customer.company_name || `Клиент #${customer.id}`,
+                    customer_email: customer.email || undefined,
                 });
                 queued++;
             } catch (e) {
@@ -79,91 +77,67 @@ export async function POST(request: Request) {
 }
 
 // ──────────────────────────────────────────
-// Fetch customers from RetailCRM with all filters
+// Fetch customers from SUPABASE with all filters
 // ──────────────────────────────────────────
 
-interface RetailCRMCustomer {
+interface EligibleCustomer {
     id: number;
     email?: string;
-    nickName?: string;
-    legalName?: string;
-    totalSumm?: number;
-    ordersCount?: number;
-    averageSumm?: number;
-    customFields?: Record<string, string>;
-    contactPersons?: {
-        firstName?: string;
-        lastName?: string;
-        email?: string;
-        phones?: { number: string }[];
-    }[];
-    mainCustomerContact?: {
-        firstName?: string;
-        lastName?: string;
-        email?: string;
-    };
+    company_name?: string;
 }
 
-async function fetchEligibleCustomers(filters: CampaignFilters): Promise<RetailCRMCustomer[]> {
-    if (!RETAILCRM_URL || !RETAILCRM_API_KEY) return [];
+async function fetchEligibleCustomers(filters: CampaignFilters): Promise<EligibleCustomer[]> {
+    let query = supabase
+        .from('clients')
+        .select('id, email, company_name')
+        .not('email', 'is', null);
 
-    const params = new URLSearchParams();
-    params.set('apiKey', RETAILCRM_API_KEY);
-    params.set('limit', '100');
+    // B2B Only
+    if (filters.b2b_only) {
+        query = query.in('contragent_type', ['Юридическое лицо', 'Индивидуальный предприниматель']);
+    }
 
     // Давность последнего заказа
     if (filters.months) {
         const cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - filters.months);
-        params.set('filter[maxOrderDate]', cutoff.toISOString().slice(0, 10));
+        query = query.lt('last_order_at', cutoff.toISOString());
     }
 
-    // Статусы заказов
-    if (filters.statuses?.length) {
-        filters.statuses.forEach((s, i) => params.set(`filter[orderStatuses][${i}]`, s));
+    // LTV
+    if (filters.min_ltv !== undefined && filters.min_ltv > 0) {
+        query = query.gte('total_summ', filters.min_ltv);
     }
 
-    // Endpoint: /api/v5/customers-corporate
-    const url = `${RETAILCRM_URL}/api/v5/customers-corporate?${params.toString()}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-        console.error('[Reactivation] RetailCRM corporate customers fetch failed:', res.status);
+    // Кол-во заказов
+    if (filters.min_orders !== undefined) {
+        query = query.gte('orders_count', filters.min_orders);
+    }
+    if (filters.max_orders !== undefined && filters.max_orders < 999999) {
+        query = query.lte('orders_count', filters.max_orders);
+    }
+
+    // Средний чек
+    if (filters.min_avg_check !== undefined && filters.min_avg_check > 0) {
+        query = query.gte('average_check', filters.min_avg_check);
+    }
+    if (filters.max_avg_check !== undefined && filters.max_avg_check < 999999) {
+        query = query.lte('average_check', filters.max_avg_check);
+    }
+
+    // Ограничение выборки для безопасности
+    query = query.limit(500);
+
+    const { data, error } = await query;
+
+    if (error) {
+        console.error('[Reactivation] Supabase fetch failed:', error.message);
         return [];
     }
 
-    const data = await res.json();
-    if (!data.success) return [];
-
-    let customers: RetailCRMCustomer[] = data.customersCorporate ?? [];
-
-    // Фильтры на стороне клиента
-    customers = customers.filter(c => {
-        // Обязательно наличие контакта (email компании или главного контакта)
-        const mainContact = c.mainCustomerContact || (c.contactPersons && c.contactPersons[0]);
-        const hasEmail = !!(c.email || mainContact?.email);
-        if (!hasEmail) return false;
-
-        // LTV
-        if (filters.min_ltv !== undefined && (c.totalSumm ?? 0) < filters.min_ltv) return false;
-
-        // Кол-во заказов
-        if (filters.min_orders !== undefined && (c.ordersCount ?? 0) < filters.min_orders) return false;
-        if (filters.max_orders !== undefined && (c.ordersCount ?? 0) > filters.max_orders) return false;
-
-        // Средний чек
-        if (filters.min_avg_check !== undefined && (c.averageSumm ?? 0) < filters.min_avg_check) return false;
-        if (filters.max_avg_check !== undefined && (c.averageSumm ?? 0) > filters.max_avg_check) return false;
-
-        // Пользовательские поля
-        if (filters.custom_fields?.length) {
-            for (const cf of filters.custom_fields) {
-                const val = c.customFields?.[cf.field];
-                if (!val || !val.toLowerCase().includes(cf.value.toLowerCase())) return false;
-            }
-        }
-
-        return true;
-    });
-
-    return customers;
+    return (data || []).map(d => ({
+        id: d.id,
+        email: d.email,
+        company_name: d.company_name
+    }));
 }

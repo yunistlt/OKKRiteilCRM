@@ -18,7 +18,8 @@ async function run() {
                 SELECT 
                     (raw_payload->'customer'->>'id')::bigint as c_id,
                     MAX((raw_payload->'customer'->>'ordersCount')::int) as c_count,
-                    MAX((raw_payload->'customer'->>'totalSumm')::numeric) as c_total
+                    MAX((raw_payload->'customer'->>'totalSumm')::numeric) as c_total,
+                    MAX((raw_payload->>'createdAt')::timestamp) as last_order
                 FROM orders
                 WHERE raw_payload->'customer'->>'id' IS NOT NULL
                   AND (raw_payload->'customer'->>'ordersCount')::int > 0
@@ -28,13 +29,14 @@ async function run() {
             SET 
                 orders_count = ls.c_count, 
                 total_summ = ls.c_total, 
+                last_order_at = ls.last_order,
                 average_check = CASE WHEN ls.c_count > 0 THEN ls.c_total / ls.c_count ELSE 0 END
             FROM latest_stats ls
             WHERE clients.id = ls.c_id;
         `;
 
         const res = await client.query(updateQuery);
-        console.log(`✅ Successfully updated stats for ${res.rowCount} clients from order history.`);
+        console.log(`✅ Successfully updated stats (LTV + Last Order Date) for ${res.rowCount} clients.`);
 
     } catch (err) {
         console.error("❌ Stats Update Error:", err.message);
