@@ -52,11 +52,14 @@ export async function POST(request: Request) {
         let queued = 0;
         for (const customer of customers) {
             try {
-                const email = customer.email ?? customer.emails?.[0]?.email ?? null;
+                const mainContact = customer.mainCustomerContact || (customer.contactPersons && customer.contactPersons[0]);
+                const email = customer.email || mainContact?.email || null;
+                const contactName = mainContact ? `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() : null;
+                
                 await createOutreachLog({
                     campaign_id: campaign.id,
                     customer_id: customer.id,
-                    company_name: customer.company ?? customer.firstName ?? undefined,
+                    company_name: customer.nickName || customer.legalName || contactName || `Клиент #${customer.id}`,
                     customer_email: email ?? undefined,
                 });
                 queued++;
@@ -82,14 +85,23 @@ export async function POST(request: Request) {
 interface RetailCRMCustomer {
     id: number;
     email?: string;
-    emails?: { email: string }[];
-    company?: string;
-    firstName?: string;
-    type?: string;
+    nickName?: string;
+    legalName?: string;
     totalSumm?: number;
     ordersCount?: number;
     averageSumm?: number;
     customFields?: Record<string, string>;
+    contactPersons?: {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+        phones?: { number: string }[];
+    }[];
+    mainCustomerContact?: {
+        firstName?: string;
+        lastName?: string;
+        email?: string;
+    };
 }
 
 async function fetchEligibleCustomers(filters: CampaignFilters): Promise<RetailCRMCustomer[]> {
@@ -106,32 +118,29 @@ async function fetchEligibleCustomers(filters: CampaignFilters): Promise<RetailC
         params.set('filter[maxOrderDate]', cutoff.toISOString().slice(0, 10));
     }
 
-    // Тип клиента: юр. лицо
-    if (filters.b2b_only) {
-        params.set('filter[type]', 'legal-entity');
-    }
-
     // Статусы заказов
     if (filters.statuses?.length) {
         filters.statuses.forEach((s, i) => params.set(`filter[orderStatuses][${i}]`, s));
     }
 
-    const url = `${RETAILCRM_URL}/api/v5/customers?${params.toString()}`;
+    // Endpoint: /api/v5/customers-corporate
+    const url = `${RETAILCRM_URL}/api/v5/customers-corporate?${params.toString()}`;
     const res = await fetch(url);
     if (!res.ok) {
-        console.error('[Reactivation] RetailCRM customers fetch failed:', res.status);
+        console.error('[Reactivation] RetailCRM corporate customers fetch failed:', res.status);
         return [];
     }
 
     const data = await res.json();
     if (!data.success) return [];
 
-    let customers: RetailCRMCustomer[] = data.customers ?? [];
+    let customers: RetailCRMCustomer[] = data.customersCorporate ?? [];
 
     // Фильтры на стороне клиента
     customers = customers.filter(c => {
-        // Обязательно наличие email
-        const hasEmail = !!(c.email ?? c.emails?.[0]?.email);
+        // Обязательно наличие контакта (email компании или главного контакта)
+        const mainContact = c.mainCustomerContact || (c.contactPersons && c.contactPersons[0]);
+        const hasEmail = !!(c.email || mainContact?.email);
         if (!hasEmail) return false;
 
         // LTV

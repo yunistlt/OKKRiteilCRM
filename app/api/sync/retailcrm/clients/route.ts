@@ -167,10 +167,36 @@ export async function GET(request: Request) {
                     source: c.source?.source || null,
 
                     // New Corporate Fields
-                    company_name: c.nickName || null,
-                    inn: c.contragent?.inn || null, // Check path
+                    company_name: c.nickName || c.legalName || null,
+                    inn: c.contragent?.inn || null, 
                     kpp: c.contragent?.kpp || null,
-                    contragent_type: c.contragent?.contragentType || null
+                    contragent_type: c.contragent?.contragentType || null,
+
+                    // Expanded stats
+                    orders_count: c.ordersCount || 0,
+                    total_summ: c.totalSumm || 0,
+                    average_check: c.averageSumm || 0,
+
+                    // Contact Person Logic
+                    // We take the main contact person or the first one
+                    ...(() => {
+                        const mainContact = c.mainCustomerContact || (c.contactPersons && c.contactPersons[0]);
+                        if (mainContact) {
+                            // In RetailCRM v5 corporate response, contact person info is often nested in another object
+                            // Or it's the contact person link itself.
+                            // If it's a full sync, the contact details (firstName, email) might be in the contactPerson list
+                            return {
+                                contact_name: `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() || null,
+                                contact_email: mainContact.email || null,
+                                main_contact_id: mainContact.id || null
+                            };
+                        }
+                        return {
+                            contact_name: null,
+                            contact_email: null,
+                            main_contact_id: null
+                        };
+                    })()
                 });
             }
 

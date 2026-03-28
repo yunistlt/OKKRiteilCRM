@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { generateReactivationEmail } from '@/lib/reactivation';
+import { generateReactivationEmail, EmailGenerationContext } from '@/lib/reactivation';
 import { sendTelegramNotification } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
@@ -22,17 +22,16 @@ export async function POST(request: Request) {
             throw new Error(`Конфигурация RetailCRM отсутствует. URL: ${RETAILCRM_URL ? 'OK' : 'MISSING'}, Key: ${RETAILCRM_KEY ? 'OK' : 'MISSING'}`);
         }
 
-        steps.push('👤 Поиск случайного клиента в RetailCRM...');
+        steps.push('👤 Поиск случайного корпоративного клиента в RetailCRM...');
         
-        // Пробуем максимально простой запрос без доп. фильтров для проверки связи
-        // ВАЖНО: RetailCRM v5 требует лимит 20, 50 или 100
-        const customersUrl = `${RETAILCRM_URL}/api/v5/customers?apiKey=${RETAILCRM_KEY}&limit=20`;
-        console.log('[Reactivation Test] Fetching customer:', customersUrl.replace(RETAILCRM_KEY, '***'));
+        // Переходим на эндпоинт для корпоративных клиентов
+        const customersUrl = `${RETAILCRM_URL}/api/v5/customers-corporate?apiKey=${RETAILCRM_KEY}&limit=20`;
+        console.log('[Reactivation Test] Fetching corporate customer:', customersUrl.replace(RETAILCRM_KEY, '***'));
         
         const cRes = await fetch(customersUrl);
         if (!cRes.ok) {
             const errText = await cRes.text();
-            throw new Error(`CRM API Error customers: ${cRes.status} — ${errText.substring(0, 300)}`);
+            throw new Error(`CRM API Error corporate customers: ${cRes.status} — ${errText.substring(0, 300)}`);
         }
 
         const cData = await cRes.json();
@@ -40,17 +39,26 @@ export async function POST(request: Request) {
             throw new Error(`CRM Success False: ${JSON.stringify(cData)}`);
         }
 
-        const customer = cData.customers?.[0];
+        const customer = cData.customersCorporate?.[0];
         if (!customer) {
-            throw new Error('Клиенты не найдены в RetailCRM (пустой список)');
+            throw new Error('Корпоративные клиенты не найдены в RetailCRM (пустой список)');
         }
 
-        const contactName = `${customer.firstName ?? ''} ${customer.lastName ?? ''}`.trim() || '—';
-        const phones = customer.phones?.map((p: any) => p.number).join(', ') || '—';
+        // Логика извлечения контактного лица
+        const mainContact = customer.mainCustomerContact || (customer.contactPersons && customer.contactPersons[0]);
+        const contactName = mainContact ? `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() : '—';
+        const companyName = customer.nickName || customer.legalName || `Компания #${customer.id}`;
         
-        steps.push(`✅ Выбран клиент: ${customer.company || contactName} (ID: ${customer.id})`);
+        // Собираем телефоны (и из компании, и из контакта)
+        const phoneSet = new Set<string>();
+        customer.phones?.forEach((p: any) => phoneSet.add(p.number));
+        mainContact?.phones?.forEach((p: any) => phoneSet.add(p.number));
+        const phones = Array.from(phoneSet).join(', ') || '—';
+        
+        steps.push(`✅ Выбран клиент: ${companyName} (ID: ${customer.id})`);
+        if (contactName !== '—') steps.push(`👤 Контактное лицо: ${contactName}`);
 
-        // 2. Получаем историю заказов
+        // 2. Получаем историю заказов (для корпоратов фильтр может быть другим, но обычно по customer ID)
         steps.push('📦 Загрузка истории заказов...');
         const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customer]=${customer.id}&limit=20`;
         const oRes = await fetch(ordersUrl);
@@ -65,15 +73,16 @@ export async function POST(request: Request) {
         steps.push(`📊 Найдено заказов в базе: ${orders.length}`);
 
         // 3. Формируем контекст для ИИ
-        const ctx = {
-            company_name: customer.company || contactName || `Клиент #${customer.id}`,
+        const ctx: EmailGenerationContext = {
+            company_name: companyName,
+            contact_person: contactName !== '—' ? contactName : undefined,
             orders_history: orders.map((o: any) => ({
                 number: o.number,
                 createdAt: o.createdAt,
                 status: o.status,
                 totalSumm: o.totalSumm,
                 items: o.items?.map((i: any) => i.offer?.name || i.productName).join(', ')
-            })),
+            })).map((o: any) => `Заказ #${o.number} от ${o.createdAt} (${o.status}): ${o.items}`).join('\n') || 'История заказов пуста',
             manager_comments: customer.notes || ''
         };
 
@@ -83,13 +92,13 @@ export async function POST(request: Request) {
         steps.push('✅ Письмо успешно сформировано');
         steps.push(`💡 Обоснование ИИ: ${result.reasoning.substring(0, 100)}...`);
 
-        // 5. "Отправка" на почту через лог и Telegram (так как прямого SMTP нет)
+        // 5. "Отправка" на почту через лог и Telegram
         const telegramMessage = `
-🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА ВИКТОРИИ</b>
-<b>Клиент:</b> ${ctx.company_name} (ID: ${customer.id})
+🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА ВИКТОРИИ (B2B)</b>
+<b>Компания:</b> ${companyName} (ID: ${customer.id})
 <b>Сайт:</b> ${customer.site || '—'}
-<b>Телефоны:</b> ${phones}
 <b>Контакт:</b> ${contactName}
+<b>Телефоны:</b> ${phones}
 <b>Заказов:</b> ${customer.ordersCount ?? 0}
 <b>Средний чек:</b> ${customer.averageSumm ?? 0} ₽
 <b>Тестовый Email:</b> ${testEmail}
@@ -112,7 +121,7 @@ ${result.body}
             steps,
             customerData: {
                 id: customer.id,
-                name: ctx.company_name,
+                name: companyName,
                 site: customer.site || '—',
                 phones: phones,
                 contactPerson: contactName,

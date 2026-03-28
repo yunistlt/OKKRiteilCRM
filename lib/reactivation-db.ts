@@ -45,7 +45,8 @@ export interface OutreachLog {
     company_name: string | null;
     customer_email: string | null;
     generated_email: string | null;
-    status: 'pending' | 'processing' | 'sent' | 'replied' | 'error';
+    status: 'pending' | 'processing' | 'awaiting_approval' | 'approved' | 'sent' | 'replied' | 'rejected' | 'error';
+    justification: string | null;
     client_reply: string | null;
     intent_status: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
     sent_at: string | null;
@@ -128,6 +129,18 @@ export async function setLogsProcessing(ids: string[]): Promise<void> {
         .in('id', ids);
 
     if (error) throw error;
+}
+
+export async function getApprovedLogs(limit = 5): Promise<OutreachLog[]> {
+    const { data, error } = await supabase
+        .from('ai_outreach_logs')
+        .select('*')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: true })
+        .limit(limit);
+
+    if (error) throw error;
+    return data ?? [];
 }
 
 export async function markLogSent(id: string, generatedEmail: string): Promise<void> {

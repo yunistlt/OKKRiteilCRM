@@ -21,9 +21,18 @@ function getOpenAI(): OpenAI {
 
 export interface EmailGenerationContext {
     company_name: string;
+    contact_person?: string; // Имя контактного лица (ФИО)
     orders_history: string;
     manager_comments: string;
-    custom_prompt?: string; // промпт из настроек кампании (переопределяет дефолт)
+    custom_prompt?: string;
+    
+    // Новые поля для гипер-персонализации
+    industry?: string;       // Сфера деятельности
+    category?: string;       // Категория товара
+    total_summ?: number;     // LTV
+    orders_count?: number;   // Кол-во заказов
+    average_check?: number;  // Средний чек
+    call_transcripts?: string; // Текст последних звонков
 }
 
 export interface GeneratedEmail {
@@ -75,12 +84,24 @@ ${basePrompt}
 `;
 
     const userMessage = `Информация о компании: ${ctx.company_name}
+${ctx.contact_person ? `Контактное лицо (обращайся по имени): ${ctx.contact_person}` : ''}
+
+${ctx.industry ? `Сфера деятельности клиента: ${ctx.industry}` : ''}
+${ctx.category ? `Основная категория интереса: ${ctx.category}` : ''}
+
+Статистика клиента в нашей базе:
+- Всего заказов: ${ctx.orders_count || 0}
+- Общая сумма (LTV): ${ctx.total_summ || 0} ₽
+- Средний чек: ${ctx.average_check || 0} ₽
 
 История заказов клиента:
 ${ctx.orders_history}
 
 Последние комментарии наших менеджеров по этому клиенту:
 ${ctx.manager_comments || '(комментарии отсутствуют)'}
+
+${ctx.call_transcripts ? `История последних телефонных разговоров (кратко):
+${ctx.call_transcripts}` : ''}
 
 Напиши письмо для возобновления сотрудничества.`;
 
