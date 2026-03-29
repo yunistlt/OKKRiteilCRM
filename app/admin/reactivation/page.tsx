@@ -41,6 +41,8 @@ interface OutreachLog {
     campaign_id: string;
     customer_id: number;
     company_name: string | null;
+    contact_id: number | null;
+    contact_name: string | null;
     customer_email: string | null;
     generated_email: string | null;
     status: 'pending' | 'processing' | 'sent' | 'replied' | 'error';
@@ -163,6 +165,9 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                     <div>
                         <p className="font-semibold text-white text-lg">{log.company_name ?? `Клиент #${log.customer_id}`}</p>
                         <div className="flex items-center gap-3 mt-1">
+                            {log.contact_name && (
+                                <p className="text-xs text-indigo-400 font-medium">👤 {log.contact_name}</p>
+                            )}
                             <p className="text-xs text-zinc-500">{log.customer_email}</p>
                             {details?.client?.inn && (
                                 <span className="text-[10px] bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded border border-zinc-700">ИНН: {details.client.inn}</span>
@@ -824,7 +829,8 @@ export default function ReactivationPage() {
                                     <table className="w-full text-sm">
                                         <thead>
                                             <tr className="text-xs text-zinc-500 border-b border-zinc-800">
-                                                <th className="text-left px-4 py-3 font-medium">Клиент</th>
+                                                <th className="text-left px-4 py-3 font-medium">Клиент / Компания</th>
+                                                <th className="text-left px-4 py-3 font-medium">Получатель</th>
                                                 <th className="text-left px-4 py-3 font-medium">Email</th>
                                                 <th className="text-left px-4 py-3 font-medium text-center">Отправлено</th>
                                                 <th className="text-left px-4 py-3 font-medium text-center">Прочитано</th>
@@ -844,11 +850,26 @@ export default function ReactivationPage() {
                                                         </p>
                                                         {RETAILCRM_BASE ? (
                                                             <a href={`${RETAILCRM_BASE}/customers/${log.customer_id}/edit`} target="_blank" rel="noopener noreferrer"
-                                                                onClick={e => e.stopPropagation()} className="text-xs text-indigo-400 hover:text-indigo-300">
-                                                                #{log.customer_id}
+                                                                onClick={e => e.stopPropagation()} className="text-[10px] text-zinc-600 hover:text-indigo-400">
+                                                                ID компании: {log.customer_id} ↗
                                                             </a>
                                                         ) : (
                                                             <span className="text-xs text-zinc-500">#{log.customer_id}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {log.contact_name ? (
+                                                            <div className="flex flex-col">
+                                                                <p className="text-sm text-indigo-300 font-medium truncate max-w-[140px]">{log.contact_name}</p>
+                                                                {log.contact_id && RETAILCRM_BASE && (
+                                                                    <a href={`${RETAILCRM_BASE}/customers/${log.contact_id}/edit`} target="_blank" rel="noopener noreferrer"
+                                                                        onClick={e => e.stopPropagation()} className="text-[10px] text-zinc-600 hover:text-indigo-400">
+                                                                        ID контакта: {log.contact_id} ↗
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-zinc-600 text-xs">—</span>
                                                         )}
                                                     </td>
                                                     <td className="px-4 py-3 text-zinc-400 text-xs truncate max-w-[160px]">{log.customer_email ?? '—'}</td>

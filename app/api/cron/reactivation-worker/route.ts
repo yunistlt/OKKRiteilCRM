@@ -187,7 +187,9 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
         .update({
             generated_email: result.body,
             justification: result.reasoning,
-            status: 'awaiting_approval'
+            status: 'awaiting_approval',
+            contact_id: dbClient.main_contact_id || null,
+            contact_name: contactPersonName || null
         })
         .eq('id', log.id);
 
@@ -198,28 +200,60 @@ async function processCustomer(log: OutreachLog, settings: CampaignSettings): Pr
 async function sendApprovedEmail(log: OutreachLog): Promise<void> {
     const customerId = log.customer_id;
     
-    // Получаем карточку клиента для определения его сайта и последнего заказа
-    const customerRes = await retailcrmFetch(`/api/v5/customers-corporate/${customerId}`);
-    const customer = customerRes.customerCorporate ?? {};
-    const customerSite = customer.site || process.env.RETAILCRM_SITE || 'zmktlt-ru';
+    // 1. Получаем карточку клиента из Supabase, чтобы найти ID контактного лица
+    const { data: client } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('id', customerId)
+        .single();
     
-    const ordersRes = await retailcrmFetch(`/api/v5/orders?filter[customerCorporate]=${customerId}&limit=1&page=1`);
-    const lastOrderNumber = ordersRes.orders?.[0]?.number ?? null;
+    if (!client) throw new Error(`Клиент #${customerId} не найден в базе для отправки`);
 
-    // Добавляем пиксель отслеживания (Tracking Pixel)
+    // 2. Определяем, кому отправляем: контакту или компании
+    const targetCrmId = client.main_contact_id || customerId;
+    const isCorporate = !client.main_contact_id;
+    const site = client.site || process.env.RETAILCRM_SITE || 'zmktlt-ru';
+
+    // 3. Формируем тело письма с пикселем
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com';
-    const pixelUrl = `${baseUrl.replace(/\/+$/, '')}/api/reactivation/track?id=${log.id}`;
+    const pixelUrl = `${baseUrl.replace(/\/+$/, '')}/api/reactivation/pixel?id=${log.id}`;
     const emailBodyWithPixel = `${log.generated_email || ''}\n\n<img src="${pixelUrl}" width="1" height="1" style="display:none;" />`;
 
-    // Записываем в CRM (триггер в CRM сам отправит письмо)
-    await updateCorporateFields(
-        customerId, 
-        emailBodyWithPixel, 
-        customerSite,
-        lastOrderNumber
-    );
+    // 4. Записываем в CRM
+    if (isCorporate) {
+        // Старая логика (для компаний без контактов)
+        const ordersRes = await retailcrmFetch(`/api/v5/orders?filter[customerCorporate]=${customerId}&limit=1&page=1`);
+        const lastOrderNumber = ordersRes.orders?.[0]?.number ?? null;
+        
+        await updateCorporateFields(customerId, emailBodyWithPixel, site, lastOrderNumber);
+    } else {
+        // НОВАЯ ЛОГИКА: Обновляем карточку физлица (Клиента), чтобы сработал ТРИГГЕР
+        const customerData = {
+            customFields: {
+                ai_reactivation_text: emailBodyWithPixel,
+                ai_reactivation_status: 'sent'
+            }
+        };
 
-    // Помечаем как отправлено
+        const url = `${RETAILCRM_URL}/api/v5/customers/${targetCrmId}/edit?apiKey=${RETAILCRM_API_KEY}&site=${site}&by=id`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `customer=${encodeURIComponent(JSON.stringify(customerData))}`,
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`CRM Customer/edit failed: ${res.status} — ${errText.substring(0, 300)}`);
+        }
+        
+        const data = await res.json();
+        if (!data.success) {
+            throw new Error(`CRM API error (Contact): ${data.errorMsg || 'Unknown error'}`);
+        }
+    }
+
+    // 5. Помечаем как отправлено в Supabase
     const { error } = await supabase
         .from('ai_outreach_logs')
         .update({
