@@ -23,7 +23,7 @@ export async function POST(request: Request) {
         const { data: clients, error: clientErr } = await supabase
             .from('clients')
             .select('*')
-            .eq('is_corporate', true)
+            .in('contragent_type', ['Юридическое лицо', 'Индивидуальный предприниматель'])
             .gt('orders_count', 0)
             .limit(50);
             
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
         const customerId = client.id;
         
         const companyName = client.company_name || `Компания #${customerId}`;
-        const contactName = `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim() || '—';
+        const contactName = client.contact_name || '—';
         const phones = client.phones?.join(', ') || '—';
         
         steps.push(`✅ Выбран клиент: ${companyName} (ID: ${customerId})`);
