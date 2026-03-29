@@ -188,13 +188,15 @@ export async function GET(request: Request) {
                             return {
                                 contact_name: `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() || null,
                                 contact_email: mainContact.email || null,
-                                main_contact_id: mainContact.customer?.id || mainContact.id || null
+                                main_contact_id: mainContact.customer?.id || mainContact.id || null,
+                                is_corporate: true
                             };
                         }
                         return {
                             contact_name: null,
                             contact_email: null,
-                            main_contact_id: null
+                            main_contact_id: null,
+                            is_corporate: true
                         };
                     })()
                 });
