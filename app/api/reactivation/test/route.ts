@@ -58,9 +58,9 @@ export async function POST(request: Request) {
         steps.push(`✅ Выбран клиент: ${companyName} (ID: ${customer.id})`);
         if (contactName !== '—') steps.push(`👤 Контактное лицо: ${contactName}`);
 
-        // 2. Получаем историю заказов (для корпоратов фильтр может быть другим, но обычно по customer ID)
+        // 2. Получаем историю заказов (используем filter[customerCorporate] для компаний)
         steps.push('📦 Загрузка истории заказов...');
-        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customer]=${customer.id}&limit=20`;
+        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customerCorporate]=${customer.id}&limit=20`;
         const oRes = await fetch(ordersUrl);
 
         if (!oRes.ok) {
