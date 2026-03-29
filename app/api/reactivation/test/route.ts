@@ -70,46 +70,66 @@ export async function POST(request: Request) {
 
         const oData = await oRes.json();
         const orders = oData.orders || [];
-        steps.push(`📊 Найдено заказов в базе: ${orders.length}`);
+        steps.push(`📊 Найдено реальных заказов: ${orders.length}`);
 
-        // 3. Формируем контекст для ИИ
+        // 3. Расширенная аналитика (как в боевом режиме)
+        const calculatedLtv = orders.reduce((sum: number, o: any) => sum + (Number(o.totalSumm) || 0), 0);
+        const calculatedAvg = orders.length ? calculatedLtv / orders.length : 0;
+        
+        let ordersPerYear = 0;
+        let daysSinceLastOrder = null;
+        if (orders.length > 0) {
+            const sorted = [...orders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+            const first = new Date(sorted[0].createdAt);
+            const last = new Date(sorted[sorted.length - 1].createdAt);
+            const diffYears = (last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+            ordersPerYear = diffYears > 0.01 ? Number((orders.length / diffYears).toFixed(1)) : orders.length;
+            daysSinceLastOrder = Math.floor((new Date().getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        // Агрегация товаров
+        const productsMap = new Map<string, { count: number }>();
+        orders.forEach((o: any) => {
+            o.items?.forEach((it: any) => {
+                const name = it.offer?.name || it.productName || 'Неизвестный товар';
+                const curr = productsMap.get(name) || { count: 0 };
+                productsMap.set(name, { count: curr.count + (it.quantity || 1) });
+            });
+        });
+        const products = Array.from(productsMap.entries())
+            .map(([name, s]) => ({ name, count: s.count }))
+            .sort((a, b) => b.count - a.count);
+
+        // 4. Формируем контекст для ИИ
         const ctx: EmailGenerationContext = {
             company_name: companyName,
             contact_person: contactName !== '—' ? contactName : undefined,
-            orders_history: orders.map((o: any) => ({
-                number: o.number,
-                createdAt: o.createdAt,
-                status: o.status,
-                totalSumm: o.totalSumm,
-                items: o.items?.map((i: any) => i.offer?.name || i.productName).join(', ')
-            })).map((o: any) => `Заказ #${o.number} от ${o.createdAt} (${o.status}): ${o.items}`).join('\n') || 'История заказов пуста',
+            orders_history: orders.map((o: any) => 
+                `Заказ #${o.number} от ${o.createdAt} (${o.status}): ${o.items?.map((i: any) => i.offer?.name || i.productName).join(', ')}`
+            ).join('\n') || 'История заказов пуста',
             manager_comments: customer.notes || ''
         };
 
-        // 4. Генерация письма
+        // 5. Генерация письма
         steps.push('✍️ Виктория-Писатель формирует письмо...');
         const result = await generateReactivationEmail(ctx);
         steps.push('✅ Письмо успешно сформировано');
         steps.push(`💡 Обоснование ИИ: ${result.reasoning.substring(0, 100)}...`);
 
-        // 5. "Отправка" на почту через лог и Telegram
+        // 6. "Отправка"
         const telegramMessage = `
-🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА ВИКТОРИИ (B2B)</b>
+🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА (СИМУЛЯЦИЯ)</b>
 <b>Компания:</b> ${companyName} (ID: ${customer.id})
-<b>Сайт:</b> ${customer.site || '—'}
 <b>Контакт:</b> ${contactName}
-<b>Телефоны:</b> ${phones}
-<b>Заказов:</b> ${customer.ordersCount ?? 0}
-<b>Средний чек:</b> ${customer.averageSumm ?? 0} ₽
-<b>Тестовый Email:</b> ${testEmail}
+<b>Заказов:</b> ${orders.length}
+<b>LTV:</b> ${calculatedLtv.toLocaleString()} ₽
+<b>Email:</b> ${testEmail}
 
 <b>ОБОСНОВАНИЕ:</b>
 ${result.reasoning}
 
-<b>ТЕКСТ ПИСЬМА:</b>
--------------------
+<b>ТЕКСТ:</b>
 ${result.body}
--------------------
 `;
 
         steps.push(`📧 Имитация отправки на ${testEmail}...`);
@@ -119,18 +139,33 @@ ${result.body}
         return NextResponse.json({
             success: true,
             steps,
-            customerData: {
-                id: customer.id,
-                name: companyName,
-                site: customer.site || '—',
-                phones: phones,
-                contactPerson: contactName,
-                ordersCount: customer.ordersCount ?? 0,
-                averageCheck: customer.averageSumm ?? 0
+            // Данные в формате для LogModal
+            details: {
+                client: {
+                    id: customer.id,
+                    name: companyName,
+                    inn: customer.inn,
+                    site: customer.site,
+                    phones: phones,
+                    contact_name: contactName !== '—' ? contactName : null,
+                    orders_count: orders.length,
+                    average_check: calculatedAvg,
+                    total_summ: calculatedLtv
+                },
+                orders: orders.map((o: any) => ({
+                    order_id: o.id,
+                    number: o.number,
+                    totalsumm: o.totalSumm,
+                    created_at: o.createdAt
+                })),
+                products: products,
+                analytics: {
+                    daysSinceLastOrder,
+                    ordersPerYear
+                }
             },
             generatedEmail: result.body,
-            reasoning: result.reasoning,
-            message: `Синтетическая проверка завершена. Копия письма отправлена в Telegram.`
+            reasoning: result.reasoning
         });
 
     } catch (error: any) {

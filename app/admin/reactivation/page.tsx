@@ -308,16 +308,16 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
 // Test Modal (Synthetic Check)
 // ─────────────────────────────────────────────
 
-function TestModal({ steps, email, reasoning, customerData, onClose }: { 
+function TestModal({ steps, email, reasoning, details, onClose }: { 
     steps: string[]; 
     email: string | null; 
     reasoning: string | null;
-    customerData: any | null; 
+    details: any | null; 
     onClose: () => void 
 }) {
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border-t-indigo-500 border-t-2">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 overflow-y-auto">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-5xl my-8 flex flex-col overflow-hidden shadow-2xl border-t-indigo-500 border-t-2">
                 <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
                     <div>
                         <h3 className="text-lg font-bold text-white flex items-center gap-2">
@@ -328,11 +328,11 @@ function TestModal({ steps, email, reasoning, customerData, onClose }: {
                     <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors text-xl">✕</button>
                 </div>
                 
-                <div className="flex-1 overflow-auto p-6 space-y-6">
-                    {/* Steps Log */}
-                    <div className="space-y-2">
-                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Лог выполнения</p>
-                        <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-indigo-300/80 space-y-1.5 border border-zinc-800">
+                <div className="flex-1 overflow-auto">
+                    {/* Steps Log (Terminal Style) */}
+                    <div className="p-6 bg-black/20 border-b border-zinc-800/50">
+                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold mb-3">Лог симуляции</p>
+                        <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-indigo-300/80 space-y-1 border border-zinc-800/50 max-h-[160px] overflow-y-auto scrollbar-thin">
                             {steps.map((s, i) => (
                                 <div key={i} className="flex gap-2">
                                     <span className="text-zinc-700 shrink-0">[{i+1}]</span>
@@ -342,66 +342,132 @@ function TestModal({ steps, email, reasoning, customerData, onClose }: {
                         </div>
                     </div>
 
-                    {/* Customer Info Card */}
-                    {customerData && (
-                        <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-xl p-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-                            <div className="col-span-2 md:col-span-1">
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Компания / Клиент</p>
-                                <p className="text-sm text-white font-medium">{customerData.name}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Сайт</p>
-                                <p className="text-sm text-indigo-400 truncate">{customerData.site}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Телефон</p>
-                                <p className="text-sm text-zinc-300">{customerData.phones}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Контактное лицо</p>
-                                <p className="text-sm text-zinc-300">{customerData.contactPerson}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Заказов</p>
-                                <p className="text-sm text-white">{customerData.ordersCount}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase text-zinc-500 font-bold mb-1">Средний чек</p>
-                                <p className="text-sm text-emerald-400">{customerData.averageCheck.toLocaleString()} ₽</p>
-                            </div>
-                        </div>
-                    )}
+                    {/* Simulation Data Card (Identical to LogModal) */}
+                    {details && (
+                        <>
+                            <div className="border-b border-zinc-800/50 bg-zinc-900/30">
+                                <div className="px-6 py-4 border-b border-zinc-800/30 flex justify-between items-center">
+                                    <div>
+                                        <p className="font-bold text-white text-base">{details.client.name}</p>
+                                        <div className="flex items-center gap-3 mt-1 text-[11px]">
+                                            {details.client.contact_name && (
+                                                <p className="text-indigo-400 font-medium">👤 {details.client.contact_name}</p>
+                                            )}
+                                            <p className="text-zinc-500">ID: {details.client.id}</p>
+                                            {details.client.inn && <span className="text-zinc-500">ИНН: {details.client.inn}</span>}
+                                        </div>
+                                    </div>
+                                    <div className="bg-indigo-500/10 text-indigo-400 text-[10px] px-2 py-1 rounded uppercase font-bold border border-indigo-500/20">
+                                        Симуляция
+                                    </div>
+                                </div>
 
-                    {/* AI Reasoning */}
-                    {reasoning && (
-                        <div className="space-y-2">
-                            <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold">🧠 Обоснование ИИ (Почему так?)</p>
-                            <div className="bg-indigo-950/20 rounded-xl p-4 text-xs text-indigo-200 border border-indigo-500/20 leading-relaxed">
-                                {reasoning}
-                            </div>
-                        </div>
-                    )}
+                                <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-zinc-800">
+                                    {/* Stats Section */}
+                                    <div className="p-5 flex flex-col gap-4">
+                                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Параметры выбора</p>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                                            <div>
+                                                <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Заказов</p>
+                                                <p className="text-lg font-bold text-white">{details.client.orders_count}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Ср. чек</p>
+                                                <p className="text-lg font-bold text-emerald-400">{(details.client.average_check || 0).toLocaleString()} ₽</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Частота</p>
+                                                <p className="text-lg font-bold text-amber-400">{details.analytics?.ordersPerYear || 0} <span className="text-[10px] font-normal text-zinc-500">зак/год</span></p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Последний</p>
+                                                <p className="text-lg font-bold text-indigo-400">{details.analytics?.daysSinceLastOrder ?? '—'} <span className="text-[10px] font-normal text-zinc-500">дн. назад</span></p>
+                                            </div>
+                                            <div className="col-span-2 pt-1 border-t border-zinc-800/50">
+                                                <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Общий LTV</p>
+                                                <p className="text-lg font-bold text-white">{(details.client.total_summ || 0).toLocaleString()} ₽</p>
+                                            </div>
+                                        </div>
+                                    </div>
 
-                    {/* Result Email */}
-                    {email && (
-                        <div className="space-y-2">
-                            <p className="text-[10px] uppercase tracking-widest text-emerald-500 font-bold flex items-center gap-1">
-                                💌 Сгенерированное письмо для: <span className="text-white normal-case">{customerData?.name}</span>
-                            </p>
-                            <div className="bg-zinc-800/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed border border-zinc-700 italic">
-                                {email}
+                                    {/* Orders Section */}
+                                    <div className="p-5 flex flex-col gap-3">
+                                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">История заказов (CRM)</p>
+                                        <div className="flex flex-wrap gap-2 overflow-y-auto max-h-[140px] pr-2 scrollbar-thin">
+                                            {details.orders.map((o: any) => (
+                                                <div key={o.number} 
+                                                   className="bg-zinc-800/50 border border-zinc-700/50 px-2 py-1.5 rounded text-[11px] transition-colors flex flex-col min-w-[100px]"
+                                                >
+                                                    <div className="flex justify-between items-start mb-0.5">
+                                                        <span className="font-bold text-zinc-300">#{o.number}</span>
+                                                        <span className="text-[9px] text-zinc-500 font-normal">
+                                                            {new Date(o.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                    <span className="text-indigo-400 text-[10px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
+                                                </div>
+                                            ))}
+                                            {details.orders.length === 0 && <p className="text-xs text-zinc-600 italic">Заказы не найдены</p>}
+                                        </div>
+                                    </div>
+
+                                    {/* Products Section */}
+                                    <div className="p-5 flex flex-col gap-3">
+                                        <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Анализ корзины</p>
+                                        <div className="space-y-1.5 overflow-y-auto max-h-[140px] pr-2 scrollbar-thin">
+                                            {details.products.slice(0, 15).map((p: any, i: number) => (
+                                                <div key={i} className="flex items-center justify-between text-[11px]">
+                                                    <span className="text-zinc-400 truncate mr-2">{p.name}</span>
+                                                    <span className="text-indigo-500/70 whitespace-nowrap bg-indigo-500/5 px-1 rounded border border-indigo-500/10">{p.count} шт.</span>
+                                                </div>
+                                            ))}
+                                            {details.products.length === 0 && <p className="text-xs text-zinc-600 italic">Товары не найдены</p>}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
+
+                            {/* Reasoning Block */}
+                            {reasoning && (
+                                <div className="px-6 py-5 bg-indigo-600/5 border-b border-zinc-800/50 flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center flex-shrink-0 border border-indigo-500/20">
+                                        <span className="text-xl">🤖</span>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-1.5">Обоснование симуляции</p>
+                                        <p className="text-sm text-zinc-300 leading-relaxed italic">
+                                            {reasoning}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Email Preview Grid */}
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 bg-zinc-900/50">
+                                <div className="flex flex-col gap-3">
+                                    <p className="text-xs uppercase tracking-widest text-emerald-500 font-bold">📤 Сгенерированное письмо</p>
+                                    <div className="bg-zinc-800/30 border border-zinc-700/50 rounded-xl p-5 text-sm text-zinc-200 whitespace-pre-wrap leading-relaxed flex-1 min-h-[250px] italic shadow-inner">
+                                        {email ?? <span className="text-zinc-600">Ожидание генерации...</span>}
+                                    </div>
+                                </div>
+                                <div className="flex flex-col gap-3 opacity-40 grayscale">
+                                    <p className="text-xs uppercase tracking-widest text-zinc-600 font-bold text-center">📩 Ответ (Симуляция)</p>
+                                    <div className="bg-zinc-800/10 border border-zinc-800/50 rounded-xl p-5 text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed flex-1 min-h-[250px] border-dashed flex items-center justify-center text-center">
+                                        Блок ответа не активен в режиме синтетической проверки
+                                    </div>
+                                </div>
+                            </div>
+                        </>
                     )}
                 </div>
 
-                <div className="px-6 py-4 border-t border-zinc-800 bg-black/20 flex justify-between items-center">
-                    <p className="text-[10px] text-zinc-500">Письмо также отправлено в Telegram бот @OKKzmk</p>
+                <div className="px-6 py-4 border-t border-zinc-800 bg-black/40 flex justify-between items-center">
+                    <p className="text-[10px] text-zinc-500 max-w-[300px]">Это симуляция на реальных данных RetailCRM. Никаких реальных действий в CRM не производилось.</p>
                     <button 
                         onClick={onClose}
-                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-6 py-2 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-500/20"
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-8 py-2.5 rounded-xl text-sm font-bold transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
                     >
-                        Понятно
+                        Завершить тест
                     </button>
                 </div>
             </div>
@@ -493,7 +559,7 @@ export default function ReactivationPage() {
             if (data.steps) setTestSteps(data.steps);
             if (data.generatedEmail) setTestEmailResult(data.generatedEmail);
             if (data.reasoning) setTestReasoning(data.reasoning);
-            if (data.customerData) setTestCustomerData(data.customerData);
+            if (data.details) setTestCustomerData(data.details); // Store entire details object
             
             if (!data.success) throw new Error(data.error || 'Ошибка теста');
         } catch (e: any) {
@@ -919,7 +985,7 @@ export default function ReactivationPage() {
                     steps={testSteps} 
                     email={testEmailResult} 
                     reasoning={testReasoning}
-                    customerData={testCustomerData}
+                    details={testCustomerData}
                     onClose={() => setShowTestModal(false)} 
                 />
             )}
