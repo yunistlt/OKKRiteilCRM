@@ -222,7 +222,7 @@ async function sendApprovedEmail(log: OutreachLog): Promise<void> {
     // 4. Записываем в CRM
     if (isCorporate) {
         // Старая логика (для компаний без контактов)
-        const ordersRes = await retailcrmFetch(`/api/v5/orders?filter[customerCorporate]=${customerId}&limit=1&page=1`);
+        const ordersRes = await retailcrmFetch(`/api/v5/orders?filter[customerCorporateId]=${customerId}&limit=1&page=1`);
         const lastOrderNumber = ordersRes.orders?.[0]?.number ?? null;
         
         await updateCorporateFields(customerId, emailBodyWithPixel, site, lastOrderNumber);
