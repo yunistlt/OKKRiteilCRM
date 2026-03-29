@@ -2,12 +2,12 @@
 import { NextResponse } from 'next/server';
 import { generateReactivationEmail, EmailGenerationContext } from '@/lib/reactivation';
 import { sendTelegramNotification } from '@/lib/telegram';
+import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const RETAILCRM_URL = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
-const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY;
 
 export async function POST(request: Request) {
     const steps: string[] = [];
@@ -15,113 +15,102 @@ export async function POST(request: Request) {
         const body = await request.json();
         const testEmail = body.testEmail || 'yunistgl@gmail.com';
         
-        steps.push('🔍 Запуск синтетической проверки Виктории...');
+        steps.push('🔍 Запуск синтетической проверки Виктории (Mode: Database-First)...');
         
-        // 1. Получаем случайного клиента из RetailCRM (для теста)
-        if (!RETAILCRM_URL || !RETAILCRM_KEY) {
-            throw new Error(`Конфигурация RetailCRM отсутствует. URL: ${RETAILCRM_URL ? 'OK' : 'MISSING'}, Key: ${RETAILCRM_KEY ? 'OK' : 'MISSING'}`);
+        // 1. Выбираем случайного корпоративного клиента из нашей базы
+        steps.push('👤 Поиск подходящего корпоративного клиента в БД Supabase...');
+        
+        const { data: clients, error: clientErr } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('is_corporate', true)
+            .gt('orders_count', 0)
+            .limit(50);
+            
+        if (clientErr || !clients || clients.length === 0) {
+            throw new Error(`Ошибка поиска клиентов в БД: ${clientErr?.message || 'Клиенты с заказами не найдены'}`);
         }
-
-        steps.push('👤 Поиск случайного корпоративного клиента в RetailCRM...');
         
-        // Переходим на эндпоинт для корпоративных клиентов
-        const customersUrl = `${RETAILCRM_URL}/api/v5/customers-corporate?apiKey=${RETAILCRM_KEY}&limit=20`;
-        console.log('[Reactivation Test] Fetching corporate customer:', customersUrl.replace(RETAILCRM_KEY, '***'));
+        // Берём случайного из пула
+        const client = clients[Math.floor(Math.random() * clients.length)];
+        const customerId = client.id;
         
-        const cRes = await fetch(customersUrl);
-        if (!cRes.ok) {
-            const errText = await cRes.text();
-            throw new Error(`CRM API Error corporate customers: ${cRes.status} — ${errText.substring(0, 300)}`);
-        }
-
-        const cData = await cRes.json();
-        if (!cData.success) {
-            throw new Error(`CRM Success False: ${JSON.stringify(cData)}`);
-        }
-
-        const customer = cData.customersCorporate?.[0];
-        if (!customer) {
-            throw new Error('Корпоративные клиенты не найдены в RetailCRM (пустой список)');
-        }
-
-        // Логика извлечения контактного лица
-        const mainContact = customer.mainCustomerContact || (customer.contactPersons && customer.contactPersons[0]);
-        const contactName = mainContact ? `${mainContact.firstName ?? ''} ${mainContact.lastName ?? ''}`.trim() : '—';
-        const companyName = customer.nickName || customer.legalName || `Компания #${customer.id}`;
+        const companyName = client.company_name || `Компания #${customerId}`;
+        const contactName = `${client.first_name ?? ''} ${client.last_name ?? ''}`.trim() || '—';
+        const phones = client.phones?.join(', ') || '—';
         
-        // Собираем телефоны (и из компании, и из контакта)
-        const phoneSet = new Set<string>();
-        customer.phones?.forEach((p: any) => phoneSet.add(p.number));
-        mainContact?.phones?.forEach((p: any) => phoneSet.add(p.number));
-        const phones = Array.from(phoneSet).join(', ') || '—';
-        
-        steps.push(`✅ Выбран клиент: ${companyName} (ID: ${customer.id})`);
+        steps.push(`✅ Выбран клиент: ${companyName} (ID: ${customerId})`);
         if (contactName !== '—') steps.push(`👤 Контактное лицо: ${contactName}`);
 
-        // 2. Получаем историю заказов (используем filter[customerCorporateId] для компаний)
-        steps.push('📦 Загрузка истории заказов...');
-        const ordersUrl = `${RETAILCRM_URL}/api/v5/orders?apiKey=${RETAILCRM_KEY}&filter[customerCorporateId]=${customer.id}&limit=20`;
-        const oRes = await fetch(ordersUrl);
-
-        if (!oRes.ok) {
-            const errText = await oRes.text();
-            throw new Error(`CRM Orders Error: ${oRes.status} — ${errText.substring(0, 300)}`);
-        }
-
-        const oData = await oRes.json();
-        const orders = oData.orders || [];
-        steps.push(`📊 Найдено реальных заказов: ${orders.length}`);
-
-        // 3. Расширенная аналитика (как в боевом режиме)
-        const calculatedLtv = orders.reduce((sum: number, o: any) => sum + (Number(o.totalSumm) || 0), 0);
-        const calculatedAvg = orders.length ? calculatedLtv / orders.length : 0;
+        // 2. Получаем историю заказов из Supabase
+        steps.push('📦 Загрузка истории заказов из БД...');
+        const { data: dbOrders, error: ordersErr } = await supabase
+            .from('orders')
+            .select('order_id, number, totalsumm, created_at, raw_payload')
+            .eq('client_id', customerId)
+            .order('created_at', { ascending: false })
+            .limit(20);
+            
+        if (ordersErr) throw new Error(`Ошибка загрузки заказов: ${ordersErr.message}`);
         
-        let ordersPerYear = 0;
+        const orders = dbOrders || [];
+        steps.push(`📊 Найдено заказов в истории: ${orders.length}`);
+
+        // 3. Расширенная аналитика (честная симуляция того, что видит ИИ-Агент)
+        const calculatedLtv = Number(client.total_summ) || orders.reduce((sum, o) => sum + (Number(o.totalsumm) || 0), 0);
+        const calculatedAvg = Number(client.average_check) || (orders.length ? calculatedLtv / orders.length : 0);
+        
+        let ordersPerYear = Number(client.orders_count || orders.length) / 2; // Примерная частота из БД
         let daysSinceLastOrder = null;
+        
         if (orders.length > 0) {
-            const sorted = [...orders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-            const first = new Date(sorted[0].createdAt);
-            const last = new Date(sorted[sorted.length - 1].createdAt);
+            const sorted = [...orders].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            const first = new Date(sorted[0].created_at);
+            const last = new Date(sorted[sorted.length - 1].created_at);
+            
             const diffYears = (last.getTime() - first.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
-            ordersPerYear = diffYears > 0.01 ? Number((orders.length / diffYears).toFixed(1)) : orders.length;
+            ordersPerYear = diffYears > 0.05 ? Number((orders.length / diffYears).toFixed(1)) : orders.length;
             daysSinceLastOrder = Math.floor((new Date().getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
         }
 
-        // Агрегация товаров
+        // Агрегация товаров для AI промпта
         const productsMap = new Map<string, { count: number }>();
         orders.forEach((o: any) => {
-            o.items?.forEach((it: any) => {
+            const payload = o.raw_payload;
+            payload?.items?.forEach((it: any) => {
                 const name = it.offer?.name || it.productName || 'Неизвестный товар';
                 const curr = productsMap.get(name) || { count: 0 };
                 productsMap.set(name, { count: curr.count + (it.quantity || 1) });
             });
         });
+        
         const products = Array.from(productsMap.entries())
             .map(([name, s]) => ({ name, count: s.count }))
             .sort((a, b) => b.count - a.count);
 
-        // 4. Формируем контекст для ИИ
+        // 4. Формируем контекст для ИИ (Victoria Prompt Context)
         const ctx: EmailGenerationContext = {
             company_name: companyName,
             contact_person: contactName !== '—' ? contactName : undefined,
-            orders_history: orders.map((o: any) => 
-                `Заказ #${o.number} от ${o.createdAt} (${o.status}): ${o.items?.map((i: any) => i.offer?.name || i.productName).join(', ')}`
-            ).join('\n') || 'История заказов пуста',
-            manager_comments: customer.notes || ''
+            orders_history: orders.map((o, i) => {
+                const items = (o.raw_payload as any)?.items?.map((it: any) => it.offer?.name || it.productName).join(', ') || '—';
+                return `${i + 1}. #${o.number} | ${items} | ${o.totalsumm} ₽`;
+            }).join('\n') || 'История заказов пуста',
+            manager_comments: client.notes || 'Комментарии менеджера отсутствуют'
         };
 
         // 5. Генерация письма
-        steps.push('✍️ Виктория-Писатель формирует письмо...');
+        steps.push('✍️ Виктория-Писатель формирует письмо на основе данных БД...');
         const result = await generateReactivationEmail(ctx);
         steps.push('✅ Письмо успешно сформировано');
         steps.push(`💡 Обоснование ИИ: ${result.reasoning.substring(0, 100)}...`);
 
-        // 6. "Отправка"
+        // 6. Имитация отправки
         const telegramMessage = `
-🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА (СИМУЛЯЦИЯ)</b>
-<b>Компания:</b> ${companyName} (ID: ${customer.id})
+🧪 <b>СИНТЕТИЧЕСКАЯ ПРОВЕРКА (DATABASE MODE)</b>
+<b>Компания:</b> ${companyName} (ID: ${customerId})
 <b>Контакт:</b> ${contactName}
-<b>Заказов:</b> ${orders.length}
+<b>Заказов в БД:</b> ${orders.length}
 <b>LTV:</b> ${calculatedLtv.toLocaleString()} ₽
 <b>Email:</b> ${testEmail}
 
@@ -139,24 +128,23 @@ ${result.body}
         return NextResponse.json({
             success: true,
             steps,
-            // Данные в формате для LogModal
             details: {
                 client: {
-                    id: customer.id,
+                    id: customerId,
                     name: companyName,
-                    inn: customer.inn,
-                    site: customer.site,
+                    inn: client.inn,
+                    site: client.site,
                     phones: phones,
                     contact_name: contactName !== '—' ? contactName : null,
-                    orders_count: orders.length,
+                    orders_count: client.orders_count || orders.length,
                     average_check: calculatedAvg,
                     total_summ: calculatedLtv
                 },
-                orders: orders.map((o: any) => ({
-                    order_id: o.id,
+                orders: orders.map(o => ({
+                    order_id: o.order_id,
                     number: o.number,
-                    totalsumm: o.totalSumm,
-                    created_at: o.createdAt
+                    totalsumm: o.totalsumm,
+                    created_at: o.created_at
                 })),
                 products: products,
                 analytics: {
