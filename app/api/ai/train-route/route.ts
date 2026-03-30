@@ -83,16 +83,28 @@ export async function POST(req: Request) {
 
         // 5. Save Training Example
         // We use 'green' as dummy traffic_light, and store real target_status in context
+        const trainingContext = {
+            ...orderContext,
+            target_status: targetStatus, // Crucial for routing training
+            routing_training: true
+        };
+
+        let embedding: number[] | null = null;
+        try {
+            const { generateEmbedding, formatExampleForEmbedding } = await import('@/lib/embeddings');
+            const textToEmbed = formatExampleForEmbedding(reasoning, trainingContext);
+            embedding = await generateEmbedding(textToEmbed);
+        } catch (embErr) {
+            console.warn('[TrainRoute] Embedding generation failed:', embErr);
+        }
+
         const trainingData = {
             order_id: internalId,
             order_number: retailOrder.number,
             traffic_light: 'green', // Default/Dummy
             user_reasoning: reasoning,
-            order_context: {
-                ...orderContext,
-                target_status: targetStatus, // Crucial for routing training
-                routing_training: true
-            },
+            order_context: trainingContext,
+            embedding: embedding,
             created_by: 'manual_training_interface'
         };
 

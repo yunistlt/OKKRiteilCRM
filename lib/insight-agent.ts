@@ -74,50 +74,38 @@ export async function runInsightAnalysis(orderId: number): Promise<BusinessInsig
         const entryTime = order.createdAt || '2020-01-01T00:00:00Z';
         const evidence = await collectStageEvidence(orderId, currentStatus, entryTime);
 
-        // 3. Prepare Prompt
-        const systemPrompt = `
-Ты — Старший Бизнес-аналитик (Анна). Твоя роль: стратегический анализ сделок и поиск точек роста.
-Твоя задача: на основе сырых данных CRM и истории взаимодействий сформировать глубокие инсайты, которые помогут отделу продаж и системе маршрутизации.
+        // 3. Prepare RAG (Historical Knowledge)
+        let historicalKnowledge = "";
+        try {
+            const { generateEmbedding, formatExampleForEmbedding } = await import('./embeddings');
+            // We use the interaction summary and current order for finding similar cases
+            const searchContext = {
+                order_number: order.number,
+                status: currentStatus,
+                comments: order.managerComment || ""
+            };
+            const queryEmbedding = await generateEmbedding(formatExampleForEmbedding("", searchContext));
+            
+            const { data: matches, error: matchError } = await supabase.rpc('match_training_examples', {
+                query_embedding: queryEmbedding,
+                match_threshold: 0.5, // Broad search to find anything relevant
+                match_count: 3
+            });
 
-ПРАВИЛА И ГЛУБИНА АНАЛИЗА:
-1. ПРИЧИННО-СЛЕДСТВЕННАЯ СВЯЗЬ: Не просто констатируй факты, а ищи ПРИЧИНУ. 
-   - Если клиент отказался из-за сроков — выясни, какой срок его не устроил и был ли у него дедлайн.
-   - Если клиент ушел к конкуренту — найди в диалоге, ЧТО именно предложил конкурент (быстрее, дешевле, наличие на складе).
-2. СТРАТЕГИЧЕСКИЙ ВЗГЛЯД (GROWTH POINTS): 
-   - Ищи возможности для Cross-sell (сопутствующие товары).
-   - Оценивай потенциал клиента (LPR, масштаб компании, регулярность закупок).
-3. КРИТИЧЕСКОЕ МЫШЛЕНИЕ: Будь скептична. Если менеджер пишет «клиент думает», а в транскрипте звонка клиент сказал «дорого, закажу у других» — подсвети это противоречие.
-4. ТЕРМИНОЛОГИЯ: Используй профессиональный бизнес-язык (ЛПР, КТРУ, ТЗ, оффер, дедлайн, логистическое плечо).
+            if (!matchError && matches && matches.length > 0) {
+                historicalKnowledge = "\nПОДОБНЫЕ СИТУАЦИИ ИЗ ТВОЕГО ОПЫТА (ДЛЯ ИНТУИЦИИ):\n" + 
+                    matches.map((m: any, i: number) => {
+                        return `${i+1}. Заказ #${m.order_number}: [Статус: ${m.order_context?.target_status || m.traffic_light}]
+   Обоснование: ${m.user_reasoning}`;
+                    }).join('\n\n') + "\n\nИспользуй этот опыт для уточнения своих рекомендаций.";
+            }
+        } catch (e) {
+            console.warn('[InsightAgent] RAG retrieval failed:', e);
+        }
 
-STRICT BUSINESS RULES:
-- TARGET SEGMENT: B2B (Corporate). B2C ("fiz-lico") = Low priority.
-- ZOMBIE DETECTION: >5 shifts of contact date or >30 days silence = Flag as Zombie.
-- TENDER POLICY: Low priority if status is "Waiting for Tender" and Quote was sent, unless a specific deadline is imminent.
-
-ФОРМАТ ВЫВОДА (JSON):
-{
-  "lpr": { "name": "ФИО", "role": "Должность", "influence": "decider|influencer|technical" },
-  "budget": { "amount": "Сумма", "status": "confirmed|estimated|negotiating", "constraints": "Ограничения (напр. 'строго до 100к')" },
-  "timeline": { "expected_delivery": "Когда нужно", "urgency": "hot|normal|low", "deadlines": "Конкретные даты" },
-  "pain_points": ["Боли клиента (напр. 'нужно наличие в Москве')"],
-  "competitors": ["Упомянутые конкуренты или причины выбора других"],
-  "technical_requirements": ["ТЗ, спецификации, ГОСТы"],
-  "recommendations": ["Конкретные стратегические советы для менеджера на РУССКОМ"],
-  "dialogue_count": число,
-  "dialogue_summary": "ПОДРОБНАЯ хронология и логика общения на РУССКОМ. Опиши развитие мысли клиента.",
-  "last_contact_date": "ISO timestamp",
-  "last_order_changes": "Описание последних значимых изменений в полях заказа",
-  "customer_profile": {
-    "total_orders": число,
-    "client_resume": "Профессиональный портрет клиента (кто они, чем занимаются, ИНН)",
-    "perspective": "Оценка перспективности работы с клиентом долгосрочно",
-    "cross_sell": ["Что еще мы можем им продать"]
-  },
-  "summary": "Глубокое аналитическое резюме сделки (2-3 предложения). Почему мы выигрываем или проигрываем."
-}
-
-Пиши на грамотном русском языке. Твои рассуждения должны быть глубокими, как у опытного бизнес-консультанта.
-`;
+        // 4. Prepare Prompt
+        const { ANNA_INSIGHT_PROMPT } = await import('./prompts');
+        const systemPrompt = ANNA_INSIGHT_PROMPT.replace('{{historicalKnowledge}}', historicalKnowledge);
 
         const userPrompt = `
 ORDER DATA:
