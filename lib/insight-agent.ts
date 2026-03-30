@@ -1,6 +1,10 @@
 // ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Глубокий анализ сделок, поиск ЛПР и инсайтов.
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
+import { logAgentActivity } from './agent-logger';
+import { collectStageEvidence } from './stage-collector';
+import { generateEmbedding, formatExampleForEmbedding } from './embeddings';
+import { ANNA_INSIGHT_PROMPT } from './prompts';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -49,7 +53,6 @@ export interface BusinessInsights {
  * Runs deep analysis on an order to extract structured business insights.
  */
 export async function runInsightAnalysis(orderId: number): Promise<BusinessInsights | null> {
-    const { logAgentActivity } = await import('./agent-logger');
     await logAgentActivity('anna', 'working', `Изучаю детали заказа #${orderId}...`);
 
     try {
@@ -70,14 +73,12 @@ export async function runInsightAnalysis(orderId: number): Promise<BusinessInsig
         const currentStatus = metrics.current_status;
 
         // 2. Fetch history (Full history for better context)
-        const { collectStageEvidence } = await import('./stage-collector');
         const entryTime = order.createdAt || '2020-01-01T00:00:00Z';
         const evidence = await collectStageEvidence(orderId, currentStatus, entryTime);
 
         // 3. Prepare RAG (Historical Knowledge)
         let historicalKnowledge = "";
         try {
-            const { generateEmbedding, formatExampleForEmbedding } = await import('./embeddings');
             // We use the interaction summary and current order for finding similar cases
             const searchContext = {
                 order_number: order.number,
@@ -104,7 +105,6 @@ export async function runInsightAnalysis(orderId: number): Promise<BusinessInsig
         }
 
         // 4. Prepare Prompt
-        const { ANNA_INSIGHT_PROMPT } = await import('./prompts');
         const systemPrompt = ANNA_INSIGHT_PROMPT.replace('{{historicalKnowledge}}', historicalKnowledge);
 
         const userPrompt = `
