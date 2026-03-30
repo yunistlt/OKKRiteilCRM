@@ -48,3 +48,44 @@ export function formatExampleForEmbedding(reasoning: string, context: any): stri
 Reasoning: ${reasoning}
 Context: ${comments}`.trim();
 }
+
+/**
+ * Formats product knowledge for embedding to allow semantic search by name, category, or features.
+ */
+export function formatProductForEmbedding(pk: {
+    name: string;
+    category?: string;
+    description?: string;
+    use_cases?: string[];
+    solved_tasks?: string[];
+    pain_points?: string[];
+}): string {
+    const parts = [
+        `Product: ${pk.name}`,
+        pk.category ? `Category: ${pk.category}` : '',
+        pk.description ? `Description: ${pk.description}` : '',
+        pk.use_cases?.length ? `Use Cases: ${pk.use_cases.join(', ')}` : '',
+        pk.solved_tasks?.length ? `Benefits: ${pk.solved_tasks.join(', ')}` : '',
+        pk.pain_points?.length ? `Pain Points: ${pk.pain_points.join(', ')}` : ''
+    ].filter(Boolean);
+
+    return parts.join('\n').trim();
+}
+
+/**
+ * Formats a generic prompt/block for embedding.
+ */
+export function formatPromptForEmbedding(p: {
+    key?: string;
+    name?: string;
+    description?: string;
+    content?: string;
+}): string {
+    const parts = [
+        p.name || p.key ? `Title: ${p.name || p.key}` : '',
+        p.description ? `Description: ${p.description}` : '',
+        p.content ? `Content: ${p.content}` : ''
+    ].filter(Boolean);
+
+    return parts.join('\n').trim();
+}

@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
+import { generateEmbedding, formatProductForEmbedding } from './embeddings';
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -111,6 +112,10 @@ export class Productologist {
 
     static async saveToKnowledgeBase(data: ProductKnowledge) {
         try {
+            console.log(`[Elena] Generating embedding for: ${data.name}`);
+            const formattedText = formatProductForEmbedding(data);
+            const embedding = await generateEmbedding(formattedText);
+
             const { error } = await supabase
                 .from('product_knowledge')
                 .upsert({
@@ -122,6 +127,7 @@ export class Productologist {
                     solved_tasks: data.solved_tasks,
                     pain_points: data.pain_points,
                     source_url: data.source_url,
+                    embedding: embedding,
                     last_studied_at: new Date().toISOString()
                 }, { onConflict: 'name' });
 
