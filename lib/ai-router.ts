@@ -40,6 +40,15 @@ export interface RoutingResult {
     reasoning: string;
     was_applied: boolean;
     error?: string;
+    // Дополнительные поля для таблицы
+    manager_name?: string;
+    country?: string;
+    category?: string;
+    purchase_form?: string;
+    sphere?: string;
+    client_comment?: string;
+    manager_comment?: string;
+    logistic_comment?: string;
 }
 
 /**

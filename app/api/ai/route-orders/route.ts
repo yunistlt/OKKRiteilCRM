@@ -214,6 +214,21 @@ export async function POST(request: Request) {
                 const comment = retailcrmOrder.managerComment || '';
                 const freshStatus = retailcrmOrder.status;
 
+                // Extra details from Custom Fields
+                const cfs = retailcrmOrder.customFields || {};
+                const extraData = {
+                    manager_name: retailcrmOrder.manager?.firstName 
+                        ? `${retailcrmOrder.manager.lastName || ''} ${retailcrmOrder.manager.firstName}`.trim() 
+                        : (cfs.change_name_manager || 'Не назначен'),
+                    country: retailcrmOrder.countryIso || 'RU',
+                    category: cfs.tovarnaya_kategoriya || cfs.product_category || cfs.typ_castomer || '',
+                    purchase_form: cfs.forma_zakupki || cfs.purchase_form || '',
+                    sphere: cfs.sfera_deiatelnosti || cfs.industry || '',
+                    client_comment: retailcrmOrder.customerComment || '',
+                    manager_comment: retailcrmOrder.managerComment || '',
+                    logistic_comment: cfs.komment_diveleri || ''
+                };
+
                 // 2b. Validate Status Regularity (Fix Stale Data)
                 // If the order in CRM is NOT 'soglasovanie-otmeny', we shouldn't route it.
                 // We must update our local DB and skip this order.
@@ -375,7 +390,8 @@ export async function POST(request: Request) {
                     confidence: decision.confidence,
                     reasoning: decision.reasoning,
                     was_applied: wasApplied,
-                    error
+                    error,
+                    ...extraData
                 });
 
             } catch (orderError: any) {

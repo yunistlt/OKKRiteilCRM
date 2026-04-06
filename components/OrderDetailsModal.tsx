@@ -290,10 +290,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const customer = payload.customer ?? {};
         const customFields = (payload.customFields ?? {}) as Record<string, any>;
         const paymentSource = payload.payments ?? order.payments ?? {};
-        const paymentEntries = Array.isArray(paymentSource) ? paymentSource : Object.values(paymentSource);
-        const contactPhones = Array.isArray(contact.phones) ? contact.phones.map((p: any) => p.number).filter(Boolean) : [];
-        const storedPhones = Array.isArray(order.customer_phones) ? order.customer_phones : [];
-        const normalizedPhones = [payload.phone, order.phone, ...contactPhones, ...storedPhones].filter(Boolean);
+        const paymentEntries = Array.isArray(paymentSource) ? paymentSource : (paymentSource && typeof paymentSource === 'object' ? Object.values(paymentSource) : []);
+        const contactPhones = (Array.isArray(contact.phones) ? contact.phones.map((p: any) => p.number).filter(Boolean) : []) as string[];
+        const storedPhones = (Array.isArray(order.customer_phones) ? order.customer_phones : []) as string[];
+        const normalizedPhones = [
+            payload.phone, 
+            order.phone, 
+            ...(Array.isArray(contactPhones) ? contactPhones : []), 
+            ...(Array.isArray(storedPhones) ? storedPhones : [])
+        ].filter(Boolean);
         const [primaryPhone, secondaryPhone, thirdPhone] = normalizedPhones;
         const segments = Array.isArray(contact.segments) ? contact.segments.map((segment: any) => segment.name).filter(Boolean).join(', ') : null;
         const companyName = pickValue(customer.nickName, customer.companyName, customer.name);

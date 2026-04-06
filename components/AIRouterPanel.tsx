@@ -16,6 +16,15 @@ interface RoutingResult {
     reasoning: string;
     was_applied: boolean;
     error?: string;
+    // Дополнительные поля
+    manager_name?: string;
+    country?: string;
+    category?: string;
+    purchase_form?: string;
+    sphere?: string;
+    client_comment?: string;
+    manager_comment?: string;
+    logistic_comment?: string;
 }
 
 interface RoutingSummary {
@@ -184,6 +193,100 @@ export default function AIRouterPanel() {
     // State for Modal
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
+    // Column Visibility State
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+    const [showColumnSettings, setShowColumnSettings] = useState(false);
+
+    useEffect(() => {
+        const saved = localStorage.getItem('ai_router_hidden_columns');
+        if (saved) {
+            try {
+                setHiddenColumns(new Set(JSON.parse(saved)));
+            } catch (e) {
+                console.error('Failed to parse hidden columns:', e);
+            }
+        }
+    }, []);
+
+    const toggleColumn = (key: string) => {
+        const next = new Set(hiddenColumns);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        setHiddenColumns(next);
+        localStorage.setItem('ai_router_hidden_columns', JSON.stringify(Array.from(next)));
+    };
+
+    const COL_GROUPS = {
+        'Основные': [
+            { key: 'order_id', label: 'Заказ / Сумма' },
+            { key: 'manager_name', label: 'Менеджер' },
+            { key: 'current_status', label: 'Текущий' },
+            { key: 'country', label: 'Страна' },
+        ],
+        'Характеристики': [
+            { key: 'category', label: 'Категория' },
+            { key: 'purchase_form', label: 'Форма закупки' },
+            { key: 'sphere', label: 'Сфера' },
+        ],
+        'Комментарии': [
+            { key: 'client_comment', label: 'Коммент. Клиента' },
+            { key: 'manager_comment', label: 'Коммент. Менеджера' },
+            { key: 'logistic_comment', label: 'Коммент. Логиста' },
+        ],
+        'Решение ИИ': [
+            { key: 'to_status', label: 'Решение ИИ' },
+            { key: 'confidence', label: 'Conf' },
+            { key: 'reasoning', label: 'Обоснование' },
+        ]
+    };
+
+    const isHidden = (key: string) => hiddenColumns.has(key);
+
+    const ColumnSettingsPanel = () => (
+        <div className="absolute right-0 top-12 z-50 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 p-5 animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b">
+                <h4 className="text-sm font-bold text-gray-900">Настройка колонок</h4>
+                <button onClick={() => setShowColumnSettings(false)} className="text-gray-400 hover:text-gray-600 font-bold">×</button>
+            </div>
+            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                {Object.entries(COL_GROUPS).map(([group, columns]) => (
+                    <div key={group}>
+                        <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-2 px-1">{group}</p>
+                        <div className="grid grid-cols-1 gap-1">
+                            {columns.map(col => (
+                                <label key={col.key} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors group">
+                                    <input
+                                        type="checkbox"
+                                        checked={!isHidden(col.key)}
+                                        onChange={() => toggleColumn(col.key)}
+                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span className={`text-xs font-semibold ${!isHidden(col.key) ? 'text-gray-900' : 'text-gray-400'}`}>
+                                        {col.label}
+                                    </span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+            <div className="mt-4 pt-3 border-t flex justify-between">
+                <button 
+                    onClick={() => { setHiddenColumns(new Set()); localStorage.removeItem('ai_router_hidden_columns'); }}
+                    className="text-[10px] font-bold text-blue-600 hover:underline px-1 uppercase tracking-wider"
+                >
+                    Все
+                </button>
+                <button 
+                    onClick={() => setShowColumnSettings(false)}
+                    className="bg-gray-900 text-white text-[10px] font-black px-4 py-1.5 rounded-lg uppercase tracking-wider hover:bg-gray-800 transition-colors"
+                >
+                    Готово
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
             {selectedOrderId && (
@@ -194,34 +297,43 @@ export default function AIRouterPanel() {
                 />
             )}
 
-            <div className="p-4 border-b border-gray-200">
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                    <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
-                        <div className="flex -space-x-2">
-                            <img src="/images/agents/maxim.png" alt="Maxim" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
-                            <img src="/images/agents/igor.png" alt="Igor" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
+            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+                <div>
+                    <h2 className="text-lg font-bold flex items-center gap-2">
+                        <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                            <div className="flex -space-x-2">
+                                <img src="/images/agents/maxim.png" alt="Maxim" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
+                                <img src="/images/agents/igor.png" alt="Igor" className="w-8 h-8 rounded-full object-cover border-2 border-white shadow-sm" />
+                            </div>
+                            <span className="text-blue-800 text-sm">Максим & Игорь</span>
                         </div>
-                        <span className="text-blue-800 text-sm">Максим & Игорь</span>
-                    </div>
-                    {pendingCount !== null && (
-                        <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
-                            Очередь: {pendingCount}
-                        </span>
-                    )}
-                </h2>
-                <p className="text-[10px] text-gray-500 mt-1 ml-1 font-medium uppercase tracking-tight">
-                    Контроль отмен: Аудит решения (Maxim) + Смена статуса (Igor)
-                </p>
+                        {pendingCount !== null && (
+                            <span className="ml-2 text-sm font-normal text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                Очередь: {pendingCount}
+                            </span>
+                        )}
+                    </h2>
+                    <p className="text-[10px] text-gray-500 mt-1 ml-1 font-medium uppercase tracking-tight">
+                        Контроль отмен: Аудит решения (Maxim) + Смена статуса (Igor)
+                    </p>
+                </div>
+
+                <div className="relative">
+                    <button 
+                        onClick={() => setShowColumnSettings(!showColumnSettings)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border font-bold text-xs uppercase tracking-wider transition-all shadow-sm ${showColumnSettings ? 'bg-blue-600 text-white border-blue-600 ring-4 ring-blue-100' : 'bg-white text-gray-700 border-gray-200 hover:border-blue-400 hover:text-blue-600'}`}
+                    >
+                        <span className={showColumnSettings ? 'animate-spin' : ''}>⚙️</span> Колонки
+                    </button>
+                    {showColumnSettings && <ColumnSettingsPanel />}
+                </div>
             </div>
 
             <div className="p-6 space-y-6">
                 {/* Controls */}
-                {/* Compact Controls */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                        {/* Toggles Group */}
                         <div className="flex items-center gap-4 flex-1">
-                            {/* Dry Run */}
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => setDryRun(!dryRun)}
@@ -232,7 +344,6 @@ export default function AIRouterPanel() {
                                 <span className="text-xs font-medium text-gray-700 whitespace-nowrap">Тест</span>
                             </div>
 
-                            {/* Training Mode */}
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => {
@@ -247,7 +358,6 @@ export default function AIRouterPanel() {
                             </div>
                         </div>
 
-                        {/* Limit Input */}
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">Лимит:</span>
                             <input
@@ -261,7 +371,6 @@ export default function AIRouterPanel() {
                         </div>
                     </div>
 
-                    {/* Action Button */}
                     <button
                         onClick={runRouting}
                         disabled={isRunning}
@@ -280,7 +389,6 @@ export default function AIRouterPanel() {
                         )}
                     </button>
 
-                    {/* Compact Status Text */}
                     <div className="flex justify-between px-1">
                         <span className="text-[10px] text-gray-400">
                             {dryRun ? 'Без записи в CRM' : '⚠️ Запись включена'}
@@ -359,153 +467,277 @@ export default function AIRouterPanel() {
                         <h3 className="font-semibold text-sm text-gray-700">
                             Результаты ({results.length}):
                         </h3>
-                        <div className="border rounded-lg overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 sticky top-0">
-                                    <tr>
-                                        <th className="px-2 py-2 text-left w-28">Заказ / Сумма</th>
-                                        <th className="px-2 py-2 text-left w-24">Текущий</th>
-                                        <th className="px-2 py-2 text-left w-32">Решение ИИ</th>
-                                        {trainingMode && <th className="px-2 py-2 text-left w-64">Ваш Выбор (Статус)</th>}
-                                        <th className="px-2 py-2 text-left w-12">Conf</th>
-                                        <th className="px-2 py-2 text-left w-[40%]">Причина / Комментарий</th>
-                                        {trainingMode && <th className="px-2 py-2 w-24">Действие</th>}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {results.map((result) => {
-                                        const state = trainingState[result.order_id] || {};
-                                        return (
-                                            <tr key={result.order_id} className={`border-t hover:bg-gray-50 ${state.done ? 'bg-green-50' : ''}`}>
-                                                <td className="px-2 py-2">
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <a
-                                                                href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
-                                                                target={result.retail_crm_url ? "_blank" : undefined}
-                                                                rel="noopener noreferrer"
-                                                                className="text-blue-600 hover:underline font-bold text-xs"
-                                                                onClick={e => !result.retail_crm_url && e.preventDefault()}
-                                                            >
-                                                                #{result.order_id}
-                                                            </a>
-                                                            <button
-                                                                onClick={() => setSelectedOrderId(result.order_id)}
-                                                                className="px-2 py-0.5 text-[10px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors shrink-0"
-                                                                title="Открыть карточку заказа"
-                                                            >
-                                                                Карточка
-                                                            </button>
-                                                        </div>
-                                                        <span className="text-[11px] font-bold text-gray-600">
-                                                            {result.total_sum?.toLocaleString('ru-RU')} ₽
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <span
-                                                        className="inline-block px-2 py-1 text-[10px] font-bold rounded uppercase border shadow-sm"
-                                                        style={{
-                                                            borderColor: result.current_status_color || '#e5e7eb',
-                                                            backgroundColor: result.current_status_color ? `${result.current_status_color}30` : '#f3f4f6',
-                                                            color: '#1f2937'
-                                                        }}
-                                                    >
-                                                        {result.current_status_name || result.from_status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    {/* AI Decision - Always ReadOnly here now */}
-                                                    <span className={`inline-block px-2 py-1 text-xs font-semibold rounded ${getStatusBadge(result.to_status)}`}>
-                                                        {result.to_status_name || result.to_status}
-                                                    </span>
-                                                </td>
+                        <div className="border rounded-xl overflow-hidden shadow-sm bg-white">
+                            <div className="overflow-x-auto max-w-full">
+                                <table className="w-full text-sm border-collapse">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            {!isHidden('order_id') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-28 whitespace-nowrap">Заказ / Сумма</th>}
+                                            {!isHidden('manager_name') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-32 whitespace-nowrap">Менеджер</th>}
+                                            {!isHidden('current_status') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-28 whitespace-nowrap">Текущий</th>}
+                                            {!isHidden('country') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-20 whitespace-nowrap">Страна</th>}
+                                            
+                                            {!isHidden('category') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-32 whitespace-nowrap">Категория</th>}
+                                            {!isHidden('purchase_form') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-32 whitespace-nowrap">Форма закупки</th>}
+                                            {!isHidden('sphere') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-32 whitespace-nowrap">Сфера</th>}
 
-                                                {/* User Selection Column (Training Mode Only) */}
-                                                {trainingMode && (
-                                                    <td className="px-2 py-2">
-                                                        {!state.done ? (
-                                                            <select
-                                                                value={state.status}
-                                                                onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
-                                                                className="w-full p-2 border rounded text-xs bg-white text-gray-900 font-medium border-purple-300 focus:border-purple-500 ring-purple-200 shadow-sm"
-                                                            >
-                                                                {/* Group by group_name */}
-                                                                {(() => {
-                                                                    const grouped: Record<string, typeof availableStatuses> = {};
-                                                                    availableStatuses.forEach(s => {
-                                                                        const g = s.group_name || 'Другое';
-                                                                        if (!grouped[g]) grouped[g] = [];
-                                                                        grouped[g].push(s);
-                                                                    });
+                                            {!isHidden('client_comment') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] min-w-[150px] max-w-[250px]">Клиент</th>}
+                                            {!isHidden('manager_comment') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] min-w-[150px] max-w-[250px]">Менеджер</th>}
+                                            {!isHidden('logistic_comment') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] min-w-[150px] max-w-[250px]">Логист</th>}
 
-                                                                    return Object.entries(grouped).sort().map(([group, statuses]) => (
-                                                                        <optgroup key={group} label={group}>
-                                                                            {statuses.map(s => (
-                                                                                <option key={s.code} value={s.code}>{s.name}</option>
-                                                                            ))}
-                                                                        </optgroup>
-                                                                    ));
-                                                                })()}
-                                                                {!availableStatuses.find(s => s.code === state.status) && (
-                                                                    <option value={state.status}>{state.status}</option>
-                                                                )}
-                                                            </select>
-                                                        ) : (
-                                                            /* Show what was applied */
-                                                            <span className="text-xs font-bold text-purple-700">
-                                                                {availableStatuses.find(s => s.code === state.status)?.name || state.status}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                )}
-
-                                                <td className="px-2 py-2">
-                                                    <span className={`font-semibold text-xs ${result.confidence >= 0.8 ? 'text-green-600' :
-                                                        result.confidence >= 0.6 ? 'text-yellow-600' :
-                                                            'text-red-600'
-                                                        }`}>
-                                                        {(result.confidence * 100).toFixed(0)}%
-                                                    </span>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    {trainingMode && !state.done ? (
-                                                        <textarea
-                                                            value={state.comment}
-                                                            onChange={(e) => updateTrainingState(result.order_id, 'comment', e.target.value)}
-                                                            className="w-full p-2 border rounded text-xs min-h-[100px] leading-relaxed"
-                                                            placeholder="Обоснование решения..."
-                                                        />
-                                                    ) : (
-                                                        <div className="text-xs text-gray-600 max-h-60 overflow-y-auto whitespace-pre-wrap">
-                                                            {result.reasoning}
-                                                        </div>
+                                            {!isHidden('to_status') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-32 whitespace-nowrap">Решение ИИ</th>}
+                                            
+                                            {trainingMode && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-64 whitespace-nowrap text-purple-600">Ваш Выбор</th>}
+                                            
+                                            {!isHidden('confidence') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-12 whitespace-nowrap">Conf</th>}
+                                            {!isHidden('reasoning') && <th className="px-3 py-3 text-left font-bold text-gray-500 uppercase tracking-wider text-[10px] w-[30%] min-w-[250px]">Обоснование</th>}
+                                            
+                                            {trainingMode && <th className="px-3 py-3 text-center font-bold text-gray-500 uppercase tracking-wider text-[10px] w-24">Действие</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100 italic-comments">
+                                        {results.map((result) => {
+                                            const state = trainingState[result.order_id] || {};
+                                            return (
+                                                <tr key={result.order_id} className={`hover:bg-gray-50/50 transition-colors ${state.done ? 'bg-green-50' : ''}`}>
+                                                    {!isHidden('order_id') && (
+                                                        <td className="px-3 py-3">
+                                                            <div className="flex flex-col gap-1">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <a
+                                                                        href={result.retail_crm_url ? `${result.retail_crm_url}/orders/${result.order_id}/edit` : '#'}
+                                                                        target={result.retail_crm_url ? "_blank" : undefined}
+                                                                        rel="noopener noreferrer"
+                                                                        className="text-blue-600 hover:underline font-bold text-xs"
+                                                                        onClick={e => !result.retail_crm_url && e.preventDefault()}
+                                                                    >
+                                                                        #{result.order_id}
+                                                                    </a>
+                                                                    <button
+                                                                        onClick={() => setSelectedOrderId(result.order_id)}
+                                                                        className="px-2 py-0.5 text-[10px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors shrink-0"
+                                                                        title="Открыть карточку заказа"
+                                                                    >
+                                                                        Карточка
+                                                                    </button>
+                                                                </div>
+                                                                <span className="text-[11px] font-bold text-gray-700">
+                                                                    {result.total_sum?.toLocaleString('ru-RU')} ₽
+                                                                </span>
+                                                            </div>
+                                                        </td>
                                                     )}
-                                                </td>
-                                                {trainingMode && (
-                                                    <td className="px-4 py-2 text-center">
-                                                        {state.done ? (
-                                                            <span className="text-green-600 font-bold">✓ Готово</span>
-                                                        ) : (
-                                                            <button
-                                                                onClick={() => handleTrainApply(result.order_id)}
-                                                                disabled={state.loading}
-                                                                className="px-3 py-1 bg-purple-600 text-white rounded text-xs hover:bg-purple-700 disabled:opacity-50"
+
+                                                    {!isHidden('manager_name') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-xs font-semibold text-gray-700">{result.manager_name || '—'}</span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('current_status') && (
+                                                        <td className="px-3 py-3">
+                                                            <span
+                                                                className="inline-block px-2 py-0.5 text-[9px] font-black rounded uppercase border shadow-sm tracking-wider"
+                                                                style={{
+                                                                    borderColor: result.current_status_color || '#e5e7eb',
+                                                                    backgroundColor: result.current_status_color ? `${result.current_status_color}30` : '#f3f4f6',
+                                                                    color: '#111827'
+                                                                }}
                                                             >
-                                                                {state.loading ? '...' : 'Обучить'}
-                                                            </button>
-                                                        )}
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
+                                                                {result.current_status_name || result.from_status}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('country') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-[11px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border">{result.country || 'RU'}</span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('category') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-[11px] text-gray-600 truncate block max-w-[120px]" title={result.category}>
+                                                                {result.category || '—'}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('purchase_form') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-[11px] text-gray-600 truncate block max-w-[120px]" title={result.purchase_form}>
+                                                                {result.purchase_form || '—'}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('sphere') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className="text-[11px] text-gray-600 truncate block max-w-[120px]" title={result.sphere}>
+                                                                {result.sphere || '—'}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('client_comment') && (
+                                                        <td className="px-3 py-3">
+                                                            <div className="text-[10px] leading-relaxed text-gray-500 max-h-20 overflow-y-auto pr-1 italic scrollbar-hide" title={result.client_comment}>
+                                                                {result.client_comment || <span className="opacity-30">Нет комментария</span>}
+                                                            </div>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('manager_comment') && (
+                                                        <td className="px-3 py-3">
+                                                            <div className="text-[10px] leading-relaxed text-gray-500 max-h-20 overflow-y-auto pr-1 italic scrollbar-hide" title={result.manager_comment}>
+                                                                {result.manager_comment || <span className="opacity-30">Нет комментария</span>}
+                                                            </div>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('logistic_comment') && (
+                                                        <td className="px-3 py-3">
+                                                            <div className="text-[10px] leading-relaxed text-gray-500 max-h-20 overflow-y-auto pr-1 italic scrollbar-hide" title={result.logistic_comment}>
+                                                                {result.logistic_comment || <span className="opacity-30">Нет комментария</span>}
+                                                            </div>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('to_status') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className={`inline-block px-2 py-0.5 text-[9px] font-black rounded uppercase border tracking-wider ${getStatusBadge(result.to_status)}`}>
+                                                                {result.to_status_name || result.to_status}
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {trainingMode && (
+                                                        <td className="px-3 py-3">
+                                                            {!state.done ? (
+                                                                <select
+                                                                    value={state.status}
+                                                                    onChange={(e) => updateTrainingState(result.order_id, 'status', e.target.value)}
+                                                                    className="w-full p-2 border rounded text-xs bg-white text-gray-900 font-bold border-purple-200 focus:border-purple-500 ring-purple-100 shadow-sm"
+                                                                >
+                                                                    {(() => {
+                                                                        const grouped: Record<string, typeof availableStatuses> = {};
+                                                                        availableStatuses.forEach(s => {
+                                                                            const g = s.group_name || 'Другое';
+                                                                            if (!grouped[g]) grouped[g] = [];
+                                                                            grouped[g].push(s);
+                                                                        });
+
+                                                                        return Object.entries(grouped).sort().map(([group, statuses]) => (
+                                                                            <optgroup key={group} label={group}>
+                                                                                {statuses.map(s => (
+                                                                                    <option key={s.code} value={s.code}>{s.name}</option>
+                                                                                ))}
+                                                                            </optgroup>
+                                                                        ));
+                                                                    })()}
+                                                                    {!availableStatuses.find(s => s.code === state.status) && (
+                                                                        <option value={state.status}>{state.status}</option>
+                                                                    )}
+                                                                </select>
+                                                            ) : (
+                                                                <span className="text-xs font-bold text-purple-700">
+                                                                    {availableStatuses.find(s => s.code === state.status)?.name || state.status}
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('confidence') && (
+                                                        <td className="px-3 py-3">
+                                                            <span className={`font-black text-[10px] ${result.confidence >= 0.8 ? 'text-green-600' :
+                                                                result.confidence >= 0.6 ? 'text-yellow-600' :
+                                                                    'text-red-600'
+                                                                }`}>
+                                                                {(result.confidence * 100).toFixed(0)}%
+                                                            </span>
+                                                        </td>
+                                                    )}
+
+                                                    {!isHidden('reasoning') && (
+                                                        <td className="px-3 py-3">
+                                                            {trainingMode && !state.done ? (
+                                                                <textarea
+                                                                    value={state.comment}
+                                                                    onChange={(e) => updateTrainingState(result.order_id, 'comment', e.target.value)}
+                                                                    className="w-full p-2 border rounded text-[11px] min-h-[80px] leading-relaxed font-medium"
+                                                                    placeholder="Обоснование решения..."
+                                                                />
+                                                            ) : (
+                                                                <div className="text-[11px] text-gray-600 max-h-40 overflow-y-auto whitespace-pre-wrap leading-relaxed pr-2 custom-scrollbar">
+                                                                    {result.reasoning}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    )}
+
+                                                    {trainingMode && (
+                                                        <td className="px-3 py-3 text-center">
+                                                            {state.done ? (
+                                                                <div className="flex flex-col items-center">
+                                                                    <span className="text-green-600 text-xl">✓</span>
+                                                                    <span className="text-[9px] font-black uppercase text-green-700 tracking-tighter">Готово</span>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => handleTrainApply(result.order_id)}
+                                                                    disabled={state.loading}
+                                                                    className="w-full px-2 py-2 bg-purple-600 text-white rounded-lg text-[10px] font-black uppercase tracking-tighter hover:bg-purple-700 disabled:opacity-50 shadow-sm transition-all shadow-purple-100"
+                                                                >
+                                                                    {state.loading ? '...' : 'Обучить'}
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
             </div>
+            
+            <style jsx>{`
+                .custom-scrollbar::-webkit-scrollbar {
+                    width: 4px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb {
+                    background: #e2e8f0;
+                    border-radius: 10px;
+                }
+                .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                    background: #cbd5e1;
+                }
+                .scrollbar-hide::-webkit-scrollbar {
+                    display: none;
+                }
+                .scrollbar-hide {
+                    -ms-overflow-style: none;
+                    scrollbar-width: none;
+                }
+            `}</style>
         </div>
     );
 }
+
+const InfoField = ({ label, value, required }: { label: string; value?: React.ReactNode; required?: boolean }) => (
+    <div className="space-y-1">
+        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-1">
+            {label}
+            {required && <span className="text-red-500">*</span>}
+        </div>
+        <div className="px-3 py-1.5 rounded-lg border text-xs bg-gray-50 border-gray-100 text-gray-900 font-medium">
+            {value ?? <span className="text-gray-300">Не указано</span>}
+        </div>
+    </div>
+);
