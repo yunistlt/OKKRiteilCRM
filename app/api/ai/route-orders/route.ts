@@ -149,34 +149,42 @@ export async function POST(request: Request) {
 
         const customRoutingPrompt = routingPromptData?.content || undefined;
 
-        // 0d. Fetch Custom Field Definitions for human names
+        // 0d. Fetch Custom Field Definitions from Supabase for human names
         let cfDictionary: Record<string, Record<string, string>> = {};
         try {
-            const baseUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
-            const apiKey = (process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY)?.trim();
-            if (baseUrl && apiKey) {
-                const cfResponse = await fetch(`${baseUrl}/api/v5/custom-fields?apiKey=${apiKey}&entity=order`);
-                const cfData = await cfResponse.json();
-                if (cfData.success && cfData.customFields) {
-                    cfData.customFields.forEach((cf: any) => {
-                        if (cf.options) {
-                            cfDictionary[cf.code] = {};
-                            cf.options.forEach((opt: any) => {
-                                cfDictionary[cf.code][opt.value] = opt.name;
-                            });
-                        }
-                    });
-                }
+            const { data: dbDict } = await supabase
+                .from('retailcrm_dictionaries')
+                .select('dictionary_code, item_code, item_name');
+
+            if (dbDict) {
+                dbDict.forEach((item: any) => {
+                    if (!cfDictionary[item.dictionary_code]) {
+                        cfDictionary[item.dictionary_code] = {};
+                    }
+                    cfDictionary[item.dictionary_code][item.item_code] = item.item_name;
+                } );
             }
         } catch (cfErr) {
-            console.warn('[AIRouter] Failed to fetch custom field definitions:', cfErr);
+            console.warn('[AIRouter] Failed to fetch custom field definitions from DB:', cfErr);
         }
 
         const getHumanName = (fieldCode: string, optionCode: any) => {
             if (!optionCode) return '';
-            if (cfDictionary[fieldCode] && cfDictionary[fieldCode][optionCode]) {
-                return cfDictionary[fieldCode][optionCode];
+            // Try normalized match
+            const dict = cfDictionary[fieldCode];
+            if (dict && dict[optionCode]) return dict[optionCode];
+            
+            // Fallback for some common field mappings
+            const mapping: Record<string, string> = {
+                'tovarnaya_kategoriya': 'product_category',
+                'sfera_deiatelnosti': 'industry',
+                'forma_zakupki': 'purchase_form'
+            };
+            const altCode = mapping[fieldCode];
+            if (altCode && cfDictionary[altCode] && cfDictionary[altCode][optionCode]) {
+                return cfDictionary[altCode][optionCode];
             }
+
             return optionCode;
         };
 

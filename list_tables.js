@@ -24,36 +24,27 @@ async function run() {
 
     try {
         await client.connect();
+        
+        // List unique dictionary codes
+        const codes = await client.query(`
+            SELECT DISTINCT dictionary_code 
+            FROM retailcrm_dictionaries;
+        `);
+        console.log("CODES_START");
+        codes.rows.forEach(r => console.log(r.dictionary_code));
+        console.log("CODES_END");
+
+        // Fetch mappings
         const res = await client.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public' 
-      ORDER BY table_name;
-    `);
-        console.log("Tables in public schema:");
-        res.rows.forEach(r => console.log(` - ${r.table_name}`));
+            SELECT dictionary_code, item_code, item_name 
+            FROM retailcrm_dictionaries 
+            WHERE dictionary_code IN ('tovarnaya_kategoriya', 'sfera_deiatelnosti', 'forma_zakupki', 'industry', 'product_category')
+            LIMIT 200;
+        `);
+        console.log("MAPPINGS_START");
+        res.rows.forEach(r => console.log(`${r.dictionary_code}|${r.item_code}|${r.item_name}`));
+        console.log("MAPPINGS_END");
 
-        // Check if okk_violations exists and its structure
-        const checkViolations = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'okk_violations';
-    `);
-        if (checkViolations.rows.length > 0) {
-            console.log("\nokk_violations structure:");
-            checkViolations.rows.forEach(r => console.log(` - ${r.column_name} (${r.data_type})`));
-        }
-
-        // Check clients table structure
-        const checkClients = await client.query(`
-      SELECT column_name, data_type 
-      FROM information_schema.columns 
-      WHERE table_name = 'clients';
-    `);
-        if (checkClients.rows.length > 0) {
-            console.log("\nclients structure:");
-            checkClients.rows.forEach(r => console.log(` - ${r.column_name} (${r.data_type})`));
-        }
     } catch (e) {
         console.error("DB Error:", e.message);
     } finally {
