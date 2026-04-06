@@ -174,11 +174,17 @@ export async function POST(request: Request) {
             const dict = cfDictionary[fieldCode];
             if (dict && dict[optionCode]) return dict[optionCode];
             
-            // Fallback for some common field mappings
+            // Fallback for some common field mappings to Supabase dictionary_code
             const mapping: Record<string, string> = {
-                'tovarnaya_kategoriya': 'product_category',
-                'sfera_deiatelnosti': 'industry',
-                'forma_zakupki': 'purchase_form'
+                'tovarnaya_kategoriya': 'kategoriya_klienta',
+                'product_category': 'kategoriya_klienta',
+                'type_customer': 'kategoriya_klienta',
+                'typ_castomer': 'kategoriya_klienta',
+                'kategoriya_klienta': 'kategoriya_klienta',
+                'sfera_deiatelnosti': 'sfera_deiatelnosti',
+                'industry': 'sfera_deiatelnosti',
+                'forma_zakupki': 'forma_zakupki',
+                'purchase_form': 'forma_zakupki'
             };
             const altCode = mapping[fieldCode];
             if (altCode && cfDictionary[altCode] && cfDictionary[altCode][optionCode]) {
@@ -258,6 +264,7 @@ export async function POST(request: Request) {
                 
                 const catValue = cfs.tovarnaya_kategoriya ? getHumanName('tovarnaya_kategoriya', cfs.tovarnaya_kategoriya) :
                                  cfs.product_category ? getHumanName('product_category', cfs.product_category) :
+                                 cfs.kategoriya_klienta ? getHumanName('kategoriya_klienta', cfs.kategoriya_klienta) :
                                  cfs.typ_castomer ? getHumanName('typ_castomer', cfs.typ_castomer) : '';
 
                 const pfValue = cfs.forma_zakupki ? getHumanName('forma_zakupki', cfs.forma_zakupki) :

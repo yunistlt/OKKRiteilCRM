@@ -25,25 +25,30 @@ async function run() {
     try {
         await client.connect();
         
-        // List unique dictionary codes
+        // Find dictionary_code for the problematic item
+        const res = await client.query(`
+            SELECT dictionary_code, item_code, item_name 
+            FROM retailcrm_dictionaries 
+            WHERE item_code = 'stoly-montazhnye' 
+               OR item_code ILIKE '%stoly%'
+            LIMIT 10;
+        `);
+        console.log("SEARCH_RESULT_START");
+        res.rows.forEach(r => console.log(`${r.dictionary_code}|${r.item_code}|${r.item_name}`));
+        console.log("SEARCH_RESULT_END");
+
+        // List all category-related dictionary codes again just in case
         const codes = await client.query(`
             SELECT DISTINCT dictionary_code 
-            FROM retailcrm_dictionaries;
+            FROM retailcrm_dictionaries 
+            WHERE dictionary_code ILIKE '%category%' 
+               OR dictionary_code ILIKE '%kategoriya%'
+               OR dictionary_code ILIKE '%type%'
+            LIMIT 20;
         `);
         console.log("CODES_START");
         codes.rows.forEach(r => console.log(r.dictionary_code));
         console.log("CODES_END");
-
-        // Fetch mappings
-        const res = await client.query(`
-            SELECT dictionary_code, item_code, item_name 
-            FROM retailcrm_dictionaries 
-            WHERE dictionary_code IN ('tovarnaya_kategoriya', 'sfera_deiatelnosti', 'forma_zakupki', 'industry', 'product_category')
-            LIMIT 200;
-        `);
-        console.log("MAPPINGS_START");
-        res.rows.forEach(r => console.log(`${r.dictionary_code}|${r.item_code}|${r.item_name}`));
-        console.log("MAPPINGS_END");
 
     } catch (e) {
         console.error("DB Error:", e.message);
