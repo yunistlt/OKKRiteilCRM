@@ -1,7 +1,7 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Рабочее место аудитора (Дашборд ОКК).
 'use client';
 
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { MultiSelect } from '../components/MultiSelect';
@@ -233,6 +233,23 @@ function Pct({ n }: { n: number | null }) {
 // ─── Определение колонок с подсказками ───────────────────
 type ColDef = { key: string; label: string; type: 'bool' | 'text' | 'num'; tip: TooltipInfo };
 type Group = { label: string; color: string; cellBg: string; cols: ColDef[] };
+
+// Ключи, которые входят в расчёт deal_score_pct на бэкенде
+const DEAL_CHECK_KEYS = [
+    'tz_received', 'field_buyer_filled', 'field_product_category', 'field_contact_data',
+    'relevant_number_found', 'field_expected_amount', 'field_purchase_form', 'field_sphere_correct',
+    'mandatory_comments', 'email_sent_no_answer', 'lead_in_work_lt_1_day', 'next_contact_not_overdue',
+    'deal_in_status_lt_5_days',
+];
+
+// Ключи скрипт-колонок для расчёта script_score_pct
+const SCRIPT_CHECK_KEYS = [
+    'script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified',
+    'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed',
+    'script_objection_general', 'script_objection_delays', 'script_offer_best_tech',
+    'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell',
+    'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech',
+];
 
 const COL_GROUPS: Group[] = [
     {
@@ -468,6 +485,159 @@ const SCORE_COLS: Array<{ key: string; label: string; tip: TooltipInfo }> = [
     },
 ];
 
+// ─── Панель настройки колонок ──────────────────────────────
+const LOCALSTORAGE_KEY = 'okk_hidden_columns';
+
+function loadHiddenColumns(): Set<string> {
+    if (typeof window === 'undefined') return new Set();
+    try {
+        const saved = localStorage.getItem(LOCALSTORAGE_KEY);
+        if (saved) return new Set(JSON.parse(saved));
+    } catch {}
+    return new Set();
+}
+
+function saveHiddenColumns(hidden: Set<string>) {
+    try {
+        localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify(Array.from(hidden)));
+    } catch {}
+}
+
+/** Пересчитывает deal_score_pct с учётом скрытых колонок */
+function recalcDealScorePct(order: OrderScore, hiddenCols: Set<string>): number | null {
+    const activeKeys = DEAL_CHECK_KEYS.filter(k => !hiddenCols.has(k));
+    if (activeKeys.length === 0) return null;
+    const checks = activeKeys
+        .map(k => (order as any)[k] ?? order.score_breakdown?.[k]?.result ?? null)
+        .filter(v => v !== null && v !== undefined);
+    if (checks.length === 0) return null;
+    const passed = checks.filter(v => !!v).length;
+    return Math.round((passed / checks.length) * 100);
+}
+
+/** Пересчитывает script_score_pct с учётом скрытых колонок */
+function recalcScriptScorePct(order: OrderScore, hiddenCols: Set<string>): number | null {
+    const activeKeys = SCRIPT_CHECK_KEYS.filter(k => !hiddenCols.has(k));
+    if (activeKeys.length === 0) return null;
+    const checks = activeKeys
+        .map(k => {
+            const bd = order.score_breakdown?.[k];
+            if (bd && typeof bd === 'object' && bd.result !== undefined) return bd.result;
+            return (order as any)[k] ?? null;
+        })
+        .filter(v => v !== null && v !== undefined);
+    if (checks.length === 0) return null;
+    const passed = checks.filter(v => !!v).length;
+    return Math.round((passed / checks.length) * 100);
+}
+
+function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
+    hiddenColumns: Set<string>;
+    onToggle: (key: string) => void;
+    onClose: () => void;
+}) {
+    const panelRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClick(e: MouseEvent) {
+            if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+                onClose();
+            }
+        }
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [onClose]);
+
+    const allCols = COL_GROUPS.flatMap(g => g.cols);
+    const totalVisible = allCols.filter(c => !hiddenColumns.has(c.key)).length;
+
+    return (
+        <div ref={panelRef} className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-2xl shadow-2xl w-[420px] max-h-[70vh] overflow-hidden z-[100] animate-in fade-in zoom-in-95 duration-200 origin-top-left">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
+                <div>
+                    <h3 className="text-sm font-black text-gray-800">Настройка колонок</h3>
+                    <p className="text-[10px] text-gray-500 font-medium mt-0.5">Показано {totalVisible} из {allCols.length} колонок</p>
+                </div>
+                <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-white text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shadow-sm border border-gray-100">✕</button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(70vh-120px)] p-2">
+                {COL_GROUPS.map(group => {
+                    const groupVisible = group.cols.filter(c => !hiddenColumns.has(c.key)).length;
+                    const allChecked = groupVisible === group.cols.length;
+                    const noneChecked = groupVisible === 0;
+                    return (
+                        <div key={group.label} className="mb-1">
+                            <button
+                                onClick={() => {
+                                    // Toggle всей группы
+                                    if (allChecked) {
+                                        group.cols.forEach(c => { if (!hiddenColumns.has(c.key)) onToggle(c.key); });
+                                    } else {
+                                        group.cols.forEach(c => { if (hiddenColumns.has(c.key)) onToggle(c.key); });
+                                    }
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded-xl flex items-center gap-2 transition-colors hover:bg-gray-50 ${group.color}`}
+                            >
+                                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all text-[10px] font-black ${
+                                    allChecked ? 'bg-blue-600 border-blue-600 text-white' :
+                                    noneChecked ? 'bg-white border-gray-300' :
+                                    'bg-blue-100 border-blue-400 text-blue-600'
+                                }`}>
+                                    {allChecked ? '✓' : noneChecked ? '' : '−'}
+                                </span>
+                                <span className="text-xs font-bold flex-1">{group.label}</span>
+                                <span className="text-[10px] font-bold text-gray-400">{groupVisible}/{group.cols.length}</span>
+                            </button>
+                            <div className="ml-4 pl-3 border-l-2 border-gray-100 space-y-0.5 mt-0.5 mb-1">
+                                {group.cols.map(col => {
+                                    const visible = !hiddenColumns.has(col.key);
+                                    const isDealKey = DEAL_CHECK_KEYS.includes(col.key);
+                                    const isScriptKey = SCRIPT_CHECK_KEYS.includes(col.key);
+                                    return (
+                                        <button
+                                            key={col.key}
+                                            onClick={() => onToggle(col.key)}
+                                            className={`w-full text-left px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all text-xs group ${
+                                                visible ? 'hover:bg-blue-50/50 text-gray-700' : 'hover:bg-gray-50 text-gray-400'
+                                            }`}
+                                        >
+                                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all text-[9px] font-black ${
+                                                visible ? 'bg-blue-600 border-blue-600 text-white shadow-sm shadow-blue-200' : 'bg-white border-gray-300 group-hover:border-blue-300'
+                                            }`}>
+                                                {visible && '✓'}
+                                            </span>
+                                            <span className={`flex-1 leading-snug ${visible ? 'font-medium' : 'font-normal line-through decoration-gray-300'}`}>
+                                                {col.label}
+                                            </span>
+                                            {(isDealKey || isScriptKey) && (
+                                                <span className={`text-[8px] font-black px-1 py-0.5 rounded ${isDealKey ? 'bg-green-50 text-green-600' : 'bg-purple-50 text-purple-600'}`}>
+                                                    {isDealKey ? 'СДЕЛКА' : 'СКРИПТ'}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 font-medium italic">Скрытые колонки не учитываются в рейтинге</span>
+                <button
+                    onClick={() => {
+                        // Показать все
+                        hiddenColumns.forEach(k => onToggle(k));
+                    }}
+                    className="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition-colors px-2 py-1 rounded hover:bg-blue-50"
+                >
+                    Показать все
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // ─── Таймер обратного отсчета до Cron проверки ──────────
 function CountdownTimer() {
     const [timeLeft, setTimeLeft] = useState('');
@@ -538,6 +708,28 @@ function OKKContent() {
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const [user, setUser] = useState<User | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => loadHiddenColumns());
+    const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
+
+    const hasHiddenColumns = hiddenColumns.size > 0;
+
+    const toggleColumnVisibility = useCallback((key: string) => {
+        setHiddenColumns(prev => {
+            const next = new Set(prev);
+            if (next.has(key)) next.delete(key);
+            else next.add(key);
+            saveHiddenColumns(next);
+            return next;
+        });
+    }, []);
+
+    // Отфильтрованные группы колонок (только видимые)
+    const visibleColGroups = useMemo(() => {
+        return COL_GROUPS.map(g => ({
+            ...g,
+            cols: g.cols.filter(c => !hiddenColumns.has(c.key))
+        })).filter(g => g.cols.length > 0);
+    }, [hiddenColumns]);
 
     // Fetch active managers for dropdown
     useEffect(() => {
@@ -901,6 +1093,36 @@ function OKKContent() {
                     icon={<span className="text-[10px]">✨</span>}
                 />
 
+                {/* Кнопка настройки колонок */}
+                <div className="relative">
+                    <button
+                        onClick={() => setColumnSettingsOpen(prev => !prev)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all ${
+                            hasHiddenColumns
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 shadow-sm shadow-amber-100'
+                                : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+                        }`}
+                    >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Колонки
+                        {hasHiddenColumns && (
+                            <span className="bg-amber-500 text-white text-[8px] font-black px-1 py-0.5 rounded-full min-w-[16px] text-center leading-none">
+                                {hiddenColumns.size}
+                            </span>
+                        )}
+                    </button>
+                    {columnSettingsOpen && (
+                        <ColumnSettingsPanel
+                            hiddenColumns={hiddenColumns}
+                            onToggle={toggleColumnVisibility}
+                            onClose={() => setColumnSettingsOpen(false)}
+                        />
+                    )}
+                </div>
+
                 {/* Pagination (Compact inline) */}
                 {pagination.totalPages > 1 && (
                     <div className="flex items-center bg-gray-50 rounded p-0.5 border border-gray-100 shrink-0">
@@ -926,12 +1148,12 @@ function OKKContent() {
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[80px] w-[80px]">Заказ</th>
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px]">МОП</th>
                                 <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
-                                {COL_GROUPS.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
+                                {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
                                 <th rowSpan={2} className="px-2 py-2 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-xs min-w-[70px] w-[70px] relative">Нарушения</th>
                                 <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
                             </tr>
                             <tr className="bg-gray-50 border-b border-gray-200 shadow-sm">
-                                {COL_GROUPS.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
+                                {visibleColGroups.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
                                 {SCORE_COLS.map(col => <ColTh key={col.key} col={col as any} />)}
                             </tr>
                         </thead>
@@ -963,7 +1185,7 @@ function OKKContent() {
                                         </td>
                                         <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
                                         <td className={`px-2 py-1.5 sticky left-[260px] min-w-[160px] w-[160px] max-w-[160px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
-                                        {COL_GROUPS.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
+                                        {visibleColGroups.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
                                         <td className="px-2 py-1.5 text-center border-r border-gray-200 bg-red-50/30">
                                             {s.violations && s.violations.length > 0 ? (
                                                 <button onClick={() => setSelectedViolationsOrder(s)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-0.5 rounded text-xs font-bold transition-colors">
@@ -973,10 +1195,24 @@ function OKKContent() {
                                                 <span className="text-gray-400 text-xs font-semibold">0</span>
                                             )}
                                         </td>
-                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{s.deal_score ?? '—'}</td>
-                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={s.deal_score_pct} /></td>
-                                        <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{s.script_score ?? '—'}</td>
-                                        <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={s.script_score_pct} /></td>
+                                        {(() => {
+                                            const adjDeal = hasHiddenColumns ? recalcDealScorePct(s, hiddenColumns) : s.deal_score_pct;
+                                            const adjScript = hasHiddenColumns ? recalcScriptScorePct(s, hiddenColumns) : s.script_score_pct;
+                                            const adjDealScore = hasHiddenColumns
+                                                ? (adjDeal !== null ? Math.round((adjDeal / 100) * DEAL_CHECK_KEYS.filter(k => !hiddenColumns.has(k)).length) : null)
+                                                : s.deal_score;
+                                            const adjScriptScore = hasHiddenColumns
+                                                ? (adjScript !== null ? Math.round((adjScript / 100) * SCRIPT_CHECK_KEYS.filter(k => !hiddenColumns.has(k)).length) : null)
+                                                : s.script_score;
+                                            return (
+                                                <>
+                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{adjDealScore ?? '—'}</td>
+                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={adjDeal} /></td>
+                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{adjScriptScore ?? '—'}</td>
+                                                    <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={adjScript} /></td>
+                                                </>
+                                            );
+                                        })()}
                                     </tr>
                                 )
                             })}
