@@ -49,6 +49,9 @@ export default function AIRouterPanel() {
     const [error, setError] = useState<string | null>(null);
     const [pendingCount, setPendingCount] = useState<number | null>(null);
 
+    // Hydration fix
+    const [isMounted, setIsMounted] = useState(false);
+
     // Fetch allowed AI statuses on mount or when mode toggles
     const fetchStatuses = async () => {
         try {
@@ -76,6 +79,7 @@ export default function AIRouterPanel() {
 
     // Initial fetch
     useEffect(() => {
+        setIsMounted(true);
         fetchStatuses();
         fetchPendingCount();
     }, []);
@@ -216,29 +220,29 @@ export default function AIRouterPanel() {
         localStorage.setItem('ai_router_hidden_columns', JSON.stringify(Array.from(next)));
     };
 
-    const COL_GROUPS = {
-        'Основные': [
-            { key: 'order_id', label: 'Заказ / Сумма' },
-            { key: 'manager_name', label: 'Менеджер' },
-            { key: 'current_status', label: 'Текущий' },
-            { key: 'country', label: 'Страна' },
-        ],
-        'Характеристики': [
-            { key: 'category', label: 'Категория' },
-            { key: 'purchase_form', label: 'Форма закупки' },
-            { key: 'sphere', label: 'Сфера' },
-        ],
-        'Комментарии': [
-            { key: 'client_comment', label: 'Коммент. Клиента' },
-            { key: 'manager_comment', label: 'Коммент. Менеджера' },
-            { key: 'logistic_comment', label: 'Коммент. Логиста' },
-        ],
-        'Решение ИИ': [
-            { key: 'to_status', label: 'Решение ИИ' },
-            { key: 'confidence', label: 'Conf' },
-            { key: 'reasoning', label: 'Обоснование' },
-        ]
-    };
+const COL_GROUPS = {
+    'Основные': [
+        { key: 'order_id', label: 'Заказ / Сумма' },
+        { key: 'manager_name', label: 'Менеджер' },
+        { key: 'current_status', label: 'Текущий' },
+        { key: 'country', label: 'Страна' },
+    ],
+    'Характеристики': [
+        { key: 'category', label: 'Категория' },
+        { key: 'purchase_form', label: 'Форма закупки' },
+        { key: 'sphere', label: 'Сфера' },
+    ],
+    'Комментарии': [
+        { key: 'client_comment', label: 'Коммент. Клиента' },
+        { key: 'manager_comment', label: 'Коммент. Менеджера' },
+        { key: 'logistic_comment', label: 'Коммент. Логиста' },
+    ],
+    'Решение ИИ': [
+        { key: 'to_status', label: 'Решение ИИ' },
+        { key: 'confidence', label: 'Conf' },
+        { key: 'reasoning', label: 'Обоснование' },
+    ]
+};
 
     const isHidden = (key: string) => hiddenColumns.has(key);
 
@@ -287,8 +291,14 @@ export default function AIRouterPanel() {
         </div>
     );
 
+    if (!isMounted) return (
+        <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-8 flex justify-center items-center h-[200px]">
+             <div className="animate-spin text-2xl">⚙️</div>
+        </div>
+    );
+
     return (
-        <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+<div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
             {selectedOrderId && (
                 <OrderDetailsModal
                     orderId={selectedOrderId}
