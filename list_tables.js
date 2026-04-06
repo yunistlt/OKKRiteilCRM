@@ -25,30 +25,31 @@ async function run() {
     try {
         await client.connect();
         
-        // Find dictionary_code for the problematic item
-        const res = await client.query(`
-            SELECT dictionary_code, item_code, item_name 
-            FROM retailcrm_dictionaries 
-            WHERE item_code = 'stoly-montazhnye' 
-               OR item_code ILIKE '%stoly%'
-            LIMIT 10;
-        `);
-        console.log("SEARCH_RESULT_START");
-        res.rows.forEach(r => console.log(`${r.dictionary_code}|${r.item_code}|${r.item_name}`));
-        console.log("SEARCH_RESULT_END");
+        // Count total rows
+        const countRes = await client.query('SELECT count(*) FROM retailcrm_dictionaries');
+        console.log("TOTAL_ROWS:", countRes.rows[0].count);
 
-        // List all category-related dictionary codes again just in case
-        const codes = await client.query(`
-            SELECT DISTINCT dictionary_code 
+        // List unique dictionary codes with their item counts
+        const codesRes = await client.query(`
+            SELECT dictionary_code, count(*) as item_count 
             FROM retailcrm_dictionaries 
-            WHERE dictionary_code ILIKE '%category%' 
-               OR dictionary_code ILIKE '%kategoriya%'
-               OR dictionary_code ILIKE '%type%'
+            GROUP BY dictionary_code 
+            ORDER BY dictionary_code;
+        `);
+        console.log("DICTIONARY_CODES_START");
+        codesRes.rows.forEach(r => console.log(`${r.dictionary_code}|${r.item_count}`));
+        console.log("DICTIONARY_CODES_END");
+
+        // Fetch sample items for kategoriya_klienta to verify
+        const samples = await client.query(`
+            SELECT item_code, item_name 
+            FROM retailcrm_dictionaries 
+            WHERE dictionary_code = 'kategoriya_klienta'
             LIMIT 20;
         `);
-        console.log("CODES_START");
-        codes.rows.forEach(r => console.log(r.dictionary_code));
-        console.log("CODES_END");
+        console.log("SAMPLES_START");
+        samples.rows.forEach(r => console.log(`${r.item_code}|${r.item_name}`));
+        console.log("SAMPLES_END");
 
     } catch (e) {
         console.error("DB Error:", e.message);

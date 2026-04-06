@@ -178,6 +178,8 @@ export async function POST(request: Request) {
             const mapping: Record<string, string> = {
                 'tovarnaya_kategoriya': 'kategoriya_klienta',
                 'product_category': 'kategoriya_klienta',
+                'category': 'kategoriya_klienta',
+                'kategoriya': 'kategoriya_klienta',
                 'type_customer': 'kategoriya_klienta',
                 'typ_castomer': 'kategoriya_klienta',
                 'kategoriya_klienta': 'kategoriya_klienta',
@@ -262,9 +264,17 @@ export async function POST(request: Request) {
                 // Extra details from Custom Fields
                 const cfs = retailcrmOrder.customFields || {};
                 
+                // Debug log for category field discovery
+                if (Object.keys(cfs).length > 0) {
+                    console.log(`[AIRouter] Order ${order.id} keys:`, Object.keys(cfs).filter(k => k.includes('cat') || k.includes('kat') || k.includes('type')));
+                }
+
                 const catValue = cfs.tovarnaya_kategoriya ? getHumanName('tovarnaya_kategoriya', cfs.tovarnaya_kategoriya) :
                                  cfs.product_category ? getHumanName('product_category', cfs.product_category) :
                                  cfs.kategoriya_klienta ? getHumanName('kategoriya_klienta', cfs.kategoriya_klienta) :
+                                 cfs.category ? getHumanName('category', cfs.category) :
+                                 cfs.kategoriya ? getHumanName('kategoriya', cfs.kategoriya) :
+                                 cfs.type_customer ? getHumanName('type_customer', cfs.type_customer) :
                                  cfs.typ_castomer ? getHumanName('typ_castomer', cfs.typ_castomer) : '';
 
                 const pfValue = cfs.forma_zakupki ? getHumanName('forma_zakupki', cfs.forma_zakupki) :
