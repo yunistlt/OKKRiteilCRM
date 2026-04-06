@@ -149,6 +149,37 @@ export async function POST(request: Request) {
 
         const customRoutingPrompt = routingPromptData?.content || undefined;
 
+        // 0d. Fetch Custom Field Definitions for human names
+        let cfDictionary: Record<string, Record<string, string>> = {};
+        try {
+            const baseUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL)?.replace(/\/$/, '');
+            const apiKey = (process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY)?.trim();
+            if (baseUrl && apiKey) {
+                const cfResponse = await fetch(`${baseUrl}/api/v5/custom-fields?apiKey=${apiKey}&entity=order`);
+                const cfData = await cfResponse.json();
+                if (cfData.success && cfData.customFields) {
+                    cfData.customFields.forEach((cf: any) => {
+                        if (cf.options) {
+                            cfDictionary[cf.code] = {};
+                            cf.options.forEach((opt: any) => {
+                                cfDictionary[cf.code][opt.value] = opt.name;
+                            });
+                        }
+                    });
+                }
+            }
+        } catch (cfErr) {
+            console.warn('[AIRouter] Failed to fetch custom field definitions:', cfErr);
+        }
+
+        const getHumanName = (fieldCode: string, optionCode: any) => {
+            if (!optionCode) return '';
+            if (cfDictionary[fieldCode] && cfDictionary[fieldCode][optionCode]) {
+                return cfDictionary[fieldCode][optionCode];
+            }
+            return optionCode;
+        };
+
         console.log(`[AIRouter] Custom Routing Prompt present: ${!!customRoutingPrompt}`);
 
         // 1. Fetch orders in "Согласование отмены" status
@@ -216,14 +247,25 @@ export async function POST(request: Request) {
 
                 // Extra details from Custom Fields
                 const cfs = retailcrmOrder.customFields || {};
+                
+                const catValue = cfs.tovarnaya_kategoriya ? getHumanName('tovarnaya_kategoriya', cfs.tovarnaya_kategoriya) :
+                                 cfs.product_category ? getHumanName('product_category', cfs.product_category) :
+                                 cfs.typ_castomer ? getHumanName('typ_castomer', cfs.typ_castomer) : '';
+
+                const pfValue = cfs.forma_zakupki ? getHumanName('forma_zakupki', cfs.forma_zakupki) :
+                                cfs.purchase_form ? getHumanName('purchase_form', cfs.purchase_form) : '';
+
+                const sphValue = cfs.sfera_deiatelnosti ? getHumanName('sfera_deiatelnosti', cfs.sfera_deiatelnosti) :
+                                 cfs.industry ? getHumanName('industry', cfs.industry) : '';
+
                 const extraData = {
                     manager_name: retailcrmOrder.manager?.firstName 
                         ? `${retailcrmOrder.manager.lastName || ''} ${retailcrmOrder.manager.firstName}`.trim() 
                         : (cfs.change_name_manager || 'Не назначен'),
                     country: retailcrmOrder.countryIso || 'RU',
-                    category: cfs.tovarnaya_kategoriya || cfs.product_category || cfs.typ_castomer || '',
-                    purchase_form: cfs.forma_zakupki || cfs.purchase_form || '',
-                    sphere: cfs.sfera_deiatelnosti || cfs.industry || '',
+                    category: catValue,
+                    purchase_form: pfValue,
+                    sphere: sphValue,
                     client_comment: retailcrmOrder.customerComment || '',
                     manager_comment: retailcrmOrder.managerComment || '',
                     logistic_comment: cfs.komment_diveleri || ''
