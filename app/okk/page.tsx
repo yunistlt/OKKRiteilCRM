@@ -492,7 +492,10 @@ function loadHiddenColumns(): Set<string> {
     if (typeof window === 'undefined') return new Set();
     try {
         const saved = localStorage.getItem(LOCALSTORAGE_KEY);
-        if (saved) return new Set(JSON.parse(saved));
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) return new Set(parsed);
+        }
     } catch {}
     return new Set();
 }
@@ -776,7 +779,7 @@ function OKKContent() {
 
             const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
-            setScores(json.scores || []);
+            setScores(Array.isArray(json.scores) ? json.scores : []);
             if (json.pagination) {
                 setPagination(prev => ({ ...prev, ...json.pagination }));
             }
@@ -864,7 +867,8 @@ function OKKContent() {
         }
     };
 
-    const filtered = [...scores].sort((a, b) => {
+    const safeScores = Array.isArray(scores) ? scores : [];
+    const filtered = [...safeScores].sort((a, b) => {
         const va = (a as any)[sortBy] ?? '';
         const vb = (b as any)[sortBy] ?? '';
         return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);

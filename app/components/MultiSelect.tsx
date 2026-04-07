@@ -31,7 +31,8 @@ export function MultiSelect({ options, selectedValues, onChange, placeholder, ic
         if (selectedValues.includes(value)) {
             onChange(selectedValues.filter(v => v !== value));
         } else {
-            onChange([...selectedValues, value]);
+            const safeSelected = Array.isArray(selectedValues) ? selectedValues : [];
+            onChange([...safeSelected, value]);
         }
     };
 

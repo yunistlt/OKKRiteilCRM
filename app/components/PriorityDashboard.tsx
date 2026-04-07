@@ -66,7 +66,7 @@ export const PriorityDashboard = () => {
             // Build Query Params
             const params = new URLSearchParams();
 
-            if (activeFilters.statuses.length > 0) {
+            if (Array.isArray(activeFilters.statuses) && activeFilters.statuses.length > 0) {
                 params.set('statuses', activeFilters.statuses.join(','));
             }
             if (activeFilters.control && activeFilters.control !== 'all') {
@@ -168,7 +168,7 @@ export const PriorityDashboard = () => {
     const toggleStatus = (code: string) => {
         setActivePresetId(null); // Reset preset highlighting on manual change
         setFilters(prev => {
-            const current = prev.statuses;
+            const current = Array.isArray(prev.statuses) ? prev.statuses : [];
             if (current.includes(code)) {
                 return { ...prev, statuses: current.filter(c => c !== code) };
             } else {
@@ -488,7 +488,8 @@ export const PriorityDashboard = () => {
                         <div className="text-2xl font-bold mb-2">{filteredOrders.length}</div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1 hidden md:block">
                             {(() => {
-                                const stats = filteredOrders.reduce((acc: any, o) => {
+                                const safeOrders = Array.isArray(filteredOrders) ? filteredOrders : [];
+                                const stats = safeOrders.reduce((acc: any, o) => {
                                     const name = o.managerName || 'Не назначен';
                                     acc[name] = (acc[name] || 0) + 1;
                                     return acc;
@@ -530,7 +531,8 @@ export const PriorityDashboard = () => {
                         </div>
                         <div className="text-xs text-muted-foreground space-y-0.5 max-h-[150px] overflow-y-auto pr-1 hidden md:block">
                             {(() => {
-                                const stats = filteredOrders
+                                const safeOrders = Array.isArray(filteredOrders) ? filteredOrders : [];
+                                const stats = safeOrders
                                     .filter(o => o.today_stats.status === 'overdue')
                                     .reduce((acc: any, o) => {
                                         const name = o.managerName || 'Не назначен';
