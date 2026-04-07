@@ -23,6 +23,9 @@ async function main() {
         }
 
         // 2. Fetch Candidates
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
         const { data: calls, error } = await supabase
             .from('raw_telphin_calls')
             .select(`
@@ -34,8 +37,10 @@ async function main() {
             `)
             .eq('transcription_status', 'pending')
             .not('recording_url', 'is', null)
+            .gte('started_at', thirtyDaysAgo.toISOString()) // Filter by date to avoid timeouts
             .in('matches.orders.status', transcribableStatuses)
-            .order('started_at', { ascending: false });
+            .order('started_at', { ascending: false })
+            .limit(50); // Small chunk to ensure processing completes
 
         if (error) {
             console.error('Fetch error:', error);

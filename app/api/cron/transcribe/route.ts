@@ -47,12 +47,21 @@ export async function GET(req: Request) {
             .gte('started_at', thirtyDaysAgo.toISOString())
             .in('matches.orders.status', transcribableStatuses)
             .order('started_at', { ascending: false })
-            .limit(20);
+            .limit(10); // Reduced to 10 to avoid timeouts
 
         if (error) {
             console.error('[Cron] Fetch candidates error:', error);
             throw new Error(error.message);
         }
+
+        // [Heartbeat] Update sync_state early to signal start
+        await supabase
+            .from('sync_state')
+            .upsert({
+                key: 'transcription_last_run',
+                value: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
 
         if (!calls || calls.length === 0) {
             return NextResponse.json({ message: 'No transcribable pending calls found.' });
@@ -101,15 +110,6 @@ export async function GET(req: Request) {
                 results.push({ id: call.event_id, status: 'error', error: e.message });
             }
         }
-
-        // [Heartbeat] Update sync_state for health monitoring
-        await supabase
-            .from('sync_state')
-            .upsert({
-                key: 'transcription_last_run',
-                value: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'key' });
 
         return NextResponse.json({
             processed: results.length,

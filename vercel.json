@@ -19,7 +19,7 @@
         },
         {
             "path": "/api/cron/transcribe",
-            "schedule": "0 * * * *"
+            "schedule": "*/10 * * * *"
         },
         {
             "path": "/api/sync/managers",
