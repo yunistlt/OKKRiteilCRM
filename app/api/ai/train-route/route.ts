@@ -49,12 +49,15 @@ export async function POST(req: Request) {
         console.log(`[TrainRoute] Updating RetailCRM (ID: ${internalId}, Site: ${site})...`);
         const updateUrl = `${RETAILCRM_URL}/api/v5/orders/${internalId}/edit?apiKey=${RETAILCRM_KEY}&by=id&site=${site}`;
 
-        // Prepare comment: Append reasoning if needed, or replace? 
-        // User wants "manually write comment... assign status". 
-        // So we use the reasoning as the manager comment.
+        // Prepare comment: Append reasoning to preserve existing operator comments
+        const existingComment = retailOrder.managerComment || '';
+        const newFullComment = existingComment 
+            ? `${existingComment}\n\nОКК: ${reasoning}` 
+            : `ОКК: ${reasoning}`;
+
         const requestBody = {
             status: targetStatus,
-            managerComment: reasoning,
+            managerComment: newFullComment,
             customFields: {
                 next_contact_date: null // Clear next contact date often required
             }
