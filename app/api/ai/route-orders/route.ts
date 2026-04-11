@@ -281,7 +281,9 @@ export async function POST(request: Request) {
                                 cfs.purchase_form ? getHumanName('purchase_form', cfs.purchase_form) : '';
 
                 const sphValue = cfs.sfera_deiatelnosti ? getHumanName('sfera_deiatelnosti', cfs.sfera_deiatelnosti) :
-                                 cfs.industry ? getHumanName('industry', cfs.industry) : '';
+                                 cfs.industry ? getHumanName('sfera_deiatelnosti', cfs.industry) : '';
+
+                const prichinaValue = cfs.prichiny_otmeny ? getHumanName('prichiny_otmeny', cfs.prichiny_otmeny) : '';
 
                 const extraData = {
                     manager_name: retailcrmOrder.manager?.firstName 
@@ -293,7 +295,8 @@ export async function POST(request: Request) {
                     sphere: sphValue,
                     client_comment: retailcrmOrder.customerComment || '',
                     manager_comment: retailcrmOrder.managerComment || '',
-                    logistic_comment: cfs.komment_diveleri || ''
+                    logistic_comment: cfs.komment_diveleri || '',
+                    cancellation_reason: prichinaValue
                 };
 
                 // 2b. Validate Status Regularity (Fix Stale Data)
@@ -317,6 +320,13 @@ export async function POST(request: Request) {
                     orderUpdatedAt: retailcrmOrder.statusUpdatedAt || retailcrmOrder.updatedAt || new Date().toISOString()
                 };
 
+                // NEW LOGIC (11.04.2026): Cancellation Reason Verification
+                const verificationStartDate = new Date('2026-04-11T00:00:00Z');
+                const orderStatusDate = new Date(systemContext.orderUpdatedAt);
+                const isNewProcess = orderStatusDate >= verificationStartDate;
+
+                const chosenReason = isNewProcess ? prichinaValue : undefined;
+
                 // 2d. Fetch Anna's Insights (Business Analyst)
                 let { data: metricsData } = await supabase
                     .from('order_metrics')
@@ -336,14 +346,15 @@ export async function POST(request: Request) {
                     }
                 }
 
-                // 2e. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights)
+                // 2e. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights + chosenReason)
                 const decision = await analyzeOrderForRouting(
                     comment,
                     allowedStatusMap,
                     systemContext,
                     auditContext,
                     customRoutingPrompt,
-                    annaInsights
+                    annaInsights,
+                    chosenReason
                 );
 
                 console.log(`[AIRouter] Order ${order.id} Audit Context:`, {

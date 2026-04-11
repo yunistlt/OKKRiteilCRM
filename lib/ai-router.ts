@@ -75,7 +75,8 @@ export async function analyzeOrderForRouting(
     systemContext?: { currentTime: string, orderUpdatedAt: string },
     auditContext?: { latestCallTranscript?: string, latestEmailText?: string },
     customSystemPrompt?: string,
-    annaInsights?: any
+    annaInsights?: any,
+    chosenReason?: string
 ): Promise<RoutingDecision> {
     const comment = cleanComment(rawComment);
 
@@ -103,6 +104,13 @@ ${annaInsights.customer_profile?.client_resume ? `О клиенте: ${annaInsig
 ${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recommendations.join(', ')}` : ''}
 \n` : '\n(Заключение аналитика отсутствует)\n';
 
+    const chosenReasonPrompt = chosenReason 
+        ? `\nВЕРИФИКАЦИЯ ПРИЧИНЫ ОТМЕНЫ (V2):
+- Менеджер выбрал причину: "${chosenReason}"
+- ТВОЯ ПЕРВООЧЕРЕДНАЯ ЗАДАЧА: Проверь, соответствует ли это реальности (звонкам и письмам). 
+- Если причина ложная или не подтверждается — выбирай статус "Заявка квалифицирована" (zapros-kontaktov).
+\n` : '';
+
     // Use custom prompt if provided, otherwise default
     // Replace {{placeholders}} with actual data
     let promptTemplate = customSystemPrompt || DEFAULT_ROUTING_PROMPT;
@@ -116,7 +124,9 @@ ${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recom
         .replace('{{contextPrompt}}', contextPrompt)
         .replace('{{auditPrompt}}', auditPrompt)
         .replace('{{statusList}}', statusList)
-        .replace('{{annaInsights}}', annaPrompt);
+        .replace('{{annaInsights}}', annaPrompt)
+        .replace('{{chosenReasonPrompt}}', chosenReasonPrompt)
+        .replace('{{chosenReason}}', chosenReason || 'Не указана');
 
     try {
         const openai = getOpenAI();
@@ -135,8 +145,8 @@ ${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recom
 
         const result = JSON.parse(content);
 
-        // Validate against allowed statuses
-        const validStatuses = Array.from(allowedStatuses.keys());
+        // Validate against allowed statuses (always allow zapros-kontaktov as it is a return-to-work status)
+        const validStatuses = [...Array.from(allowedStatuses.keys()), 'zapros-kontaktov'];
 
         if (!validStatuses.includes(result.target_status)) {
             console.warn(`Invalid status "${result.target_status}", defaulting to "otmenen-propala-neobkhodimost"`);
