@@ -215,21 +215,21 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                             },
                             victoria: {
                                 role: "Спец. реактивации",
-                                mission: "Реактивация: Разведчик, Писатель, Аналитик, Ответчик.",
-                                functions: ["Поиск и отбор холодный базы", "Создание живо-выглядящих писем (без спама)", "Классификация ответов (JSON-режим)", "Генерация ответных писем"],
-                                instruments: "API RetailCRM, фильтры, GPT-4o-mini (навыки копирайтера).",
-                                connection: "Отправка в RetailCRM, анализ прочтений 1х1 пиксель, дашборд Максима.",
+                                mission: "Поиск, контакт и реактивация (Разведчик, Писатель, Аналитик, Ответчик)",
+                                functions: ["Поиск и отбор клиентов для реактивации", "Составление персонализированных писем", "Классификация ответов клиентов", "Написание ответного письма"],
+                                instruments: "API RetailCRM, GPT-4o-mini, JSON-режим.",
+                                connection: "RetailCRM триггеры, Пиксель трекинга, Дашборд.",
                                 load: agent.status === 'working' ? 45 : 5,
-                                stateDesc: agent.status === 'working' ? "Генерация писем" : "Отбор по фильтрам"
+                                stateDesc: agent.status === 'working' ? "Написание письма" : "Поиск по базе"
                             },
                             elena: {
                                 role: "Продуктолог",
                                 mission: "Хранитель технической номенклатуры и эксперт по продукции.",
-                                functions: ["Автономное исследование товаров zmktlt.ru", "Формирование базы знаний", "Точные тех. консультации", "Блокировка ложных «Нет в наличии» при отменах"],
-                                instruments: "Web Search, AI Browser Crawler, GPT-4o для структуры.",
-                                connection: "Фоновая БД. Помогает Максиму (анти-отмена) и Виктории.",
+                                functions: ["Автономное исследование товаров zmktlt.ru", "Формирование таблицы product_knowledge", "Предоставление точных технических справок", "Верификация заказов (блокировка отмен)"],
+                                instruments: "Web Search, AI Browser Crawler, GPT-4o.",
+                                connection: "Работает в фоне, передает данные Максиму и Виктории.",
                                 load: agent.status === 'working' ? 80 : 10,
-                                stateDesc: agent.status === 'working' ? "Crawler zmktlt.ru" : "Сверка остатков"
+                                stateDesc: agent.status === 'working' ? "Верификация заказов" : "База знаний"
                             }
                         } as any)[agent.agent_id] || {
                             role: agent.role,
