@@ -44,6 +44,7 @@ export default function Sidebar() {
                 { name: 'Центр Управления', href: '/', icon: '🏠' },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
                 { name: 'Команда ОКК', href: '/?office=true', icon: '👥' },
+                { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna' },
             ]
         },
         {
@@ -71,7 +72,6 @@ export default function Sidebar() {
         {
             title: 'AI Центр',
             items: [
-                { name: 'AI Инструменты', href: '/settings/ai-tools', icon: '🤖', agent: 'anna' },
                 { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️' },
                 { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚' },
             ]
