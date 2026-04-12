@@ -175,47 +175,71 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                     {[...agents, 
                       ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
                       ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
+                    {[...agents, 
+                      ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
+                      ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
                     ].map((agent: any) => {
                         const profile = ({
                             anna: {
-                                mission: "Моя цель — идеальная конверсия. Я глубоко анализирую сделки и нахожу неочевидные точки роста выручки.",
-                                functions: ["Стратегический анализ воронки продаж", "Интеллектуальный поиск и верификация ЛПР", "Детекция и классификация «Зомби-сделок»", "Предоставление рекомендаций для CEO"],
+                                role: "Бизнес-аналитик",
+                                mission: "Стратегический анализ и поиск смыслов.",
+                                functions: ["Глубокий разбор сделок", "Поиск ЛПР", "Детекция «Зомби-сделок»"],
+                                instruments: "Модуль semantic_check (AI Анализ). «Читает» комментарии и звонки.",
+                                connection: "Передает инсайты Максиму для принятия решений.",
                                 load: agent.status === 'working' ? 88 : 12,
-                                stateDesc: agent.status === 'working' ? "Анализ когорты" : "Ожидание триггера"
+                                stateDesc: agent.status === 'working' ? "Анализ семантики" : "Чтение истории"
                             },
                             maxim: {
-                                mission: "Я стою на страже качества обслуживания. Ни одна критическая ошибка менеджера не пройдет мимо моего аудита.",
-                                functions: ["Комплексная итоговая оценка качества", "Управление и оптимизация движка правил", "Автоматическое выявление нарушений регламентов", "Глубокий анализ истории коммуникаций"],
+                                role: "Аудитор",
+                                mission: "Контроль качества и итоговая оценка.",
+                                functions: ["Сводит результаты Семёна и Игоря", "Считает итоговый %", "Выявляет нарушения регламентов"],
+                                instruments: "Управляет «Движком правил» (Rule Engine).",
+                                connection: "Пишет в Telegram чат отдела продаж ЗМК.",
                                 load: agent.status === 'working' ? 75 : 8,
-                                stateDesc: agent.status === 'working' ? "Проверка диалогов" : "Фоновый аудит"
+                                stateDesc: agent.status === 'working' ? "Расчет рейтинга" : "Аудит нарушений"
                             },
                             igor: {
-                                mission: "Сроки — это святое. Я строго слежу за SLA и моментально маршрутизирую приоритетные проблемы.",
-                                functions: ["Непрерывный контроль SLA и дедлайнов", "Интеллектуальная маршрутизация проблем", "Управление «Светофором приоритетов»", "Мгновенное оповещение о системных сбоях"],
+                                role: "Диспетчер",
+                                mission: "Контроль SLA и алерты.",
+                                functions: ["Мониторинг сроков", "Управление Светофором приоритетов", "Оповещение о критических сбоях"],
+                                instruments: "Чистая логика (без AI) — время в статусе, просроченные задачи.",
+                                connection: "Пишет лично руководителю @zmktlt.",
                                 load: agent.status === 'working' ? 95 : 24,
-                                stateDesc: agent.status === 'working' ? "Распределение заявок" : "Мониторинг SLA"
+                                stateDesc: agent.status === 'working' ? "Проверка статусов" : "Контроль сроков"
                             },
                             semen: {
-                                mission: "Данные должны быть в безупречном порядке. Я синхронизирую системы и забочусь о чистоте базы.",
-                                functions: ["Двусторонняя синхронизация данных 24/7", "Автоматизированный сбор записей звонков", "Регулярная актуализация базы клиентов", "Поиск и безопасное слияние дубликатов"],
+                                role: "Архивариус",
+                                mission: "Синхронизация данных.",
+                                functions: ["Сбор данных из RetailCRM 24/7 (заказы, история, звонки)", "Ежедневная инкрементальная синхронизация базы `clients`"],
+                                instruments: "API RetailCRM, Vercel Cron. Качает любой чих.",
+                                connection: "Обеспечивает свежими данными Анну, Максима и Игоря.",
                                 load: agent.status === 'working' ? 60 : 18,
-                                stateDesc: agent.status === 'working' ? "Индекс обновления" : "Синхронизация"
+                                stateDesc: agent.status === 'working' ? "Инкрементальная загрузка" : "Обновление клиентов"
                             },
                             victoria: {
-                                mission: "Я бережно возвращаю потерянных клиентов с помощью высоко персонализированной коммуникации.",
-                                functions: ["Массовый поиск клиентов для реактивации", "Генерация персонализированных e-mail писем", "Контекстная классификация ответов клиентов", "Непрерывное A/B тестирование офферов"],
+                                role: "Спец. реактивации",
+                                mission: "Реактивация: Разведчик, Писатель, Аналитик, Ответчик.",
+                                functions: ["Поиск и отбор холодный базы", "Создание живо-выглядящих писем (без спама)", "Классификация ответов (JSON-режим)", "Генерация ответных писем"],
+                                instruments: "API RetailCRM, фильтры, GPT-4o-mini (навыки копирайтера).",
+                                connection: "Отправка в RetailCRM, анализ прочтений 1х1 пиксель, дашборд Максима.",
                                 load: agent.status === 'working' ? 45 : 5,
-                                stateDesc: agent.status === 'working' ? "Рассылка писем" : "Сбор сегмента RFM"
+                                stateDesc: agent.status === 'working' ? "Генерация писем" : "Отбор по фильтрам"
                             },
                             elena: {
-                                mission: "Я слежу за складской номенклатурой и проверяю, чтобы отмены заказов были физически аргументированы.",
-                                functions: ["Ежедневный аудит складской номенклатуры", "Строгая верификация причин отмен заказов", "Техническая инвентаризация по запросу", "Сверка виртуальных и реальных остатков"],
+                                role: "Продуктолог",
+                                mission: "Хранитель технической номенклатуры и эксперт по продукции.",
+                                functions: ["Автономное исследование товаров zmktlt.ru", "Формирование базы знаний", "Точные тех. консультации", "Блокировка ложных «Нет в наличии» при отменах"],
+                                instruments: "Web Search, AI Browser Crawler, GPT-4o для структуры.",
+                                connection: "Фоновая БД. Помогает Максиму (анти-отмена) и Виктории.",
                                 load: agent.status === 'working' ? 80 : 10,
-                                stateDesc: agent.status === 'working' ? "Анализ отмен" : "Сверка остатков"
+                                stateDesc: agent.status === 'working' ? "Crawler zmktlt.ru" : "Сверка остатков"
                             }
                         } as any)[agent.agent_id] || {
-                            mission: "Я готов к любым системным задачам и поручениям руководителя.",
-                            functions: ["Выполнение системных задач", "Управление фоновыми процессами"],
+                            role: agent.role,
+                            mission: "Я готов к любым системным задачам.",
+                            functions: ["Выполнение системных задач"],
+                            instruments: "Базовые API",
+                            connection: "Отчет руководителю",
                             load: 0,
                             stateDesc: "Режим ожидания"
                         };
@@ -239,7 +263,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                             <h3 className="text-lg font-black text-gray-900 mb-1">{agent.name}</h3>
                                             <div className="flex flex-wrap items-center gap-1.5 mb-2">
                                                 <div className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">
-                                                    {agent.role}
+                                                    {profile.role}
                                                 </div>
                                                 <div className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
                                                     agent.status === 'working' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'
@@ -275,20 +299,30 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                         </div>
                                     </div>
 
-                                    <div className="space-y-3 mb-auto">
-                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1.5">Должностные функции:</p>
-                                        <ul className="space-y-2">
-                                            {profile.functions.map((f: string, i: number) => (
-                                                <li key={i} className="flex items-start gap-2 text-xs font-bold text-gray-700 leading-tight">
-                                                    <span className="text-indigo-400 mt-0.5 flex-shrink-0">
-                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                                                        </svg>
-                                                    </span>
-                                                    {f}
-                                                </li>
-                                            ))}
-                                        </ul>
+                                    <div className="space-y-4 mb-auto">
+                                        <div>
+                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1.5">Обязанности</p>
+                                            <ul className="space-y-1.5">
+                                                {profile.functions.map((f: string, i: number) => (
+                                                    <li key={i} className="flex items-start gap-1.5 text-[11px] font-bold text-gray-700 leading-tight">
+                                                        <span className="text-indigo-400 mt-0.5 flex-shrink-0">
+                                                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                                            </svg>
+                                                        </span>
+                                                        {f}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1">Инструментарий</p>
+                                            <p className="text-[10px] font-semibold text-gray-600 leading-snug">{profile.instruments}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1">Связь</p>
+                                            <p className="text-[10px] font-semibold text-gray-600 leading-snug">{profile.connection}</p>
+                                        </div>
                                     </div>
 
                                     {agent.current_task && agent.status === 'working' && (
