@@ -42,16 +42,13 @@ export default function Sidebar() {
             items: [
                 { name: 'Центр Управления', href: '/', icon: '🏠' },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
+                { name: 'Команда ОКК', href: '/?office=true', icon: '👥' },
             ]
         },
         {
             title: 'Аналитика',
             items: [
                 { name: 'Хаб Аналитики', href: '/analytics', icon: '📊' },
-                { name: 'Эффективность', href: '/efficiency', icon: '⚡️' },
-                { name: 'Нарушения', href: '/analytics/violations', icon: '⚠️' },
-                { name: 'Качество', href: '/analytics/quality', icon: '✨' },
-                { name: 'Команда ОКК', href: '/?office=true', icon: '👥' },
             ]
         },
         {

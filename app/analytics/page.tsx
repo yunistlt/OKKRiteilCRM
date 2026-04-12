@@ -64,19 +64,6 @@ function HubContent() {
                     </p>
                 </Link>
 
-                {/* 4. Settings */}
-                <Link href="/settings/managers" className="group block p-6 md:p-8 bg-gray-900 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-gray-900/20 hover:bg-blue-600 transition-all">
-                    <div className="w-12 h-12 md:w-14 md:h-14 bg-white/10 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
-                        <svg className="w-6 h-6 md:w-7 md:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path>
-                        </svg>
-                    </div>
-                    <h3 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Настройки</h3>
-                    <p className="text-sm text-white/50 font-medium leading-relaxed">
-                        Управление списком контролируемых менеджеров.
-                    </p>
-                </Link>
-
             </div>
         </div>
     );
