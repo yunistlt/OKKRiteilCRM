@@ -175,9 +175,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                     {[...agents, 
                       ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
                       ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
-                    {[...agents, 
-                      ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
-                      ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
                     ].map((agent: any) => {
                         const profile = ({
                             anna: {
