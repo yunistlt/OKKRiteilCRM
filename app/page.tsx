@@ -23,16 +23,13 @@ function PriorityWidget() {
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
     const [agents, setAgents] = useState<Agent[]>([]);
-    const [isOfficeOpen, setIsOfficeOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
-    const [showReaction, setShowReaction] = useState(false);
 
     const searchParams = useSearchParams();
 
     useEffect(() => {
         if (searchParams.get('office') === 'true') {
             setView('team');
-            setIsOfficeOpen(true);
         }
     }, [searchParams]);
 
@@ -84,13 +81,6 @@ function PriorityWidget() {
         }
     };
 
-    useEffect(() => {
-        if (isOfficeOpen) {
-            setShowReaction(true);
-            const timer = setTimeout(() => setShowReaction(false), 3500);
-            return () => clearTimeout(timer);
-        }
-    }, [isOfficeOpen]);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -209,402 +199,81 @@ function PriorityWidget() {
                 </div>
             </div>
 
-            {/* Full Screen Office Modal */}
-            {isOfficeOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 md:p-10 transition-all duration-500 animate-in fade-in zoom-in">
-                    <style dangerouslySetInnerHTML={{
-                        __html: `
-                        @keyframes semenWaddle {
-                            0%, 100% { transform: scale(1.6) rotate(0deg) translateY(0); }
-                            25% { transform: scale(1.6) rotate(-8deg) translateY(-15px); }
-                            50% { transform: scale(1.6) rotate(0deg) translateY(0); }
-                            75% { transform: scale(1.6) rotate(8deg) translateY(-15px); }
-                        }
-                        @keyframes semenPath {
-                            0% { transform: translateX(0) scaleX(1); }
-                            45% { transform: translateX(-35vw) scaleX(1); }
-                            50% { transform: translateX(-35vw) scaleX(-1); }
-                            55% { transform: translateX(-35vw) scaleX(-1); }
-                            95% { transform: translateX(0) scaleX(-1); }
-                            100% { transform: translateX(0) scaleX(1); }
-                        }
-                        @keyframes coolerPath {
-                            0% { transform: translateX(0) scaleX(1); }
-                            40% { transform: translate(30vw, 15vh) scaleX(1); }
-                            60% { transform: translate(30vw, 15vh) scaleX(-1); }
-                            100% { transform: translateX(0) scaleX(-1); }
-                        }
-                        @keyframes folderAppear {
-                            0% { opacity: 0; transform: scale(0.5) rotate(0); }
-                            50% { opacity: 1; transform: scale(1.2) rotate(15deg); }
-                            100% { opacity: 0; transform: translateY(-50px) scale(0.5); }
-                        }
-                        @keyframes sweatDrop {
-                            0% { transform: translateY(0) opacity: 0; }
-                            50% { opacity: 1; }
-                            100% { transform: translateY(20px) opacity: 0; }
-                        }
-                        @keyframes sipTea {
-                            0%, 100% { transform: translate(0, 0) rotate(0); }
-                            20%, 50% { transform: translate(-20px, -45px) rotate(-20deg); }
-                        }
-                        @keyframes chillLean {
-                            0%, 100% { transform: rotate(0); }
-                            50% { transform: rotate(-10deg) translateY(5px); }
-                        }
-                        @keyframes talkWobble {
-                            0%, 100% { transform: scaleX(1); }
-                            50% { transform: scaleX(1.1) rotate(2deg); }
-                        }
-                        @keyframes eyeBlink {
-                            0%, 90%, 100% { transform: scaleY(1); }
-                            95% { transform: scaleY(0.1); }
-                        }
-                        @keyframes clockRotate {
-                            from { transform: rotate(0deg); }
-                            to { transform: rotate(360deg); }
-                        }
-                        .clock-hour { animation: clockRotate 43200s linear infinite; transform-origin: bottom center; }
-                        .clock-minute { animation: clockRotate 3600s linear infinite; transform-origin: bottom center; }
-                        @keyframes steamFade {
-                            0% { transform: translateY(0) scale(0.5); opacity: 0; }
-                            50% { opacity: 0.5; }
-                            100% { transform: translateY(-20px) scale(1.5); opacity: 0; }
-                        }
-                        @keyframes zzzFloat {
-                            0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
-                            50% { opacity: 1; }
-                            100% { transform: translate(20px, -40px) scale(1.2); opacity: 0; }
-                        }
-                        @keyframes legMove {
-                            0%, 100% { transform: translateY(0); }
-                            50% { transform: translateY(-5px); }
-                        }
-                        .animate-semen-work {
-                            animation: semenPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
-                            z-index: 100;
-                        }
-                        .animate-cooler-walk {
-                            animation: coolerPath 12s infinite ease-in-out, semenWaddle 0.6s infinite linear !important;
-                            z-index: 100;
-                        }
-                        .folder-drop {
-                            animation: folderAppear 2s infinite;
-                        }
-                        .sweat {
-                            animation: sweatDrop 1s infinite;
-                        }
-                        .eye-blink { animation: eyeBlink 4s infinite linear; }
-                        .sip-tea { animation: sipTea 4s infinite ease-in-out; }
-                        .chill { animation: chillLean 6s infinite ease-in-out; }
-                        .talk { animation: talkWobble 0.8s infinite ease-in-out; }
-                        .steam { animation: steamFade 2s infinite ease-out; }
-                        .zzz { animation: zzzFloat 3s infinite ease-in-out; }
-                    `}} />
-                    <div className="relative w-full h-full max-w-[90vw] max-h-[85vh] bg-[#f0e6d2] rounded-[40px] border-[12px] border-[#4a3728] shadow-[0_0_100px_rgba(0,0,0,0.5)] overflow-hidden flex flex-col">
+            {view === 'team' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    {[...agents, 
+                      ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
+                      ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
+                    ].map((agent: any) => {
+                        const functions = ({
+                            anna: ["Стратегический анализ сделок", "Поиск и верификация ЛПР", "Детекция «Зомби-сделок»"],
+                            maxim: ["Итоговая оценка качества", "Управление движком правил", "Выявление нарушений регламентов"],
+                            igor: ["Контроль SLA и сроков", "Светофор приоритетов", "Оповещение о сбоях"],
+                            semen: ["Синхронизация данных 24/7", "Сбор записей звонков", "Актуализация базы клиентов"],
+                            victoria: ["Поиск клиентов для возврата", "Написание персональных писем", "Классификация ответов"],
+                            elena: ["Хранитель номенклатуры", "Верификация причин отмен", "Техническая экспертиза"]
+                        } as any)[agent.agent_id] || ["Выполнение системных задач"];
 
-                        {/* Control Bar */}
-                        <div className="absolute top-6 right-8 z-[110] flex gap-4">
-                            <button
-                                onClick={() => setIsOfficeOpen(false)}
-                                className="bg-[#4a3728] text-white px-6 py-2 rounded-full font-black uppercase text-xs tracking-widest hover:bg-[#5d2e0d] transition-all shadow-lg"
-                            >
-                                ESC [Закрыть]
-                            </button>
-                        </div>
-
-                        {/* Wall Clock */}
-                        <div className="absolute top-12 left-1/2 -translate-x-1/2 w-28 h-28 bg-white border-4 border-[#4a3728] rounded-full shadow-inner flex items-center justify-center z-20">
-                            <div className="relative w-full h-full p-2">
-                                {/* Hour Hand */}
-                                <div
-                                    className="absolute top-1/2 left-1/2 w-1 h-8 bg-gray-600 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-1000"
-                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${(currentTime.getHours() % 12) * 30 + currentTime.getMinutes() * 0.5}deg)` }}
-                                ></div>
-                                {/* Minute Hand */}
-                                <div
-                                    className="absolute top-1/2 left-1/2 w-0.5 h-10 bg-gray-900 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-75"
-                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${currentTime.getMinutes() * 6}deg)` }}
-                                ></div>
-                                {/* Seconds Hand */}
-                                <div
-                                    className="absolute top-1/2 left-1/2 w-[0.5px] h-11 bg-red-400 origin-bottom -translate-x-1/2 -translate-y-full transition-transform duration-75"
-                                    style={{ transform: `translateX(-50%) translateY(-100%) rotate(${currentTime.getSeconds() * 6}deg)` }}
-                                ></div>
-                                {[...Array(12)].map((_, i) => (
-                                    <div key={i} className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${i * 30}deg)` }}>
-                                        <div className={`w-1 ${i % 3 === 0 ? 'h-3 bg-gray-400' : 'h-1.5 bg-gray-200'}`}></div>
-                                    </div>
-                                ))}
-                                <div className="absolute top-1/2 left-1/2 w-2 h-2 bg-red-600 rounded-full -translate-x-1/2 -translate-y-1/2 z-30"></div>
-                            </div>
-                            <div className="absolute -top-6 text-[10px] font-black text-[#4a3728] opacity-50 uppercase tracking-widest">OKKRiteil Time</div>
-                        </div>
-
-                        {/* Office Content */}
-                        <div className="relative flex-1 overflow-hidden p-8 flex items-center justify-center">
-
-                            {/* Bookshelves (Large Decorative) */}
-                            <div className="absolute left-0 top-1/4 bottom-1/4 w-32 bg-[#5d4432] border-r-4 border-[#3d2c20] z-0 flex flex-col gap-2 p-2 shadow-2xl">
-                                {[...Array(4)].map((_, i) => (
-                                    <div key={i} className="flex-1 border-b-2 border-[#3d2c20] flex gap-1 items-end overflow-hidden">
-                                        {[...Array(6)].map((_, j) => (
-                                            <div key={j} className={`w-3 h-${Math.floor(Math.random() * 8) + 8} rounded-t-sm`} style={{ backgroundColor: ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed'][Math.floor(Math.random() * 5)] }}></div>
-                                        ))}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="absolute right-0 top-1/4 bottom-1/4 w-32 bg-[#5d4432] border-l-4 border-[#3d2c20] z-0 flex flex-col gap-2 p-2 shadow-2xl">
-                                {[...Array(4)].map((_, i) => (
-                                    <div key={i} className="flex-1 border-b-2 border-[#3d2c20] flex gap-1 items-end justify-end overflow-hidden">
-                                        {[...Array(6)].map((_, j) => (
-                                            <div key={j} className={`w-3 h-${Math.floor(Math.random() * 8) + 8} rounded-t-sm`} style={{ backgroundColor: ['#212121', '#fafafa', '#4a3728', '#8b4513'][Math.floor(Math.random() * 4)] }}></div>
-                                        ))}
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Water Cooler */}
-                            <div className="absolute bottom-12 right-40 w-16 flex flex-col items-center z-10">
-                                <div className="w-12 h-16 bg-blue-200/50 rounded-full border-2 border-blue-300 relative overflow-hidden">
-                                    <div className="absolute bottom-0 w-full h-1/2 bg-blue-400 opacity-30 animate-pulse"></div>
-                                </div>
-                                <div className="w-14 h-24 bg-white border-x-4 border-b-4 border-gray-200 rounded-b-lg flex flex-col items-center justify-center gap-2 shadow-lg">
-                                    <div className="flex gap-2">
-                                        <div className="w-2 h-2 bg-red-400 rounded-full"></div>
-                                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                                    </div>
-                                    <div className="w-6 h-1 bg-gray-100 rounded-full"></div>
-                                </div>
-                            </div>
-
-                            {/* Bookshelves Decor */}
-                            <div className="absolute left-0 top-24 bottom-24 w-16 flex flex-col gap-4 z-10 pointer-events-none">
-                                {[...Array(6)].map((_, i) => (
-                                    <div key={i} className="flex-1 w-full bg-[#4a3728] border-r-4 border-[#3a2b1f] relative flex items-end justify-center p-1 gap-0.5">
-                                        {[...Array(Math.floor(Math.random() * 8) + 3)].map((_, j) => (
-                                            <div key={j} className={`w-1.5 h-[70%] rounded-t-sm shadow-sm transition-all duration-500`} style={{ backgroundColor: ['#e2e8f0', '#3b82f6', '#ef4444', '#10b981', '#f59e0b'][Math.floor(Math.random() * 5)] }}></div>
-                                        ))}
-                                        {/* Effect of folder being added */}
-                                        <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-                                            <div className="w-4 h-6 bg-blue-400 border border-white opacity-0 folder-drop"></div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            {/* Floor and Walls */}
-                            <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-8 border-[#8b4513]"></div>
-
-                            {/* Grid Layout for agents - centered and spacious */}
-                            <div className="relative w-full h-full max-w-5xl grid grid-cols-2 grid-rows-2 gap-12 z-10 pt-20">
-                                {agents.length === 0 ? (
-                                    <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 z-20 bg-white/50 backdrop-blur-sm rounded-3xl m-8 border-2 border-dashed border-gray-300">
-                                        <p className="text-xl font-black uppercase tracking-widest text-gray-400 mb-2">Общий Сбор...</p>
-                                    </div>
-                                ) : agents.map((agent: Agent) => {
-                                    const isWorking = agent.status === 'working';
-                                    const task = agent.current_task?.toLowerCase() || '';
-                                    const isSemenSorting = agent.agent_id === 'semen' && isWorking && (task.includes('страниц') || task.includes('разлож'));
-
-                                    // Determing idle behavior based on ID hash
-                                    const hash = agent.agent_id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                                    const currentTimeSec = Math.floor(Date.now() / 1000);
-                                    const isWalkingToCooler = !isWorking && (currentTimeSec + hash) % 30 < 12; // 12 seconds walk every 30 seconds
-
-                                    const idleVibe = !isWorking && !isWalkingToCooler ? (hash % 3 === 0 ? 'tea' : (hash % 3 === 1 ? 'chill' : 'talk')) : null;
-
-                                    // Direction for talking
-                                    const agentIndex = agents.indexOf(agent);
-                                    const isLookingLeft = !isWorking && idleVibe === 'talk' && agentIndex % 2 === 0;
-                                    const isLookingRight = !isWorking && idleVibe === 'talk' && agentIndex % 2 !== 0;
-
-                                    return (
-                                        <div key={agent.agent_id} className={`relative flex flex-col items-center justify-end pb-12 transition-all duration-700 hover:scale-105 group 
-                                            ${isSemenSorting ? '' : ''} 
-                                            ${idleVibe === 'chill' ? 'chill' : ''} 
-                                            ${idleVibe === 'talk' ? 'talk' : ''} 
-                                            ${showReaction && !isSemenSorting ? 'z-50' : ''}
-                                            ${isLookingLeft ? '-scale-x-100' : ''}`}>
-                                            {/* Enhanced Desk Prop */}
-                                            <div className={`absolute bottom-6 w-48 h-24 bg-[#8b4513] rounded-t-xl border-4 border-[#5d2e0d] z-0 shadow-2xl overflow-hidden transition-opacity duration-1000 ${isSemenSorting ? 'opacity-30' : 'opacity-100'}`}>
-                                                <div className="absolute top-0 left-0 w-full h-2 bg-[#a35116]"></div>
-                                                {/* Monitor */}
-                                                <div className="absolute -top-8 left-1/2 -translate-x-1/2 w-20 h-16 bg-gray-900 border-4 border-gray-700 rounded-md shadow-inner flex items-center justify-center">
-                                                    <div className="w-full h-full bg-blue-900/20 flex flex-col gap-1 p-1 overflow-hidden">
-                                                        <div className="w-1/2 h-1 bg-blue-400 animate-pulse opacity-20"></div>
-                                                        <div className="w-3/4 h-1 bg-blue-400 animate-pulse delay-75 opacity-20"></div>
-                                                    </div>
-                                                </div>
-                                                {/* Coffee Mug */}
-                                                <div className="absolute top-2 left-4 w-5 h-6 bg-white border-2 border-gray-200 rounded-b-sm rounded-tr-lg">
-                                                    <div className="absolute top-1 left-full w-2 h-3 border-2 border-gray-200 border-l-0 rounded-r-full"></div>
-                                                </div>
+                        return (
+                            <div key={agent.agent_id} className="bg-white rounded-[32px] p-6 border border-gray-100 shadow-xl hover:shadow-2xl transition-all group overflow-hidden relative">
+                                {/* Background Glow */}
+                                <div className="absolute -right-10 -top-10 w-40 h-40 bg-blue-50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                                
+                                <div className="relative z-10">
+                                    <div className="flex items-start gap-5 mb-6">
+                                        <div className="relative flex-shrink-0">
+                                            <div className="w-20 h-20 rounded-2xl overflow-hidden bg-gray-50 border-2 border-gray-100 group-hover:border-blue-200 transition-colors">
+                                                <img 
+                                                    src={`/images/agents/${agent.agent_id}.png`} 
+                                                    alt={agent.name}
+                                                    className="w-full h-full object-contain"
+                                                />
                                             </div>
-
-                                            {/* Character Figure */}
-                                            <div className={`relative transition-all duration-1000 transform scale-[1.6] z-10 
-                                                 ${isSemenSorting ? 'animate-semen-work' : (isWalkingToCooler ? 'animate-cooler-walk' : (isWorking ? 'animate-bounce' : 'animate-pulse opacity-95 hover:opacity-100'))}
-                                                 ${showReaction && !isSemenSorting ? 'scale-[1.8]' : ''}`}>
-
-                                                <div className="[mix-blend-mode:multiply]">
-                                                    <img
-                                                        src={`/images/agents/${agent.agent_id}.png`}
-                                                        alt={agent.name}
-                                                        className={`h-40 w-auto object-contain transition-all 
-                                                             ${isWorking ? 'brightness(1.02) contrast(1.1)' : 'grayscale-[15%] brightness(1.05)'}`}
-                                                    />
-                                                </div>
-
-                                                {/* Expressive Integrated Eyes - Smaller and more precise */}
-                                                <div className="absolute top-[28%] left-1/2 -translate-x-1/2 w-9 h-4 flex justify-between px-0 pointer-events-none z-30 opacity-95">
-                                                    <div className="w-3.5 h-3.5 bg-white rounded-full border-[1.5px] border-black/10 flex items-center justify-center eye-blink shadow-sm overflow-hidden">
-                                                        <div className={`w-1.5 h-1.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110' : 'scale-90'}`}
-                                                            style={{ transform: showReaction ? 'translate(0, -5%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 30)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 30)}%)` }}></div>
-                                                    </div>
-                                                    <div className="w-3.5 h-3.5 bg-white rounded-full border-[1.5px] border-black/10 flex items-center justify-center eye-blink shadow-sm overflow-hidden">
-                                                        <div className={`w-1.5 h-1.5 bg-black rounded-full transition-all duration-500 ${showReaction ? 'scale-110' : 'scale-90'}`}
-                                                            style={{ transform: showReaction ? 'translate(0, -5%)' : `translate(${(Math.sin(currentTimeSec / 2 + hash) * 30)}%, ${(Math.cos(currentTimeSec / 3 + hash) * 30)}%)` }}></div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Hidden Folder when sorting */}
-                                                {isSemenSorting && (
-                                                    <div className="absolute top-10 left-1/2 -translate-x-1/2 w-8 h-10 bg-blue-500 border-2 border-blue-200 rounded-sm shadow-lg z-20 flex items-center justify-center overflow-hidden">
-                                                        <div className="w-full h-1 bg-white/30 mb-1"></div>
-                                                        <div className="w-2/3 h-1 bg-white/30"></div>
-                                                    </div>
-                                                )}
-
-                                                {/* Tea/Coffee Mug for idle tea vibe */}
-                                                {idleVibe === 'tea' && (
-                                                    <div className="absolute bottom-2 -right-4 w-6 h-8 bg-white border-2 border-gray-200 rounded-sm rounded-tr-lg z-30 sip-tea">
-                                                        <div className="absolute top-4 -right-1.5 w-3 h-3 border-2 border-gray-200 rounded-full border-l-0"></div>
-                                                        {/* Steam effect */}
-                                                        <div className="absolute -top-4 left-1 w-4 h-4 flex flex-col gap-1 items-center opacity-40">
-                                                            <div className="w-1 h-3 bg-gray-300 rounded-full steam" style={{ animationDelay: '0s' }}></div>
-                                                            <div className="w-1 h-2 bg-gray-300 rounded-full steam" style={{ animationDelay: '1s' }}></div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Sweat Drop for working agents */}
-                                                {isWorking && (
-                                                    <div className="absolute top-4 -right-4 text-2xl sweat pointer-events-none">💧</div>
-                                                )}
-
-                                                {/* Headphones for Semyon */}
-                                                {agent.agent_id === 'semen' && (task.includes('страниц') || task.includes('разложе')) && (
-                                                    <div className="absolute top-6 left-1/2 -translate-x-1/2 w-24 h-24 flex items-center justify-center pointer-events-none">
-                                                        <div className="text-5xl filter drop-shadow-xl animate-pulse">🎧</div>
-                                                    </div>
-                                                )}
-
-                                                {/* Improved Speech Bubble */}
-                                                {(isWorking || (showReaction && !isSemenSorting)) && (
-                                                    <div className={`absolute -top-20 left-1/2 -translate-x-1/2 bg-white px-5 py-3 rounded-[24px] border-4 border-gray-900 shadow-[0_15px_30px_rgba(0,0,0,0.3)] z-50 min-w-[160px] animate-in slide-in-from-bottom-2 ${showReaction && !isWorking ? 'scale-110' : ''}`}>
-                                                        <p className="text-[10px] font-black text-gray-900 uppercase leading-tight text-center tracking-tight">
-                                                            {showReaction && !isWorking ? 'Чо нада?' : (isSemenSorting ? (Math.random() > 0.5 ? 'Куда же эту папку...' : 'Так, это в архив...') : agent.current_task)}
-                                                        </p>
-                                                        <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-5 h-5 bg-white border-r-4 border-b-4 border-gray-900 rotate-45"></div>
-                                                    </div>
-                                                )}
-
-                                                {/* Hands behind head simulation (chill) / Sleep ZZZ */}
-                                                {idleVibe === 'chill' && (
-                                                    <div className="absolute top-10 left-1/2 -translate-x-1/2 w-32 h-12 flex justify-between px-2 text-2xl opacity-80 pointer-events-none">
-                                                        <div className="rotate-[-45deg] animate-bounce">🙌</div>
-                                                        <div className="absolute -top-10 right-0 font-bold text-blue-400 zzz select-none">Zzz</div>
-                                                    </div>
-                                                )}
-
-                                                {/* Animated Legs for "Real Cartoon" walking effect */}
-                                                {(isWalkingToCooler || isSemenSorting) && (
-                                                    <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-10 h-2 flex justify-between px-1 z-0">
-                                                        <div className="w-3 h-3 bg-black rounded-full animate-[legMove_0.3s_infinite_linear]"></div>
-                                                        <div className="w-3 h-3 bg-black rounded-full animate-[legMove_0.3s_infinite_linear_delay-150ms]" style={{ animationDelay: '0.15s' }}></div>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Professional Name Plate */}
-                                            <div className={`mt-4 bg-gray-900 text-white px-5 py-1.5 rounded-full text-[11px] font-black uppercase tracking-[0.2em] border-2 border-[#a35116] shadow-2xl z-20 transition-opacity ${isSemenSorting ? 'opacity-20' : 'opacity-100'}`}>
-                                                {agent.name}
-                                            </div>
-                                            <div className={`text-[9px] font-bold text-gray-500 mt-1 uppercase tracking-widest transition-opacity ${isSemenSorting ? 'opacity-20' : 'opacity-100'}`}>{agent.role}</div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Footer Info */}
-                        <div className="absolute bottom-6 left-12 z-[110] text-[10px] font-black text-[#8b4513] opacity-40 uppercase tracking-[0.3em]">
-                            OKKRiteil CRM // Digital Headquarters 1.3
-                        </div>
-
-                        {/* AI Chat Interface */}
-                        <div className="absolute bottom-6 right-8 left-1/2 ml-12 z-[120] flex flex-col gap-2 max-w-lg w-full">
-                            {/* Chat History */}
-                            {chatMessages.length > 0 && (
-                                <div className="bg-white/90 backdrop-blur-md border-[3px] border-[#4a3728] rounded-[24px] p-4 max-h-48 overflow-y-auto shadow-2xl flex flex-col gap-3 scrollbar-hide">
-                                    {chatMessages.map((msg, i) => (
-                                        <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                                            <div className={`px-4 py-2 rounded-2xl max-w-[90%] text-sm font-medium whitespace-pre-wrap leading-relaxed shadow-sm ${msg.role === 'user'
-                                                ? 'bg-blue-600 text-white rounded-br-sm'
-                                                : 'bg-gray-100 text-gray-900 border border-gray-200 rounded-bl-sm'
-                                                }`}>
-                                                {msg.role === 'agent' && <div className="text-[10px] font-black uppercase text-indigo-600 mb-1">{msg.agent}</div>}
-                                                {msg.text}
+                                            {/* Status Badge */}
+                                            <div className={`absolute -bottom-2 -right-2 px-2 py-1 rounded-lg border-2 border-white text-[8px] font-black uppercase tracking-widest shadow-sm ${
+                                                agent.status === 'working' ? 'bg-green-500 text-white' : 'bg-gray-400 text-white'
+                                            }`}>
+                                                {agent.status === 'working' ? 'Работает' : 'Ожидание'}
                                             </div>
                                         </div>
-                                    ))}
-                                    {chatLoading && (
-                                        <div className="flex items-start">
-                                            <div className="px-4 py-2 bg-gray-100 border border-gray-200 text-gray-400 rounded-2xl rounded-bl-sm text-sm animate-pulse">
-                                                Думает...
+                                        <div>
+                                            <h3 className="text-xl font-black text-gray-900 mb-1">{agent.name}</h3>
+                                            <div className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md inline-block">
+                                                {agent.role}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">Должностные функции:</p>
+                                        <ul className="space-y-2">
+                                            {functions.map((f: string, i: number) => (
+                                                <li key={i} className="flex items-start gap-2 text-sm font-medium text-gray-600">
+                                                    <span className="text-blue-500 mt-1">
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
+                                                        </svg>
+                                                    </span>
+                                                    {f}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    {agent.current_task && agent.status === 'working' && (
+                                        <div className="mt-6 pt-4 border-t border-gray-50">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-tight">
+                                                    Текущая задача: <span className="text-gray-900 border-b border-gray-100">{agent.current_task}</span>
+                                                </p>
                                             </div>
                                         </div>
                                     )}
                                 </div>
-                            )}
-
-                            {/* Chat Input */}
-                            <form onSubmit={handleChatSubmit} className="relative w-full">
-                                <input
-                                    type="text"
-                                    value={chatInput}
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    placeholder="Напишите задачу команде (напр., 'ребята проанализируйте заказ 12345')..."
-                                    className="w-full bg-white/90 backdrop-blur-md border-[3px] border-[#4a3728] rounded-full pl-6 pr-14 py-4 text-sm font-bold text-gray-900 shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-500/50 transition-all placeholder:text-gray-400"
-                                    disabled={chatLoading}
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={!chatInput.trim() || chatLoading}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white rounded-full flex items-center justify-center transition-all shadow-md"
-                                >
-                                    <span className="text-xl leading-none -mt-0.5">↑</span>
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {view === 'team' ? (
-                <div className="relative w-full aspect-[16/9] bg-[#f0e6d2] rounded-[32px] border-8 border-[#4a3728] shadow-2xl overflow-hidden flex flex-col items-center justify-center p-4 cursor-pointer" onClick={() => setIsOfficeOpen(true)}>
-                    {/* Floor and Walls Preview */}
-                    <div className="absolute inset-x-0 bottom-0 h-1/3 bg-[#d2b48c] border-t-4 border-[#8b4513]"></div>
-                    <div className="z-10 text-center">
-                        <p className="text-gray-400 font-black uppercase text-xs tracking-widest mb-4">Нажмите, чтобы войти в кабинет</p>
-                        <div className="flex gap-4 opacity-50">
-                            {agents.map(a => (
-                                <img key={a.agent_id} src={`/images/agents/${a.agent_id}.png`} className="h-20 w-auto grayscale" />
-                            ))}
-                        </div>
-                    </div>
+                            </div>
+                        );
+                    })}
                 </div>
             ) : (
                 <>
