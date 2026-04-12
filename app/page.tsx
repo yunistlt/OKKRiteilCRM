@@ -135,7 +135,7 @@ function PriorityWidget() {
     const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
 
     if (loading) return (
-        <div className="w-full max-w-5xl mb-12 bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
+        <div className="w-full max-w-6xl mb-12 bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
             <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>
             <div className="flex gap-4 mb-6">
                 <div className="h-20 bg-gray-50 flex-1 rounded-2xl"></div>
@@ -170,7 +170,7 @@ function PriorityWidget() {
     const filteredOrders = activeTab ? orders.filter(o => o.level === activeTab) : [];
 
     return (
-        <div className="w-full max-w-5xl mb-12 bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
+        <div className="w-full max-w-6xl mb-12 bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 md:w-12 md:h-12 bg-gray-900 text-white rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-lg flex-shrink-0">
@@ -604,28 +604,64 @@ function HomeContent() {
     const suffix = q ? `?${q}` : '';
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] py-10 md:py-20">
-            <h1 className="text-3xl md:text-5xl font-black text-gray-900 mb-2 tracking-tight text-center">Центр Управления</h1>
-            <p className="text-gray-400 font-bold uppercase text-[10px] md:text-xs tracking-[0.2em] mb-8 md:mb-12 text-center">OKKRiteilCRM v1.3 + AI</p>
-
+        <div className="flex flex-col items-center justify-center min-h-[60vh] py-6 md:py-12">
             <PriorityWidget />
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full max-w-6xl">
 
                 {/* Morning Sprint Card */}
                 <Link href="/efficiency"
-                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 transition-all duration-300 transform hover:-translate-y-1"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
                 >
-                    <div className="w-12 h-12 md:w-16 md:h-16 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
-                        <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                        </svg>
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
+                        <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
-                    <h2 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Утренний Спринт</h2>
-                    <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Ключевые заказы на сегодня. Обработка до 14:00.</p>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 md:w-16 md:h-16 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
+                            <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Утренний Спринт</h2>
+                        <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Ключевые заказы на сегодня. Обработка до 14:00.</p>
+                    </div>
                 </Link>
 
-                {/* Settings Card */}
+                {/* OKK Dashboard Card */}
+                <Link href="/okk"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-blue-600/30 hover:shadow-blue-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
+                        <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
+                    </div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 md:w-16 md:h-16 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
+                            <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                            </svg>
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Контроль Качества</h2>
+                        <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Полная аналитика ошибок, записи звонков и ИИ оценки.</p>
+                    </div>
+                </Link>
+
+                {/* Analytics Hub Card */}
+                <Link href="/analytics"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
+                        <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                    </div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 md:w-16 md:h-16 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
+                            <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path>
+                            </svg>
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Хаб Аналитики</h2>
+                        <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Дашборды по выручке, воронке продаж и эффективности.</p>
+                    </div>
+                </Link>
 
             </div>
         </div>
