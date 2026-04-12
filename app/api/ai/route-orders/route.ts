@@ -4,6 +4,7 @@ import { supabase } from '@/utils/supabase';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 import { runInsightAnalysis } from '@/lib/insight-agent';
+import { Productologist } from '@/lib/productologist';
 
 export const maxDuration = 300; // 5 minutes for batch processing
 export const dynamic = 'force-dynamic';
@@ -336,17 +337,13 @@ export async function POST(request: Request) {
 
                 let annaInsights = metricsData?.insights || null;
 
-                // Ensure Anna's insights are present (Sequential Synergy)
-                if (!annaInsights || Object.keys(annaInsights).length === 0) {
-                    console.log(`[AIRouter] Missing Anna's insights for ${order.id}. Triggering sequential analysis...`);
-                    try {
-                        annaInsights = await runInsightAnalysis(Number(order.id));
-                    } catch (annaErr) {
-                        console.warn(`[AIRouter] Sequential AI Synergy failed for ${order.id}:`, annaErr);
-                    }
                 }
+                
+                // 2e. Elena's Product Reality Check (NEW)
+                const itemNames = (retailcrmOrder.items || []).map((item: any) => item.offer?.name).filter(Boolean);
+                const elenaKnowledge = await Productologist.getProductsKnowledge(itemNames);
 
-                // 2e. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights + chosenReason)
+                // 2f. Analyze with AI (pass allowed statuses for routing + contexts + custom prompt + annaInsights + chosenReason + elenaKnowledge)
                 const decision = await analyzeOrderForRouting(
                     comment,
                     allowedStatusMap,
@@ -354,7 +351,8 @@ export async function POST(request: Request) {
                     auditContext,
                     customRoutingPrompt,
                     annaInsights,
-                    chosenReason
+                    chosenReason,
+                    elenaKnowledge
                 );
 
                 console.log(`[AIRouter] Order ${order.id} Audit Context:`, {

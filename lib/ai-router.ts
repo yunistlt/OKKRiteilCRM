@@ -76,7 +76,8 @@ export async function analyzeOrderForRouting(
     auditContext?: { latestCallTranscript?: string, latestEmailText?: string },
     customSystemPrompt?: string,
     annaInsights?: any,
-    chosenReason?: string
+    chosenReason?: string,
+    productKnowledge?: string
 ): Promise<RoutingDecision> {
     const comment = cleanComment(rawComment);
 
@@ -107,9 +108,15 @@ ${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recom
     const chosenReasonPrompt = chosenReason 
         ? `\nВЕРИФИКАЦИЯ ПРИЧИНЫ ОТМЕНЫ (V2):
 - Менеджер выбрал причину: "${chosenReason}"
-- ТВОЯ ПЕРВООЧЕРЕДНАЯ ЗАДАЧА: Проверь, соответствует ли это реальности (звонкам и письмам). 
+- ТВОЯ ПЕРВООЧЕРЕДНАЯ ЗАДАЧА: Проверь, соответствует ли это реальности (звонкам, письмам и данным Елены). 
 - Если причина ложная или не подтверждается — выбирай статус "Заявка квалифицирована" (zapros-kontaktov).
 \n` : '';
+
+    const elenaPrompt = productKnowledge 
+        ? `\nДАННЫЕ ОТ ПРОДУКТОЛОГА (ЕЛЕНЫ):
+${productKnowledge}
+- ВНИМАНИЕ: Если Елена нашла эти товары в базе знаний/каталоге с описанием, это означает, что они СУЩЕСТВУЮТ в нашем ассортименте. Если менеджер при этом утверждает, что "нет таких позиций" — это ошибка или обман менеджера.
+\n` : '\n(Справка продуктолога отсутствует - доверяй менеджеру по ассортименту)\n';
 
     // Use custom prompt if provided, otherwise default
     // Replace {{placeholders}} with actual data
@@ -125,6 +132,7 @@ ${annaInsights.recommendations ? `Рекомендации: ${annaInsights.recom
         .replace('{{auditPrompt}}', auditPrompt)
         .replace('{{statusList}}', statusList)
         .replace('{{annaInsights}}', annaPrompt)
+        .replace('{{elenaPrompt}}', elenaPrompt)
         .replace('{{chosenReasonPrompt}}', chosenReasonPrompt)
         .replace('{{chosenReason}}', chosenReason || 'Не указана');
 

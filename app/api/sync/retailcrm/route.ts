@@ -138,7 +138,8 @@ export async function GET(request: Request) {
                     phone: cleanPhone(order.phone) || null,
                     customer_phones: Array.from(phones),
                     totalsumm: order.totalSumm || 0,
-                    raw_payload: order
+                    raw_payload: order,
+                    prichiny_otmeny: order.customFields?.prichiny_otmeny || null
                 });
             }
 

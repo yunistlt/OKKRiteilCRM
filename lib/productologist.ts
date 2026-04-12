@@ -156,4 +156,34 @@ export class Productologist {
             console.error(`[Elena] ensureKnowledge failed for "${name}":`, e.message || e);
         }
     }
+
+    /**
+     * Возвращает справку ЕЛЕНЫ по списку названий товаров
+     */
+    static async getProductsKnowledge(itemNames: string[]): Promise<string> {
+        if (!itemNames || itemNames.length === 0) return '';
+        
+        try {
+            const { data: existing, error } = await supabase
+                .from('product_knowledge')
+                .select('name, category, description, tech_specs')
+                .in('name', itemNames);
+
+            if (error) throw error;
+            if (!existing || existing.length === 0) return '';
+
+            let result = "\nСПРАВКА ОТ ПРОДУКТОЛОГА (ЕЛЕНЫ):\n";
+            existing.forEach(p => {
+                result += `--- ТОВАР: ${p.name} ---\n`;
+                result += `Категория: ${p.category}\n`;
+                if (p.description) result += `Описание: ${p.description.substring(0, 300)}...\n`;
+                if (p.tech_specs) result += `Тех.характеристики: ${JSON.stringify(p.tech_specs)}\n`;
+            });
+
+            return result + "\n";
+        } catch (e: any) {
+            console.error('[Elena] getProductsKnowledge failed:', e.message || e);
+            return '';
+        }
+    }
 }

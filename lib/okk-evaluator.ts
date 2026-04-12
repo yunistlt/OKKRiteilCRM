@@ -165,7 +165,8 @@ export async function syncOrderFromRetailCRM(orderId: number) {
                 phone: clean(order.phone) || null,
                 customer_phones: Array.from(phones),
                 totalsumm: order.totalSumm || 0,
-                raw_payload: order
+                raw_payload: order,
+                prichiny_otmeny: order.customFields?.prichiny_otmeny || null
             };
 
             // Используем RPC для надежного апдейта
