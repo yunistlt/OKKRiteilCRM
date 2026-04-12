@@ -673,6 +673,7 @@ function HomeContent() {
                         <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Дашборды по выручке, воронке продаж и эффективности.</p>
                     </div>
                 </Link>
+                </div>
             )}
         </div>
     );
