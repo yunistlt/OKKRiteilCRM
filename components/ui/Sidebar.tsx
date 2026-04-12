@@ -94,7 +94,7 @@ export default function Sidebar() {
         // If the item has a query string, it must match exactly
         if (targetQuery) {
             const params = new URLSearchParams(targetQuery);
-            for (const [key, value] of params.entries()) {
+            for (const [key, value] of Array.from(params.entries())) {
                 if (searchParams.get(key) !== value) return false;
             }
             return true;
