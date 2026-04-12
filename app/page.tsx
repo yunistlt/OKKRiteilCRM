@@ -268,7 +268,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                 onClick={() => {
                                     setView('team');
                                 }}
-                                className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all ${view === 'team' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
+                                className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all ${(view as string) === 'team' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                                 👥 Команда ОКК
                             </button>
