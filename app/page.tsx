@@ -595,8 +595,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                         </div>
                     )}
                 </>
-            )
-            }
         </div >
     );
 }
