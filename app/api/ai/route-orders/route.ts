@@ -337,8 +337,6 @@ export async function POST(request: Request) {
 
                 let annaInsights = metricsData?.insights || null;
 
-                }
-                
                 // 2e. Elena's Product Reality Check (NEW)
                 const itemNames = (retailcrmOrder.items || []).map((item: any) => item.offer?.name).filter(Boolean);
                 const elenaKnowledge = await Productologist.getProductsKnowledge(itemNames);
