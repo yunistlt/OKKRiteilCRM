@@ -171,7 +171,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                     <p className="text-gray-400 font-bold uppercase text-[10px] md:text-sm tracking-[0.2em]">Цифровые сотрудники OKKRiteilCRM</p>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                     {[...agents, 
                       ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
                       ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
@@ -221,13 +221,13 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                         };
 
                         return (
-                            <div key={agent.agent_id} className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl hover:shadow-2xl transition-all group relative overflow-hidden flex flex-col">
+                            <div key={agent.agent_id} className="bg-white rounded-[32px] p-5 md:p-6 border border-gray-100 shadow-xl hover:shadow-2xl transition-all group relative overflow-hidden flex flex-col">
                                 <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                                 
                                 <div className="relative z-10 flex-1 flex flex-col">
-                                    <div className="flex items-start gap-5 mb-6">
+                                    <div className="flex items-start gap-4 mb-4">
                                         <div className="relative flex-shrink-0">
-                                            <div className="w-24 h-24 rounded-3xl overflow-hidden bg-gray-50 border-2 border-gray-100 group-hover:border-indigo-300 transition-all duration-500 transform group-hover:scale-105 shadow-sm">
+                                            <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-50 border-2 border-gray-100 group-hover:border-indigo-300 transition-all duration-500 transform group-hover:scale-105 shadow-sm">
                                                 <img 
                                                     src={`/images/agents/${agent.agent_id}.png`} 
                                                     alt={agent.name}
@@ -236,38 +236,38 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                             </div>
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <h3 className="text-2xl font-black text-gray-900 mb-1.5">{agent.name}</h3>
-                                            <div className="flex flex-wrap items-center gap-2 mb-3">
-                                                <div className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2.5 py-1 rounded-lg">
+                                            <h3 className="text-lg font-black text-gray-900 mb-1">{agent.name}</h3>
+                                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                                                <div className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">
                                                     {agent.role}
                                                 </div>
-                                                <div className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+                                                <div className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
                                                     agent.status === 'working' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'
                                                 }`}>
                                                     {agent.status === 'working' ? 'Активен' : 'Ожидание'}
                                                 </div>
                                             </div>
-                                            <p className="text-xs text-gray-500 font-medium italic leading-relaxed">
+                                            <p className="text-[10px] text-gray-500 font-medium italic leading-snug line-clamp-2">
                                                 "{profile.mission}"
                                             </p>
                                         </div>
                                     </div>
 
                                     {/* Capacity Load Indicator */}
-                                    <div className="mb-6 bg-gray-50/80 rounded-2xl p-5 border border-gray-100 group-hover:bg-indigo-50/30 transition-colors">
-                                        <div className="flex justify-between items-end mb-3">
+                                    <div className="mb-4 bg-gray-50/80 rounded-xl p-3 md:p-4 border border-gray-100 group-hover:bg-indigo-50/30 transition-colors">
+                                        <div className="flex justify-between items-end mb-2">
                                             <div>
-                                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Состояние</p>
-                                                <p className="text-xs font-black text-gray-700">{profile.stateDesc}</p>
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-1">Состояние</p>
+                                                <p className="text-[11px] font-black text-gray-700">{profile.stateDesc}</p>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Загрузка мощностей</p>
-                                                <p className={`text-xl font-black leading-none ${profile.load > 80 ? 'text-orange-500' : profile.load > 40 ? 'text-blue-500' : 'text-emerald-500'}`}>
+                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-1">Загрузка мощностей</p>
+                                                <p className={`text-sm font-black leading-none ${profile.load > 80 ? 'text-orange-500' : profile.load > 40 ? 'text-blue-500' : 'text-emerald-500'}`}>
                                                     {profile.load}%
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                                        <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden shadow-inner">
                                             <div 
                                                 className={`h-full rounded-full transition-all duration-1000 shadow-sm ${profile.load > 80 ? 'bg-orange-500' : profile.load > 40 ? 'bg-blue-500' : 'bg-emerald-500'}`} 
                                                 style={{ width: `${profile.load}%` }}
@@ -275,13 +275,13 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4 mb-auto">
-                                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] border-b border-gray-100 pb-2">Должностные функции:</p>
-                                        <ul className="space-y-3">
+                                    <div className="space-y-3 mb-auto">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1.5">Должностные функции:</p>
+                                        <ul className="space-y-2">
                                             {profile.functions.map((f: string, i: number) => (
-                                                <li key={i} className="flex items-start gap-3 text-sm font-bold text-gray-700">
+                                                <li key={i} className="flex items-start gap-2 text-xs font-bold text-gray-700 leading-tight">
                                                     <span className="text-indigo-400 mt-0.5 flex-shrink-0">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
                                                         </svg>
                                                     </span>
@@ -292,12 +292,12 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                     </div>
 
                                     {agent.current_task && agent.status === 'working' && (
-                                        <div className="mt-8 pt-5 border-t border-gray-100">
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-2.5 h-2.5 mt-1 bg-green-500 rounded-full animate-pulse flex-shrink-0"></div>
+                                        <div className="mt-4 pt-3 border-t border-gray-100">
+                                            <div className="flex items-start gap-2">
+                                                <div className="w-2 h-2 mt-0.5 bg-green-500 rounded-full animate-pulse flex-shrink-0"></div>
                                                 <div>
-                                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Текущая операция</p>
-                                                    <p className="text-sm text-gray-900 font-black leading-tight">{agent.current_task}</p>
+                                                    <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Текущая операция</p>
+                                                    <p className="text-xs text-gray-900 font-black leading-tight line-clamp-1">{agent.current_task}</p>
                                                 </div>
                                             </div>
                                         </div>
