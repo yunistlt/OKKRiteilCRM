@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import Header from "./components/Header";
+import { Suspense } from 'react';
 
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
@@ -21,7 +22,9 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className="bg-gray-50 min-h-screen flex text-gray-900">
-                <Sidebar />
+                <Suspense fallback={<div className="w-72 bg-gray-900 h-screen" />}>
+                    <Sidebar />
+                </Suspense>
                 <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
                     <Header />
                     <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 
 interface NavItem {
     name: string;
@@ -18,6 +18,7 @@ interface NavGroup {
 
 export default function Sidebar() {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [user, setUser] = useState<{ username: string; role: string } | null>(null);
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -78,9 +79,34 @@ export default function Sidebar() {
     ];
 
     const isActive = (href: string) => {
-        if (href === '/' && pathname !== '/') return false;
-        if (href === '/?office=true' && !pathname.includes('office')) return false;
-        return pathname.startsWith(href);
+        const [targetPath, targetQuery] = href.split('?');
+        
+        // Basic path segment matching
+        let pathMatches = false;
+        if (targetPath === '/') {
+            pathMatches = pathname === '/';
+        } else {
+            pathMatches = pathname === targetPath || pathname.startsWith(targetPath + '/');
+        }
+        
+        if (!pathMatches) return false;
+
+        // If the item has a query string, it must match exactly
+        if (targetQuery) {
+            const params = new URLSearchParams(targetQuery);
+            for (const [key, value] of params.entries()) {
+                if (searchParams.get(key) !== value) return false;
+            }
+            return true;
+        }
+
+        // Avoid double highlighting: if we are on a specialized version of the route (like /?office=true),
+        // don't highlight the default route (/) if a more specific item exists.
+        if (pathname === '/' && searchParams.get('office') === 'true' && !targetQuery) {
+            return false;
+        }
+
+        return true;
     };
 
     return (
