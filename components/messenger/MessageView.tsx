@@ -25,10 +25,13 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
 
     useEffect(() => {
         fetchMessages();
+        if (!supabaseBrowser.isConfigured) {
+            return;
+        }
 
         const channel = supabaseBrowser
             .channel(`chat-${chatId}`)
-            .on('postgres_changes', {
+            ?.on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
                 table: 'messages',
@@ -37,7 +40,7 @@ export default function MessageView({ chatId, currentUserId, chatName, participa
                 console.log('[Realtime] New message received:', payload.new);
                 setMessages(prev => [...prev, payload.new]);
             })
-            .subscribe((status) => {
+            ?.subscribe((status) => {
                 console.log('[Realtime] Subscription status:', status);
             });
 

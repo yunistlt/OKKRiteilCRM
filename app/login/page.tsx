@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getDefaultPathForRole } from '@/lib/rbac';
 
 export default function LoginPage() {
     const [username, setUsername] = useState('');
@@ -25,7 +26,7 @@ export default function LoginPage() {
             const data = await res.json();
 
             if (res.ok && data.success) {
-                router.push('/okk');
+                router.push(getDefaultPathForRole(data.user?.role));
                 router.refresh(); // Refresh layout to pick up cookies
             } else {
                 setError(data.error || 'Ошибка входа');
@@ -51,7 +52,7 @@ export default function LoginPage() {
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">
-                            Логин
+                            Логин или email
                         </label>
                         <input
                             type="text"
@@ -59,7 +60,7 @@ export default function LoginPage() {
                             onChange={(e) => setUsername(e.target.value)}
                             required
                             className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-4 py-3 text-sm font-bold text-gray-900 focus:outline-none focus:border-blue-500 focus:ring-0 transition-all placeholder:text-gray-300 placeholder:font-medium"
-                            placeholder="admin/manager1"
+                            placeholder="admin@example.com или manager1"
                         />
                     </div>
 

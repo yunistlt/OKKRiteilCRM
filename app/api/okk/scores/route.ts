@@ -1,13 +1,19 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     const session = await getSession();
-    const userRole = session?.user?.role || 'admin';
+    if (!session?.user) {
+        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+    }
+
+    const userRole = session.user.role;
     const retailCrmId = session?.user?.retail_crm_manager_id;
+    const readClient = session.accessToken ? createSupabaseUserClient(session.accessToken) || supabase : supabase;
 
     const { searchParams } = new URL(req.url);
     const from = searchParams.get('from');
@@ -23,7 +29,7 @@ export async function GET(req: Request) {
     }
 
     // 1. Получаем рабочие статусы
-    const { data: settings } = await supabase
+    const { data: settings } = await readClient
         .from('status_settings')
         .select('code')
         .eq('is_working', true);
@@ -31,7 +37,7 @@ export async function GET(req: Request) {
     const workingStatuses = (settings || []).map(s => s.code);
 
     // 2. Базовый запрос к orders (все активные)
-    let ordersQuery = supabase
+    let ordersQuery = readClient
         .from('orders')
         .select('order_id, status, created_at, manager_id, totalsumm, raw_payload', { count: 'exact' })
         .in('status', workingStatuses)
@@ -69,7 +75,7 @@ export async function GET(req: Request) {
     const orderIds = (activeOrders || []).map(o => o.order_id);
     let scoresMap: Record<number, any> = {};
     if (orderIds.length > 0) {
-        const { data: scores } = await supabase
+        const { data: scores } = await readClient
             .from('okk_order_scores')
             .select('*')
             .in('order_id', orderIds);
@@ -81,7 +87,7 @@ export async function GET(req: Request) {
     const managerIds = Array.from(new Set((activeOrders || []).map(o => o.manager_id).filter(Boolean)));
     let managerMap: Record<number, string> = {};
     if (managerIds.length > 0) {
-        const { data: managers } = await supabase
+        const { data: managers } = await readClient
             .from('managers')
             .select('id, first_name, last_name')
             .in('id', managerIds);
@@ -98,7 +104,7 @@ export async function GET(req: Request) {
     const statusCodes = Array.from(new Set((activeOrders || []).map(o => o.status).filter(Boolean)));
     let statusMap: Record<string, { name: string; color: string | null }> = {};
     if (statusCodes.length > 0) {
-        const { data: statuses } = await supabase
+        const { data: statuses } = await readClient
             .from('statuses')
             .select('code, name, color')
             .in('code', statusCodes);
@@ -109,7 +115,7 @@ export async function GET(req: Request) {
     // 6. Получаем реальные нарушения из okk_violations
     let violationsMap: Record<number, any[]> = {};
     if (orderIds.length > 0) {
-        const { data: violationsData } = await supabase
+        const { data: violationsData } = await readClient
             .from('okk_violations')
             .select('*')
             .in('order_id', orderIds)
@@ -139,7 +145,7 @@ export async function GET(req: Request) {
     )) as number[];
 
     if (customerIds.length > 0) {
-        const { data: outreachData } = await supabase
+        const { data: outreachData } = await readClient
             .from('ai_outreach_logs')
             .select('customer_id, status, sent_at, opened_at, replied_at, intent_status, generated_email, client_reply')
             .in('customer_id', customerIds)
@@ -160,7 +166,7 @@ export async function GET(req: Request) {
     let filteredAvgScore = 0;
 
     // A. Средний по всему ОП (игнорирует from, to, фильтр менеджера)
-    const { data: allScores } = await supabase
+    const { data: allScores } = await readClient
         .from('okk_order_scores')
         .select('deal_score_pct')
         .not('deal_score_pct', 'is', null);
@@ -175,7 +181,7 @@ export async function GET(req: Request) {
     const filteredOrderIds = (filteredOrdersAllPages || []).map(o => o.order_id);
 
     if (filteredOrderIds.length > 0) {
-        const { data: filteredScoresData } = await supabase
+        const { data: filteredScoresData } = await readClient
             .from('okk_order_scores')
             .select('deal_score_pct')
             .in('order_id', filteredOrderIds)

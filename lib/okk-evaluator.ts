@@ -12,11 +12,202 @@
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { runInsightAnalysis } from './insight-agent';
+import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 
 let _openai: OpenAI | null = null;
+const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide]));
+
+const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
+    tz_received: ['orders.raw_payload.customerComment', 'orders.raw_payload.managerComment', 'orders.raw_payload.customFields'],
+    field_buyer_filled: ['orders.raw_payload.company', 'orders.raw_payload.contact', 'orders.raw_payload.customer'],
+    field_product_category: ['orders.raw_payload.customFields', 'orders.raw_payload.category'],
+    field_contact_data: ['orders.raw_payload.phone', 'orders.raw_payload.email', 'orders.raw_payload.contact.phones'],
+    relevant_number_found: ['call_order_matches', 'raw_telphin_calls.from_number', 'raw_telphin_calls.to_number'],
+    field_expected_amount: ['orders.raw_payload.customFields.expected_amount', 'orders.raw_payload.totalSumm'],
+    field_purchase_form: ['orders.raw_payload.customFields.typ_customer_margin', 'orders.raw_payload.customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete'],
+    field_sphere_correct: ['orders.raw_payload.customFields.sfera_deiatelnosti'],
+    mandatory_comments: ['raw_order_events.event_type'],
+    email_sent_no_answer: ['raw_order_events.event_type', 'raw_telphin_calls.direction', 'raw_telphin_calls.transcript'],
+    lead_in_work_lt_1_day: ['orders.created_at', 'raw_telphin_calls.started_at', 'order_history_log.occurred_at'],
+    next_contact_not_overdue: ['orders.raw_payload.customFields.next_contact_date', 'orders.raw_payload.customFields.data_kontakta'],
+    lead_in_work_lt_1_day_after_tz: ['orders.updated_at', 'orders.raw_payload.customFields'],
+    deal_in_status_lt_5_days: ['order_history_log.occurred_at', 'orders.created_at'],
+};
+
 function getOpenAI() {
     if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     return _openai;
+}
+
+function inferConfidence(result: boolean | null | undefined, reason: string | null | undefined) {
+    if (result === null || result === undefined) return 0.35;
+    const lower = String(reason || '').toLowerCase();
+    if (lower.includes('ошибка ai')) return 0.4;
+    if (lower.includes('оценить нельзя') || lower.includes('нет данных')) return 0.45;
+    return 0.82;
+}
+
+function pickRawPayload(data: Record<string, any>) {
+    return data?._order?.raw_payload || {};
+}
+
+function getSourceValues(key: string, data: Record<string, any>) {
+    const raw = pickRawPayload(data);
+    switch (key) {
+        case 'tz_received':
+            if (data._tz_evidence) {
+                return {
+                    customer_comment: data._tz_evidence.customer_comment || null,
+                    manager_comment: data._tz_evidence.manager_comment || null,
+                    tz_field_keys: data._tz_evidence.tz_field_keys || [],
+                    tz_detected: data.tz_received ?? null,
+                };
+            }
+            return {
+                customer_comment_present: Boolean(raw?.customerComment),
+                manager_comment_present: Boolean(raw?.managerComment),
+                custom_fields_present: Boolean(raw?.customFields),
+            };
+        case 'field_buyer_filled':
+            return {
+                company_name: raw?.company?.name || null,
+                contact_name: raw?.contact?.name || null,
+                customer_name: raw?.customer?.firstName || raw?.customer?.name || null,
+            };
+        case 'field_product_category':
+            return {
+                product_category: raw?.customFields?.typ_castomer || raw?.customFields?.tovarnaya_kategoriya || raw?.customFields?.product_category || raw?.category || null,
+            };
+        case 'field_contact_data':
+            return {
+                phone: raw?.phone || null,
+                email: raw?.email || null,
+                extra_phones: raw?.contact?.phones?.length || 0,
+            };
+        case 'relevant_number_found':
+            if (Array.isArray(data._call_evidence)) {
+                return {
+                    calls_attempts_count: data.calls_attempts_count || 0,
+                    calls_evaluated_count: data.calls_evaluated_count || 0,
+                    calls_status: data.calls_status || null,
+                    calls: data._call_evidence,
+                };
+            }
+            return {
+                calls_attempts_count: data.calls_attempts_count || 0,
+                calls_evaluated_count: data.calls_evaluated_count || 0,
+                calls_status: data.calls_status || null,
+            };
+        case 'field_expected_amount':
+            return {
+                total_sum: raw?.totalSumm || null,
+                expected_amount: raw?.customFields?.expected_amount || raw?.customFields?.ozhidaemaya_summa || null,
+            };
+        case 'field_purchase_form':
+            return {
+                purchase_form: raw?.customFields?.typ_customer_margin || raw?.customFields?.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || null,
+            };
+        case 'field_sphere_correct':
+            return {
+                sphere: raw?.customFields?.sfera_deiatelnosti || raw?.customFields?.sphere_of_activity || null,
+            };
+        case 'mandatory_comments':
+            return {
+                comment_reason: data._reasons?.mandatory_comments || null,
+            };
+        case 'email_sent_no_answer':
+            if (Array.isArray(data._call_evidence)) {
+                return {
+                    calls_status: data.calls_status || null,
+                    calls_attempts_count: data.calls_attempts_count || 0,
+                    calls: data._call_evidence,
+                };
+            }
+            return {
+                calls_status: data.calls_status || null,
+                calls_attempts_count: data.calls_attempts_count || 0,
+            };
+        case 'lead_in_work_lt_1_day':
+            return {
+                lead_received_at: data.lead_received_at || null,
+                first_contact_attempt_at: data.first_contact_attempt_at || null,
+                time_to_first_contact: data.time_to_first_contact || null,
+            };
+        case 'next_contact_not_overdue':
+            return {
+                next_contact_date: raw?.customFields?.next_contact_date || raw?.customFields?.data_kontakta || null,
+            };
+        case 'lead_in_work_lt_1_day_after_tz':
+            return {
+                lead_in_work_lt_1_day: data.lead_in_work_lt_1_day ?? null,
+                tz_received: data.tz_received ?? null,
+            };
+        case 'deal_in_status_lt_5_days':
+            return {
+                order_status: data.order_status || null,
+                order_updated_at: data._order?.updated_at || null,
+            };
+        default:
+            return null;
+    }
+}
+
+function getMissingData(key: string, data: Record<string, any>, reason: string | null | undefined) {
+    const raw = pickRawPayload(data);
+    const missing: string[] = [];
+    if (String(reason || '').toLowerCase().includes('нет данных')) missing.push('system:no-data');
+    switch (key) {
+        case 'tz_received':
+            if (!raw?.customerComment && !raw?.managerComment && !raw?.customFields) missing.push('order:comments_or_custom_fields');
+            break;
+        case 'field_contact_data':
+            if (!raw?.phone && !raw?.email && !raw?.contact?.phones?.length) missing.push('order:contact_data');
+            break;
+        case 'relevant_number_found':
+            if (!data.calls_attempts_count) missing.push('calls:matched_outgoing');
+            break;
+        case 'lead_in_work_lt_1_day':
+            if (!data.lead_received_at) missing.push('order:lead_received_at');
+            if (!data.first_contact_attempt_at) missing.push('order:first_contact_attempt_at');
+            break;
+        case 'next_contact_not_overdue':
+            if (!raw?.customFields?.next_contact_date && !raw?.customFields?.data_kontakta) missing.push('order:next_contact_date');
+            break;
+        default:
+            break;
+    }
+    return missing;
+}
+
+function createBreakdownEntry(
+    key: string,
+    result: boolean | null | undefined,
+    reason: string | null | undefined,
+    data: Record<string, any>,
+    extras: Record<string, any> = {},
+) {
+    const guide = GUIDE_MAP.get(key);
+    const missingData = extras.missing_data || getMissingData(key, data, reason);
+    return {
+        result: result ?? null,
+        reason: reason ?? null,
+        reason_human: reason ?? null,
+        rule_id: extras.rule_id || key,
+        owner: extras.owner || guide?.owner || null,
+        group: extras.group || guide?.group || null,
+        source_refs: extras.source_refs || guide?.dataSources || DEFAULT_SOURCE_REFS[key] || [],
+        source_values: extras.source_values !== undefined ? extras.source_values : getSourceValues(key, data),
+        calculation_steps: extras.calculation_steps || [],
+        confidence: extras.confidence ?? inferConfidence(result, reason),
+        missing_data: missingData,
+        recommended_fix: extras.recommended_fix || guide?.howToFix || null,
+        ambiguous_explanation: extras.ambiguous_explanation ?? ((result === null || result === undefined) || missingData.length > 0),
+        context_fragment: extras.context_fragment || null,
+        model: extras.model || null,
+        evidence_type: extras.evidence_type || 'rule',
+        penalty_impact: extras.penalty_impact ?? 0,
+        penalty_journal: extras.penalty_journal,
+    };
 }
 
 // ═══════════════════════════════════════════════════════
@@ -211,7 +402,11 @@ export async function collectFacts(orderId: number) {
         .select('telphin_call_id, raw_telphin_calls(started_at, duration_sec, recording_url, direction, transcript)')
         .eq('retailcrm_order_id', orderId);
 
-    calls = (callMatches || []).map((m: any) => m.raw_telphin_calls).filter(Boolean);
+    calls = (callMatches || []).map((m: any) => ({
+        ...(m.raw_telphin_calls || {}),
+        telphin_call_id: m.telphin_call_id || null,
+        matched_by: 'call_order_matches',
+    })).filter(Boolean);
 
     // Фолбек: если привязок нет, ищем по номеру телефона клиента
     if (calls.length === 0) {
@@ -237,7 +432,11 @@ export async function collectFacts(orderId: number) {
             const { data: fallbackCalls } = await query.or(orFilter);
 
             if (fallbackCalls && fallbackCalls.length > 0) {
-                calls = fallbackCalls;
+                calls = fallbackCalls.map((call: any) => ({
+                    ...call,
+                    telphin_call_id: null,
+                    matched_by: 'phone_fallback',
+                }));
             }
         }
     }
@@ -255,6 +454,10 @@ export async function collectFacts(orderId: number) {
     for (const call of potentialConnectedCalls) {
         if (!call.transcript) {
             // Если транскрипции нет, но разговор долгий (>15с), считаем дозвоном по старой логике (на всякий случай)
+            callAnalysisResults[call.recording_url || call.started_at] = {
+                is_human: true,
+                reason: 'Нет транскрипции, но длительность больше 15 секунд; применён fallback как к живому разговору.',
+            };
             connectedCalls.push(call);
             continue;
         }
@@ -285,6 +488,8 @@ export async function collectFacts(orderId: number) {
     const managerComment: string = raw?.managerComment || '';
     const tzCheck = await checkTZWithAI(customerComment, managerComment, raw?.customFields);
     const tz_received = tzCheck.tz_received;
+    const tzFieldKeys = ['tz', 'technical_specification', 'width', 'height', 'depth', 'temperature']
+        .filter((field) => Boolean(raw?.customFields?.[field]));
 
     // O: Покупатель заполнен
     const field_buyer_filled =
@@ -427,6 +632,25 @@ export async function collectFacts(orderId: number) {
         })
         .join('\n\n');
 
+    const callEvidence = calls
+        .sort((a: any, b: any) => new Date(a.started_at || 0).getTime() - new Date(b.started_at || 0).getTime())
+        .map((call: any) => {
+            const analysis = callAnalysisResults[call.recording_url || call.started_at];
+            const included = connectedCalls.some((connected: any) => (connected.recording_url || connected.started_at) === (call.recording_url || call.started_at));
+            return {
+                telphin_call_id: call.telphin_call_id || null,
+                started_at: call.started_at || null,
+                direction: call.direction || null,
+                duration_sec: call.duration_sec || 0,
+                matched_by: call.matched_by || 'unknown',
+                has_transcript: Boolean(call.transcript),
+                transcript_excerpt: call.transcript ? String(call.transcript).slice(0, 220) : null,
+                included_in_score: included,
+                classification: analysis ? (analysis.is_human ? 'human' : 'auto') : null,
+                classification_reason: analysis?.reason || null,
+            };
+        });
+
     // G: lead_received_at
     const lead_received_at = order?.created_at || null;
 
@@ -485,7 +709,13 @@ export async function collectFacts(orderId: number) {
         // Для дальнейшей обработки
         _order: order,
         _transcript: transcript_history,
-        _reasons: reasons
+        _reasons: reasons,
+        _call_evidence: callEvidence,
+        _tz_evidence: {
+            customer_comment: customerComment || null,
+            manager_comment: managerComment || null,
+            tz_field_keys: tzFieldKeys,
+        },
     };
 }
 
@@ -603,6 +833,12 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
         script_confident_speech: { result: false, reason: "Нет данных для анализа" },
         script_score_pct: 0,
         evaluator_comment: "Звонки не найдены или слишком короткие для анализа. Оценка 0.",
+        _meta: {
+            model: null,
+            transcript_length: transcript?.length || 0,
+            transcript_excerpt: transcript?.slice(0, 280) || null,
+            anna_insights_available: Boolean(annaInsights),
+        }
     };
 
     console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
@@ -710,6 +946,12 @@ ${transcript.substring(0, 15000)}`
             script_confident_speech: getVal('script_confident_speech'),
             script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.round(Math.min(100, Math.max(0, parsed.script_score_pct))) : null,
             evaluator_comment: parsed.evaluator_comment ?? null,
+            _meta: {
+                model: 'gpt-4o-mini',
+                transcript_length: transcript.length,
+                transcript_excerpt: transcript.substring(0, 280),
+                anna_insights_available: Boolean(annaInsights),
+            }
         };
 
     } catch (e) {
@@ -721,7 +963,7 @@ ${transcript.substring(0, 15000)}`
 // ═══════════════════════════════════════════════════════
 // Расчёт итогового % (X, Y, AR, AS)
 // ═══════════════════════════════════════════════════════
-function calcScores(data: Record<string, any>, totalPenalty: number = 0) {
+function calcScores(data: Record<string, any>, totalPenalty: number = 0, penaltyJournal: any[] = []) {
     // Оценка заполнения сделки (col Y: % правил заполнения/ведения)
     const dealChecks = [
         { key: 'tz_received', val: data.tz_received },
@@ -754,6 +996,8 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0) {
     } else if (deal_score_pct !== null) total_score = deal_score_pct;
     else if (script_score_pct !== null) total_score = script_score_pct;
 
+    const total_score_before_penalty = total_score;
+
     // Вычитаем штрафные баллы
     if (total_score !== null && totalPenalty > 0) {
         total_score = Math.max(0, total_score - totalPenalty);
@@ -768,14 +1012,34 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0) {
 
     // Техническая часть (Семён)
     Object.keys(data._reasons || {}).forEach(k => {
-        score_breakdown[k] = { result: data[k] === true, reason: data._reasons[k] };
+        const rawResult = data[k];
+        score_breakdown[k] = createBreakdownEntry(
+            k,
+            rawResult === true ? true : rawResult === false ? false : null,
+            data._reasons[k],
+            data,
+            {
+                calculation_steps: [`Проверен критерий ${k} по данным RetailCRM/событиям и сохранён итоговый признак ${rawResult ?? 'null'}.`],
+            },
+        );
     });
 
     // Часть SLA (Игорь)
-    score_breakdown.lead_in_work_lt_1_day = { result: data.lead_in_work_lt_1_day, reason: data.lead_in_work_reason };
-    score_breakdown.next_contact_not_overdue = { result: data.next_contact_not_overdue, reason: data.next_contact_reason };
-    score_breakdown.lead_in_work_lt_1_day_after_tz = { result: data.lead_in_work_lt_1_day_after_tz, reason: data.lead_in_work_after_tz_reason };
-    score_breakdown.deal_in_status_lt_5_days = { result: data.deal_in_status_lt_5_days, reason: data.deal_in_status_reason };
+    score_breakdown.lead_in_work_lt_1_day = createBreakdownEntry('lead_in_work_lt_1_day', data.lead_in_work_lt_1_day, data.lead_in_work_reason, data, {
+        calculation_steps: [
+            `Берём lead_received_at=${data.lead_received_at || 'null'} и first_contact_attempt_at=${data.first_contact_attempt_at || 'null'}.`,
+            'Если разница <= 24 часов, критерий считается выполненным.',
+        ],
+    });
+    score_breakdown.next_contact_not_overdue = createBreakdownEntry('next_contact_not_overdue', data.next_contact_not_overdue, data.next_contact_reason, data, {
+        calculation_steps: ['Смотрим дату следующего контакта в customFields.', 'Сравниваем с текущей датой: просрочка даёт false.'],
+    });
+    score_breakdown.lead_in_work_lt_1_day_after_tz = createBreakdownEntry('lead_in_work_lt_1_day_after_tz', data.lead_in_work_lt_1_day_after_tz, data.lead_in_work_after_tz_reason, data, {
+        calculation_steps: ['Используется SLA-проверка после получения ТЗ.', 'Если нет достаточных данных, результат может быть null.'],
+    });
+    score_breakdown.deal_in_status_lt_5_days = createBreakdownEntry('deal_in_status_lt_5_days', data.deal_in_status_lt_5_days, data.deal_in_status_reason, data, {
+        calculation_steps: ['Ищем дату последней смены статуса.', 'Если с последней смены прошло меньше 5 дней, критерий выполнен.'],
+    });
 
     // Скрипт (Максим)
     const scriptKeys = [
@@ -788,8 +1052,59 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0) {
     ];
     scriptKeys.forEach(k => {
         if (data[k] && typeof data[k] === 'object') {
-            score_breakdown[k] = data[k];
+            score_breakdown[k] = createBreakdownEntry(k, data[k].result ?? null, data[k].reason ?? null, data, {
+                source_refs: Array.from(new Set([...(GUIDE_MAP.get(k)?.dataSources || []), 'raw_telphin_calls.transcript', 'anna_insights'])),
+                source_values: {
+                    transcript_length: data._script_meta?.transcript_length || 0,
+                    anna_insights_available: Boolean(data._script_meta?.anna_insights_available),
+                },
+                calculation_steps: ['AI анализирует всю историю транскрипций по сделке.', 'Для каждого пункта возвращается true/false и текстовое обоснование.'],
+                confidence: data[k].result === null || data[k].result === undefined ? 0.35 : 0.72,
+                context_fragment: data._script_meta?.transcript_excerpt || null,
+                model: data._script_meta?.model || null,
+                evidence_type: 'ai',
+                ambiguous_explanation: !data._script_meta?.transcript_length,
+            });
         }
+    });
+
+    score_breakdown._meta = createBreakdownEntry('_meta', null, 'Служебная сводка explainability для итогового расчёта.', data, {
+        rule_id: 'score_summary',
+        owner: 'Максим',
+        group: 'System',
+        source_refs: ['okk_order_scores.score_breakdown', 'okk_violations', 'orders', 'raw_telphin_calls'],
+        source_values: {
+            deal_checks_total: dealChecks.length,
+            deal_checks_passed: dealPassed,
+            deal_score_pct,
+            script_score_pct,
+            total_score_before_penalty,
+            total_score_after_penalty: total_score,
+            total_penalty: totalPenalty,
+        },
+        calculation_steps: [
+            `deal_score_pct = round(${dealPassed}/${dealChecks.length || 1} * 100) => ${deal_score_pct ?? 'null'}`,
+            `script_score = round(script_score_pct / 100 * 14) => ${script_score ?? 'null'}`,
+            total_score_before_penalty !== null
+                ? `total_score = среднее итоговых процентов => ${total_score_before_penalty}`
+                : 'total_score не рассчитан из-за отсутствия базовых процентов.',
+            totalPenalty > 0
+                ? `После штрафов итог уменьшен на ${totalPenalty} п. => ${total_score}`
+                : 'Штрафы не применялись.',
+        ],
+        confidence: 1,
+        missing_data: [],
+        recommended_fix: null,
+        ambiguous_explanation: false,
+        evidence_type: 'system',
+        penalty_impact: totalPenalty,
+        penalty_journal: penaltyJournal.map((item) => ({
+            rule_code: item.rule_code || null,
+            severity: item.severity || null,
+            points: item.points || 0,
+            details: item.details || 'Нарушение правила',
+            detected_at: item.detected_at || item.violation_time || null,
+        })),
     });
 
     return { deal_score, deal_score_pct, script_score, total_score, score_breakdown };
@@ -819,14 +1134,14 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     // Получаем список нарушений из Rule Engine, чтобы вычесть штрафные баллы
     const { data: orderViolations } = await supabase
         .from('okk_violations')
-        .select('points')
+        .select('rule_code, severity, details, points, detected_at, violation_time')
         .eq('order_id', orderId);
 
     const totalPenalty = (orderViolations || []).reduce((sum, v) => sum + (v.points || 0), 0);
 
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
-    const scores = calcScores(allData, totalPenalty);
+    const scores = calcScores({ ...allData, _script_meta: script._meta || null }, totalPenalty, orderViolations || []);
 
     const record = {
         order_id: orderId,

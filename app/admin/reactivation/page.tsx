@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_VICTORIA_PROMPT } from '@/lib/reactivation';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 // ─────────────────────────────────────────────
 // Types
@@ -670,6 +671,7 @@ export default function ReactivationPage() {
     const convRate = stats.total_sent > 0 ? Math.round((stats.total_positive / stats.total_sent) * 100) : 0;
 
     return (
+        <ProtectedRoute allowed={['admin', 'rop']}>
         <div className="min-h-screen bg-zinc-950 text-white px-4 py-8 md:px-10">
             <div className="max-w-7xl mx-auto space-y-8">
 
@@ -997,5 +999,6 @@ export default function ReactivationPage() {
                 />
             )}
         </div>
+        </ProtectedRoute>
     );
 }

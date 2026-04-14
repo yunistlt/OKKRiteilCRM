@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 
 export async function GET(req: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin', 'rop'])) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const campaignId = searchParams.get('campaign_id');
     const status = searchParams.get('status');
@@ -34,6 +41,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ 
         success: true, 
         data: data || [], 
+        logs: data || [],
         total: count || 0 
     });
 }

@@ -11,6 +11,7 @@ export default function ManagerSettingsPage() {
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
     const [showSqlGuide, setShowSqlGuide] = useState(false);
+    const [saveMessage, setSaveMessage] = useState('');
 
     useEffect(() => {
         async function load() {
@@ -50,10 +51,17 @@ export default function ManagerSettingsPage() {
 
     const handleSave = async () => {
         setSaving(true);
+        setSaveMessage('');
         try {
             const result = await saveManagerSettings(Array.from(controlledIds));
             if (result.success) {
-                alert('Настройки сохранены успешно!');
+                const created = Array.isArray(result.createdAccounts) ? result.createdAccounts : [];
+                const skipped = Array.isArray(result.skippedAccounts) ? result.skippedAccounts : [];
+                if (created.length > 0) {
+                    setSaveMessage(`Настройки сохранены. Созданы учётки ОКК: ${created.join(', ')}.`);
+                } else {
+                    setSaveMessage(`Настройки сохранены. Новые учётки не требовались${skipped.length > 0 ? '.' : '.'}`);
+                }
                 setShowSqlGuide(false);
             } else if (result.errorType === 'TABLE_MISSING') {
                 setShowSqlGuide(true);
@@ -90,6 +98,12 @@ export default function ManagerSettingsPage() {
                     {saving ? 'Сохранение...' : 'Сохранить изменения'}
                 </button>
             </div>
+
+            {saveMessage && (
+                <div className="mb-4 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {saveMessage}
+                </div>
+            )}
 
             {showSqlGuide && (
                 <div className="mb-8 p-4 md:p-8 bg-amber-50 border-2 border-amber-200 rounded-3xl animate-in fade-in slide-in-from-top-4 duration-500">
@@ -154,6 +168,11 @@ NOTIFY pgrst, 'reload config';`}
                                             ) : (
                                                 <span className="text-[10px] text-gray-400">He активен</span>
                                             )}
+                                            {m.has_okk_access ? (
+                                                <span className="text-[10px] text-blue-600 font-medium">Доступ: {m.okk_username || 'есть'}</span>
+                                            ) : (
+                                                <span className="text-[10px] text-amber-600 font-medium">Нет доступа</span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -170,6 +189,7 @@ NOTIFY pgrst, 'reload config';`}
                                     <th className="p-4 md:p-6 text-center w-16">ID</th>
                                     <th className="p-4 md:p-6">ФИО Менеджера</th>
                                     <th className="p-4 md:p-6">RetailCRM</th>
+                                    <th className="p-4 md:p-6">Доступ в ОКК</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -193,6 +213,17 @@ NOTIFY pgrst, 'reload config';`}
                                                 <span className="bg-green-50 text-green-700 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-green-600/20">Активен</span>
                                             ) : (
                                                 <span className="bg-gray-50 text-gray-400 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-gray-600/10">Не активен</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 md:p-6 text-xs md:text-sm">
+                                            {m.has_okk_access ? (
+                                                <span className="bg-blue-50 text-blue-700 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-blue-600/20">
+                                                    {m.okk_username || 'Доступ создан'}
+                                                </span>
+                                            ) : (
+                                                <span className="bg-amber-50 text-amber-700 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">
+                                                    Нет доступа
+                                                </span>
                                             )}
                                         </td>
                                     </tr>

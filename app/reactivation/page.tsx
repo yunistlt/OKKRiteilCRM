@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { OutreachLog } from '@/lib/reactivation-db';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
 
 export default function ReactivationDashboard() {
     const [activeTab, setActiveTab] = useState<'drafts' | 'sent' | 'rejected'>('drafts');
@@ -46,6 +47,7 @@ export default function ReactivationDashboard() {
     };
 
     return (
+        <ProtectedRoute allowed={['admin', 'rop']}>
         <div className="min-h-screen bg-gray-50 flex flex-col">
             {/* Header */}
             <header className="bg-white border-b border-gray-100 px-8 py-6 flex items-center justify-between sticky top-0 z-10 shadow-sm">
@@ -162,5 +164,6 @@ export default function ReactivationDashboard() {
                 )}
             </main>
         </div>
+        </ProtectedRoute>
     );
 }

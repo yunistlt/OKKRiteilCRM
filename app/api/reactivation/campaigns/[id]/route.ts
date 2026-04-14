@@ -4,6 +4,8 @@
  */
 
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { getCampaignById, updateCampaignStatus, getLogs, getStats, deleteCampaign } from '@/lib/reactivation-db';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +15,11 @@ export async function GET(
     { params }: { params: { id: string } }
 ) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'rop'])) {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         const campaign = await getCampaignById(params.id);
         if (!campaign) {
             return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
@@ -32,6 +39,11 @@ export async function PATCH(
     { params }: { params: { id: string } }
 ) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'rop'])) {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await request.json();
         const { status } = body as { status: 'active' | 'paused' | 'completed' };
 
@@ -51,6 +63,11 @@ export async function DELETE(
     { params }: { params: { id: string } }
 ) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'rop'])) {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         await deleteCampaign(params.id);
         return NextResponse.json({ success: true });
     } catch (e: any) {

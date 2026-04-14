@@ -7,6 +7,9 @@ import { useSearchParams } from 'next/navigation';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import OKKConsultantPanel from '@/components/OKKConsultantPanel';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 interface User {
@@ -60,7 +63,19 @@ interface OrderScore {
     script_score_pct: number | null;
     total_score: number | null;
     evaluator_comment: string | null;
-    score_breakdown: Record<string, { result: boolean | null, reason: string | null }> | null;
+    score_breakdown: Record<string, {
+        result: boolean | null;
+        reason: string | null;
+        reason_human?: string | null;
+        rule_id?: string | null;
+        source_refs?: string[];
+        source_values?: Record<string, any> | null;
+        calculation_steps?: string[];
+        confidence?: number | null;
+        missing_data?: string[];
+        recommended_fix?: string | null;
+        penalty_journal?: Array<Record<string, any>>;
+    }> | null;
     manager_name?: string;
     status_label?: string;
     status_color?: string;
@@ -687,6 +702,7 @@ export default function OKKPage() {
 }
 
 function OKKContent() {
+    const { user } = useAuth();
     const searchParams = useSearchParams();
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
@@ -709,8 +725,8 @@ function OKKContent() {
     const [selectedCallOrder, setSelectedCallOrder] = useState<OrderScore | null>(null);
     const [selectedViolationsOrder, setSelectedViolationsOrder] = useState<OrderScore | null>(null);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+    const [consultantOrderId, setConsultantOrderId] = useState<number | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
-    const [user, setUser] = useState<User | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => loadHiddenColumns());
     const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -741,16 +757,6 @@ function OKKContent() {
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) setActiveManagers(data);
-            })
-            .catch(console.error);
-    }, []);
-
-    // Fetch user role
-    useEffect(() => {
-        fetch('/api/auth/me')
-            .then(res => res.json())
-            .then(data => {
-                if (data.authenticated) setUser(data.user);
             })
             .catch(console.error);
     }, []);
@@ -831,6 +837,16 @@ function OKKContent() {
         setRunning(false);
     };
 
+    const askConsultantFromRow = useCallback((orderId: number, prompt: string) => {
+        setConsultantOrderId(orderId);
+        window.dispatchEvent(new CustomEvent('okk-consultant-ask', {
+            detail: {
+                orderId,
+                prompt,
+            },
+        }));
+    }, []);
+
     const handleBatchRun = async () => {
         if (selectedIds.size === 0) return;
         setRunning(true);
@@ -874,6 +890,30 @@ function OKKContent() {
         const vb = (b as any)[sortBy] ?? '';
         return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
     });
+
+    useEffect(() => {
+        if (selectedOrderId) setConsultantOrderId(selectedOrderId);
+    }, [selectedOrderId]);
+
+    useEffect(() => {
+        if (selectedCallOrder?.order_id) setConsultantOrderId(selectedCallOrder.order_id);
+    }, [selectedCallOrder]);
+
+    useEffect(() => {
+        if (selectedViolationsOrder?.order_id) setConsultantOrderId(selectedViolationsOrder.order_id);
+    }, [selectedViolationsOrder]);
+
+    useEffect(() => {
+        const hasCurrent = consultantOrderId !== null && safeScores.some((score) => score.order_id === consultantOrderId);
+        if (!hasCurrent) {
+            setConsultantOrderId(filtered[0]?.order_id ?? null);
+        }
+    }, [consultantOrderId, filtered, safeScores]);
+
+    const consultantOrder = useMemo(
+        () => safeScores.find((score) => score.order_id === consultantOrderId) || filtered[0] || null,
+        [consultantOrderId, filtered, safeScores]
+    );
 
     // Удален локальный расчет avgScore так как получаем его с бекенда
 
@@ -1008,7 +1048,8 @@ function OKKContent() {
                     onClose={() => setSelectedOrderId(null)}
                 />
             )}
-            <div className="flex flex-col bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
+            <div className="flex bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
+            <div className="flex min-w-0 flex-1 flex-col">
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-2">
@@ -1022,6 +1063,14 @@ function OKKContent() {
                 </div>
 
                 <div className="flex items-center gap-2">
+                    {user?.role !== 'manager' && (
+                        <Link
+                            href="/okk/audit"
+                            className="hidden md:inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-100"
+                        >
+                            Аудит Семёна
+                        </Link>
+                    )}
                     {/* Compact Run Controls */}
                     <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
                         {user?.role === 'admin' ? (
@@ -1055,11 +1104,15 @@ function OKKContent() {
                                 {user?.role === 'manager' ? 'ваш средний %' : filterManager.length > 0 ? 'средний % менеджера' : 'текущий фильтр %'}
                             </div>
                         </div>
-                        <div className="w-px h-8 bg-gray-200" />
-                        <div className="text-right">
-                            <div className="text-xl font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
-                            <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
-                        </div>
+                        {user?.role !== 'manager' && (
+                            <>
+                                <div className="w-px h-8 bg-gray-200" />
+                                <div className="text-right">
+                                    <div className="text-xl font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
+                                    <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
+                                </div>
+                            </>
+                        )}
                     </div>
 
                     <div className="flex gap-3 md:hidden flex items-end">
@@ -1069,11 +1122,15 @@ function OKKContent() {
                                 {user?.role === 'manager' ? 'ваш' : 'фильтр'}
                             </div>
                         </div>
-                        <div className="w-px h-6 bg-gray-200" />
-                        <div className="text-right flex flex-col items-end">
-                            <div className="text-sm font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
-                            <div className="text-[8px] font-black text-gray-400 uppercase leading-none">оп</div>
-                        </div>
+                        {user?.role !== 'manager' && (
+                            <>
+                                <div className="w-px h-6 bg-gray-200" />
+                                <div className="text-right flex flex-col items-end">
+                                    <div className="text-sm font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
+                                    <div className="text-[8px] font-black text-gray-400 uppercase leading-none">оп</div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
@@ -1186,6 +1243,38 @@ function OKKContent() {
                                                 >
                                                     Карточка
                                                 </button>
+                                                <button
+                                                    onClick={() => setConsultantOrderId(s.order_id)}
+                                                    className="px-1.5 py-0.5 text-[9px] font-semibold rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                                >
+                                                    Семён
+                                                </button>
+                                                <div className="grid grid-cols-2 gap-1">
+                                                    <button
+                                                        onClick={() => askConsultantFromRow(s.order_id, 'Как посчитан балл по этому заказу?')}
+                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors"
+                                                    >
+                                                        Рейтинг
+                                                    </button>
+                                                    <button
+                                                        onClick={() => askConsultantFromRow(s.order_id, 'Почему здесь есть крестики?')}
+                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                                    >
+                                                        Крестик
+                                                    </button>
+                                                    <button
+                                                        onClick={() => askConsultantFromRow(s.order_id, 'Откуда взялись данные для оценки?')}
+                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
+                                                    >
+                                                        Источник
+                                                    </button>
+                                                    <button
+                                                        onClick={() => askConsultantFromRow(s.order_id, 'Что нужно исправить менеджеру?')}
+                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                                                    >
+                                                        Исправить
+                                                    </button>
+                                                </div>
                                             </div>
                                         </td>
                                         <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
@@ -1234,7 +1323,10 @@ function OKKContent() {
                     ) : filtered.map((s) => (
                         <div
                             key={s.order_id}
-                            onClick={() => setSelectedCallOrder(s)}
+                            onClick={() => {
+                                setSelectedCallOrder(s);
+                                setConsultantOrderId(s.order_id);
+                            }}
                             className="bg-white rounded border border-gray-200 shadow-sm active:bg-gray-50 transition-all cursor-pointer relative overflow-hidden flex items-center h-[52px]"
                         >
                             <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: s.status_color || '#e5e7eb' }} />
@@ -1258,6 +1350,7 @@ function OKKContent() {
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 setSelectedOrderId(s.order_id);
+                                                setConsultantOrderId(s.order_id);
                                             }}
                                             className="px-1.5 py-0.5 text-[9px] font-bold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
                                         >
@@ -1291,6 +1384,45 @@ function OKKContent() {
                                         <span className="text-[9px] font-black uppercase">АНАЛИЗ</span>
                                         <svg className="w-2 h-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" /></svg>
                                     </div>
+                                </div>
+
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            askConsultantFromRow(s.order_id, 'Как посчитан балл по этому заказу?');
+                                        }}
+                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-sky-200 text-sky-700 bg-sky-50"
+                                    >
+                                        Рейтинг
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            askConsultantFromRow(s.order_id, 'Почему здесь есть крестики?');
+                                        }}
+                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-amber-200 text-amber-700 bg-amber-50"
+                                    >
+                                        Крестик
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            askConsultantFromRow(s.order_id, 'Откуда взялись данные для оценки?');
+                                        }}
+                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-violet-200 text-violet-700 bg-violet-50"
+                                    >
+                                        Источник
+                                    </button>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            askConsultantFromRow(s.order_id, 'Что нужно исправить менеджеру?');
+                                        }}
+                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-rose-200 text-rose-700 bg-rose-50"
+                                    >
+                                        Исправить
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1336,6 +1468,9 @@ function OKKContent() {
             {selectedViolationsOrder && (
                 <ViolationsModal order={selectedViolationsOrder} onClose={() => setSelectedViolationsOrder(null)} />
             )}
+            </div>
+
+            <OKKConsultantPanel selectedOrder={consultantOrder} />
         </div>
         </>
     );
@@ -1739,6 +1874,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                     </h5>
                                                     <div className="space-y-2 md:space-y-3">
                                                         {Object.entries(order.score_breakdown || {})
+                                                            .filter(([key]) => isVisibleBreakdownKey(key))
                                                             .filter(([_, data]) => !!data.reason)
                                                             .map(([key, data]) => (
                                                                 <div key={key} className="bg-white p-2.5 md:p-3 rounded-xl border border-gray-100 shadow-sm">

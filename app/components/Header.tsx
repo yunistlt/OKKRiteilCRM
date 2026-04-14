@@ -4,26 +4,21 @@ import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import DateRangePicker from './DateRangePicker';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 export default function Header() {
-    const [user, setUser] = useState<{ username: string; role: string } | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const pathname = usePathname();
+    const { user } = useAuth();
 
     useEffect(() => {
-        fetch('/api/auth/me')
-            .then(res => res.json())
-            .then(data => {
-                if (data.authenticated) {
-                    setUser(data.user);
-                    fetchUnreadCount();
-                }
-            })
-            .catch(console.error);
+        if (user) {
+            fetchUnreadCount();
+        }
 
         const interval = setInterval(fetchUnreadCount, 30000); // Check every 30s
         return () => clearInterval(interval);
-    }, []);
+    }, [user]);
 
     const fetchUnreadCount = async () => {
         try {

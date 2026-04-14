@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import CallInitiator from './calls/CallInitiator';
+import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 interface OrderDetailsModalProps {
@@ -42,7 +43,18 @@ const sectionNavItems = [
 
 type ViewTab = typeof viewTabs[number]['id'];
 type QualityMobileTab = 'calls' | 'transcript' | 'analysis';
-type ScoreBreakdownEntry = { result?: boolean | null; reason?: string | null };
+type ScoreBreakdownEntry = {
+    result?: boolean | null;
+    reason?: string | null;
+    reason_human?: string | null;
+    rule_id?: string | null;
+    source_refs?: string[];
+    source_values?: Record<string, any> | null;
+    calculation_steps?: string[];
+    confidence?: number | null;
+    missing_data?: string[];
+    recommended_fix?: string | null;
+};
 
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
     <div className="space-y-1">
@@ -925,7 +937,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                                 <span>🔍</span> Ключевые моменты
                                                             </h6>
                                                             <div className="space-y-2">
-                                                                {scoreBreakdownEntries.map(([key, info]) => (
+                                                                {scoreBreakdownEntries.filter(([key]) => isVisibleBreakdownKey(key)).map(([key, info]) => (
                                                                     <div key={key} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
                                                                         <div className="flex items-center gap-1.5 mb-1.5">
                                                                             <span className={info?.result ? 'text-green-500' : 'text-red-500'}>

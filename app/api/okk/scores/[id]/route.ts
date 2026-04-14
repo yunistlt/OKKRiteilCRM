@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -16,18 +17,23 @@ export async function GET(
 
     try {
         const session = await getSession();
-        const userRole = session?.user?.role || 'admin';
+        if (!session?.user) {
+            return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 });
+        }
+
+        const userRole = session.user.role;
         const retailCrmId = session?.user?.retail_crm_manager_id
             ? Number(session.user.retail_crm_manager_id)
             : null;
+        const readClient = session.accessToken ? createSupabaseUserClient(session.accessToken) || supabase : supabase;
 
         const [{ data: orderRow, error: orderError }, { data: scoreRow, error: scoreError }] = await Promise.all([
-            supabase
+            readClient
                 .from('orders')
                 .select('order_id, status, manager_id, totalsumm')
                 .eq('order_id', orderId)
                 .maybeSingle(),
-            supabase
+            readClient
                 .from('okk_order_scores')
                 .select('*')
                 .eq('order_id', orderId)
@@ -48,7 +54,7 @@ export async function GET(
 
         let managerName = scoreRow?.manager_name || null;
         if (!managerName && managerId) {
-            const { data: managerData } = await supabase
+            const { data: managerData } = await readClient
                 .from('managers')
                 .select('first_name, last_name')
                 .eq('id', managerId)
@@ -62,7 +68,7 @@ export async function GET(
         let statusLabel = scoreRow?.status_label || orderRow?.status || null;
         let statusColor = scoreRow?.status_color || '#E5E7EB';
         if (orderRow?.status) {
-            const { data: statusData } = await supabase
+            const { data: statusData } = await readClient
                 .from('statuses')
                 .select('name, color')
                 .eq('code', orderRow.status)

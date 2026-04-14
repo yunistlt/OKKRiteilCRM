@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 
 export async function POST(
     req: Request,
     { params }: { params: { id: string; action: string } }
 ) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin', 'rop'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { id, action } = params;
 
     if (action !== 'approve' && action !== 'reject') {

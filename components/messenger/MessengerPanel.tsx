@@ -5,52 +5,44 @@ import ChatList from './ChatList';
 import MessageView from './MessageView';
 import CreateChatModal from './CreateChatModal';
 import { supabaseBrowser } from '@/utils/supabase-browser';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 export default function MessengerPanel() {
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [chats, setChats] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [currentUser, setCurrentUser] = useState<any>(null);
+    const { user: currentUser } = useAuth();
 
     useEffect(() => {
-        fetchSession();
         fetchChats();
+        if (!supabaseBrowser.isConfigured) {
+            return;
+        }
+
         // Realtime subscription for chat updates (new messages, etc.)
         const channel = supabaseBrowser
             .channel('messenger-panel-updates')
-            .on('postgres_changes', { 
+            ?.on('postgres_changes', { 
                 event: '*', 
                 schema: 'public', 
                 table: 'chats' 
             }, () => {
                 fetchChats();
             })
-            .on('postgres_changes', { 
+            ?.on('postgres_changes', { 
                 event: 'INSERT', 
                 schema: 'public', 
                 table: 'messages' 
             }, () => {
                 fetchChats();
             })
-            .subscribe();
+            ?.subscribe();
 
         return () => {
             supabaseBrowser.removeChannel(channel);
         };
     }, []);
-
-    const fetchSession = async () => {
-        try {
-            const res = await fetch('/api/auth/me');
-            const data = await res.json();
-            if (data.authenticated) {
-                setCurrentUser(data.user);
-            }
-        } catch (error) {
-            console.error('Failed to fetch session:', error);
-        }
-    };
 
     const fetchChats = async () => {
         try {

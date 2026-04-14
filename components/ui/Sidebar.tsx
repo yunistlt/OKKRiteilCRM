@@ -1,14 +1,18 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
+import type { AppRole } from '@/lib/auth';
+import { hasRole } from '@/lib/rbac';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 interface NavItem {
     name: string;
     href: string;
     icon: string;
     agent?: string;
+    allowed?: AppRole[];
 }
 
 interface NavGroup {
@@ -19,18 +23,9 @@ interface NavGroup {
 export default function Sidebar() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const [user, setUser] = useState<{ username: string; role: string } | null>(null);
+    const { user } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
-
-    useEffect(() => {
-        fetch('/api/auth/me')
-            .then(res => res.json())
-            .then(data => {
-                if (data.authenticated) setUser(data.user);
-            })
-            .catch(console.error);
-    }, []);
 
     // Close mobile sidebar on route change
     useEffect(() => {
@@ -41,42 +36,49 @@ export default function Sidebar() {
         {
             title: 'Управление',
             items: [
-                { name: 'Центр Управления', href: '/', icon: '🏠' },
+                { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
-                { name: 'Команда ОКК', href: '/?office=true', icon: '👥' },
-                { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna' },
+                { name: 'Команда ОКК', href: '/?office=true', icon: '👥', allowed: ['admin', 'okk', 'rop'] },
+                { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
             ]
         },
         {
             title: 'Аналитика',
             items: [
-                { name: 'Хаб Аналитики', href: '/analytics', icon: '📊' },
+                { name: 'Хаб Аналитики', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
             ]
         },
         {
             title: 'Связь',
             items: [
                 { name: 'Мессенджер', href: '/messenger', icon: '💬' },
-                { name: 'Реактивация', href: '/admin/reactivation', icon: '💌', agent: 'victoria' },
+                { name: 'Реактивация', href: '/reactivation', icon: '💌', agent: 'victoria', allowed: ['admin', 'rop'] },
             ]
         },
         {
             title: 'Система',
             items: [
-                { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor' },
-                { name: 'Менеджеры', href: '/settings/managers', icon: '👤' },
-                { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂' },
-                { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️' },
+                { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },
+                { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
+                { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
+                { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
             ]
         },
         {
             title: 'AI Центр',
             items: [
-                { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️' },
-                { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚' },
+                { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️', allowed: ['admin'] },
+                { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚', allowed: ['admin'] },
             ]
         }
     ];
+
+    const visibleGroups = groups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) => !item.allowed || hasRole(user?.role, item.allowed)),
+        }))
+        .filter((group) => group.items.length > 0);
 
     const isActive = (href: string) => {
         const [targetPath, targetQuery] = href.split('?');
@@ -146,7 +148,7 @@ export default function Sidebar() {
 
                 {/* Navigation Groups */}
                 <nav className="flex-1 px-4 py-2 space-y-8 no-scrollbar">
-                    {groups.map((group, gIdx) => (
+                    {visibleGroups.map((group, gIdx) => (
                         <div key={gIdx} className="space-y-2">
                             {(!isCollapsed || isMobileOpen) && (
                                 <h3 className="px-4 text-[10px] font-black uppercase tracking-widest text-white/30">

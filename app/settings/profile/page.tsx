@@ -20,6 +20,7 @@ export default function ProfilePage() {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [avatarUrl, setAvatarUrl] = useState('');
+    const isManagerBound = user?.role === 'manager' && !!user?.retail_crm_manager_id;
 
     useEffect(() => {
         fetch('/api/auth/profile')
@@ -82,11 +83,13 @@ export default function ProfilePage() {
         setSaving(true);
         try {
             const body: Record<string, any> = {
-                first_name: firstName,
-                last_name: lastName,
                 username,
                 avatar_url: avatarUrl,
             };
+            if (!isManagerBound) {
+                body.first_name = firstName;
+                body.last_name = lastName;
+            }
             if (password) body.password = password;
 
             const res = await fetch('/api/auth/profile', {
@@ -162,6 +165,12 @@ export default function ProfilePage() {
                     </div>
                 </div>
 
+                {isManagerBound && (
+                    <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                        Имя и фамилия синхронизируются из справочника RetailCRM. В ОКК для менеджера редактируются только логин, пароль и аватар.
+                    </div>
+                )}
+
                 {/* Form */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -171,6 +180,7 @@ export default function ProfilePage() {
                             value={firstName}
                             onChange={e => setFirstName(e.target.value)}
                             placeholder="Иван"
+                            disabled={isManagerBound}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                         />
                     </div>
@@ -181,6 +191,7 @@ export default function ProfilePage() {
                             value={lastName}
                             onChange={e => setLastName(e.target.value)}
                             placeholder="Иванов"
+                            disabled={isManagerBound}
                             className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                         />
                     </div>

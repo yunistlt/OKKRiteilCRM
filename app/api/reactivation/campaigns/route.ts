@@ -8,6 +8,8 @@
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { 
     getCampaigns, 
     createCampaign, 
@@ -21,6 +23,11 @@ import {
 // ──────────────────────────────────────────
 export async function GET() {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'rop'])) {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         const campaigns = await getCampaigns();
         return NextResponse.json({ success: true, campaigns });
     } catch (e: any) {
@@ -33,6 +40,11 @@ export async function GET() {
 // ──────────────────────────────────────────
 export async function POST(request: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'rop'])) {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await request.json();
         const { title, filters, settings } = body as {
             title: string;
