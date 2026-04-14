@@ -25,6 +25,7 @@ import {
     sanitizeOrderForRole,
 } from '@/lib/okk-consultant';
 import { loadConsultantEvidence, loadConsultantOrder } from '@/lib/okk-consultant-context';
+import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 
@@ -330,7 +331,19 @@ export async function POST(req: Request) {
         const order = sanitizeOrderForRole(rawOrder, userRole);
         const evidence = sanitizeEvidenceForRole(enrichEvidenceWithOrder(rawOrder, rawEvidence), userRole);
 
-        const thread = await getOrCreateThread(userId, username, orderId, threadIdRaw);
+        let thread: { id: string } | null = null;
+        let persistenceDisabled = false;
+
+        try {
+            thread = await getOrCreateThread(userId, username, orderId, threadIdRaw);
+        } catch (threadError: any) {
+            if (isMissingConsultantPersistenceError(threadError)) {
+                persistenceDisabled = true;
+                console.warn('[OKK Consultant] Persistence schema is missing, continuing in ephemeral mode.');
+            } else {
+                throw threadError;
+            }
+        }
 
         let reply: string;
         let usedFallback = false;
@@ -386,27 +399,40 @@ export async function POST(req: Request) {
         });
         const formattedReply = applyResponseMode(reply, responseMode);
 
-        const traceId = await persistConversation({
-            threadId: thread.id,
-            userId,
-            username,
-            orderId,
-            question: message,
-            answer: formattedReply,
-            intent: mode,
-            criterionKey,
-            usedFallback,
-            answerMetadata: { cards, responseMode },
-        });
+        let traceId: string | null = null;
+        if (thread) {
+            try {
+                traceId = await persistConversation({
+                    threadId: thread.id,
+                    userId,
+                    username,
+                    orderId,
+                    question: message,
+                    answer: formattedReply,
+                    intent: mode,
+                    criterionKey,
+                    usedFallback,
+                    answerMetadata: { cards, responseMode },
+                });
+            } catch (persistError: any) {
+                if (isMissingConsultantPersistenceError(persistError)) {
+                    persistenceDisabled = true;
+                    console.warn('[OKK Consultant] Failed to persist message because persistence schema is missing.');
+                } else {
+                    throw persistError;
+                }
+            }
+        }
 
         return NextResponse.json({
             success: true,
             reply: formattedReply,
             cards,
             suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
-            threadId: thread.id,
+            threadId: thread?.id || null,
             traceId,
             responseMode,
+            persistenceDisabled,
             orderContext: {
                 orderId: order.order_id,
                 manager: order.manager_name || '—',

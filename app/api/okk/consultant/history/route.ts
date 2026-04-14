@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -139,6 +140,16 @@ export async function GET(req: Request) {
             })),
         });
     } catch (error: any) {
+        if (isMissingConsultantPersistenceError(error)) {
+            console.warn('[OKK Consultant History] Persistence schema is missing, returning ephemeral history mode.');
+            return NextResponse.json({
+                thread: null,
+                threads: [],
+                messages: [],
+                persistenceDisabled: true,
+            });
+        }
+
         return NextResponse.json({ error: error.message || 'Не удалось загрузить историю консультанта' }, { status: 500 });
     }
 }
@@ -207,6 +218,15 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ thread, threads });
     } catch (error: any) {
+        if (isMissingConsultantPersistenceError(error)) {
+            console.warn('[OKK Consultant History] Persistence schema is missing, returning ephemeral history mode.');
+            return NextResponse.json({
+                thread: null,
+                threads: [],
+                persistenceDisabled: true,
+            });
+        }
+
         return NextResponse.json({ error: error.message || 'Не удалось сбросить ветку консультанта' }, { status: 500 });
     }
 }
