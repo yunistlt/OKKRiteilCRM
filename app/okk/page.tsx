@@ -1211,8 +1211,8 @@ function OKKContent() {
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
                                 <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[72px] w-[72px] text-[10px]">Заказ</th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[112px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] text-gray-700 min-w-[124px] w-[124px]">МОП</th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[236px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] text-gray-700 min-w-[140px] w-[140px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[112px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[104px] w-[104px] break-words whitespace-normal">МОП</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[216px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[116px] w-[116px] break-words whitespace-normal shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
                                 {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-1.5 py-1 text-center text-[10px] font-semibold border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
                                 <th rowSpan={2} className="px-1.5 py-1.5 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-[10px] min-w-[58px] w-[58px] relative">Нарушения</th>
                                 <th colSpan={4} className="px-1.5 py-1 text-center text-[10px] font-semibold bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
@@ -1280,8 +1280,8 @@ function OKKContent() {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className={`px-1.5 py-1 sticky left-[112px] min-w-[124px] w-[124px] max-w-[124px] border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis text-[10px] font-medium text-gray-800 ${stickyClass}`}>{s.manager_name || '—'}</td>
-                                        <td className={`px-1.5 py-1 sticky left-[236px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="rounded-full px-1 py-0.5 text-[9px] font-bold whitespace-nowrap leading-none" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
+                                        <td className={`px-1.5 py-1 sticky left-[112px] min-w-[104px] w-[104px] max-w-[104px] border-r border-gray-200 text-[10px] font-medium leading-tight text-gray-800 break-words whitespace-normal align-top ${stickyClass}`}>{s.manager_name || '—'}</td>
+                                        <td className={`px-1.5 py-1 sticky left-[216px] min-w-[116px] w-[116px] max-w-[116px] border-r border-gray-200 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="inline-block max-w-full rounded-full px-1 py-0.5 text-[9px] font-bold leading-tight break-words whitespace-normal" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
                                         {visibleColGroups.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
                                         <td className="px-1.5 py-1 text-center border-r border-gray-200 bg-red-50/30">
                                             {s.violations && s.violations.length > 0 ? (
