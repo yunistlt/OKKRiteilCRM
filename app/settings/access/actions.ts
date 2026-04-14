@@ -275,6 +275,11 @@ export async function loadAccessControlData(): Promise<{
         ])
     );
 
+    const mergedRouteRules = DEFAULT_ROUTE_RULES.map((rule) => routeRuleMap.get(rule.prefix) || rule);
+    const extraRouteRules = Array.from(routeRuleMap.values()).filter(
+        (rule) => !DEFAULT_ROUTE_RULES.some((defaultRule) => defaultRule.prefix === rule.prefix)
+    );
+
     return {
         accounts: sortAccounts([...profiles, ...legacyAccounts]),
         managers: managersRows.map((manager: any) => ({
@@ -282,7 +287,7 @@ export async function loadAccessControlData(): Promise<{
             label: [manager.first_name, manager.last_name].filter(Boolean).join(' ').trim() || `Manager #${manager.id}`,
             active: Boolean(manager.active),
         })),
-        routeRules: DEFAULT_ROUTE_RULES.map((rule) => routeRuleMap.get(rule.prefix) || rule),
+        routeRules: [...mergedRouteRules, ...extraRouteRules],
         routeRulesTableReady: !Boolean(rulesResult.error),
         roleCapabilities: DEFAULT_ROLE_CAPABILITIES.map((item) => roleCapabilityMap.get(item.role) || item),
         roleCapabilitiesTableReady: !Boolean(roleCapabilitiesResult.error),
