@@ -9,10 +9,47 @@ import { AccessAccount, AccessManagerOption, createAccessAccount, saveRoutePermi
 
 const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
-    okk: 'ОКК',
+    okk: 'Контролёр ОКК',
     rop: 'РОП',
-    manager: 'Менеджер',
+    manager: 'Менеджер ОП',
 };
+
+const ROLE_POLICY: Array<{
+    role: AppRole;
+    title: string;
+    sectionAccess: string;
+    dataAccess: string;
+    editAccess: string;
+}> = [
+    {
+        role: 'admin',
+        title: 'Админ',
+        sectionAccess: 'Все системные разделы, настройки, аудит, аналитика.',
+        dataAccess: 'Все пользователи и все данные без ограничений.',
+        editAccess: 'Полное редактирование аккаунтов, прав, правил и настроек.',
+    },
+    {
+        role: 'manager',
+        title: 'Менеджер ОП',
+        sectionAccess: 'Только рабочие разделы менеджера и личный профиль.',
+        dataAccess: 'Только свои заказы, свои оценки и свои данные.',
+        editAccess: 'Личный профиль и действия в рамках собственных заказов.',
+    },
+    {
+        role: 'okk',
+        title: 'Контролёр ОКК',
+        sectionAccess: 'ОКК, аудит, аналитика, личный профиль.',
+        dataAccess: 'Данные по менеджерам и заказам для контроля качества.',
+        editAccess: 'Рабочие действия ОКК без системных админ-настроек.',
+    },
+    {
+        role: 'rop',
+        title: 'РОП',
+        sectionAccess: 'Реактивация, аналитика, аудит, личный профиль.',
+        dataAccess: 'Командные данные по менеджерам и результатам отдела.',
+        editAccess: 'Управление реактивацией и рабочими разделами руководителя.',
+    },
+];
 
 const ACCOUNT_SOURCE_LABELS = {
     profile: 'Основной аккаунт',
@@ -146,6 +183,38 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                 <p className="text-sm md:text-base text-gray-500">Управление аккаунтами, ролями и маршрутной матрицей доступа.</p>
             </div>
 
+            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100 space-y-4">
+                <div>
+                    <h2 className="text-lg font-black text-gray-900 mb-1">Модель ролей</h2>
+                    <p className="text-sm text-gray-500">Сверху показана бизнес-логика ролей. Матрица ниже отвечает только за доступ к разделам и API, а не заменяет ограничения на просмотр чужих данных или системное редактирование.</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    {ROLE_POLICY.map((policy) => (
+                        <div key={policy.role} className="rounded-2xl border border-gray-100 bg-gray-50/80 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-2">
+                                <h3 className="text-sm font-black text-gray-900">{policy.title}</h3>
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 ring-1 ring-gray-200">{ROLE_LABELS[policy.role]}</span>
+                            </div>
+                            <div className="space-y-2.5 text-sm text-gray-600 leading-snug">
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Разделы</div>
+                                    <div>{policy.sectionAccess}</div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Чьи данные видит</div>
+                                    <div>{policy.dataAccess}</div>
+                                </div>
+                                <div>
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Что редактирует</div>
+                                    <div>{policy.editAccess}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </section>
+
             {message && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">{message}</div>}
 
             {showSqlGuide && (
@@ -268,8 +337,8 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                     <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
                         <div className="flex items-start justify-between gap-3 mb-4">
                             <div>
-                                <h2 className="text-lg font-black text-gray-900">Матрица прав</h2>
-                                <p className="text-sm text-gray-500">Какие роли имеют доступ к каким разделам и API.</p>
+                                <h2 className="text-lg font-black text-gray-900">Доступ к разделам</h2>
+                                <p className="text-sm text-gray-500">Здесь настраивается только вход в разделы и API. Права на просмотр чужих данных и уровень редактирования регулируются бизнес-логикой системы.</p>
                             </div>
                             <button onClick={handleSaveRouteRules} disabled={isPending} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Сохранить права</button>
                         </div>
@@ -279,18 +348,24 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                                 <div key={category} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
                                     <h3 className="text-xs font-black uppercase tracking-[0.18em] text-gray-500 mb-2.5">{category}</h3>
                                     <div className="space-y-2.5">
+                                        <div className="grid grid-cols-[minmax(0,1fr)_88px_88px_88px_88px] gap-1.5 px-1 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                            <div>Раздел</div>
+                                            <div className="text-center">Админ</div>
+                                            <div className="text-center">РОП</div>
+                                            <div className="text-center">ОКК</div>
+                                            <div className="text-center">Мен. ОП</div>
+                                        </div>
                                         {rules.map((rule) => (
                                             <div key={rule.prefix} className="rounded-2xl bg-white p-3 ring-1 ring-gray-100">
-                                                <div className="mb-2">
-                                                    <div className="text-sm font-black text-gray-900">{rule.label}</div>
-                                                    <div className="text-xs text-gray-400">{rule.prefix}</div>
-                                                    {rule.description && <div className="mt-1 text-xs text-gray-500">{rule.description}</div>}
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-1.5">
-                                                    {APP_ROLES.map((role) => (
-                                                        <label key={role} className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700">
-                                                            <input type="checkbox" checked={rule.allowed.includes(role)} onChange={() => handleRouteRoleToggle(rule.prefix, role)} />
-                                                            <span>{ROLE_LABELS[role]}</span>
+                                                <div className="grid grid-cols-[minmax(0,1fr)_88px_88px_88px_88px] gap-1.5 items-start">
+                                                    <div className="min-w-0 pr-2">
+                                                        <div className="text-sm font-black text-gray-900 leading-tight">{rule.label}</div>
+                                                        <div className="text-xs text-gray-400 mt-0.5">{rule.prefix}</div>
+                                                        {rule.description && <div className="mt-1 text-xs text-gray-500 leading-snug">{rule.description}</div>}
+                                                    </div>
+                                                    {(['admin', 'rop', 'okk', 'manager'] as AppRole[]).map((role) => (
+                                                        <label key={role} className="flex h-full min-h-[44px] items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700">
+                                                            <input type="checkbox" checked={rule.allowed.includes(role)} onChange={() => handleRouteRoleToggle(rule.prefix, role)} aria-label={`${ROLE_LABELS[role]} — ${rule.label}`} />
                                                         </label>
                                                     ))}
                                                 </div>
