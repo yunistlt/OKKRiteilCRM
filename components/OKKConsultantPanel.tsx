@@ -418,7 +418,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             </div>
 
             <div
-                className="flex-1 overflow-y-auto bg-[#0b141a] bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,#0b141a_0%,#0a1015_100%)] px-2 py-3"
+                className="min-h-0 flex-1 overflow-auto bg-[#0b141a] bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,#0b141a_0%,#0a1015_100%)] px-2 py-3 overscroll-contain"
             >
                 <div className="mb-3 rounded-2xl bg-[#202c33] px-3 py-3 text-[11px] leading-relaxed text-slate-300 shadow-sm">
                     Задавайте вопросы по текущему заказу. Я объясню, как считается рейтинг, почему стоит крестик, откуда взялись данные и что нужно исправить.
@@ -518,7 +518,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
     return (
         <>
-            <aside className="hidden h-full shrink-0 flex-col border-l border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[-16px_0_40px_rgba(2,6,23,0.28)] md:flex md:w-[clamp(320px,15vw,380px)] md:min-w-[320px]">
+            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[clamp(340px,24vw,420px)] md:min-w-[340px] md:rounded-[28px]">
                 {panelContent}
             </aside>
 

@@ -1051,8 +1051,8 @@ function OKKContent() {
                     onClose={() => setSelectedOrderId(null)}
                 />
             )}
-            <div className="flex bg-gray-50 relative overflow-hidden" style={{ height: 'calc(100dvh - 60px)' }}>
-            <div className="flex min-w-0 flex-1 flex-col">
+            <div className="relative flex overflow-hidden bg-[#eef3f7] md:gap-3 md:p-3" style={{ height: 'calc(100dvh - 60px)' }}>
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:min-h-0 md:rounded-[28px] md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-2">
@@ -1201,7 +1201,7 @@ function OKKContent() {
             </div>
 
             {/* Data Area: High Contrast for Mobile */}
-            <div className={`flex-1 overflow-auto font-sans relative z-10 ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
+            <div className={`relative z-10 min-h-0 min-w-0 flex-1 overflow-auto font-sans ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
                 {/* Desktop View */}
                 <div className="hidden md:block">
                     <table className="text-xs border-collapse min-w-max w-full">
