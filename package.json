@@ -6,7 +6,8 @@
     "lint": "next lint",
     "verify:raw-tables": "tsx scripts/verify_raw_tables.ts",
     "okk:evaluate-all": "tsx scripts/evaluate_all.ts",
-    "okk:consultant-regression": "tsx scripts/okk_consultant_regression.ts"
+    "okk:consultant-regression": "tsx scripts/okk_consultant_regression.ts",
+    "okk:consultant-real-cases": "tsx scripts/okk_consultant_real_cases.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
