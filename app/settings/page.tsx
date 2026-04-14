@@ -21,6 +21,14 @@ export default function SettingsIndexPage() {
                     </p>
                 </Link>
 
+                <Link href="/settings/access" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-cyan-100 hover:border-cyan-100 transition-all relative overflow-hidden">
+                    <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">🛡️</div>
+                    <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Доступы и Права</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        Управление аккаунтами, ролями и матрицей доступа по разделам.
+                    </p>
+                </Link>
+
                 <Link href="/settings/statuses" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-blue-100 hover:border-blue-100 transition-all relative overflow-hidden">
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-30 transition-opacity">
                         <img src="/images/agents/igor.png" alt="" className="w-12 h-12 rounded-full" />

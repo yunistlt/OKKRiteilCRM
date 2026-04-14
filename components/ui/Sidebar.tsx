@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import type { AppRole } from '@/lib/auth';
-import { hasRole } from '@/lib/rbac';
+import { canAccessPathWithRules } from '@/lib/rbac';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 interface NavItem {
@@ -23,7 +23,7 @@ interface NavGroup {
 export default function Sidebar() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const { user } = useAuth();
+    const { user, permissionRules } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
 
@@ -59,6 +59,7 @@ export default function Sidebar() {
             title: 'Система',
             items: [
                 { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },
+                { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
                 { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
@@ -76,7 +77,7 @@ export default function Sidebar() {
     const visibleGroups = groups
         .map((group) => ({
             ...group,
-            items: group.items.filter((item) => !item.allowed || hasRole(user?.role, item.allowed)),
+            items: group.items.filter((item) => canAccessPathWithRules(user?.role, item.href.split('?')[0], permissionRules)),
         }))
         .filter((group) => group.items.length > 0);
 

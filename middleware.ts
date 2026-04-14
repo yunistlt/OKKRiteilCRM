@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { canAccessPath, getDefaultPathForRole } from '@/lib/rbac';
+import { getDefaultPathForRole } from '@/lib/rbac';
+import { canAccessPathServer } from '@/lib/rbac-server';
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
@@ -29,7 +30,7 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(new URL('/login', request.url));
         }
 
-        if (!canAccessPath(session.user.role, pathname)) {
+        if (!(await canAccessPathServer(session.user.role, pathname))) {
             if (pathname.startsWith('/api')) {
                 return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
             }
