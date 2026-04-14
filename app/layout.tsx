@@ -23,10 +23,21 @@ export default async function RootLayout({
 }: Readonly<{
     children: React.ReactNode;
 }>) {
-    const [session, permissionRules] = await Promise.all([
+    const [sessionResult, permissionRulesResult] = await Promise.allSettled([
         enrichSessionWithManagerIdentity(await getSession()),
         getEffectiveRouteRules(),
     ]);
+
+    const session = sessionResult.status === 'fulfilled' ? sessionResult.value : null;
+    const permissionRules = permissionRulesResult.status === 'fulfilled' ? permissionRulesResult.value : [];
+
+    if (sessionResult.status === 'rejected') {
+        console.error('[RootLayout] Failed to resolve session:', sessionResult.reason);
+    }
+
+    if (permissionRulesResult.status === 'rejected') {
+        console.error('[RootLayout] Failed to resolve permission rules:', permissionRulesResult.reason);
+    }
 
     return (
         <html lang="en">

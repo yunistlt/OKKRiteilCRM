@@ -1,17 +1,31 @@
 import AccessControlClient from './access-control-client';
 import { loadAccessControlData } from './actions';
+import { DEFAULT_ROUTE_RULES } from '@/lib/rbac';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AccessControlPage() {
-    const data = await loadAccessControlData();
+    try {
+        const data = await loadAccessControlData();
 
-    return (
-        <AccessControlClient
-            initialAccounts={data.accounts}
-            initialManagers={data.managers}
-            initialRouteRules={data.routeRules}
-            routeRulesTableReady={data.routeRulesTableReady}
-        />
-    );
+        return (
+            <AccessControlClient
+                initialAccounts={data.accounts}
+                initialManagers={data.managers}
+                initialRouteRules={data.routeRules}
+                routeRulesTableReady={data.routeRulesTableReady}
+            />
+        );
+    } catch (error: any) {
+        console.error('[AccessControlPage] Failed to load access control data:', error);
+
+        return (
+            <AccessControlClient
+                initialAccounts={[]}
+                initialManagers={[]}
+                initialRouteRules={DEFAULT_ROUTE_RULES}
+                routeRulesTableReady={false}
+            />
+        );
+    }
 }

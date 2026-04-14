@@ -60,6 +60,71 @@ function isMissingTableError(error: any) {
     );
 }
 
+function isMissingColumnError(error: any) {
+    return Boolean(
+        error?.code === '42703' ||
+        error?.message?.includes('column')
+    );
+}
+
+async function loadAccountsTable(table: 'profiles' | 'users') {
+    const primary = await supabase
+        .from(table)
+        .select('id, email, username, first_name, last_name, avatar_url, role, retail_crm_manager_id');
+
+    if (!primary.error) {
+        return primary.data || [];
+    }
+
+    if (isMissingTableError(primary.error)) {
+        return [];
+    }
+
+    if (isMissingColumnError(primary.error)) {
+        const fallback = await supabase
+            .from(table)
+            .select('id, username, first_name, last_name, role');
+
+        if (!fallback.error) {
+            return fallback.data || [];
+        }
+
+        if (isMissingTableError(fallback.error)) {
+            return [];
+        }
+
+        throw fallback.error;
+    }
+
+    throw primary.error;
+}
+
+async function loadManagersTable() {
+    const primary = await supabase
+        .from('managers')
+        .select('id, first_name, last_name, active')
+        .order('last_name', { ascending: true, nullsFirst: false });
+
+    if (!primary.error) {
+        return primary.data || [];
+    }
+
+    if (isMissingColumnError(primary.error)) {
+        const fallback = await supabase
+            .from('managers')
+            .select('id, first_name, last_name')
+            .order('last_name', { ascending: true, nullsFirst: false });
+
+        if (!fallback.error) {
+            return (fallback.data || []).map((item: any) => ({ ...item, active: true }));
+        }
+
+        throw fallback.error;
+    }
+
+    throw primary.error;
+}
+
 function sortAccounts(accounts: AccessAccount[]) {
     return accounts.sort((left, right) => {
         const roleComparison = APP_ROLES.indexOf(left.role) - APP_ROLES.indexOf(right.role);
@@ -77,20 +142,17 @@ export async function loadAccessControlData(): Promise<{
     routeRules: RouteRule[];
     routeRulesTableReady: boolean;
 }> {
-    const [profilesResult, usersResult, managersResult, rulesResult] = await Promise.all([
-        supabase.from('profiles').select('id, email, username, first_name, last_name, avatar_url, role, retail_crm_manager_id'),
-        supabase.from('users').select('id, email, username, first_name, last_name, avatar_url, role, retail_crm_manager_id'),
-        supabase.from('managers').select('id, first_name, last_name, active').order('last_name', { ascending: true, nullsFirst: false }),
+    const [profilesRows, usersRows, managersRows, rulesResult] = await Promise.all([
+        loadAccountsTable('profiles'),
+        loadAccountsTable('users'),
+        loadManagersTable(),
         supabase.from('access_route_rules').select('prefix, label, description, category, allowed_roles'),
     ]);
 
-    if (profilesResult.error && !isMissingTableError(profilesResult.error)) throw profilesResult.error;
-    if (usersResult.error && !isMissingTableError(usersResult.error)) throw usersResult.error;
-    if (managersResult.error) throw managersResult.error;
     if (rulesResult.error && !isMissingTableError(rulesResult.error)) throw rulesResult.error;
 
-    const profiles: AccessAccount[] = (profilesResult.data || []).map((item: any) => normalizeAccount(item, 'profile'));
-    const legacyAccounts = (usersResult.data || [])
+    const profiles: AccessAccount[] = profilesRows.map((item: any) => normalizeAccount(item, 'profile'));
+    const legacyAccounts = usersRows
         .filter((item: any) => !profiles.some((profile: AccessAccount) => profile.id === String(item.id)))
         .map((item: any) => normalizeAccount(item, 'legacy'));
 
@@ -109,7 +171,7 @@ export async function loadAccessControlData(): Promise<{
 
     return {
         accounts: sortAccounts([...profiles, ...legacyAccounts]),
-        managers: (managersResult.data || []).map((manager: any) => ({
+        managers: managersRows.map((manager: any) => ({
             id: manager.id,
             label: [manager.first_name, manager.last_name].filter(Boolean).join(' ').trim() || `Manager #${manager.id}`,
             active: Boolean(manager.active),
