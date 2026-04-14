@@ -13,6 +13,7 @@ export type AccessAccount = {
     source: 'profile' | 'legacy';
     email: string | null;
     username: string | null;
+    password?: string | null;
     first_name: string | null;
     last_name: string | null;
     role: AppRole;
@@ -51,6 +52,7 @@ function normalizeAccount(record: any, source: 'profile' | 'legacy'): AccessAcco
         source,
         email: typeof record.email === 'string' ? record.email : null,
         username: typeof record.username === 'string' ? record.username : null,
+        password: null,
         first_name: typeof record.first_name === 'string' ? record.first_name : null,
         last_name: typeof record.last_name === 'string' ? record.last_name : null,
         role: normalizeRole(record.role),

@@ -82,6 +82,7 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                 source: account.source,
                 email: account.email,
                 username: account.username,
+                password: account.password,
                 first_name: account.first_name,
                 last_name: account.last_name,
                 role: account.role,
@@ -93,6 +94,11 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                 return;
             }
 
+            setAccounts((current) => current.map((item) => (
+                item.id === account.id && item.source === account.source
+                    ? { ...item, password: '' }
+                    : item
+            )));
             setMessage(result.message || `Права аккаунта ${account.username || account.email || account.id} сохранены.`);
             router.refresh();
         });
@@ -301,7 +307,11 @@ CREATE TABLE IF NOT EXISTS public.access_role_capabilities (
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Фамилия</label>
                                         <input value={account.last_name || ''} onChange={(event) => handleAccountField(account.id, account.source, 'last_name', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
-                                    <div className="md:col-span-12">
+                                    <div className="md:col-span-4">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Новый пароль</label>
+                                        <input type="password" value={account.password || ''} onChange={(event) => handleAccountField(account.id, account.source, 'password', event.target.value)} placeholder="Оставьте пустым, чтобы не менять" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
+                                    </div>
+                                    <div className="md:col-span-8">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Привязка к менеджеру RetailCRM</label>
                                         <select value={account.retail_crm_manager_id || ''} onChange={(event) => handleAccountField(account.id, account.source, 'retail_crm_manager_id', event.target.value ? Number(event.target.value) : null)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" disabled={account.role !== 'manager'}>
                                             <option value="">Без привязки</option>
