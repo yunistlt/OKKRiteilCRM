@@ -70,39 +70,43 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     const handleSaveAccount = (account: AccessAccount) => {
         setMessage('');
         startTransition(async () => {
-            try {
-                await updateAccessAccount({
-                    id: account.id,
-                    source: account.source,
-                    email: account.email,
-                    username: account.username,
-                    first_name: account.first_name,
-                    last_name: account.last_name,
-                    role: account.role,
-                    retail_crm_manager_id: account.retail_crm_manager_id,
-                });
-                setMessage(`Права аккаунта ${account.username || account.email || account.id} сохранены.`);
-                router.refresh();
-            } catch (error: any) {
-                setMessage(error.message || 'Не удалось сохранить аккаунт.');
+            const result = await updateAccessAccount({
+                id: account.id,
+                source: account.source,
+                email: account.email,
+                username: account.username,
+                first_name: account.first_name,
+                last_name: account.last_name,
+                role: account.role,
+                retail_crm_manager_id: account.retail_crm_manager_id,
+            });
+
+            if (!result.success) {
+                setMessage(result.message || 'Не удалось сохранить аккаунт.');
+                return;
             }
+
+            setMessage(result.message || `Права аккаунта ${account.username || account.email || account.id} сохранены.`);
+            router.refresh();
         });
     };
 
     const handleCreateAccount = () => {
         setMessage('');
         startTransition(async () => {
-            try {
-                await createAccessAccount({
-                    ...newAccount,
-                    retail_crm_manager_id: newAccount.retail_crm_manager_id ? Number(newAccount.retail_crm_manager_id) : null,
-                });
-                setMessage('Новый аккаунт создан.');
-                setNewAccount({ accountType: 'legacy', email: '', username: '', password: '', first_name: '', last_name: '', role: 'manager', retail_crm_manager_id: '' });
-                router.refresh();
-            } catch (error: any) {
-                setMessage(error.message || 'Не удалось создать аккаунт.');
+            const result = await createAccessAccount({
+                ...newAccount,
+                retail_crm_manager_id: newAccount.retail_crm_manager_id ? Number(newAccount.retail_crm_manager_id) : null,
+            });
+
+            if (!result.success) {
+                setMessage(result.message || 'Не удалось создать аккаунт.');
+                return;
             }
+
+            setMessage(result.message || 'Новый аккаунт создан.');
+            setNewAccount({ accountType: 'legacy', email: '', username: '', password: '', first_name: '', last_name: '', role: 'manager', retail_crm_manager_id: '' });
+            router.refresh();
         });
     };
 
@@ -115,18 +119,18 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     const handleSaveRouteRules = () => {
         setMessage('');
         startTransition(async () => {
-            try {
-                const result = await saveRoutePermissions(routeRules.map((rule) => ({ prefix: rule.prefix, allowed: rule.allowed })));
-                if (!result.success && result.errorType === 'TABLE_MISSING') {
+            const result = await saveRoutePermissions(routeRules.map((rule) => ({ prefix: rule.prefix, allowed: rule.allowed })));
+
+            if (!result.success) {
+                if (result.errorType === 'TABLE_MISSING') {
                     setShowSqlGuide(true);
-                    setMessage('Для сохранения матрицы прав нужно сначала применить SQL-миграцию.');
-                    return;
                 }
-                setMessage('Матрица прав сохранена.');
-                router.refresh();
-            } catch (error: any) {
-                setMessage(error.message || 'Не удалось сохранить матрицу прав.');
+                setMessage(result.message || 'Не удалось сохранить матрицу прав.');
+                return;
             }
+
+            setMessage(result.message || 'Матрица прав сохранена.');
+            router.refresh();
         });
     };
 
