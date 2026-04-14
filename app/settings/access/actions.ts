@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { AppRole } from '@/lib/auth';
 import { APP_ROLES, DEFAULT_ROUTE_RULES, normalizeAllowedRoles, RouteRule } from '@/lib/rbac';
+import { DEFAULT_ROLE_CAPABILITIES, normalizeRoleCapabilityProfile, RoleCapabilityProfile } from '@/lib/access-control';
 import { clearRouteRulesCache } from '@/lib/rbac-server';
 import { supabase } from '@/utils/supabase';
 import { getSupabaseAdmin } from '@/utils/supabase-admin';
@@ -225,15 +226,19 @@ export async function loadAccessControlData(): Promise<{
     managers: AccessManagerOption[];
     routeRules: RouteRule[];
     routeRulesTableReady: boolean;
+    roleCapabilities: RoleCapabilityProfile[];
+    roleCapabilitiesTableReady: boolean;
 }> {
-    const [profilesRows, usersRows, managersRows, rulesResult] = await Promise.all([
+    const [profilesRows, usersRows, managersRows, rulesResult, roleCapabilitiesResult] = await Promise.all([
         loadAccountsTable('profiles'),
         loadAccountsTable('users'),
         loadManagersTable(),
         supabase.from('access_route_rules').select('prefix, label, description, category, allowed_roles'),
+        supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_reactivation, can_view_settings, can_manage_users, can_run_bulk_operations'),
     ]);
 
     if (rulesResult.error && !isMissingTableError(rulesResult.error)) throw rulesResult.error;
+    if (roleCapabilitiesResult.error && !isMissingTableError(roleCapabilitiesResult.error)) throw roleCapabilitiesResult.error;
 
     const profiles: AccessAccount[] = profilesRows.map((item: any) => normalizeAccount(item, 'profile'));
     const legacyAccounts = usersRows
@@ -253,6 +258,23 @@ export async function loadAccessControlData(): Promise<{
         ])
     );
 
+    const roleCapabilityMap = new Map<AppRole, RoleCapabilityProfile>(
+        ((roleCapabilitiesResult.data || []) as any[]).map((item) => [
+            item.role,
+            normalizeRoleCapabilityProfile({
+                role: item.role,
+                dataScope: item.data_scope,
+                editScope: item.edit_scope,
+                canViewAnalytics: item.can_view_analytics,
+                canViewAudit: item.can_view_audit,
+                canViewReactivation: item.can_view_reactivation,
+                canViewSettings: item.can_view_settings,
+                canManageUsers: item.can_manage_users,
+                canRunBulkOperations: item.can_run_bulk_operations,
+            }),
+        ])
+    );
+
     return {
         accounts: sortAccounts([...profiles, ...legacyAccounts]),
         managers: managersRows.map((manager: any) => ({
@@ -262,6 +284,8 @@ export async function loadAccessControlData(): Promise<{
         })),
         routeRules: DEFAULT_ROUTE_RULES.map((rule) => routeRuleMap.get(rule.prefix) || rule),
         routeRulesTableReady: !Boolean(rulesResult.error),
+        roleCapabilities: DEFAULT_ROLE_CAPABILITIES.map((item) => roleCapabilityMap.get(item.role) || item),
+        roleCapabilitiesTableReady: !Boolean(roleCapabilitiesResult.error),
     };
 }
 
@@ -444,6 +468,39 @@ export async function saveRoutePermissions(routeRules: Array<{ prefix: string; a
         revalidatePath('/settings/access');
         revalidatePath('/');
         return { success: true, message: 'Матрица прав сохранена.' };
+    } catch (error: any) {
+        return toAccessActionError(error);
+    }
+}
+
+export async function saveRoleCapabilities(roleCapabilities: RoleCapabilityProfile[]): Promise<AccessActionResult> {
+    try {
+        const payload = roleCapabilities.map((item) => {
+            const normalized = normalizeRoleCapabilityProfile(item);
+            return {
+                role: normalized.role,
+                data_scope: normalized.dataScope,
+                edit_scope: normalized.editScope,
+                can_view_analytics: normalized.canViewAnalytics,
+                can_view_audit: normalized.canViewAudit,
+                can_view_reactivation: normalized.canViewReactivation,
+                can_view_settings: normalized.canViewSettings,
+                can_manage_users: normalized.canManageUsers,
+                can_run_bulk_operations: normalized.canRunBulkOperations,
+                updated_at: new Date().toISOString(),
+            };
+        });
+
+        const { error } = await supabase
+            .from('access_role_capabilities')
+            .upsert(payload, { onConflict: 'role' });
+
+        if (error) {
+            return toAccessActionError(error);
+        }
+
+        revalidatePath('/settings/access');
+        return { success: true, message: 'Бизнес-права ролей сохранены.' };
     } catch (error: any) {
         return toAccessActionError(error);
     }

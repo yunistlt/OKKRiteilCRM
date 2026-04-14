@@ -1,6 +1,7 @@
 import AccessControlClient from './access-control-client';
 import { loadAccessControlData } from './actions';
 import { DEFAULT_ROUTE_RULES } from '@/lib/rbac';
+import { DEFAULT_ROLE_CAPABILITIES } from '@/lib/access-control';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ export default async function AccessControlPage() {
                 initialManagers={data.managers}
                 initialRouteRules={data.routeRules}
                 routeRulesTableReady={data.routeRulesTableReady}
+                initialRoleCapabilities={data.roleCapabilities}
+                roleCapabilitiesTableReady={data.roleCapabilitiesTableReady}
             />
         );
     } catch (error: any) {
@@ -25,6 +28,8 @@ export default async function AccessControlPage() {
                 initialManagers={[]}
                 initialRouteRules={DEFAULT_ROUTE_RULES}
                 routeRulesTableReady={false}
+                initialRoleCapabilities={DEFAULT_ROLE_CAPABILITIES}
+                roleCapabilitiesTableReady={false}
             />
         );
     }
