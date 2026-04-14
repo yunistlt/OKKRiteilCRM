@@ -357,49 +357,51 @@ CREATE TABLE IF NOT EXISTS public.access_role_capabilities (
                             <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-gray-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
                         </div>
                     </div>
+                </div>
+            </section>
 
-                    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
-                        <div className="flex items-start justify-between gap-3 mb-4">
-                            <div>
-                                <h2 className="text-lg font-black text-gray-900">Доступ к разделам</h2>
-                                <p className="text-sm text-gray-500">Здесь настраивается только вход в разделы и API. Права на просмотр чужих данных и уровень редактирования регулируются бизнес-логикой системы.</p>
-                            </div>
-                            <button onClick={handleSaveRouteRules} disabled={isPending} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Сохранить права</button>
-                        </div>
-
-                        <div className="space-y-3 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
-                            {Object.entries(groupedRules).map(([category, rules]) => (
-                                <div key={category} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
-                                    <h3 className="text-xs font-black uppercase tracking-[0.18em] text-gray-500 mb-2.5">{category}</h3>
-                                    <div className="space-y-2.5">
-                                        <div className="grid grid-cols-[minmax(0,1fr)_88px_88px_88px_88px] gap-1.5 px-1 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
-                                            <div>Раздел</div>
-                                            <div className="text-center">Админ</div>
-                                            <div className="text-center">РОП</div>
-                                            <div className="text-center">ОКК</div>
-                                            <div className="text-center">Мен. ОП</div>
-                                        </div>
-                                        {rules.map((rule) => (
-                                            <div key={rule.prefix} className="rounded-2xl bg-white p-3 ring-1 ring-gray-100">
-                                                <div className="grid grid-cols-[minmax(0,1fr)_88px_88px_88px_88px] gap-1.5 items-start">
-                                                    <div className="min-w-0 pr-2">
-                                                        <div className="text-sm font-black text-gray-900 leading-tight">{rule.label}</div>
-                                                        <div className="text-xs text-gray-400 mt-0.5">{rule.prefix}</div>
-                                                        {rule.description && <div className="mt-1 text-xs text-gray-500 leading-snug">{rule.description}</div>}
-                                                    </div>
-                                                    {ROLE_DISPLAY_ORDER.map((role) => (
-                                                        <label key={role} className="flex h-full min-h-[44px] items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700">
-                                                            <input type="checkbox" checked={rule.allowed.includes(role)} onChange={() => handleRouteRoleToggle(rule.prefix, role)} aria-label={`${ROLE_LABELS[role]} — ${rule.label}`} />
-                                                        </label>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
+                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3 mb-4">
+                    <div className="max-w-3xl">
+                        <h2 className="text-lg font-black text-gray-900">Доступ к разделам</h2>
+                        <p className="text-sm text-gray-500">Здесь настраивается только вход в разделы и API. Права на просмотр чужих данных и уровень редактирования регулируются бизнес-логикой системы.</p>
                     </div>
+                    <button onClick={handleSaveRouteRules} disabled={isPending} className="w-full lg:w-auto rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Сохранить права</button>
+                </div>
+
+                <div className="space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-1">
+                    {Object.entries(groupedRules).map(([category, rules]) => (
+                        <div key={category} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+                            <h3 className="text-xs font-black uppercase tracking-[0.18em] text-gray-500 mb-2.5">{category}</h3>
+                            <div className="overflow-x-auto">
+                                <div className="min-w-[760px] space-y-2.5">
+                                    <div className="grid grid-cols-[minmax(280px,1.6fr)_92px_92px_92px_92px] gap-2 px-1 pb-1 text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                        <div>Раздел</div>
+                                        <div className="text-center">Админ</div>
+                                        <div className="text-center">РОП</div>
+                                        <div className="text-center">ОКК</div>
+                                        <div className="text-center">Мен. ОП</div>
+                                    </div>
+                                    {rules.map((rule) => (
+                                        <div key={rule.prefix} className="rounded-2xl bg-white p-3 ring-1 ring-gray-100">
+                                            <div className="grid grid-cols-[minmax(280px,1.6fr)_92px_92px_92px_92px] gap-2 items-start">
+                                                <div className="min-w-0 pr-3">
+                                                    <div className="text-sm font-black text-gray-900 leading-tight">{rule.label}</div>
+                                                    <div className="text-xs text-gray-400 mt-0.5 break-all">{rule.prefix}</div>
+                                                    {rule.description && <div className="mt-1 text-xs text-gray-500 leading-snug">{rule.description}</div>}
+                                                </div>
+                                                {ROLE_DISPLAY_ORDER.map((role) => (
+                                                    <label key={role} className="flex min-h-[72px] items-center justify-center rounded-xl border border-gray-200 bg-gray-50 px-2 py-2 text-sm text-gray-700">
+                                                        <input type="checkbox" checked={rule.allowed.includes(role)} onChange={() => handleRouteRoleToggle(rule.prefix, role)} aria-label={`${ROLE_LABELS[role]} — ${rule.label}`} />
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </section>
         </div>
