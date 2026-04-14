@@ -101,7 +101,7 @@ export default function MessengerPanel() {
                 {selectedChatId ? (
                     <MessageView 
                         chatId={selectedChatId} 
-                        currentUserId={currentUser?.retail_crm_manager_id}
+                        currentUserId={currentUser?.retail_crm_manager_id ?? undefined}
                         chatName={currentChat?.name}
                         participants={currentChat?.chat_participants}
                         chatType={currentChat?.type}

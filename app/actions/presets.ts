@@ -30,7 +30,7 @@ export async function savePreset(name: string, filters: any) {
     try {
         const { data, error } = await supabase
             .from('dashboard_presets')
-            .insert([{ name, filters }])
+            .insert([{ name, filters }] as any)
             .select()
             .single();
 

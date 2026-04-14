@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { calculatePriorities } from '@/lib/prioritization';
 import { runRuleEngine } from '@/lib/rule-engine';

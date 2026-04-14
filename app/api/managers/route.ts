@@ -4,6 +4,11 @@ import { supabase } from '@/utils/supabase';
 // Force dynamic to ensure we always get partial updates
 export const dynamic = 'force-dynamic';
 
+type ManagerRow = {
+    id: number;
+    [key: string]: unknown;
+};
+
 export async function GET() {
     try {
         const { data, error } = await supabase
@@ -13,7 +18,7 @@ export async function GET() {
 
         if (error) throw error;
 
-        const managerIds = (data || []).map((manager) => manager.id);
+        const managerIds = ((data || []) as ManagerRow[]).map((manager) => manager.id);
         const { data: users, error: usersError } = managerIds.length
             ? await supabase
                 .from('users')
@@ -32,7 +37,7 @@ export async function GET() {
             }
         }
 
-        return NextResponse.json((data || []).map((manager) => ({
+        return NextResponse.json(((data || []) as ManagerRow[]).map((manager) => ({
             ...manager,
             has_okk_access: accessByManagerId.has(manager.id),
             okk_username: accessByManagerId.get(manager.id)?.username || null,

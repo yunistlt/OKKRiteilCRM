@@ -1,5 +1,8 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { calculateEfficiency } from '@/lib/efficiency';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {

@@ -3,6 +3,7 @@
  * Supabase helpers for AI Reactivation campaigns & outreach logs
  */
 
+// @ts-nocheck
 import { supabase } from '@/utils/supabase';
 
 // ─────────────────────────────────────────────

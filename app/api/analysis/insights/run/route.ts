@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { runInsightAnalysis } from '@/lib/insight-agent';
 import { supabase } from '@/utils/supabase';

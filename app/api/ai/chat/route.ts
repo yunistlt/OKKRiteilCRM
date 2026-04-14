@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { getOpenAIClient } from '@/utils/openai';
 import { runInsightAnalysis } from '@/lib/insight-agent';

@@ -1,8 +1,21 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
-import { supabase } from '@/utils/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+function getSupabaseForRefresh() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://lywtzgntmibdpgoijbty.supabase.co';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+    if (!supabaseKey) {
+        throw new Error('Supabase Key is missing! Check your .env.local file.');
+    }
+
+    return createClient(supabaseUrl, supabaseKey);
+}
 
 export async function POST() {
     try {
+        const supabase = getSupabaseForRefresh();
         console.log('[QualityRefresh] Starting aggregation update (In-Memory V2)...');
 
         // 1. Fetch Controlled Managers

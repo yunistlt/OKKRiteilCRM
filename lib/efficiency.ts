@@ -1,6 +1,36 @@
 // ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Оценка эффективности и скорости работы менеджера.
 import { supabase } from '@/utils/supabase';
 
+type StatusSettingRow = {
+    code?: string | null;
+};
+
+type ManagerSettingRow = {
+    id: number;
+};
+
+type HistoryEventRow = {
+    order_id: number;
+    created_at: string;
+    new_value?: string | null;
+    manager_id?: number | null;
+};
+
+type CallMatchRow = {
+    order_id: number;
+};
+
+type RawCallRow = {
+    raw_payload?: unknown;
+    call_order_matches?: CallMatchRow[] | null;
+};
+
+type ManagerRow = {
+    id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+};
+
 export interface EfficiencyReport {
     manager_id: number;
     manager_name: string;
@@ -17,12 +47,12 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
         .select('code')
         .eq('is_working', true);
 
-    const workingCodes = new Set((workingSettings || []).map(s => s.code));
+    const workingCodes = new Set(((workingSettings || []) as StatusSettingRow[]).map((s) => s.code));
     console.log(`[Efficiency] Found ${workingCodes.size} working statuses`);
 
     // 1b. Fetch Controlled Managers
     const { data: controlledRaw } = await supabase.from('manager_settings').select('id').eq('is_controlled', true);
-    const controlledIds = new Set((controlledRaw || []).map(m => m.id as number));
+    const controlledIds = new Set(((controlledRaw || []) as ManagerSettingRow[]).map((m) => m.id));
     const isControlActive = controlledIds.size > 0;
 
     // 2. Get History Events (Only Status Changes)
@@ -45,7 +75,7 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
 
     // 3. Group by Order to reconstruct timeline
     const orders: Record<number, any[]> = {};
-    events.forEach(e => {
+    (events as HistoryEventRow[]).forEach((e) => {
         if (!orders[e.order_id]) orders[e.order_id] = [];
         orders[e.order_id].push(e);
     });
@@ -94,9 +124,9 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
         .lte('started_at', endDate);
 
     // Filter in memory for safety (JSONB query can be tricky)
-    const realCalls = (allCallsInPeriod || []).filter(c => (c.raw_payload as any)?.is_answering_machine !== true);
+    const realCalls = ((allCallsInPeriod || []) as RawCallRow[]).filter((c) => (c.raw_payload as any)?.is_answering_machine !== true);
 
-    const ordersWithRealContact = new Set((realCalls || []).flatMap(c => c.call_order_matches?.map((m: any) => m.order_id) || []));
+    const ordersWithRealContact = new Set((realCalls || []).flatMap((c) => c.call_order_matches?.map((m) => m.order_id) || []));
 
     // 6. Fetch Manager Metadata
     const knownManagerIds = Object.keys(managerTime).map(Number);
@@ -109,7 +139,7 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
             .in('id', knownManagerIds);
 
         if (managers) {
-            managers.forEach(m => {
+            (managers as ManagerRow[]).forEach((m) => {
                 managerNames[m.id] = `${m.first_name || ''} ${m.last_name || ''}`.trim() || `Manager #${m.id}`;
             });
         }

@@ -1137,11 +1137,12 @@ export async function evaluateOrder(orderId: number): Promise<void> {
         .select('rule_code, severity, details, points, detected_at, violation_time')
         .eq('order_id', orderId);
 
-    const totalPenalty = (orderViolations || []).reduce((sum, v) => sum + (v.points || 0), 0);
+    const typedViolations = (orderViolations || []) as Array<{ points?: number | null }>;
+    const totalPenalty = typedViolations.reduce((sum, violation) => sum + (violation.points || 0), 0);
 
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
-    const scores = calcScores({ ...allData, _script_meta: script._meta || null }, totalPenalty, orderViolations || []);
+    const scores = calcScores({ ...allData, _script_meta: script._meta || null }, totalPenalty, typedViolations);
 
     const record = {
         order_id: orderId,
@@ -1244,19 +1245,19 @@ export async function runFullEvaluation(params?: {
         }
 
         const { data: orders } = await query;
-        let candidates = orders || [];
+        let candidates = (orders || []) as Array<{ order_id: number }>;
 
         // 2. Если нужно только пропущено, фильтруем по отсутствию оценки скрипта
         if (params?.onlyMissing && candidates.length > 0) {
-            const ids = candidates.map(c => c.order_id);
+            const ids = candidates.map((candidate) => candidate.order_id);
             const { data: existingScores } = await supabase
                 .from('okk_order_scores')
                 .select('order_id')
                 .in('order_id', ids)
                 .not('script_score_pct', 'is', null);
 
-            const hasScore = new Set((existingScores || []).map(s => s.order_id));
-            candidates = candidates.filter(c => !hasScore.has(c.order_id));
+            const hasScore = new Set(((existingScores || []) as Array<{ order_id: number }>).map((score) => score.order_id));
+            candidates = candidates.filter((candidate) => !hasScore.has(candidate.order_id));
             console.log(`[ОКК] Найдено ${candidates.length} заказов без оценки скрипта из ${ids.length} кандидатов.`);
         }
 

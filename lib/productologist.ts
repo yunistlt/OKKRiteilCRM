@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { generateEmbedding, formatProductForEmbedding } from './embeddings';

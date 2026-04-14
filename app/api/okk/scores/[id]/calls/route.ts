@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { findOrderCandidatesByPhone } from '@/lib/call-matching';

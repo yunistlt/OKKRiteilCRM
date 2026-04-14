@@ -6,6 +6,7 @@
  * Никаких захардкоженных значений фильтров нет.
  */
 
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';

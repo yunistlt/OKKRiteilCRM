@@ -86,13 +86,20 @@ export default function Header() {
                         {/* User Profile */}
                         {user && (
                             <div className="flex items-center gap-3 ml-2">
+                                {(() => {
+                                    const username = user.username || 'User';
+                                    return (
+                                        <>
                                 <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-gray-900 leading-tight truncate max-w-[120px]">{user.username}</span>
+                                    <span className="text-xs font-black text-gray-900 leading-tight truncate max-w-[120px]">{username}</span>
                                     <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{user.role}</span>
                                 </div>
                                 <div className="w-9 h-9 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-lg shadow-gray-200">
-                                    {user.username.substring(0, 2).toUpperCase()}
+                                    {username.substring(0, 2).toUpperCase()}
                                 </div>
+                                        </>
+                                    );
+                                })()}
                                 <button
                                     onClick={handleLogout}
                                     className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"

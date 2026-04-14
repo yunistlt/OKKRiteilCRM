@@ -669,7 +669,7 @@ export function buildMissingDataSummary(order: ConsultantOrder): string {
         '',
         ...missing.map(([key, entry], index) => `${index + 1}. ${formatQualityCriterionLabel(key)}: ${entry?.missing_data?.join(', ') || 'список не сохранён'}.`),
         '',
-        'Пока эти данные не появятся в CRM, звонках или истории, объяснение по части критериев будет неполным.',
+        'Ограничение: пока эти данные не появятся в CRM, звонках или истории, объяснение по части критериев будет неполным.',
     ].join('\n');
 }
 
@@ -691,7 +691,7 @@ export function buildCallEvidenceExplanation(order: ConsultantOrder, evidence: O
     ];
 
     if (!scoreCalls || scoreCalls.length === 0) {
-        lines.push('По сохранённым данным звонки, попавшие в оценку, не найдены.');
+        lines.push('Не могу доказать, какие звонки попали в оценку: по сохранённым данным такие звонки не найдены.');
         return lines.join('\n');
     }
 
@@ -717,7 +717,7 @@ export function buildHistoryEvidenceExplanation(order: ConsultantOrder, evidence
     const history = evidence.lastHistoryEvents;
 
     if (history.length === 0) {
-        return `По заказу #${order.order_id} в доступной истории не найдено событий, которыми можно доказать вывод.`;
+        return `Не могу доказать вывод по истории заказа #${order.order_id}: в доступной истории не найдено событий, которыми можно подтвердить объяснение.`;
     }
 
     return [
@@ -1135,12 +1135,13 @@ export function buildCriterionExplanation(params: {
         return [
             `${label}.`,
             '',
+            `Факт: сейчас сохранён результат ${resultLabel}.`,
             `Источник результата: ${guide.howChecked}`,
             `Используемые данные: ${sourceBits.join('; ')}.`,
             `Сохраненное обоснование: ${reason}`,
             ...(sourceValueLines.length > 0 ? ['', 'Зафиксированные значения:', ...sourceValueLines] : []),
             ...(contextLine ? [contextLine] : []),
-            ...(missingLine ? [missingLine] : []),
+            ...(missingLine ? [`Ограничение: ${missingLine.replace(/^Чего не хватило системе:\s*/, '')}`] : []),
         ].join('\n');
     }
 
@@ -1169,11 +1170,11 @@ export function buildCriterionExplanation(params: {
     return [
         `${label}.`,
         '',
-        `Сейчас по критерию стоит ${resultLabel}.`,
+        `Факт: сейчас по критерию стоит ${resultLabel}.`,
         `Почему: ${reason}`,
         ...(sourceValueLines.length > 0 ? ['', 'Какие данные реально повлияли:', ...sourceValueLines] : []),
         ...(contextLine ? [contextLine] : []),
-        ...(missingLine ? [missingLine] : []),
+        ...(missingLine ? [`Ограничение: ${missingLine.replace(/^Чего не хватило системе:\s*/, '')}`] : []),
         `Как правило работает: ${guide.howChecked}`,
         `Что считается нормой: ${guide.whyPass}`,
         `Что считается нарушением: ${guide.whyFail}`,

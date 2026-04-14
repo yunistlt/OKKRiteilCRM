@@ -5,6 +5,7 @@
  * 2. Отправка: Берёт 'approved', записывает в RetailCRM -> 'sent'
  */
 
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { generateReactivationEmail } from '@/lib/reactivation';

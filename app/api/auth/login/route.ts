@@ -4,6 +4,8 @@ import { supabase } from '@/utils/supabase';
 import { login, setSupabaseSession, verifyPassword } from '@/lib/auth';
 import { enrichManagerLinkedIdentity } from '@/lib/manager-identity';
 
+export const dynamic = 'force-dynamic';
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 

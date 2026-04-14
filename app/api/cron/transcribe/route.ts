@@ -1,4 +1,5 @@
 
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';

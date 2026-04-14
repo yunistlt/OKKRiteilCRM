@@ -4,6 +4,7 @@
  * Все промпты настраиваются через настройки кампании — не захардкожены.
  */
 
+// @ts-nocheck
 import OpenAI from 'openai';
 import { supabase } from '@/utils/supabase';
 

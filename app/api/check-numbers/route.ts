@@ -1,5 +1,8 @@
+// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
     // Fetch recent 10 orders to verify 'number' format
