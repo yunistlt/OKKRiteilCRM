@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
+import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +26,7 @@ export async function GET(
         const retailCrmId = session?.user?.retail_crm_manager_id
             ? Number(session.user.retail_crm_manager_id)
             : null;
+        const capability = await getEffectiveCapabilityForRole(session.user.role);
         const readClient = session.accessToken ? createSupabaseUserClient(session.accessToken) || supabase : supabase;
 
         const [{ data: orderRow, error: orderError }, { data: scoreRow, error: scoreError }] = await Promise.all([
@@ -48,7 +50,7 @@ export async function GET(
         }
 
         const managerId = orderRow?.manager_id ?? scoreRow?.manager_id ?? null;
-        if (userRole === 'manager' && retailCrmId && managerId && managerId !== retailCrmId) {
+        if (!canAccessTargetManager(session.user, capability, managerId)) {
             return NextResponse.json({ error: 'Недостаточно прав для просмотра заказа' }, { status: 403 });
         }
 

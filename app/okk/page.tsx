@@ -4,11 +4,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
+import type { AppRole } from '@/lib/auth';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import OKKConsultantPanel from '@/components/OKKConsultantPanel';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { getRoleCapability } from '@/lib/access-control';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
@@ -702,7 +704,8 @@ export default function OKKPage() {
 }
 
 function OKKContent() {
-    const { user } = useAuth();
+    const { user, roleCapabilities } = useAuth();
+    const currentCapability = useMemo(() => getRoleCapability((user?.role as AppRole | undefined) || null, roleCapabilities), [roleCapabilities, user?.role]);
     const searchParams = useSearchParams();
     const from = searchParams.get('from') || '';
     const to = searchParams.get('to') || '';
@@ -1063,7 +1066,7 @@ function OKKContent() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {user?.role !== 'manager' && (
+                    {currentCapability.canViewAudit && (
                         <Link
                             href="/okk/audit"
                             className="hidden md:inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-100"
@@ -1073,7 +1076,7 @@ function OKKContent() {
                     )}
                     {/* Compact Run Controls */}
                     <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
-                        {user?.role === 'admin' ? (
+                        {currentCapability.canRunBulkOperations ? (
                             <>
                                 <input
                                     type="text"
@@ -1101,10 +1104,10 @@ function OKKContent() {
                         <div className="text-right">
                             <div className="text-xl font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
                             <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
-                                {user?.role === 'manager' ? 'ваш средний %' : filterManager.length > 0 ? 'средний % менеджера' : 'текущий фильтр %'}
+                                {currentCapability.dataScope === 'own' ? 'ваш средний %' : filterManager.length > 0 ? 'средний % менеджера' : 'текущий фильтр %'}
                             </div>
                         </div>
-                        {user?.role !== 'manager' && (
+                        {currentCapability.dataScope !== 'own' && (
                             <>
                                 <div className="w-px h-8 bg-gray-200" />
                                 <div className="text-right">
@@ -1119,10 +1122,10 @@ function OKKContent() {
                         <div className="text-right flex flex-col items-end">
                             <div className="text-sm font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
                             <div className="text-[8px] font-black text-gray-400 uppercase leading-none">
-                                {user?.role === 'manager' ? 'ваш' : 'фильтр'}
+                                {currentCapability.dataScope === 'own' ? 'ваш' : 'фильтр'}
                             </div>
                         </div>
-                        {user?.role !== 'manager' && (
+                        {currentCapability.dataScope !== 'own' && (
                             <>
                                 <div className="w-px h-6 bg-gray-200" />
                                 <div className="text-right flex flex-col items-end">
@@ -1137,7 +1140,7 @@ function OKKContent() {
 
             {/* Filter Row */}
             <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex flex-wrap items-center gap-2 flex-shrink-0 relative z-40 shadow-sm">
-                {user?.role === 'admin' && (
+                {currentCapability.dataScope === 'all' && (
                     <MultiSelect
                         options={activeManagers.map(m => ({ value: m.id.toString(), label: m.name }))}
                         selectedValues={filterManager}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { runFullEvaluation } from '@/lib/okk-evaluator';
 import { getSession } from '@/lib/auth';
+import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -13,23 +14,26 @@ export async function GET(request: Request) {
         const session = await getSession();
         const userRole = session?.user?.role || 'admin';
         const retailCrmId = session?.user?.retail_crm_manager_id;
+        const capability = await getEffectiveCapabilityForRole(session?.user?.role);
 
         const { searchParams } = new URL(request.url);
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
         const specificOrderId = searchParams.get('orderId') ? parseInt(searchParams.get('orderId')!) : undefined;
 
-        if (userRole === 'manager' && retailCrmId && specificOrderId) {
+        if (!capability.canRunBulkOperations && !specificOrderId) {
+            return NextResponse.json({ error: 'У вас нет прав на массовый запуск проверки' }, { status: 403 });
+        }
+
+        if (specificOrderId) {
             const { data: order } = await supabase
                 .from('orders')
                 .select('manager_id')
                 .eq('order_id', specificOrderId)
                 .single();
 
-            if (!order || order.manager_id !== retailCrmId) {
+            if (!order || !canAccessTargetManager(session?.user, capability, order.manager_id)) {
                 return NextResponse.json({ error: 'У вас нет прав на перепроверку этого заказа' }, { status: 403 });
             }
-        } else if (userRole === 'manager' && !specificOrderId) {
-            return NextResponse.json({ error: 'Пакетный запуск доступен только администраторам ' }, { status: 403 });
         }
 
         console.log(`[ОКК Cron] Starting evaluation run... limit=${limit}, orderId=${specificOrderId}`);

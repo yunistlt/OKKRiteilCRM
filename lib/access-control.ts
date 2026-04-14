@@ -106,3 +106,11 @@ export function normalizeRoleCapabilityProfile(input: Partial<RoleCapabilityProf
         canRunBulkOperations: typeof input.canRunBulkOperations === 'boolean' ? input.canRunBulkOperations : fallback.canRunBulkOperations,
     };
 }
+
+export function getRoleCapability(role: AppRole | null | undefined, capabilities: RoleCapabilityProfile[]): RoleCapabilityProfile {
+    if (!role) {
+        return DEFAULT_ROLE_CAPABILITIES.find((item) => item.role === 'manager')!;
+    }
+
+    return capabilities.find((item) => item.role === role) || DEFAULT_ROLE_CAPABILITIES.find((item) => item.role === role)!;
+}

@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
+import { getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 import { getSession } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,7 @@ export async function GET(req: Request) {
 
     const userRole = session.user.role;
     const retailCrmId = session?.user?.retail_crm_manager_id;
+    const capability = await getEffectiveCapabilityForRole(session.user.role);
     const readClient = session.accessToken ? createSupabaseUserClient(session.accessToken) || supabase : supabase;
 
     const { searchParams } = new URL(req.url);
@@ -25,7 +27,7 @@ export async function GET(req: Request) {
     const filterStatus = searchParams.get('status');
 
     // Насильно применяем фильтр для менеджера
-    if (userRole === 'manager' && retailCrmId) {
+    if (capability.dataScope === 'own' && retailCrmId) {
         filterManager = String(retailCrmId);
     }
 
