@@ -245,7 +245,7 @@ function C({ v, onClick }: { v: boolean | null, onClick?: (e: React.MouseEvent) 
 function Pct({ n }: { n: number | null }) {
     if (n === null) return <span className="text-gray-300">—</span>;
     const cls = n >= 80 ? 'bg-green-100 text-green-800' : n >= 60 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
-    return <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold ${cls}`}>{n}%</span>;
+    return <span className={`inline-block rounded px-1 py-0.5 text-[10px] font-bold leading-none ${cls}`}>{n}%</span>;
 }
 
 // ─── Определение колонок с подсказками ───────────────────
@@ -943,7 +943,7 @@ function OKKContent() {
     // Рендер заголовка колонки с переносом по словам и тултипом
     const ColTh = ({ col }: { col: ColDef | typeof SCORE_COLS[0] }) => (
         <th
-            className={`px-2 py-2 text-center text-[11px] font-normal text-gray-600 border-r border-gray-100 cursor-pointer hover:bg-gray-100 min-w-[72px] max-w-[100px] align-top relative bg-gray-50 ${sortBy === col.key ? 'text-blue-600 font-semibold bg-blue-50' : ''}`}
+            className={`px-1.5 py-1 text-center text-[10px] font-normal leading-tight text-gray-600 border-r border-gray-100 cursor-pointer hover:bg-gray-100 min-w-[60px] max-w-[84px] align-top relative bg-gray-50 ${sortBy === col.key ? 'text-blue-600 font-semibold bg-blue-50' : ''}`}
             onClick={() => handleSort(col.key)}
         >
             <ColTooltip label={col.label} info={col.tip}>
@@ -1023,7 +1023,7 @@ function OKKContent() {
             content = (
                 <button
                     onClick={hasCalls ? handleCallStatusClick : undefined}
-                    className={`text-xs px-1.5 py-0.5 rounded transition-colors ${hasCalls
+                    className={`rounded px-1 py-0.5 text-[10px] leading-none transition-colors ${hasCalls
                         ? 'bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold underline decoration-blue-300 underline-offset-2'
                         : 'text-gray-400'
                         }`}
@@ -1034,12 +1034,12 @@ function OKKContent() {
         } else if (col.type === 'bool') {
             content = <C v={val} onClick={breakdown ? handleCellClick : undefined} />;
         } else if (col.type === 'num') {
-            content = <span className="text-gray-600 text-xs">{val ?? '—'}</span>;
+            content = <span className="text-[10px] text-gray-600">{val ?? '—'}</span>;
         } else {
-            content = <span className="text-gray-600 text-xs" title={val}>{val ?? '—'}</span>;
+            content = <span className="text-[10px] text-gray-600" title={val}>{val ?? '—'}</span>;
         }
 
-        return <td key={col.key} className={`px-1 py-1.5 text-center border-r border-gray-100 ${cellBg}`}>{content}</td>;
+        return <td key={col.key} className={`px-1 py-1 text-center border-r border-gray-100 ${cellBg}`}>{content}</td>;
     };
 
     return (
@@ -1054,28 +1054,28 @@ function OKKContent() {
             <div className="relative flex overflow-hidden bg-[#eef3f7] md:gap-3 md:p-3" style={{ height: 'calc(100dvh - 60px)' }}>
             <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:min-h-0 md:rounded-[28px] md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
             {/* Header / Run Bar (Ultra Compact) */}
-            <div className="bg-white border-b border-gray-100 flex items-center justify-between px-3 py-1.5 md:px-4 md:py-3 gap-2 flex-shrink-0 relative z-30">
-                <div className="flex items-center gap-2">
-                    <Link href="/" className="p-1 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+            <div className="bg-white border-b border-gray-100 flex items-center justify-between px-2.5 py-1 md:px-3 md:py-2 gap-2 flex-shrink-0 relative z-30">
+                <div className="flex items-center gap-1.5">
+                    <Link href="/" className="p-0.5 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
                         ←
                     </Link>
                     <div>
-                        <h1 className="text-xs md:text-base font-black text-gray-800 leading-tight">ОКК</h1>
+                        <h1 className="text-xs md:text-sm font-black text-gray-800 leading-tight">ОКК</h1>
                         <div className="text-[8px] font-bold text-blue-600 uppercase md:block hidden">{pagination.totalCount} ЗАКАЗОВ</div>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                     {currentCapability.canViewAudit && (
                         <Link
                             href="/okk/audit"
-                            className="hidden md:inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-100"
+                            className="hidden md:inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700 transition-colors hover:bg-violet-100"
                         >
                             Аудит Семёна
                         </Link>
                     )}
                     {/* Compact Run Controls */}
-                    <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+                    <div className="flex items-center gap-1 bg-gray-50 p-0.5 rounded-lg border border-gray-100">
                         {currentCapability.canRunBulkOperations ? (
                             <>
                                 <input
@@ -1083,13 +1083,13 @@ function OKKContent() {
                                     placeholder="Заказ..."
                                     value={targetOrderId}
                                     onChange={(e) => setTargetOrderId(e.target.value)}
-                                    className="bg-transparent border-none text-[10px] font-bold w-12 focus:ring-0 p-0 h-4"
+                                    className="bg-transparent border-none text-[9px] font-bold w-10 focus:ring-0 p-0 h-4"
                                 />
                                 <div className="w-px h-3 bg-gray-200" />
                                 <button
                                     onClick={runAll}
                                     disabled={running}
-                                    className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'} px-2 py-0.5 rounded text-[9px] font-black transition-all`}
+                                    className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'} px-1.5 py-0.5 rounded text-[8px] font-black transition-all`}
                                 >
                                     {running ? '..' : targetOrderId ? 'FIX' : 'RUN'}
                                 </button>
@@ -1100,18 +1100,18 @@ function OKKContent() {
                         )}
                     </div>
 
-                    <div className="flex gap-4 ml-2 md:flex hidden">
+                    <div className="hidden gap-3 ml-1.5 md:flex">
                         <div className="text-right">
-                            <div className="text-xl font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
+                            <div className="text-lg font-black text-green-600 leading-none">{averages.filteredAvgScore}%</div>
                             <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">
                                 {currentCapability.dataScope === 'own' ? 'ваш средний %' : filterManager.length > 0 ? 'средний % менеджера' : 'текущий фильтр %'}
                             </div>
                         </div>
                         {currentCapability.dataScope !== 'own' && (
                             <>
-                                <div className="w-px h-8 bg-gray-200" />
+                                <div className="w-px h-7 bg-gray-200" />
                                 <div className="text-right">
-                                    <div className="text-xl font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
+                                    <div className="text-lg font-black text-blue-600 leading-none">{averages.totalAvgScore}%</div>
                                     <div className="text-[8px] font-black text-gray-400 uppercase tracking-tight">средний % по ОП</div>
                                 </div>
                             </>
@@ -1139,7 +1139,7 @@ function OKKContent() {
             </div>
 
             {/* Filter Row */}
-            <div className="bg-white border-b border-gray-100 px-3 py-1.5 flex flex-wrap items-center gap-2 flex-shrink-0 relative z-40 shadow-sm">
+            <div className="bg-white border-b border-gray-100 px-2.5 py-1 flex flex-wrap items-center gap-1.5 flex-shrink-0 relative z-40 shadow-sm">
                 {currentCapability.dataScope === 'all' && (
                     <MultiSelect
                         options={activeManagers.map(m => ({ value: m.id.toString(), label: m.name }))}
@@ -1162,13 +1162,13 @@ function OKKContent() {
                 <div className="relative">
                     <button
                         onClick={() => setColumnSettingsOpen(prev => !prev)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all ${
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all ${
                             hasHiddenColumns
                                 ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100 shadow-sm shadow-amber-100'
                                 : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
                         }`}
                     >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
@@ -1192,10 +1192,10 @@ function OKKContent() {
                 {pagination.totalPages > 1 && (
                     <div className="flex items-center bg-gray-50 rounded p-0.5 border border-gray-100 shrink-0">
                         <button onClick={() => setPagination(prev => ({ ...prev, page: Math.max(1, prev.page - 1) }))} disabled={pagination.page === 1}
-                            className="p-1 hover:bg-gray-100 disabled:opacity-20"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
-                        <span className="text-[9px] font-black text-gray-500 px-1 min-w-[35px] text-center">{pagination.page}/{pagination.totalPages}</span>
+                            className="p-0.5 hover:bg-gray-100 disabled:opacity-20"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+                        <span className="text-[8px] font-black text-gray-500 px-1 min-w-[30px] text-center">{pagination.page}/{pagination.totalPages}</span>
                         <button onClick={() => setPagination(prev => ({ ...prev, page: Math.min(prev.totalPages, prev.page + 1) }))} disabled={pagination.page === pagination.totalPages}
-                            className="p-1 hover:bg-gray-100 disabled:opacity-20"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+                            className="p-0.5 hover:bg-gray-100 disabled:opacity-20"><svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
                     </div>
                 )}
             </div>
@@ -1204,18 +1204,18 @@ function OKKContent() {
             <div className={`relative z-10 min-h-0 min-w-0 flex-1 overflow-auto font-sans ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
                 {/* Desktop View */}
                 <div className="hidden md:block">
-                    <table className="text-xs border-collapse min-w-max w-full">
+                    <table className="w-full min-w-max border-collapse text-[11px]">
                         <thead className="sticky top-0 z-[50]">
                             <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 shadow-sm">
                                 <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-[60] border-r border-gray-200 font-semibold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[80px] w-[80px]">Заказ</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[120px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[140px] w-[140px]">МОП</th>
-                                <th rowSpan={2} className="px-2 py-2 text-left sticky left-[260px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-gray-700 min-w-[160px] w-[160px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
-                                {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-2 py-1.5 text-center font-semibold text-xs border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
-                                <th rowSpan={2} className="px-2 py-2 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-xs min-w-[70px] w-[70px] relative">Нарушения</th>
-                                <th colSpan={4} className="px-2 py-1.5 text-center font-semibold text-xs bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[72px] w-[72px] text-[10px]">Заказ</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[112px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] text-gray-700 min-w-[124px] w-[124px]">МОП</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[236px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] text-gray-700 min-w-[140px] w-[140px] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
+                                {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-1.5 py-1 text-center text-[10px] font-semibold border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-[10px] min-w-[58px] w-[58px] relative">Нарушения</th>
+                                <th colSpan={4} className="px-1.5 py-1 text-center text-[10px] font-semibold bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
                             </tr>
                             <tr className="bg-gray-50 border-b border-gray-200 shadow-sm">
                                 {visibleColGroups.map(g => g.cols.map(col => <ColTh key={col.key} col={col} />))}
@@ -1234,62 +1234,62 @@ function OKKContent() {
                                 return (
                                     <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
                                         <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
-                                        <td className={`px-2 py-1.5 sticky left-[40px] min-w-[80px] w-[80px] max-w-[90px] font-mono border-r border-gray-200 ${stickyClass}`}>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-1">
+                                        <td className={`px-1.5 py-1 sticky left-[40px] min-w-[72px] w-[72px] max-w-[72px] font-mono border-r border-gray-200 ${stickyClass}`}>
+                                            <div className="flex flex-col gap-0.5">
+                                                <div className="flex items-center gap-0.5">
                                                     <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
-                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline text-[11px] font-bold font-sans">#{s.order_id}</a>
+                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
                                                 </div>
-                                                <button
-                                                    onClick={() => setSelectedOrderId(s.order_id)}
-                                                    className="px-1.5 py-0.5 text-[9px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors"
-                                                >
-                                                    Карточка
-                                                </button>
-                                                <button
-                                                    onClick={() => setConsultantOrderId(s.order_id)}
-                                                    className="px-1.5 py-0.5 text-[9px] font-semibold rounded-full border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                                                >
-                                                    Семён
-                                                </button>
-                                                <div className="grid grid-cols-2 gap-1">
+                                                <div className="flex flex-wrap gap-0.5">
+                                                    <button
+                                                        onClick={() => setSelectedOrderId(s.order_id)}
+                                                        className="rounded-full border border-blue-200 bg-blue-50 px-1 py-0.5 text-[7px] font-semibold leading-none text-blue-600 hover:bg-blue-100 transition-colors"
+                                                    >
+                                                        Карточка
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConsultantOrderId(s.order_id)}
+                                                        className="rounded-full border border-emerald-200 bg-emerald-50 px-1 py-0.5 text-[7px] font-semibold leading-none text-emerald-700 hover:bg-emerald-100 transition-colors"
+                                                    >
+                                                        Семён
+                                                    </button>
                                                     <button
                                                         onClick={() => askConsultantFromRow(s.order_id, 'Как посчитан балл по этому заказу?')}
-                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-sky-200 text-sky-700 bg-sky-50 hover:bg-sky-100 transition-colors"
+                                                        className="rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[7px] font-bold leading-none text-sky-700 hover:bg-sky-100 transition-colors"
                                                     >
-                                                        Рейтинг
+                                                        Рейт
                                                     </button>
                                                     <button
                                                         onClick={() => askConsultantFromRow(s.order_id, 'Почему здесь есть крестики?')}
-                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 transition-colors"
+                                                        className="rounded-full border border-amber-200 bg-amber-50 px-1 py-0.5 text-[7px] font-bold leading-none text-amber-700 hover:bg-amber-100 transition-colors"
                                                     >
-                                                        Крестик
+                                                        Крест
                                                     </button>
                                                     <button
                                                         onClick={() => askConsultantFromRow(s.order_id, 'Откуда взялись данные для оценки?')}
-                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-violet-200 text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors"
+                                                        className="rounded-full border border-violet-200 bg-violet-50 px-1 py-0.5 text-[7px] font-bold leading-none text-violet-700 hover:bg-violet-100 transition-colors"
                                                     >
-                                                        Источник
+                                                        Источ
                                                     </button>
                                                     <button
                                                         onClick={() => askConsultantFromRow(s.order_id, 'Что нужно исправить менеджеру?')}
-                                                        className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                                                        className="rounded-full border border-rose-200 bg-rose-50 px-1 py-0.5 text-[7px] font-bold leading-none text-rose-700 hover:bg-rose-100 transition-colors"
                                                     >
-                                                        Исправить
+                                                        Испр
                                                     </button>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className={`px-2 py-1.5 sticky left-[120px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 whitespace-nowrap font-medium text-gray-800 overflow-hidden text-ellipsis ${stickyClass}`}>{s.manager_name || '—'}</td>
-                                        <td className={`px-2 py-1.5 sticky left-[260px] min-w-[160px] w-[160px] max-w-[160px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
+                                        <td className={`px-1.5 py-1 sticky left-[112px] min-w-[124px] w-[124px] max-w-[124px] border-r border-gray-200 whitespace-nowrap overflow-hidden text-ellipsis text-[10px] font-medium text-gray-800 ${stickyClass}`}>{s.manager_name || '—'}</td>
+                                        <td className={`px-1.5 py-1 sticky left-[236px] min-w-[140px] w-[140px] max-w-[140px] border-r border-gray-200 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="rounded-full px-1 py-0.5 text-[9px] font-bold whitespace-nowrap leading-none" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
                                         {visibleColGroups.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
-                                        <td className="px-2 py-1.5 text-center border-r border-gray-200 bg-red-50/30">
+                                        <td className="px-1.5 py-1 text-center border-r border-gray-200 bg-red-50/30">
                                             {s.violations && s.violations.length > 0 ? (
-                                                <button onClick={() => setSelectedViolationsOrder(s)} className="bg-red-100 text-red-700 hover:bg-red-200 px-2 py-0.5 rounded text-xs font-bold transition-colors">
+                                                <button onClick={() => setSelectedViolationsOrder(s)} className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 transition-colors hover:bg-red-200">
                                                     🔴 {s.violations.length}
                                                 </button>
                                             ) : (
-                                                <span className="text-gray-400 text-xs font-semibold">0</span>
+                                                <span className="text-[10px] font-semibold text-gray-400">0</span>
                                             )}
                                         </td>
                                         {(() => {
@@ -1303,10 +1303,10 @@ function OKKContent() {
                                                 : s.script_score;
                                             return (
                                                 <>
-                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50 font-bold">{adjDealScore ?? '—'}</td>
-                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50"><Pct n={adjDeal} /></td>
-                                                    <td className="px-2 py-1.5 text-center border-r border-gray-100 bg-gray-50">{adjScriptScore ?? '—'}</td>
-                                                    <td className="px-2 py-1.5 text-center bg-gray-50"><Pct n={adjScript} /></td>
+                                                    <td className="px-1.5 py-1 text-center border-r border-gray-100 bg-gray-50 text-[10px] font-bold">{adjDealScore ?? '—'}</td>
+                                                    <td className="px-1.5 py-1 text-center border-r border-gray-100 bg-gray-50"><Pct n={adjDeal} /></td>
+                                                    <td className="px-1.5 py-1 text-center border-r border-gray-100 bg-gray-50 text-[10px]">{adjScriptScore ?? '—'}</td>
+                                                    <td className="px-1.5 py-1 text-center bg-gray-50"><Pct n={adjScript} /></td>
                                                 </>
                                             );
                                         })()}
