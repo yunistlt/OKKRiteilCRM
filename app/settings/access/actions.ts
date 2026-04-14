@@ -126,6 +126,7 @@ async function updateAccountTableWithFallback(table: 'profiles' | 'users', id: s
         username: updates.username ?? null,
         first_name: updates.first_name ?? null,
         last_name: updates.last_name ?? null,
+        ...(table === 'users' && 'password_hash' in updates ? { password_hash: updates.password_hash ?? null } : {}),
     };
 
     return supabase.from(table).update(fallbackUpdates).eq('id', id);
