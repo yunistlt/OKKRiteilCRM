@@ -1250,8 +1250,13 @@ function OKKContent() {
                                                 <div className="text-[9px] font-semibold text-gray-700">
                                                     {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'} ₽
                                                 </div>
-                                                <div className="text-[9px] leading-tight text-gray-500 break-words whitespace-normal">
-                                                    {s.status_label || s.order_status || '—'}
+                                                <div>
+                                                    <span
+                                                        className="inline-block max-w-full rounded-full px-1.5 py-0.5 text-[8px] font-bold leading-tight break-words whitespace-normal"
+                                                        style={getBadgeStyle(s.status_color)}
+                                                    >
+                                                        {s.status_label || s.order_status || '—'}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </td>

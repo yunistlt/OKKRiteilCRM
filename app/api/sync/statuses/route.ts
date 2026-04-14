@@ -16,6 +16,44 @@ const STATUS_GROUP_COLORS: Record<string, string> = {
     'return': '#FFE4E6' // rose-100
 };
 
+const STATUS_COLOR_RULES: Array<{ color: string; patterns: string[] }> = [
+    { color: '#FEE2E2', patterns: ['cancel', 'otmen', 'отмен', 'reklam', 'реклам', 'refund', 'возврат', 'tender', 'тендер', 'fail', 'proval', 'провал'] },
+    { color: '#DCFCE7', patterns: ['complete', 'vypoln', 'выполн', 'oplata', 'оплат', 'paid', 'оплачен'] },
+    { color: '#E0E7FF', patterns: ['delivery', 'deliv', 'dostav', 'достав'] },
+    { color: '#F3E8FF', patterns: ['assembling', 'sbork', 'сбор', 'komplekt', 'комплект'] },
+    { color: '#FEF3C7', patterns: ['work', 'approval', 'soglas', 'соглас', 'dogovor', 'договор', 'schet', 'счет', 'ожидани', 'proschet'] },
+    { color: '#DBEAFE', patterns: ['new', 'nov', 'нов', 'zayav', 'заяв', 'lead'] },
+    { color: '#E0F2FE', patterns: ['base', 'база', 'razvit', 'развит', 'tehn', 'техн', 'perenos', 'перенос', 'holod', 'холод', 'proizv', 'производ'] },
+    { color: '#FFE4E6', patterns: ['return', 'vozvrat', 'возврат'] }
+];
+
+function normalizeColor(value?: string | null) {
+    if (!value) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+    if (/^#[0-9a-fA-F]{6}$/.test(trimmed) || /^#[0-9a-fA-F]{3}$/.test(trimmed)) return trimmed.toUpperCase();
+    if (/^[0-9a-fA-F]{6}$/.test(trimmed) || /^[0-9a-fA-F]{3}$/.test(trimmed)) return `#${trimmed.toUpperCase()}`;
+    if (/^rgb(a)?\(/i.test(trimmed)) return trimmed;
+    return null;
+}
+
+function inferStatusColor(...sources: Array<string | null | undefined>) {
+    const haystack = sources
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase())
+        .join(' ');
+
+    if (!haystack) return null;
+
+    for (const rule of STATUS_COLOR_RULES) {
+        if (rule.patterns.some((pattern) => haystack.includes(pattern))) {
+            return rule.color;
+        }
+    }
+
+    return null;
+}
+
 export async function GET() {
     if (!RETAILCRM_URL || !RETAILCRM_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
@@ -41,6 +79,14 @@ export async function GET() {
             return NextResponse.json({ message: 'No statuses found' });
         }
 
+        const { data: existingStatuses } = await supabase
+            .from('statuses')
+            .select('code, color');
+
+        const existingColorMap = new Map<string, string | null>(
+            (existingStatuses || []).map((status: any) => [status.code, normalizeColor(status.color) || null])
+        );
+
         // Map group code to full group data
         const groupMap: Record<string, any> = {};
         if (groups) {
@@ -52,8 +98,8 @@ export async function GET() {
         const rows = Object.values(statuses).map((s: any) => {
             const group = groupMap[s.group];
             const groupCode = s.group;
-            // Try to find color in status, then in group, then in static map
-            let color = s.rgb || s.color || group?.rgb || group?.color || group?.hex || null;
+            // Try to find color in status, then in group, then infer from known patterns.
+            let color = normalizeColor(s.rgb) || normalizeColor(s.color) || normalizeColor(group?.rgb) || normalizeColor(group?.color) || normalizeColor(group?.hex);
 
             if (!color && groupCode) {
                 // Try simple match
@@ -66,6 +112,14 @@ export async function GET() {
                     else if (groupCode.includes('deliv') || groupCode.includes('dostav')) color = STATUS_GROUP_COLORS['delivery'];
                     else if (groupCode.includes('new') || groupCode.includes('nov')) color = STATUS_GROUP_COLORS['new'];
                 }
+            }
+
+            if (!color) {
+                color = inferStatusColor(s.group, group?.code, group?.name, s.code, s.name);
+            }
+
+            if (!color) {
+                color = existingColorMap.get(s.code) || null;
             }
 
             return {
