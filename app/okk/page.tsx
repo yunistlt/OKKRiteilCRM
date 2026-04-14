@@ -1234,28 +1234,27 @@ function OKKContent() {
                                     <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
                                         <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
                                         <td className={`px-1.5 py-1 sticky left-[40px] min-w-[148px] w-[148px] max-w-[148px] border-r border-gray-200 align-top ${stickyClass}`}>
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center gap-1 font-mono">
-                                                    <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
-                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
+                                            <div className="grid grid-rows-2 gap-0.5 min-w-0">
+                                                <div className="grid min-w-0 items-center gap-1" style={{ gridTemplateColumns: '14px auto minmax(0, 1fr)' }}>
+                                                    <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="flex h-[14px] w-[14px] items-center justify-center text-[10px] leading-none hover:scale-125 disabled:opacity-30">↩️</button>
+                                                    <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="truncate text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
+                                                    <span
+                                                        className="block min-w-0 truncate rounded-full px-1 py-0.5 text-[8px] font-bold leading-tight whitespace-nowrap"
+                                                        style={getBadgeStyle(s.status_color)}
+                                                        title={s.status_label || s.order_status || '—'}
+                                                    >
+                                                        {s.status_label || s.order_status || '—'}
+                                                    </span>
                                                 </div>
-                                                <div>
+                                                <div className="grid min-w-0 items-center gap-1.5 pl-[19px]" style={{ gridTemplateColumns: 'auto minmax(0, 1fr)' }}>
                                                     <button
                                                         onClick={() => setSelectedOrderId(s.order_id)}
-                                                        className="text-[9px] font-semibold text-blue-600 hover:underline"
+                                                        className="truncate text-left text-[9px] font-semibold text-blue-600 hover:underline"
                                                     >
                                                         Карточка
                                                     </button>
-                                                </div>
-                                                <div className="text-[9px] font-semibold text-gray-700">
-                                                    {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'} ₽
-                                                </div>
-                                                <div>
-                                                    <span
-                                                        className="inline-block max-w-full rounded-full px-1.5 py-0.5 text-[8px] font-bold leading-tight break-words whitespace-normal"
-                                                        style={getBadgeStyle(s.status_color)}
-                                                    >
-                                                        {s.status_label || s.order_status || '—'}
+                                                    <span className="block min-w-0 truncate text-[9px] font-semibold text-gray-700 whitespace-nowrap">
+                                                        {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'} ₽
                                                     </span>
                                                 </div>
                                             </div>
