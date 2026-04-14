@@ -1210,9 +1210,8 @@ function OKKContent() {
                                 <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-[60] border-r border-gray-200 font-semibold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[72px] w-[72px] text-[10px]">Заказ</th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[112px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[104px] w-[104px] break-words whitespace-normal">МОП</th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[216px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[116px] w-[116px] break-words whitespace-normal shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Статус лида</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[148px] w-[148px] text-[10px]">Заказ</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[188px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[112px] w-[112px] break-words whitespace-normal shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">МОП</th>
                                 {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-1.5 py-1 text-center text-[10px] font-semibold border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
                                 <th rowSpan={2} className="px-1.5 py-1.5 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-[10px] min-w-[58px] w-[58px] relative">Нарушения</th>
                                 <th colSpan={4} className="px-1.5 py-1 text-center text-[10px] font-semibold bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
@@ -1234,54 +1233,29 @@ function OKKContent() {
                                 return (
                                     <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
                                         <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
-                                        <td className={`px-1.5 py-1 sticky left-[40px] min-w-[72px] w-[72px] max-w-[72px] font-mono border-r border-gray-200 ${stickyClass}`}>
-                                            <div className="flex flex-col gap-0.5">
-                                                <div className="flex items-center gap-0.5">
+                                        <td className={`px-1.5 py-1 sticky left-[40px] min-w-[148px] w-[148px] max-w-[148px] border-r border-gray-200 align-top ${stickyClass}`}>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1 font-mono">
                                                     <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="hover:scale-125 disabled:opacity-30">↩️</button>
                                                     <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
                                                 </div>
-                                                <div className="flex flex-wrap gap-0.5">
+                                                <div>
                                                     <button
                                                         onClick={() => setSelectedOrderId(s.order_id)}
-                                                        className="rounded-full border border-blue-200 bg-blue-50 px-1 py-0.5 text-[7px] font-semibold leading-none text-blue-600 hover:bg-blue-100 transition-colors"
+                                                        className="text-[9px] font-semibold text-blue-600 hover:underline"
                                                     >
                                                         Карточка
                                                     </button>
-                                                    <button
-                                                        onClick={() => setConsultantOrderId(s.order_id)}
-                                                        className="rounded-full border border-emerald-200 bg-emerald-50 px-1 py-0.5 text-[7px] font-semibold leading-none text-emerald-700 hover:bg-emerald-100 transition-colors"
-                                                    >
-                                                        Семён
-                                                    </button>
-                                                    <button
-                                                        onClick={() => askConsultantFromRow(s.order_id, 'Как посчитан балл по этому заказу?')}
-                                                        className="rounded-full border border-sky-200 bg-sky-50 px-1 py-0.5 text-[7px] font-bold leading-none text-sky-700 hover:bg-sky-100 transition-colors"
-                                                    >
-                                                        Рейт
-                                                    </button>
-                                                    <button
-                                                        onClick={() => askConsultantFromRow(s.order_id, 'Почему здесь есть крестики?')}
-                                                        className="rounded-full border border-amber-200 bg-amber-50 px-1 py-0.5 text-[7px] font-bold leading-none text-amber-700 hover:bg-amber-100 transition-colors"
-                                                    >
-                                                        Крест
-                                                    </button>
-                                                    <button
-                                                        onClick={() => askConsultantFromRow(s.order_id, 'Откуда взялись данные для оценки?')}
-                                                        className="rounded-full border border-violet-200 bg-violet-50 px-1 py-0.5 text-[7px] font-bold leading-none text-violet-700 hover:bg-violet-100 transition-colors"
-                                                    >
-                                                        Источ
-                                                    </button>
-                                                    <button
-                                                        onClick={() => askConsultantFromRow(s.order_id, 'Что нужно исправить менеджеру?')}
-                                                        className="rounded-full border border-rose-200 bg-rose-50 px-1 py-0.5 text-[7px] font-bold leading-none text-rose-700 hover:bg-rose-100 transition-colors"
-                                                    >
-                                                        Испр
-                                                    </button>
+                                                </div>
+                                                <div className="text-[9px] font-semibold text-gray-700">
+                                                    {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'} ₽
+                                                </div>
+                                                <div className="text-[9px] leading-tight text-gray-500 break-words whitespace-normal">
+                                                    {s.status_label || s.order_status || '—'}
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className={`px-1.5 py-1 sticky left-[112px] min-w-[104px] w-[104px] max-w-[104px] border-r border-gray-200 text-[10px] font-medium leading-tight text-gray-800 break-words whitespace-normal align-top ${stickyClass}`}>{s.manager_name || '—'}</td>
-                                        <td className={`px-1.5 py-1 sticky left-[216px] min-w-[116px] w-[116px] max-w-[116px] border-r border-gray-200 align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}><span className="inline-block max-w-full rounded-full px-1 py-0.5 text-[9px] font-bold leading-tight break-words whitespace-normal" style={getBadgeStyle(s.status_color)}>{s.status_label || s.order_status || '—'}</span></td>
+                                        <td className={`px-1.5 py-1 sticky left-[188px] min-w-[112px] w-[112px] max-w-[112px] border-r border-gray-200 text-[10px] font-medium leading-tight text-gray-800 break-words whitespace-normal align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}>{s.manager_name || '—'}</td>
                                         {visibleColGroups.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
                                         <td className="px-1.5 py-1 text-center border-r border-gray-200 bg-red-50/30">
                                             {s.violations && s.violations.length > 0 ? (
