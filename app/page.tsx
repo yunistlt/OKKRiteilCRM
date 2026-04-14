@@ -87,7 +87,9 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
             fetch('/api/agents/status')
                 .then(res => res.json())
                 .then(data => {
-                    if (data.success) setAgents(data.agents);
+                    if (data.success) {
+                        setAgents(Array.isArray(data.agents) ? data.agents : []);
+                    }
                 })
                 .catch(e => console.error('Failed to fetch agents', e));
         };
@@ -101,7 +103,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
             .then(res => res.json())
             .then(data => {
                 if (data.ok) {
-                    setOrders(data.priorities);
+                    setOrders(Array.isArray(data.priorities) ? data.priorities : []);
                     setCrmUrl(data.retailCrmUrl || '');
                 }
                 setLoading(false);
@@ -140,28 +142,31 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
         </div>
     );
 
-    if (orders.length === 0) return null;
+    const safeOrders = Array.isArray(orders) ? orders : [];
+    const safeAgents = Array.isArray(agents) ? agents : [];
+
+    if (safeOrders.length === 0) return null;
 
     const stats = {
         red: {
-            count: orders.filter(o => o.level === 'red').length,
-            sum: orders.filter(o => o.level === 'red').reduce((a, b) => a + b.totalSum, 0)
+            count: safeOrders.filter(o => o.level === 'red').length,
+            sum: safeOrders.filter(o => o.level === 'red').reduce((a, b) => a + b.totalSum, 0)
         },
         yellow: {
-            count: orders.filter(o => o.level === 'yellow').length,
-            sum: orders.filter(o => o.level === 'yellow').reduce((a, b) => a + b.totalSum, 0)
+            count: safeOrders.filter(o => o.level === 'yellow').length,
+            sum: safeOrders.filter(o => o.level === 'yellow').reduce((a, b) => a + b.totalSum, 0)
         },
         green: {
-            count: orders.filter(o => o.level === 'green').length,
-            sum: orders.filter(o => o.level === 'green').reduce((a, b) => a + b.totalSum, 0)
+            count: safeOrders.filter(o => o.level === 'green').length,
+            sum: safeOrders.filter(o => o.level === 'green').reduce((a, b) => a + b.totalSum, 0)
         },
         black: {
-            count: orders.filter(o => o.level === 'black').length,
-            sum: orders.filter(o => o.level === 'black').reduce((a, b) => a + b.totalSum, 0)
+            count: safeOrders.filter(o => o.level === 'black').length,
+            sum: safeOrders.filter(o => o.level === 'black').reduce((a, b) => a + b.totalSum, 0)
         }
     };
 
-    const filteredOrders = activeTab ? orders.filter(o => o.level === activeTab) : [];
+    const filteredOrders = activeTab ? safeOrders.filter(o => o.level === activeTab) : [];
 
     if (view === 'team') {
         return (
@@ -172,9 +177,9 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                    {[...agents, 
-                      ...(agents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
-                      ...(agents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
+                                        {[...safeAgents, 
+                                            ...(safeAgents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
+                                            ...(safeAgents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
                     ].map((agent: any) => {
                         const profile = ({
                             anna: {
