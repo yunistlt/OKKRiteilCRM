@@ -14,6 +14,11 @@ const ROLE_LABELS: Record<AppRole, string> = {
     manager: 'Менеджер',
 };
 
+const ACCOUNT_SOURCE_LABELS = {
+    profile: 'Основной аккаунт',
+    legacy: 'Локальный аккаунт',
+} as const;
+
 type Props = {
     initialAccounts: AccessAccount[];
     initialManagers: AccessManagerOption[];
@@ -135,19 +140,19 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     };
 
     return (
-        <div className="max-w-7xl px-2 md:px-0 space-y-8">
+        <div className="max-w-7xl px-2 md:px-0 space-y-5">
             <div>
-                <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-2">Доступы и права</h1>
-                <p className="text-gray-500 text-base md:text-lg">Управление аккаунтами, ролями и маршрутной матрицей доступа.</p>
+                <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-1">Доступы и права</h1>
+                <p className="text-sm md:text-base text-gray-500">Управление аккаунтами, ролями и маршрутной матрицей доступа.</p>
             </div>
 
-            {message && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">{message}</div>}
+            {message && <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-2.5 text-sm text-blue-700">{message}</div>}
 
             {showSqlGuide && (
-                <div className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-6">
-                    <h2 className="text-xl font-black text-amber-900 mb-3">Нужна таблица для editable-прав</h2>
-                    <p className="text-sm text-amber-800 mb-4">Примени миграцию для таблицы access_route_rules, после этого матрица прав начнёт сохраняться.</p>
-                    <pre className="overflow-x-auto rounded-2xl border border-amber-200 bg-white p-4 text-[11px] text-gray-800">{`CREATE TABLE IF NOT EXISTS public.access_route_rules (
+                <div className="rounded-3xl border-2 border-amber-200 bg-amber-50 p-5">
+                    <h2 className="text-lg font-black text-amber-900 mb-2">Нужна таблица для сохранения прав</h2>
+                    <p className="text-sm text-amber-800 mb-3">Примени миграцию для таблицы access_route_rules, после этого матрица прав начнёт сохраняться.</p>
+                    <pre className="overflow-x-auto rounded-2xl border border-amber-200 bg-white p-3 text-[10px] text-gray-800">{`CREATE TABLE IF NOT EXISTS public.access_route_rules (
     prefix TEXT PRIMARY KEY,
     label TEXT NOT NULL,
     description TEXT,
@@ -159,56 +164,56 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                 </div>
             )}
 
-            <section className="grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-6">
-                <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-xl shadow-gray-100">
-                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-5">
+            <section className="grid grid-cols-1 xl:grid-cols-[1.35fr_0.65fr] gap-4">
+                <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
                         <div>
-                            <h2 className="text-xl font-black text-gray-900">Все аккаунты</h2>
+                            <h2 className="text-lg font-black text-gray-900">Все аккаунты</h2>
                             <p className="text-sm text-gray-500">Редактирование ролей, логинов и привязки к RetailCRM-менеджеру.</p>
                         </div>
-                        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по логину, email, ФИО, роли" className="w-full md:w-80 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-blue-500" />
+                        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Поиск по логину, email, ФИО, роли" className="w-full md:w-72 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-blue-500" />
                     </div>
 
-                    <div className="space-y-4 max-h-[760px] overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
                         {filteredAccounts.map((account) => (
-                            <div key={`${account.source}:${account.id}`} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
-                                <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-                                    <div className="md:col-span-2">
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Логин</label>
+                            <div key={`${account.source}:${account.id}`} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-sm font-black text-gray-900">{account.username || account.email || 'Без имени'}</h3>
+                                        <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 ring-1 ring-gray-200">{ACCOUNT_SOURCE_LABELS[account.source]}</span>
+                                    </div>
+                                    <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
+                                    <div className="md:col-span-3">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Логин</label>
                                         <input value={account.username || ''} onChange={(event) => handleAccountField(account.id, account.source, 'username', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Email</label>
+                                    <div className="md:col-span-3">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Email</label>
                                         <input value={account.email || ''} onChange={(event) => handleAccountField(account.id, account.source, 'email', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" disabled={account.source === 'legacy'} />
                                     </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Роль</label>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Роль</label>
                                         <select value={account.role} onChange={(event) => handleAccountField(account.id, account.source, 'role', event.target.value as AppRole)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
                                             {APP_ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
                                         </select>
                                     </div>
-                                    <div>
-                                        <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Имя</label>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Имя</label>
                                         <input value={account.first_name || ''} onChange={(event) => handleAccountField(account.id, account.source, 'first_name', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Фамилия</label>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Фамилия</label>
                                         <input value={account.last_name || ''} onChange={(event) => handleAccountField(account.id, account.source, 'last_name', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
-                                    <div className="md:col-span-2">
-                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Привязка к менеджеру RetailCRM</label>
+                                    <div className="md:col-span-12">
+                                        <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Привязка к менеджеру RetailCRM</label>
                                         <select value={account.retail_crm_manager_id || ''} onChange={(event) => handleAccountField(account.id, account.source, 'retail_crm_manager_id', event.target.value ? Number(event.target.value) : null)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" disabled={account.role !== 'manager'}>
                                             <option value="">Без привязки</option>
                                             {initialManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.label}{manager.active ? '' : ' (не активен)'}</option>)}
                                         </select>
-                                    </div>
-                                    <div className="md:col-span-2 flex items-center gap-2 text-xs text-gray-500">
-                                        <span className="rounded-full bg-white px-3 py-1 font-bold uppercase tracking-wider text-gray-500 ring-1 ring-gray-200">{account.source === 'profile' ? 'Supabase Auth' : 'Legacy'}</span>
-                                        <span>ID: {account.id}</span>
                                     </div>
                                 </div>
                             </div>
@@ -216,31 +221,31 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                     </div>
                 </div>
 
-                <div className="space-y-6">
-                    <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-xl shadow-gray-100">
-                        <h2 className="text-xl font-black text-gray-900 mb-2">Новый аккаунт</h2>
-                        <p className="text-sm text-gray-500 mb-5">Можно создать полноценный Supabase-аккаунт по email или legacy-аккаунт по логину.</p>
+                <div className="space-y-4">
+                    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
+                        <h2 className="text-lg font-black text-gray-900 mb-1">Новый аккаунт</h2>
+                        <p className="text-sm text-gray-500 mb-4">Можно создать основной аккаунт по email или локальный аккаунт по логину.</p>
 
-                        <div className="grid grid-cols-1 gap-3">
+                        <div className="grid grid-cols-1 gap-2.5">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Тип</label>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Тип</label>
                                 <select value={newAccount.accountType} onChange={(event) => setNewAccount((current) => ({ ...current, accountType: event.target.value as 'profile' | 'legacy' }))} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                                    <option value="legacy">Legacy</option>
-                                    <option value="profile">Supabase Auth</option>
+                                    <option value="legacy">Локальный аккаунт</option>
+                                    <option value="profile">Основной аккаунт</option>
                                 </select>
                             </div>
                             {newAccount.accountType === 'profile' && (
                                 <div>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Email</label>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Email</label>
                                     <input value={newAccount.email} onChange={(event) => setNewAccount((current) => ({ ...current, email: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm" />
                                 </div>
                             )}
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Логин</label>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Логин</label>
                                 <input value={newAccount.username} onChange={(event) => setNewAccount((current) => ({ ...current, username: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm" />
                             </div>
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Пароль</label>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Пароль</label>
                                 <input type="password" value={newAccount.password} onChange={(event) => setNewAccount((current) => ({ ...current, password: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -256,24 +261,24 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                                     {initialManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.label}</option>)}
                                 </select>
                             </div>
-                            <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-gray-900 px-4 py-3 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
+                            <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-gray-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
                         </div>
                     </div>
 
-                    <div className="rounded-3xl border border-gray-100 bg-white p-6 shadow-xl shadow-gray-100">
-                        <div className="flex items-center justify-between gap-4 mb-5">
+                    <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100">
+                        <div className="flex items-start justify-between gap-3 mb-4">
                             <div>
-                                <h2 className="text-xl font-black text-gray-900">Матрица прав</h2>
+                                <h2 className="text-lg font-black text-gray-900">Матрица прав</h2>
                                 <p className="text-sm text-gray-500">Какие роли имеют доступ к каким разделам и API.</p>
                             </div>
-                            <button onClick={handleSaveRouteRules} disabled={isPending} className="rounded-2xl bg-blue-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50">Сохранить права</button>
+                            <button onClick={handleSaveRouteRules} disabled={isPending} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Сохранить права</button>
                         </div>
 
-                        <div className="space-y-5 max-h-[760px] overflow-y-auto pr-1">
+                        <div className="space-y-3 max-h-[calc(100vh-360px)] overflow-y-auto pr-1">
                             {Object.entries(groupedRules).map(([category, rules]) => (
-                                <div key={category} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4">
-                                    <h3 className="text-sm font-black uppercase tracking-wider text-gray-500 mb-3">{category}</h3>
-                                    <div className="space-y-3">
+                                <div key={category} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
+                                    <h3 className="text-xs font-black uppercase tracking-[0.18em] text-gray-500 mb-2.5">{category}</h3>
+                                    <div className="space-y-2.5">
                                         {rules.map((rule) => (
                                             <div key={rule.prefix} className="rounded-2xl bg-white p-3 ring-1 ring-gray-100">
                                                 <div className="mb-2">
@@ -281,9 +286,9 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                                                     <div className="text-xs text-gray-400">{rule.prefix}</div>
                                                     {rule.description && <div className="mt-1 text-xs text-gray-500">{rule.description}</div>}
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-2">
+                                                <div className="grid grid-cols-2 gap-1.5">
                                                     {APP_ROLES.map((role) => (
-                                                        <label key={role} className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                                        <label key={role} className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-700">
                                                             <input type="checkbox" checked={rule.allowed.includes(role)} onChange={() => handleRouteRoleToggle(rule.prefix, role)} />
                                                             <span>{ROLE_LABELS[role]}</span>
                                                         </label>
