@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 interface User {
     username: string;
@@ -1746,7 +1747,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                                             {data.result ? '✅' : '❌'}
                                                                         </span>
                                                                         <span className="text-[10px] font-bold text-gray-700">
-                                                                            {key.replace('script_', '').replace(/_/g, ' ')}
+                                                                            {formatQualityCriterionLabel(key)}
                                                                         </span>
                                                                     </div>
                                                                     <p className="text-[11px] text-gray-600 leading-normal italic">

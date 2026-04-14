@@ -2,6 +2,7 @@
 
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import CallInitiator from './calls/CallInitiator';
+import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -931,7 +932,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                                                 {info?.result ? '✅' : '❌'}
                                                                             </span>
                                                                             <span className="text-[10px] font-bold text-gray-700">
-                                                                                {key.replace('script_', '').replace(/_/g, ' ')}
+                                                                                {formatQualityCriterionLabel(key)}
                                                                             </span>
                                                                         </div>
                                                                         <p className="text-[11px] text-gray-600 leading-normal italic">{info?.reason}</p>
