@@ -48,8 +48,8 @@ function formatTime(value: string): string {
 }
 
 function formatThreadTitle(thread: ThreadSummary): string {
-    if (thread.order_id) return `Тема: заказ #${thread.order_id}`;
-    return thread.title?.replace(/^Общий контекст:\s*/i, '') || 'Общий контекст';
+    if (thread.order_id) return `Чат по заказу #${thread.order_id}`;
+    return thread.title?.replace(/^(Общий контекст|Общий чат):\s*/i, '') || 'Общий чат';
 }
 
 function clampDesktopWidth(width: number): number {
@@ -72,7 +72,6 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const [threadId, setThreadId] = useState<string | null>(null);
     const [activeThreadIds, setActiveThreadIds] = useState<Record<string, string | null>>({});
     const [availableThreads, setAvailableThreads] = useState<Record<string, ThreadSummary[]>>({});
-    const [responseMode, setResponseMode] = useState<'short' | 'full'>('full');
     const [queuedAction, setQueuedAction] = useState<ConsultantAskEventDetail | null>(null);
     const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({});
     const [desktopWidth, setDesktopWidth] = useState<number | null>(null);
@@ -83,6 +82,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const currentContextThreadId = activeThreadIds[threadKey] || null;
     const messages = threads[threadKey] || [];
     const branchOptions = availableThreads[threadKey] || [];
+    const activeThread = branchOptions.find((item) => item.id === threadId) || branchOptions[0] || null;
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -225,8 +225,8 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         const run = async () => {
             try {
                 const titleBase = selectedOrder
-                    ? `Тема: заказ #${selectedOrder.order_id}`
-                    : 'Общий контекст';
+                    ? `Чат по заказу #${selectedOrder.order_id}`
+                    : 'Общий чат';
 
                 const res = await fetch('/api/okk/consultant/history', {
                     method: 'POST',
@@ -287,7 +287,6 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     orderId: selectedOrder?.order_id ?? null,
                     threadId,
                     history,
-                    responseMode,
                     sectionKey: section.key,
                     selectionContext: selectedOrder?.sectionData || null,
                 }),
@@ -304,9 +303,6 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 role: 'agent',
                 text: data.reply || data.error || 'Не удалось получить ответ.',
                 createdAt: new Date().toISOString(),
-                metadata: {
-                    responseMode: data.responseMode === 'short' ? 'short' : 'full',
-                },
             });
         } catch {
             pushMessage({
@@ -318,7 +314,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         } finally {
             setLoading(false);
         }
-    }, [loading, pushMessage, responseMode, section.key, selectedOrder?.order_id, selectedOrder?.sectionData, threadId, threadKey, threads]);
+    }, [loading, pushMessage, section.key, selectedOrder?.order_id, selectedOrder?.sectionData, threadId, threadKey, threads]);
 
     useEffect(() => {
         if (!queuedAction) return;
@@ -373,7 +369,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                                     onClick={clearThread}
                                     className="border border-slate-700 bg-slate-900/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
                                 >
-                                    Новая тема
+                                    Новый чат
                                 </button>
                                 <button
                                     type="button"
@@ -402,25 +398,9 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     <div className="mt-1 text-[10px] text-slate-500">
                         Конкретные заказы, правила и отмены он в этом чате не разбирает.
                     </div>
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                        <span>Режим ответа</span>
-                        <span>{responseMode === 'short' ? 'коротко' : 'полно'}</span>
-                    </div>
-                    <div className="mt-2 flex gap-1">
-                        <button
-                            type="button"
-                            onClick={() => setResponseMode('short')}
-                            className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'short' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
-                        >
-                            short
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setResponseMode('full')}
-                            className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'full' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
-                        >
-                            full
-                        </button>
+                    <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                        <span>Чаты</span>
+                        <span className="truncate text-right text-slate-400">{activeThread ? formatThreadTitle(activeThread) : 'Новый чат'}</span>
                     </div>
                     <div className="mt-2 flex items-center gap-1">
                         <select
@@ -431,6 +411,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                                 setActiveThreadIds((prev) => ({ ...prev, [threadKey]: nextThreadId }));
                             }}
                             className="min-w-0 flex-1 border border-slate-800 bg-slate-950/70 px-2 py-1 text-[10px] text-slate-200 outline-none"
+                            aria-label="Список чатов"
                         >
                             {branchOptions.map((item) => (
                                 <option key={item.id} value={item.id}>
@@ -442,7 +423,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                             type="button"
                             onClick={createBranch}
                             className="border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-black text-slate-200 hover:border-emerald-500/40"
-                            aria-label="Новая ветка"
+                            aria-label="Создать чат"
                         >
                             +
                         </button>
