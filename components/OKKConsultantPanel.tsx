@@ -47,6 +47,11 @@ function formatTime(value: string): string {
     return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatThreadTitle(thread: ThreadSummary): string {
+    if (thread.order_id) return `Тема: заказ #${thread.order_id}`;
+    return thread.title?.replace(/^Общий контекст:\s*/i, '') || 'Общий контекст';
+}
+
 function clampDesktopWidth(width: number): number {
     if (typeof window === 'undefined') return width;
     const maxWidth = Math.max(MIN_DESKTOP_WIDTH, Math.floor(window.innerWidth * MAX_DESKTOP_WIDTH_RATIO));
@@ -175,11 +180,6 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading]);
 
-    const contextLabel = useMemo(() => {
-        if (!selectedOrder) return section.title;
-        return `Заказ #${selectedOrder.order_id}`;
-    }, [section.title, selectedOrder]);
-
     const pushMessage = useCallback((message: ChatMessage) => {
         setThreads((prev) => ({
             ...prev,
@@ -225,8 +225,8 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         const run = async () => {
             try {
                 const titleBase = selectedOrder
-                    ? `${section.shortTitle}: заказ #${selectedOrder.order_id}`
-                    : `Новая тема: ${section.title}`;
+                    ? `Тема: заказ #${selectedOrder.order_id}`
+                    : 'Общий контекст';
 
                 const res = await fetch('/api/okk/consultant/history', {
                     method: 'POST',
@@ -396,17 +396,16 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 </div>
 
                 <div className="mt-3 border border-slate-800 bg-[#0b141a] px-3 py-2 text-[10px] text-slate-400">
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="truncate">{section.title}</span>
+                    <div className="text-[10px] leading-relaxed text-slate-300">
+                        Семён объясняет, как устроен ОКК: алгоритмы, поля, источники данных и логику расчёта.
+                    </div>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                        Конкретные заказы, правила и отмены он в этом чате не разбирает.
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                        <span>Режим ответа</span>
                         <span>{responseMode === 'short' ? 'коротко' : 'полно'}</span>
                     </div>
-                    <div className="mt-1 truncate text-slate-300">{contextLabel}</div>
-                    {selectedOrder && (
-                        <>
-                            <div className="mt-1 truncate">МОП: {selectedOrder.manager_name || '—'}</div>
-                            <div className="truncate">Статус: {selectedOrder.status_label || '—'}</div>
-                        </>
-                    )}
                     <div className="mt-2 flex gap-1">
                         <button
                             type="button"
@@ -435,7 +434,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         >
                             {branchOptions.map((item) => (
                                 <option key={item.id} value={item.id}>
-                                    {item.title || item.branch_key}
+                                    {formatThreadTitle(item)}
                                 </option>
                             ))}
                         </select>
@@ -494,7 +493,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         value={input}
                         onChange={(event) => setInput(event.target.value)}
                         rows={3}
-                        placeholder={selectedOrder ? `Вопрос по разделу ${section.shortTitle} и заказу...` : `Вопрос по разделу ${section.shortTitle}...`}
+                        placeholder="Спросите про алгоритмы ОКК, поля, критерии или источники данных..."
                         className="min-h-[76px] flex-1 resize-none border border-slate-800 bg-[#0b141a] px-3 py-2 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
                     />
                     <button

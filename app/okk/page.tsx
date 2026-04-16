@@ -1371,38 +1371,38 @@ function OKKContent() {
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            askConsultantFromRow(s.order_id, 'Как посчитан балл по этому заказу?');
+                                            askConsultantFromRow(s.order_id, 'Как работает алгоритм оценки ОКК?');
                                         }}
                                         className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-sky-200 text-sky-700 bg-sky-50"
                                     >
-                                        Рейтинг
+                                        Алгоритм
                                     </button>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            askConsultantFromRow(s.order_id, 'Почему здесь есть крестики?');
+                                            askConsultantFromRow(s.order_id, 'Что означают крестики и галочки?');
                                         }}
                                         className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-amber-200 text-amber-700 bg-amber-50"
                                     >
-                                        Крестик
+                                        Критерии
                                     </button>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            askConsultantFromRow(s.order_id, 'Откуда взялись данные для оценки?');
+                                            askConsultantFromRow(s.order_id, 'Откуда система берёт данные для оценки?');
                                         }}
                                         className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-violet-200 text-violet-700 bg-violet-50"
                                     >
-                                        Источник
+                                        Данные
                                     </button>
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
-                                            askConsultantFromRow(s.order_id, 'Что нужно исправить менеджеру?');
+                                            askConsultantFromRow(s.order_id, 'Что делать, если данные в CRM заполнены неполно?');
                                         }}
                                         className="px-1.5 py-0.5 text-[8px] font-bold rounded-full border border-rose-200 text-rose-700 bg-rose-50"
                                     >
-                                        Исправить
+                                        Подсказка
                                     </button>
                                 </div>
                             </div>

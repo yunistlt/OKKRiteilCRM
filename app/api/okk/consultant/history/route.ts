@@ -23,7 +23,7 @@ function buildThreadScopePrefix(orderId: number | null, sectionKey: string) {
 
 function buildThreadTitle(orderId: number | null, sectionKey: string) {
     const section = getConsultantSectionConfig(sectionKey);
-    return orderId ? `${section.shortTitle}: заказ #${orderId}` : `Общий контекст: ${section.title}`;
+    return orderId ? `Тема: заказ #${orderId}` : `Общий контекст: ${section.title}`;
 }
 
 async function archiveExpiredThreads(userId: string) {

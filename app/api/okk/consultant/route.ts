@@ -191,6 +191,22 @@ function isReferenceQuestion(lower: string): boolean {
         || lower.includes('что показывает');
 }
 
+function isDirectQualityAnalysisRequest(message: string): boolean {
+    const lower = message.toLowerCase();
+
+    return lower.includes('по этому заказу')
+        || lower.includes('этот заказ')
+        || lower.includes('эта сделка')
+        || lower.includes('конкретный заказ')
+        || lower.includes('разбери заказ')
+        || lower.includes('проанализируй заказ')
+        || lower.includes('проверь заказ')
+        || lower.includes('почему здесь')
+        || lower.includes('что нужно исправить менеджеру')
+        || lower.includes('покажи доказательства по заказу')
+        || lower.includes('какие звонки попали в оценку');
+}
+
 function isViolationsReferenceQuestion(message: string): boolean {
     const lower = message.toLowerCase();
     const asksForMeaning = isReferenceQuestion(lower);
@@ -252,7 +268,7 @@ async function buildFallbackAnswer(message: string, order: ConsultantOrder | nul
         messages: [
             {
                 role: 'system',
-                content: `Ты консультант по ОКК. Текущий раздел: ${section.title}. Отвечай только в домене ОКК. Не выдумывай поля, звонки, формулы и причины. Если данных не хватает, прямо так и скажи. Структура ответа: короткий вывод, данные, расчет или правило, что делать дальше.`
+                content: `Ты консультант-методолог по ОКК. Текущий раздел: ${section.title}. Объясняй алгоритмы работы ОКК, значения полей, источники данных и логику расчёта. Не выдумывай поля, звонки, формулы и причины. Не проводи самостоятельный разбор конкретных заказов, правил или отмен в этом чате. Если данных не хватает, прямо так и скажи. Структура ответа: короткий вывод, пояснение логики, какие данные обычно участвуют, что делать дальше.`
             },
             {
                 role: 'user',
@@ -323,6 +339,7 @@ export async function POST(req: Request) {
         const criterionKey = findCriterionKey(message);
         const glossaryTerm = findGlossaryTerm(message);
         const mode = detectMode(message);
+        const referenceQuestion = isReferenceQuestion(message.toLowerCase()) || isGlossaryQuestion(message);
         const userRole = session.user.role || 'admin';
         const retailCrmManagerId = session.user.retail_crm_manager_id ? Number(session.user.retail_crm_manager_id) : null;
         const userId = String(session.user.id);
@@ -330,7 +347,23 @@ export async function POST(req: Request) {
         const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
         const sectionReply = buildSectionAnswer(sectionKey, message, selectionContext);
 
-        if (!orderId && !glossaryTerm && !sectionReply && needsOrderContext(message, criterionKey)) {
+        if (sectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
+            return NextResponse.json({
+                success: true,
+                reply: 'Семён в этом чате не разбирает конкретные заказы, правила или отмены. Он объясняет, как устроен ОКК: что значат поля, откуда берутся данные, как работают критерии и как проходит анализ в системе.',
+                suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
+            });
+        }
+
+        if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && needsOrderContext(message, criterionKey)) {
+            if (sectionKey === 'quality-dashboard') {
+                return NextResponse.json({
+                    success: true,
+                    reply: 'Семён работает здесь как консультант по методологии ОКК. Он может объяснить общую логику расчёта, смысл критериев, полей, нарушений и источников данных, но не разбирает конкретную сделку.',
+                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
+                });
+            }
+
             return NextResponse.json({
                 success: true,
                 reply: 'Для такого вопроса мне нужен выбранный заказ. Выберите сделку в таблице ОКК, и я смогу объяснить балл, причины крестиков, источники данных и действия для исправления.',
