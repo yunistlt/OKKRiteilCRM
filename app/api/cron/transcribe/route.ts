@@ -13,6 +13,17 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     try {
+        const { searchParams } = new URL(req.url);
+        const force = searchParams.get('force') === 'true';
+
+        if (isSystemJobsPipelineEnabled() && !force) {
+            return NextResponse.json({
+                ok: true,
+                status: 'skipped',
+                reason: 'Realtime transcription queue owns processing. Use force=true for emergency fallback run.',
+            });
+        }
+
         // Only process calls from the last 30 days to reduce costs
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);

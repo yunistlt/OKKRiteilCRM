@@ -258,6 +258,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('History Sync')) url = '/api/sync/history';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute';
         if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run';
+        if (serviceName.includes('Transcription Cron')) url = '/api/cron/transcribe?force=true';
 
         if (!url) return;
 
