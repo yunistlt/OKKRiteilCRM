@@ -24,9 +24,7 @@ type ChatMessage = {
     role: 'user' | 'agent' | 'system';
     text: string;
     createdAt: string;
-    metadata?: {
-        responseMode?: 'short' | 'full';
-    } | null;
+    metadata?: Record<string, any> | null;
 };
 
 type ConsultantAskEventDetail = {
@@ -300,6 +298,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             const history = (threads[threadKey] || []).slice(-8).map((item) => ({
                 role: item.role,
                 text: item.text,
+                metadata: item.metadata || null,
             }));
 
             const res = await fetch('/api/okk/consultant', {
@@ -326,6 +325,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 role: 'agent',
                 text: data.reply || data.error || 'Не удалось получить ответ.',
                 createdAt: new Date().toISOString(),
+                metadata: data.answerMetadata || null,
             });
         } catch {
             pushMessage({
@@ -333,6 +333,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 role: 'agent',
                 text: 'Связь с консультантом не удалась. Повторите запрос.',
                 createdAt: new Date().toISOString(),
+                metadata: null,
             });
         } finally {
             setLoading(false);

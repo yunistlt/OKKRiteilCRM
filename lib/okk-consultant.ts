@@ -159,6 +159,7 @@ export type ConsultantSectionConfig = {
     key: ConsultantSectionKey;
     title: string;
     shortTitle: string;
+    aliases: string[];
     summary: string;
     overviewAnswer?: string;
     pathPrefixes: string[];
@@ -517,6 +518,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
         key: 'quality-dashboard',
         title: 'Справка по ОКК',
         shortTitle: 'Справка',
+        aliases: ['окк', 'справка по окк', 'контроль качества', 'качество', 'качество заказов'],
         summary: 'Экран ОКК нужен, чтобы понять качество работы по заказам: какие критерии выполнены, где есть просадка и на каких данных основан итоговый результат.',
         overviewAnswer: [
             'Экран ОКК нужен для чтения качества работы по заказам, а не просто для просмотра крестиков и галочек.',
@@ -584,6 +586,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
         key: 'efficiency',
         title: 'Эффективность',
         shortTitle: 'Эффективность',
+        aliases: ['эффективность', 'скорость', 'эффективность работы', 'ключевые заказы'],
         summary: 'Раздел эффективности нужен, чтобы видеть скорость обработки ключевых лидов, просрочки и нагрузку менеджеров по времени в работе.',
         overviewAnswer: [
             'Раздел эффективности нужен для контроля скорости работы, а не качества разговора или полноты заполнения карточки.',
@@ -635,6 +638,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
         key: 'ai-tools',
         title: 'AI Инструменты',
         shortTitle: 'AI Tools',
+        aliases: ['ai инструменты', 'ai tools', 'согласование отмен', 'согласования отмен', 'отмены', 'роутинг отмен'],
         summary: 'Экран AI Инструменты нужен для ручного и безопасного запуска AI-роутинга заказов: здесь выбирают режим запуска, объём очереди и смотрят, какое решение предлагает модель.',
         overviewAnswer: [
             'AI Инструменты нужны для ручного запуска AI-роутинга по заказам, а не для общего просмотра справки по модели.',
@@ -686,6 +690,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
         key: 'audit',
         title: 'Аудит консультанта',
         shortTitle: 'Аудит',
+        aliases: ['аудит', 'аудит консультанта', 'аудит семена', 'trace', 'трейсы'],
         summary: 'Экран аудита нужен для разбора того, как именно Семён сформировал ответ: какой был вопрос, какой intent определился и когда сработал fallback.',
         overviewAnswer: [
             'Аудит консультанта нужен администраторам и разработчикам, чтобы разбирать качество ответов Семёна, а не для повседневной работы с заказами.',
@@ -738,6 +743,31 @@ function includesAny(text: string, items: string[]): boolean {
     return items.some((item) => text.includes(normalized(item)));
 }
 
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isSectionExplanationPrompt(text: string): boolean {
+    return includesAny(text, [
+        'этот экран',
+        'этот раздел',
+        'эта страница',
+        'что это за раздел',
+        'как работает этот раздел',
+        'что здесь',
+        'что показывает',
+        'для чего этот экран',
+        'при чем тут',
+        'я спрашиваю про',
+        'я спрашивал про',
+        'я имею в виду',
+        'не про заказ',
+        'не про рейтинг',
+        'про раздел',
+        'про экран',
+    ]);
+}
+
 function getSectionOverview(section: ConsultantSectionConfig): string {
     if (section.overviewAnswer) {
         return section.overviewAnswer;
@@ -784,8 +814,42 @@ export function getConsultantSectionByPath(pathname?: string | null): Consultant
         .find((section) => section.pathPrefixes.some((prefix) => currentPath.startsWith(prefix))) || CONSULTANT_SECTION_CONFIGS[0];
 }
 
+export function findConsultantSectionMention(message?: string | null): ConsultantSectionConfig | null {
+    const lower = normalized(message || '');
+    if (!lower) return null;
+
+    let bestMatch: { section: ConsultantSectionConfig; score: number } | null = null;
+
+    for (const section of CONSULTANT_SECTION_CONFIGS) {
+        const candidates = [section.title, section.shortTitle, ...section.aliases];
+
+        for (const candidate of candidates) {
+            const normalizedCandidate = normalized(candidate);
+            const index = lower.indexOf(normalizedCandidate);
+            if (index === -1) continue;
+
+            let score = normalizedCandidate.length;
+            const contextualPatterns = [
+                new RegExp(`(?:раздел|экран|страниц(?:а|ы)|вкладк(?:а|и))\\s+${escapeRegExp(normalizedCandidate)}`),
+                new RegExp(`(?:про|спрашиваю про|спрашивал про|имею в виду)\\s+${escapeRegExp(normalizedCandidate)}`),
+            ];
+
+            if (contextualPatterns.some((pattern) => pattern.test(lower))) {
+                score += 100;
+            }
+
+            if (!bestMatch || score > bestMatch.score) {
+                bestMatch = { section, score };
+            }
+        }
+    }
+
+    return bestMatch?.section || null;
+}
+
 export function buildSectionAnswer(sectionKey?: string | null, message?: string, selection?: Record<string, any> | null): string | null {
-    const section = getConsultantSectionConfig(sectionKey);
+    const explicitSection = findConsultantSectionMention(message);
+    const section = explicitSection || getConsultantSectionConfig(sectionKey);
     const lower = normalized(message || '');
 
     if (section.key === 'quality-dashboard' && lower.includes('наруш')) {
@@ -797,7 +861,8 @@ export function buildSectionAnswer(sectionKey?: string | null, message?: string,
     }
 
     const genericPrompt = !lower
-        || includesAny(lower, ['этот экран', 'этот раздел', 'эта страница', 'что это за раздел', 'как работает этот раздел', 'что здесь', 'что показывает', 'для чего этот экран'])
+        || isSectionExplanationPrompt(lower)
+        || Boolean(explicitSection && (lower.includes('раздел') || lower.includes('экран') || lower.includes('страниц') || lower.includes('что это') || lower.includes('как работает')))
         || (lower.includes('здесь') && includesAny(lower, ['нет заказов', 'нет данных', 'пусто', 'ничего не найдено']));
 
     if (genericPrompt) {

@@ -22,6 +22,7 @@ import {
     ConsultantOrder,
     ConsultantReplyKind,
     enrichEvidenceWithOrder,
+    findConsultantSectionMention,
     findCriterionKey,
     findGlossaryTerm,
     getReplyCriterionKey,
@@ -57,6 +58,12 @@ const THREAD_TTL_DAYS = 30;
 const MAX_FALLBACK_KNOWLEDGE_HITS = 4;
 
 const referenceAnswerCache = new Map<string, { reply: string; cachedAt: number }>();
+
+type NormalizedHistoryItem = {
+    role: 'agent' | 'user' | 'system';
+    text: string;
+    metadata?: Record<string, any> | null;
+};
 
 async function archiveExpiredThreads(userId: string) {
     const expiresAt = new Date(Date.now() - THREAD_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -277,7 +284,7 @@ async function buildFallbackAnswer(
     order: ConsultantOrder | null,
     evidence: OrderEvidence | null,
     sectionKey: string,
-    history: Array<{ role: string; text: string }>,
+    history: NormalizedHistoryItem[],
 ): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; type: string; similarity: number }> }> {
     if (!process.env.OPENAI_API_KEY) {
         return { reply: null, promptKey: null, knowledgeHits: [] };
@@ -325,7 +332,7 @@ async function buildFallbackAnswer(
     };
 }
 
-function normalizeHistory(history: unknown): Array<{ role: string; text: string }> {
+function normalizeHistory(history: unknown): NormalizedHistoryItem[] {
     if (!Array.isArray(history)) return [];
 
     return history
@@ -333,9 +340,87 @@ function normalizeHistory(history: unknown): Array<{ role: string; text: string 
         .map((item: any) => ({
             role: item.role === 'agent' || item.role === 'user' || item.role === 'system' ? item.role : 'user',
             text: String(item.text || '').slice(0, MAX_HISTORY_TEXT_LENGTH).trim(),
+            metadata: item.metadata && typeof item.metadata === 'object' ? item.metadata : null,
         }))
         .filter((item) => item.text)
         .slice(-MAX_HISTORY_ITEMS);
+}
+
+function isSectionFollowupQuestion(message: string): boolean {
+    const lower = message.toLowerCase();
+
+    return lower.includes('при чем тут')
+        || lower.includes('я спрашиваю про')
+        || lower.includes('я спрашивал про')
+        || lower.includes('я имею в виду')
+        || lower.includes('не про заказ')
+        || lower.includes('не про рейтинг')
+        || lower.includes('про этот раздел')
+        || lower.includes('про этот экран')
+        || lower.includes('про раздел')
+        || lower.includes('про экран');
+}
+
+function resolveAnswerSectionKey(sectionKey: string, message: string, history: NormalizedHistoryItem[]): string {
+    const explicitSection = findConsultantSectionMention(message);
+    if (explicitSection) {
+        return explicitSection.key;
+    }
+
+    if (!isSectionFollowupQuestion(message)) {
+        return sectionKey;
+    }
+
+    for (const item of [...history].reverse()) {
+        if (item.role !== 'agent') continue;
+
+        const historySectionKey = typeof item.metadata?.sectionKey === 'string'
+            ? getConsultantSectionConfig(item.metadata.sectionKey).key
+            : null;
+
+        if (historySectionKey) {
+            return historySectionKey;
+        }
+
+        if (item.metadata?.replyKind === 'section') {
+            return sectionKey;
+        }
+    }
+
+    return sectionKey;
+}
+
+function buildSuccessResponse(params: {
+    reply: string;
+    suggestions: readonly string[];
+    replyKind: ConsultantReplyKind;
+    sectionKey: string;
+    cards?: any[];
+    threadId?: string | null;
+    traceId?: string | null;
+    responseMode?: 'short' | 'full';
+    persistenceDisabled?: boolean;
+    answerSource?: 'deterministic' | 'ai_generated';
+    answerMetadata?: Record<string, any> | null;
+    orderContext?: Record<string, any>;
+}) {
+    return NextResponse.json({
+        success: true,
+        reply: params.reply,
+        cards: params.cards || [],
+        suggestions: params.suggestions,
+        threadId: params.threadId || null,
+        traceId: params.traceId || null,
+        responseMode: params.responseMode,
+        persistenceDisabled: params.persistenceDisabled || false,
+        answerSource: params.answerSource || 'deterministic',
+        answerMetadata: {
+            replyKind: params.replyKind,
+            sectionKey: params.sectionKey,
+            ...(params.answerMetadata || {}),
+        },
+        ...(params.orderContext ? { orderContext: params.orderContext } : {}),
+    });
 }
 
 export async function POST(req: Request) {
@@ -368,6 +453,7 @@ export async function POST(req: Request) {
                 ? Number(orderIdRaw)
                 : null;
 
+        const effectiveSectionKey = resolveAnswerSectionKey(sectionKey, message, history);
         const criterionKey = findCriterionKey(message);
         const glossaryTerm = findGlossaryTerm(message);
         const mode = detectMode(message);
@@ -377,81 +463,90 @@ export async function POST(req: Request) {
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
         const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
-        const sectionReply = buildSectionAnswer(sectionKey, message, selectionContext);
+        const sectionReply = buildSectionAnswer(effectiveSectionKey, message, selectionContext);
 
         if (isConsultantMetaQuestion(message)) {
-            return NextResponse.json({
-                success: true,
-                reply: buildConsultantMetaAnswer(getConsultantSectionConfig(sectionKey).title),
+            return buildSuccessResponse({
+                reply: buildConsultantMetaAnswer(getConsultantSectionConfig(effectiveSectionKey).title),
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                replyKind: 'meta',
+                sectionKey: effectiveSectionKey,
             });
         }
 
-        if (sectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
-            return NextResponse.json({
-                success: true,
+        if (effectiveSectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
+            return buildSuccessResponse({
                 reply: 'Семён в этом чате не разбирает конкретные заказы, правила или отмены. Он объясняет, как устроен ОКК: что значат поля, откуда берутся данные, как работают критерии и как проходит анализ в системе.',
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
+                replyKind: 'section',
+                sectionKey: effectiveSectionKey,
             });
         }
 
         if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && needsOrderContext(message, criterionKey)) {
-            if (sectionKey === 'quality-dashboard') {
-                return NextResponse.json({
-                    success: true,
+            if (effectiveSectionKey === 'quality-dashboard') {
+                return buildSuccessResponse({
                     reply: 'Семён работает здесь как консультант по методологии ОКК. Он может объяснить общую логику расчёта, смысл критериев, полей, нарушений и источников данных, но не разбирает конкретную сделку.',
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
+                    replyKind: 'section',
+                    sectionKey: effectiveSectionKey,
                 });
             }
 
-            return NextResponse.json({
-                success: true,
+            return buildSuccessResponse({
                 reply: 'Для такого вопроса мне нужен выбранный заказ. Выберите сделку в таблице ОКК, и я смогу объяснить балл, причины крестиков, источники данных и действия для исправления.',
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                replyKind: 'meta',
+                sectionKey: effectiveSectionKey,
             });
         }
 
         if (!orderId) {
             if (violationsReferenceQuestion) {
-                return NextResponse.json({
-                    success: true,
+                return buildSuccessResponse({
                     reply: buildViolationsReferenceAnswer(null),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'violations-reference',
+                    sectionKey: effectiveSectionKey,
                 });
             }
 
             if (glossaryTerm && isGlossaryQuestion(message)) {
-                return NextResponse.json({
-                    success: true,
+                return buildSuccessResponse({
                     reply: getCachedReferenceAnswer(`glossary:${glossaryTerm.key}`, () => buildGlossaryAnswer(glossaryTerm)),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'glossary',
+                    sectionKey: effectiveSectionKey,
                 });
             }
 
             if (criterionKey) {
-                return NextResponse.json({
-                    success: true,
+                return buildSuccessResponse({
                     reply: getCachedReferenceAnswer(`criterion:${criterionKey}:general`, () => buildCriterionExplanation({
                         order: { order_id: 0, score_breakdown: null },
                         criterionKey,
                         mode: 'general',
                     })),
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'criterion',
+                    sectionKey: effectiveSectionKey,
                 });
             }
 
             if (sectionReply) {
-                return NextResponse.json({
-                    success: true,
+                return buildSuccessResponse({
                     reply: sectionReply,
                     suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'section',
+                    sectionKey: effectiveSectionKey,
                 });
             }
 
-            return NextResponse.json({
-                success: true,
+            return buildSuccessResponse({
                 reply: getCachedReferenceAnswer('general:rating', () => buildGeneralRatingExplanation()),
                 suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                replyKind: 'score',
+                sectionKey: effectiveSectionKey,
             });
         }
 
@@ -528,7 +623,7 @@ export async function POST(req: Request) {
             reply = buildFailedCriteriaSummary(order);
             replyKind = 'failures';
         } else {
-            const fallback = await buildFallbackAnswer(message, order, evidence, sectionKey, history);
+            const fallback = await buildFallbackAnswer(message, order, evidence, effectiveSectionKey, history);
             reply = fallback?.reply || buildOrderScoreExplanation(order);
             usedFallback = Boolean(fallback?.reply);
             replyKind = fallback?.reply ? 'fallback' : 'score';
@@ -576,8 +671,7 @@ export async function POST(req: Request) {
             }
         }
 
-        return NextResponse.json({
-            success: true,
+        return buildSuccessResponse({
             reply: formattedReply,
             cards,
             suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
@@ -586,7 +680,9 @@ export async function POST(req: Request) {
             responseMode,
             persistenceDisabled,
             answerSource: usedFallback ? 'ai_generated' : 'deterministic',
-            answerMetadata: { replyKind, ...(answerMetadata || {}) },
+            replyKind,
+            sectionKey: effectiveSectionKey,
+            answerMetadata: answerMetadata || null,
             orderContext: {
                 orderId: order.order_id,
                 manager: order.manager_name || '—',

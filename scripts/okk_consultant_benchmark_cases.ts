@@ -71,6 +71,13 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         forbiddenFragments: ['очередь, dry run, обучение, confidence', 'Экран ручного и тестового запуска AI-роутинга заказов:'],
     },
     {
+        id: 'section-ai-tools-explicit-followup',
+        category: 'section',
+        description: 'Если пользователь явно говорит, что спрашивает про раздел Согласование отмен, ответ должен вернуться к AI Tools, а не к рейтингу ОКК.',
+        expectedFragments: ['AI Инструменты нужны для ручного запуска AI-роутинга', 'Как с этим экраном обычно работают'],
+        forbiddenFragments: ['Рейтинг ОКК состоит из двух частей', 'Выберите сделку в таблице ОКК'],
+    },
+    {
         id: 'section-quality-overview',
         category: 'section',
         description: 'Общий вопрос по экрану ОКК должен объяснять смысл и рабочий сценарий, а не быть подписью раздела.',

@@ -14,6 +14,7 @@ import {
     shouldShowOrderCards,
     buildViolationsReferenceAnswer,
     enrichEvidenceWithOrder,
+    findConsultantSectionMention,
     findGlossaryTerm,
     isGlossaryQuestion,
     type ConsultantOrder,
@@ -151,6 +152,7 @@ function run() {
         'criterion-source-explicit-fact': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'source', evidence: enrichedEvidence }),
         'violations-button-reference': buildViolationsReferenceAnswer(sampleOrder),
         'section-ai-tools-overview': buildSectionAnswer('ai-tools', 'как работает этот раздел') || '',
+        'section-ai-tools-explicit-followup': buildSectionAnswer('quality-dashboard', 'при чем тут рейтинг окк если я спрашиваю про раздел Согласования Отмена') || '',
         'section-quality-overview': buildSectionAnswer('quality-dashboard', 'для чего этот экран') || '',
         'section-audit-overview': buildSectionAnswer('audit', 'что это за раздел') || '',
         'meta-ui-visibility': buildConsultantMetaAnswer('Справка по ОКК'),
@@ -177,6 +179,7 @@ function run() {
     assert.equal(getReplyCriterionKey('glossary', 'lead_in_work_lt_1_day'), null, 'Glossary replies should not persist a criterion key.');
     assert.equal(getReplyCriterionKey('section', 'lead_in_work_lt_1_day'), null, 'Section replies should not persist a criterion key.');
     assert.equal(getReplyCriterionKey('criterion', 'lead_in_work_lt_1_day'), 'lead_in_work_lt_1_day', 'Criterion replies should keep the matched criterion key.');
+    assert.equal(findConsultantSectionMention('я спрашиваю про раздел Согласование Отмена')?.key, 'ai-tools', 'Section alias should resolve to AI Tools.');
 
     console.log(`OKK consultant regression passed: ${OKK_CONSULTANT_BENCHMARK_CASES.length} cases.`);
 }
