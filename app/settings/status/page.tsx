@@ -220,6 +220,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('System Jobs Queue')) url = '/api/cron/system-jobs/watchdog';
         if (serviceName.includes('RetailCRM Delta Queue')) url = '/api/cron/system-jobs/retailcrm-order-delta';
         if (serviceName.includes('RetailCRM History Queue')) url = '/api/cron/system-jobs/retailcrm-history-delta';
+        if (serviceName.includes('Call Match Queue')) url = '/api/cron/system-jobs/call-match';
         if (serviceName.includes('Matching Service')) url = '/api/matching/process';
         if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
         if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
@@ -298,6 +299,7 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
         if (name.includes('RetailCRM Delta Queue')) return 'RetailCRM Delta Очередь';
         if (name.includes('RetailCRM History Queue')) return 'RetailCRM History Очередь';
+        if (name.includes('Call Match Queue')) return 'Очередь Матчинга Звонков';
         if (name.includes('RetailCRM')) return 'Синхронизация Заказов (RetailCRM)';
         if (name.includes('Matching Service')) return 'Служба Матчинга (Звонок + Заказ)';
         if (name.includes('Score Refresh Queue')) return 'Очередь Пересчета Score';
@@ -315,6 +317,7 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return '🧱';
         if (name.includes('RetailCRM Delta Queue')) return '📦';
         if (name.includes('RetailCRM History Queue')) return '🕘';
+        if (name.includes('Call Match Queue')) return '🔀';
         if (name.includes('RetailCRM')) return '🛍️';
         if (name.includes('Matching')) return '🔗';
         if (name.includes('Score Refresh')) return '📈';

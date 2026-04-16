@@ -198,6 +198,7 @@
 - [x] Monitoring endpoints обогащены lag/backlog метриками по `system_jobs`, RetailCRM cursors и oldest queued refresh/transcription jobs.
 - [x] `system-audit` расширен Telegram-alerting по SLA lag/backlog для realtime pipeline с дедупликацией через `sync_state` и recovery-уведомлением.
 - [x] Критичные system-jobs workers начали писать `last_success_at`, `last_error_at` и `last_error` в `sync_state` для диагностики и rollback-контроля.
+- [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

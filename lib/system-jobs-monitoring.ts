@@ -51,6 +51,18 @@ const MONITORED_JOB_TYPES = [
   'order_insight_refresh',
 ] as const;
 
+const MONITORED_WORKER_KEYS = [
+  'system_jobs.watchdog',
+  'system_jobs.retailcrm_order_delta',
+  'system_jobs.retailcrm_history_delta',
+  'system_jobs.call_match',
+  'system_jobs.transcription',
+  'system_jobs.score_refresh',
+  'system_jobs.order_insight_refresh',
+] as const;
+
+type WorkerStateMap = Map<string, { value: string; updated_at: string }>;
+
 function isMissingSystemJobsError(error: any) {
   return (
     error?.code === '42P01' ||
@@ -92,6 +104,30 @@ function oldestQueuedMinutes(rows: JobRow[], jobTypes: string[]) {
   return Math.max(...timestamps);
 }
 
+function getLatestTimestamp(dateA?: string | null, dateB?: string | null) {
+  if (!dateA) return dateB || null;
+  if (!dateB) return dateA || null;
+  return new Date(dateA).getTime() >= new Date(dateB).getTime() ? dateA : dateB;
+}
+
+function getWorkerState(stateMap: WorkerStateMap, workerKey?: string | null) {
+  if (!workerKey) {
+    return {
+      lastSuccessAt: null,
+      lastErrorAt: null,
+      lastError: '',
+      lastSuccessMeta: null,
+    };
+  }
+
+  return {
+    lastSuccessAt: stateMap.get(`${workerKey}.last_success_at`)?.value || null,
+    lastErrorAt: stateMap.get(`${workerKey}.last_error_at`)?.value || null,
+    lastError: stateMap.get(`${workerKey}.last_error`)?.value || '',
+    lastSuccessMeta: stateMap.get(`${workerKey}.last_success_meta`)?.value || null,
+  };
+}
+
 function buildQueueService(params: {
   service: string;
   cursor?: string | null;
@@ -105,12 +141,16 @@ function buildQueueService(params: {
   warningQueued?: number;
   errorQueued?: number;
   disabledReason?: string | null;
+  workerKey?: string | null;
+  stateMap: WorkerStateMap;
 }): MonitorServiceStatus {
+  const workerState = getWorkerState(params.stateMap, params.workerKey);
+
   if (params.disabledReason) {
     return {
       service: params.service,
       cursor: params.cursor || 'Disabled',
-      last_run: params.lastRun || null,
+      last_run: getLatestTimestamp(params.lastRun || null, workerState.lastSuccessAt),
       status: 'warning',
       details: 'Disabled',
       reason: params.disabledReason,
@@ -123,6 +163,7 @@ function buildQueueService(params: {
   const errorMinutes = params.errorMinutes ?? 30;
   const warningQueued = params.warningQueued ?? 10;
   const errorQueued = params.errorQueued ?? 50;
+  const effectiveLastRun = getLatestTimestamp(params.lastRun || null, workerState.lastSuccessAt);
 
   let status: MonitorStatus = 'ok';
   let reason: string | null = null;
@@ -138,10 +179,18 @@ function buildQueueService(params: {
     reason = `Backlog растет: queued ${params.queued}, oldest ${formatAge(oldestMinutes)}`;
   }
 
+  if (workerState.lastError && workerState.lastErrorAt) {
+    const errorIsNewerThanSuccess = !workerState.lastSuccessAt || new Date(workerState.lastErrorAt).getTime() >= new Date(workerState.lastSuccessAt).getTime();
+    if (errorIsNewerThanSuccess) {
+      status = 'error';
+      reason = `Последняя ошибка: ${workerState.lastError}`;
+    }
+  }
+
   return {
     service: params.service,
     cursor: params.cursor || 'System Jobs',
-    last_run: params.lastRun || null,
+    last_run: effectiveLastRun,
     status,
     details: `queued ${params.queued}, processing ${params.processing}, oldest ${formatAge(oldestMinutes)}`,
     reason,
@@ -159,6 +208,12 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       'retailcrm_history_sync',
       'retailcrm_orders_queue_last_success_at',
       'retailcrm_history_queue_last_success_at',
+      ...MONITORED_WORKER_KEYS.flatMap((workerKey) => ([
+        `${workerKey}.last_success_at`,
+        `${workerKey}.last_error_at`,
+        `${workerKey}.last_error`,
+        `${workerKey}.last_success_meta`,
+      ])),
     ]);
 
   if (syncError) {
@@ -216,6 +271,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 15,
       errorQueued: 60,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.watchdog',
+      stateMap,
     }),
     buildQueueService({
       service: 'RetailCRM Delta Queue',
@@ -230,6 +287,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 8,
       errorQueued: 25,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.retailcrm_order_delta',
+      stateMap,
     }),
     buildQueueService({
       service: 'RetailCRM History Queue',
@@ -244,6 +303,24 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 4,
       errorQueued: 12,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.retailcrm_history_delta',
+      stateMap,
+    }),
+    buildQueueService({
+      service: 'Call Match Queue',
+      cursor: 'call_match',
+      lastRun: null,
+      queued: countJobs(rows, ['call_match'], 'queued'),
+      processing: countJobs(rows, ['call_match'], 'processing'),
+      deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
+      oldestQueuedMinutes: oldestQueuedMinutes(rows, ['call_match']),
+      warningMinutes: 5,
+      errorMinutes: 15,
+      warningQueued: 8,
+      errorQueued: 20,
+      disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.call_match',
+      stateMap,
     }),
     buildQueueService({
       service: 'Transcription Queue',
@@ -258,6 +335,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 8,
       errorQueued: 20,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.transcription',
+      stateMap,
     }),
     buildQueueService({
       service: 'Score Refresh Queue',
@@ -272,6 +351,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 10,
       errorQueued: 25,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.score_refresh',
+      stateMap,
     }),
     buildQueueService({
       service: 'Insight Refresh Queue',
@@ -286,6 +367,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       warningQueued: 6,
       errorQueued: 15,
       disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.order_insight_refresh',
+      stateMap,
     }),
   ];
 
