@@ -20,6 +20,29 @@ export function getRuleEngineFallbackHours() {
   return parsePositiveInt(process.env.RULE_ENGINE_FALLBACK_HOURS, 2);
 }
 
+export async function executeRuleEngineRange(input: {
+  start: string;
+  end: string;
+  targetRuleId?: string;
+}) {
+  try {
+    const violationsFound = await runRuleEngine(input.start, input.end, input.targetRuleId);
+
+    return {
+      ok: true,
+      status: 'completed' as const,
+      violations_found: violationsFound,
+      analyzed_window: {
+        start: input.start,
+        end: input.end,
+      },
+      target_rule_id: input.targetRuleId || null,
+    };
+  } catch (error: any) {
+    throw error;
+  }
+}
+
 export async function executeRuleEngineWindow(input?: {
   hours?: number;
   targetRuleId?: string;
