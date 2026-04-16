@@ -4,6 +4,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "okk:consultant-seed-kb": "tsx scripts/seed_okk_consultant_kb.ts",
     "db:apply-okk-consultant-schema": "tsx scripts/apply_okk_consultant_schema.ts",
     "verify:raw-tables": "tsx scripts/verify_raw_tables.ts",
     "okk:evaluate-all": "tsx scripts/evaluate_all.ts",

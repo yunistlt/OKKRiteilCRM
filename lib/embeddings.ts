@@ -89,3 +89,26 @@ export function formatPromptForEmbedding(p: {
 
     return parts.join('\n').trim();
 }
+
+/**
+ * Formats consultant knowledge entries for semantic search.
+ */
+export function formatConsultantKnowledgeForEmbedding(entry: {
+    type: string;
+    title: string;
+    content: string;
+    sectionKey?: string | null;
+    tags?: string[];
+    sourceRef?: string | null;
+}): string {
+    const parts = [
+        `Type: ${entry.type}`,
+        entry.sectionKey ? `Section: ${entry.sectionKey}` : '',
+        `Title: ${entry.title}`,
+        entry.tags?.length ? `Tags: ${entry.tags.join(', ')}` : '',
+        entry.sourceRef ? `Source: ${entry.sourceRef}` : '',
+        `Content: ${entry.content}`,
+    ].filter(Boolean);
+
+    return parts.join('\n').trim();
+}

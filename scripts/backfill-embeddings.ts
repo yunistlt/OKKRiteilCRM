@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 import * as dotenv from 'dotenv';
-import { generateEmbedding, formatProductForEmbedding, formatPromptForEmbedding } from '../lib/embeddings';
+import { generateEmbedding, formatConsultantKnowledgeForEmbedding, formatProductForEmbedding, formatPromptForEmbedding } from '../lib/embeddings';
 
 dotenv.config({ path: '.env.local' });
 
@@ -84,12 +84,38 @@ async function backfillBlockDefinitions() {
     }
 }
 
+async function backfillConsultantKnowledge() {
+    console.log('--- Backfilling OKK Consultant Knowledge ---');
+    const rows = await sql`SELECT id, type, section_key, title, content, tags, source_ref FROM okk_consultant_knowledge WHERE embedding IS NULL`;
+    console.log(`Found ${rows.length} consultant KB rows to process`);
+
+    for (const row of rows) {
+        try {
+            console.log(`Processing consultant KB row: ${row.title}`);
+            const text = formatConsultantKnowledgeForEmbedding({
+                type: row.type,
+                sectionKey: row.section_key,
+                title: row.title,
+                content: row.content,
+                tags: row.tags,
+                sourceRef: row.source_ref,
+            });
+            const embedding = await generateEmbedding(text);
+            const embeddingString = `[${embedding.join(',')}]`;
+            await sql`UPDATE okk_consultant_knowledge SET embedding = ${embeddingString} WHERE id = ${row.id}`;
+        } catch (e) {
+            console.error(`Failed to process consultant KB row ${row.title}:`, e);
+        }
+    }
+}
+
 async function main() {
     try {
         await backfillProducts();
         await backfillSystemPrompts();
         await backfillAIPrompts();
         await backfillBlockDefinitions();
+        await backfillConsultantKnowledge();
         console.log('Done!');
     } catch (e) {
         console.error('Backfill failed:', e);

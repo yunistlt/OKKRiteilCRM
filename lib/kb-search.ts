@@ -67,3 +67,24 @@ export async function searchOKKBlocks(query: string, matchCount: number = 3, thr
         return [];
     }
 }
+
+/**
+ * Searches for similar knowledge entries for the OKK consultant.
+ */
+export async function searchConsultantKnowledge(query: string, sectionKey?: string | null, matchCount: number = 4, threshold: number = 0.58): Promise<KBMatch[]> {
+    try {
+        const embedding = await generateEmbedding(query);
+        const { data, error } = await supabase.rpc('match_okk_consultant_knowledge', {
+            query_embedding: embedding,
+            match_threshold: threshold,
+            match_count: matchCount,
+            requested_section_key: sectionKey || null,
+        });
+
+        if (error) throw error;
+        return data || [];
+    } catch (e) {
+        console.error('KB Consultant Search Error:', e);
+        return [];
+    }
+}

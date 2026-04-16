@@ -28,6 +28,13 @@ import {
     sanitizeOrderForRole,
 } from '@/lib/okk-consultant';
 import { loadConsultantEvidence, loadConsultantOrder } from '@/lib/okk-consultant-context';
+import {
+    formatConsultantKnowledgeContext,
+    getConsultantPromptConfig,
+    searchConsultantKnowledge,
+    summarizeHistoryForPrompt,
+    renderConsultantTemplate,
+} from '@/lib/okk-consultant-ai';
 import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
@@ -40,6 +47,7 @@ const MAX_HISTORY_ITEMS = 10;
 const MAX_HISTORY_TEXT_LENGTH = 600;
 const REFERENCE_CACHE_TTL_MS = 1000 * 60 * 60;
 const THREAD_TTL_DAYS = 30;
+const MAX_FALLBACK_KNOWLEDGE_HITS = 4;
 
 const referenceAnswerCache = new Map<string, { reply: string; cachedAt: number }>();
 
@@ -257,35 +265,57 @@ function getCachedReferenceAnswer(cacheKey: string, build: () => string): string
     return reply;
 }
 
-async function buildFallbackAnswer(message: string, order: ConsultantOrder | null, evidence: OrderEvidence | null, sectionKey: string): Promise<string | null> {
-    if (!process.env.OPENAI_API_KEY) return null;
+async function buildFallbackAnswer(
+    question: string,
+    order: ConsultantOrder | null,
+    evidence: OrderEvidence | null,
+    sectionKey: string,
+    history: Array<{ role: string; text: string }>,
+): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; type: string; similarity: number }> }> {
+    if (!process.env.OPENAI_API_KEY) {
+        return { reply: null, promptKey: null, knowledgeHits: [] };
+    }
 
     const openai = getOpenAIClient();
     const section = getConsultantSectionConfig(sectionKey);
+    const [mainPrompt, stylePrompt, knowledgeHits] = await Promise.all([
+        getConsultantPromptConfig('okk_consultant_main_chat'),
+        getConsultantPromptConfig('okk_consultant_style_guardrail'),
+        searchConsultantKnowledge(question, section.key, MAX_FALLBACK_KNOWLEDGE_HITS),
+    ]);
+    const userPrompt = renderConsultantTemplate(mainPrompt.userPromptTemplate, {
+        question,
+        section_title: section.title,
+        section_summary: section.summary,
+        knowledge_context: formatConsultantKnowledgeContext(knowledgeHits),
+        history_context: summarizeHistoryForPrompt(history),
+        order_context: order ? buildOrderContextForLLM(order, evidence) : 'Контекст заказа не выбран.',
+    });
     const completion = await openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        temperature: 0.1,
+        model: mainPrompt.model,
+        temperature: mainPrompt.temperature,
+        max_tokens: mainPrompt.maxTokens,
         messages: [
             {
                 role: 'system',
-                content: `Ты консультант-методолог по ОКК. Текущий раздел: ${section.title}. Объясняй алгоритмы работы ОКК, значения полей, источники данных и логику расчёта. Не выдумывай поля, звонки, формулы и причины. Не проводи самостоятельный разбор конкретных заказов, правил или отмен в этом чате. Если данных не хватает, прямо так и скажи. Структура ответа: короткий вывод, пояснение логики, какие данные обычно участвуют, что делать дальше.`
+                content: `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`
             },
             {
                 role: 'user',
-                content: [
-                    `Вопрос пользователя: ${message}`,
-                    `Раздел: ${section.title}. ${section.summary}`,
-                    '',
-                    'Справка по расчету:',
-                    buildGeneralRatingExplanation(),
-                    '',
-                    order ? `Контекст заказа:\n${buildOrderContextForLLM(order, evidence)}` : 'Контекст заказа не выбран.',
-                ].join('\n')
+                content: userPrompt,
             }
         ],
     });
 
-    return completion.choices[0]?.message?.content || null;
+    return {
+        reply: completion.choices[0]?.message?.content || null,
+        promptKey: mainPrompt.key,
+        knowledgeHits: knowledgeHits.map((item) => ({
+            slug: item.slug,
+            type: item.type,
+            similarity: item.similarity,
+        })),
+    };
 }
 
 function normalizeHistory(history: unknown): Array<{ role: string; text: string }> {
@@ -438,6 +468,7 @@ export async function POST(req: Request) {
 
         let reply: string;
         let usedFallback = false;
+        let answerMetadata: Record<string, any> | null = null;
         if (sectionReply) {
             reply = sectionReply;
         } else if (violationsReferenceQuestion) {
@@ -472,19 +503,15 @@ export async function POST(req: Request) {
         } else if (mode === 'failures') {
             reply = buildFailedCriteriaSummary(order);
         } else {
-            const fallbackReply = await buildFallbackAnswer(
-                [
-                    message,
-                    history.length > 0
-                        ? `\n\nКраткая история диалога:\n${history.map((item) => `${item.role}: ${item.text}`).join('\n')}`
-                        : '',
-                ].join(''),
-                order,
-                evidence,
-                sectionKey
-            );
-            reply = fallbackReply || buildOrderScoreExplanation(order);
-            usedFallback = Boolean(fallbackReply);
+            const fallback = await buildFallbackAnswer(message, order, evidence, sectionKey, history);
+            reply = fallback?.reply || buildOrderScoreExplanation(order);
+            usedFallback = Boolean(fallback?.reply);
+            if (fallback?.reply) {
+                answerMetadata = {
+                    fallbackPromptKey: fallback.promptKey,
+                    fallbackKnowledgeHits: fallback.knowledgeHits,
+                };
+            }
         }
 
         const cards = buildResponseCards({
@@ -508,7 +535,7 @@ export async function POST(req: Request) {
                     intent: mode,
                     criterionKey,
                     usedFallback,
-                    answerMetadata: { cards, responseMode, sectionKey },
+                    answerMetadata: { cards, responseMode, sectionKey, ...(answerMetadata || {}) },
                 });
             } catch (persistError: any) {
                 if (isMissingConsultantPersistenceError(persistError)) {
@@ -529,6 +556,8 @@ export async function POST(req: Request) {
             traceId,
             responseMode,
             persistenceDisabled,
+            answerSource: usedFallback ? 'ai_generated' : 'deterministic',
+            answerMetadata,
             orderContext: {
                 orderId: order.order_id,
                 manager: order.manager_name || '—',
