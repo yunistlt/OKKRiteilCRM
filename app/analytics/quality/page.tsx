@@ -16,6 +16,7 @@ function QualityContent() {
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [refreshHint, setRefreshHint] = useState('Данные обновляются автоматически через realtime pipeline');
 
     const fetchData = async () => {
         try {
@@ -32,18 +33,24 @@ function QualityContent() {
 
     useEffect(() => {
         fetchData();
+
+        const interval = setInterval(fetchData, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     const handleRefresh = async () => {
         setRefreshing(true);
+        setRefreshHint('Запускаем fallback reconciliation витрины...');
         try {
             const res = await fetch('/api/analysis/quality/refresh', { method: 'POST' });
             const json = await res.json();
             if (json.success) {
                 await fetchData();
+                setRefreshHint('Fallback reconciliation завершен');
             }
         } catch (e) {
             console.error(e);
+            setRefreshHint('Fallback reconciliation завершился с ошибкой');
         } finally {
             setRefreshing(false);
         }
@@ -87,6 +94,7 @@ function QualityContent() {
                                 Статус →
                             </Link>
                         </p>
+                        <p className="mt-2 text-[10px] md:text-[11px] text-gray-400 font-bold tracking-wide">{refreshHint}</p>
                     </div>
                 </div>
 
@@ -98,7 +106,7 @@ function QualityContent() {
                     <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {refreshing ? 'Обновляем...' : 'Обновить данные'}
+                    {refreshing ? 'Собираем...' : 'Пересобрать витрину'}
                 </button>
             </div>
 

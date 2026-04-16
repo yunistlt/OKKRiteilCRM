@@ -154,7 +154,7 @@
 - [x] Перевести dialogue_stats и похожие витрины на инкрементальное обновление по событию.
 - [x] Пересчитывать manager-level aggregates только для затронутого manager_id.
 - [x] Пересчитывать order_priorities только для затронутого order_id или для маленького набора изменившихся заказов.
-- [ ] Оставить редкий полный reconciliation витрин 1 раз ночью.
+- [x] Оставить редкий полный reconciliation витрин 1 раз ночью.
 
 ## 12. Этап 8. Наблюдаемость и контроль лагов
 
@@ -201,6 +201,7 @@
 - [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
 - [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.
+- [x] Добавлен nightly reconciliation маршрут для `dialogue_stats` и `order_priorities` как fallback-backfill раз в сутки.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

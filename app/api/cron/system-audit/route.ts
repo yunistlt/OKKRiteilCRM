@@ -117,6 +117,9 @@ export async function GET(req: Request) {
             if (metrics.transcriptionQueueOldestSeconds !== null && metrics.transcriptionQueueOldestSeconds > 10 * 60) {
                 realtimeAlertLines.push(`очередь транскрибации ждёт: ${Math.floor(metrics.transcriptionQueueOldestSeconds / 60)} мин`);
             }
+            if (metrics.managerAggregateQueueOldestSeconds !== null && metrics.managerAggregateQueueOldestSeconds > 15 * 60) {
+                realtimeAlertLines.push(`очередь manager_aggregate_refresh ждёт: ${Math.floor(metrics.managerAggregateQueueOldestSeconds / 60)} мин`);
+            }
             if (metrics.scoreQueueOldestSeconds !== null && metrics.scoreQueueOldestSeconds > 5 * 60) {
                 realtimeAlertLines.push(`очередь score_refresh ждёт: ${Math.floor(metrics.scoreQueueOldestSeconds / 60)} мин`);
             }

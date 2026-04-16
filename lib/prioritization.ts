@@ -481,6 +481,75 @@ export async function refreshStoredPriorityForOrder(orderId: number | string, sk
     };
 }
 
+export async function refreshStoredPriorities(limit: number = 2000, skipAI: boolean = true) {
+    const priorities = await calculatePriorities(limit, skipAI);
+
+    if (priorities.length === 0) {
+        return {
+            count: 0,
+            priorities: [] as OrderPriority[],
+            deletedCount: 0,
+        };
+    }
+
+    const upsertData = priorities.map(priority => ({
+        order_id: priority.orderId,
+        level: priority.level,
+        score: priority.score,
+        reasons: priority.reasons,
+        summary: priority.summary,
+        recommended_action: priority.recommendedAction || null,
+        updated_at: new Date().toISOString()
+    }));
+
+    const chunkSize = 100;
+    for (let i = 0; i < upsertData.length; i += chunkSize) {
+        const chunk = upsertData.slice(i, i + chunkSize);
+        const { error } = await supabase
+            .from('order_priorities')
+            .upsert(chunk, { onConflict: 'order_id' });
+
+        if (error) {
+            throw error;
+        }
+    }
+
+    const workingOrderIds = priorities.map(priority => priority.orderId);
+    let deletedCount = 0;
+
+    if (workingOrderIds.length > 0) {
+        const { data: allStored, error: storedError } = await supabase
+            .from('order_priorities')
+            .select('order_id');
+
+        if (storedError) {
+            throw storedError;
+        }
+
+        const storedIds = (allStored || []).map((row: any) => row.order_id);
+        const idsToDelete = storedIds.filter((id: number) => !workingOrderIds.includes(id));
+        deletedCount = idsToDelete.length;
+
+        for (let i = 0; i < idsToDelete.length; i += 200) {
+            const deleteChunk = idsToDelete.slice(i, i + 200);
+            const { error } = await supabase
+                .from('order_priorities')
+                .delete()
+                .in('order_id', deleteChunk);
+
+            if (error) {
+                throw error;
+            }
+        }
+    }
+
+    return {
+        count: priorities.length,
+        priorities,
+        deletedCount,
+    };
+}
+
 export async function getStoredPriorities(limit: number = 2000): Promise<OrderPriority[]> {
     // 1. Get working statuses first
     const { data: workingSettings } = await supabase.from('status_settings').select('code').eq('is_working', true);
