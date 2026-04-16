@@ -23,7 +23,7 @@ function normalizeVector(values: number[]): number[] {
 function generateLocalEmbedding(text: string): number[] {
     const vector = new Array(EMBEDDING_DIMENSIONS).fill(0);
     const normalized = text.toLowerCase();
-    const tokens = normalized.match(/[\p{L}\p{N}_-]+/gu) || normalized.split(/\s+/).filter(Boolean);
+    const tokens = normalized.match(/[a-z0-9а-яё_-]+/gi) || normalized.split(/\s+/).filter(Boolean);
     const features = new Set<string>();
 
     for (const token of tokens) {
@@ -40,7 +40,7 @@ function generateLocalEmbedding(text: string): number[] {
         features.add(`raw:${normalized.trim() || 'empty'}`);
     }
 
-    for (const feature of features) {
+    for (const feature of Array.from(features)) {
         const primary = hashString(feature, 0) % EMBEDDING_DIMENSIONS;
         const secondary = hashString(feature, 1) % EMBEDDING_DIMENSIONS;
         const tertiary = hashString(feature, 2) % EMBEDDING_DIMENSIONS;
