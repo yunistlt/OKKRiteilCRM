@@ -518,7 +518,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
     return (
         <>
-            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[11vw] md:min-w-[11vw] md:max-w-[11vw]">
+            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]">
                 {panelContent}
             </aside>
 
