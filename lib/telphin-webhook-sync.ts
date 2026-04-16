@@ -222,6 +222,7 @@ export async function syncCanonicalTelphinCallFromWebhook(
 
   return {
     direction,
+    startedAt,
     queuedForTranscription: shouldQueueTranscription,
   };
 }

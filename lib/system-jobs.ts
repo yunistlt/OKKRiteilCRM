@@ -25,6 +25,18 @@ export interface EnqueueSystemJobInput {
   parentJobId?: number | null;
 }
 
+function isMissingRelationError(error: any) {
+  return (
+    error?.code === '42P01' ||
+    error?.message?.includes('system_jobs') ||
+    error?.message?.includes('relation')
+  );
+}
+
+export function isSystemJobsPipelineEnabled() {
+  return process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+}
+
 export async function enqueueSystemJob(input: EnqueueSystemJobInput) {
   const insertPayload = {
     job_type: input.jobType,
@@ -55,6 +67,23 @@ export async function enqueueSystemJob(input: EnqueueSystemJobInput) {
 
   if (error) throw error;
   return data;
+}
+
+export async function safeEnqueueSystemJob(input: EnqueueSystemJobInput) {
+  if (!isSystemJobsPipelineEnabled()) {
+    return null;
+  }
+
+  try {
+    return await enqueueSystemJob(input);
+  } catch (error: any) {
+    if (isMissingRelationError(error)) {
+      console.warn('[SystemJobs] system_jobs is not ready yet, skipping enqueue.');
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function claimSystemJobs(params: {

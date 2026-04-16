@@ -100,6 +100,7 @@
 - [ ] Ввести distributed lock на задачу и на тип worker, чтобы не было двойной обработки.
 - [x] Реализовать retries с backoff без бесконечных циклов.
 - [ ] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
+- [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать dead-letter слой для ручного разбора.
 
 ## 7. Этап 3. RetailCRM near realtime sync
@@ -536,12 +537,19 @@
 - [ ] Описать retry/backoff policy.
 - [ ] Описать lock strategy.
 
+Промежуточно реализовано в коде:
+- [x] Добавлен transcription worker endpoint для `call_transcription` jobs.
+- [x] Добавлен watchdog endpoint для возврата зависших `processing` jobs в `queued`.
+
 ### Блок D. Order-level recalculation
 
 - [ ] Описать точку входа single-order scoring.
 - [ ] Описать список событий, которые ставят order_score_refresh.
 - [ ] Описать coalescing и debounce по order_id.
 - [ ] Описать separation fast path / deep path.
+
+Промежуточно реализовано в коде:
+- [x] Добавлен score-refresh worker endpoint для `order_score_refresh` jobs.
 
 ### Блок E. Monitoring
 

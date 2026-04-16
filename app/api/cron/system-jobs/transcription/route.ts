@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  claimSystemJobs,
+  completeSystemJob,
+  enqueueSystemJob,
+  failSystemJob,
+  isSystemJobsPipelineEnabled,
+} from '@/lib/system-jobs';
+import { transcribeCall } from '@/lib/transcribe';
+import { supabase } from '@/utils/supabase';
+
+export const dynamic = 'force-dynamic';
+export const maxDuration = 300;
+
+function ensureAuthorized(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
+  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    throw new Error('Unauthorized');
+  }
+}
+
+function getRetryDelay(attempts: number) {
+  if (attempts <= 1) return 30;
+  if (attempts === 2) return 120;
+  if (attempts === 3) return 300;
+  return 900;
+}
+
+export async function GET(req: NextRequest) {
+  try {
+    ensureAuthorized(req);
+
+    if (!isSystemJobsPipelineEnabled()) {
+      return NextResponse.json({ ok: true, status: 'disabled' });
+    }
+
+    const workerId = `transcription-worker:${Date.now()}`;
+    const claimed = await claimSystemJobs({
+      workerId,
+      jobTypes: ['call_transcription'],
+      limit: 2,
+      lockSeconds: 240,
+    });
+
+    if (!claimed.length) {
+      return NextResponse.json({ ok: true, status: 'idle', processed: 0 });
+    }
+
+    const results: Array<Record<string, any>> = [];
+
+    for (const job of claimed) {
+      const payload = (job.payload || {}) as {
+        telphin_call_id?: string;
+        recording_url?: string;
+      };
+
+      const callId = payload.telphin_call_id;
+      const recordingUrl = payload.recording_url;
+
+      if (!callId || !recordingUrl) {
+        await failSystemJob(job.id, 'Missing telphin_call_id or recording_url', 300);
+        results.push({ job_id: job.id, status: 'failed_validation' });
+        continue;
+      }
+
+      try {
+        await transcribeCall(callId, recordingUrl);
+
+        const { data: match } = await supabase
+          .from('call_order_matches')
+          .select('retailcrm_order_id')
+          .eq('telphin_call_id', callId)
+          .order('matched_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (match?.retailcrm_order_id) {
+          await enqueueSystemJob({
+            jobType: 'order_score_refresh',
+            payload: {
+              order_id: match.retailcrm_order_id,
+              source: 'call_transcription_worker',
+              telphin_call_id: callId,
+            },
+            priority: 25,
+            idempotencyKey: `order_score_refresh:${match.retailcrm_order_id}:transcript:${callId}`,
+          });
+        }
+
+        await completeSystemJob(job.id, {
+          telphin_call_id: callId,
+          next_job: match?.retailcrm_order_id ? 'order_score_refresh' : null,
+        });
+
+        results.push({
+          job_id: job.id,
+          telphin_call_id: callId,
+          status: 'completed',
+          order_id: match?.retailcrm_order_id || null,
+        });
+      } catch (error: any) {
+        await failSystemJob(job.id, error.message || 'Unknown transcription worker error', getRetryDelay(job.attempts || 0));
+        results.push({
+          job_id: job.id,
+          telphin_call_id: callId,
+          status: 'failed',
+          error: error.message,
+        });
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      status: 'processed',
+      processed: results.length,
+      results,
+    });
+  } catch (error: any) {
+    const isUnauthorized = error.message === 'Unauthorized';
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: isUnauthorized ? 401 : 500 }
+    );
+  }
+}

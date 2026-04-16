@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    await syncCanonicalTelphinCallFromWebhook({
+    const canonicalSync = await syncCanonicalTelphinCallFromWebhook({
       callId: call_id,
       payload,
       startedAt: started_at ? new Date(started_at).toISOString() : null,
@@ -82,6 +83,31 @@ export async function POST(req: NextRequest) {
       status,
       queueForTranscription: Boolean(recording_url && status === 'completed'),
     });
+
+    await safeEnqueueSystemJob({
+      jobType: 'telphin_call_upsert',
+      payload: {
+        telphin_call_id: call_id,
+        source: 'status_update_webhook',
+        started_at: canonicalSync.startedAt,
+        status,
+      },
+      priority: 20,
+      idempotencyKey: `telphin_call_upsert:${call_id}:status:${status}`,
+    });
+
+    if (canonicalSync.queuedForTranscription) {
+      await safeEnqueueSystemJob({
+        jobType: 'call_transcription',
+        payload: {
+          telphin_call_id: call_id,
+          source: 'status_update_webhook',
+          recording_url,
+        },
+        priority: 10,
+        idempotencyKey: `call_transcription:${call_id}`,
+      });
+    }
 
     return NextResponse.json({
       success: true,

@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
       raw_payload: payload,
     };
 
-    await syncCanonicalTelphinCallFromWebhook({
+    const canonicalSync = await syncCanonicalTelphinCallFromWebhook({
       callId: call_id,
       payload,
       direction: 'incoming',
@@ -37,12 +38,35 @@ export async function POST(req: NextRequest) {
       status: status || 'ringing',
     });
 
+    await safeEnqueueSystemJob({
+      jobType: 'telphin_call_upsert',
+      payload: {
+        telphin_call_id: call_id,
+        source: 'incoming_webhook',
+        direction: canonicalSync.direction,
+        started_at: canonicalSync.startedAt,
+      },
+      priority: 20,
+      idempotencyKey: `telphin_call_upsert:${call_id}:incoming`,
+    });
+
     // Ищем совпадающий заказ
     const matches = await matchCallToOrders(rawCall);
     const bestMatch = matches[0];
 
     if (matches.length > 0) {
       await saveMatches(matches);
+
+      await safeEnqueueSystemJob({
+        jobType: 'call_match',
+        payload: {
+          telphin_call_id: call_id,
+          source: 'incoming_webhook',
+          matched_order_ids: matches.map((match) => match.retailcrm_order_id),
+        },
+        priority: 30,
+        idempotencyKey: `call_match:${call_id}:${matches[0].retailcrm_order_id}`,
+      });
     }
 
     // Назначаем менеджера (если найден заказ)
