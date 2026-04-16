@@ -196,6 +196,7 @@
 - [x] Добавлен `order-insight-refresh` worker и cron-расписание для CRM near realtime цепочки.
 - [x] Добавлен coalescing `order_score_refresh` и `order_insight_refresh` по `order_id` с 30-секундным debounce-окном.
 - [x] Monitoring endpoints обогащены lag/backlog метриками по `system_jobs`, RetailCRM cursors и oldest queued refresh/transcription jobs.
+- [x] `system-audit` расширен Telegram-alerting по SLA lag/backlog для realtime pipeline с дедупликацией через `sync_state` и recovery-уведомлением.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 
