@@ -15,6 +15,7 @@ import {
     buildOrderScoreExplanation,
     buildResponseCards,
     buildTechnicalExplanation,
+    buildViolationsReferenceAnswer,
     ConsultantOrder,
     enrichEvidenceWithOrder,
     findCriterionKey,
@@ -151,6 +152,11 @@ async function persistConversation(params: {
 
 function needsOrderContext(message: string, criterionKey: string | null): boolean {
     const lower = message.toLowerCase();
+
+    if (isViolationsReferenceQuestion(lower)) {
+        return false;
+    }
+
     return Boolean(
         criterionKey ||
         lower.includes('почему') ||
@@ -165,8 +171,28 @@ function needsOrderContext(message: string, criterionKey: string | null): boolea
     );
 }
 
+function isReferenceQuestion(lower: string): boolean {
+    return lower.includes('что такое')
+        || lower.includes('что значит')
+        || lower.includes('что означает')
+        || lower.includes('зачем')
+        || lower.includes('для чего')
+        || lower.includes('как работает')
+        || lower.includes('что показывает');
+}
+
+function isViolationsReferenceQuestion(message: string): boolean {
+    const lower = message.toLowerCase();
+    const asksForMeaning = isReferenceQuestion(lower);
+    const mentionsUi = lower.includes('кноп') || lower.includes('колон') || lower.includes('столб') || lower.includes('индикатор');
+    const mentionsViolations = lower.includes('наруш') || lower.includes('штраф');
+
+    return mentionsViolations && (asksForMeaning || mentionsUi);
+}
+
 function detectMode(message: string): 'why' | 'source' | 'fix' | 'score' | 'failures' | 'proof' | 'technical' | 'general' | 'ambiguous' | 'missing' {
     const lower = message.toLowerCase();
+    if (isViolationsReferenceQuestion(lower)) return 'general';
     if (lower.includes('доказ') || lower.includes('покажи данные') || lower.includes('покажи доказательства')) return 'proof';
     if (lower.includes('какие звонки') || lower.includes('какой звонок') || lower.includes('какие события') || lower.includes('история заказа') || lower.includes('реальный разговор') || lower.includes('автоответ')) return 'proof';
     if (lower.includes('спорн') || lower.includes('ручн') || lower.includes('сомнител')) return 'ambiguous';
@@ -287,6 +313,7 @@ export async function POST(req: Request) {
         const retailCrmManagerId = session.user.retail_crm_manager_id ? Number(session.user.retail_crm_manager_id) : null;
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
+        const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
 
         if (!orderId && !glossaryTerm && needsOrderContext(message, criterionKey)) {
             return NextResponse.json({
@@ -297,6 +324,14 @@ export async function POST(req: Request) {
         }
 
         if (!orderId) {
+            if (violationsReferenceQuestion) {
+                return NextResponse.json({
+                    success: true,
+                    reply: buildViolationsReferenceAnswer(null),
+                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                });
+            }
+
             if (glossaryTerm && isGlossaryQuestion(message)) {
                 return NextResponse.json({
                     success: true,
@@ -347,7 +382,9 @@ export async function POST(req: Request) {
 
         let reply: string;
         let usedFallback = false;
-        if (!criterionKey && glossaryTerm && isGlossaryQuestion(message)) {
+        if (violationsReferenceQuestion) {
+            reply = buildViolationsReferenceAnswer(order);
+        } else if (!criterionKey && glossaryTerm && isGlossaryQuestion(message)) {
             reply = buildGlossaryAnswer(glossaryTerm);
         } else if (criterionKey) {
             reply = buildCriterionExplanation({

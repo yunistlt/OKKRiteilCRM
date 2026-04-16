@@ -130,6 +130,14 @@ export type GlossaryTerm = {
     aliases: string[];
 };
 
+type PenaltyJournalEntry = {
+    rule_code?: string | null;
+    severity?: string | null;
+    points?: number | null;
+    details?: string | null;
+    detected_at?: string | null;
+};
+
 export type CriterionGuide = {
     key: string;
     label: string;
@@ -431,6 +439,18 @@ export const OKK_CONSULTANT_GLOSSARY: GlossaryTerm[] = [
         definition: 'Запланированная дата или действие, когда менеджер должен снова вернуться к клиенту; используется в SLA-контроле.',
         aliases: ['следующий контакт', 'next contact', 'дата следующего касания'],
     },
+    {
+        key: 'violations',
+        term: 'Нарушения',
+        definition: 'Это отдельные нарушения процесса, которые система фиксирует по заказу и показывает в красной колонке. Они не равны обычным крестикам по критериям: нарушения дополнительно уменьшают итоговый total_score через штрафные баллы.',
+        aliases: ['нарушения', 'кнопка нарушений', 'кнопка нарушения', 'колонка нарушений', 'столбец нарушений', 'нарушения процесса'],
+    },
+    {
+        key: 'penalties',
+        term: 'штрафы',
+        definition: 'Штрафы применяются после расчета deal_score_pct и script_score_pct. Если по заказу зафиксированы нарушения процесса, итоговый total_score уменьшается на сумму штрафных пунктов.',
+        aliases: ['штраф', 'штрафы', 'штрафные баллы', 'penalty', 'penalty journal'],
+    },
 ];
 
 export const OKK_CONSULTANT_GUIDES = [...CRITERION_GUIDES, ...SCRIPT_GUIDES];
@@ -633,6 +653,11 @@ function collectVisibleBreakdown(order: ConsultantOrder) {
     return Object.entries(order.score_breakdown || {}).filter(([key]) => isVisibleBreakdownKey(key));
 }
 
+function getPenaltyJournal(order: ConsultantOrder): PenaltyJournalEntry[] {
+    const penaltyJournal = order.score_breakdown?._meta?.penalty_journal;
+    return Array.isArray(penaltyJournal) ? penaltyJournal : [];
+}
+
 export function buildAmbiguousCriteriaSummary(order: ConsultantOrder): string {
     const ambiguous = collectVisibleBreakdown(order)
         .filter(([, entry]) => Boolean(entry?.ambiguous_explanation) || (typeof entry?.confidence === 'number' && entry.confidence < 0.6))
@@ -764,6 +789,50 @@ export function buildGeneralRatingExplanation(): string {
         '',
         `Сейчас в deal score участвуют ${DEAL_SCORE_KEYS.length} критериев, а script score строится по ${SCRIPT_SCORE_KEYS.length} шагам скрипта с переводом процента в балл.`,
     ].join('\n');
+}
+
+export function buildViolationsReferenceAnswer(order?: ConsultantOrder | null): string {
+    const penaltyJournal = order ? getPenaltyJournal(order) : [];
+    const totalPenalty = penaltyJournal.reduce((sum, item) => sum + Number(item?.points || 0), 0);
+
+    const lines = [
+        'Кнопка и колонка «Нарушения» показывают не крестики по чек-листу, а отдельные нарушения процесса по заказу.',
+        '',
+        'Что это значит:',
+        '1. Красная цифра в колонке показывает, сколько нарушений система зафиксировала по заказу.',
+        '2. По клику открывается список нарушений процесса с описанием, временем фиксации и штрафом в баллах.',
+        '3. Эти нарушения живут отдельно от deal/script критериев и дополнительно уменьшают итоговый total_score.',
+        '4. Поэтому заказ может иметь нормальные галочки по части критериев, но всё равно терять итоговый процент из-за штрафов.',
+    ];
+
+    if (!order) {
+        lines.push('', 'Если нужен разбор по конкретному заказу, выберите его в таблице, и я покажу, сколько нарушений попало в расчет и какой штраф они дали.');
+        return lines.join('\n');
+    }
+
+    if (penaltyJournal.length === 0) {
+        lines.push(
+            '',
+            `По заказу #${order.order_id} в сохраненном penalty journal нарушений сейчас не видно.`,
+            'Если в таблице красная кнопка есть, но в breakdown штрафов нет, нужно сверить источник списка violations на странице и сохраненный score_breakdown._meta.penalty_journal.'
+        );
+        return lines.join('\n');
+    }
+
+    lines.push(
+        '',
+        `По заказу #${order.order_id} в штрафной журнал попало ${penaltyJournal.length} нарушений, суммарный штраф: -${totalPenalty} п.`,
+        '',
+        'Что попало в штрафы:',
+        ...penaltyJournal.slice(0, 5).map((item, index) => {
+            const details = item.details || item.rule_code || 'Нарушение процесса';
+            const points = Number(item.points || 0);
+            const severity = item.severity ? `, severity=${item.severity}` : '';
+            return `${index + 1}. ${details}. Штраф: -${points} п.${severity}`;
+        })
+    );
+
+    return lines.join('\n');
 }
 
 export function getConsultantCatalog() {

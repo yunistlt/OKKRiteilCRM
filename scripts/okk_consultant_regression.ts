@@ -7,6 +7,7 @@ import {
     buildGlossaryAnswer,
     buildHistoryEvidenceExplanation,
     buildMissingDataSummary,
+    buildViolationsReferenceAnswer,
     enrichEvidenceWithOrder,
     findGlossaryTerm,
     type ConsultantOrder,
@@ -71,6 +72,15 @@ const sampleOrder: ConsultantOrder = {
             confidence: 1,
             missing_data: [],
             ambiguous_explanation: false,
+            penalty_journal: [
+                {
+                    rule_code: 'order_dragging',
+                    severity: 'high',
+                    points: 5,
+                    details: 'Сделка зависла без движения по статусу.',
+                    detected_at: '2026-04-14T10:00:00.000Z',
+                },
+            ],
         },
     },
 };
@@ -132,6 +142,7 @@ function run() {
         'proof-no-history': buildHistoryEvidenceExplanation(sampleOrder, enrichedEvidence),
         'proof-no-calls': buildCallEvidenceExplanation(sampleOrder, enrichedEvidence),
         'criterion-source-explicit-fact': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'source', evidence: enrichedEvidence }),
+        'violations-button-reference': buildViolationsReferenceAnswer(sampleOrder),
         'historical-old-format-safe': buildCriterionExplanation({ order: oldFormatOrder, criterionKey: 'field_contact_data', mode: 'why' }),
         'paraphrase-same-criterion-a': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),
         'paraphrase-same-criterion-b': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),

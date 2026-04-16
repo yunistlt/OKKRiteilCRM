@@ -1051,8 +1051,8 @@ function OKKContent() {
                     onClose={() => setSelectedOrderId(null)}
                 />
             )}
-            <div className="relative flex overflow-hidden bg-[#eef3f7] md:gap-3 md:p-3" style={{ height: 'calc(100dvh - 60px)' }}>
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:min-h-0 md:rounded-[28px] md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+            <div className="relative flex overflow-hidden bg-[#eef3f7]" style={{ height: 'calc(100dvh - 60px)' }}>
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:min-h-0 md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-2.5 py-1 md:px-3 md:py-2 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-1.5">

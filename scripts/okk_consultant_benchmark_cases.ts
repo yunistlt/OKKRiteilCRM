@@ -1,6 +1,6 @@
 export type BenchmarkCase = {
     id: string;
-    category: 'reference' | 'proof' | 'missing' | 'ambiguous' | 'historical' | 'paraphrase';
+    category: 'reference' | 'proof' | 'missing' | 'ambiguous' | 'historical' | 'paraphrase' | 'ui';
     description: string;
     expectedFragments: string[];
     forbiddenFragments?: string[];
@@ -48,6 +48,13 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         category: 'reference',
         description: 'Source-объяснение по критерию должно отделять факт и ограничение.',
         expectedFragments: ['Факт:', 'Источник результата:'],
+    },
+    {
+        id: 'violations-button-reference',
+        category: 'ui',
+        description: 'Справка по кнопке нарушений не должна превращаться в список проваленных критериев.',
+        expectedFragments: ['Кнопка и колонка «Нарушения»', 'отдельные нарушения процесса', 'уменьшают итоговый total_score'],
+        forbiddenFragments: ['провалено 24 критерия', 'Что нужно исправить в первую очередь'],
     },
     {
         id: 'historical-old-format-safe',

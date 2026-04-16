@@ -518,7 +518,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
     return (
         <>
-            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[clamp(340px,24vw,420px)] md:min-w-[340px] md:rounded-[28px]">
+            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[11vw] md:min-w-[11vw] md:max-w-[11vw]">
                 {panelContent}
             </aside>
 
@@ -534,7 +534,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             {mobileOpen && (
                 <div className="fixed inset-0 z-[150] md:hidden">
                     <button type="button" aria-label="Закрыть слой" className="absolute inset-0 bg-slate-950/70" onClick={() => setMobileOpen(false)} />
-                    <aside className="absolute inset-x-0 bottom-0 top-14 flex flex-col overflow-hidden rounded-t-[28px] border-t border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_-16px_40px_rgba(2,6,23,0.48)]">
+                    <aside className="absolute inset-x-0 bottom-0 top-14 flex flex-col overflow-hidden border-t border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_-16px_40px_rgba(2,6,23,0.48)]">
                         {panelContent}
                     </aside>
                 </div>
