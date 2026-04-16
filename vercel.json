@@ -42,6 +42,10 @@
             "schedule": "*/1 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/call-semantic-rules",
+            "schedule": "*/1 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/manager-aggregate-refresh",
             "schedule": "*/1 * * * *"
         },

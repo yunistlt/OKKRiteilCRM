@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
+  enqueueCallSemanticRulesJob,
   enqueueOrderRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
@@ -88,6 +89,19 @@ export async function GET(req: NextRequest) {
           await saveMatches(matches);
 
           const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
+
+          if (callRow.transcription_status === 'completed' && callRow.transcript) {
+            await enqueueCallSemanticRulesJob({
+              callId,
+              source: 'call_match_worker',
+              payload: {
+                matched_order_ids: uniqueOrderIds,
+              },
+              priority: 20,
+              parentJobId: job.id,
+            });
+          }
+
           for (const orderId of uniqueOrderIds) {
             await enqueueOrderRefreshJob({
               jobType: 'order_score_refresh',
@@ -104,6 +118,7 @@ export async function GET(req: NextRequest) {
         await completeSystemJob(job.id, {
           telphin_call_id: callId,
           matches_found: matches.length,
+          semantic_rules_enqueued: matches.length > 0 && callRow.transcription_status === 'completed' && !!callRow.transcript,
           matched_order_ids: matches.map((match) => match.retailcrm_order_id),
         });
 

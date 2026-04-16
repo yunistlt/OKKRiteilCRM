@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
+  enqueueCallSemanticRulesJob,
   enqueueOrderRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
@@ -77,6 +78,16 @@ export async function GET(req: NextRequest) {
           .single();
 
         if (match?.retailcrm_order_id) {
+          await enqueueCallSemanticRulesJob({
+            callId,
+            source: 'call_transcription_worker',
+            payload: {
+              retailcrm_order_id: match.retailcrm_order_id,
+            },
+            priority: 20,
+            parentJobId: job.id,
+          });
+
           await enqueueOrderRefreshJob({
             jobType: 'order_score_refresh',
             orderId: match.retailcrm_order_id,
@@ -90,7 +101,7 @@ export async function GET(req: NextRequest) {
 
         await completeSystemJob(job.id, {
           telphin_call_id: callId,
-          next_job: match?.retailcrm_order_id ? 'order_score_refresh' : null,
+          next_jobs: match?.retailcrm_order_id ? ['call_semantic_rules', 'order_score_refresh'] : [],
         });
 
         results.push({

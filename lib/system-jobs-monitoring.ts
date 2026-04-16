@@ -39,10 +39,12 @@ export interface RealtimePipelineMonitoringSnapshot {
     retailcrmCursorLagSeconds: number | null;
     retailcrmHistoryCursorLagSeconds: number | null;
     transcriptionQueueOldestSeconds: number | null;
+    semanticRulesQueueOldestSeconds: number | null;
     managerAggregateQueueOldestSeconds: number | null;
     scoreQueueOldestSeconds: number | null;
     insightQueueOldestSeconds: number | null;
     transcriptionLatency: LatencyDistribution;
+    semanticRulesLatency: LatencyDistribution;
     scoreRefreshLatency: LatencyDistribution;
     managerAggregateLatency: LatencyDistribution;
     scoreToAggregateLatency: LatencyDistribution;
@@ -78,6 +80,7 @@ const MONITORED_JOB_TYPES = [
   'retailcrm_order_upsert',
   'call_match',
   'call_transcription',
+  'call_semantic_rules',
   'manager_aggregate_refresh',
   'order_score_refresh',
   'order_insight_refresh',
@@ -85,6 +88,7 @@ const MONITORED_JOB_TYPES = [
 
 const LATENCY_JOB_TYPES = [
   'call_transcription',
+  'call_semantic_rules',
   'order_score_refresh',
   'manager_aggregate_refresh',
 ] as const;
@@ -100,6 +104,7 @@ const MONITORED_WORKER_KEYS = [
   'system_jobs.retailcrm_history_delta',
   'system_jobs.call_match',
   'system_jobs.transcription',
+  'system_jobs.call_semantic_rules',
   'system_jobs.manager_aggregate_refresh',
   'system_jobs.nightly_reconciliation',
   'system_jobs.score_refresh',
@@ -454,10 +459,12 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     : (!queueAvailable ? 'system_jobs migration еще не применена' : null);
 
   const transcriptionOldest = oldestQueuedMinutes(rows, ['call_transcription']);
+  const semanticRulesOldest = oldestQueuedMinutes(rows, ['call_semantic_rules']);
   const managerAggregateOldest = oldestQueuedMinutes(rows, ['manager_aggregate_refresh']);
   const scoreOldest = oldestQueuedMinutes(rows, ['order_score_refresh']);
   const insightOldest = oldestQueuedMinutes(rows, ['order_insight_refresh']);
   const transcriptionLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'call_transcription'));
+  const semanticRulesLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'call_semantic_rules'));
   const scoreRefreshLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'order_score_refresh'));
   const managerAggregateLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'manager_aggregate_refresh'));
   const scoreToAggregateLatency = buildLatencyDistribution(scoreToAggregateLeadTimes(completedRows));
@@ -546,6 +553,22 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       stateMap,
     }),
     buildQueueService({
+      service: 'Semantic Rules Queue',
+      cursor: 'call_semantic_rules',
+      lastRun: null,
+      queued: countJobs(rows, ['call_semantic_rules'], 'queued'),
+      processing: countJobs(rows, ['call_semantic_rules'], 'processing'),
+      deadLetter: countJobs(rows, ['call_semantic_rules'], 'dead_letter'),
+      oldestQueuedMinutes: semanticRulesOldest,
+      warningMinutes: 5,
+      errorMinutes: 20,
+      warningQueued: 8,
+      errorQueued: 20,
+      disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.call_semantic_rules',
+      stateMap,
+    }),
+    buildQueueService({
       service: 'Manager Aggregate Queue',
       cursor: 'manager_aggregate_refresh',
       lastRun: null,
@@ -617,10 +640,12 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       retailcrmCursorLagSeconds: secondsSince(retailcrmCursor),
       retailcrmHistoryCursorLagSeconds: secondsSince(retailcrmHistoryCursor),
       transcriptionQueueOldestSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
+      semanticRulesQueueOldestSeconds: semanticRulesOldest === null ? null : semanticRulesOldest * 60,
       managerAggregateQueueOldestSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
       scoreQueueOldestSeconds: scoreOldest === null ? null : scoreOldest * 60,
       insightQueueOldestSeconds: insightOldest === null ? null : insightOldest * 60,
       transcriptionLatency,
+      semanticRulesLatency,
       scoreRefreshLatency,
       managerAggregateLatency,
       scoreToAggregateLatency,

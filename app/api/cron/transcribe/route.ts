@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { isSystemJobsPipelineEnabled, safeEnqueueCallSemanticRulesJob } from '@/lib/system-jobs';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 import { runRuleEngine } from '@/lib/rule-engine';
 
@@ -96,13 +97,24 @@ export async function GET(req: Request) {
                     .eq('rule_type', 'semantic');
 
                 if (rules && rules.length > 0) {
-                    console.log(`[Cron] Triggering ${rules.length} semantic rules for call ${call.event_id}`);
-                    const { runRuleEngine } = await import('@/lib/rule-engine');
-
-                    // We define a narrow window around the call to ensure it's picked up by the engine's query logic
-                    // The Rule Engine query uses: started_at >= start AND started_at <= end
-                    // So passing the exact time is safe.
-                    await runRuleEngine(call.started_at, call.started_at);
+                    if (isSystemJobsPipelineEnabled()) {
+                        await safeEnqueueCallSemanticRulesJob({
+                            callId: call.telphin_call_id || String(call.event_id),
+                            source: 'legacy_transcribe_cron',
+                            payload: {
+                                retailcrm_order_ids: (call.matches || []).map((match: any) => match.retailcrm_order_id),
+                            },
+                            priority: 20,
+                        });
+                        console.log(`[Cron] Enqueued semantic rules for call ${call.event_id} into system jobs pipeline`);
+                    } else {
+                        console.log(`[Cron] Triggering ${rules.length} semantic rules for call ${call.event_id}`);
+                        await runRuleEngine(call.started_at, call.started_at, undefined, false, undefined, undefined, undefined, {
+                            ruleType: 'semantic',
+                            entityType: 'call',
+                            targetCallId: call.telphin_call_id || String(call.event_id),
+                        });
+                    }
                 }
 
                 results.push({ id: call.event_id, status: 'success' });

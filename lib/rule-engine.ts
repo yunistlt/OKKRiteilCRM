@@ -30,10 +30,17 @@ export interface Rule {
     checklist?: any; // JSON structure for Quality Control
 }
 
+interface RuleExecutionContext {
+    targetOrderId?: number | string;
+    targetCallId?: string;
+    ruleType?: 'sql' | 'semantic';
+    entityType?: 'call' | 'order' | 'event' | 'stage';
+}
+
 /**
  * Execute all active rules against a time range.
  */
-export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[], targetOrderId?: number | string) {
+export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[], targetOrderId?: number | string, executionContext?: RuleExecutionContext) {
     if (trace) trace.push(`[RuleEngine V2] Range: ${startDate} to ${endDate}`);
 
     const statusesPromise = supabase.from('statuses').select('code, name');
@@ -46,6 +53,12 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
         let rulesQuery = supabase.from('okk_rules').select('*').eq('is_active', true);
         if (targetRuleId) {
             rulesQuery = rulesQuery.eq('code', targetRuleId);
+        }
+        if (executionContext?.ruleType) {
+            rulesQuery = rulesQuery.eq('rule_type', executionContext.ruleType);
+        }
+        if (executionContext?.entityType) {
+            rulesQuery = rulesQuery.eq('entity_type', executionContext.entityType);
         }
         const { data: dbRules, error: rulesError } = await rulesQuery;
         if (rulesError || !dbRules) {
@@ -68,7 +81,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
     for (const rule of rules) {
         try {
             if (rule.logic) {
-                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun, trace, targetOrderId);
+                const results = await executeBlockRule(rule, startDate, endDate, statusMap, dryRun, trace, targetOrderId, executionContext?.targetCallId);
                 if (dryRun) {
                     allViolations.push(...(results as any[]));
                 } else {
@@ -89,7 +102,7 @@ export async function runRuleEngine(startDate: string, endDate: string, targetRu
 /**
  * NEW: Executes a rule based on Structured Logic Blocks
  */
-async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false, trace?: string[], targetOrderId?: number | string): Promise<number | any[]> {
+async function executeBlockRule(rule: any, startDate: string, endDate: string, statusMap?: Map<string, string>, dryRun = false, trace?: string[], targetOrderId?: number | string, targetCallId?: string): Promise<number | any[]> {
     const logic = rule.logic as RuleLogic;
     if (!logic) return dryRun ? [] : 0;
 
@@ -151,6 +164,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         } else {
             query = query.eq('retailcrm_order_id', targetOrderId);
         }
+    }
+
+    if (targetCallId && rule.entity_type === 'call') {
+        query = query.eq('telphin_call_id', targetCallId);
     }
 
     const { data: items, error } = await query;

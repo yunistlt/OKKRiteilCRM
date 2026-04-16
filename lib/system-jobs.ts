@@ -138,6 +138,38 @@ export async function safeEnqueueOrderRefreshJob(input: EnqueueOrderRefreshJobIn
   return safeEnqueueSystemJob(buildOrderRefreshJobInput(input));
 }
 
+interface EnqueueCallSemanticRulesJobInput {
+  callId: string;
+  source: string;
+  priority?: number;
+  payload?: Record<string, any>;
+  maxAttempts?: number;
+  parentJobId?: number | null;
+}
+
+function buildCallSemanticRulesJobInput(input: EnqueueCallSemanticRulesJobInput): EnqueueSystemJobInput {
+  return {
+    jobType: 'call_semantic_rules',
+    payload: {
+      ...(input.payload || {}),
+      telphin_call_id: input.callId,
+      source: input.source,
+    },
+    priority: input.priority ?? 20,
+    idempotencyKey: `call_semantic_rules:${input.callId}`,
+    maxAttempts: input.maxAttempts ?? 5,
+    parentJobId: input.parentJobId ?? null,
+  };
+}
+
+export async function enqueueCallSemanticRulesJob(input: EnqueueCallSemanticRulesJobInput) {
+  return enqueueSystemJob(buildCallSemanticRulesJobInput(input));
+}
+
+export async function safeEnqueueCallSemanticRulesJob(input: EnqueueCallSemanticRulesJobInput) {
+  return safeEnqueueSystemJob(buildCallSemanticRulesJobInput(input));
+}
+
 function buildManagerAggregateRefreshIdempotencyKey(params: {
   managerId: number | string;
   windowSeconds?: number;

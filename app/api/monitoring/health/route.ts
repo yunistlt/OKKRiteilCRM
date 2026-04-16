@@ -55,6 +55,7 @@ export async function GET() {
                 queueSummary.deadLetterTotal > 0 ||
                 (realtimePipeline.metrics.retailcrmCursorLagSeconds !== null && realtimePipeline.metrics.retailcrmCursorLagSeconds > 30 * 60) ||
                 (realtimePipeline.metrics.scoreQueueOldestSeconds !== null && realtimePipeline.metrics.scoreQueueOldestSeconds > 15 * 60) ||
+                (realtimePipeline.metrics.semanticRulesQueueOldestSeconds !== null && realtimePipeline.metrics.semanticRulesQueueOldestSeconds > 20 * 60) ||
                 (realtimePipeline.metrics.transcriptionQueueOldestSeconds !== null && realtimePipeline.metrics.transcriptionQueueOldestSeconds > 20 * 60);
 
             checks.push({
