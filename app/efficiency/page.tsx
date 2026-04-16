@@ -51,7 +51,7 @@ function EfficiencyContent() {
 
     return (
         <OKKConsultantWorkspace>
-            <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans bg-gray-50 min-h-full">
+            <div className="min-h-full bg-white p-6 md:p-8 font-sans">
                 <div className="flex justify-between items-center mb-6 md:mb-10">
                     <div>
                         <h1 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">Эффективность Менеджеров</h1>

@@ -13,8 +13,8 @@ export default function OKKConsultantWorkspace({
     contentClassName?: string;
 }) {
     return (
-        <div className="relative flex overflow-hidden bg-[#eef3f7]" style={{ height: 'calc(100dvh - 64px)' }}>
-            <div className={`min-w-0 flex-1 overflow-auto ${contentClassName}`.trim()}>
+        <div className="relative flex overflow-hidden bg-white" style={{ height: 'calc(100dvh - 64px)' }}>
+            <div className={`min-w-0 flex-1 overflow-auto border-r border-slate-200 bg-white ${contentClassName}`.trim()}>
                 {children}
             </div>
             <OKKConsultantPanel selectedOrder={selectedOrder} />

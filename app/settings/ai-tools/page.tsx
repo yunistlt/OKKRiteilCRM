@@ -10,7 +10,7 @@ export default function AIToolsPage() {
 
     return (
         <OKKConsultantWorkspace selectedOrder={consultantOrder}>
-            <div className="w-full h-full px-6 py-4">
+            <div className="w-full min-h-full bg-white p-6">
                 <AIRouterPanel onConsultantOrderChange={setConsultantOrder} />
             </div>
         </OKKConsultantWorkspace>
