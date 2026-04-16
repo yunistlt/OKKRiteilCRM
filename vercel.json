@@ -3,7 +3,7 @@
     "crons": [
         {
             "path": "/api/sync/telphin",
-            "schedule": "*/10 * * * *"
+            "schedule": "*/2 * * * *"
         },
         {
             "path": "/api/sync/retailcrm",

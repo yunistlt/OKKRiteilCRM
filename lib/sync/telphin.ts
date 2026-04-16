@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getTelphinToken } from '@/lib/telphin';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 // Helper to format date for Telphin: YYYY-MM-DD HH:mm:ss
 function formatTelphinDate(date: Date) {
@@ -33,6 +34,14 @@ export interface SyncResult {
     error?: string;
 }
 
+function getDefaultTelphinFallbackMinutes() {
+    const parsed = Number.parseInt(process.env.TELPHIN_FALLBACK_MINUTES || '15', 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 15;
+    }
+    return parsed;
+}
+
 export async function runTelphinSync(forceResync: boolean = false, hours: number = 2): Promise<SyncResult> {
     const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
     const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
@@ -45,9 +54,11 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
         const token = await getTelphinToken();
         const now = new Date();
         const storageKey = 'telphin_last_sync_time';
+        const defaultFallbackMinutes = getDefaultTelphinFallbackMinutes();
+        const maxLookbackMs = defaultFallbackMinutes * 60 * 1000;
 
         // 1. Get Start Date from Persistent Cursor (Sync State)
-        let start = new Date(Date.now() - hours * 60 * 60 * 1000); // Default to N hours ago
+        let start = new Date(Date.now() - maxLookbackMs);
 
         if (!forceResync) {
             const { data: state } = await supabase
@@ -60,7 +71,8 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                 // Ensure the cursor isn't in the future
                 const storedDate = new Date(state.value);
                 if (storedDate < now) {
-                    start = storedDate;
+                    const boundedStart = new Date(Math.max(storedDate.getTime(), now.getTime() - maxLookbackMs));
+                    start = boundedStart;
                     console.log('Incremental sync from state:', start.toISOString());
                 } else {
                     console.warn('Stored cursor is in the future, falling back to default window.', state.value);
@@ -68,6 +80,7 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
             }
         } else {
             console.log(`Forced resync requested. Looking back ${hours} hours.`);
+            start = new Date(Date.now() - hours * 60 * 60 * 1000);
         }
 
         // 2. Get Client ID
@@ -161,6 +174,32 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
 
             totalSynced = rawCalls.length;
 
+            for (const rawCall of rawCalls) {
+                await safeEnqueueSystemJob({
+                    jobType: 'call_match',
+                    payload: {
+                        telphin_call_id: rawCall.telphin_call_id,
+                        source: 'telphin_fallback_sync',
+                        started_at: rawCall.started_at,
+                    },
+                    priority: 30,
+                    idempotencyKey: `call_match:${rawCall.telphin_call_id}:telphin_fallback`,
+                });
+
+                if (rawCall.recording_url) {
+                    await safeEnqueueSystemJob({
+                        jobType: 'call_transcription',
+                        payload: {
+                            telphin_call_id: rawCall.telphin_call_id,
+                            source: 'telphin_fallback_sync',
+                            recording_url: rawCall.recording_url,
+                        },
+                        priority: 10,
+                        idempotencyKey: `call_transcription:${rawCall.telphin_call_id}`,
+                    });
+                }
+            }
+
             // Advance cursor to the last record's time
             const lastCall = calls[calls.length - 1];
             const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
@@ -183,7 +222,7 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
             success: true,
             total_synced: totalSynced,
             new_cursor: nextCursor,
-            mode: fetchedCount === 100 ? 'partial (more data likely)' : 'caught up'
+            mode: forceResync ? 'forced_resync' : (fetchedCount === 100 ? 'fallback_partial' : 'fallback_caught_up')
         };
 
     } catch (error: any) {

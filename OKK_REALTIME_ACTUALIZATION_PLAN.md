@@ -214,6 +214,7 @@
 - [x] Webhook routes перестали писать в write-only legacy `transcription_queue`: боевой контур транскрибации теперь идёт только через канонический `raw_telphin_calls` и `system_jobs`.
 - [x] RetailCRM delta/history workers начали писать в `sync_state` не только cursor/success, но и явные `lag_seconds` и `last_error` ключи для операционного контроля.
 - [x] Incoming webhook перестал дублировать downstream `order_score_refresh`: ownership пересчёта после звонка оставлен за `call_match` worker и queue pipeline.
+- [x] Telphin fallback poller переведён в near-realtime safe режим: cron раз в 2 минуты, bounded lookback `TELPHIN_FALLBACK_MINUTES` (по умолчанию 15 минут) и постановка `call_match`/`call_transcription` jobs после fallback ingest.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 
