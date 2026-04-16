@@ -208,6 +208,7 @@
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Rule Engine вынесен в отдельный cron-safe realtime маршрут, а legacy `/api/cron` перестал запускать rules при включенном realtime pipeline.
 - [x] Семантические call-rules вынесены из direct transcription-trigger в отдельную `call_semantic_rules` очередь с dedicated worker, cron и latency/backlog monitoring.
+- [x] Manual `rules/execute` и `priorities/refresh` перестали быть обходом legacy broad-scan path: теперь они используют общий realtime-safe runner или пропускают Rule Engine, когда ownership у realtime pipeline.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

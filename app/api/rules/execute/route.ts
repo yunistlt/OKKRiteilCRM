@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { runRuleEngine } from '@/lib/rule-engine';
+import { executeRuleEngineWindow, isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
 
 // Allow this to run for up to 60s (if Vercel Pro) or standard duration
 export const maxDuration = 60;
@@ -13,25 +13,17 @@ export async function GET(request: Request) {
     // Or user can pass ?hours=1
     const hours = parseInt(searchParams.get('hours') || '24');
 
-    const now = new Date();
-    const start = new Date(now.getTime() - hours * 60 * 60 * 1000);
-
     try {
         console.log(`[API] Triggering Rule Engine for last ${hours} hours...`);
 
-        await runRuleEngine(start.toISOString(), now.toISOString());
-
-        // Log execution time for monitoring
-        const { supabase } = await import('@/utils/supabase');
-        await supabase.from('sync_state').upsert({
-            key: 'rule_engine_last_run',
-            value: now.toISOString(),
-            updated_at: now.toISOString()
-        }, { onConflict: 'key' });
+        const result = await executeRuleEngineWindow({ hours });
 
         return NextResponse.json({
             success: true,
-            message: `Rule Engine executed for range ${start.toISOString()} -> ${now.toISOString()}`
+            mode: isRealtimeRuleEngineEnabled() ? 'realtime_safe_runner' : 'legacy_compatible_runner',
+            message: `Rule Engine executed for last ${result.hours} hours`,
+            analyzed_window: result.analyzed_window,
+            violations_found: result.violations_found,
         });
     } catch (error: any) {
         console.error('[API] Rule Engine Failed:', error);
