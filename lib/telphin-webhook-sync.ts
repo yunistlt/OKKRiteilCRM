@@ -204,14 +204,15 @@ export async function syncCanonicalTelphinCallFromWebhook(
     Boolean(input.queueForTranscription && recordingUrl) &&
     !existing?.transcript &&
     existing?.transcription_status !== 'completed' &&
-    existing?.transcription_status !== 'processing';
+    existing?.transcription_status !== 'processing' &&
+    existing?.transcription_status !== 'ready_for_transcription';
 
   if (shouldQueueTranscription) {
     const { error: queueError } = await supabase
       .from('raw_telphin_calls')
       .update({
         recording_url: recordingUrl,
-        transcription_status: 'pending',
+        transcription_status: 'ready_for_transcription',
       })
       .eq('telphin_call_id', input.callId);
 

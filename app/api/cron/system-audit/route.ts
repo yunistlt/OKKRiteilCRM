@@ -61,14 +61,14 @@ export async function GET(req: Request) {
         const { count: pendingCount, error: pendingError } = await supabase
             .from('raw_telphin_calls')
             .select('*', { count: 'exact', head: true })
-            .eq('transcription_status', 'pending')
+            .in('transcription_status', ['pending', 'ready_for_transcription', 'processing'])
             .lt('started_at', twoHoursAgo);
 
         if (pendingError) {
             report.push(`❌ DB Error (Pending Check): ${pendingError.message}`);
             hasAnomalies = true;
         } else if (pendingCount !== null && pendingCount > 0) {
-            report.push(`⚠️ <b>Stuck Transcriptions:</b> ${pendingCount} calls (pending > 2h). Billing risk!`);
+            report.push(`⚠️ <b>Stuck Transcriptions:</b> ${pendingCount} calls (ready/processing > 2h). Billing risk!`);
             hasAnomalies = true;
         } else {
             report.push(`✅ Transcriptions: OK (0 stuck)`);

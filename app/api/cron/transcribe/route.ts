@@ -55,7 +55,7 @@ export async function GET(req: Request) {
                     orders:orders!inner(status)
                 )
             `)
-            .eq('transcription_status', 'pending')
+            .in('transcription_status', ['pending', 'ready_for_transcription'])
             .not('recording_url', 'is', null)
             .gte('started_at', thirtyDaysAgo.toISOString())
             .in('matches.orders.status', transcribableStatuses)
@@ -77,7 +77,7 @@ export async function GET(req: Request) {
             }, { onConflict: 'key' });
 
         if (!calls || calls.length === 0) {
-            return NextResponse.json({ message: 'No transcribable pending calls found.' });
+            return NextResponse.json({ message: 'No transcribable ready calls found.' });
         }
 
         const results = [];

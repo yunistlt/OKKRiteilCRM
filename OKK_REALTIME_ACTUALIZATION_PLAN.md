@@ -123,11 +123,11 @@
 
 - [x] Сделать webhook incoming/status_update/recording_ready первичным путём записи в raw_telphin_calls.
 - [x] На webhook сразу обновлять или upsert-ить каноническую запись звонка.
-- [ ] На webhook recording_ready сразу переводить звонок в состояние ready_for_transcription.
+- [x] На webhook recording_ready сразу переводить звонок в состояние ready_for_transcription.
 - [ ] На webhook call_end сразу создавать matching job, если order ещё не найден.
 - [ ] Оставить Telphin fallback poller только как страховочный слой на пропущенные webhook.
 - [ ] В fallback poller проверять только последние 10-15 минут и только незавершённые или неукомплектованные звонки.
-- [ ] Ввести защиту от повторной транскрибации одной и той же записи.
+- [x] Ввести защиту от повторной транскрибации одной и той же записи.
 
 ## 9. Этап 5. Непрерывная транскрибация
 

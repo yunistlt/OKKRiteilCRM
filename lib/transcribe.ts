@@ -148,13 +148,112 @@ Output format:
     }
 }
 
+type TranscriptionCallRow = {
+    telphin_call_id: string | null;
+    event_id: number | null;
+    transcription_status: string | null;
+    transcript: string | null;
+    recording_url: string | null;
+};
+
+async function loadCallForTranscription(callId: string): Promise<TranscriptionCallRow | null> {
+    const { data: byCallId } = await supabase
+        .from('raw_telphin_calls')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+        .eq('telphin_call_id', callId)
+        .limit(1)
+        .maybeSingle();
+
+    if (byCallId) {
+        return byCallId;
+    }
+
+    if (!/^\d+$/.test(callId)) {
+        return null;
+    }
+
+    const { data: byEventId } = await supabase
+        .from('raw_telphin_calls')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+        .eq('event_id', parseInt(callId, 10))
+        .limit(1)
+        .maybeSingle();
+
+    return byEventId || null;
+}
+
+async function claimCallForTranscription(callId: string): Promise<{ row: TranscriptionCallRow; claimed: boolean }> {
+    const allowedStates = 'transcription_status.is.null,transcription_status.eq.pending,transcription_status.eq.ready_for_transcription,transcription_status.eq.failed';
+
+    const claimByColumn = async (column: 'telphin_call_id' | 'event_id', value: string | number) => {
+        const { data, error } = await supabase
+            .from('raw_telphin_calls')
+            .update({ transcription_status: 'processing' })
+            .eq(column, value)
+            .or(allowedStates)
+            .is('transcript', null)
+            .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+            .limit(1);
+
+        if (error) {
+            throw error;
+        }
+
+        return data?.[0] || null;
+    };
+
+    const claimedByCallId = await claimByColumn('telphin_call_id', callId);
+    if (claimedByCallId) {
+        return { row: claimedByCallId, claimed: true };
+    }
+
+    if (/^\d+$/.test(callId)) {
+        const claimedByEventId = await claimByColumn('event_id', parseInt(callId, 10));
+        if (claimedByEventId) {
+            return { row: claimedByEventId, claimed: true };
+        }
+    }
+
+    const existing = await loadCallForTranscription(callId);
+    if (!existing) {
+        throw new Error(`Call ${callId} not found in raw_telphin_calls`);
+    }
+
+    return { row: existing, claimed: false };
+}
+
 export async function transcribeCall(callId: string, recordingUrl: string) {
+    let claimedForProcessing = false;
+
     try {
         console.log(`[Transcribe] Processing ${callId}...`);
 
+        const { row, claimed } = await claimCallForTranscription(callId);
+        claimedForProcessing = claimed;
+
+        if (!claimed) {
+            if (row.transcription_status === 'completed' && row.transcript) {
+                console.log(`[Transcribe] Call ${callId} already completed, skipping duplicate run.`);
+                return row.transcript;
+            }
+
+            if (row.transcription_status === 'processing') {
+                throw new Error(`Call ${callId} is already being transcribed`);
+            }
+
+            if (row.transcription_status === 'skipped') {
+                throw new Error(`Call ${callId} is marked as skipped`);
+            }
+        }
+
+        const sourceRecordingUrl = row.recording_url || recordingUrl;
+        if (!sourceRecordingUrl) {
+            throw new Error(`Call ${callId} has no recording URL`);
+        }
+
         // 0. Ensure audio is synced to internal storage
-        const internalUrl = await syncRecordingToStorage(callId, recordingUrl);
-        const sourceUrl = internalUrl || recordingUrl;
+        const internalUrl = await syncRecordingToStorage(callId, sourceRecordingUrl);
+        const sourceUrl = internalUrl || sourceRecordingUrl;
 
         // 1. Download (from internal or external)
         const file = await downloadAudio(sourceUrl);
@@ -250,9 +349,13 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         console.error(`[Transcribe] Failed for ${callId}:`, e.message);
 
         // Try to mark as failed
-        const isNumeric = /^\d+$/.test(callId);
-        await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('telphin_call_id', callId);
-        if (isNumeric) await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('event_id', parseInt(callId));
+        if (claimedForProcessing) {
+            const isNumeric = /^\d+$/.test(callId);
+            await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('telphin_call_id', callId);
+            if (isNumeric) {
+                await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('event_id', parseInt(callId, 10));
+            }
+        }
 
         throw e;
     }

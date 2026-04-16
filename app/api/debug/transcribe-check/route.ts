@@ -22,8 +22,14 @@ export async function GET(req: Request) {
             .select('*', { count: 'exact', head: true })
             .eq('transcription_status', 'pending');
 
+        const { count: readyCount } = await supabase
+            .from('raw_telphin_calls')
+            .select('*', { count: 'exact', head: true })
+            .eq('transcription_status', 'ready_for_transcription');
+
         log(`Calls with status NULL: ${nullCount}`);
         log(`Calls with status 'pending': ${pendingCount}`);
+        log(`Calls with status 'ready_for_transcription': ${readyCount}`);
 
         // 2. Check Status Settings
         const { data: statusSettings, error: settingsError } = await supabase
@@ -70,10 +76,10 @@ export async function GET(req: Request) {
                 return ord?.status || 'unknown';
             });
 
-            const isPending = c.transcription_status === 'pending';
+            const isReady = c.transcription_status === 'pending' || c.transcription_status === 'ready_for_transcription';
             const hitsConfig = statuses.some((s: string) => transcribableCodes.includes(s));
 
-            log(`Call ${c.telphin_call_id}: Status='${c.transcription_status}', OrderStatuses=[${statuses.join(', ')}] -> Should process? ${isPending && hitsConfig ? 'YES' : 'NO'}`);
+            log(`Call ${c.telphin_call_id}: Status='${c.transcription_status}', OrderStatuses=[${statuses.join(', ')}] -> Should process? ${isReady && hitsConfig ? 'YES' : 'NO'}`);
         });
 
         return NextResponse.json({ logs });
