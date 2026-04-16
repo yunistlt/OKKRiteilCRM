@@ -61,17 +61,6 @@ export async function POST(req: NextRequest) {
 
       if (error) console.error('Update incoming call error:', error);
 
-      // Если звонок завершён и есть запись – триггер на транскрибацию
-      if (recording_url && status === 'completed') {
-        // Отправляем на очередь транскрибации
-        await supabase.from('transcription_queue').insert({
-          call_id: incomingCall.id,
-          recording_url,
-          type: 'incoming_call',
-          status: 'pending',
-          created_at: new Date().toISOString(),
-        });
-      }
     }
 
     const canonicalSync = await syncCanonicalTelphinCallFromWebhook({

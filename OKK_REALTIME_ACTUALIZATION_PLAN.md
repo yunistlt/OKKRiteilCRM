@@ -211,6 +211,7 @@
 - [x] Manual `rules/execute` и `priorities/refresh` перестали быть обходом legacy broad-scan path: теперь они используют общий realtime-safe runner или пропускают Rule Engine, когда ownership у realtime pipeline.
 - [x] Periodic Rule Engine fallback перестал каждые 5 минут сканировать 24 часа по умолчанию: cron/analysis routes теперь используют короткое настраиваемое fallback-окно `RULE_ENGINE_FALLBACK_HOURS` (по умолчанию 2 часа).
 - [x] Legacy `/api/analysis/rules/cron` перестал выглядеть как основной контур: добавлен явный `/api/analysis/rules/reconcile`, а старый endpoint оставлен только как deprecated wrapper для обратной совместимости.
+- [x] Webhook routes перестали писать в write-only legacy `transcription_queue`: боевой контур транскрибации теперь идёт только через канонический `raw_telphin_calls` и `system_jobs`.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

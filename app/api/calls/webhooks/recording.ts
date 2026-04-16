@@ -82,15 +82,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Добавляем запись на очередь транскрибации
-    await supabase.from('transcription_queue').insert({
-      call_id: call_id,
-      recording_url,
-      type: outgoingCall ? 'outgoing_call' : 'incoming_call',
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    });
-
     return NextResponse.json({
       success: true,
       callId: call_id,
