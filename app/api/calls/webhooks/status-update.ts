@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -71,6 +72,16 @@ export async function POST(req: NextRequest) {
         });
       }
     }
+
+    await syncCanonicalTelphinCallFromWebhook({
+      callId: call_id,
+      payload,
+      startedAt: started_at ? new Date(started_at).toISOString() : null,
+      recordingUrl: recording_url,
+      durationSeconds: duration_seconds,
+      status,
+      queueForTranscription: Boolean(recording_url && status === 'completed'),
+    });
 
     return NextResponse.json({
       success: true,

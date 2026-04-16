@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,16 @@ export async function POST(req: NextRequest) {
 
       if (error) throw error;
     }
+
+    await syncCanonicalTelphinCallFromWebhook({
+      callId: call_id,
+      payload,
+      recordingUrl: recording_url,
+      durationSeconds: duration_seconds,
+      startedAt: timestamp ? new Date(timestamp).toISOString() : null,
+      status: 'recording_ready',
+      queueForTranscription: true,
+    });
 
     // Добавляем запись на очередь транскрибации
     await supabase.from('transcription_queue').insert({

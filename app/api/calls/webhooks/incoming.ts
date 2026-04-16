@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
-import { matchCallToOrders, RawCall } from '@/lib/call-matching';
+import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
 import { sendTelegramNotification } from '@/lib/telegram';
+import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -26,9 +27,23 @@ export async function POST(req: NextRequest) {
       raw_payload: payload,
     };
 
+    await syncCanonicalTelphinCallFromWebhook({
+      callId: call_id,
+      payload,
+      direction: 'incoming',
+      fromNumber: from_number,
+      toNumber: to_number,
+      startedAt: new Date(timestamp).toISOString(),
+      status: status || 'ringing',
+    });
+
     // Ищем совпадающий заказ
     const matches = await matchCallToOrders(rawCall);
     const bestMatch = matches[0];
+
+    if (matches.length > 0) {
+      await saveMatches(matches);
+    }
 
     // Назначаем менеджера (если найден заказ)
     let assignedManagerId: number | null = null;
