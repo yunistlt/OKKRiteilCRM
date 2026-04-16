@@ -87,7 +87,7 @@
         },
         {
             "path": "/api/okk/run-all",
-            "schedule": "*/30 * * * *"
+            "schedule": "15 4 * * *"
         },
         {
             "path": "/api/cron/reactivation-worker",

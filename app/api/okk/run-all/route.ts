@@ -19,6 +19,15 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
         const specificOrderId = searchParams.get('orderId') ? parseInt(searchParams.get('orderId')!) : undefined;
+        const force = searchParams.get('force') === 'true';
+
+        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !specificOrderId && !force) {
+            return NextResponse.json({
+                success: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns production recalculation. Use force=true for emergency bulk fallback or orderId for single-order run.',
+            });
+        }
 
         if (!capability.canRunBulkOperations && !specificOrderId) {
             return NextResponse.json({ error: 'У вас нет прав на массовый запуск проверки' }, { status: 403 });

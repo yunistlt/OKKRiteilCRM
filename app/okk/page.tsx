@@ -809,6 +809,7 @@ function OKKContent() {
             const query = new URLSearchParams();
             if (runLimit) query.append('limit', runLimit.toString());
             if (targetOrderId) query.append('orderId', targetOrderId);
+            if (!targetOrderId) query.append('force', 'true');
 
             const res = await fetch(`/api/okk/run-all?${query.toString()}`);
             const json = await res.json();
