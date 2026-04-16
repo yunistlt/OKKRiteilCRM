@@ -1,6 +1,7 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -19,7 +20,11 @@ export async function GET() {
                 'transcription_min_duration',
                 'transcription_last_run',
                 'rule_engine_last_run',
-                'insight_agent_last_run'
+                'insight_agent_last_run',
+                'retailcrm_orders_sync',
+                'retailcrm_history_sync',
+                'retailcrm_orders_queue_last_success_at',
+                'retailcrm_history_queue_last_success_at'
             ]);
 
         if (syncError) throw syncError;
@@ -92,15 +97,18 @@ export async function GET() {
         };
 
         // --- RetailCRM ---
-        const retailCursor = lastOrder?.created_at || null;
-        const retailOk = isFresh(retailCursor, 60);
+        const retailCursorState = stateMap.get('retailcrm_orders_sync');
+        const retailCursor = retailCursorState?.value || lastOrder?.created_at || null;
+        const retailLastRun = stateMap.get('retailcrm_orders_queue_last_success_at')?.updated_at || retailCursorState?.updated_at || retailCursor || null;
+        const retailOk = isFresh(retailLastRun, 15);
+        const retailLagMinutes = retailCursor ? Math.floor((Date.now() - new Date(retailCursor).getTime()) / 60000) : null;
         const retailStatus = {
             service: 'RetailCRM Sync',
             cursor: retailCursor || 'Never',
-            last_run: retailCursor || null,
+            last_run: retailLastRun,
             status: retailOk ? 'ok' : 'warning',
-            details: retailOk ? 'Recent Orders' : 'No recent orders (>1h)',
-            reason: getDiagnosis('retailcrm', retailOk, retailCursor)
+            details: retailLagMinutes !== null ? `Cursor lag ${retailLagMinutes} min` : 'No cursor yet',
+            reason: getDiagnosis('retailcrm', retailOk, retailLastRun)
         };
 
         // --- Matching ---
@@ -228,12 +236,25 @@ export async function GET() {
             transcription_min_duration: parseInt(stateMap.get('transcription_min_duration')?.value || '15')
         };
 
+        const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
+        const services = [
+            telphinStatus,
+            retailStatus,
+            ...realtimePipeline.services,
+            matchStatus,
+            transStatus,
+            historyStatus,
+            rulesStatus,
+            insightStatus,
+        ];
+
         return NextResponse.json({
-            services: [telphinStatus, retailStatus, matchStatus, transStatus, historyStatus, rulesStatus, insightStatus],
-            dashboard: [telphinStatus, retailStatus, matchStatus, transStatus, historyStatus, rulesStatus, insightStatus],
+            services,
+            dashboard: services,
             all_rules: allRules || [],
             settings,
-            insight_logs: logs
+            insight_logs: logs,
+            pipeline_metrics: realtimePipeline
         });
 
     } catch (e: any) {

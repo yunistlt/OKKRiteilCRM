@@ -195,6 +195,7 @@
 - [x] Добавлен `retailcrm-order-upsert` worker, который после upsert заказа запускает `order_score_refresh` и `order_insight_refresh`.
 - [x] Добавлен `order-insight-refresh` worker и cron-расписание для CRM near realtime цепочки.
 - [x] Добавлен coalescing `order_score_refresh` и `order_insight_refresh` по `order_id` с 30-секундным debounce-окном.
+- [x] Monitoring endpoints обогащены lag/backlog метриками по `system_jobs`, RetailCRM cursors и oldest queued refresh/transcription jobs.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

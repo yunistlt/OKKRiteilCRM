@@ -1,5 +1,6 @@
 
 import { NextResponse } from 'next/server';
+import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -7,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
     try {
         const now = new Date();
+        const checks: Array<{ name: string; healthy: boolean; message: string }> = [];
 
         // 1. Check History Sync Freshness
         const { data: lastEvent, error } = await supabase
@@ -32,13 +34,45 @@ export async function GET() {
             if (lagMinutes > 120) {
                 isHealthy = false;
                 message = `CRITICAL: History Sync stalled! Last event was ${lagMinutes} minutes ago (${lastEvent.occurred_at}).`;
+                checks.push({ name: 'raw_order_events', healthy: false, message });
 
                 // TODO: Integrate Telegram/Email alert here
                 // await sendAdminAlert(message);
+            } else {
+                checks.push({ name: 'raw_order_events', healthy: true, message: `Lag ${lagMinutes} min` });
             }
         } else {
             isHealthy = false;
             message = 'CRITICAL: No events found in database.';
+            checks.push({ name: 'raw_order_events', healthy: false, message });
+        }
+
+        const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
+        const queueSummary = realtimePipeline.summary;
+
+        if (realtimePipeline.enabled && realtimePipeline.queueAvailable) {
+            const criticalQueueIssue =
+                queueSummary.deadLetterTotal > 0 ||
+                (realtimePipeline.metrics.retailcrmCursorLagSeconds !== null && realtimePipeline.metrics.retailcrmCursorLagSeconds > 30 * 60) ||
+                (realtimePipeline.metrics.scoreQueueOldestSeconds !== null && realtimePipeline.metrics.scoreQueueOldestSeconds > 15 * 60) ||
+                (realtimePipeline.metrics.transcriptionQueueOldestSeconds !== null && realtimePipeline.metrics.transcriptionQueueOldestSeconds > 20 * 60);
+
+            checks.push({
+                name: 'system_jobs_pipeline',
+                healthy: !criticalQueueIssue,
+                message: `queued=${queueSummary.queuedTotal}, processing=${queueSummary.processingTotal}, dead_letter=${queueSummary.deadLetterTotal}`,
+            });
+
+            if (criticalQueueIssue) {
+                isHealthy = false;
+                message = 'CRITICAL: system-jobs pipeline lagging or dead-letter backlog detected.';
+            }
+        } else {
+            checks.push({
+                name: 'system_jobs_pipeline',
+                healthy: true,
+                message: realtimePipeline.enabled ? 'system_jobs migration not applied yet' : 'pipeline disabled by feature flag',
+            });
         }
 
         return NextResponse.json({
@@ -47,7 +81,10 @@ export async function GET() {
             lag_minutes: lagMinutes,
             last_sync: lastSyncTime,
             message: message,
-            checked_at: now.toISOString()
+            checked_at: now.toISOString(),
+            checks,
+            queue_summary: queueSummary,
+            pipeline_metrics: realtimePipeline.metrics
         });
 
     } catch (e: any) {

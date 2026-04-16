@@ -217,7 +217,13 @@ export default function SystemStatusPage() {
         let url = '';
         if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
         if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
+        if (serviceName.includes('System Jobs Queue')) url = '/api/cron/system-jobs/watchdog';
+        if (serviceName.includes('RetailCRM Delta Queue')) url = '/api/cron/system-jobs/retailcrm-order-delta';
+        if (serviceName.includes('RetailCRM History Queue')) url = '/api/cron/system-jobs/retailcrm-history-delta';
         if (serviceName.includes('Matching Service')) url = '/api/matching/process';
+        if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
+        if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
+        if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';
         if (serviceName.includes('History Sync')) url = '/api/sync/history';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute';
         if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run';
@@ -289,8 +295,14 @@ export default function SystemStatusPage() {
 
     const getRusServiceName = (name: string) => {
         if (name.includes('Telphin Main')) return 'Синхронизация Звонков (Телфин)';
+        if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
+        if (name.includes('RetailCRM Delta Queue')) return 'RetailCRM Delta Очередь';
+        if (name.includes('RetailCRM History Queue')) return 'RetailCRM History Очередь';
         if (name.includes('RetailCRM')) return 'Синхронизация Заказов (RetailCRM)';
         if (name.includes('Matching Service')) return 'Служба Матчинга (Звонок + Заказ)';
+        if (name.includes('Score Refresh Queue')) return 'Очередь Пересчета Score';
+        if (name.includes('Insight Refresh Queue')) return 'Очередь AI Инсайтов';
+        if (name.includes('Transcription Queue')) return 'Очередь Транскрибации';
         if (name.includes('Transcription Cron')) return 'Служба Транскрибации (Semen)';
         if (name.includes('History Sync')) return 'События Заказов (History API)';
         if (name.includes('Rule Engine')) return 'Движок Проверки Правил';
@@ -300,8 +312,14 @@ export default function SystemStatusPage() {
 
     const getIcon = (name: string) => {
         if (name.includes('Telphin')) return '☎️';
+        if (name.includes('System Jobs Queue')) return '🧱';
+        if (name.includes('RetailCRM Delta Queue')) return '📦';
+        if (name.includes('RetailCRM History Queue')) return '🕘';
         if (name.includes('RetailCRM')) return '🛍️';
         if (name.includes('Matching')) return '🔗';
+        if (name.includes('Score Refresh')) return '📈';
+        if (name.includes('Insight Refresh')) return '🧠';
+        if (name.includes('Transcription Queue')) return '🎧';
         if (name.includes('Transcription')) return '🎙️';
         if (name.includes('History')) return '⚡️';
         if (name.includes('Rule')) return '⚙️';
