@@ -42,6 +42,42 @@ function getDefaultTelphinFallbackMinutes() {
     return parsed;
 }
 
+async function recordTelphinFallbackSuccess(cursor: string) {
+    const now = new Date().toISOString();
+    const lagSeconds = Math.max(0, Math.floor((Date.now() - new Date(cursor).getTime()) / 1000));
+
+    const { error } = await supabase.from('sync_state').upsert([
+        {
+            key: 'telphin_last_sync_time',
+            value: cursor,
+            updated_at: now,
+        },
+        {
+            key: 'telphin_fallback_lag_seconds',
+            value: String(lagSeconds),
+            updated_at: now,
+        },
+        {
+            key: 'telphin_fallback_last_error',
+            value: '',
+            updated_at: now,
+        },
+    ], { onConflict: 'key' });
+
+    if (error) throw error;
+}
+
+async function recordTelphinFallbackFailure(message: string) {
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('sync_state').upsert({
+        key: 'telphin_fallback_last_error',
+        value: message.slice(0, 1500),
+        updated_at: now,
+    }, { onConflict: 'key' });
+
+    if (error) throw error;
+}
+
 export async function runTelphinSync(forceResync: boolean = false, hours: number = 2): Promise<SyncResult> {
     const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
     const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
@@ -211,11 +247,7 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
         }
 
         // 4. Update Cursor
-        await supabase.from('sync_state').upsert({
-            key: storageKey,
-            value: nextCursor,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'key' });
+        await recordTelphinFallbackSuccess(nextCursor);
 
         // 5. Trigger Rule Engine Analysis
         return {
@@ -227,6 +259,7 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
 
     } catch (error: any) {
         console.error('Telphin Sync Logic Error:', error);
+        await recordTelphinFallbackFailure(error.message || 'Unknown Telphin fallback sync error');
         return { success: false, error: error.message };
     }
 }

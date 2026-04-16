@@ -17,6 +17,8 @@ export async function GET() {
                 'telphin_backfill_cursor',
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
+                'telphin_fallback_lag_seconds',
+                'telphin_fallback_last_error',
                 'transcription_min_duration',
                 'transcription_last_run',
                 'rule_engine_last_run',
@@ -77,14 +79,16 @@ export async function GET() {
 
         // --- Telphin Main ---
         const telphinMain = stateMap.get('telphin_last_sync_time');
+        const telphinFallbackLagSeconds = parseInt(stateMap.get('telphin_fallback_lag_seconds')?.value || '0', 10);
+        const telphinFallbackLastError = stateMap.get('telphin_fallback_last_error')?.value || '';
         const telphinOk = isFresh(telphinMain?.updated_at, 15);
         const telphinStatus = {
             service: 'Telphin Main Sync',
             cursor: telphinMain?.value || 'Never',
             last_run: telphinMain?.updated_at || null,
-            status: telphinOk ? 'ok' : 'warning',
-            details: telphinOk ? 'Active' : 'Stalled (>15m ago)',
-            reason: getDiagnosis('telphin_main', telphinOk, telphinMain?.updated_at)
+            status: telphinFallbackLastError ? 'warning' : (telphinOk ? 'ok' : 'warning'),
+            details: telphinOk ? `Active, lag ${Math.floor(telphinFallbackLagSeconds / 60)} min` : 'Stalled (>15m ago)',
+            reason: telphinFallbackLastError || getDiagnosis('telphin_main', telphinOk, telphinMain?.updated_at)
         };
 
         // --- Telphin Backfill ---
