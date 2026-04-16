@@ -66,6 +66,13 @@ interface RealtimePipelineSnapshot {
         scoreRefreshLatency: LatencyDistribution;
         managerAggregateLatency: LatencyDistribution;
         scoreToAggregateLatency: LatencyDistribution;
+        callMatchToAggregateLatency: LatencyDistribution;
+        recovery: {
+            completedLast24h: number;
+            retryAttemptsLast24h: number;
+            retriedJobsLast24h: number;
+            deadLettersLast24h: number;
+        };
     };
 }
 
@@ -389,6 +396,12 @@ export default function SystemStatusPage() {
             bg: 'bg-amber-50',
             metric: pipelineMetrics?.metrics.scoreToAggregateLatency,
         },
+        {
+            title: 'Call Match → Aggregate',
+            accent: 'text-rose-600',
+            bg: 'bg-rose-50',
+            metric: pipelineMetrics?.metrics.callMatchToAggregateLatency,
+        },
     ];
 
     // --- State: Transcription Details ---
@@ -524,7 +537,7 @@ export default function SystemStatusPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
                 {latencyCards.map((card) => (
                     <div key={card.title} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
                         <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">{card.title} Latency</div>
@@ -543,6 +556,25 @@ export default function SystemStatusPage() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Jobs Completed 24h</div>
+                    <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.completedLast24h || 0}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-amber-50">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-2">Retry Attempts 24h</div>
+                    <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retryAttemptsLast24h || 0}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Retried Jobs 24h</div>
+                    <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retriedJobsLast24h || 0}</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-red-50">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Dead Letters 24h</div>
+                    <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
+                </div>
             </div>
 
             {/* OPENAI STATUS CARD */}

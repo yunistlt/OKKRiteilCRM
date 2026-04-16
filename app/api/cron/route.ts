@@ -30,15 +30,20 @@ export async function GET(request: Request) {
 
         // 1. Match Calls
         if (checkBudget('Matching')) {
-            console.log('[CRON] Step 1: Matching');
-            try {
-                const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
-                if (!matchRes.ok) throw new Error(`HTTP ${matchRes.status}: ${await matchRes.text().then(t => t.substring(0, 200))}`);
-                const matchJson = await matchRes.json();
-                report.push(`Matches: ${matchJson.matches_found || 0} new`);
-            } catch (e: any) {
-                console.error('[CRON] Matching Error:', e);
-                report.push(`Matches: Error (${e.message})`);
+            if (isRealtimePipelineEnabled) {
+                console.log('[CRON] Step 1: Matching skipped, realtime pipeline owns call matching');
+                report.push('Matches: Skipped (realtime pipeline enabled)');
+            } else {
+                console.log('[CRON] Step 1: Matching');
+                try {
+                    const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
+                    if (!matchRes.ok) throw new Error(`HTTP ${matchRes.status}: ${await matchRes.text().then(t => t.substring(0, 200))}`);
+                    const matchJson = await matchRes.json();
+                    report.push(`Matches: ${matchJson.matches_found || 0} new`);
+                } catch (e: any) {
+                    console.error('[CRON] Matching Error:', e);
+                    report.push(`Matches: Error (${e.message})`);
+                }
             }
         }
 

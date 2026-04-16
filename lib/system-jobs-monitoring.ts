@@ -24,6 +24,13 @@ interface LatencyDistribution {
   sampleSize: number;
 }
 
+interface RecoveryMetrics {
+  completedLast24h: number;
+  retryAttemptsLast24h: number;
+  retriedJobsLast24h: number;
+  deadLettersLast24h: number;
+}
+
 export interface RealtimePipelineMonitoringSnapshot {
   enabled: boolean;
   queueAvailable: boolean;
@@ -39,6 +46,8 @@ export interface RealtimePipelineMonitoringSnapshot {
     scoreRefreshLatency: LatencyDistribution;
     managerAggregateLatency: LatencyDistribution;
     scoreToAggregateLatency: LatencyDistribution;
+    callMatchToAggregateLatency: LatencyDistribution;
+    recovery: RecoveryMetrics;
   };
   services: MonitorServiceStatus[];
 }
@@ -55,9 +64,12 @@ type JobRow = {
 type CompletedJobRow = {
   id: number;
   job_type: string;
+  status: string;
+  attempts: number | null;
   queued_at: string | null;
   finished_at: string | null;
   parent_job_id: number | null;
+  updated_at: string | null;
 };
 
 const MONITORED_JOB_TYPES = [
@@ -75,6 +87,11 @@ const LATENCY_JOB_TYPES = [
   'call_transcription',
   'order_score_refresh',
   'manager_aggregate_refresh',
+] as const;
+
+const ACTIVITY_JOB_TYPES = [
+  ...MONITORED_JOB_TYPES,
+  'nightly_reconciliation',
 ] as const;
 
 const MONITORED_WORKER_KEYS = [
@@ -158,9 +175,21 @@ function buildLatencyDistribution(values: number[]): LatencyDistribution {
   };
 }
 
+function buildRecoveryMetrics(rows: CompletedJobRow[]): RecoveryMetrics {
+  const completedRows = rows.filter((row) => row.status === 'completed');
+  const retriedRows = rows.filter((row) => (row.attempts || 0) > 1);
+
+  return {
+    completedLast24h: completedRows.length,
+    retryAttemptsLast24h: retriedRows.reduce((sum, row) => sum + Math.max((row.attempts || 1) - 1, 0), 0),
+    retriedJobsLast24h: retriedRows.length,
+    deadLettersLast24h: rows.filter((row) => row.status === 'dead_letter').length,
+  };
+}
+
 function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
   return rows
-    .filter((row) => row.job_type === jobType)
+    .filter((row) => row.job_type === jobType && row.status === 'completed')
     .map((row) => secondsBetween(row.queued_at, row.finished_at))
     .filter((value): value is number => value !== null);
 }
@@ -168,14 +197,36 @@ function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
 function scoreToAggregateLeadTimes(rows: CompletedJobRow[]) {
   const scoreJobs = new Map<number, CompletedJobRow>();
   rows
-    .filter((row) => row.job_type === 'order_score_refresh')
+    .filter((row) => row.job_type === 'order_score_refresh' && row.status === 'completed')
     .forEach((row) => scoreJobs.set(row.id, row));
 
   return rows
-    .filter((row) => row.job_type === 'manager_aggregate_refresh' && !!row.parent_job_id)
+    .filter((row) => row.job_type === 'manager_aggregate_refresh' && row.status === 'completed' && !!row.parent_job_id)
     .map((row) => {
       const parent = row.parent_job_id ? scoreJobs.get(row.parent_job_id) : null;
       return secondsBetween(parent?.queued_at || null, row.finished_at);
+    })
+    .filter((value): value is number => value !== null);
+}
+
+function callMatchToAggregateLeadTimes(rows: CompletedJobRow[]) {
+  const scoreJobs = new Map<number, CompletedJobRow>();
+  const callMatchJobs = new Map<number, CompletedJobRow>();
+
+  rows
+    .filter((row) => row.job_type === 'order_score_refresh' && row.status === 'completed')
+    .forEach((row) => scoreJobs.set(row.id, row));
+
+  rows
+    .filter((row) => row.job_type === 'call_match' && row.status === 'completed')
+    .forEach((row) => callMatchJobs.set(row.id, row));
+
+  return rows
+    .filter((row) => row.job_type === 'manager_aggregate_refresh' && row.status === 'completed' && !!row.parent_job_id)
+    .map((row) => {
+      const scoreJob = row.parent_job_id ? scoreJobs.get(row.parent_job_id) : null;
+      const callMatchJob = scoreJob?.parent_job_id ? callMatchJobs.get(scoreJob.parent_job_id) : null;
+      return secondsBetween(callMatchJob?.queued_at || null, row.finished_at);
     })
     .filter((value): value is number => value !== null);
 }
@@ -377,12 +428,12 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     const completedWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('system_jobs')
-      .select('id, job_type, queued_at, finished_at, parent_job_id')
-      .in('job_type', [...LATENCY_JOB_TYPES])
-      .eq('status', 'completed')
-      .gte('finished_at', completedWindowStart)
-      .order('finished_at', { ascending: false })
-      .limit(500);
+      .select('id, job_type, status, attempts, queued_at, finished_at, parent_job_id, updated_at')
+      .in('job_type', [...ACTIVITY_JOB_TYPES])
+      .in('status', ['completed', 'dead_letter'])
+      .gte('updated_at', completedWindowStart)
+      .order('updated_at', { ascending: false })
+      .limit(1000);
 
     if (error) {
       throw error;
@@ -410,6 +461,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const scoreRefreshLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'order_score_refresh'));
   const managerAggregateLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'manager_aggregate_refresh'));
   const scoreToAggregateLatency = buildLatencyDistribution(scoreToAggregateLeadTimes(completedRows));
+  const callMatchToAggregateLatency = buildLatencyDistribution(callMatchToAggregateLeadTimes(completedRows));
+  const recovery = buildRecoveryMetrics(completedRows);
 
   const services: MonitorServiceStatus[] = [
     buildQueueService({
@@ -571,6 +624,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       scoreRefreshLatency,
       managerAggregateLatency,
       scoreToAggregateLatency,
+      callMatchToAggregateLatency,
+      recovery,
     },
     services,
   };

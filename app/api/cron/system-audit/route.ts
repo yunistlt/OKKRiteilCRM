@@ -132,6 +132,15 @@ export async function GET(req: Request) {
             if (metrics.transcriptionLatency.p95Seconds !== null && metrics.transcriptionLatency.p95Seconds > 20 * 60) {
                 realtimeAlertLines.push(`p95 transcription latency: ${Math.floor(metrics.transcriptionLatency.p95Seconds / 60)} мин`);
             }
+            if (metrics.callMatchToAggregateLatency.p95Seconds !== null && metrics.callMatchToAggregateLatency.p95Seconds > 15 * 60) {
+                realtimeAlertLines.push(`p95 call_match→aggregate latency: ${Math.floor(metrics.callMatchToAggregateLatency.p95Seconds / 60)} мин`);
+            }
+            if (metrics.recovery.deadLettersLast24h > 0) {
+                realtimeAlertLines.push(`dead-letter за 24ч: ${metrics.recovery.deadLettersLast24h}`);
+            }
+            if (metrics.recovery.retryAttemptsLast24h > 20) {
+                realtimeAlertLines.push(`retry attempts за 24ч: ${metrics.recovery.retryAttemptsLast24h}`);
+            }
 
             if (realtimeAlertLines.length > 0) {
                 hasAnomalies = true;
