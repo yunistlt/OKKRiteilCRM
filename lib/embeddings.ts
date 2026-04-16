@@ -1,6 +1,59 @@
 import OpenAI from 'openai';
 
 let _openai: OpenAI | null = null;
+const EMBEDDING_DIMENSIONS = 1536;
+
+function hashString(value: string, seed: number): number {
+    let hash = 2166136261 ^ seed;
+
+    for (let index = 0; index < value.length; index += 1) {
+        hash ^= value.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+
+    return hash >>> 0;
+}
+
+function normalizeVector(values: number[]): number[] {
+    const norm = Math.sqrt(values.reduce((sum, current) => sum + current * current, 0));
+    if (!norm) return values;
+    return values.map((value) => value / norm);
+}
+
+function generateLocalEmbedding(text: string): number[] {
+    const vector = new Array(EMBEDDING_DIMENSIONS).fill(0);
+    const normalized = text.toLowerCase();
+    const tokens = normalized.match(/[\p{L}\p{N}_-]+/gu) || normalized.split(/\s+/).filter(Boolean);
+    const features = new Set<string>();
+
+    for (const token of tokens) {
+        features.add(`tok:${token}`);
+
+        if (token.length >= 3) {
+            for (let index = 0; index <= token.length - 3; index += 1) {
+                features.add(`tri:${token.slice(index, index + 3)}`);
+            }
+        }
+    }
+
+    if (features.size === 0) {
+        features.add(`raw:${normalized.trim() || 'empty'}`);
+    }
+
+    for (const feature of features) {
+        const primary = hashString(feature, 0) % EMBEDDING_DIMENSIONS;
+        const secondary = hashString(feature, 1) % EMBEDDING_DIMENSIONS;
+        const tertiary = hashString(feature, 2) % EMBEDDING_DIMENSIONS;
+        const direction = (hashString(feature, 3) & 1) === 0 ? 1 : -1;
+        const weight = feature.startsWith('tok:') ? 1.25 : 0.5;
+
+        vector[primary] += 1.0 * direction * weight;
+        vector[secondary] += 0.5 * direction * weight;
+        vector[tertiary] -= 0.25 * direction * weight;
+    }
+
+    return normalizeVector(vector);
+}
 
 function getOpenAI() {
     if (!_openai) {
@@ -20,6 +73,10 @@ function getOpenAI() {
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
     if (!text) return [];
+
+    if (!process.env.OPENAI_API_KEY) {
+        return generateLocalEmbedding(text.replace(/\n/g, ' '));
+    }
 
     try {
         const openai = getOpenAI();

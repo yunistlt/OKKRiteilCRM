@@ -2,14 +2,20 @@ import assert from 'node:assert/strict';
 import {
     buildAmbiguousCriteriaSummary,
     buildCallEvidenceExplanation,
+    buildConsultantMetaAnswer,
     buildCriterionExplanation,
+    buildSectionAnswer,
+    getReplyCriterionKey,
     buildGeneralRatingExplanation,
     buildGlossaryAnswer,
     buildHistoryEvidenceExplanation,
     buildMissingDataSummary,
+    buildOrderSourceExplanation,
+    shouldShowOrderCards,
     buildViolationsReferenceAnswer,
     enrichEvidenceWithOrder,
     findGlossaryTerm,
+    isGlossaryQuestion,
     type ConsultantOrder,
     type OrderEvidence,
 } from '../lib/okk-consultant';
@@ -137,12 +143,18 @@ function run() {
     const outputs: Record<string, string> = {
         'general-rating-formula': buildGeneralRatingExplanation(),
         'glossary-total-score': buildGlossaryAnswer(findGlossaryTerm('что такое total_score')!),
+        'glossary-sla-definition': isGlossaryQuestion('что такое SLA ?') ? buildGlossaryAnswer(findGlossaryTerm('что такое SLA ?')!) : '',
         'missing-data-explicit-limitation': buildMissingDataSummary(sampleOrder),
         'ambiguous-confidence': buildAmbiguousCriteriaSummary(sampleOrder),
         'proof-no-history': buildHistoryEvidenceExplanation(sampleOrder, enrichedEvidence),
         'proof-no-calls': buildCallEvidenceExplanation(sampleOrder, enrichedEvidence),
         'criterion-source-explicit-fact': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'source', evidence: enrichedEvidence }),
         'violations-button-reference': buildViolationsReferenceAnswer(sampleOrder),
+        'section-ai-tools-overview': buildSectionAnswer('ai-tools', 'как работает этот раздел') || '',
+        'section-quality-overview': buildSectionAnswer('quality-dashboard', 'для чего этот экран') || '',
+        'section-audit-overview': buildSectionAnswer('audit', 'что это за раздел') || '',
+        'meta-ui-visibility': buildConsultantMetaAnswer('Справка по ОКК'),
+        'order-source-overview': buildOrderSourceExplanation(sampleOrder, enrichedEvidence),
         'historical-old-format-safe': buildCriterionExplanation({ order: oldFormatOrder, criterionKey: 'field_contact_data', mode: 'why' }),
         'paraphrase-same-criterion-a': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),
         'paraphrase-same-criterion-b': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),
@@ -158,6 +170,13 @@ function run() {
     const sourceA = outputs['paraphrase-same-criterion-a'];
     const sourceB = outputs['paraphrase-same-criterion-b'];
     assert.equal(sourceA, sourceB, 'Criterion explanation should stay stable across paraphrases when criterionKey is the same.');
+
+    assert.equal(shouldShowOrderCards('glossary'), false, 'Glossary replies should not attach order cards.');
+    assert.equal(shouldShowOrderCards('section'), false, 'Section replies should not attach order cards.');
+    assert.equal(shouldShowOrderCards('meta'), false, 'Meta replies should not attach order cards.');
+    assert.equal(getReplyCriterionKey('glossary', 'lead_in_work_lt_1_day'), null, 'Glossary replies should not persist a criterion key.');
+    assert.equal(getReplyCriterionKey('section', 'lead_in_work_lt_1_day'), null, 'Section replies should not persist a criterion key.');
+    assert.equal(getReplyCriterionKey('criterion', 'lead_in_work_lt_1_day'), 'lead_in_work_lt_1_day', 'Criterion replies should keep the matched criterion key.');
 
     console.log(`OKK consultant regression passed: ${OKK_CONSULTANT_BENCHMARK_CASES.length} cases.`);
 }

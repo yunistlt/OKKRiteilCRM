@@ -18,13 +18,20 @@ const sql = postgres(connectionString, {
 });
 
 async function run() {
-    const migrationPath = path.join(process.cwd(), 'migrations/20260414_okk_consultant_schema.sql');
-    const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+    const migrationFiles = [
+        '20260414_okk_consultant_schema.sql',
+        '20260416_okk_consultant_rag_foundation.sql',
+    ];
 
     try {
-        console.log('Applying migration: 20260414_okk_consultant_schema.sql');
-        await sql.unsafe(migrationSql);
-        console.log('Migration applied successfully.');
+        for (const migrationFile of migrationFiles) {
+            const migrationPath = path.join(process.cwd(), 'migrations', migrationFile);
+            const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+            console.log(`Applying migration: ${migrationFile}`);
+            await sql.unsafe(migrationSql);
+        }
+
+        console.log('All OKK consultant migrations applied successfully.');
     } catch (error) {
         console.error('Migration failed:', error);
         process.exitCode = 1;

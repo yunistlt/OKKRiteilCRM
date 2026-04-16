@@ -79,7 +79,7 @@ function buildSeedRows(): SeedRow[] {
             type: 'section_overview',
             sectionKey: section.key,
             title: section.title,
-            content: section.summary,
+            content: section.overviewAnswer || section.summary,
             tags: [section.key, section.shortTitle, ...section.pathPrefixes],
             sourceRef: `section:${section.key}`,
         });

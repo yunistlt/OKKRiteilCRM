@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import {
     buildAmbiguousCriteriaSummary,
+    buildConsultantMetaAnswer,
     buildCallEvidenceExplanation,
     buildCriterionExplanation,
     buildEvidenceSummary,
@@ -11,6 +12,7 @@ import {
     buildHistoryEvidenceExplanation,
     buildImprovementPlan,
     buildMissingDataSummary,
+    buildOrderSourceExplanation,
     buildOrderContextForLLM,
     buildOrderScoreExplanation,
     buildResponseCards,
@@ -18,14 +20,19 @@ import {
     buildTechnicalExplanation,
     buildViolationsReferenceAnswer,
     ConsultantOrder,
+    ConsultantReplyKind,
     enrichEvidenceWithOrder,
     findCriterionKey,
     findGlossaryTerm,
+    getReplyCriterionKey,
     getConsultantSectionConfig,
+    isConsultantMetaQuestion,
+    isGlossaryQuestion,
     OKK_CONSULTANT_QUICK_QUESTIONS,
     OrderEvidence,
     sanitizeEvidenceForRole,
     sanitizeOrderForRole,
+    shouldShowOrderCards,
 } from '@/lib/okk-consultant';
 import { loadConsultantEvidence, loadConsultantOrder } from '@/lib/okk-consultant-context';
 import {
@@ -331,11 +338,6 @@ function normalizeHistory(history: unknown): Array<{ role: string; text: string 
         .slice(-MAX_HISTORY_ITEMS);
 }
 
-function isGlossaryQuestion(message: string): boolean {
-    const lower = message.toLowerCase();
-    return lower.includes('что такое') || lower.includes('что значит') || lower.includes('объясни термин');
-}
-
 export async function POST(req: Request) {
     try {
         const session = await getSession();
@@ -376,6 +378,14 @@ export async function POST(req: Request) {
         const username = String(session.user.username || 'user');
         const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
         const sectionReply = buildSectionAnswer(sectionKey, message, selectionContext);
+
+        if (isConsultantMetaQuestion(message)) {
+            return NextResponse.json({
+                success: true,
+                reply: buildConsultantMetaAnswer(getConsultantSectionConfig(sectionKey).title),
+                suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+            });
+        }
 
         if (sectionKey === 'quality-dashboard' && !sectionReply && !glossaryTerm && !referenceQuestion && isDirectQualityAnalysisRequest(message)) {
             return NextResponse.json({
@@ -467,14 +477,18 @@ export async function POST(req: Request) {
         }
 
         let reply: string;
+        let replyKind: ConsultantReplyKind;
         let usedFallback = false;
         let answerMetadata: Record<string, any> | null = null;
         if (sectionReply) {
             reply = sectionReply;
+            replyKind = 'section';
         } else if (violationsReferenceQuestion) {
             reply = buildViolationsReferenceAnswer(order);
-        } else if (!criterionKey && glossaryTerm && isGlossaryQuestion(message)) {
+            replyKind = 'violations-reference';
+        } else if (glossaryTerm && isGlossaryQuestion(message)) {
             reply = buildGlossaryAnswer(glossaryTerm);
+            replyKind = 'glossary';
         } else if (criterionKey) {
             reply = buildCriterionExplanation({
                 order,
@@ -482,30 +496,42 @@ export async function POST(req: Request) {
                 mode: mode === 'source' ? 'source' : mode === 'fix' ? 'fix' : 'why',
                 evidence,
             });
+            replyKind = 'criterion';
+        } else if (mode === 'source') {
+            reply = buildOrderSourceExplanation(order, evidence);
+            replyKind = 'order-source';
         } else if (mode === 'score') {
             reply = buildOrderScoreExplanation(order);
+            replyKind = 'score';
         } else if (mode === 'proof') {
             reply = /событ|истори/i.test(message)
                 ? buildHistoryEvidenceExplanation(order, evidence)
                 : /звон|разговор|автоответ|ivr/i.test(message)
                     ? buildCallEvidenceExplanation(order, evidence)
                     : buildEvidenceSummary(order, evidence);
+            replyKind = 'proof';
         } else if (mode === 'ambiguous') {
             reply = buildAmbiguousCriteriaSummary(order);
+            replyKind = 'ambiguous';
         } else if (mode === 'missing') {
             reply = buildMissingDataSummary(order);
+            replyKind = 'missing';
         } else if (mode === 'technical') {
             reply = userRole === 'manager'
                 ? `${buildEvidenceSummary(order, evidence)}\n\nТехнические детали скрыты для роли менеджера по умолчанию. Если нужен глубокий разбор, его должен открыть ОКК или администратор.`
                 : buildTechnicalExplanation(order, evidence);
+            replyKind = 'technical';
         } else if (mode === 'fix') {
             reply = buildImprovementPlan(order);
+            replyKind = 'fix';
         } else if (mode === 'failures') {
             reply = buildFailedCriteriaSummary(order);
+            replyKind = 'failures';
         } else {
             const fallback = await buildFallbackAnswer(message, order, evidence, sectionKey, history);
             reply = fallback?.reply || buildOrderScoreExplanation(order);
             usedFallback = Boolean(fallback?.reply);
+            replyKind = fallback?.reply ? 'fallback' : 'score';
             if (fallback?.reply) {
                 answerMetadata = {
                     fallbackPromptKey: fallback.promptKey,
@@ -514,12 +540,15 @@ export async function POST(req: Request) {
             }
         }
 
-        const cards = buildResponseCards({
-            order,
-            mode,
-            criterionKey,
-            evidence,
-        });
+        const effectiveCriterionKey = getReplyCriterionKey(replyKind, criterionKey);
+        const cards = shouldShowOrderCards(replyKind)
+            ? buildResponseCards({
+                order,
+                mode,
+                criterionKey: effectiveCriterionKey,
+                evidence,
+            })
+            : [];
         const formattedReply = applyResponseMode(reply, responseMode);
 
         let traceId: string | null = null;
@@ -533,9 +562,9 @@ export async function POST(req: Request) {
                     question: message,
                     answer: formattedReply,
                     intent: mode,
-                    criterionKey,
+                    criterionKey: effectiveCriterionKey,
                     usedFallback,
-                    answerMetadata: { cards, responseMode, sectionKey, ...(answerMetadata || {}) },
+                    answerMetadata: { cards, responseMode, sectionKey, replyKind, ...(answerMetadata || {}) },
                 });
             } catch (persistError: any) {
                 if (isMissingConsultantPersistenceError(persistError)) {
@@ -557,7 +586,7 @@ export async function POST(req: Request) {
             responseMode,
             persistenceDisabled,
             answerSource: usedFallback ? 'ai_generated' : 'deterministic',
-            answerMetadata,
+            answerMetadata: { replyKind, ...(answerMetadata || {}) },
             orderContext: {
                 orderId: order.order_id,
                 manager: order.manager_name || '—',
