@@ -6,9 +6,11 @@ import {
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
 import { runInsightAnalysis } from '@/lib/insight-agent';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+const WORKER_KEY = 'system_jobs.order_insight_refresh';
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -80,6 +82,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length });
+
     return NextResponse.json({
       ok: true,
       status: 'processed',
@@ -87,6 +91,9 @@ export async function GET(req: NextRequest) {
       results,
     });
   } catch (error: any) {
+    if (error.message !== 'Unauthorized') {
+      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown insight refresh route error');
+    }
     const isUnauthorized = error.message === 'Unauthorized';
     return NextResponse.json(
       { ok: false, error: error.message },

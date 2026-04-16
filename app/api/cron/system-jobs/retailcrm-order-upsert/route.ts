@@ -11,9 +11,11 @@ import {
   getRetailCrmOrderVersion,
   upsertRetailCrmOrders,
 } from '@/lib/retailcrm-orders';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+const WORKER_KEY = 'system_jobs.retailcrm_order_upsert';
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -119,6 +121,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length });
+
     return NextResponse.json({
       ok: true,
       status: 'processed',
@@ -126,6 +130,9 @@ export async function GET(req: NextRequest) {
       results,
     });
   } catch (error: any) {
+    if (error.message !== 'Unauthorized') {
+      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm order upsert route error');
+    }
     const isUnauthorized = error.message === 'Unauthorized';
     return NextResponse.json(
       { ok: false, error: error.message },

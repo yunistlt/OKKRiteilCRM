@@ -12,10 +12,12 @@ import {
   getRetailCrmOrderCursor,
   getRetailCrmOrderVersion,
 } from '@/lib/retailcrm-orders';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
+const WORKER_KEY = 'system_jobs.retailcrm_order_delta';
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -161,6 +163,11 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });
 
+      await recordWorkerSuccess(WORKER_KEY, {
+        queued_jobs: queuedJobs,
+        pages_processed: pagesProcessed,
+      });
+
       return NextResponse.json({
         ok: true,
         status: 'processed',
@@ -170,10 +177,14 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });
     } catch (error: any) {
+      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm delta worker error');
       await failSystemJob(job.id, error.message || 'Unknown retailcrm delta worker error', getRetryDelay(job.attempts || 0));
       throw error;
     }
   } catch (error: any) {
+    if (error.message !== 'Unauthorized') {
+      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm delta route error');
+    }
     const isUnauthorized = error.message === 'Unauthorized';
     return NextResponse.json(
       { ok: false, error: error.message },
