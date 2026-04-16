@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const baseUrl = new URL(request.url).origin;
     const report: string[] = [];
     const startTime = Date.now();
+    const isRealtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
     // Leave 20s buffer before the hard 300s limit kills us
     const TIMEOUT_THRESHOLD_MS = 280 * 1000;
 
@@ -56,15 +57,20 @@ export async function GET(request: Request) {
         }
         // 3. Refresh Priorities (Stagnation calculation)
         if (checkBudget('Priorities')) {
-            console.log('[CRON] Step 3: Priorities');
-            try {
-                const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
-                if (!prioRes.ok) throw new Error(`HTTP ${prioRes.status}: ${await prioRes.text().then(t => t.substring(0, 200))}`);
-                const prioJson = await prioRes.json();
-                report.push(`Priorities: ${prioJson.count || 0} updated`);
-            } catch (e: any) {
-                console.error('[CRON] Priorities Error:', e);
-                report.push(`Priorities: Error (${e.message})`);
+            if (isRealtimePipelineEnabled) {
+                console.log('[CRON] Step 3: Priorities skipped, realtime pipeline owns refresh');
+                report.push('Priorities: Skipped (realtime pipeline enabled)');
+            } else {
+                console.log('[CRON] Step 3: Priorities');
+                try {
+                    const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
+                    if (!prioRes.ok) throw new Error(`HTTP ${prioRes.status}: ${await prioRes.text().then(t => t.substring(0, 200))}`);
+                    const prioJson = await prioRes.json();
+                    report.push(`Priorities: ${prioJson.count || 0} updated`);
+                } catch (e: any) {
+                    console.error('[CRON] Priorities Error:', e);
+                    report.push(`Priorities: Error (${e.message})`);
+                }
             }
         }
 

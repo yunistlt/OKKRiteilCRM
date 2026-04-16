@@ -202,6 +202,7 @@
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
 - [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.
 - [x] Добавлен nightly reconciliation маршрут для `dialogue_stats` и `order_priorities` как fallback-backfill раз в сутки.
+- [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

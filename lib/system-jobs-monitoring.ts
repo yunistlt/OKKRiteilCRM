@@ -60,6 +60,7 @@ const MONITORED_WORKER_KEYS = [
   'system_jobs.call_match',
   'system_jobs.transcription',
   'system_jobs.manager_aggregate_refresh',
+  'system_jobs.nightly_reconciliation',
   'system_jobs.score_refresh',
   'system_jobs.order_insight_refresh',
 ] as const;
@@ -196,6 +197,66 @@ function buildQueueService(params: {
     last_run: effectiveLastRun,
     status,
     details: `queued ${params.queued}, processing ${params.processing}, oldest ${formatAge(oldestMinutes)}`,
+    reason,
+  };
+}
+
+function buildWorkerService(params: {
+  service: string;
+  cursor?: string | null;
+  lastRun?: string | null;
+  warningMinutes?: number;
+  errorMinutes?: number;
+  disabledReason?: string | null;
+  workerKey?: string | null;
+  stateMap: WorkerStateMap;
+}): MonitorServiceStatus {
+  const workerState = getWorkerState(params.stateMap, params.workerKey);
+  const effectiveLastRun = getLatestTimestamp(params.lastRun || null, workerState.lastSuccessAt);
+
+  if (params.disabledReason) {
+    return {
+      service: params.service,
+      cursor: params.cursor || 'Disabled',
+      last_run: effectiveLastRun,
+      status: 'warning',
+      details: 'Disabled',
+      reason: params.disabledReason,
+    };
+  }
+
+  const warningMinutes = params.warningMinutes ?? 24 * 60;
+  const errorMinutes = params.errorMinutes ?? 36 * 60;
+  const ageMinutes = minutesSince(effectiveLastRun);
+
+  let status: MonitorStatus = 'ok';
+  let reason: string | null = null;
+
+  if (!effectiveLastRun) {
+    status = 'warning';
+    reason = 'Ещё не выполнялся';
+  } else if (ageMinutes !== null && ageMinutes >= errorMinutes) {
+    status = 'error';
+    reason = `Давно не выполнялся: ${formatAge(ageMinutes)}`;
+  } else if (ageMinutes !== null && ageMinutes >= warningMinutes) {
+    status = 'warning';
+    reason = `Нужен контроль: ${formatAge(ageMinutes)} с последнего запуска`;
+  }
+
+  if (workerState.lastError && workerState.lastErrorAt) {
+    const errorIsNewerThanSuccess = !workerState.lastSuccessAt || new Date(workerState.lastErrorAt).getTime() >= new Date(workerState.lastSuccessAt).getTime();
+    if (errorIsNewerThanSuccess) {
+      status = 'error';
+      reason = `Последняя ошибка: ${workerState.lastError}`;
+    }
+  }
+
+  return {
+    service: params.service,
+    cursor: params.cursor || 'Worker',
+    last_run: effectiveLastRun,
+    status,
+    details: effectiveLastRun ? `last success ${formatAge(ageMinutes)} ago` : 'no successful runs yet',
     reason,
   };
 }
@@ -388,6 +449,15 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       errorQueued: 15,
       disabledReason: queueDisabledReason,
       workerKey: 'system_jobs.order_insight_refresh',
+      stateMap,
+    }),
+    buildWorkerService({
+      service: 'Nightly Reconciliation',
+      cursor: 'Daily fallback rebuild',
+      lastRun: null,
+      warningMinutes: 24 * 60,
+      errorMinutes: 36 * 60,
+      workerKey: 'system_jobs.nightly_reconciliation',
       stateMap,
     }),
   ];
