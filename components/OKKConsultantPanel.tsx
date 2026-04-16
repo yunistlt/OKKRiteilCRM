@@ -43,6 +43,33 @@ type ThreadSummary = {
     order_id?: number | null;
 };
 
+function normalizeFetchedMessages(items: any[] | null | undefined): ChatMessage[] {
+    return Array.isArray(items)
+        ? items.map((item: any) => ({
+            ...item,
+            metadata: item.metadata || null,
+        }))
+        : [];
+}
+
+function isOptimisticMessage(message: ChatMessage): boolean {
+    return message.id.includes('-user-') || message.id.includes('-agent-') || message.id.includes('-error-');
+}
+
+function getMessageIdentity(message: Pick<ChatMessage, 'role' | 'text'>): string {
+    return `${message.role}::${message.text}`;
+}
+
+function mergeThreadMessages(current: ChatMessage[], fetched: ChatMessage[]): ChatMessage[] {
+    if (current.length === 0) return fetched;
+    if (fetched.length === 0) return current;
+
+    const fetchedKeys = new Set(fetched.map((message) => getMessageIdentity(message)));
+    const optimisticTail = current.filter((message) => isOptimisticMessage(message) && !fetchedKeys.has(getMessageIdentity(message)));
+
+    return [...fetched, ...optimisticTail];
+}
+
 function formatTime(value: string): string {
     return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
@@ -153,14 +180,10 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     ...prev,
                     [threadKey]: Array.isArray(data.threads) ? data.threads : [],
                 }));
+                const fetchedMessages = normalizeFetchedMessages(data.messages);
                 setThreads((prev) => ({
                     ...prev,
-                    [threadKey]: Array.isArray(data.messages)
-                        ? data.messages.map((item: any) => ({
-                            ...item,
-                            metadata: item.metadata || null,
-                        }))
-                        : [],
+                    [threadKey]: mergeThreadMessages(prev[threadKey] || [], fetchedMessages),
                 }));
             } catch {
                 if (!aborted) {
