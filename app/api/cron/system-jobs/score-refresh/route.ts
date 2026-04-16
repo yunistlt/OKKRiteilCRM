@@ -5,7 +5,7 @@ import {
   failSystemJob,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
-import { runFullEvaluation } from '@/lib/okk-evaluator';
+import { evaluateOrder } from '@/lib/okk-evaluator';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -58,20 +58,20 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        const evaluation = await runFullEvaluation({ specificOrderId: orderId });
+        await evaluateOrder(orderId);
 
         await completeSystemJob(job.id, {
           order_id: orderId,
-          processed: evaluation.processed,
-          errors: evaluation.errors,
+          processed: 1,
+          errors: 0,
         });
 
         results.push({
           job_id: job.id,
           order_id: orderId,
           status: 'completed',
-          processed: evaluation.processed,
-          errors: evaluation.errors,
+          processed: 1,
+          errors: 0,
         });
       } catch (error: any) {
         await failSystemJob(job.id, error.message || 'Unknown score refresh worker error', getRetryDelay(job.attempts || 0));

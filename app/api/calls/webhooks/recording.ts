@@ -59,6 +59,16 @@ export async function POST(req: NextRequest) {
       idempotencyKey: `telphin_call_upsert:${call_id}:recording`,
     });
 
+    await safeEnqueueSystemJob({
+      jobType: 'call_match',
+      payload: {
+        telphin_call_id: call_id,
+        source: 'recording_webhook',
+      },
+      priority: 30,
+      idempotencyKey: `call_match:${call_id}:recording`,
+    });
+
     if (canonicalSync.queuedForTranscription) {
       await safeEnqueueSystemJob({
         jobType: 'call_transcription',

@@ -22,6 +22,22 @@
             "schedule": "*/10 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/call-match",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/transcription",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/score-refresh",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/watchdog",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/sync/managers",
             "schedule": "0 * * * *"
         },

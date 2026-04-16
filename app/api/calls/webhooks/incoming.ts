@@ -67,6 +67,20 @@ export async function POST(req: NextRequest) {
         priority: 30,
         idempotencyKey: `call_match:${call_id}:${matches[0].retailcrm_order_id}`,
       });
+
+      const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
+      for (const orderId of uniqueOrderIds) {
+        await safeEnqueueSystemJob({
+          jobType: 'order_score_refresh',
+          payload: {
+            order_id: orderId,
+            source: 'incoming_webhook_match',
+            telphin_call_id: call_id,
+          },
+          priority: 25,
+          idempotencyKey: `order_score_refresh:${orderId}:match:${call_id}`,
+        });
+      }
     }
 
     // Назначаем менеджера (если найден заказ)

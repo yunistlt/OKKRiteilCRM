@@ -187,6 +187,9 @@
 - [ ] Только после стабилизации выключить legacy-пути и старые параллельные таблицы.
 - [ ] На каждом этапе иметь флаг feature toggle для быстрого возврата на старый поток.
 
+Промежуточно реализовано в коде:
+- [x] Добавлены отдельные cron-маршруты для `call-match`, `transcription`, `score-refresh` и `watchdog` через system-jobs worker endpoints.
+
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 
 - [ ] RetailCRM orders delta poll: каждые 60 секунд в рабочее время, каждые 180 секунд ночью.
@@ -550,6 +553,9 @@
 
 Промежуточно реализовано в коде:
 - [x] Добавлен score-refresh worker endpoint для `order_score_refresh` jobs.
+- [x] Score-refresh worker переведён на прямой `evaluateOrder(orderId)` без вызова общего `runFullEvaluation`.
+- [x] После успешного match из incoming webhook ставится `order_score_refresh` для затронутого заказа.
+- [x] Добавлен отдельный `call_match` worker endpoint для обработки `call_match` jobs из очереди.
 
 ### Блок E. Monitoring
 
