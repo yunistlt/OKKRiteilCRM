@@ -19,6 +19,14 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
 
+        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+            return NextResponse.json({
+                success: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns RetailCRM history sync. Use force=true for emergency fallback run.',
+            });
+        }
+
         let startDate = '2025-01-01 00:00:00';
 
         // 1. Determine start date

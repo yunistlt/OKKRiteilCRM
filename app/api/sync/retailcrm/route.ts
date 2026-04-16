@@ -21,6 +21,15 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
+
+        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !forceResync) {
+            return NextResponse.json({
+                success: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns RetailCRM sync. Use force=true for emergency fallback run.',
+            });
+        }
+
         const startTime = Date.now();
         const maxTimeMs = 50000;
         const maxPagesPerRun = 20;

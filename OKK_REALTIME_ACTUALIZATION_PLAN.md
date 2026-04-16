@@ -216,6 +216,7 @@
 - [x] Incoming webhook перестал дублировать downstream `order_score_refresh`: ownership пересчёта после звонка оставлен за `call_match` worker и queue pipeline.
 - [x] Telphin fallback poller переведён в near-realtime safe режим: cron раз в 2 минуты, bounded lookback `TELPHIN_FALLBACK_MINUTES` (по умолчанию 15 минут) и постановка `call_match`/`call_transcription` jobs после fallback ingest.
 - [x] Telphin fallback sync начал писать в `sync_state` явные `telphin_fallback_lag_seconds` и `telphin_fallback_last_error`, а status backend начал показывать их в блоке Telphin Main Sync.
+- [x] Legacy `/api/sync/retailcrm` и `/api/sync/retailcrm/history` переведены в backup-only режим: при включенном realtime pipeline они по умолчанию `skip` и выполняются только через `force=true`.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 
