@@ -151,9 +151,9 @@
 ## 11. Этап 7. Агрегаты и витрины без тяжёлых полных refresh
 
 - [ ] Убрать зависимость пользовательских экранов от ручного refresh quality analytics.
-- [ ] Перевести dialogue_stats и похожие витрины на инкрементальное обновление по событию.
-- [ ] Пересчитывать manager-level aggregates только для затронутого manager_id.
-- [ ] Пересчитывать order_priorities только для затронутого order_id или для маленького набора изменившихся заказов.
+- [x] Перевести dialogue_stats и похожие витрины на инкрементальное обновление по событию.
+- [x] Пересчитывать manager-level aggregates только для затронутого manager_id.
+- [x] Пересчитывать order_priorities только для затронутого order_id или для маленького набора изменившихся заказов.
 - [ ] Оставить редкий полный reconciliation витрин 1 раз ночью.
 
 ## 12. Этап 8. Наблюдаемость и контроль лагов
@@ -199,6 +199,8 @@
 - [x] `system-audit` расширен Telegram-alerting по SLA lag/backlog для realtime pipeline с дедупликацией через `sync_state` и recovery-уведомлением.
 - [x] Критичные system-jobs workers начали писать `last_success_at`, `last_error_at` и `last_error` в `sync_state` для диагностики и rollback-контроля.
 - [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
+- [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
+- [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

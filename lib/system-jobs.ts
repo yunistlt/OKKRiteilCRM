@@ -138,6 +138,51 @@ export async function safeEnqueueOrderRefreshJob(input: EnqueueOrderRefreshJobIn
   return safeEnqueueSystemJob(buildOrderRefreshJobInput(input));
 }
 
+function buildManagerAggregateRefreshIdempotencyKey(params: {
+  managerId: number | string;
+  windowSeconds?: number;
+}) {
+  const windowSeconds = params.windowSeconds ?? 60;
+  const bucket = buildTimeBucket(windowSeconds);
+  return `manager_aggregate_refresh:${params.managerId}:bucket:${bucket}`;
+}
+
+interface EnqueueManagerAggregateRefreshJobInput {
+  managerId: number | string;
+  source: string;
+  priority?: number;
+  windowSeconds?: number;
+  payload?: Record<string, any>;
+  maxAttempts?: number;
+  parentJobId?: number | null;
+}
+
+function buildManagerAggregateRefreshJobInput(input: EnqueueManagerAggregateRefreshJobInput): EnqueueSystemJobInput {
+  return {
+    jobType: 'manager_aggregate_refresh',
+    payload: {
+      ...(input.payload || {}),
+      manager_id: input.managerId,
+      source: input.source,
+    },
+    priority: input.priority ?? 40,
+    idempotencyKey: buildManagerAggregateRefreshIdempotencyKey({
+      managerId: input.managerId,
+      windowSeconds: input.windowSeconds,
+    }),
+    maxAttempts: input.maxAttempts ?? 5,
+    parentJobId: input.parentJobId ?? null,
+  };
+}
+
+export async function enqueueManagerAggregateRefreshJob(input: EnqueueManagerAggregateRefreshJobInput) {
+  return enqueueSystemJob(buildManagerAggregateRefreshJobInput(input));
+}
+
+export async function safeEnqueueManagerAggregateRefreshJob(input: EnqueueManagerAggregateRefreshJobInput) {
+  return safeEnqueueSystemJob(buildManagerAggregateRefreshJobInput(input));
+}
+
 export async function claimSystemJobs(params: {
   workerId: string;
   jobTypes?: SystemJobType[];

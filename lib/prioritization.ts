@@ -267,6 +267,220 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
     return priorities.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
+export async function refreshStoredPriorityForOrder(orderId: number | string, skipAI: boolean = true) {
+    const numericOrderId = Number(orderId);
+    if (!Number.isFinite(numericOrderId) || numericOrderId <= 0) {
+        throw new Error('Invalid orderId for priority refresh');
+    }
+
+    const { data: workingSettings } = await supabase.from('status_settings').select('code').eq('is_working', true);
+    const workingCodes = (workingSettings || []).map(s => s.code);
+
+    const { data: order, error } = await supabase
+        .from('orders')
+        .select(`
+            id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload,
+            call_order_matches (
+                raw_telphin_calls (
+                    telphin_call_id, started_at, duration_sec, transcript
+                )
+            )
+        `)
+        .eq('id', numericOrderId)
+        .single();
+
+    if (error || !order) {
+        await supabase.from('order_priorities').delete().eq('order_id', numericOrderId);
+        return {
+            orderId: numericOrderId,
+            managerId: null,
+            status: 'deleted_missing_order'
+        };
+    }
+
+    const managerId = order.manager_id || null;
+
+    if (!workingCodes.includes(order.status)) {
+        await supabase.from('order_priorities').delete().eq('order_id', numericOrderId);
+        return {
+            orderId: numericOrderId,
+            managerId,
+            status: 'deleted_not_working'
+        };
+    }
+
+    const { data: managerRow } = managerId
+        ? await supabase.from('managers').select('first_name, last_name').eq('id', managerId).single()
+        : { data: null };
+
+    const { data: promptData } = skipAI
+        ? { data: null }
+        : await supabase
+            .from('system_prompts')
+            .select('content')
+            .eq('key', 'order_analysis_main')
+            .single();
+
+    const { data: histories } = await supabase
+        .from('order_history_log')
+        .select('*')
+        .eq('retailcrm_order_id', numericOrderId)
+        .order('occurred_at', { ascending: true });
+
+    const reasons: string[] = [];
+    let score = 0;
+    let level: PriorityLevel = 'black';
+    let aiSummary = 'Ожидание анализа';
+
+    const rawCalls = (order.call_order_matches || [])
+        .map((m: any) => m.raw_telphin_calls)
+        .filter((c: any) => c !== null)
+        .map((c: any) => ({
+            id: c.telphin_call_id,
+            timestamp: c.started_at,
+            duration: c.duration_sec,
+            transcript: c.transcript,
+        }));
+
+    const allCalls = rawCalls;
+    const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+    const totalCalls = allCalls.length;
+    const shortCalls = allCalls.filter((c: any) => c.duration < 20).length;
+    const longCalls = allCalls.filter((c: any) => c.duration >= 20).length;
+    const callPattern = `Total ${totalCalls} calls: ${shortCalls} short (<20s), ${longCalls} successful (>20s).`;
+
+    const statusChanges = (histories || [])
+        .filter((history: any) => history.field === 'status')
+        .map((history: any) => {
+            const date = new Date(history.occurred_at).toLocaleDateString('ru-RU');
+            return `${date}: ${history.old_value || 'New'} -> ${history.new_value}`;
+        });
+    const statusHistoryStr = statusChanges.length > 0 ? statusChanges.join('; ') : 'No status history found.';
+
+    const payload = order.raw_payload as any || {};
+    const items = (payload.items || []).map((item: any) => `${item.offer?.name || 'Unknown'} (x${item.quantity})`).join(', ');
+    const productInfo = items || 'No products listed';
+    const commentsContext = `Manager: "${payload.managerComment || 'None'}"\nCustomer: "${payload.customerComment || 'None'}"`;
+
+    const movementDates: number[] = [];
+    if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
+    if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
+    if (payload.statusUpdatedAt) movementDates.push(new Date(payload.statusUpdatedAt).getTime());
+    if (lastCall) movementDates.push(new Date(lastCall.timestamp).getTime());
+
+    const callsWithTranscript = allCalls
+        .filter((call: any) => call.transcript && call.transcript.length > 10)
+        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 3);
+
+    let transcriptHistory = '';
+    if (callsWithTranscript.length > 0) {
+        transcriptHistory = callsWithTranscript.map((call: any) => {
+            const dateStr = new Date(call.timestamp).toLocaleDateString('ru-RU');
+            return `[${dateStr}] ${call.transcript.substring(0, 1000)}`;
+        }).join('\n\n');
+    }
+
+    const now = new Date();
+    const lastMovementTs = movementDates.length > 0 ? Math.max(...movementDates) : now.getTime();
+    const daysSinceUpdate = (now.getTime() - lastMovementTs) / (1000 * 3600 * 24);
+
+    if (daysSinceUpdate > STAGNATION_DAYS) {
+        score += 40;
+        reasons.push(`Заказ висит без движения ${Math.round(daysSinceUpdate)} дней`);
+        level = daysSinceUpdate > 14 ? 'red' : 'yellow';
+    }
+
+    if ((order.status.includes('new') || order.status.includes('novy')) && daysSinceUpdate * 24 > CRITICAL_SLA_HOURS) {
+        score += 50;
+        reasons.push('Превышен SLA для нового заказа (>4ч)');
+        level = 'red';
+    }
+
+    if (!skipAI && callsWithTranscript.length > 0) {
+        const customFields = payload.customFields || {};
+        const top3 = {
+            price: customFields.top3_prokhodim_li_po_tsene2 === 'yes' ? 'Да' : customFields.top3_prokhodim_li_po_tsene2 === 'no' ? 'Нет' : 'Не указано',
+            timing: customFields.top3_prokhodim_po_srokam1 === 'yes' ? 'Да' : customFields.top3_prokhodim_po_srokam1 === 'no' ? 'Нет' : 'Не указано',
+            specs: customFields.top3_prokhodim_po_tekh_kharakteristikam === 'yes' ? 'Да' : customFields.top3_prokhodim_po_tekh_kharakteristikam === 'no' ? 'Нет' : 'Не указано'
+        };
+
+        const aiResult = await analyzeOrderWithAI(
+            transcriptHistory,
+            order.status,
+            daysSinceUpdate,
+            order.totalsumm || 0,
+            {
+                productInfo,
+                commentsContext,
+                statusHistoryStr,
+                callPattern
+            },
+            promptData?.content,
+            top3
+        );
+
+        if (aiResult) {
+            level = aiResult.traffic_light;
+            aiSummary = aiResult.short_reason;
+            reasons.push(`AI: ${aiResult.short_reason}`);
+            score += level === 'red' ? 50 : (level === 'yellow' ? 20 : 0);
+        }
+    }
+
+    if (level === 'black' && daysSinceUpdate < 3) {
+        level = 'green';
+        reasons.push('Недавняя активность (менее 3 дней)');
+    }
+
+    if (level === 'black' && reasons.length === 0) {
+        reasons.push('Критичных сигналов для эскалации не найдено');
+        aiSummary = 'Сделка без критичных признаков стагнации';
+    }
+
+    const managerName = managerRow
+        ? `${managerRow.first_name || ''} ${managerRow.last_name || ''}`.trim()
+        : 'Unknown';
+
+    const priority = {
+        orderId: numericOrderId,
+        orderNumber: order.number,
+        managerId,
+        managerName,
+        level,
+        score: Math.min(score, 100),
+        reasons,
+        summary: aiSummary,
+        recommendedAction: 'Проверить статус',
+        lastActionAt: order.updated_at,
+        totalSum: order.totalsumm || 0
+    };
+
+    const { error: upsertError } = await supabase
+        .from('order_priorities')
+        .upsert({
+            order_id: priority.orderId,
+            level: priority.level,
+            score: priority.score,
+            reasons: priority.reasons,
+            summary: priority.summary,
+            recommended_action: priority.recommendedAction || null,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'order_id' });
+
+    if (upsertError) {
+        throw upsertError;
+    }
+
+    return {
+        orderId: numericOrderId,
+        managerId,
+        status: 'updated',
+        level: priority.level,
+        score: priority.score
+    };
+}
+
 export async function getStoredPriorities(limit: number = 2000): Promise<OrderPriority[]> {
     // 1. Get working statuses first
     const { data: workingSettings } = await supabase.from('status_settings').select('code').eq('is_working', true);

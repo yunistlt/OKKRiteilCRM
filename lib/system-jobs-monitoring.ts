@@ -26,6 +26,7 @@ export interface RealtimePipelineMonitoringSnapshot {
     retailcrmCursorLagSeconds: number | null;
     retailcrmHistoryCursorLagSeconds: number | null;
     transcriptionQueueOldestSeconds: number | null;
+    managerAggregateQueueOldestSeconds: number | null;
     scoreQueueOldestSeconds: number | null;
     insightQueueOldestSeconds: number | null;
   };
@@ -47,6 +48,7 @@ const MONITORED_JOB_TYPES = [
   'retailcrm_order_upsert',
   'call_match',
   'call_transcription',
+  'manager_aggregate_refresh',
   'order_score_refresh',
   'order_insight_refresh',
 ] as const;
@@ -57,6 +59,7 @@ const MONITORED_WORKER_KEYS = [
   'system_jobs.retailcrm_history_delta',
   'system_jobs.call_match',
   'system_jobs.transcription',
+  'system_jobs.manager_aggregate_refresh',
   'system_jobs.score_refresh',
   'system_jobs.order_insight_refresh',
 ] as const;
@@ -254,6 +257,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     : (!queueAvailable ? 'system_jobs migration еще не применена' : null);
 
   const transcriptionOldest = oldestQueuedMinutes(rows, ['call_transcription']);
+  const managerAggregateOldest = oldestQueuedMinutes(rows, ['manager_aggregate_refresh']);
   const scoreOldest = oldestQueuedMinutes(rows, ['order_score_refresh']);
   const insightOldest = oldestQueuedMinutes(rows, ['order_insight_refresh']);
 
@@ -339,6 +343,22 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       stateMap,
     }),
     buildQueueService({
+      service: 'Manager Aggregate Queue',
+      cursor: 'manager_aggregate_refresh',
+      lastRun: null,
+      queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
+      processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
+      deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
+      oldestQueuedMinutes: managerAggregateOldest,
+      warningMinutes: 10,
+      errorMinutes: 30,
+      warningQueued: 6,
+      errorQueued: 15,
+      disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.manager_aggregate_refresh',
+      stateMap,
+    }),
+    buildQueueService({
       service: 'Score Refresh Queue',
       cursor: 'order_score_refresh',
       lastRun: null,
@@ -385,6 +405,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       retailcrmCursorLagSeconds: secondsSince(retailcrmCursor),
       retailcrmHistoryCursorLagSeconds: secondsSince(retailcrmHistoryCursor),
       transcriptionQueueOldestSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
+      managerAggregateQueueOldestSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
       scoreQueueOldestSeconds: scoreOldest === null ? null : scoreOldest * 60,
       insightQueueOldestSeconds: insightOldest === null ? null : insightOldest * 60,
     },

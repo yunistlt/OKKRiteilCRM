@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueManagerAggregateRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
-import { evaluateOrder } from '@/lib/okk-evaluator';
-import { refreshStoredPriorityForOrder } from '@/lib/prioritization';
+import { refreshManagerDialogueStats } from '@/lib/manager-aggregates';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
-const WORKER_KEY = 'system_jobs.score_refresh';
+const WORKER_KEY = 'system_jobs.manager_aggregate_refresh';
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -36,11 +34,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 
-    const workerId = `score-refresh-worker:${Date.now()}`;
     const claimed = await claimSystemJobs({
-      workerId,
-      jobTypes: ['order_score_refresh'],
-      limit: 2,
+      workerId: `manager-aggregate-refresh:${Date.now()}`,
+      jobTypes: ['manager_aggregate_refresh'],
+      limit: 3,
       lockSeconds: 240,
     });
 
@@ -51,57 +48,38 @@ export async function GET(req: NextRequest) {
     const results: Array<Record<string, any>> = [];
 
     for (const job of claimed) {
-      const payload = (job.payload || {}) as { order_id?: number | string };
-      const rawOrderId = payload.order_id;
-      const orderId = rawOrderId ? Number(rawOrderId) : NaN;
+      const payload = (job.payload || {}) as { manager_id?: number | string; source?: string };
+      const rawManagerId = payload.manager_id;
+      const managerId = rawManagerId ? Number(rawManagerId) : NaN;
 
-      if (!Number.isFinite(orderId) || orderId <= 0) {
-        await failSystemJob(job.id, 'Missing or invalid order_id', 300);
+      if (!Number.isFinite(managerId) || managerId <= 0) {
+        await failSystemJob(job.id, 'Missing or invalid manager_id', 300);
         results.push({ job_id: job.id, status: 'failed_validation' });
         continue;
       }
 
       try {
-        await evaluateOrder(orderId);
-
-        const priorityResult = await refreshStoredPriorityForOrder(orderId, true);
-        const managerId = priorityResult.managerId ? Number(priorityResult.managerId) : null;
-
-        if (managerId) {
-          await enqueueManagerAggregateRefreshJob({
-            managerId,
-            source: 'score_refresh_worker',
-            payload: {
-              order_id: orderId,
-              priority_status: priorityResult.status,
-            },
-            priority: 45,
-            parentJobId: job.id,
-          });
-        }
+        const aggregateResult = await refreshManagerDialogueStats(managerId);
 
         await completeSystemJob(job.id, {
-          order_id: orderId,
-          processed: 1,
-          errors: 0,
-          priority_status: priorityResult.status,
           manager_id: managerId,
+          source: payload.source || 'manager_aggregate_refresh',
+          ...aggregateResult,
         });
 
         results.push({
           job_id: job.id,
-          order_id: orderId,
-          status: 'completed',
-          processed: 1,
-          errors: 0,
-          priority_status: priorityResult.status,
           manager_id: managerId,
+          source: payload.source || 'manager_aggregate_refresh',
+          status: aggregateResult.status,
+          matches_found: aggregateResult.matchesFound,
+          calls_linked: aggregateResult.callsLinked,
         });
       } catch (error: any) {
-        await failSystemJob(job.id, error.message || 'Unknown score refresh worker error', getRetryDelay(job.attempts || 0));
+        await failSystemJob(job.id, error.message || 'Unknown manager aggregate worker error', getRetryDelay(job.attempts || 0));
         results.push({
           job_id: job.id,
-          order_id: orderId,
+          manager_id: managerId,
           status: 'failed',
           error: error.message,
         });
@@ -112,7 +90,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, status: 'processed', processed: results.length, results });
   } catch (error: any) {
     if (error.message !== 'Unauthorized') {
-      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown score refresh route error');
+      await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown manager aggregate route error');
     }
     const isUnauthorized = error.message === 'Unauthorized';
     return NextResponse.json(
