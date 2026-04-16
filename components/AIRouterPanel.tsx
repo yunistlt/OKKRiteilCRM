@@ -758,7 +758,6 @@ const COL_GROUPS = {
                 <div className="flex-1 border-t border-gray-100 bg-gray-100/30" />
             )}
             </div>
-            </div>
             
             <style jsx>{`
                 .custom-scrollbar::-webkit-scrollbar {
