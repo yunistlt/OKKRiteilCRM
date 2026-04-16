@@ -4,8 +4,20 @@ import { supabase } from '@/utils/supabase';
 
 const WORKER_KEY = 'system_jobs.rule_engine';
 
+function parsePositiveInt(value: string | undefined, fallback: number) {
+  const parsed = Number.parseInt(value || '', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
 export function isRealtimeRuleEngineEnabled() {
   return process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+}
+
+export function getRuleEngineFallbackHours() {
+  return parsePositiveInt(process.env.RULE_ENGINE_FALLBACK_HOURS, 2);
 }
 
 export async function executeRuleEngineWindow(input?: {

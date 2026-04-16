@@ -209,6 +209,7 @@
 - [x] Rule Engine вынесен в отдельный cron-safe realtime маршрут, а legacy `/api/cron` перестал запускать rules при включенном realtime pipeline.
 - [x] Семантические call-rules вынесены из direct transcription-trigger в отдельную `call_semantic_rules` очередь с dedicated worker, cron и latency/backlog monitoring.
 - [x] Manual `rules/execute` и `priorities/refresh` перестали быть обходом legacy broad-scan path: теперь они используют общий realtime-safe runner или пропускают Rule Engine, когда ownership у realtime pipeline.
+- [x] Periodic Rule Engine fallback перестал каждые 5 минут сканировать 24 часа по умолчанию: cron/analysis routes теперь используют короткое настраиваемое fallback-окно `RULE_ENGINE_FALLBACK_HOURS` (по умолчанию 2 часа).
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

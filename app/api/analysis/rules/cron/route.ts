@@ -1,19 +1,22 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getRuleEngineFallbackHours } from '@/lib/rule-engine-execution';
 import { runRuleEngine } from '@/lib/rule-engine';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes
+
+const DEFAULT_FALLBACK_HOURS = getRuleEngineFallbackHours();
 
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
 
-        // Default window: Look back 24 hours to catch any late-arriving data or missed events
-        // Overlap is fine, as Rule Engine uses idempotency (upsert) for violations.
+        // Default window is intentionally narrow: periodic fallback should reconcile recent drift,
+        // while deep backfills stay explicit via start/end parameters or nightly reconciliation.
         const now = new Date();
-        const lookback = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        const lookback = new Date(now.getTime() - DEFAULT_FALLBACK_HOURS * 60 * 60 * 1000);
 
         const start = searchParams.get('start') || lookback.toISOString();
         const end = searchParams.get('end') || now.toISOString();
