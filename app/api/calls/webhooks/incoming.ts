@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
-import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { safeEnqueueOrderRefreshJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
@@ -70,15 +70,14 @@ export async function POST(req: NextRequest) {
 
       const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
       for (const orderId of uniqueOrderIds) {
-        await safeEnqueueSystemJob({
+        await safeEnqueueOrderRefreshJob({
           jobType: 'order_score_refresh',
+          orderId,
+          source: 'incoming_webhook_match',
           payload: {
-            order_id: orderId,
-            source: 'incoming_webhook_match',
             telphin_call_id: call_id,
           },
           priority: 25,
-          idempotencyKey: `order_score_refresh:${orderId}:match:${call_id}`,
         });
       }
     }

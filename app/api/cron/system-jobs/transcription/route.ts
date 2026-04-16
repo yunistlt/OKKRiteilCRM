@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueSystemJob,
+  enqueueOrderRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
@@ -75,15 +75,14 @@ export async function GET(req: NextRequest) {
           .single();
 
         if (match?.retailcrm_order_id) {
-          await enqueueSystemJob({
+          await enqueueOrderRefreshJob({
             jobType: 'order_score_refresh',
+            orderId: match.retailcrm_order_id,
+            source: 'call_transcription_worker',
             payload: {
-              order_id: match.retailcrm_order_id,
-              source: 'call_transcription_worker',
               telphin_call_id: callId,
             },
             priority: 25,
-            idempotencyKey: `order_score_refresh:${match.retailcrm_order_id}:transcript:${callId}`,
           });
         }
 

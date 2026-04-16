@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueSystemJob,
+  enqueueOrderRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
@@ -74,27 +74,25 @@ export async function GET(req: NextRequest) {
 
         const version = getRetailCrmOrderVersion(order);
 
-        await enqueueSystemJob({
+        await enqueueOrderRefreshJob({
           jobType: 'order_score_refresh',
+          orderId,
+          source: payload.source || 'retailcrm_order_upsert',
           payload: {
-            order_id: orderId,
-            source: payload.source || 'retailcrm_order_upsert',
             order_updated_at: version,
           },
           priority: 25,
-          idempotencyKey: `order_score_refresh:${orderId}:retailcrm:${version}`,
           parentJobId: job.id,
         });
 
-        await enqueueSystemJob({
+        await enqueueOrderRefreshJob({
           jobType: 'order_insight_refresh',
+          orderId,
+          source: payload.source || 'retailcrm_order_upsert',
           payload: {
-            order_id: orderId,
-            source: payload.source || 'retailcrm_order_upsert',
             order_updated_at: version,
           },
           priority: 35,
-          idempotencyKey: `order_insight_refresh:${orderId}:retailcrm:${version}`,
           parentJobId: job.id,
         });
 
