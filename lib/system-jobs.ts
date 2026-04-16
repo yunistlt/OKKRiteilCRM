@@ -83,59 +83,59 @@ export async function safeEnqueueSystemJob(input: EnqueueSystemJobInput) {
     }
 
     throw error;
-
-    function buildTimeBucket(windowSeconds: number, now: Date = new Date()) {
-      return Math.floor(now.getTime() / (windowSeconds * 1000));
-    }
-
-    function buildOrderRefreshIdempotencyKey(params: {
-      jobType: 'order_score_refresh' | 'order_insight_refresh';
-      orderId: number | string;
-      windowSeconds?: number;
-    }) {
-      const windowSeconds = params.windowSeconds ?? 30;
-      const bucket = buildTimeBucket(windowSeconds);
-      return `${params.jobType}:${params.orderId}:bucket:${bucket}`;
-    }
-
-    interface EnqueueOrderRefreshJobInput {
-      jobType: 'order_score_refresh' | 'order_insight_refresh';
-      orderId: number | string;
-      source: string;
-      priority?: number;
-      windowSeconds?: number;
-      payload?: Record<string, any>;
-      maxAttempts?: number;
-      parentJobId?: number | null;
-    }
-
-    function buildOrderRefreshJobInput(input: EnqueueOrderRefreshJobInput): EnqueueSystemJobInput {
-      return {
-        jobType: input.jobType,
-        payload: {
-          ...(input.payload || {}),
-          order_id: input.orderId,
-          source: input.source,
-        },
-        priority: input.priority ?? 25,
-        idempotencyKey: buildOrderRefreshIdempotencyKey({
-          jobType: input.jobType,
-          orderId: input.orderId,
-          windowSeconds: input.windowSeconds,
-        }),
-        maxAttempts: input.maxAttempts ?? 5,
-        parentJobId: input.parentJobId ?? null,
-      };
-    }
-
-    export async function enqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput) {
-      return enqueueSystemJob(buildOrderRefreshJobInput(input));
-    }
-
-    export async function safeEnqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput) {
-      return safeEnqueueSystemJob(buildOrderRefreshJobInput(input));
-    }
   }
+}
+
+function buildTimeBucket(windowSeconds: number, now: Date = new Date()) {
+  return Math.floor(now.getTime() / (windowSeconds * 1000));
+}
+
+function buildOrderRefreshIdempotencyKey(params: {
+  jobType: 'order_score_refresh' | 'order_insight_refresh';
+  orderId: number | string;
+  windowSeconds?: number;
+}) {
+  const windowSeconds = params.windowSeconds ?? 30;
+  const bucket = buildTimeBucket(windowSeconds);
+  return `${params.jobType}:${params.orderId}:bucket:${bucket}`;
+}
+
+interface EnqueueOrderRefreshJobInput {
+  jobType: 'order_score_refresh' | 'order_insight_refresh';
+  orderId: number | string;
+  source: string;
+  priority?: number;
+  windowSeconds?: number;
+  payload?: Record<string, any>;
+  maxAttempts?: number;
+  parentJobId?: number | null;
+}
+
+function buildOrderRefreshJobInput(input: EnqueueOrderRefreshJobInput): EnqueueSystemJobInput {
+  return {
+    jobType: input.jobType,
+    payload: {
+      ...(input.payload || {}),
+      order_id: input.orderId,
+      source: input.source,
+    },
+    priority: input.priority ?? 25,
+    idempotencyKey: buildOrderRefreshIdempotencyKey({
+      jobType: input.jobType,
+      orderId: input.orderId,
+      windowSeconds: input.windowSeconds,
+    }),
+    maxAttempts: input.maxAttempts ?? 5,
+    parentJobId: input.parentJobId ?? null,
+  };
+}
+
+export async function enqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput) {
+  return enqueueSystemJob(buildOrderRefreshJobInput(input));
+}
+
+export async function safeEnqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput) {
+  return safeEnqueueSystemJob(buildOrderRefreshJobInput(input));
 }
 
 export async function claimSystemJobs(params: {

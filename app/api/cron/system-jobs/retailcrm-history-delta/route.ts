@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
 
           rowsUpserted += rowsToUpsert.length;
 
-          for (const [orderId, historyId] of lastHistoryIdByOrder.entries()) {
+          for (const [orderId, historyId] of Array.from(lastHistoryIdByOrder.entries())) {
             await enqueueSystemJob({
               jobType: 'retailcrm_order_upsert',
               payload: {
