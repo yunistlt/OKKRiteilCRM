@@ -1,6 +1,6 @@
 # План актуализации ОКК в near realtime
 
-Статус: план реализации без внесения кода.
+Статус: план в исполнении, часть near realtime pipeline уже реализована в коде.
 
 Цель: убрать заметное расхождение между RetailCRM, Telphin и ОКК, чтобы:
 - данные по заказам в ОКК обновлялись почти сразу после изменений в RetailCRM;
@@ -189,6 +189,11 @@
 
 Промежуточно реализовано в коде:
 - [x] Добавлены отдельные cron-маршруты для `call-match`, `transcription`, `score-refresh` и `watchdog` через system-jobs worker endpoints.
+- [x] Вынесен общий RetailCRM helper-слой для fetch/upsert snapshot-заказов без дублирования логики между batch и queue path.
+- [x] Добавлен `retailcrm-order-delta` worker, который ставит отдельные `retailcrm_order_upsert` jobs по найденным изменениям.
+- [x] Добавлен `retailcrm-history-delta` worker с частым дельта-проходом по `orders/history` и постановкой `retailcrm_order_upsert` jobs.
+- [x] Добавлен `retailcrm-order-upsert` worker, который после upsert заказа запускает `order_score_refresh` и `order_insight_refresh`.
+- [x] Добавлен `order-insight-refresh` worker и cron-расписание для CRM near realtime цепочки.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

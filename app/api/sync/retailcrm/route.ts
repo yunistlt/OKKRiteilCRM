@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import {
+    fetchRetailCrmOrdersPage,
+    getRetailCrmOrderCursor,
+    upsertRetailCrmOrders,
+} from '@/lib/retailcrm-orders';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -7,12 +12,6 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 export const dynamic = 'force-dynamic';
 
 export const maxDuration = 300;
-
-// Helper to normalize phone numbers
-function cleanPhone(val: any): string {
-    if (!val) return '';
-    return String(val).replace(/[^\d+]/g, '');
-}
 
 export async function GET(request: Request) {
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
@@ -59,34 +58,21 @@ export async function GET(request: Request) {
         let totalOrdersFetched = 0;
         let hasMore = true;
         let finalPagination = null;
-        let maxUpdatedAtFound: Date | null = null;
+        let maxCursorFound: Date | null = null;
 
         // 2. Loop Pages
         while (hasMore && pagesProcessed < maxPagesPerRun && (Date.now() - startTime) < maxTimeMs) {
-            const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
             const limit = 100;
-
-            const params = new URLSearchParams();
-            params.append('apiKey', RETAILCRM_API_KEY);
-            params.append('limit', String(limit));
-            params.append('page', String(page));
-            params.append('filter[createdAtFrom]', filterDateFrom);
-
-            const url = `${baseUrl}/api/v5/orders?${params.toString()}`;
-            console.log(`[Orders Sync] Fetching Page ${page}:`, url);
+            console.log(`[Orders Sync] Fetching Page ${page} from ${filterDateFrom}`);
 
             const { logAgentActivity } = await import('@/lib/agent-logger');
             await logAgentActivity('semen', 'working', `Проверяю страницу ${page} в RetailCRM...`);
 
-            const res = await fetch(url);
-            if (!res.ok) {
-                const errorBody = await res.text();
-                console.error(`[Orders Sync] RetailCRM Error ${res.status}:`, errorBody);
-                throw new Error(`RetailCRM API Error ${res.status}: ${errorBody.substring(0, 200)}`);
-            }
-
-            const data = await res.json();
-            if (!data.success) throw new Error(`RetailCRM Success False: ${JSON.stringify(data)}`);
+            const data = await fetchRetailCrmOrdersPage({
+                page,
+                limit,
+                createdAtFrom: filterDateFrom,
+            });
 
             const orders = data.orders || [];
             finalPagination = data.pagination;
@@ -100,66 +86,23 @@ export async function GET(request: Request) {
 
             // 3. Transform
             for (const order of orders) {
-                // Tracking the most recent updatedAt in this batch
-                if (order.updatedAt) {
-                    const orderUpdateDate = new Date(order.updatedAt);
-                    if (!maxUpdatedAtFound || orderUpdateDate > maxUpdatedAtFound) {
-                        maxUpdatedAtFound = orderUpdateDate;
-                    }
+                const orderCursor = getRetailCrmOrderCursor(order);
+                if (orderCursor && (!maxCursorFound || orderCursor > maxCursorFound)) {
+                    maxCursorFound = orderCursor;
                 }
-
-                const phones = new Set<string>();
-                const p1 = cleanPhone(order.phone); if (p1) phones.add(p1);
-                const p2 = cleanPhone(order.additionalPhone); if (p2) phones.add(p2);
-
-                if (order.customer && order.customer.phones) {
-                    order.customer.phones.forEach((p: any) => {
-                        const cp = cleanPhone(p.number);
-                        if (cp) phones.add(cp);
-                    });
-                }
-                if (order.contact && order.contact.phones) {
-                    order.contact.phones.forEach((p: any) => {
-                        const cp = cleanPhone(p.number);
-                        if (cp) phones.add(cp);
-                    });
-                }
-
-                eventsToUpsert.push({
-                    id: order.id,
-                    order_id: order.id,
-                    created_at: order.createdAt,
-                    updated_at: new Date().toISOString(), // This is system entry update time, RetailCRM's updatedAt is in raw_payload
-                    number: order.number || String(order.id),
-                    status: order.status,
-                    site: order.site || null,
-                    event_type: 'snapshot',
-                    manager_id: order.managerId ? String(order.managerId) : null,
-                    phone: cleanPhone(order.phone) || null,
-                    customer_phones: Array.from(phones),
-                    totalsumm: order.totalSumm || 0,
-                    raw_payload: order,
-                    prichiny_otmeny: order.customFields?.prichiny_otmeny || null
-                });
+                eventsToUpsert.push(order);
             }
 
             // 4. Upsert Orders
             if (eventsToUpsert.length > 0) {
-                const { error } = await supabase.rpc('upsert_orders_v2', {
-                    orders_data: eventsToUpsert
-                });
-
-                if (error) {
-                    console.error('RPC Upsert Error:', error);
-                    throw error;
-                }
+                await upsertRetailCrmOrders(eventsToUpsert);
             }
 
             // Trigger Insight Agent for the first order
             if (eventsToUpsert.length > 0) {
                 try {
                     const { runInsightAnalysis } = await import('@/lib/insight-agent');
-                    runInsightAnalysis(eventsToUpsert[0].order_id).catch(e => console.error('[InsightAgent] Sync trigger failed:', e));
+                    runInsightAnalysis(eventsToUpsert[0].id).catch(e => console.error('[InsightAgent] Sync trigger failed:', e));
                 } catch (e) { }
             }
 
@@ -174,15 +117,15 @@ export async function GET(request: Request) {
         }
 
         // 5. Update sync_state if we actually found and processed something
-        if (maxUpdatedAtFound) {
+        if (maxCursorFound) {
             await supabase
                 .from('sync_state')
                 .upsert({
                     key: 'retailcrm_orders_sync',
-                    value: maxUpdatedAtFound.toISOString(),
+                    value: maxCursorFound.toISOString(),
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'key' });
-            console.log(`[Orders Sync] Updated sync_state to: ${maxUpdatedAtFound.toISOString()}`);
+            console.log(`[Orders Sync] Updated sync_state to: ${maxCursorFound.toISOString()}`);
         }
 
         // Reset status to idle
@@ -194,7 +137,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
             success: true,
             method: 'orders_state_based_sync',
-            last_sync_stored: maxUpdatedAtFound?.toISOString() || 'unchanged',
+            last_sync_stored: maxCursorFound?.toISOString() || 'unchanged',
             filter_date_from: filterDateFrom,
             pages_processed: pagesProcessed,
             total_orders_fetched: totalOrdersFetched,

@@ -26,8 +26,24 @@
             "schedule": "*/1 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/retailcrm-order-delta",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/retailcrm-order-upsert",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/retailcrm-history-delta",
+            "schedule": "*/2 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/transcription",
             "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/order-insight-refresh",
+            "schedule": "*/2 * * * *"
         },
         {
             "path": "/api/cron/system-jobs/score-refresh",

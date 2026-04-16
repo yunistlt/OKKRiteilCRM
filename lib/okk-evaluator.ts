@@ -321,50 +321,13 @@ function getManagerShortName(raw: any): string {
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
 // ═══════════════════════════════════════════════════════
 export async function syncOrderFromRetailCRM(orderId: number) {
-    const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
-    const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
-
-    if (!RETAILCRM_URL || !RETAILCRM_API_KEY) return null;
+    const { fetchRetailCrmOrder, upsertRetailCrmOrders } = await import('./retailcrm-orders');
 
     try {
-        const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
-        const url = `${baseUrl}/api/v5/orders/${orderId}?apiKey=${RETAILCRM_API_KEY}&by=id`;
-        const res = await fetch(url);
-        const data = await res.json();
+        const order = await fetchRetailCrmOrder(orderId);
 
-        if (data.success && data.order) {
-            const order = data.order;
-
-            // Собираем телефоны как в основном синхронизаторе
-            const phones = new Set<string>();
-            const clean = (v: any) => String(v || '').replace(/[^\d+]/g, '');
-            if (order.phone) phones.add(clean(order.phone));
-            if (order.additionalPhone) phones.add(clean(order.additionalPhone));
-            if (order.customer?.phones) order.customer.phones.forEach((p: any) => phones.add(clean(p.number)));
-            if (order.contact?.phones) order.contact.phones.forEach((p: any) => phones.add(clean(p.number)));
-
-            const mapped = {
-                id: order.id,
-                order_id: order.id,
-                created_at: order.createdAt,
-                updated_at: new Date().toISOString(),
-                number: order.number || String(order.id),
-                status: order.status,
-                site: order.site || null,
-                event_type: 'snapshot',
-                manager_id: order.managerId ? String(order.managerId) : null,
-                phone: clean(order.phone) || null,
-                customer_phones: Array.from(phones),
-                totalsumm: order.totalSumm || 0,
-                raw_payload: order,
-                prichiny_otmeny: order.customFields?.prichiny_otmeny || null
-            };
-
-            // Используем RPC для надежного апдейта
-            await supabase.rpc('upsert_orders_v2', {
-                orders_data: [mapped]
-            });
-
+        if (order) {
+            await upsertRetailCrmOrders([order]);
             return order;
         }
     } catch (e) {
