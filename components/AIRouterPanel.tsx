@@ -329,13 +329,13 @@ const COL_GROUPS = {
     );
 
     if (!isMounted) return (
-        <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-8 flex justify-center items-center h-[200px]">
+        <div className="flex min-h-full w-full items-center justify-center border border-slate-200/80 bg-white">
              <div className="animate-spin text-2xl">⚙️</div>
         </div>
     );
 
     return (
-<div className="w-full bg-white rounded-lg shadow-sm border border-gray-200">
+<div className="flex min-h-full w-full flex-col overflow-hidden border border-slate-200/80 bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
             {selectedOrderId && (
                 <OrderDetailsModal
                     orderId={selectedOrderId}
@@ -344,7 +344,7 @@ const COL_GROUPS = {
                 />
             )}
 
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+            <div className="border-b border-gray-100 px-3 py-2 flex justify-between items-center">
                 <div>
                     <h2 className="text-lg font-bold flex items-center gap-2">
                         <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
@@ -376,7 +376,8 @@ const COL_GROUPS = {
                 </div>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="flex flex-1 flex-col bg-gray-100/30">
+            <div className="p-3 space-y-4">
                 {/* Controls */}
                 <div className="bg-gray-50 rounded-lg p-3 space-y-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -752,6 +753,11 @@ const COL_GROUPS = {
                         </div>
                     </div>
                 )}
+            </div>
+            {!results && !summary && !error && (
+                <div className="flex-1 border-t border-gray-100 bg-gray-100/30" />
+            )}
+            </div>
             </div>
             
             <style jsx>{`
