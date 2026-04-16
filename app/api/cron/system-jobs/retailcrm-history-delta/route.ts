@@ -8,6 +8,7 @@ import {
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
 import { fetchRetailCrmHistoryPage } from '@/lib/retailcrm-orders';
+import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -176,23 +177,13 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      if (maxOccurredAt) {
-        await supabase
-          .from('sync_state')
-          .upsert({
-            key: 'retailcrm_history_sync',
-            value: maxOccurredAt.toISOString(),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key' });
-      }
-
-      await supabase
-        .from('sync_state')
-        .upsert({
-          key: 'retailcrm_history_queue_last_success_at',
-          value: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+      await recordRetailCrmSyncSuccess({
+        cursorKey: 'retailcrm_history_sync',
+        successKey: 'retailcrm_history_queue_last_success_at',
+        lagKey: 'retailcrm_history_lag_seconds',
+        errorKey: 'retailcrm_history_last_error',
+        cursorValue: maxOccurredAt?.toISOString() || null,
+      });
 
       await completeSystemJob(job.id, {
         rows_upserted: rowsUpserted,
@@ -218,12 +209,20 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxOccurredAt?.toISOString() || null,
       });
     } catch (error: any) {
+      await recordRetailCrmSyncFailure({
+        errorKey: 'retailcrm_history_last_error',
+        message: error.message || 'Unknown retailcrm history worker error',
+      });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm history worker error');
       await failSystemJob(job.id, error.message || 'Unknown retailcrm history worker error', getRetryDelay(job.attempts || 0));
       throw error;
     }
   } catch (error: any) {
     if (error.message !== 'Unauthorized') {
+      await recordRetailCrmSyncFailure({
+        errorKey: 'retailcrm_history_last_error',
+        message: error.message || 'Unknown retailcrm history route error',
+      });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm history route error');
     }
     const isUnauthorized = error.message === 'Unauthorized';

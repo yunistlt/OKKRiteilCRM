@@ -12,6 +12,7 @@ import {
   getRetailCrmOrderCursor,
   getRetailCrmOrderVersion,
 } from '@/lib/retailcrm-orders';
+import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -138,23 +139,13 @@ export async function GET(req: NextRequest) {
         }
       }
 
-      if (maxCursorFound) {
-        await supabase
-          .from('sync_state')
-          .upsert({
-            key: 'retailcrm_orders_sync',
-            value: maxCursorFound.toISOString(),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: 'key' });
-      }
-
-      await supabase
-        .from('sync_state')
-        .upsert({
-          key: 'retailcrm_orders_queue_last_success_at',
-          value: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'key' });
+      await recordRetailCrmSyncSuccess({
+        cursorKey: 'retailcrm_orders_sync',
+        successKey: 'retailcrm_orders_queue_last_success_at',
+        lagKey: 'retailcrm_orders_lag_seconds',
+        errorKey: 'retailcrm_orders_last_error',
+        cursorValue: maxCursorFound?.toISOString() || null,
+      });
 
       await completeSystemJob(job.id, {
         queued_jobs: queuedJobs,
@@ -177,12 +168,20 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });
     } catch (error: any) {
+      await recordRetailCrmSyncFailure({
+        errorKey: 'retailcrm_orders_last_error',
+        message: error.message || 'Unknown retailcrm delta worker error',
+      });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm delta worker error');
       await failSystemJob(job.id, error.message || 'Unknown retailcrm delta worker error', getRetryDelay(job.attempts || 0));
       throw error;
     }
   } catch (error: any) {
     if (error.message !== 'Unauthorized') {
+      await recordRetailCrmSyncFailure({
+        errorKey: 'retailcrm_orders_last_error',
+        message: error.message || 'Unknown retailcrm delta route error',
+      });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm delta route error');
     }
     const isUnauthorized = error.message === 'Unauthorized';
