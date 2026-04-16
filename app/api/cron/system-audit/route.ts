@@ -126,6 +126,12 @@ export async function GET(req: Request) {
             if (metrics.insightQueueOldestSeconds !== null && metrics.insightQueueOldestSeconds > 20 * 60) {
                 realtimeAlertLines.push(`очередь insight_refresh ждёт: ${Math.floor(metrics.insightQueueOldestSeconds / 60)} мин`);
             }
+            if (metrics.scoreToAggregateLatency.p95Seconds !== null && metrics.scoreToAggregateLatency.p95Seconds > 10 * 60) {
+                realtimeAlertLines.push(`p95 score→aggregate latency: ${Math.floor(metrics.scoreToAggregateLatency.p95Seconds / 60)} мин`);
+            }
+            if (metrics.transcriptionLatency.p95Seconds !== null && metrics.transcriptionLatency.p95Seconds > 20 * 60) {
+                realtimeAlertLines.push(`p95 transcription latency: ${Math.floor(metrics.transcriptionLatency.p95Seconds / 60)} мин`);
+            }
 
             if (realtimeAlertLines.length > 0) {
                 hasAnomalies = true;

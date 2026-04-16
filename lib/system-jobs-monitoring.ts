@@ -18,6 +18,12 @@ interface QueueSummary {
   oldestQueuedMinutes: number | null;
 }
 
+interface LatencyDistribution {
+  p50Seconds: number | null;
+  p95Seconds: number | null;
+  sampleSize: number;
+}
+
 export interface RealtimePipelineMonitoringSnapshot {
   enabled: boolean;
   queueAvailable: boolean;
@@ -29,6 +35,10 @@ export interface RealtimePipelineMonitoringSnapshot {
     managerAggregateQueueOldestSeconds: number | null;
     scoreQueueOldestSeconds: number | null;
     insightQueueOldestSeconds: number | null;
+    transcriptionLatency: LatencyDistribution;
+    scoreRefreshLatency: LatencyDistribution;
+    managerAggregateLatency: LatencyDistribution;
+    scoreToAggregateLatency: LatencyDistribution;
   };
   services: MonitorServiceStatus[];
 }
@@ -42,6 +52,14 @@ type JobRow = {
   lock_expires_at: string | null;
 };
 
+type CompletedJobRow = {
+  id: number;
+  job_type: string;
+  queued_at: string | null;
+  finished_at: string | null;
+  parent_job_id: number | null;
+};
+
 const MONITORED_JOB_TYPES = [
   'retailcrm_order_delta_pull',
   'retailcrm_history_delta_pull',
@@ -51,6 +69,12 @@ const MONITORED_JOB_TYPES = [
   'manager_aggregate_refresh',
   'order_score_refresh',
   'order_insight_refresh',
+] as const;
+
+const LATENCY_JOB_TYPES = [
+  'call_transcription',
+  'order_score_refresh',
+  'manager_aggregate_refresh',
 ] as const;
 
 const MONITORED_WORKER_KEYS = [
@@ -112,6 +136,48 @@ function getLatestTimestamp(dateA?: string | null, dateB?: string | null) {
   if (!dateA) return dateB || null;
   if (!dateB) return dateA || null;
   return new Date(dateA).getTime() >= new Date(dateB).getTime() ? dateA : dateB;
+}
+
+function secondsBetween(start?: string | null, end?: string | null) {
+  if (!start || !end) return null;
+  return Math.max(0, Math.floor((new Date(end).getTime() - new Date(start).getTime()) / 1000));
+}
+
+function percentile(values: number[], target: number) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(target * sorted.length) - 1));
+  return sorted[index];
+}
+
+function buildLatencyDistribution(values: number[]): LatencyDistribution {
+  return {
+    p50Seconds: percentile(values, 0.5),
+    p95Seconds: percentile(values, 0.95),
+    sampleSize: values.length,
+  };
+}
+
+function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
+  return rows
+    .filter((row) => row.job_type === jobType)
+    .map((row) => secondsBetween(row.queued_at, row.finished_at))
+    .filter((value): value is number => value !== null);
+}
+
+function scoreToAggregateLeadTimes(rows: CompletedJobRow[]) {
+  const scoreJobs = new Map<number, CompletedJobRow>();
+  rows
+    .filter((row) => row.job_type === 'order_score_refresh')
+    .forEach((row) => scoreJobs.set(row.id, row));
+
+  return rows
+    .filter((row) => row.job_type === 'manager_aggregate_refresh' && !!row.parent_job_id)
+    .map((row) => {
+      const parent = row.parent_job_id ? scoreJobs.get(row.parent_job_id) : null;
+      return secondsBetween(parent?.queued_at || null, row.finished_at);
+    })
+    .filter((value): value is number => value !== null);
 }
 
 function getWorkerState(stateMap: WorkerStateMap, workerKey?: string | null) {
@@ -289,6 +355,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
 
   let rows: JobRow[] = [];
   let queueAvailable = true;
+  let completedRows: CompletedJobRow[] = [];
 
   try {
     const { data, error } = await supabase
@@ -306,6 +373,24 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     queueAvailable = false;
   }
 
+  if (queueAvailable) {
+    const completedWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('system_jobs')
+      .select('id, job_type, queued_at, finished_at, parent_job_id')
+      .in('job_type', [...LATENCY_JOB_TYPES])
+      .eq('status', 'completed')
+      .gte('finished_at', completedWindowStart)
+      .order('finished_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      throw error;
+    }
+
+    completedRows = (data || []) as CompletedJobRow[];
+  }
+
   const queuedTotal = countJobs(rows, [...MONITORED_JOB_TYPES], 'queued');
   const processingTotal = countJobs(rows, [...MONITORED_JOB_TYPES], 'processing');
   const deadLetterTotal = countJobs(rows, [...MONITORED_JOB_TYPES], 'dead_letter');
@@ -321,6 +406,10 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const managerAggregateOldest = oldestQueuedMinutes(rows, ['manager_aggregate_refresh']);
   const scoreOldest = oldestQueuedMinutes(rows, ['order_score_refresh']);
   const insightOldest = oldestQueuedMinutes(rows, ['order_insight_refresh']);
+  const transcriptionLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'call_transcription'));
+  const scoreRefreshLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'order_score_refresh'));
+  const managerAggregateLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'manager_aggregate_refresh'));
+  const scoreToAggregateLatency = buildLatencyDistribution(scoreToAggregateLeadTimes(completedRows));
 
   const services: MonitorServiceStatus[] = [
     buildQueueService({
@@ -478,6 +567,10 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       managerAggregateQueueOldestSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
       scoreQueueOldestSeconds: scoreOldest === null ? null : scoreOldest * 60,
       insightQueueOldestSeconds: insightOldest === null ? null : insightOldest * 60,
+      transcriptionLatency,
+      scoreRefreshLatency,
+      managerAggregateLatency,
+      scoreToAggregateLatency,
     },
     services,
   };

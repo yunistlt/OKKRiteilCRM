@@ -54,6 +54,21 @@ interface ThroughputMetric {
     last_activity: string | null;
 }
 
+interface LatencyDistribution {
+    p50Seconds: number | null;
+    p95Seconds: number | null;
+    sampleSize: number;
+}
+
+interface RealtimePipelineSnapshot {
+    metrics: {
+        transcriptionLatency: LatencyDistribution;
+        scoreRefreshLatency: LatencyDistribution;
+        managerAggregateLatency: LatencyDistribution;
+        scoreToAggregateLatency: LatencyDistribution;
+    };
+}
+
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
@@ -74,6 +89,7 @@ export default function SystemStatusPage() {
     const [savingSettings, setSavingSettings] = useState(false);
     const [refreshingPriorities, setRefreshingPriorities] = useState(false);
     const [loadingThroughput, setLoadingThroughput] = useState(true);
+    const [pipelineMetrics, setPipelineMetrics] = useState<RealtimePipelineSnapshot | null>(null);
 
     // --- Fetchers ---
 
@@ -94,6 +110,9 @@ export default function SystemStatusPage() {
             }
             if (data.insight_logs) {
                 setInsightLogs(data.insight_logs);
+            }
+            if (data.pipeline_metrics) {
+                setPipelineMetrics(data.pipeline_metrics);
             }
             setLastUpdated(new Date());
 
@@ -336,6 +355,42 @@ export default function SystemStatusPage() {
         return '⚙️';
     };
 
+    const formatLatency = (seconds: number | null) => {
+        if (seconds === null) return 'n/a';
+        if (seconds < 60) return `${seconds}с`;
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}м ${seconds % 60}с`;
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${hours}ч ${minutes}м`;
+    };
+
+    const latencyCards = [
+        {
+            title: 'Transcription',
+            accent: 'text-purple-600',
+            bg: 'bg-purple-50',
+            metric: pipelineMetrics?.metrics.transcriptionLatency,
+        },
+        {
+            title: 'Score Refresh',
+            accent: 'text-blue-600',
+            bg: 'bg-blue-50',
+            metric: pipelineMetrics?.metrics.scoreRefreshLatency,
+        },
+        {
+            title: 'Manager Aggregate',
+            accent: 'text-emerald-600',
+            bg: 'bg-emerald-50',
+            metric: pipelineMetrics?.metrics.managerAggregateLatency,
+        },
+        {
+            title: 'Score → Aggregate',
+            accent: 'text-amber-600',
+            bg: 'bg-amber-50',
+            metric: pipelineMetrics?.metrics.scoreToAggregateLatency,
+        },
+    ];
+
     // --- State: Transcription Details ---
     const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
     const [transcriptionDetails, setTranscriptionDetails] = useState<{ queue: any[], completed: any[] } | null>(null);
@@ -467,6 +522,27 @@ export default function SystemStatusPage() {
                         <div className="text-3xl font-black">{dbStats?.transcribedCalls || 0}</div>
                     </div>
                 </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {latencyCards.map((card) => (
+                    <div key={card.title} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
+                        <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">{card.title} Latency</div>
+                        <div className="flex items-end justify-between gap-4 mb-2">
+                            <div>
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>p50</div>
+                                <div className="text-xl font-black text-gray-900">{formatLatency(card.metric?.p50Seconds || null)}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>p95</div>
+                                <div className="text-xl font-black text-gray-900">{formatLatency(card.metric?.p95Seconds || null)}</div>
+                            </div>
+                        </div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                            samples: {card.metric?.sampleSize || 0}
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* OPENAI STATUS CARD */}
