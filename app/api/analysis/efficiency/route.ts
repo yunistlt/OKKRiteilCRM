@@ -4,15 +4,12 @@ import { calculateEfficiency } from '@/lib/efficiency';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
+export async function GET() {
     try {
-        const { searchParams } = new URL(request.url);
-        const from = searchParams.get('from');
-        const to = searchParams.get('to');
-
-        if (!from || !to) {
-            return NextResponse.json({ error: 'Missing date range parameters (from, to)' }, { status: 400 });
-        }
+        const endDate = new Date();
+        const to = endDate.toISOString().split('T')[0];
+        endDate.setDate(endDate.getDate() - 30);
+        const from = endDate.toISOString().split('T')[0];
 
         const report = await calculateEfficiency(from, to);
 

@@ -135,13 +135,14 @@ export default function Sidebar() {
                 ${isCollapsed ? 'md:w-20' : 'md:w-72'}
             `}>
                 {/* Logo Section */}
-                <div className="p-6 flex items-center justify-between">
+                <div className={`flex ${isCollapsed && !isMobileOpen ? 'px-3 py-5 flex-col items-center gap-3' : 'p-6 items-center justify-between'}`}>
                     <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
                         OKK<span className="text-white group-hover:text-blue-200 transition-colors">{isCollapsed ? '' : 'CRM'}</span>
                     </Link>
                     <button 
                         onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="hidden md:block p-2 rounded-xl bg-white/5 hover:bg-white/10 transition-colors text-gray-400"
+                        className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/15 text-white shadow-lg shadow-black/30 transition-all hover:bg-blue-500 hover:border-blue-300/40"
+                        aria-label={isCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
                     >
                         {isCollapsed ? '→' : '←'}
                     </button>

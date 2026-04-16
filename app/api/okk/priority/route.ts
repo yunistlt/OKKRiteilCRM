@@ -14,15 +14,12 @@ export async function GET(request: Request) {
         const control = searchParams.get('control') || 'all'; // 'yes', 'no', 'all'
         const sumMin = searchParams.get('sumMin');
         const sumMax = searchParams.get('sumMax');
-        const dateFrom = searchParams.get('from');
-        const dateTo = searchParams.get('to');
 
         // Check if we have "meaningful" filters to actually search for orders
         const hasFilters =
             statuses.length > 0 ||
             (control !== 'all' && control !== '') ||
-            (!!sumMin || !!sumMax) ||
-            (!!dateFrom || !!dateTo);
+            (!!sumMin || !!sumMax);
 
         // --- 2. FETCH AUXILIARY DATA (Managers & Statuses) ---
         // We need this for the UI dropdowns/stats regardless of order search results.
@@ -92,15 +89,6 @@ export async function GET(request: Request) {
             crmUrl += `&filter[customFields][control]=0`;
         }
 
-        // Date Filter (Next Contact Date)
-        // Ensure we don't pass 'undefined' string
-        if (dateFrom && dateFrom !== 'undefined' && dateFrom !== 'null') {
-            crmUrl += `&filter[customFields][data_kontakta][min]=${dateFrom}`;
-        }
-        if (dateTo && dateTo !== 'undefined' && dateTo !== 'null') {
-            crmUrl += `&filter[customFields][data_kontakta][max]=${dateTo}`;
-        }
-
         // Sum Filter
         if (sumMin) crmUrl += `&filter[totalSummMin]=${sumMin}`;
         if (sumMax) crmUrl += `&filter[totalSummMax]=${sumMax}`;
@@ -117,9 +105,7 @@ export async function GET(request: Request) {
                 statuses,
                 control,
                 sumMin,
-                sumMax,
-                dateFrom,
-                dateTo
+                sumMax
             });
             throw new Error(`retailCRM Error: ${JSON.stringify(crmData.errors || crmData.errorMsg)} | Params: ${debugInfo}`);
         }

@@ -3,7 +3,6 @@
 import { getRules } from '@/app/actions/rules';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 const VIOLATION_LABELS: Record<string, string> = {
@@ -30,7 +29,6 @@ const SEVERITY_COLORS: Record<string, string> = {
 import { Suspense } from 'react';
 
 function ViolationsContent() {
-    const searchParams = useSearchParams();
     const [violations, setViolations] = useState<any[]>([]);
     const [rules, setRules] = useState<any[]>([]);
     const [error, setError] = useState<string | null>(null);
@@ -38,9 +36,6 @@ function ViolationsContent() {
     const [filterType, setFilterType] = useState<string>('all');
     const [filterManager, setFilterManager] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'list' | 'group'>('group');
-
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
 
     const getRuleName = (code: string) => {
         const rule = rules.find(r => r.code === code);
@@ -52,13 +47,9 @@ function ViolationsContent() {
             setLoading(true);
             setError(null);
             try {
-                const url = new URL('/api/analysis/violations', window.location.origin);
-                if (from) url.searchParams.set('start', from);
-                if (to) url.searchParams.set('end', to);
-
                 // Fetch rules and violations in parallel
                 const [resViolations, activeRules] = await Promise.all([
-                    fetch(url.toString()).then(r => r.json()),
+                    fetch('/api/analysis/violations').then(r => r.json()),
                     getRules()
                 ]);
 
@@ -80,7 +71,7 @@ function ViolationsContent() {
             }
         };
         fetchData();
-    }, [from, to]);
+    }, []);
 
     // Filtered by type and manager
     const filtered = useMemo(() => {

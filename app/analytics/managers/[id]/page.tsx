@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 
 const VIOLATION_LABELS: Record<string, string> = {
     'short_call': 'Короткий звонок',
@@ -58,7 +58,6 @@ function getStatusColor(code: string): string {
 export default function ManagerProfilePage() {
     const params = useParams();
     const router = useRouter();
-    const searchParams = useSearchParams();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'violations' | 'calls'>('violations');
@@ -75,18 +74,11 @@ export default function ManagerProfilePage() {
     const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
     const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
-
     useEffect(() => {
         async function load() {
             try {
                 setLoading(true);
-                const query = new URLSearchParams();
-                if (from) query.set('from', from);
-                if (to) query.set('to', to);
-
-                const res = await fetch(`/api/analysis/managers/${params.id}?${query.toString()}`);
+                const res = await fetch(`/api/analysis/managers/${params.id}`);
                 if (!res.ok) throw new Error('Failed to load');
                 const json = await res.json();
                 setData(json);
@@ -97,7 +89,7 @@ export default function ManagerProfilePage() {
             }
         }
         if (params.id) load();
-    }, [params.id, from, to]);
+    }, [params.id]);
 
     const { manager, stats, violations, calls } = data || { manager: {}, stats: {}, violations: [], calls: [] };
 

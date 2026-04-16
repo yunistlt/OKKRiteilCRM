@@ -4,15 +4,13 @@ import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-
+export async function GET() {
     // Default to basically "all time" (from 2024)
     const endDate = new Date();
     const startDate = new Date('2024-01-01');
 
-    const start = searchParams.get('start') || startDate.toISOString();
-    const end = searchParams.get('end') || endDate.toISOString();
+    const start = startDate.toISOString();
+    const end = endDate.toISOString();
 
     try {
         // 1. Fetch Violations from DB

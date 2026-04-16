@@ -10,7 +10,6 @@ import {
     ExternalLink, PhoneCall, ChevronDown, Check, Save, X
 } from 'lucide-react';
 import { getPresets, savePreset, deletePreset, type Preset } from '@/app/actions/presets';
-import DateRangePicker, { type DateRangePreset, resolveDatePreset } from './DateRangePicker';
 
 interface PriorityOrder {
     id: number;
@@ -47,11 +46,6 @@ export const PriorityDashboard = () => {
         sumMin: '',
         sumMax: '',
         control: 'all', // 'all', 'yes', 'no'
-        dateRange: {
-            from: '',
-            to: '',
-            preset: null as DateRangePreset
-        },
         statuses: [] as string[]
     });
 
@@ -74,22 +68,6 @@ export const PriorityDashboard = () => {
             }
             if (activeFilters.sumMin) params.set('sumMin', activeFilters.sumMin);
             if (activeFilters.sumMax) params.set('sumMax', activeFilters.sumMax);
-
-            // Date Logic
-            // If we have a preset, we should resolve it to actual dates or let the backend handle it?
-            // The API expects 'from'/'to'. The DateRangePicker/filters state holds actual dates if they are resolved.
-            // When does resolution happen? 
-            // - If user selects manual: filters.dateRange.from/to are set.
-            // - If user selects preset: DateRangePicker usually sets from/to immediately OR we need to resolve it here.
-            // Let's resolve it here just in case, or assume state is correct.
-            // Checking DateRangePicker usage: in `onChange`, it sets from/to.
-            // Wait, does DateRangePicker update `from`/`to` in `filters.dateRange` when a preset is picked?
-            // Yes, standard DateRangePicker usually calls onChange with { from, to, preset }.
-            // BUT, if we loaded a preset from DB that says "today", we need to make sure `from`/`to` are calculated for TODAY.
-            // The `handleLoadPreset` function already does `resolveDatePreset`, so state should be correct.
-
-            if (activeFilters.dateRange.from) params.set('from', activeFilters.dateRange.from);
-            if (activeFilters.dateRange.to) params.set('to', activeFilters.dateRange.to);
 
             const res = await fetch(`/api/okk/priority?${params.toString()}`);
             const data = await res.json();
@@ -134,25 +112,14 @@ export const PriorityDashboard = () => {
 
     const handleLoadPreset = (preset: Preset) => {
         setActivePresetId(preset.id);
-        let newFilters = preset.filters;
-
-        // If the preset has a 'dateRange' with a 'preset' (e.g. 'today'), re-calculate dates
-        if (preset.filters.dateRange?.preset) {
-            const resolved = resolveDatePreset(preset.filters.dateRange.preset);
-            if (resolved) {
-                newFilters = {
-                    ...preset.filters,
-                    dateRange: {
-                        ...preset.filters.dateRange,
-                        from: resolved.from,
-                        to: resolved.to
-                    }
-                };
-            }
-        }
+        const newFilters = {
+            sumMin: preset.filters?.sumMin || '',
+            sumMax: preset.filters?.sumMax || '',
+            control: preset.filters?.control || 'all',
+            statuses: Array.isArray(preset.filters?.statuses) ? preset.filters.statuses : []
+        };
 
         setFilters(newFilters);
-        // Instant apply
         fetchOrders(newFilters);
     };
 
@@ -445,22 +412,6 @@ export const PriorityDashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Date Filter */}
-                            <div className="space-y-1.5 md:space-y-2">
-                                <label className="text-xs font-semibold uppercase text-gray-500">Дата след. контакта</label>
-                                <DateRangePicker
-                                    value={filters.dateRange}
-                                    onChange={(range) => {
-                                        setActivePresetId(null);
-                                        setFilters({
-                                            ...filters,
-                                            dateRange: { ...range, preset: range.preset || null }
-                                        });
-                                    }}
-                                    placeholder="Выберите период"
-                                    className="w-full"
-                                />
-                            </div>
                         </div>
 
                         {/* Apply Button - Prominent Footer Action */}

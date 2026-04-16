@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 import { PriorityDashboard } from '../components/PriorityDashboard';
@@ -14,26 +13,13 @@ interface EfficiencyReport {
 }
 
 function EfficiencyContent() {
-    const searchParams = useSearchParams();
     const [report, setReport] = useState<EfficiencyReport[]>([]);
     const [loading, setLoading] = useState(false);
-
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
 
     const fetchEfficiency = async () => {
         setLoading(true);
         try {
-            let start = from;
-            let end = to;
-            if (!start || !end) {
-                const d = new Date();
-                end = d.toISOString().split('T')[0];
-                d.setDate(d.getDate() - 30);
-                start = d.toISOString().split('T')[0];
-            }
-
-            const res = await fetch(`/api/analysis/efficiency?from=${start}T00:00:00&to=${end}T23:59:59`);
+            const res = await fetch('/api/analysis/efficiency');
             const json = await res.json();
             if (json.success) {
                 setReport(json.data);
@@ -47,7 +33,7 @@ function EfficiencyContent() {
 
     useEffect(() => {
         fetchEfficiency();
-    }, [from, to]);
+    }, []);
 
     return (
         <OKKConsultantWorkspace>

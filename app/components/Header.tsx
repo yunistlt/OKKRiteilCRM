@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import DateRangePicker from './DateRangePicker';
 import { useAuth } from '@/components/auth/AuthProvider';
 
 export default function Header() {
@@ -64,13 +63,6 @@ export default function Header() {
                 </div>
 
                 <div className="flex items-center gap-6">
-                    {/* Desktop Global Date Filter */}
-                    <div className="hidden md:block">
-                        <Suspense fallback={<div className="w-32 h-10 bg-gray-50 animate-pulse rounded-xl" />}>
-                            <DateRangePicker />
-                        </Suspense>
-                    </div>
-
                     {/* Meta Info / Notifications / User */}
                     <div className="flex items-center gap-4 pl-6 border-l border-gray-100">
                         {/* Notifications / Messenger Quick Link */}

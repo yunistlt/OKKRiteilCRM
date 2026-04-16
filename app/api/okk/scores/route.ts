@@ -19,8 +19,6 @@ export async function GET(req: Request) {
     const readClient = session.accessToken ? createSupabaseUserClient(session.accessToken) || supabase : supabase;
 
     const { searchParams } = new URL(req.url);
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '50');
     let filterManager = searchParams.get('manager');
@@ -46,8 +44,6 @@ export async function GET(req: Request) {
         .in('status', workingStatuses)
         .lt('order_id', 99900000); // Игнорируем тестовые
 
-    if (from) ordersQuery = ordersQuery.gte('created_at', `${from}T00:00:00`);
-    if (to) ordersQuery = ordersQuery.lte('created_at', `${to}T23:59:59`);
     if (filterStatus) {
         const statuses = filterStatus.split(',').filter(Boolean);
         if (statuses.length > 0) {

@@ -16,10 +16,6 @@ export async function GET(
     }
 
     try {
-        const { searchParams } = new URL(request.url);
-        const from = searchParams.get('from');
-        const to = searchParams.get('to');
-
         // 1. Fetch Manager Info
         const { data: manager, error: managerError } = await supabase
             .from('managers')
@@ -33,14 +29,10 @@ export async function GET(
         }
 
         // 2. Define Date Range
-        let endDate = to ? `${to}T23:59:59Z` : new Date().toISOString();
-        let startStr = from ? `${from}T00:00:00Z` : '';
-
-        if (!startStr) {
-            const startDate = new Date();
-            startDate.setDate(startDate.getDate() - 30);
-            startStr = startDate.toISOString();
-        }
+        const endDateObj = new Date();
+        const endDate = endDateObj.toISOString();
+        endDateObj.setDate(endDateObj.getDate() - 30);
+        const startStr = endDateObj.toISOString();
 
         // 3. Fetch Calls for this manager
         // 3. Fetch Calls for this manager
@@ -67,6 +59,7 @@ export async function GET(
             `)
             .eq('call_order_matches.orders.manager_id', managerId)
             .gte('started_at', startStr)
+            .lte('started_at', endDate)
             .order('started_at', { ascending: false });
 
         // Transform raw_payload to expected fields

@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 import type { AppRole } from '@/lib/auth';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
@@ -706,9 +705,6 @@ export default function OKKPage() {
 function OKKContent() {
     const { user, roleCapabilities } = useAuth();
     const currentCapability = useMemo(() => getRoleCapability((user?.role as AppRole | undefined) || null, roleCapabilities), [roleCapabilities, user?.role]);
-    const searchParams = useSearchParams();
-    const from = searchParams.get('from') || '';
-    const to = searchParams.get('to') || '';
 
     const [scores, setScores] = useState<OrderScore[]>([]);
     const [loading, setLoading] = useState(true);
@@ -780,8 +776,6 @@ function OKKContent() {
         setLoading(true);
         try {
             const query = new URLSearchParams();
-            if (from) query.set('from', from);
-            if (to) query.set('to', to);
             query.set('page', pagination.page.toString());
             query.set('pageSize', pagination.pageSize.toString());
             if (filterManager.length > 0) query.set('manager', filterManager.join(','));
@@ -799,14 +793,14 @@ function OKKContent() {
         } finally {
             setLoading(false);
         }
-    }, [from, to, pagination.page, pagination.pageSize, filterManager, filterStatus]);
+    }, [pagination.page, pagination.pageSize, filterManager, filterStatus]);
 
-    useEffect(() => { load(); }, [load, from, to, pagination.page, pagination.pageSize]);
+    useEffect(() => { load(); }, [load, pagination.page, pagination.pageSize]);
 
     // Reset page to 1 when filters change
     useEffect(() => {
         setPagination(prev => ({ ...prev, page: 1 }));
-    }, [from, to, filterManager, filterStatus]);
+    }, [filterManager, filterStatus]);
 
     const runAll = async () => {
         setRunning(true);
