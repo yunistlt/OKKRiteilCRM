@@ -439,7 +439,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         return (
                             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                                 <div
-                                    className={`max-w-[92%] px-3 py-2 text-[11px] leading-relaxed shadow-md ${
+                                    className={`max-w-[92%] px-3 py-2 text-[14px] leading-6 shadow-md ${
                                         isUser
                                             ? 'bg-[#005c4b] text-white'
                                             : isSystem
@@ -448,7 +448,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                                     }`}
                                 >
                                     <div className="whitespace-pre-wrap break-words">{message.text}</div>
-                                    <div className={`mt-1 text-right text-[9px] ${isUser ? 'text-emerald-100/70' : 'text-slate-400'}`}>
+                                    <div className={`mt-1 text-right text-[11px] ${isUser ? 'text-emerald-100/70' : 'text-slate-400'}`}>
                                         {formatTime(message.createdAt)}
                                     </div>
                                 </div>
@@ -458,7 +458,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
                     {loading && (
                         <div className="flex justify-start">
-                            <div className="bg-[#111b21] px-3 py-2 text-[11px] text-slate-300 shadow-md">
+                            <div className="bg-[#111b21] px-3 py-2 text-[14px] leading-6 text-slate-300 shadow-md">
                                 Семён собирает ответ...
                             </div>
                         </div>
@@ -475,7 +475,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         onChange={(event) => setInput(event.target.value)}
                         rows={3}
                         placeholder="Спросите про алгоритмы ОКК, поля, критерии или источники данных..."
-                        className="min-h-[76px] flex-1 resize-none border border-slate-800 bg-[#0b141a] px-3 py-2 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
+                        className="min-h-[76px] flex-1 resize-none border border-slate-800 bg-[#0b141a] px-3 py-2 text-[14px] leading-6 text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
                     />
                     <button
                         type="submit"
