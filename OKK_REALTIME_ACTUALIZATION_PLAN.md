@@ -213,6 +213,7 @@
 - [x] Legacy `/api/analysis/rules/cron` перестал выглядеть как основной контур: добавлен явный `/api/analysis/rules/reconcile`, а старый endpoint оставлен только как deprecated wrapper для обратной совместимости.
 - [x] Webhook routes перестали писать в write-only legacy `transcription_queue`: боевой контур транскрибации теперь идёт только через канонический `raw_telphin_calls` и `system_jobs`.
 - [x] RetailCRM delta/history workers начали писать в `sync_state` не только cursor/success, но и явные `lag_seconds` и `last_error` ключи для операционного контроля.
+- [x] Incoming webhook перестал дублировать downstream `order_score_refresh`: ownership пересчёта после звонка оставлен за `call_match` worker и queue pipeline.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

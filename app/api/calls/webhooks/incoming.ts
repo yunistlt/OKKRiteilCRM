@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
-import { safeEnqueueOrderRefreshJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
@@ -67,19 +67,6 @@ export async function POST(req: NextRequest) {
         priority: 30,
         idempotencyKey: `call_match:${call_id}:${matches[0].retailcrm_order_id}`,
       });
-
-      const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
-      for (const orderId of uniqueOrderIds) {
-        await safeEnqueueOrderRefreshJob({
-          jobType: 'order_score_refresh',
-          orderId,
-          source: 'incoming_webhook_match',
-          payload: {
-            telphin_call_id: call_id,
-          },
-          priority: 25,
-        });
-      }
     }
 
     // Назначаем менеджера (если найден заказ)
