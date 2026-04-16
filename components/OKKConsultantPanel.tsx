@@ -1,16 +1,22 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { OKK_CONSULTANT_QUICK_QUESTIONS } from '@/lib/okk-consultant';
-import { useAuth } from '@/components/auth/AuthProvider';
+import { FormEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
+import { getConsultantSectionByPath } from '@/lib/okk-consultant';
 
-type PanelOrder = {
+const DESKTOP_WIDTH_STORAGE_KEY = 'okk_consultant_desktop_width';
+const DEFAULT_DESKTOP_WIDTH_RATIO = 0.15;
+const MIN_DESKTOP_WIDTH = 180;
+const MAX_DESKTOP_WIDTH_RATIO = 0.45;
+
+export type PanelOrder = {
     order_id: number;
     manager_name?: string | null;
     status_label?: string | null;
     deal_score_pct?: number | null;
     script_score_pct?: number | null;
     total_score?: number | null;
+    sectionData?: Record<string, any> | null;
 };
 
 type ChatMessage = {
@@ -19,16 +25,8 @@ type ChatMessage = {
     text: string;
     createdAt: string;
     metadata?: {
-        cards?: ChatCard[];
         responseMode?: 'short' | 'full';
     } | null;
-};
-
-type ChatCard = {
-    type: 'score' | 'criterion' | 'source' | 'warning' | 'recommendation';
-    title: string;
-    lines: string[];
-    accent?: 'emerald' | 'sky' | 'amber' | 'rose' | 'slate';
 };
 
 type ConsultantAskEventDetail = {
@@ -45,38 +43,24 @@ type ThreadSummary = {
     order_id?: number | null;
 };
 
-function buildIntroMessage(order: PanelOrder | null): ChatMessage {
-    if (!order) {
-        return {
-            id: 'intro-global',
-            role: 'system',
-            text: 'Семён на связи. Выберите заказ в таблице, и я объясню рейтинг, крестики, галочки, источники данных и что нужно исправить.',
-            createdAt: new Date().toISOString(),
-        };
-    }
-
-    return {
-        id: `intro-${order.order_id}`,
-        role: 'system',
-        text: `Заказ #${order.order_id} выбран. Статус: ${order.status_label || '—'}. Deal: ${order.deal_score_pct ?? '—'}%. Script: ${order.script_score_pct ?? '—'}%. Итог: ${order.total_score ?? '—'}%.`,
-        createdAt: new Date().toISOString(),
-    };
-}
-
 function formatTime(value: string): string {
     return new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
-function getCardTone(accent?: ChatCard['accent']): string {
-    if (accent === 'emerald') return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-50';
-    if (accent === 'sky') return 'border-sky-500/30 bg-sky-500/10 text-sky-50';
-    if (accent === 'amber') return 'border-amber-500/30 bg-amber-500/10 text-amber-50';
-    if (accent === 'rose') return 'border-rose-500/30 bg-rose-500/10 text-rose-50';
-    return 'border-slate-700 bg-slate-900/50 text-slate-100';
+function clampDesktopWidth(width: number): number {
+    if (typeof window === 'undefined') return width;
+    const maxWidth = Math.max(MIN_DESKTOP_WIDTH, Math.floor(window.innerWidth * MAX_DESKTOP_WIDTH_RATIO));
+    return Math.min(maxWidth, Math.max(MIN_DESKTOP_WIDTH, Math.round(width)));
+}
+
+function getDefaultDesktopWidth(): number {
+    if (typeof window === 'undefined') return 320;
+    return clampDesktopWidth(window.innerWidth * DEFAULT_DESKTOP_WIDTH_RATIO);
 }
 
 export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: PanelOrder | null }) {
-    const { user } = useAuth();
+    const pathname = usePathname();
+    const section = useMemo(() => getConsultantSectionByPath(pathname), [pathname]);
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -85,34 +69,64 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const [availableThreads, setAvailableThreads] = useState<Record<string, ThreadSummary[]>>({});
     const [responseMode, setResponseMode] = useState<'short' | 'full'>('full');
     const [queuedAction, setQueuedAction] = useState<ConsultantAskEventDetail | null>(null);
-    const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({
-        global: [buildIntroMessage(null)],
-    });
+    const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({});
+    const [desktopWidth, setDesktopWidth] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
+    const resizeActiveRef = useRef(false);
 
-    const threadKey = selectedOrder ? `order-${selectedOrder.order_id}` : 'global';
+    const threadKey = `${section.key}:${selectedOrder ? `order-${selectedOrder.order_id}` : 'global'}`;
     const currentContextThreadId = activeThreadIds[threadKey] || null;
     const messages = threads[threadKey] || [];
     const branchOptions = availableThreads[threadKey] || [];
-    const quickQuestions = useMemo(() => {
-        const baseQuestions = selectedOrder ? [...OKK_CONSULTANT_QUICK_QUESTIONS.order] : [...OKK_CONSULTANT_QUICK_QUESTIONS.global];
 
-        if (user?.role === 'manager') {
-            return baseQuestions.filter((question) => !question.toLowerCase().includes('технический разбор'));
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const saved = window.localStorage.getItem(DESKTOP_WIDTH_STORAGE_KEY);
+        if (saved) {
+            const parsed = Number(saved);
+            if (!Number.isNaN(parsed)) {
+                setDesktopWidth(clampDesktopWidth(parsed));
+                return;
+            }
         }
 
-        return baseQuestions;
-    }, [selectedOrder, user?.role]);
+        setDesktopWidth(getDefaultDesktopWidth());
+    }, []);
+
+    useEffect(() => {
+        const handlePointerMove = (event: PointerEvent) => {
+            if (!resizeActiveRef.current) return;
+            const nextWidth = clampDesktopWidth(window.innerWidth - event.clientX);
+            setDesktopWidth(nextWidth);
+            window.localStorage.setItem(DESKTOP_WIDTH_STORAGE_KEY, String(nextWidth));
+        };
+
+        const stopResize = () => {
+            if (!resizeActiveRef.current) return;
+            resizeActiveRef.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', stopResize);
+
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', stopResize);
+        };
+    }, []);
 
     useEffect(() => {
         setThreads((prev) => {
             if (prev[threadKey]) return prev;
             return {
                 ...prev,
-                [threadKey]: [buildIntroMessage(selectedOrder)],
+                [threadKey]: [],
             };
         });
-    }, [threadKey, selectedOrder]);
+    }, [threadKey]);
 
     useEffect(() => {
         let aborted = false;
@@ -120,10 +134,11 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         const loadHistory = async () => {
             try {
                 const params = new URLSearchParams();
+                params.set('sectionKey', section.key);
                 if (selectedOrder?.order_id) params.set('orderId', String(selectedOrder.order_id));
                 if (currentContextThreadId) params.set('threadId', currentContextThreadId);
-                const query = params.toString() ? `?${params.toString()}` : '';
-                const res = await fetch(`/api/okk/consultant/history${query}`);
+
+                const res = await fetch(`/api/okk/consultant/history?${params.toString()}`);
                 const data = await res.json();
                 if (!res.ok || aborted) return;
 
@@ -135,38 +150,35 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 }));
                 setThreads((prev) => ({
                     ...prev,
-                    [threadKey]: Array.isArray(data.messages) && data.messages.length > 0
+                    [threadKey]: Array.isArray(data.messages)
                         ? data.messages.map((item: any) => ({
                             ...item,
                             metadata: item.metadata || null,
                         }))
-                        : [buildIntroMessage(selectedOrder)],
+                        : [],
                 }));
             } catch {
                 if (!aborted) {
                     setAvailableThreads((prev) => ({ ...prev, [threadKey]: prev[threadKey] || [] }));
-                    setThreads((prev) => ({
-                        ...prev,
-                        [threadKey]: prev[threadKey] || [buildIntroMessage(selectedOrder)],
-                    }));
+                    setThreads((prev) => ({ ...prev, [threadKey]: prev[threadKey] || [] }));
                 }
             }
         };
 
-        loadHistory();
+        void loadHistory();
         return () => {
             aborted = true;
         };
-    }, [currentContextThreadId, selectedOrder, threadKey]);
+    }, [currentContextThreadId, section.key, selectedOrder?.order_id, threadKey]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, loading]);
 
-    const orderBadge = useMemo(() => {
-        if (!selectedOrder) return 'Контекст: общий';
+    const contextLabel = useMemo(() => {
+        if (!selectedOrder) return section.title;
         return `Заказ #${selectedOrder.order_id}`;
-    }, [selectedOrder]);
+    }, [section.title, selectedOrder]);
 
     const pushMessage = useCallback((message: ChatMessage) => {
         setThreads((prev) => ({
@@ -181,7 +193,12 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 const res = await fetch('/api/okk/consultant/history', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'reset', orderId: selectedOrder?.order_id ?? null, threadId }),
+                    body: JSON.stringify({
+                        action: 'reset',
+                        orderId: selectedOrder?.order_id ?? null,
+                        threadId,
+                        sectionKey: section.key,
+                    }),
                 });
                 const data = await res.json();
                 setThreadId(data.thread?.id || null);
@@ -196,7 +213,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             } finally {
                 setThreads((prev) => ({
                     ...prev,
-                    [threadKey]: [buildIntroMessage(selectedOrder)],
+                    [threadKey]: [],
                 }));
             }
         };
@@ -207,11 +224,19 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const createBranch = () => {
         const run = async () => {
             try {
-                const titleBase = selectedOrder ? `Разбор #${selectedOrder.order_id}` : 'Новая тема ОКК';
+                const titleBase = selectedOrder
+                    ? `${section.shortTitle}: заказ #${selectedOrder.order_id}`
+                    : `Новая тема: ${section.title}`;
+
                 const res = await fetch('/api/okk/consultant/history', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'create_branch', orderId: selectedOrder?.order_id ?? null, title: titleBase }),
+                    body: JSON.stringify({
+                        action: 'create_branch',
+                        orderId: selectedOrder?.order_id ?? null,
+                        title: titleBase,
+                        sectionKey: section.key,
+                    }),
                 });
                 const data = await res.json();
                 if (!res.ok) return;
@@ -224,7 +249,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 }));
                 setThreads((prev) => ({
                     ...prev,
-                    [threadKey]: [buildIntroMessage(selectedOrder)],
+                    [threadKey]: [],
                 }));
             } catch {
                 // noop
@@ -263,12 +288,15 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     threadId,
                     history,
                     responseMode,
+                    sectionKey: section.key,
+                    selectionContext: selectedOrder?.sectionData || null,
                 }),
             });
             const data = await res.json();
 
             if (data.threadId) {
                 setThreadId(data.threadId);
+                setActiveThreadIds((prev) => ({ ...prev, [threadKey]: data.threadId }));
             }
 
             pushMessage({
@@ -277,11 +305,10 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 text: data.reply || data.error || 'Не удалось получить ответ.',
                 createdAt: new Date().toISOString(),
                 metadata: {
-                    cards: Array.isArray(data.cards) ? data.cards : [],
                     responseMode: data.responseMode === 'short' ? 'short' : 'full',
                 },
             });
-        } catch (error) {
+        } catch {
             pushMessage({
                 id: `${threadKey}-error-${Date.now()}`,
                 role: 'agent',
@@ -291,7 +318,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         } finally {
             setLoading(false);
         }
-    }, [loading, pushMessage, responseMode, selectedOrder?.order_id, threadId, threadKey, threads]);
+    }, [loading, pushMessage, responseMode, section.key, selectedOrder?.order_id, selectedOrder?.sectionData, threadId, threadKey, threads]);
 
     useEffect(() => {
         if (!queuedAction) return;
@@ -299,7 +326,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         if (queuedAction.orderId !== selectedOrderId || loading) return;
         void ask(queuedAction.prompt);
         setQueuedAction(null);
-    }, [ask, loading, queuedAction, selectedOrder]);
+    }, [ask, loading, queuedAction, selectedOrder?.order_id]);
 
     useEffect(() => {
         const handleQuickAsk = (event: Event) => {
@@ -317,7 +344,15 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
         window.addEventListener('okk-consultant-ask', handleQuickAsk);
         return () => window.removeEventListener('okk-consultant-ask', handleQuickAsk);
-    }, [ask, selectedOrder]);
+    }, [ask, selectedOrder?.order_id]);
+
+    const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+        if (window.innerWidth < 768) return;
+        event.preventDefault();
+        resizeActiveRef.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+    };
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -336,14 +371,14 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                                 <button
                                     type="button"
                                     onClick={clearThread}
-                                    className="rounded-full border border-slate-700 bg-slate-900/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
+                                    className="border border-slate-700 bg-slate-900/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-300 transition-colors hover:border-slate-500 hover:text-white"
                                 >
                                     Новая тема
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setMobileOpen(false)}
-                                    className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-700 bg-slate-900/60 text-slate-300 md:hidden"
+                                    className="flex h-6 w-6 items-center justify-center border border-slate-700 bg-slate-900/60 text-slate-300 md:hidden"
                                     aria-label="Закрыть консультанта"
                                 >
                                     <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -360,36 +395,35 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     </div>
                 </div>
 
-                <div className="mt-3 grid gap-1 rounded-2xl border border-slate-800 bg-[#0b141a] px-3 py-2 text-[10px] text-slate-400">
+                <div className="mt-3 border border-slate-800 bg-[#0b141a] px-3 py-2 text-[10px] text-slate-400">
                     <div className="flex items-center justify-between gap-2">
-                        <span>{orderBadge}</span>
+                        <span className="truncate">{section.title}</span>
                         <span>{responseMode === 'short' ? 'коротко' : 'полно'}</span>
                     </div>
-                    {selectedOrder ? (
+                    <div className="mt-1 truncate text-slate-300">{contextLabel}</div>
+                    {selectedOrder && (
                         <>
-                            <div className="truncate">МОП: {selectedOrder.manager_name || '—'}</div>
+                            <div className="mt-1 truncate">МОП: {selectedOrder.manager_name || '—'}</div>
                             <div className="truncate">Статус: {selectedOrder.status_label || '—'}</div>
                         </>
-                    ) : (
-                        <div>Память: заказ не выбран</div>
                     )}
-                    <div className="mt-1 flex gap-1">
+                    <div className="mt-2 flex gap-1">
                         <button
                             type="button"
                             onClick={() => setResponseMode('short')}
-                            className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'short' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
+                            className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'short' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
                         >
                             short
                         </button>
                         <button
                             type="button"
                             onClick={() => setResponseMode('full')}
-                            className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'full' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
+                            className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide transition-colors ${responseMode === 'full' ? 'bg-emerald-500 text-white' : 'bg-slate-900/70 text-slate-400 hover:text-white'}`}
                         >
                             full
                         </button>
                     </div>
-                    <div className="mt-1 flex items-center gap-1">
+                    <div className="mt-2 flex items-center gap-1">
                         <select
                             value={threadId || ''}
                             onChange={(event) => {
@@ -397,7 +431,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                                 setThreadId(nextThreadId);
                                 setActiveThreadIds((prev) => ({ ...prev, [threadKey]: nextThreadId }));
                             }}
-                            className="min-w-0 flex-1 rounded-xl border border-slate-800 bg-slate-950/70 px-2 py-1 text-[10px] text-slate-200 outline-none"
+                            className="min-w-0 flex-1 border border-slate-800 bg-slate-950/70 px-2 py-1 text-[10px] text-slate-200 outline-none"
                         >
                             {branchOptions.map((item) => (
                                 <option key={item.id} value={item.id}>
@@ -408,7 +442,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         <button
                             type="button"
                             onClick={createBranch}
-                            className="rounded-full border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-black text-slate-200 hover:border-emerald-500/40"
+                            className="border border-slate-700 bg-slate-900/60 px-2 py-1 text-[10px] font-black text-slate-200 hover:border-emerald-500/40"
                             aria-label="Новая ветка"
                         >
                             +
@@ -417,26 +451,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 </div>
             </div>
 
-            <div
-                className="min-h-0 flex-1 overflow-auto bg-[#0b141a] bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,#0b141a_0%,#0a1015_100%)] px-2 py-3 overscroll-contain"
-            >
-                <div className="mb-3 rounded-2xl bg-[#202c33] px-3 py-3 text-[11px] leading-relaxed text-slate-300 shadow-sm">
-                    Задавайте вопросы по текущему заказу. Я объясню, как считается рейтинг, почему стоит крестик, откуда взялись данные и что нужно исправить.
-                </div>
-
-                <div className="mb-3 flex flex-wrap gap-1.5">
-                    {quickQuestions.map((question) => (
-                        <button
-                            key={question}
-                            type="button"
-                            onClick={() => void ask(question)}
-                            className="rounded-full border border-slate-700 bg-[#111b21] px-2.5 py-1 text-[10px] font-semibold text-slate-200 transition-colors hover:border-emerald-500/40 hover:bg-[#16252d]"
-                        >
-                            {question}
-                        </button>
-                    ))}
-                </div>
-
+            <div className="min-h-0 flex-1 overflow-auto bg-[#0b141a] bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.08),transparent_35%),linear-gradient(180deg,#0b141a_0%,#0a1015_100%)] px-2 py-3 overscroll-contain">
                 <div className="space-y-2.5">
                     {messages.map((message) => {
                         const isUser = message.role === 'user';
@@ -444,31 +459,15 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         return (
                             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                                 <div
-                                    className={`max-w-[92%] rounded-2xl px-3 py-2 text-[11px] leading-relaxed shadow-md ${
+                                    className={`max-w-[92%] px-3 py-2 text-[11px] leading-relaxed shadow-md ${
                                         isUser
-                                            ? 'rounded-br-md bg-[#005c4b] text-white'
+                                            ? 'bg-[#005c4b] text-white'
                                             : isSystem
-                                                ? 'rounded-bl-md border border-slate-700 bg-[#202c33] text-slate-300'
-                                                : 'rounded-bl-md bg-[#111b21] text-slate-100'
+                                                ? 'border border-slate-700 bg-[#202c33] text-slate-300'
+                                                : 'bg-[#111b21] text-slate-100'
                                     }`}
                                 >
                                     <div className="whitespace-pre-wrap break-words">{message.text}</div>
-                                    {message.role === 'agent' && message.metadata?.cards && message.metadata.cards.length > 0 && (
-                                        <div className="mt-2 space-y-2">
-                                            {message.metadata.cards.map((card, index) => (
-                                                <div key={`${message.id}-card-${index}`} className={`rounded-2xl border px-2.5 py-2 ${getCardTone(card.accent)}`}>
-                                                    <div className="text-[10px] font-black uppercase tracking-wide">{card.title}</div>
-                                                    <div className="mt-1 space-y-1">
-                                                        {card.lines.map((line, lineIndex) => (
-                                                            <div key={`${message.id}-card-${index}-line-${lineIndex}`} className="text-[10px] leading-relaxed text-current/90">
-                                                                {line}
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
                                     <div className={`mt-1 text-right text-[9px] ${isUser ? 'text-emerald-100/70' : 'text-slate-400'}`}>
                                         {formatTime(message.createdAt)}
                                     </div>
@@ -479,8 +478,8 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
                     {loading && (
                         <div className="flex justify-start">
-                            <div className="rounded-2xl rounded-bl-md bg-[#111b21] px-3 py-2 text-[11px] text-slate-300 shadow-md">
-                                Семён собирает доказательства...
+                            <div className="bg-[#111b21] px-3 py-2 text-[11px] text-slate-300 shadow-md">
+                                Семён собирает ответ...
                             </div>
                         </div>
                     )}
@@ -490,21 +489,18 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             </div>
 
             <form onSubmit={handleSubmit} className="border-t border-slate-800 bg-[#111b21] px-2 py-2">
-                <div className="mb-2 rounded-2xl border border-slate-800 bg-[#0b141a] px-3 py-2 text-[10px] text-slate-400">
-                    Можно спрашивать: почему крестик, как посчитан балл, откуда данные, что исправить, какие критерии спорные и каких данных не хватает.
-                </div>
                 <div className="flex items-end gap-2">
                     <textarea
                         value={input}
                         onChange={(event) => setInput(event.target.value)}
                         rows={3}
-                        placeholder={selectedOrder ? 'Вопрос по текущему заказу...' : 'Выберите заказ или задайте общий вопрос...'}
-                        className="min-h-[76px] flex-1 resize-none rounded-2xl border border-slate-800 bg-[#0b141a] px-3 py-2 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
+                        placeholder={selectedOrder ? `Вопрос по разделу ${section.shortTitle} и заказу...` : `Вопрос по разделу ${section.shortTitle}...`}
+                        className="min-h-[76px] flex-1 resize-none border border-slate-800 bg-[#0b141a] px-3 py-2 text-[11px] text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-500/40"
                     />
                     <button
                         type="submit"
                         disabled={loading || !input.trim()}
-                        className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:shadow-none"
+                        className="flex h-11 w-11 items-center justify-center bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:shadow-none"
                         aria-label="Отправить"
                     >
                         <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
@@ -518,14 +514,24 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
     return (
         <>
-            <aside className="hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]">
+            <aside
+                className="relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]"
+                style={desktopWidth ? { width: `${desktopWidth}px`, minWidth: `${desktopWidth}px`, maxWidth: `${desktopWidth}px` } : undefined}
+            >
+                <div
+                    className="absolute inset-y-0 left-0 z-10 hidden w-3 cursor-col-resize md:block"
+                    onPointerDown={startResize}
+                    aria-hidden="true"
+                >
+                    <div className="ml-0.5 h-full w-px bg-slate-700/70" />
+                </div>
                 {panelContent}
             </aside>
 
             <button
                 type="button"
                 onClick={() => setMobileOpen(true)}
-                className="fixed bottom-4 right-4 z-[140] flex items-center gap-2 rounded-full border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
+                className="fixed bottom-4 right-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
             >
                 <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 Семён

@@ -14,12 +14,14 @@ import {
     buildOrderContextForLLM,
     buildOrderScoreExplanation,
     buildResponseCards,
+    buildSectionAnswer,
     buildTechnicalExplanation,
     buildViolationsReferenceAnswer,
     ConsultantOrder,
     enrichEvidenceWithOrder,
     findCriterionKey,
     findGlossaryTerm,
+    getConsultantSectionConfig,
     OKK_CONSULTANT_QUICK_QUESTIONS,
     OrderEvidence,
     sanitizeEvidenceForRole,
@@ -54,8 +56,11 @@ async function archiveExpiredThreads(userId: string) {
     if (error) throw error;
 }
 
-async function getOrCreateThread(userId: string, username: string, orderId: number | null, threadId?: string | null) {
+async function getOrCreateThread(userId: string, username: string, orderId: number | null, threadId: string | null | undefined, sectionKey: string) {
     await archiveExpiredThreads(userId);
+
+    const resolvedSectionKey = getConsultantSectionConfig(sectionKey || null).key;
+    const scopePrefix = `scope:${resolvedSectionKey}:${orderId ?? 'global'}:`;
 
     if (threadId) {
         const { data: threadById, error: threadError } = await supabase
@@ -74,6 +79,7 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
         .select('*')
         .eq('user_id', userId)
         .is('archived_at', null)
+        .like('branch_key', `${scopePrefix}%`)
         .order('updated_at', { ascending: false })
         .limit(1);
 
@@ -89,8 +95,8 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
             user_id: userId,
             username,
             order_id: orderId,
-            branch_key: 'main',
-            title: orderId ? `Заказ #${orderId}` : 'Общий контекст ОКК',
+            branch_key: `${scopePrefix}main`,
+            title: orderId ? `${getConsultantSectionConfig(resolvedSectionKey).shortTitle}: заказ #${orderId}` : `Общий контекст: ${getConsultantSectionConfig(resolvedSectionKey).title}`,
         })
         .select('*')
         .single();
@@ -171,6 +177,10 @@ function needsOrderContext(message: string, criterionKey: string | null): boolea
     );
 }
 
+function normalizeSectionKey(rawSectionKey: unknown) {
+    return getConsultantSectionConfig(typeof rawSectionKey === 'string' ? rawSectionKey : null).key;
+}
+
 function isReferenceQuestion(lower: string): boolean {
     return lower.includes('что такое')
         || lower.includes('что значит')
@@ -231,22 +241,24 @@ function getCachedReferenceAnswer(cacheKey: string, build: () => string): string
     return reply;
 }
 
-async function buildFallbackAnswer(message: string, order: ConsultantOrder | null, evidence: OrderEvidence | null): Promise<string | null> {
+async function buildFallbackAnswer(message: string, order: ConsultantOrder | null, evidence: OrderEvidence | null, sectionKey: string): Promise<string | null> {
     if (!process.env.OPENAI_API_KEY) return null;
 
     const openai = getOpenAIClient();
+    const section = getConsultantSectionConfig(sectionKey);
     const completion = await openai.chat.completions.create({
         model: 'gpt-4o-mini',
         temperature: 0.1,
         messages: [
             {
                 role: 'system',
-                content: `Ты консультант по ОКК. Отвечай только в домене ОКК. Не выдумывай поля, звонки, формулы и причины. Если данных не хватает, прямо так и скажи. Структура ответа: короткий вывод, данные, расчет или правило, что делать дальше.`
+                content: `Ты консультант по ОКК. Текущий раздел: ${section.title}. Отвечай только в домене ОКК. Не выдумывай поля, звонки, формулы и причины. Если данных не хватает, прямо так и скажи. Структура ответа: короткий вывод, данные, расчет или правило, что делать дальше.`
             },
             {
                 role: 'user',
                 content: [
                     `Вопрос пользователя: ${message}`,
+                    `Раздел: ${section.title}. ${section.summary}`,
                     '',
                     'Справка по расчету:',
                     buildGeneralRatingExplanation(),
@@ -291,6 +303,8 @@ export async function POST(req: Request) {
         const orderIdRaw = body.orderId;
         const history = normalizeHistory(body.history);
         const threadIdRaw = typeof body.threadId === 'string' ? body.threadId : null;
+        const sectionKey = normalizeSectionKey(body.sectionKey);
+        const selectionContext = body.selectionContext && typeof body.selectionContext === 'object' ? body.selectionContext : null;
 
         if (!message) {
             return NextResponse.json({ error: 'Сообщение обязательно' }, { status: 400 });
@@ -314,8 +328,9 @@ export async function POST(req: Request) {
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
         const violationsReferenceQuestion = isViolationsReferenceQuestion(message);
+        const sectionReply = buildSectionAnswer(sectionKey, message, selectionContext);
 
-        if (!orderId && !glossaryTerm && needsOrderContext(message, criterionKey)) {
+        if (!orderId && !glossaryTerm && !sectionReply && needsOrderContext(message, criterionKey)) {
             return NextResponse.json({
                 success: true,
                 reply: 'Для такого вопроса мне нужен выбранный заказ. Выберите сделку в таблице ОКК, и я смогу объяснить балл, причины крестиков, источники данных и действия для исправления.',
@@ -352,6 +367,14 @@ export async function POST(req: Request) {
                 });
             }
 
+            if (sectionReply) {
+                return NextResponse.json({
+                    success: true,
+                    reply: sectionReply,
+                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                });
+            }
+
             return NextResponse.json({
                 success: true,
                 reply: getCachedReferenceAnswer('general:rating', () => buildGeneralRatingExplanation()),
@@ -370,7 +393,7 @@ export async function POST(req: Request) {
         let persistenceDisabled = false;
 
         try {
-            thread = await getOrCreateThread(userId, username, orderId, threadIdRaw);
+            thread = await getOrCreateThread(userId, username, orderId, threadIdRaw, sectionKey);
         } catch (threadError: any) {
             if (isMissingConsultantPersistenceError(threadError)) {
                 persistenceDisabled = true;
@@ -382,7 +405,9 @@ export async function POST(req: Request) {
 
         let reply: string;
         let usedFallback = false;
-        if (violationsReferenceQuestion) {
+        if (sectionReply) {
+            reply = sectionReply;
+        } else if (violationsReferenceQuestion) {
             reply = buildViolationsReferenceAnswer(order);
         } else if (!criterionKey && glossaryTerm && isGlossaryQuestion(message)) {
             reply = buildGlossaryAnswer(glossaryTerm);
@@ -422,7 +447,8 @@ export async function POST(req: Request) {
                         : '',
                 ].join(''),
                 order,
-                evidence
+                evidence,
+                sectionKey
             );
             reply = fallbackReply || buildOrderScoreExplanation(order);
             usedFallback = Boolean(fallbackReply);
@@ -449,7 +475,7 @@ export async function POST(req: Request) {
                     intent: mode,
                     criterionKey,
                     usedFallback,
-                    answerMetadata: { cards, responseMode },
+                    answerMetadata: { cards, responseMode, sectionKey },
                 });
             } catch (persistError: any) {
                 if (isMissingConsultantPersistenceError(persistError)) {

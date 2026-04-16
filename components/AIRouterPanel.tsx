@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import type { PanelOrder } from './OKKConsultantPanel';
 import OrderDetailsModal from './OrderDetailsModal';
 
 interface RoutingResult {
@@ -35,7 +36,7 @@ interface RoutingSummary {
     status_distribution: Record<string, number>;
 }
 
-export default function AIRouterPanel() {
+export default function AIRouterPanel({ onConsultantOrderChange }: { onConsultantOrderChange?: (order: PanelOrder | null) => void }) {
     const [trainingMode, setTrainingMode] = useState(false);
     const [trainingState, setTrainingState] = useState<Record<string, { status: string; comment: string; loading: boolean; done: boolean }>>({});
     const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string; group_name?: string; color?: string }[]>([]);
@@ -196,6 +197,7 @@ export default function AIRouterPanel() {
 
     // State for Modal
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+    const [consultantOrderId, setConsultantOrderId] = useState<number | null>(null);
 
     // Column Visibility State
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
@@ -211,6 +213,41 @@ export default function AIRouterPanel() {
             }
         }
     }, []);
+
+    useEffect(() => {
+        if (!results || results.length === 0) {
+            setConsultantOrderId(null);
+            onConsultantOrderChange?.(null);
+            return;
+        }
+
+        const nextConsultantOrderId = consultantOrderId && results.some((item) => item.order_id === consultantOrderId)
+            ? consultantOrderId
+            : results[0].order_id;
+
+        setConsultantOrderId(nextConsultantOrderId);
+
+        const selectedResult = results.find((item) => item.order_id === nextConsultantOrderId) || null;
+        onConsultantOrderChange?.(selectedResult ? {
+            order_id: selectedResult.order_id,
+            manager_name: selectedResult.manager_name || null,
+            status_label: selectedResult.current_status_name || selectedResult.from_status || null,
+            sectionData: {
+                order_id: selectedResult.order_id,
+                manager_name: selectedResult.manager_name || null,
+                current_status_name: selectedResult.current_status_name || null,
+                from_status: selectedResult.from_status,
+                to_status: selectedResult.to_status,
+                to_status_name: selectedResult.to_status_name || null,
+                confidence: selectedResult.confidence,
+                reasoning: selectedResult.reasoning,
+                country: selectedResult.country || null,
+                category: selectedResult.category || null,
+                purchase_form: selectedResult.purchase_form || null,
+                sphere: selectedResult.sphere || null,
+            },
+        } : null);
+    }, [consultantOrderId, onConsultantOrderChange, results]);
 
     const toggleColumn = (key: string) => {
         const next = new Set(hiddenColumns);
@@ -524,7 +561,10 @@ const COL_GROUPS = {
                                                                         #{result.order_id}
                                                                     </a>
                                                                     <button
-                                                                        onClick={() => setSelectedOrderId(result.order_id)}
+                                                                        onClick={() => {
+                                                                            setSelectedOrderId(result.order_id);
+                                                                            setConsultantOrderId(result.order_id);
+                                                                        }}
                                                                         className="px-2 py-0.5 text-[10px] font-semibold rounded-full border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors shrink-0"
                                                                         title="Открыть карточку заказа"
                                                                     >

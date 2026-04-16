@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { getConsultantSectionConfig } from '@/lib/okk-consultant';
 import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { supabase } from '@/utils/supabase';
 
@@ -10,6 +11,19 @@ const THREAD_TTL_DAYS = 30;
 function normalizeOrderId(rawOrderId: unknown): number | null {
     const orderId = typeof rawOrderId === 'number' ? rawOrderId : rawOrderId ? Number(rawOrderId) : null;
     return orderId && !Number.isNaN(orderId) ? orderId : null;
+}
+
+function normalizeSectionKey(rawSectionKey: unknown) {
+    return getConsultantSectionConfig(typeof rawSectionKey === 'string' ? rawSectionKey : null).key;
+}
+
+function buildThreadScopePrefix(orderId: number | null, sectionKey: string) {
+    return `scope:${sectionKey}:${orderId ?? 'global'}:`;
+}
+
+function buildThreadTitle(orderId: number | null, sectionKey: string) {
+    const section = getConsultantSectionConfig(sectionKey);
+    return orderId ? `${section.shortTitle}: заказ #${orderId}` : `Общий контекст: ${section.title}`;
 }
 
 async function archiveExpiredThreads(userId: string) {
@@ -25,8 +39,10 @@ async function archiveExpiredThreads(userId: string) {
     if (error) throw error;
 }
 
-async function getOrCreateThread(userId: string, username: string, orderId: number | null) {
+async function getOrCreateThread(userId: string, username: string, orderId: number | null, sectionKey: string) {
     await archiveExpiredThreads(userId);
+
+    const scopePrefix = buildThreadScopePrefix(orderId, sectionKey);
 
     const { data: existing, error: existingError } = await supabase
         .from('okk_consultant_threads')
@@ -34,6 +50,7 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
         .eq('user_id', userId)
         .is('archived_at', null)
         .eq('order_id', orderId)
+        .like('branch_key', `${scopePrefix}%`)
         .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -47,8 +64,8 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
             user_id: userId,
             username,
             order_id: orderId,
-            branch_key: 'main',
-            title: orderId ? `Заказ #${orderId}` : 'Общий контекст ОКК',
+            branch_key: `${scopePrefix}main`,
+            title: buildThreadTitle(orderId, sectionKey),
         })
         .select('*')
         .single();
@@ -57,12 +74,14 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
     return created;
 }
 
-async function listThreads(userId: string, orderId: number | null) {
+async function listThreads(userId: string, orderId: number | null, sectionKey: string) {
+    const scopePrefix = buildThreadScopePrefix(orderId, sectionKey);
     const query = supabase
         .from('okk_consultant_threads')
         .select('id, branch_key, title, updated_at, created_at, order_id')
         .eq('user_id', userId)
         .is('archived_at', null)
+        .like('branch_key', `${scopePrefix}%`)
         .order('updated_at', { ascending: false })
         .limit(20);
 
@@ -76,11 +95,12 @@ async function resolveActiveThread(params: {
     userId: string;
     username: string;
     orderId: number | null;
+    sectionKey: string;
     threadId?: string | null;
 }) {
-    const { userId, username, orderId, threadId } = params;
+    const { userId, username, orderId, sectionKey, threadId } = params;
 
-    const threads = await listThreads(userId, orderId);
+    const threads = await listThreads(userId, orderId, sectionKey);
     let thread = null;
 
     if (threadId) {
@@ -92,7 +112,7 @@ async function resolveActiveThread(params: {
     }
 
     if (!thread) {
-        thread = await getOrCreateThread(userId, username, orderId);
+        thread = await getOrCreateThread(userId, username, orderId, sectionKey);
     }
 
     const nextThreads = threads.some((item: any) => item.id === thread.id)
@@ -115,11 +135,12 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const rawOrderId = searchParams.get('orderId');
         const orderId = normalizeOrderId(rawOrderId);
+        const sectionKey = normalizeSectionKey(searchParams.get('sectionKey'));
         const threadId = searchParams.get('threadId');
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
 
-        const { thread, threads } = await resolveActiveThread({ userId, username, orderId, threadId });
+        const { thread, threads } = await resolveActiveThread({ userId, username, orderId, sectionKey, threadId });
         const { data: messages, error: messagesError } = await supabase
             .from('okk_consultant_messages')
             .select('id, role, content, created_at, metadata')
@@ -164,6 +185,7 @@ export async function POST(req: Request) {
         const body = await req.json();
         const action = String(body.action || '').trim();
         const orderId = normalizeOrderId(body.orderId);
+        const sectionKey = normalizeSectionKey(body.sectionKey);
         const threadId = typeof body.threadId === 'string' ? body.threadId : null;
         const userId = String(session.user.id);
         const username = String(session.user.username || 'user');
@@ -173,8 +195,8 @@ export async function POST(req: Request) {
         }
 
         if (action === 'create_branch') {
-            const title = String(body.title || '').trim() || (orderId ? `Разбор #${orderId}` : 'Новая тема ОКК');
-            const branchKey = `branch-${crypto.randomUUID().slice(0, 8)}`;
+            const title = String(body.title || '').trim() || buildThreadTitle(orderId, sectionKey);
+            const branchKey = `${buildThreadScopePrefix(orderId, sectionKey)}branch-${crypto.randomUUID().slice(0, 8)}`;
 
             const { data: thread, error: createError } = await supabase
                 .from('okk_consultant_threads')
@@ -190,7 +212,7 @@ export async function POST(req: Request) {
 
             if (createError) throw createError;
 
-            const threads = await listThreads(userId, orderId);
+            const threads = await listThreads(userId, orderId, sectionKey);
             return NextResponse.json({ thread, threads });
         }
 
@@ -204,17 +226,19 @@ export async function POST(req: Request) {
 
             if (archiveError) throw archiveError;
         } else {
+            const scopePrefix = buildThreadScopePrefix(orderId, sectionKey);
             const { error: archiveError } = await supabase
                 .from('okk_consultant_threads')
                 .update({ archived_at: new Date().toISOString() })
                 .eq('user_id', userId)
                 .eq('order_id', orderId)
+                .like('branch_key', `${scopePrefix}%`)
                 .is('archived_at', null);
 
             if (archiveError) throw archiveError;
         }
 
-        const { thread, threads } = await resolveActiveThread({ userId, username, orderId });
+        const { thread, threads } = await resolveActiveThread({ userId, username, orderId, sectionKey });
 
         return NextResponse.json({ thread, threads });
     } catch (error: any) {

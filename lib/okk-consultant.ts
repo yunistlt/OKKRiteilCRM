@@ -130,6 +130,24 @@ export type GlossaryTerm = {
     aliases: string[];
 };
 
+export type ConsultantSectionKey = 'quality-dashboard' | 'efficiency' | 'ai-tools' | 'audit';
+
+type ConsultantSectionTopic = {
+    key: string;
+    title: string;
+    answer: string;
+    aliases: string[];
+};
+
+export type ConsultantSectionConfig = {
+    key: ConsultantSectionKey;
+    title: string;
+    shortTitle: string;
+    summary: string;
+    pathPrefixes: string[];
+    topics: ConsultantSectionTopic[];
+};
+
 type PenaltyJournalEntry = {
     rule_code?: string | null;
     severity?: string | null;
@@ -476,6 +494,230 @@ export const OKK_CONSULTANT_QUICK_QUESTIONS = {
         'Какие звонки попали в оценку?',
     ],
 } as const;
+
+const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
+    {
+        key: 'quality-dashboard',
+        title: 'Контроль качества',
+        shortTitle: 'Качество',
+        summary: 'Главный экран ОКК с таблицей заказов, колонками критериев, итоговыми процентами и деталями по нарушениям.',
+        pathPrefixes: ['/okk'],
+        topics: [
+            {
+                key: 'columns',
+                title: 'Колонки и критерии',
+                aliases: ['колонки', 'колонка', 'критерии', 'крестики', 'галочки'],
+                answer: [
+                    'На экране контроля качества каждая колонка отражает отдельный критерий проверки сделки или звонка.',
+                    '',
+                    'Как читать таблицу:',
+                    '1. Белые и цветные группы сверху разделяют критерии по блокам: SLA, поля сделки, скрипт разговора и нарушения.',
+                    '2. Галочка означает, что критерий выполнен по данным CRM, истории или звонков.',
+                    '3. Крестик означает, что критерий не выполнен или система не нашла достаточного подтверждения.',
+                    '4. Процентные колонки справа собирают результат в deal_score_pct, script_score_pct и total_score.',
+                ].join('\n'),
+            },
+            {
+                key: 'filters',
+                title: 'Фильтры и таблица',
+                aliases: ['фильтр', 'фильтры', 'менеджеры', 'статусы', 'таблица'],
+                answer: [
+                    'Фильтры сверху ограничивают список заказов, по которым строится таблица и средние показатели.',
+                    '',
+                    'Что меняется от фильтров:',
+                    '1. Список видимых заказов в таблице.',
+                    '2. Средний процент по текущему фильтру.',
+                    '3. Набор заказов, между которыми вы переключаете контекст для чата Семёна.',
+                    '4. Пагинация и количество доступных строк.',
+                ].join('\n'),
+            },
+        ],
+    },
+    {
+        key: 'efficiency',
+        title: 'Эффективность',
+        shortTitle: 'Эффективность',
+        summary: 'Раздел для анализа производительности менеджеров: ключевые заказы, просрочки и детальный отчёт по времени в работе.',
+        pathPrefixes: ['/efficiency'],
+        topics: [
+            {
+                key: 'priority',
+                title: 'Ключевые заказы',
+                aliases: ['ключевые заказы', 'приоритетные лиды', 'просрочено', 'до 14:00'],
+                answer: [
+                    'Блок «Ключевые заказы» показывает работу с приоритетными лидами и просрочки по ним.',
+                    '',
+                    'Что означают карточки:',
+                    '1. «Всего ключевых» показывает объём приоритетных лидов в выбранном периоде.',
+                    '2. «Просрочено» показывает количество заказов, где менеджер не уложился в ожидаемый срок обработки.',
+                    '3. Если список пустой, значит по текущему диапазону дат система не нашла подходящих заказов.',
+                    '4. Детальный отчёт ниже раскладывает это по менеджерам и среднему времени на заказ.',
+                ].join('\n'),
+            },
+            {
+                key: 'empty-state',
+                title: 'Почему нет данных',
+                aliases: ['нет заказов', 'данные не найдены', 'пусто', 'ничего не найдено'],
+                answer: [
+                    'Если на экране эффективности нет заказов, обычно причина в выбранном периоде или отсутствии данных для расчёта.',
+                    '',
+                    'Проверьте по порядку:',
+                    '1. Диапазон дат в правом верхнем фильтре.',
+                    '2. Есть ли в этом окне реальные события по ключевым заказам.',
+                    '3. Отработал ли API эффективности без ошибок.',
+                    '4. Не очищен ли список из-за слишком узкого фильтра по периоду.',
+                ].join('\n'),
+            },
+        ],
+    },
+    {
+        key: 'ai-tools',
+        title: 'AI Инструменты',
+        shortTitle: 'AI Tools',
+        summary: 'Экран ручного и тестового запуска AI-роутинга заказов: очередь, dry run, обучение, confidence и обоснование решения.',
+        pathPrefixes: ['/settings/ai-tools'],
+        topics: [
+            {
+                key: 'routing',
+                title: 'Как работает роутинг',
+                aliases: ['роутинг', 'routing', 'решение ии', 'обоснование', 'conf'],
+                answer: [
+                    'В AI Инструментах показывается результат AI-роутинга: какую следующую стадию предлагает модель и насколько она в этом уверена.',
+                    '',
+                    'Что означают ключевые поля:',
+                    '1. «Решение ИИ» — целевой статус, который рекомендует модель.',
+                    '2. «Conf» — confidence, то есть уверенность модели в выбранном статусе.',
+                    '3. «Обоснование» — текстовая причина, на каких данных модель построила вывод.',
+                    '4. В режиме обучения оператор может вручную поправить статус и комментарий, чтобы сохранить пример для последующего обучения.',
+                ].join('\n'),
+            },
+            {
+                key: 'modes',
+                title: 'Тест и обучение',
+                aliases: ['тест', 'dry run', 'обучение', 'лимит', 'очередь'],
+                answer: [
+                    'Верхняя панель AI Tools управляет тем, как запускать роутинг и сколько заказов брать в обработку.',
+                    '',
+                    'Что делают переключатели:',
+                    '1. «Тест» включает dry run: решение считается, но запись в CRM не происходит.',
+                    '2. «Обучение» разрешает вручную корректировать решение модели и сохранять этот пример как обучающий.',
+                    '3. «Лимит» ограничивает, сколько заказов взять в текущий запуск.',
+                    '4. «Очередь» показывает общий объём заказов, доступных для обработки AI-роутингом.',
+                ].join('\n'),
+            },
+        ],
+    },
+    {
+        key: 'audit',
+        title: 'Аудит консультанта',
+        shortTitle: 'Аудит',
+        summary: 'Экран аудита ответов Семёна: trace-id, история сообщений, intent, fallback и preview сохранённых ответов.',
+        pathPrefixes: ['/okk/audit'],
+        topics: [
+            {
+                key: 'trace',
+                title: 'Trace и история',
+                aliases: ['trace', 'trace id', 'thread', 'история', 'сообщения'],
+                answer: [
+                    'Аудит консультанта показывает, как именно Семён отвечал на вопрос и что было сохранено в истории треда.',
+                    '',
+                    'Как читать экран:',
+                    '1. Слева список последних trace с вопросом, временем и intent.',
+                    '2. По центру открывается цепочка сообщений конкретного trace.',
+                    '3. Справа показываются технические детали: trace_id, thread_id, criterion и признак fallback.',
+                    '4. Это экран диагностики качества ответов, а не рабочая таблица оценки заказов.',
+                ].join('\n'),
+            },
+            {
+                key: 'fallback',
+                title: 'Fallback и intent',
+                aliases: ['fallback', 'intent', 'preview', 'answer preview'],
+                answer: [
+                    'В аудите intent показывает тип вопроса, а fallback отмечает, что ответ строился через LLM-резерв, а не только по жёстким правилам.',
+                    '',
+                    'Что это значит на практике:',
+                    '1. intent помогает понять, какой режим объяснения выбрал консультант: why, score, proof и так далее.',
+                    '2. fallback означает, что структурных данных не хватило для жёсткого ответа и была задействована модель.',
+                    '3. answer preview — короткая версия ответа, сохранённая в аудит-логе.',
+                ].join('\n'),
+            },
+        ],
+    },
+];
+
+function includesAny(text: string, items: string[]): boolean {
+    return items.some((item) => text.includes(normalized(item)));
+}
+
+function getSectionOverview(section: ConsultantSectionConfig): string {
+    return [
+        `${section.title}.`,
+        '',
+        section.summary,
+        '',
+        `На этом экране я могу помогать по темам: ${section.topics.map((topic) => topic.title).join(', ')}.`,
+    ].join('\n');
+}
+
+function buildAIToolsSelectionAnswer(selection: Record<string, any>): string {
+    const orderId = selection.order_id || selection.orderId || '—';
+    const currentStatus = selection.current_status_name || selection.currentStatusName || selection.from_status || selection.fromStatus || '—';
+    const targetStatus = selection.to_status_name || selection.toStatusName || selection.to_status || selection.toStatus || '—';
+    const confidence = selection.confidence ?? '—';
+    const managerName = selection.manager_name || selection.managerName || '—';
+    const reasoning = selection.reasoning || 'Обоснование не передано.';
+
+    return [
+        `По заказу #${orderId} в AI Инструментах сейчас выбран результат роутинга.`,
+        '',
+        `Менеджер: ${managerName}.`,
+        `Текущий статус: ${currentStatus}.`,
+        `Решение ИИ: ${targetStatus}.`,
+        `Confidence: ${confidence === '—' ? confidence : `${confidence}%`}.`,
+        '',
+        `Обоснование модели: ${reasoning}`,
+    ].join('\n');
+}
+
+export function getConsultantSectionConfig(sectionKey?: string | null): ConsultantSectionConfig {
+    return CONSULTANT_SECTION_CONFIGS.find((section) => section.key === sectionKey) || CONSULTANT_SECTION_CONFIGS[0];
+}
+
+export function getConsultantSectionByPath(pathname?: string | null): ConsultantSectionConfig {
+    const currentPath = pathname || '/okk';
+    return CONSULTANT_SECTION_CONFIGS
+        .slice()
+        .sort((left, right) => Math.max(...right.pathPrefixes.map((prefix) => prefix.length)) - Math.max(...left.pathPrefixes.map((prefix) => prefix.length)))
+        .find((section) => section.pathPrefixes.some((prefix) => currentPath.startsWith(prefix))) || CONSULTANT_SECTION_CONFIGS[0];
+}
+
+export function buildSectionAnswer(sectionKey?: string | null, message?: string, selection?: Record<string, any> | null): string | null {
+    const section = getConsultantSectionConfig(sectionKey);
+    const lower = normalized(message || '');
+
+    if (section.key === 'quality-dashboard' && lower.includes('наруш')) {
+        return buildViolationsReferenceAnswer(null);
+    }
+
+    if (section.key === 'ai-tools' && selection && includesAny(lower, ['решение ии', 'роутинг', 'routing', 'conf', 'обоснование', 'почему решил', 'почему выбрал', 'почему здесь', 'статус', 'не прош'])) {
+        return buildAIToolsSelectionAnswer(selection);
+    }
+
+    const genericPrompt = !lower
+        || includesAny(lower, ['этот экран', 'этот раздел', 'эта страница', 'что здесь', 'что показывает', 'для чего этот экран'])
+        || (lower.includes('здесь') && includesAny(lower, ['нет заказов', 'нет данных', 'пусто', 'ничего не найдено']));
+
+    if (genericPrompt) {
+        return getSectionOverview(section);
+    }
+
+    const matchedTopic = section.topics.find((topic) => includesAny(lower, topic.aliases));
+    if (matchedTopic) {
+        return matchedTopic.answer;
+    }
+
+    return null;
+}
 
 function shortText(value: string | null | undefined, max = 180): string {
     if (!value) return '—';
@@ -841,6 +1083,7 @@ export function getConsultantCatalog() {
         formulas: OKK_CONSULTANT_FORMULAS,
         criteria: OKK_CONSULTANT_GUIDES,
         glossary: OKK_CONSULTANT_GLOSSARY,
+        sections: CONSULTANT_SECTION_CONFIGS,
     };
 }
 
