@@ -20,6 +20,9 @@ export async function GET() {
                 'transcription_min_duration',
                 'transcription_last_run',
                 'rule_engine_last_run',
+                'system_jobs.rule_engine.last_success_at',
+                'system_jobs.rule_engine.last_error_at',
+                'system_jobs.rule_engine.last_error',
                 'insight_agent_last_run',
                 'retailcrm_orders_sync',
                 'retailcrm_history_sync',
@@ -177,7 +180,10 @@ export async function GET() {
 
         // 4.6 Rule Engine Execution & Active Rules
         const ruleRunKey = stateMap.get('rule_engine_last_run');
-        const lastRuleRun = ruleRunKey?.updated_at || null;
+        const ruleWorkerSuccess = stateMap.get('system_jobs.rule_engine.last_success_at');
+        const ruleWorkerError = stateMap.get('system_jobs.rule_engine.last_error');
+        const ruleWorkerErrorAt = stateMap.get('system_jobs.rule_engine.last_error_at');
+        const lastRuleRun = ruleWorkerSuccess?.value || ruleRunKey?.updated_at || null;
         const ruleRunOk = isFresh(lastRuleRun, 65); // 1 hour + 5 min buffer
 
         // --- Rule Engine Health ---
@@ -193,11 +199,15 @@ export async function GET() {
             service: 'Rule Engine Execution',
             cursor: 'Automated',
             last_run: lastRuleRun,
-            status: ruleRunOk ? 'ok' : 'error',
+            status: (ruleWorkerError?.value && (!ruleWorkerSuccess?.value || (ruleWorkerErrorAt?.value && new Date(ruleWorkerErrorAt.value).getTime() >= new Date(ruleWorkerSuccess.value).getTime())))
+                ? 'error'
+                : (ruleRunOk ? 'ok' : 'error'),
             details: activeRules.length > 0
                 ? `Active (${activeRules.length}): ${activeRules.join(', ')}`
                 : 'No active rules found!',
-            reason: !ruleRunOk ? 'System has not run for > 1 hour. Possible Cron/API failure.' : null,
+            reason: (ruleWorkerError?.value && (!ruleWorkerSuccess?.value || (ruleWorkerErrorAt?.value && new Date(ruleWorkerErrorAt.value).getTime() >= new Date(ruleWorkerSuccess.value).getTime())))
+                ? `Последняя ошибка worker: ${ruleWorkerError.value}`
+                : (!ruleRunOk ? 'System has not run for > 1 hour. Possible Cron/API failure.' : null),
             active_rules: activeRules,
             inactive_rules: inactiveRules
         };

@@ -206,6 +206,7 @@
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
+- [x] Rule Engine вынесен в отдельный cron-safe realtime маршрут, а legacy `/api/cron` перестал запускать rules при включенном realtime pipeline.
 
 ## 15. Конкретные безопасные параметры запуска для вашего масштаба
 

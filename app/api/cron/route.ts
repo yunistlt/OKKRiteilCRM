@@ -49,15 +49,20 @@ export async function GET(request: Request) {
 
         // 2. Run Rule Engine
         if (checkBudget('Rules')) {
-            console.log('[CRON] Step 2: Rules');
-            try {
-                const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
-                if (!rulesRes.ok) throw new Error(`HTTP ${rulesRes.status}: ${await rulesRes.text().then(t => t.substring(0, 200))}`);
-                const rulesJson = await rulesRes.json();
-                report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
-            } catch (e: any) {
-                console.error('[CRON] Rules Error:', e);
-                report.push(`Rules: Error (${e.message})`);
+            if (isRealtimePipelineEnabled) {
+                console.log('[CRON] Step 2: Rules skipped, realtime pipeline owns rule engine');
+                report.push('Rules: Skipped (realtime pipeline enabled)');
+            } else {
+                console.log('[CRON] Step 2: Rules');
+                try {
+                    const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
+                    if (!rulesRes.ok) throw new Error(`HTTP ${rulesRes.status}: ${await rulesRes.text().then(t => t.substring(0, 200))}`);
+                    const rulesJson = await rulesRes.json();
+                    report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
+                } catch (e: any) {
+                    console.error('[CRON] Rules Error:', e);
+                    report.push(`Rules: Error (${e.message})`);
+                }
             }
         }
         // 3. Refresh Priorities (Stagnation calculation)

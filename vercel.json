@@ -58,6 +58,10 @@
             "schedule": "*/5 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/rule-engine",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/nightly-reconciliation",
             "schedule": "30 3 * * *"
         },
