@@ -12,6 +12,15 @@ type HealthCheckItem = {
     severity?: 'ok' | 'warning' | 'critical';
 };
 
+function formatRetryBacklogByKind(retryBacklogByKind: Record<string, number>) {
+    const entries = Object.entries(retryBacklogByKind)
+        .filter(([, count]) => count > 0)
+        .sort((left, right) => right[1] - left[1]);
+
+    if (!entries.length) return 'retry backlog empty';
+    return entries.map(([kind, count]) => `${kind}=${count}`).join(', ');
+}
+
 function pushCheck(
     checks: HealthCheckItem[],
     params: { name: string; healthy: boolean; message: string; severity?: 'ok' | 'warning' | 'critical' }
@@ -133,6 +142,11 @@ export async function GET() {
                     name: 'dead_letters_last_24h',
                     failing: metrics.recovery.deadLettersLast24h > 0,
                     message: `dead letters 24h = ${metrics.recovery.deadLettersLast24h}`,
+                },
+                {
+                    name: 'retry_backlog_by_kind',
+                    failing: Object.values(metrics.recovery.retryBacklogByKind || {}).some((count) => count > 10),
+                    message: formatRetryBacklogByKind(metrics.recovery.retryBacklogByKind || {}),
                 },
             ];
 

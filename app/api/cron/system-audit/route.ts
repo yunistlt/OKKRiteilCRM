@@ -12,6 +12,18 @@ const ALERT_SENT_AT_KEY = 'system_audit_realtime_alert_sent_at';
 const ALERT_RECOVERED_AT_KEY = 'system_audit_realtime_alert_recovered_at';
 const ALERT_COOLDOWN_HOURS = 6;
 
+function formatRetryBacklogByKind(retryBacklogByKind: Record<string, number>) {
+    const entries = Object.entries(retryBacklogByKind)
+        .filter(([, count]) => count > 0)
+        .sort((left, right) => right[1] - left[1]);
+
+    if (!entries.length) return null;
+
+    return entries
+        .map(([kind, count]) => `${kind}: ${count}`)
+        .join(', ');
+}
+
 function hoursSince(dateStr?: string | null) {
     if (!dateStr) return null;
     return (Date.now() - new Date(dateStr).getTime()) / (60 * 60 * 1000);
@@ -140,6 +152,10 @@ export async function GET(req: Request) {
             }
             if (metrics.recovery.retryAttemptsLast24h > 20) {
                 realtimeAlertLines.push(`retry attempts за 24ч: ${metrics.recovery.retryAttemptsLast24h}`);
+            }
+            const retryBacklogSummary = formatRetryBacklogByKind(metrics.recovery.retryBacklogByKind);
+            if (retryBacklogSummary) {
+                realtimeAlertLines.push(`retry backlog по причинам: ${retryBacklogSummary}`);
             }
 
             if (realtimeAlertLines.length > 0) {
