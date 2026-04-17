@@ -27,13 +27,13 @@
 
 ## 2. Архитектурный принцип исправления
 
-- [ ] Перевести критичный контур с модели batch cron на модель событий + очередь + worker.
-- [ ] Оставить Vercel Cron только как резервный механизм догоняющей синхронизации и health-check, а не как основной runtime для живой обработки.
-- [ ] Сделать единый канонический контур данных для звонков: raw_telphin_calls + call_order_matches + raw_order_events + orders + order_metrics + okk_order_scores.
-- [ ] Вывести из боевого контура устаревшие параллельные таблицы incoming_calls, outgoing_calls, transcription_queue или оставить их только как legacy-слой до миграции.
-- [ ] Сделать пересчёт ОКК по одному заказу на событие, а не полным прогоном всех активных заказов.
-- [ ] Разделить pipeline на независимые очереди: order_updates, order_history_updates, call_ingest, call_match, transcription, insights, scoring, aggregates.
-- [ ] Ввести явный idempotency-ключ для каждого job, чтобы повторные события не создавали дублей и гонок.
+- [x] Перевести критичный контур с модели batch cron на модель событий + очередь + worker.
+- [x] Оставить Vercel Cron только как резервный механизм догоняющей синхронизации и health-check, а не как основной runtime для живой обработки.
+- [x] Сделать единый канонический контур данных для звонков: raw_telphin_calls + call_order_matches + raw_order_events + orders + order_metrics + okk_order_scores.
+- [x] Вывести из боевого контура устаревшие параллельные таблицы incoming_calls, outgoing_calls, transcription_queue или оставить их только как legacy-слой до миграции.
+- [x] Сделать пересчёт ОКК по одному заказу на событие, а не полным прогоном всех активных заказов.
+- [x] Разделить pipeline на независимые очереди: order_updates, order_history_updates, call_ingest, call_match, transcription, insights, scoring, aggregates.
+- [x] Ввести явный idempotency-ключ для каждого job, чтобы повторные события не создавали дублей и гонок.
 
 ## 3. Ограничения и безопасные лимиты по интеграциям
 
@@ -55,20 +55,20 @@
 
 ### Telphin
 
-- [ ] Принять webhook-first модель как основной источник событий по звонкам и готовности записи.
-- [ ] Оставить fallback poller Telphin как страховку на случай потери webhook.
-- [ ] Поставить fallback poller истории звонков Telphin не чаще 1 раза в 120 секунд.
-- [ ] Ограничить fallback poller окном последних 10-15 минут, а не перечитыванием больших диапазонов.
+- [x] Принять webhook-first модель как основной источник событий по звонкам и готовности записи.
+- [x] Оставить fallback poller Telphin как страховку на случай потери webhook.
+- [x] Поставить fallback poller истории звонков Telphin не чаще 1 раза в 120 секунд.
+- [x] Ограничить fallback poller окном последних 10-15 минут, а не перечитыванием больших диапазонов.
 - [ ] Использовать count=100 только для catch-up и backfill; в штатном режиме не перегружать обработку лишними страницами.
-- [ ] Ограничить одновременный запуск Telphin poll worker до 1 экземпляра через distributed lock.
-- [ ] Ввести дедупликацию по telphin_call_id и событийному типу webhook.
+- [x] Ограничить одновременный запуск Telphin poll worker до 1 экземпляра через distributed lock.
+- [x] Ввести дедупликацию по telphin_call_id и событийному типу webhook.
 - [ ] Ввести отдельный backlog-recovery job, который медленно дочищает пропуски без давления на основной поток.
 
 ### AI и транскрибация
 
-- [ ] Ограничить concurrency транскрибации до 2 параллельных задач на старте.
-- [ ] Ограничить concurrency AI insights до 1-2 параллельных задач на старте.
-- [ ] Ограничить concurrency scoring по заказам до 2 параллельных задач на старте.
+- [x] Ограничить concurrency транскрибации до 2 параллельных задач на старте.
+- [x] Ограничить concurrency AI insights до 1-2 параллельных задач на старте.
+- [x] Ограничить concurrency scoring по заказам до 2 параллельных задач на старте.
 - [x] Ввести отдельные retry-правила для сетевых ошибок, таймаутов скачивания записи и ошибок OpenAI.
 - [x] Ограничить concurrency транскрибации до 2 параллельных задач на старте.
 - [x] Ограничить concurrency AI insights до 1 параллельной задачи на старте.
@@ -91,21 +91,21 @@
 ## 5. Этап 1. Нормализация текущей схемы данных
 
 - [ ] Провести аудит всех мест, где пишутся данные звонков и транскрибации.
-- [ ] Подтвердить один боевой источник правды для звонков: raw_telphin_calls.
-- [ ] Подтвердить один боевой источник правды для транскрибации: transcription_status и transcript в raw_telphin_calls или отдельная каноническая очередь job.
-- [ ] Убрать расхождение между webhook-обработчиками Telphin и боевым cron транскрибации.
-- [ ] Обеспечить, чтобы webhook recording_ready сразу обновлял именно тот контур, который потом читает ОКК.
-- [ ] Обеспечить, чтобы webhook status_update не писал только в legacy-таблицы без продолжения pipeline.
-- [ ] Убедиться, что order_metrics, insights и okk_order_scores могут пересчитываться по одному order_id без полного batch-run.
+- [x] Подтвердить один боевой источник правды для звонков: raw_telphin_calls.
+- [x] Подтвердить один боевой источник правды для транскрибации: transcription_status и transcript в raw_telphin_calls или отдельная каноническая очередь job.
+- [x] Убрать расхождение между webhook-обработчиками Telphin и боевым cron транскрибации.
+- [x] Обеспечить, чтобы webhook recording_ready сразу обновлял именно тот контур, который потом читает ОКК.
+- [x] Обеспечить, чтобы webhook status_update не писал только в legacy-таблицы без продолжения pipeline.
+- [x] Убедиться, что order_metrics, insights и okk_order_scores могут пересчитываться по одному order_id без полного batch-run.
 - [ ] Добавить миграционный план выключения legacy-таблиц после стабилизации.
 
 ## 6. Этап 2. Очереди и worker-процессы
 
 - [x] Ввести таблицу jobs или полноценную очередь для фоновых задач.
-- [ ] Поддержать типы задач: retailcrm_order_sync, retailcrm_history_sync, telphin_call_ingest, call_match, transcription, insight_refresh, score_refresh, aggregate_refresh.
+- [x] Поддержать типы задач: retailcrm_order_sync, retailcrm_history_sync, telphin_call_ingest, call_match, transcription, insight_refresh, score_refresh, aggregate_refresh.
 - [x] Добавить поля queued_at, started_at, finished_at, attempts, locked_by, lock_expires_at, idempotency_key, payload, error_message.
-- [ ] Сделать выборку задач маленькими батчами без длинных HTTP-цепочек.
-- [ ] Ввести distributed lock на задачу и на тип worker, чтобы не было двойной обработки.
+- [x] Сделать выборку задач маленькими батчами без длинных HTTP-цепочек.
+- [x] Ввести distributed lock на задачу и на тип worker, чтобы не было двойной обработки.
 - [x] Реализовать retries с backoff без бесконечных циклов.
 - [ ] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
@@ -115,14 +115,14 @@
 
 ## 7. Этап 3. RetailCRM near realtime sync
 
-- [ ] Перевести основной синк заказов на updatedAt-based delta polling.
-- [ ] Писать в sync_state не только last success, но и last cursor, lag_seconds, last_error.
-- [ ] Дробить синк на короткие проходы с time budget до 10-15 секунд вместо длинных прогонов под лимит Vercel.
-- [ ] После каждого найденного изменённого заказа ставить отдельную задачу на rescore этого order_id.
-- [ ] Перестать триггерить insight только для первого заказа в пачке.
-- [ ] Для history sync уйти от отдельного редкого массового прохода раз в 30 минут и перевести его в более частый дельта-режим.
-- [ ] Сделать частоту history poller 1 раз в 120 секунд в рабочее время.
-- [ ] Оставить редкий full reconciliation job 1 раз в сутки для защиты от пропусков.
+- [x] Перевести основной синк заказов на updatedAt-based delta polling.
+- [x] Писать в sync_state не только last success, но и last cursor, lag_seconds, last_error.
+- [x] Дробить синк на короткие проходы с time budget до 10-15 секунд вместо длинных прогонов под лимит Vercel.
+- [x] После каждого найденного изменённого заказа ставить отдельную задачу на rescore этого order_id.
+- [x] Перестать триггерить insight только для первого заказа в пачке.
+- [x] Для history sync уйти от отдельного редкого массового прохода раз в 30 минут и перевести его в более частый дельта-режим.
+- [x] Сделать частоту history poller 1 раз в 120 секунд в рабочее время.
+- [x] Оставить редкий full reconciliation job 1 раз в сутки для защиты от пропусков.
 
 ## 8. Этап 4. Telphin near realtime ingest
 
@@ -130,8 +130,8 @@
 - [x] На webhook сразу обновлять или upsert-ить каноническую запись звонка.
 - [x] На webhook recording_ready сразу переводить звонок в состояние ready_for_transcription.
 - [ ] На webhook call_end сразу создавать matching job, если order ещё не найден.
-- [ ] Оставить Telphin fallback poller только как страховочный слой на пропущенные webhook.
-- [ ] В fallback poller проверять только последние 10-15 минут и только незавершённые или неукомплектованные звонки.
+- [x] Оставить Telphin fallback poller только как страховочный слой на пропущенные webhook.
+- [x] В fallback poller проверять только последние 10-15 минут и только незавершённые или неукомплектованные звонки.
 - [x] Ввести защиту от повторной транскрибации одной и той же записи.
 
 ## 9. Этап 5. Непрерывная транскрибация
