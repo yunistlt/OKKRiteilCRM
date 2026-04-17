@@ -1,13 +1,21 @@
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, saveMatches, RawCall } from '@/lib/call-matching';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 min timeout
 
-export async function GET(request: Request) {
+function ensureAuthorized(req: NextRequest) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
+
+export async function GET(request: NextRequest) {
     try {
+        ensureAuthorized(request);
         const { searchParams } = new URL(request.url);
         const forceStart = searchParams.get('start');
 
@@ -104,7 +112,8 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('Match Backfill Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }
 

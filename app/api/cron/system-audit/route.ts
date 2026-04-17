@@ -1,6 +1,6 @@
 
 // ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Системный аудитор: проверка здоровья базы и зависших процессов.
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { supabase } from '@/utils/supabase';
 import { sendTelegramNotification } from '@/lib/telegram';
@@ -11,6 +11,13 @@ const ALERT_HASH_KEY = 'system_audit_realtime_alert_hash';
 const ALERT_SENT_AT_KEY = 'system_audit_realtime_alert_sent_at';
 const ALERT_RECOVERED_AT_KEY = 'system_audit_realtime_alert_recovered_at';
 const ALERT_COOLDOWN_HOURS = 6;
+
+function ensureAuthorized(req: NextRequest) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
 
 function formatRetryBacklogByKind(retryBacklogByKind: Record<string, number>) {
     const entries = Object.entries(retryBacklogByKind)
@@ -60,12 +67,13 @@ async function persistAlertState(entries: Array<{ key: string; value: string }>)
     if (error) throw error;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
     const report: string[] = [];
     let hasAnomalies = false;
     let realtimeAlertLines: string[] = [];
 
     try {
+        ensureAuthorized(req);
         console.log('[SystemAuditor] Starting check...');
 
         // 1. Check for Stuck Transcriptions (Pending > 2 hours)
@@ -245,7 +253,10 @@ ${report.join('\n')}
 
     } catch (e: any) {
         console.error('[SystemAuditor] Fatal Error:', e);
-        await sendTelegramNotification(`<b>🚨 System Auditor CRASHED</b>\n${e.message}`);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        if (e.message !== 'Unauthorized') {
+            await sendTelegramNotification(`<b>🚨 System Auditor CRASHED</b>\n${e.message}`);
+        }
+        const isUnauthorized = e.message === 'Unauthorized';
+        return NextResponse.json({ error: e.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }

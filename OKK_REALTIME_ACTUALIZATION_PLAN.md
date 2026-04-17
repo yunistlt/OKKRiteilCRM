@@ -230,6 +230,8 @@
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
 - [x] Legacy `/api/cron` приведён к общей cron-модели безопасности: backup orchestration route теперь тоже требует `CRON_SECRET`, как и system-jobs workers, и не остаётся публичным тяжёлым endpoint.
+- [x] Неиспользуемые cron-style routes `/api/cron/productologist-worker` и `/api/cron/match-backfill` тоже переведены на `CRON_SECRET`, чтобы рядом с основным pipeline не оставались открытые automation/backfill endpoints без живых UI call sites.
+- [x] `/api/cron/system-audit` тоже приведён к cron-only auth-модели: alerting route теперь требует `CRON_SECRET` и не шлёт ложный crash alert в Telegram на неавторизованные вызовы.
 - [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.

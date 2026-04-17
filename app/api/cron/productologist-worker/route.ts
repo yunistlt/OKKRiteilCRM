@@ -1,16 +1,24 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { Productologist } from '@/lib/productologist';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Исследование занимает время
+
+function ensureAuthorized(req: NextRequest) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
 
 /**
  * GET /api/cron/productologist-worker
  * Фоновый воркер ЕЛЕНЫ (Продуктолога)
  * Находит новые товары и изучает их (ищет на сайте, парсит тех-данные)
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
     try {
+        ensureAuthorized(req);
         console.log('[ElenaWorker] Scanning for new products...');
         
         // 1. Находим товары, которые еще не изучены
@@ -41,6 +49,7 @@ export async function GET() {
 
     } catch (error: any) {
         console.error('[ElenaWorker] Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }
