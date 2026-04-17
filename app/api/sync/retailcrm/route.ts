@@ -5,6 +5,7 @@ import {
     getRetailCrmOrderCursor,
     upsertRetailCrmOrders,
 } from '@/lib/retailcrm-orders';
+import { enqueueOrderRefreshJob, isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
 
-        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !forceResync) {
+        if (isSystemJobsPipelineEnabled() && !forceResync) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -107,12 +108,39 @@ export async function GET(request: Request) {
                 await upsertRetailCrmOrders(eventsToUpsert);
             }
 
-            // Trigger Insight Agent for the first order
             if (eventsToUpsert.length > 0) {
-                try {
-                    const { runInsightAnalysis } = await import('@/lib/insight-agent');
-                    runInsightAnalysis(eventsToUpsert[0].id).catch(e => console.error('[InsightAgent] Sync trigger failed:', e));
-                } catch (e) { }
+                if (isSystemJobsPipelineEnabled()) {
+                    for (const order of eventsToUpsert) {
+                        try {
+                            await enqueueOrderRefreshJob({
+                                jobType: 'order_score_refresh',
+                                orderId: order.id,
+                                source: 'retailcrm_fallback_sync',
+                                payload: {
+                                    order_updated_at: getRetailCrmOrderCursor(order)?.toISOString?.() || null,
+                                },
+                                priority: 25,
+                            });
+
+                            await enqueueOrderRefreshJob({
+                                jobType: 'order_insight_refresh',
+                                orderId: order.id,
+                                source: 'retailcrm_fallback_sync',
+                                payload: {
+                                    order_updated_at: getRetailCrmOrderCursor(order)?.toISOString?.() || null,
+                                },
+                                priority: 35,
+                            });
+                        } catch (e) {
+                            console.error('[RetailCRM Fallback] Failed to enqueue downstream refresh jobs:', e);
+                        }
+                    }
+                } else {
+                    try {
+                        const { runInsightAnalysis } = await import('@/lib/insight-agent');
+                        runInsightAnalysis(eventsToUpsert[0].id).catch(e => console.error('[InsightAgent] Sync trigger failed:', e));
+                    } catch (e) { }
+                }
             }
 
             totalOrdersFetched += orders.length;
