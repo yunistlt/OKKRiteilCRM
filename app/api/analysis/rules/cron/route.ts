@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import { executeRuleEngineRange, getRuleEngineFallbackHours } from '@/lib/rule-engine-execution';
+import { executeRuleEngineRange, getRuleEngineFallbackHours, isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes
@@ -10,6 +10,18 @@ const DEFAULT_FALLBACK_HOURS = getRuleEngineFallbackHours();
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
+        const force = searchParams.get('force') === 'true';
+        const hasExplicitWindow = searchParams.has('start') || searchParams.has('end') || searchParams.has('rule');
+
+        if (isRealtimeRuleEngineEnabled() && !force && !hasExplicitWindow) {
+            return NextResponse.json({
+                success: true,
+                deprecated: true,
+                replacement: '/api/analysis/rules/reconcile',
+                status: 'skipped',
+                reason: 'Realtime pipeline owns production rule flow. Use explicit start/end/rule or force=true for emergency fallback reconcile.',
+            });
+        }
 
         // Default window is intentionally narrow: periodic fallback should reconcile recent drift,
         // while deep backfills stay explicit via start/end parameters or nightly reconciliation.
