@@ -8,12 +8,21 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
+    const force = searchParams.get('force') === 'true';
 
     // Default: Check last 24 hours to be safe (idempotency ensures no duplicates)
     // Or user can pass ?hours=1
     const hours = parseInt(searchParams.get('hours') || '24');
 
     try {
+        if (isRealtimeRuleEngineEnabled() && !force) {
+            return NextResponse.json({
+                success: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns production rule execution. Use force=true for emergency fallback run.',
+            });
+        }
+
         console.log(`[API] Triggering Rule Engine for last ${hours} hours...`);
 
         const result = await executeRuleEngineWindow({ hours });
