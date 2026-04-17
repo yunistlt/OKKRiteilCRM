@@ -7,14 +7,18 @@ import { supabase } from '@/utils/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
+function hasCronAuthorization(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+}
+
 // GET /api/okk/run-all — полный прогон всех контролируемых заказов
 // Запускается: ночным cron + кнопкой в UI
 export async function GET(request: Request) {
     try {
-        const session = await getSession();
-        const userRole = session?.user?.role || 'admin';
-        const retailCrmId = session?.user?.retail_crm_manager_id;
-        const capability = await getEffectiveCapabilityForRole(session?.user?.role);
+        const cronAuthorized = hasCronAuthorization(request);
+        const session = cronAuthorized ? null : await getSession();
+        const capability = cronAuthorized ? null : await getEffectiveCapabilityForRole(session?.user?.role);
 
         const { searchParams } = new URL(request.url);
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
@@ -29,18 +33,18 @@ export async function GET(request: Request) {
             });
         }
 
-        if (!capability.canRunBulkOperations && !specificOrderId) {
+        if (!cronAuthorized && !capability?.canRunBulkOperations && !specificOrderId) {
             return NextResponse.json({ error: 'У вас нет прав на массовый запуск проверки' }, { status: 403 });
         }
 
-        if (specificOrderId) {
+        if (specificOrderId && !cronAuthorized) {
             const { data: order } = await supabase
                 .from('orders')
                 .select('manager_id')
                 .eq('order_id', specificOrderId)
                 .single();
 
-            if (!order || !canAccessTargetManager(session?.user, capability, order.manager_id)) {
+            if (!order || !capability || !canAccessTargetManager(session?.user, capability, order.manager_id)) {
                 return NextResponse.json({ error: 'У вас нет прав на перепроверку этого заказа' }, { status: 403 });
             }
         }

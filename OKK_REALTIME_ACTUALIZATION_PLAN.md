@@ -235,6 +235,7 @@
 - [x] Admin-triggered `/api/cron/reactivation-worker` переведён не на cron secret, а на session-based role guard `admin|rop`, чтобы сохранить запуск из админки и при этом убрать публичный write endpoint.
 - [x] Status dashboard manual run больше не ходит браузером напрямую в secret-protected cron routes: добавлен server-side trigger proxy под `/api/settings/system-status/run`, который проверяет admin session и уже на сервере вызывает нужный endpoint с `CRON_SECRET` при необходимости.
 - [x] `/api/settings/system-status` тоже закрыт на admin session: internal monitoring snapshot и ручное изменение `sync_state` больше не остаются публичными рядом с операторским dashboard.
+- [x] Mixed UI+cron endpoints `/api/cron/reactivation-worker` и `/api/okk/run-all` приведены к гибридной auth-модели: route принимает либо operator session, либо `CRON_SECRET`, чтобы не ломать Vercel Cron при закрытии публичного доступа.
 - [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.

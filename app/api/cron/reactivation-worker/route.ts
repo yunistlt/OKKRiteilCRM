@@ -29,9 +29,15 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY ?? '';
 const RETAILCRM_SITE = process.env.RETAILCRM_SITE ?? '';
 const BATCH_SIZE = 5;
 
-export async function GET() {
-    const session = await getSession();
-    if (!hasAnyRole(session, ['admin', 'rop'])) {
+function hasCronAuthorization(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+}
+
+export async function GET(req: Request) {
+    const cronAuthorized = hasCronAuthorization(req);
+    const session = cronAuthorized ? null : await getSession();
+    if (!cronAuthorized && !hasAnyRole(session, ['admin', 'rop'])) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
