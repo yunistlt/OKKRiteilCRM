@@ -210,6 +210,7 @@
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Telphin ingest и storage path усилены controlled timeout/degradation: общий helper теперь ограничивает token lookup, `user`, `call_history` и download записи по времени и возвращает нормализованные network/timeout ошибки вместо зависаний.
 - [x] `system-audit` и health-check начали включать в сигнал dominant retry causes, чтобы Telegram/monitoring показывали не только факт backlog, но и его источник (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`).
+- [x] `system-audit` и health-check начали выделять конкретную hotspot-очередь (`transcription`, `score`, `insight` и т.д.), чтобы Telegram и health endpoint показывали не только общую деградацию, но и самый проблемный stage pipeline.
 - [x] Webhook-side Telphin canonical ingest отвязан от legacy-слоя: ошибки чтения/обновления `incoming_calls`/`outgoing_calls` теперь не должны блокировать upsert в `raw_telphin_calls` и постановку realtime jobs.
 - [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.

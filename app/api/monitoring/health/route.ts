@@ -21,6 +21,40 @@ function formatRetryBacklogByKind(retryBacklogByKind: Record<string, number>) {
     return entries.map(([kind, count]) => `${kind}=${count}`).join(', ');
 }
 
+function getDominantRetryCause(retryBacklogByKind: Record<string, number>) {
+    const entries = Object.entries(retryBacklogByKind)
+        .filter(([, count]) => count > 0)
+        .sort((left, right) => right[1] - left[1]);
+
+    if (!entries.length) return null;
+
+    const [kind, count] = entries[0];
+    return `${kind}=${count}`;
+}
+
+function getQueueHotspot(queueStages: Record<string, { service: string; queued: number; processing: number; deadLetter: number; oldestQueuedSeconds: number | null; status: string }>) {
+    const candidates = Object.values(queueStages)
+        .filter((queue) => queue.deadLetter > 0 || queue.queued > 0 || (queue.oldestQueuedSeconds || 0) > 0 || queue.status !== 'ok')
+        .sort((left, right) => {
+            if (right.deadLetter !== left.deadLetter) return right.deadLetter - left.deadLetter;
+            const rightOldest = right.oldestQueuedSeconds || 0;
+            const leftOldest = left.oldestQueuedSeconds || 0;
+            if (rightOldest !== leftOldest) return rightOldest - leftOldest;
+            if (right.queued !== left.queued) return right.queued - left.queued;
+            return right.processing - left.processing;
+        });
+
+    if (!candidates.length) return null;
+
+    const queue = candidates[0];
+    const details = [`queued=${queue.queued}`];
+    if (queue.processing > 0) details.push(`processing=${queue.processing}`);
+    if (queue.deadLetter > 0) details.push(`dead_letter=${queue.deadLetter}`);
+    if (queue.oldestQueuedSeconds !== null) details.push(`oldest=${Math.floor(queue.oldestQueuedSeconds / 60)} min`);
+
+    return `${queue.service} (${details.join(', ')})`;
+}
+
 function pushCheck(
     checks: HealthCheckItem[],
     params: { name: string; healthy: boolean; message: string; severity?: 'ok' | 'warning' | 'critical' }
@@ -82,6 +116,8 @@ export async function GET() {
         if (realtimePipeline.enabled && realtimePipeline.queueAvailable) {
             const metrics = realtimePipeline.metrics;
             const serviceByName = new Map(realtimePipeline.services.map((service) => [service.service, service]));
+            const queueHotspot = getQueueHotspot(realtimePipeline.queueStages);
+            const dominantRetryCause = getDominantRetryCause(metrics.recovery.retryBacklogByKind || {});
 
             const criticalChecks = [
                 {
@@ -148,6 +184,11 @@ export async function GET() {
                     failing: Object.values(metrics.recovery.retryBacklogByKind || {}).some((count) => count > 10),
                     message: formatRetryBacklogByKind(metrics.recovery.retryBacklogByKind || {}),
                 },
+                {
+                    name: 'queue_hotspot',
+                    failing: Boolean(queueHotspot) && queueSummary.deadLetterTotal > 0,
+                    message: queueHotspot || 'no queue hotspot',
+                },
             ];
 
             for (const check of criticalChecks) {
@@ -187,10 +228,10 @@ export async function GET() {
 
             if (criticalChecks.some((check) => check.failing)) {
                 isHealthy = false;
-                message = 'CRITICAL: system-jobs pipeline lagging, dead letters detected, or critical queue SLA exceeded.';
+                message = `CRITICAL: system-jobs pipeline lagging, dead letters detected, or critical queue SLA exceeded.${queueHotspot ? ` Hotspot: ${queueHotspot}.` : ''}${dominantRetryCause ? ` Dominant retry cause: ${dominantRetryCause}.` : ''}`;
             } else if (checks.some((check) => check.severity === 'warning')) {
                 isDegraded = true;
-                message = 'WARNING: system healthy but one or more queues are approaching SLA thresholds.';
+                message = `WARNING: system healthy but one or more queues are approaching SLA thresholds.${queueHotspot ? ` Hotspot: ${queueHotspot}.` : ''}${dominantRetryCause ? ` Dominant retry cause: ${dominantRetryCause}.` : ''}`;
             }
         } else {
             pushCheck(checks, {
