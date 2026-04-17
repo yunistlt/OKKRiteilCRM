@@ -141,6 +141,20 @@ export async function GET() {
                         : `insight refresh oldest queued ${Math.floor(metrics.insightQueueOldestSeconds / 60)} min`,
                 },
                 {
+                    name: 'recording_ready_to_transcript_latency_p95',
+                    failing: metrics.recordingReadyToTranscriptLatency.p95Seconds !== null && metrics.recordingReadyToTranscriptLatency.p95Seconds > 7 * 60,
+                    message: metrics.recordingReadyToTranscriptLatency.p95Seconds === null
+                        ? 'recording_ready→transcript latency unavailable'
+                        : `recording_ready→transcript p95 ${Math.floor(metrics.recordingReadyToTranscriptLatency.p95Seconds / 60)} min`,
+                },
+                {
+                    name: 'order_event_to_score_latency_p95',
+                    failing: metrics.orderEventToScoreLatency.p95Seconds !== null && metrics.orderEventToScoreLatency.p95Seconds > 3 * 60,
+                    message: metrics.orderEventToScoreLatency.p95Seconds === null
+                        ? 'order event→score latency unavailable'
+                        : `order event→score p95 ${Math.floor(metrics.orderEventToScoreLatency.p95Seconds / 60)} min`,
+                },
+                {
                     name: 'dead_letters_last_24h',
                     failing: metrics.recovery.deadLettersLast24h > 0,
                     message: `dead letters 24h = ${metrics.recovery.deadLettersLast24h}`,
