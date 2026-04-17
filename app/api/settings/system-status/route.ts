@@ -1,6 +1,8 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { supabase } from '@/utils/supabase';
 
@@ -53,6 +55,11 @@ function buildSlaStatus(params: {
 
 export async function GET() {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         // 1. Fetch Sync Cursors
         const { data: syncStates, error: syncError } = await supabase
             .from('sync_state')
@@ -363,6 +370,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await req.json();
         const { key, value } = body;
 
