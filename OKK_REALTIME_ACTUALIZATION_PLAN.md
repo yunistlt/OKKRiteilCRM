@@ -235,6 +235,7 @@
 - [x] Status backend начал поднимать operator-facing service cards для доменных SLA `Transcription SLA` и `Order Score SLA`, чтобы деградация была видна в общем списке сервисов, а не только в latency grid.
 - [x] Legacy service cards `Matching Service` и `Transcription Cron` переведены в fallback-only semantics: status page больше не трактует их idle как primary incident при включённом realtime pipeline.
 - [x] Legacy bulk `analysis/insights/run` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `orderId` или `force=true`, а status card `AI Insight Agent` теперь отражает fallback semantics, а не primary runtime.
+- [x] Status backend и status page переведены на fallback-only semantics для legacy `RetailCRM Sync` и `History Sync`: manual run использует `force=true`, а idle fallback больше не выглядит как primary incident при активном realtime pipeline.
 - [x] Rule Engine вынесен в отдельный cron-safe realtime маршрут, а legacy `/api/cron` перестал запускать rules при включенном realtime pipeline.
 - [x] Семантические call-rules вынесены из direct transcription-trigger в отдельную `call_semantic_rules` очередь с dedicated worker, cron и latency/backlog monitoring.
 - [x] Manual `rules/execute` и `priorities/refresh` перестали быть обходом legacy broad-scan path: теперь они используют общий realtime-safe runner или пропускают Rule Engine, когда ownership у realtime pipeline.

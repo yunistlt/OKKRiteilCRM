@@ -319,7 +319,7 @@ export default function SystemStatusPage() {
     const runService = async (serviceName: string) => {
         let url = '';
         if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
-        if (serviceName.includes('RetailCRM')) url = '/api/sync/retailcrm';
+        if (serviceName.includes('RetailCRM Fallback')) url = '/api/sync/retailcrm?force=true';
         if (serviceName.includes('System Jobs Queue')) url = '/api/cron/system-jobs/watchdog';
         if (serviceName.includes('RetailCRM Delta Queue')) url = '/api/cron/system-jobs/retailcrm-order-delta';
         if (serviceName.includes('RetailCRM History Queue')) url = '/api/cron/system-jobs/retailcrm-history-delta';
@@ -331,7 +331,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
         if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
         if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';
-        if (serviceName.includes('History Sync')) url = '/api/sync/history?force=true';
+        if (serviceName.includes('History Fallback')) url = '/api/sync/history?force=true';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute?force=true';
         if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run?force=true';
         if (serviceName.includes('Transcription Fallback')) url = '/api/cron/transcribe?force=true';
@@ -412,13 +412,13 @@ export default function SystemStatusPage() {
         if (name.includes('Manager Aggregate Queue')) return 'Очередь Агрегатов Менеджеров';
         if (name.includes('Nightly Reconciliation')) return 'Ночной Fallback Reconciliation';
         if (name.includes('Semantic Rules Queue')) return 'Очередь Семантических Правил';
-        if (name.includes('RetailCRM')) return 'Синхронизация Заказов (RetailCRM)';
+        if (name.includes('RetailCRM Fallback')) return 'Fallback Sync RetailCRM';
         if (name.includes('Matching Fallback')) return 'Fallback Sweep Матчинга';
         if (name.includes('Score Refresh Queue')) return 'Очередь Пересчета Score';
         if (name.includes('Insight Refresh Queue')) return 'Очередь AI Инсайтов';
         if (name.includes('Transcription Queue')) return 'Очередь Транскрибации';
         if (name.includes('Transcription Fallback')) return 'Fallback Sweep Транскрибации';
-        if (name.includes('History Sync')) return 'События Заказов (History API)';
+        if (name.includes('History Fallback')) return 'Fallback Sync Истории';
         if (name.includes('Rule Engine')) return 'Движок Проверки Правил';
         if (name.includes('AI Insight Agent')) return 'Аналитик Бизнес-Инсайтов (AI)';
         return name;
@@ -435,6 +435,7 @@ export default function SystemStatusPage() {
         if (name.includes('Manager Aggregate Queue')) return '👥';
         if (name.includes('Nightly Reconciliation')) return '🌙';
         if (name.includes('Semantic Rules Queue')) return '🧩';
+        if (name.includes('RetailCRM Fallback')) return '🧯';
         if (name.includes('RetailCRM')) return '🛍️';
         if (name.includes('Matching Fallback')) return '🧯';
         if (name.includes('Matching')) return '🔗';
@@ -443,6 +444,7 @@ export default function SystemStatusPage() {
         if (name.includes('Transcription Queue')) return '🎧';
         if (name.includes('Transcription Fallback')) return '🛟';
         if (name.includes('Transcription')) return '🎙️';
+        if (name.includes('History Fallback')) return '🛟';
         if (name.includes('History')) return '⚡️';
         if (name.includes('Rule')) return '⚙️';
         if (name.includes('Insight')) return '🕵️‍♂️';

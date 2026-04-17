@@ -159,6 +159,8 @@ export async function GET() {
                 : getDiagnosis('telphin_backfill', backfillOk, telphinBackfill?.updated_at)
         };
 
+        const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+
         // --- RetailCRM ---
         const retailCursorState = stateMap.get('retailcrm_orders_sync');
         const retailCursor = retailCursorState?.value || lastOrder?.created_at || null;
@@ -166,16 +168,18 @@ export async function GET() {
         const retailOk = isFresh(retailLastRun, 15);
         const retailLagMinutes = retailCursor ? Math.floor((Date.now() - new Date(retailCursor).getTime()) / 60000) : null;
         const retailStatus = {
-            service: 'RetailCRM Sync',
-            cursor: retailCursor || 'Never',
+            service: 'RetailCRM Fallback Sync',
+            cursor: realtimePipelineEnabled ? 'Fallback only' : (retailCursor || 'Never'),
             last_run: retailLastRun,
-            status: retailOk ? 'ok' : 'warning',
-            details: retailLagMinutes !== null ? `Cursor lag ${retailLagMinutes} min` : 'No cursor yet',
-            reason: getDiagnosis('retailcrm', retailOk, retailLastRun)
+            status: realtimePipelineEnabled ? 'ok' : (retailOk ? 'ok' : 'warning'),
+            details: realtimePipelineEnabled
+                ? `Backup-only manual force run${retailLagMinutes !== null ? `, cursor lag ${retailLagMinutes} min` : ''}`
+                : (retailLagMinutes !== null ? `Cursor lag ${retailLagMinutes} min` : 'No cursor yet'),
+            reason: realtimePipelineEnabled
+                ? 'Primary RetailCRM ownership is handled by retailcrm delta/history workers in realtime pipeline.'
+                : getDiagnosis('retailcrm', retailOk, retailLastRun)
         };
-
-        // --- Matching ---
-        const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+    // --- Matching ---
         const matchOk = (matches24h || 0) > 0;
         const matchStatus = {
             service: 'Matching Fallback Sweep',
@@ -237,12 +241,14 @@ export async function GET() {
         const historyCursor = lastHistoryEvent?.occurred_at || null;
         const historyOk = isFresh(historyCursor, 120); // 2 hours threshold
         const historyStatus = {
-            service: 'History Sync (Rules)',
-            cursor: historyCursor || 'Never',
+            service: 'History Fallback Sync',
+            cursor: realtimePipelineEnabled ? 'Fallback only' : (historyCursor || 'Never'),
             last_run: historyCursor || null,
-            status: historyOk ? 'ok' : 'warning',
-            details: historyOk ? 'Events Flowing' : 'Stalled (>2h)',
-            reason: getDiagnosis('history_sync', historyOk, historyCursor)
+            status: realtimePipelineEnabled ? 'ok' : (historyOk ? 'ok' : 'warning'),
+            details: realtimePipelineEnabled ? 'Backup-only manual force run' : (historyOk ? 'Events Flowing' : 'Stalled (>2h)'),
+            reason: realtimePipelineEnabled
+                ? 'Primary history ownership is handled by retailcrm_history_delta worker in realtime pipeline.'
+                : getDiagnosis('history_sync', historyOk, historyCursor)
         };
 
         // 4.6 Rule Engine Execution & Active Rules
