@@ -281,6 +281,56 @@ function getQueueHotspotSummary(queueStages: QueueStageSnapshot[]): QueueStageSn
   return candidates[0] || null;
 }
 
+function inferHotspotDependencyHint(
+  queue: QueueStageSnapshot | null,
+  dominantRetryCause: DominantRetryCauseSummary | null
+) {
+  if (!queue && !dominantRetryCause) return null;
+
+  const service = queue?.service || '';
+  const retryKind = dominantRetryCause?.kind || null;
+
+  if (service.includes('RetailCRM')) {
+    if (retryKind === 'rate_limit') return 'вероятно упирается в rate limit RetailCRM API';
+    if (retryKind === 'network') return 'вероятно деградирует доступ к RetailCRM API';
+    return 'проверьте RetailCRM delta/history sync и cursor lag';
+  }
+
+  if (service.includes('Transcription')) {
+    if (retryKind === 'ai') return 'вероятно узкое место в OpenAI transcription pipeline';
+    if (retryKind === 'network') return 'вероятно проблема в скачивании записи или сетевом доступе к AI';
+    if (retryKind === 'dependency_wait') return 'записи ещё не готовы или webhook/fallback приходит раньше готовности media';
+    return 'проверьте ready_for_transcription backlog и доступность записи';
+  }
+
+  if (service.includes('Semantic Rules') || service.includes('Insight')) {
+    if (retryKind === 'ai') return 'вероятно деградация OpenAI на аналитическом этапе';
+    if (retryKind === 'dependency_wait') return 'аналитика ждёт готовые transcript или upstream score data';
+    return 'проверьте AI latency и upstream transcript readiness';
+  }
+
+  if (service.includes('Score Refresh')) {
+    if (retryKind === 'dependency_wait') return 'score refresh ждёт upstream события из transcript/rules/history';
+    if (retryKind === 'ai') return 'часть score pipeline деградирует на AI enrichment';
+    return 'проверьте upstream order events, rules и coalescing backlog';
+  }
+
+  if (service.includes('Manager Aggregate')) {
+    return 'проверьте backlog score refresh и downstream aggregate worker';
+  }
+
+  if (service.includes('Call Match')) {
+    return 'проверьте свежесть orders/raw_telphin_calls и matching backlog';
+  }
+
+  if (retryKind === 'rate_limit') return 'вероятно упирается во внешний API rate limit';
+  if (retryKind === 'network') return 'вероятно деградация внешней сети или API';
+  if (retryKind === 'ai') return 'вероятно деградация AI dependency';
+  if (retryKind === 'dependency_wait') return 'очередь ждёт upstream данные или готовность зависимостей';
+
+  return null;
+}
+
 function formatHotspotOperatorMessage(
   queue: QueueStageSnapshot | null,
   dominantRetryCause: DominantRetryCauseSummary | null
@@ -299,6 +349,11 @@ function formatHotspotOperatorMessage(
 
   if (dominantRetryCause) {
     parts.push(`dominant retry ${dominantRetryCause.kind}: ${dominantRetryCause.count}`);
+  }
+
+  const dependencyHint = inferHotspotDependencyHint(queue, dominantRetryCause);
+  if (dependencyHint) {
+    parts.push(`likely dependency: ${dependencyHint}`);
   }
 
   return parts.join('; ');

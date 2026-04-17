@@ -733,6 +733,11 @@ export default function SystemStatusPage() {
                             ? `queued ${queueHotspot.queued} · processing ${queueHotspot.processing} · dead ${queueHotspot.deadLetter} · oldest ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
                             : 'all queues within normal bounds'}
                     </div>
+                    {pipelineMetrics?.hotspotSummary.operatorMessage && (
+                        <div className="text-[10px] font-bold text-gray-600 mt-3 leading-relaxed">
+                            {pipelineMetrics.hotspotSummary.operatorMessage}
+                        </div>
+                    )}
                 </div>
                 <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.bg || 'bg-white border-gray-100' : 'bg-white border-gray-100'}`}>
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Dominant Retry Cause</div>

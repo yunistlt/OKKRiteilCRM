@@ -210,6 +210,7 @@
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Status dashboard начал отдельно выделять pipeline hotspot-очередь и dominant retry cause, чтобы оператор сразу видел главный bottleneck без чтения полного списка queue cards.
 - [x] Hotspot summary realtime pipeline вынесен в общий monitoring snapshot, чтобы Telegram alerting, health endpoint и status dashboard использовали один и тот же расчёт bottleneck без расхождения логики.
+- [x] Hotspot summary начал добавлять human-readable dependency hint (`RetailCRM`, `OpenAI`, media/download, upstream dependency wait`), чтобы оператор видел не только симптом очереди, но и вероятный внешний источник деградации.
 - [x] Telphin ingest и storage path усилены controlled timeout/degradation: общий helper теперь ограничивает token lookup, `user`, `call_history` и download записи по времени и возвращает нормализованные network/timeout ошибки вместо зависаний.
 - [x] `system-audit` и health-check начали включать в сигнал dominant retry causes, чтобы Telegram/monitoring показывали не только факт backlog, но и его источник (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`).
 - [x] `system-audit` и health-check начали выделять конкретную hotspot-очередь (`transcription`, `score`, `insight` и т.д.), чтобы Telegram и health endpoint показывали не только общую деградацию, но и самый проблемный stage pipeline.
