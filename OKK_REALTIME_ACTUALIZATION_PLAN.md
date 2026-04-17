@@ -248,6 +248,7 @@
 - [x] Telphin fallback poller переведён в near-realtime safe режим: cron раз в 2 минуты, bounded lookback `TELPHIN_FALLBACK_MINUTES` (по умолчанию 15 минут) и постановка `call_match`/`call_transcription` jobs после fallback ingest.
 - [x] Telphin fallback sync начал писать в `sync_state` явные `telphin_fallback_lag_seconds` и `telphin_fallback_last_error`, а status backend начал показывать их в блоке Telphin Main Sync.
 - [x] Legacy `/api/sync/retailcrm` и `/api/sync/retailcrm/history` переведены в backup-only режим: при включенном realtime pipeline они по умолчанию `skip` и выполняются только через `force=true`.
+- [x] Legacy `/api/sync/history` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback history sync.
 - [x] Нагрузочная модель уточнена: помимо 20-30 новых заказов в день учитывается живой пул около 500 заказов в рабочих статусах; это закрепляет запрет на частые full-scan операции по активному массиву.
 - [x] Нагрузочная модель подтверждена по реальной базе: поток history-изменений составляет около 1000+ событий в день и около 600+ событий в день по текущим рабочим заказам, поэтому bulk evaluation нельзя держать как частый cron.
 

@@ -331,7 +331,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
         if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
         if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';
-        if (serviceName.includes('History Sync')) url = '/api/sync/history';
+        if (serviceName.includes('History Sync')) url = '/api/sync/history?force=true';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute?force=true';
         if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run';
         if (serviceName.includes('Transcription Fallback')) url = '/api/cron/transcribe?force=true';

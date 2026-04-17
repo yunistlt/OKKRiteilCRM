@@ -8,10 +8,21 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes execution for lengthy syncs
 
-export async function GET() {
+export async function GET(request: Request) {
     console.log('[History Sync] Starting (Loop Mode)...');
 
     try {
+        const { searchParams } = new URL(request.url);
+        const force = searchParams.get('force') === 'true';
+
+        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+            return NextResponse.json({
+                success: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns production history sync. Use force=true for emergency fallback run.',
+            });
+        }
+
         let startDate = null;
 
         // Find last sync time from NEW table
