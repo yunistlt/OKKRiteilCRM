@@ -34,7 +34,9 @@ export async function POST(req: NextRequest) {
         })
         .eq('call_sid', call_id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update incoming call recording error:', error);
+      }
     }
 
     const canonicalSync = await syncCanonicalTelphinCallFromWebhook({

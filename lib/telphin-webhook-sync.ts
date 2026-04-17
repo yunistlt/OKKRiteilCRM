@@ -50,44 +50,48 @@ function toIsoOrNull(value: string | null | undefined): string | null {
 }
 
 async function loadLegacyContext(callId: string): Promise<LegacyContext> {
-  const [outgoingResult, incomingResult] = await Promise.all([
-    supabase
-      .from('outgoing_calls')
-      .select('phone_number, created_at, duration_seconds, recording_url, status')
-      .eq('call_sid', callId)
-      .limit(1),
-    supabase
-      .from('incoming_calls')
-      .select('from_number, to_number, created_at, duration_seconds, recording_url, status')
-      .eq('call_sid', callId)
-      .limit(1),
-  ]);
+  try {
+    const [outgoingResult, incomingResult] = await Promise.all([
+      supabase
+        .from('outgoing_calls')
+        .select('phone_number, created_at, duration_seconds, recording_url, status')
+        .eq('call_sid', callId)
+        .limit(1),
+      supabase
+        .from('incoming_calls')
+        .select('from_number, to_number, created_at, duration_seconds, recording_url, status')
+        .eq('call_sid', callId)
+        .limit(1),
+    ]);
 
-  const outgoing = outgoingResult.data?.[0];
-  const incoming = incomingResult.data?.[0];
+    const outgoing = outgoingResult.data?.[0];
+    const incoming = incomingResult.data?.[0];
 
-  if (incoming) {
-    return {
-      direction: 'incoming',
-      fromNumber: incoming.from_number || null,
-      toNumber: incoming.to_number || null,
-      startedAt: incoming.created_at || null,
-      durationSeconds: incoming.duration_seconds ?? null,
-      recordingUrl: incoming.recording_url || null,
-      status: incoming.status || null,
-    };
-  }
+    if (incoming) {
+      return {
+        direction: 'incoming',
+        fromNumber: incoming.from_number || null,
+        toNumber: incoming.to_number || null,
+        startedAt: incoming.created_at || null,
+        durationSeconds: incoming.duration_seconds ?? null,
+        recordingUrl: incoming.recording_url || null,
+        status: incoming.status || null,
+      };
+    }
 
-  if (outgoing) {
-    return {
-      direction: 'outgoing',
-      fromNumber: null,
-      toNumber: outgoing.phone_number || null,
-      startedAt: outgoing.created_at || null,
-      durationSeconds: outgoing.duration_seconds ?? null,
-      recordingUrl: outgoing.recording_url || null,
-      status: outgoing.status || null,
-    };
+    if (outgoing) {
+      return {
+        direction: 'outgoing',
+        fromNumber: null,
+        toNumber: outgoing.phone_number || null,
+        startedAt: outgoing.created_at || null,
+        durationSeconds: outgoing.duration_seconds ?? null,
+        recordingUrl: outgoing.recording_url || null,
+        status: outgoing.status || null,
+      };
+    }
+  } catch (error) {
+    console.warn(`[TelphinWebhookSync] Legacy context lookup failed for ${callId}:`, error);
   }
 
   return {
