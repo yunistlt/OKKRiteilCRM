@@ -88,6 +88,8 @@ interface QueueStageSnapshot {
     processingLimit: number | null;
     deadLetter: number;
     oldestQueuedSeconds: number | null;
+    lastErrorSnippet: string | null;
+    lastErrorAt: string | null;
 }
 
 interface RealtimePipelineSnapshot {
@@ -741,6 +743,17 @@ export default function SystemStatusPage() {
                     {pipelineMetrics?.hotspotSummary.operatorMessage && (
                         <div className="text-[10px] font-bold text-gray-600 mt-3 leading-relaxed">
                             {pipelineMetrics.hotspotSummary.operatorMessage}
+                        </div>
+                    )}
+                    {queueHotspot?.lastErrorSnippet && (
+                        <div className="mt-3 rounded-xl border border-black/5 bg-white/60 px-3 py-2">
+                            <div className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Last Worker Error</div>
+                            <div className="text-[10px] font-bold text-gray-700 leading-relaxed">{queueHotspot.lastErrorSnippet}</div>
+                            {queueHotspot.lastErrorAt && (
+                                <div className="text-[8px] text-gray-400 font-bold mt-1">
+                                    {new Date(queueHotspot.lastErrorAt).toLocaleString('ru-RU')}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

@@ -168,6 +168,9 @@ export async function GET(req: Request) {
                 if (queueHotspot.deadLetter > 0) parts.push(`dead-letter ${queueHotspot.deadLetter}`);
                 if (queueHotspot.oldestQueuedSeconds !== null) parts.push(`oldest ${Math.floor(queueHotspot.oldestQueuedSeconds / 60)} мин`);
                 realtimeAlertLines.push(`главная проблемная очередь: ${queueHotspot.service}: ${parts.join(', ')}`);
+                if (queueHotspot.lastErrorSnippet) {
+                    realtimeAlertLines.push(`последняя ошибка hotspot: ${queueHotspot.lastErrorSnippet}`);
+                }
             }
 
             if (realtimeAlertLines.length > 0) {

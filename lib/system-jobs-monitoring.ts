@@ -41,6 +41,8 @@ interface QueueStageSnapshot {
   processingLimit: number | null;
   deadLetter: number;
   oldestQueuedSeconds: number | null;
+  lastErrorSnippet: string | null;
+  lastErrorAt: string | null;
 }
 
 interface DominantRetryCauseSummary {
@@ -52,6 +54,12 @@ interface PipelineHotspotSummary {
   queue: QueueStageSnapshot | null;
   dominantRetryCause: DominantRetryCauseSummary | null;
   operatorMessage: string | null;
+}
+
+function truncateSnippet(message?: string | null, maxLength: number = 180) {
+  const value = String(message || '').trim();
+  if (!value) return null;
+  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
 }
 
 export interface RealtimePipelineMonitoringSnapshot {
@@ -361,6 +369,10 @@ function formatHotspotOperatorMessage(
   const dependencyHint = inferHotspotDependencyHint(queue, dominantRetryCause);
   if (dependencyHint) {
     parts.push(`likely dependency: ${dependencyHint}`);
+  }
+
+  if (queue?.lastErrorSnippet) {
+    parts.push(`last error: ${queue.lastErrorSnippet}`);
   }
 
   return parts.join('; ');
@@ -810,6 +822,14 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   ];
 
   const serviceMap = new Map(services.map((service) => [service.service, service]));
+  const transcriptionWorkerState = getWorkerState(stateMap, 'system_jobs.transcription');
+  const semanticRulesWorkerState = getWorkerState(stateMap, 'system_jobs.call_semantic_rules');
+  const scoreWorkerState = getWorkerState(stateMap, 'system_jobs.score_refresh');
+  const aggregateWorkerState = getWorkerState(stateMap, 'system_jobs.manager_aggregate_refresh');
+  const insightWorkerState = getWorkerState(stateMap, 'system_jobs.order_insight_refresh');
+  const callMatchWorkerState = getWorkerState(stateMap, 'system_jobs.call_match');
+  const retailcrmDeltaWorkerState = getWorkerState(stateMap, 'system_jobs.retailcrm_order_delta');
+  const retailcrmHistoryWorkerState = getWorkerState(stateMap, 'system_jobs.retailcrm_history_delta');
 
   const queueStages = {
     retailcrmDelta: {
@@ -822,6 +842,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert']) === null
         ? null
         : oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'])! * 60,
+      lastErrorSnippet: truncateSnippet(retailcrmDeltaWorkerState.lastError),
+      lastErrorAt: retailcrmDeltaWorkerState.lastErrorAt,
     },
     retailcrmHistory: {
       service: 'RetailCRM History Queue',
@@ -833,6 +855,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull']) === null
         ? null
         : oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull'])! * 60,
+      lastErrorSnippet: truncateSnippet(retailcrmHistoryWorkerState.lastError),
+      lastErrorAt: retailcrmHistoryWorkerState.lastErrorAt,
     },
     callMatch: {
       service: 'Call Match Queue',
@@ -842,6 +866,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: null,
       deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['call_match']) === null ? null : oldestQueuedMinutes(rows, ['call_match'])! * 60,
+      lastErrorSnippet: truncateSnippet(callMatchWorkerState.lastError),
+      lastErrorAt: callMatchWorkerState.lastErrorAt,
     },
     transcription: {
       service: 'Transcription Queue',
@@ -851,6 +877,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: QUEUE_PROCESSING_LIMITS.call_transcription || null,
       deadLetter: countJobs(rows, ['call_transcription'], 'dead_letter'),
       oldestQueuedSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
+      lastErrorSnippet: truncateSnippet(transcriptionWorkerState.lastError),
+      lastErrorAt: transcriptionWorkerState.lastErrorAt,
     },
     semanticRules: {
       service: 'Semantic Rules Queue',
@@ -860,6 +888,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: null,
       deadLetter: countJobs(rows, ['call_semantic_rules'], 'dead_letter'),
       oldestQueuedSeconds: semanticRulesOldest === null ? null : semanticRulesOldest * 60,
+      lastErrorSnippet: truncateSnippet(semanticRulesWorkerState.lastError),
+      lastErrorAt: semanticRulesWorkerState.lastErrorAt,
     },
     scoreRefresh: {
       service: 'Score Refresh Queue',
@@ -869,6 +899,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: QUEUE_PROCESSING_LIMITS.order_score_refresh || null,
       deadLetter: countJobs(rows, ['order_score_refresh'], 'dead_letter'),
       oldestQueuedSeconds: scoreOldest === null ? null : scoreOldest * 60,
+      lastErrorSnippet: truncateSnippet(scoreWorkerState.lastError),
+      lastErrorAt: scoreWorkerState.lastErrorAt,
     },
     managerAggregate: {
       service: 'Manager Aggregate Queue',
@@ -878,6 +910,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: null,
       deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
       oldestQueuedSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
+      lastErrorSnippet: truncateSnippet(aggregateWorkerState.lastError),
+      lastErrorAt: aggregateWorkerState.lastErrorAt,
     },
     insightRefresh: {
       service: 'Insight Refresh Queue',
@@ -887,6 +921,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       processingLimit: QUEUE_PROCESSING_LIMITS.order_insight_refresh || null,
       deadLetter: countJobs(rows, ['order_insight_refresh'], 'dead_letter'),
       oldestQueuedSeconds: insightOldest === null ? null : insightOldest * 60,
+      lastErrorSnippet: truncateSnippet(insightWorkerState.lastError),
+      lastErrorAt: insightWorkerState.lastErrorAt,
     },
   };
 
