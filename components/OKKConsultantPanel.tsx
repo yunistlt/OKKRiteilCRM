@@ -383,7 +383,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         <>
             <div className="border-b border-slate-800 bg-[#111b21] px-3 py-3">
                 <div className="flex items-start gap-2.5">
-                    <img src="/images/agents/semen.png" alt="Семён" className="h-10 w-10 rounded-full border border-emerald-400/30 object-cover shadow-lg shadow-emerald-500/10" />
+                    <img src="/images/agents/semen.png" alt="Семён" className="h-10 w-10 border border-emerald-400/30 object-cover" />
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
                             <div className="truncate text-sm font-black text-white">Семён</div>
@@ -415,14 +415,8 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     </div>
                 </div>
 
-                <div className="mt-3 border border-slate-800 bg-[#0b141a] px-3 py-2 text-[10px] text-slate-400">
-                    <div className="text-[10px] leading-relaxed text-slate-300">
-                        Семён объясняет, как устроен ОКК: алгоритмы, поля, источники данных и логику расчёта.
-                    </div>
-                    <div className="mt-1 text-[10px] text-slate-500">
-                        Конкретные заказы, правила и отмены он в этом чате не разбирает.
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                <div className="mt-3 px-0 py-0 text-[10px] text-slate-400">
+                    <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500">
                         <span>Чаты</span>
                         <span className="truncate text-right text-slate-400">{activeThread ? formatThreadTitle(activeThread) : 'Новый чат'}</span>
                     </div>
@@ -519,7 +513,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     return (
         <>
             <aside
-                className="relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_18px_40px_rgba(2,6,23,0.24)] md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]"
+                className="relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-slate-800/80 bg-[#0f1726] text-slate-100 md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]"
                 style={desktopWidth ? { width: `${desktopWidth}px`, minWidth: `${desktopWidth}px`, maxWidth: `${desktopWidth}px` } : undefined}
             >
                 <div

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import OKKConsultantPanel from '@/components/OKKConsultantPanel';
+import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 
 // --- Types ---
 
@@ -622,9 +622,9 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <div className="relative flex overflow-hidden bg-[#f8fafc]" style={{ height: 'calc(100dvh - 64px)' }}>
-        <div className="min-w-0 flex-1 overflow-auto">
-        <div className="w-full py-4 px-4 space-y-4 bg-[#f7f9fc] min-h-full">
+        <OKKConsultantWorkspace>
+        <div className="min-h-full w-full overflow-auto bg-[#f7f9fc] px-4 py-4">
+        <div className="w-full space-y-4">
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1203,7 +1203,6 @@ export default function SystemStatusPage() {
             )}
         </div>
         </div>
-        <OKKConsultantPanel selectedOrder={null} />
-        </div>
+        </OKKConsultantWorkspace>
     );
 }
