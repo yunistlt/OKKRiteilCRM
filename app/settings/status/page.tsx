@@ -291,10 +291,14 @@ export default function SystemStatusPage() {
     const refreshPriorities = async () => {
         setRefreshingPriorities(true);
         try {
-            const res = await fetch('/api/analysis/priorities/refresh');
+            const res = await fetch('/api/analysis/priorities/refresh?force=true');
             const data = await res.json();
             if (data.ok) {
-                alert(`Анализ завершен: обработано ${data.count} заказов.`);
+                if (data.status === 'skipped') {
+                    alert(data.reason || 'Bulk priorities refresh was skipped.');
+                } else {
+                    alert(`Анализ завершен: обработано ${data.count || 0} заказов.`);
+                }
                 fetchDbStats();
             } else {
                 alert('Ошибка анализа: ' + data.error);
