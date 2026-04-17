@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { classifySystemJobRetryKind, type SystemJobRetryKind } from '@/lib/system-jobs';
+import { classifySystemJobRetryKind, type SystemJobRetryKind, type SystemJobType } from '@/lib/system-jobs';
 
 type MonitorStatus = 'ok' | 'warning' | 'error';
 
@@ -38,6 +38,7 @@ interface QueueStageSnapshot {
   status: MonitorStatus;
   queued: number;
   processing: number;
+  processingLimit: number | null;
   deadLetter: number;
   oldestQueuedSeconds: number | null;
 }
@@ -147,6 +148,12 @@ const MONITORED_WORKER_KEYS = [
 ] as const;
 
 type WorkerStateMap = Map<string, { value: string; updated_at: string }>;
+
+const QUEUE_PROCESSING_LIMITS: Partial<Record<SystemJobType, number>> = {
+  call_transcription: 2,
+  order_insight_refresh: 1,
+  order_score_refresh: 2,
+};
 
 function isMissingSystemJobsError(error: any) {
   return (
@@ -427,6 +434,7 @@ function buildQueueService(params: {
   lastRun?: string | null;
   queued: number;
   processing: number;
+  processingLimit?: number | null;
   deadLetter?: number;
   oldestQueuedMinutes?: number | null;
   warningMinutes?: number;
@@ -485,7 +493,7 @@ function buildQueueService(params: {
     cursor: params.cursor || 'System Jobs',
     last_run: effectiveLastRun,
     status,
-    details: `queued ${params.queued}, processing ${params.processing}, oldest ${formatAge(oldestMinutes)}`,
+    details: `queued ${params.queued}, processing ${params.processing}${params.processingLimit ? `/${params.processingLimit}` : ''}, oldest ${formatAge(oldestMinutes)}`,
     reason,
   };
 }
@@ -694,6 +702,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['call_match'], 'queued'),
       processing: countJobs(rows, ['call_match'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
       oldestQueuedMinutes: oldestQueuedMinutes(rows, ['call_match']),
       warningMinutes: 5,
@@ -710,6 +719,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['call_transcription'], 'queued'),
       processing: countJobs(rows, ['call_transcription'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.call_transcription || null,
       deadLetter: countJobs(rows, ['call_transcription'], 'dead_letter'),
       oldestQueuedMinutes: transcriptionOldest,
       warningMinutes: 5,
@@ -726,6 +736,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['call_semantic_rules'], 'queued'),
       processing: countJobs(rows, ['call_semantic_rules'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['call_semantic_rules'], 'dead_letter'),
       oldestQueuedMinutes: semanticRulesOldest,
       warningMinutes: 5,
@@ -742,6 +753,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
       processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
       oldestQueuedMinutes: managerAggregateOldest,
       warningMinutes: 10,
@@ -758,6 +770,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['order_score_refresh'], 'queued'),
       processing: countJobs(rows, ['order_score_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.order_score_refresh || null,
       deadLetter: countJobs(rows, ['order_score_refresh'], 'dead_letter'),
       oldestQueuedMinutes: scoreOldest,
       warningMinutes: 5,
@@ -774,6 +787,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['order_insight_refresh'], 'queued'),
       processing: countJobs(rows, ['order_insight_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.order_insight_refresh || null,
       deadLetter: countJobs(rows, ['order_insight_refresh'], 'dead_letter'),
       oldestQueuedMinutes: insightOldest,
       warningMinutes: 10,
@@ -803,6 +817,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('RetailCRM Delta Queue')?.status || 'warning',
       queued: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'queued'),
       processing: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert']) === null
         ? null
@@ -813,6 +828,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('RetailCRM History Queue')?.status || 'warning',
       queued: countJobs(rows, ['retailcrm_history_delta_pull'], 'queued'),
       processing: countJobs(rows, ['retailcrm_history_delta_pull'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['retailcrm_history_delta_pull'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull']) === null
         ? null
@@ -823,6 +839,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Call Match Queue')?.status || 'warning',
       queued: countJobs(rows, ['call_match'], 'queued'),
       processing: countJobs(rows, ['call_match'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['call_match']) === null ? null : oldestQueuedMinutes(rows, ['call_match'])! * 60,
     },
@@ -831,6 +848,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Transcription Queue')?.status || 'warning',
       queued: countJobs(rows, ['call_transcription'], 'queued'),
       processing: countJobs(rows, ['call_transcription'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.call_transcription || null,
       deadLetter: countJobs(rows, ['call_transcription'], 'dead_letter'),
       oldestQueuedSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
     },
@@ -839,6 +857,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Semantic Rules Queue')?.status || 'warning',
       queued: countJobs(rows, ['call_semantic_rules'], 'queued'),
       processing: countJobs(rows, ['call_semantic_rules'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['call_semantic_rules'], 'dead_letter'),
       oldestQueuedSeconds: semanticRulesOldest === null ? null : semanticRulesOldest * 60,
     },
@@ -847,6 +866,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Score Refresh Queue')?.status || 'warning',
       queued: countJobs(rows, ['order_score_refresh'], 'queued'),
       processing: countJobs(rows, ['order_score_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.order_score_refresh || null,
       deadLetter: countJobs(rows, ['order_score_refresh'], 'dead_letter'),
       oldestQueuedSeconds: scoreOldest === null ? null : scoreOldest * 60,
     },
@@ -855,6 +875,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Manager Aggregate Queue')?.status || 'warning',
       queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
       processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
+      processingLimit: null,
       deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
       oldestQueuedSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
     },
@@ -863,6 +884,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Insight Refresh Queue')?.status || 'warning',
       queued: countJobs(rows, ['order_insight_refresh'], 'queued'),
       processing: countJobs(rows, ['order_insight_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.order_insight_refresh || null,
       deadLetter: countJobs(rows, ['order_insight_refresh'], 'dead_letter'),
       oldestQueuedSeconds: insightOldest === null ? null : insightOldest * 60,
     },

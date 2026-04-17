@@ -111,6 +111,7 @@
 - [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать dead-letter слой для ручного разбора.
 - [x] Для `call_transcription`, `order_insight_refresh` и `order_score_refresh` concurrency теперь enforced в `claim_system_jobs` на уровне БД через advisory lock + global max processing cap, а не только локальным `limit` одного route-вызова.
+- [x] Status dashboard и monitoring начали показывать cap utilization для queue stages с enforced concurrency (`processing 1/2`, `1/1`, `2/2`), чтобы было видно, очередь реально забита или просто работает на своём лимите.
 
 ## 7. Этап 3. RetailCRM near realtime sync
 

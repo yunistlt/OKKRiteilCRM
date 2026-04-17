@@ -85,6 +85,7 @@ interface QueueStageSnapshot {
     status: 'ok' | 'warning' | 'error';
     queued: number;
     processing: number;
+    processingLimit: number | null;
     deadLetter: number;
     oldestQueuedSeconds: number | null;
 }
@@ -734,7 +735,7 @@ export default function SystemStatusPage() {
                     <div className="text-lg font-black text-gray-900">{queueHotspot ? formatServiceTitle(queueHotspot.service) : 'No active hotspot'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
                         {queueHotspot
-                            ? `queued ${queueHotspot.queued} · processing ${queueHotspot.processing} · dead ${queueHotspot.deadLetter} · oldest ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
+                            ? `queued ${queueHotspot.queued} · processing ${queueHotspot.processing}${queueHotspot.processingLimit ? `/${queueHotspot.processingLimit}` : ''} · dead ${queueHotspot.deadLetter} · oldest ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
                             : 'all queues within normal bounds'}
                     </div>
                     {pipelineMetrics?.hotspotSummary.operatorMessage && (
@@ -806,7 +807,7 @@ export default function SystemStatusPage() {
                                 </div>
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
                                     <div className="text-gray-400">Processing</div>
-                                    <div className="text-lg text-gray-900">{queue.processing}</div>
+                                    <div className="text-lg text-gray-900">{queue.processing}{queue.processingLimit ? `/${queue.processingLimit}` : ''}</div>
                                 </div>
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
                                     <div className="text-gray-400">Dead</div>
