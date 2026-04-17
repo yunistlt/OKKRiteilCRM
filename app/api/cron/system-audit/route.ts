@@ -138,6 +138,12 @@ export async function GET(req: Request) {
             if (metrics.insightQueueOldestSeconds !== null && metrics.insightQueueOldestSeconds > 20 * 60) {
                 realtimeAlertLines.push(`очередь insight_refresh ждёт: ${Math.floor(metrics.insightQueueOldestSeconds / 60)} мин`);
             }
+            if (metrics.orderEventToScoreLatency.p95Seconds !== null && metrics.orderEventToScoreLatency.p95Seconds > 3 * 60) {
+                realtimeAlertLines.push(`p95 event→score latency: ${Math.floor(metrics.orderEventToScoreLatency.p95Seconds / 60)} мин`);
+            }
+            if (metrics.recordingReadyToTranscriptLatency.p95Seconds !== null && metrics.recordingReadyToTranscriptLatency.p95Seconds > 7 * 60) {
+                realtimeAlertLines.push(`p95 recording_ready→transcript latency: ${Math.floor(metrics.recordingReadyToTranscriptLatency.p95Seconds / 60)} мин`);
+            }
             if (metrics.scoreToAggregateLatency.p95Seconds !== null && metrics.scoreToAggregateLatency.p95Seconds > 10 * 60) {
                 realtimeAlertLines.push(`p95 score→aggregate latency: ${Math.floor(metrics.scoreToAggregateLatency.p95Seconds / 60)} мин`);
             }

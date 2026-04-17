@@ -233,6 +233,9 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                         source: 'telphin_fallback_sync',
                         recordingUrl: rawCall.recording_url,
                         startedAt: rawCall.started_at,
+                        payload: {
+                            recording_ready_at: new Date().toISOString(),
+                        },
                     });
                 }
             }

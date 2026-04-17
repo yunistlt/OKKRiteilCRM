@@ -116,6 +116,7 @@ export async function GET(req: NextRequest) {
             targetOrderId: matchRow.retailcrm_order_id,
           }
         );
+        const semanticRulesCompletedAt = new Date().toISOString();
 
         await enqueueOrderRefreshJob({
           jobType: 'order_score_refresh',
@@ -124,6 +125,7 @@ export async function GET(req: NextRequest) {
           payload: {
             telphin_call_id: callId,
             violations_found: violationsFound,
+            semantic_rules_completed_at: semanticRulesCompletedAt,
           },
           priority: 25,
           parentJobId: job.id,

@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
     for (const job of claimed) {
       const payload = (job.payload || {}) as { telphin_call_id?: string };
       const callId = payload.telphin_call_id;
+      const matchedAt = new Date().toISOString();
 
       if (!callId) {
         await failSystemJob(job.id, 'Missing telphin_call_id', 300);
@@ -120,6 +121,7 @@ export async function GET(req: NextRequest) {
               }),
               payload: {
                 matched_order_ids: uniqueOrderIds,
+                recording_ready_at: callRow.raw_payload?._recording_ready_at || null,
               },
               parentJobId: job.id,
             });
@@ -144,6 +146,7 @@ export async function GET(req: NextRequest) {
               source: 'call_match_worker',
               payload: {
                 telphin_call_id: callId,
+                call_matched_at: matchedAt,
               },
               priority: 25,
             });

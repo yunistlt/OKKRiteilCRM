@@ -173,12 +173,12 @@
 - [x] Показывать lag RetailCRM cursor до текущего времени.
 - [x] Показывать oldest queued transcription job.
 - [x] Показывать oldest queued score_refresh job.
-- [ ] Показывать p50 и p95 времени от order_changed до обновлённого score.
-- [ ] Показывать p50 и p95 времени от recording_ready до transcript_ready.
+- [x] Показывать p50 и p95 времени от order_changed до обновлённого score.
+- [x] Показывать p50 и p95 времени от recording_ready до transcript_ready.
 - [x] Показывать backlog по каждому типу задач.
 - [x] Показывать количество retry и dead-letter задач за сутки.
 - [x] Переделать health-check так, чтобы он смотрел не только на raw_order_events, но и на все критичные очереди.
-- [ ] Сделать алертинг в Telegram при превышении SLA по lag, а не только при полном падении cron.
+- [x] Сделать алертинг в Telegram при превышении SLA по lag, а не только при полном падении cron.
 
 ## 13. Этап 9. Защита от таймаутов и деградации
 
@@ -230,6 +230,7 @@
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
+- [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.
 - [x] Rule Engine вынесен в отдельный cron-safe realtime маршрут, а legacy `/api/cron` перестал запускать rules при включенном realtime pipeline.
 - [x] Семантические call-rules вынесены из direct transcription-trigger в отдельную `call_semantic_rules` очередь с dedicated worker, cron и latency/backlog monitoring.
 - [x] Manual `rules/execute` и `priorities/refresh` перестали быть обходом legacy broad-scan path: теперь они используют общий realtime-safe runner или пропускают Rule Engine, когда ownership у realtime pipeline.

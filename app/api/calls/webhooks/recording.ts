@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
+    const recordingReadyAt = payload.timestamp ? new Date(payload.timestamp).toISOString() : new Date().toISOString();
 
     const {
       call_id,
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest) {
         source: 'recording_webhook',
         recordingUrl: recording_url,
         startedAt: canonicalSync.startedAt,
+        payload: {
+          recording_ready_at: recordingReadyAt,
+        },
       });
     }
 

@@ -75,6 +75,8 @@ export interface RealtimePipelineMonitoringSnapshot {
     managerAggregateQueueOldestSeconds: number | null;
     scoreQueueOldestSeconds: number | null;
     insightQueueOldestSeconds: number | null;
+    recordingReadyToTranscriptLatency: LatencyDistribution;
+    orderEventToScoreLatency: LatencyDistribution;
     transcriptionLatency: LatencyDistribution;
     semanticRulesLatency: LatencyDistribution;
     scoreRefreshLatency: LatencyDistribution;
@@ -112,6 +114,7 @@ type CompletedJobRow = {
   job_type: string;
   status: string;
   attempts: number | null;
+  payload: Record<string, any> | null;
   queued_at: string | null;
   finished_at: string | null;
   parent_job_id: number | null;
@@ -389,6 +392,49 @@ function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
     .filter((value): value is number => value !== null);
 }
 
+function normalizePayload(payload: Record<string, any> | null | undefined) {
+  if (!payload) return {};
+  if (typeof payload === 'string') {
+    try {
+      return JSON.parse(payload);
+    } catch {
+      return {};
+    }
+  }
+  return typeof payload === 'object' ? payload : {};
+}
+
+function extractPayloadTimestamp(payload: Record<string, any> | null | undefined, keys: string[]) {
+  const normalizedPayload = normalizePayload(payload);
+
+  for (const key of keys) {
+    const value = normalizedPayload[key];
+    if (!value || typeof value !== 'string') continue;
+
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString();
+    }
+  }
+
+  return null;
+}
+
+function leadTimesFromDomainEvent(
+  rows: CompletedJobRow[],
+  jobType: string,
+  payloadKeys: string[],
+  fallbackKey: 'queued_at' | 'updated_at' = 'queued_at'
+) {
+  return rows
+    .filter((row) => row.job_type === jobType && row.status === 'completed')
+    .map((row) => {
+      const domainEventAt = extractPayloadTimestamp(row.payload, payloadKeys) || row[fallbackKey] || null;
+      return secondsBetween(domainEventAt, row.finished_at);
+    })
+    .filter((value): value is number => value !== null);
+}
+
 function scoreToAggregateLeadTimes(rows: CompletedJobRow[]) {
   const scoreJobs = new Map<number, CompletedJobRow>();
   rows
@@ -624,7 +670,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     const completedWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await supabase
       .from('system_jobs')
-      .select('id, job_type, status, attempts, queued_at, finished_at, parent_job_id, updated_at')
+      .select('id, job_type, status, attempts, payload, queued_at, finished_at, parent_job_id, updated_at')
       .in('job_type', [...ACTIVITY_JOB_TYPES])
       .in('status', ['completed', 'dead_letter'])
       .gte('updated_at', completedWindowStart)
@@ -654,6 +700,18 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const managerAggregateOldest = oldestQueuedMinutes(rows, ['manager_aggregate_refresh']);
   const scoreOldest = oldestQueuedMinutes(rows, ['order_score_refresh']);
   const insightOldest = oldestQueuedMinutes(rows, ['order_insight_refresh']);
+  const recordingReadyToTranscriptLatency = buildLatencyDistribution(
+    leadTimesFromDomainEvent(completedRows, 'call_transcription', ['recording_ready_at'])
+  );
+  const orderEventToScoreLatency = buildLatencyDistribution(
+    leadTimesFromDomainEvent(completedRows, 'order_score_refresh', [
+      'order_updated_at',
+      'history_occurred_at',
+      'call_matched_at',
+      'transcript_completed_at',
+      'semantic_rules_completed_at',
+    ])
+  );
   const transcriptionLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'call_transcription'));
   const semanticRulesLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'call_semantic_rules'));
   const scoreRefreshLatency = buildLatencyDistribution(jobLeadTimes(completedRows, 'order_score_refresh'));
@@ -958,6 +1016,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       managerAggregateQueueOldestSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
       scoreQueueOldestSeconds: scoreOldest === null ? null : scoreOldest * 60,
       insightQueueOldestSeconds: insightOldest === null ? null : insightOldest * 60,
+      recordingReadyToTranscriptLatency,
+      orderEventToScoreLatency,
       transcriptionLatency,
       semanticRulesLatency,
       scoreRefreshLatency,

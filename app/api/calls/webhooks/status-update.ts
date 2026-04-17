@@ -18,6 +18,10 @@ export async function POST(req: NextRequest) {
       ended_at,
     } = payload;
 
+    const recordingReadyAt = recording_url && status === 'completed'
+      ? new Date(ended_at || Date.now()).toISOString()
+      : null;
+
     // Определяем, исходящий или входящий звонок
     const { data: outgoingCall } = await supabase
       .from('outgoing_calls')
@@ -102,6 +106,11 @@ export async function POST(req: NextRequest) {
         source: 'status_update_webhook',
         recordingUrl: recording_url,
         startedAt: canonicalSync.startedAt,
+        payload: recordingReadyAt
+          ? {
+              recording_ready_at: recordingReadyAt,
+            }
+          : undefined,
       });
     }
 

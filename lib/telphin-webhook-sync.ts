@@ -179,6 +179,11 @@ export async function syncCanonicalTelphinCallFromWebhook(
     recording_url: recordingUrl || previousPayload.recording_url || null,
     duration_seconds: durationSec ?? previousPayload.duration_seconds ?? null,
     _sync_source: 'telphin_webhook',
+    _recording_ready_at:
+      previousPayload._recording_ready_at ||
+      (input.queueForTranscription && recordingUrl
+        ? toIsoOrNull(String(input.payload.recording_ready_at || input.payload.ended_at || input.payload.timestamp || input.startedAt || '')) || new Date().toISOString()
+        : null),
     _canonical_updated_at: new Date().toISOString(),
   };
 

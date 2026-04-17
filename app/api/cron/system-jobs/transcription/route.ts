@@ -82,6 +82,7 @@ export async function GET(req: NextRequest) {
         }
 
         await transcribeCall(callId, recordingUrl);
+        const transcriptCompletedAt = new Date().toISOString();
 
         const { data: match } = await supabase
           .from('call_order_matches')
@@ -97,6 +98,7 @@ export async function GET(req: NextRequest) {
             source: 'call_transcription_worker',
             payload: {
               retailcrm_order_id: match.retailcrm_order_id,
+              transcript_completed_at: transcriptCompletedAt,
             },
             priority: 20,
             parentJobId: job.id,
@@ -108,6 +110,7 @@ export async function GET(req: NextRequest) {
             source: 'call_transcription_worker',
             payload: {
               telphin_call_id: callId,
+              transcript_completed_at: transcriptCompletedAt,
             },
             priority: 25,
           });

@@ -115,6 +115,8 @@ interface RealtimePipelineSnapshot {
         managerAggregateQueueOldestSeconds: number | null;
         scoreQueueOldestSeconds: number | null;
         insightQueueOldestSeconds: number | null;
+        recordingReadyToTranscriptLatency: LatencyDistribution;
+        orderEventToScoreLatency: LatencyDistribution;
         transcriptionLatency: LatencyDistribution;
         semanticRulesLatency: LatencyDistribution;
         scoreRefreshLatency: LatencyDistribution;
@@ -474,6 +476,18 @@ export default function SystemStatusPage() {
     const formatServiceTitle = (service: string) => service.replace(' Queue', '');
 
     const latencyCards = [
+        {
+            title: 'Recording Ready → Transcript',
+            accent: 'text-violet-600',
+            bg: 'bg-violet-50',
+            metric: pipelineMetrics?.metrics.recordingReadyToTranscriptLatency,
+        },
+        {
+            title: 'Order Event → Score',
+            accent: 'text-cyan-700',
+            bg: 'bg-cyan-50',
+            metric: pipelineMetrics?.metrics.orderEventToScoreLatency,
+        },
         {
             title: 'Transcription',
             accent: 'text-purple-600',
