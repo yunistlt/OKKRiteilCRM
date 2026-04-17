@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
 // GET - List all training examples with optional filters
 export async function GET(req: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
@@ -36,6 +43,11 @@ export async function GET(req: Request) {
 
 // POST - Create a new training example
 export async function POST(req: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { id, orderId, orderNumber, trafficLight, userReasoning, orderContext, createdBy } = body;
 
@@ -82,6 +94,11 @@ export async function POST(req: Request) {
 
 // DELETE - Remove a training example by ID
 export async function DELETE(req: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 

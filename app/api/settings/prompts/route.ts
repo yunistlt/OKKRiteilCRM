@@ -1,11 +1,18 @@
 
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const { searchParams } = new URL(req.url);
         const key = searchParams.get('key');
 
@@ -25,6 +32,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await req.json();
         const { key, system_prompt, description, model } = body;
 
