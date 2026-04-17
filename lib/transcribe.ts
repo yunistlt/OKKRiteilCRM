@@ -20,8 +20,8 @@ function getOpenAI() {
  */
 export function isTranscribable(call: any, minDuration: number = 15): boolean {
     const duration = call.duration_sec || 0;
-    const isSuccess = call.status === 'success' || (duration > 0);
-    // Usually 'success' status is best, but we rely on duration too.
+    const status = call.status || call.raw_payload?.status || null;
+    const isCompletedLikeStatus = status === 'success' || status === 'completed' || duration > 0;
 
     // Skip short calls (usually silence or answering machine hangup)
     // Save money by ignoring < minDuration (default 15s)
@@ -29,7 +29,24 @@ export function isTranscribable(call: any, minDuration: number = 15): boolean {
 
     if (!call.recording_url) return false;
 
+    if (!isCompletedLikeStatus) return false;
+
     return true;
+}
+
+export async function getTranscriptionMinDuration(): Promise<number> {
+    const { data } = await supabase
+        .from('sync_state')
+        .select('value')
+        .eq('key', 'transcription_min_duration')
+        .maybeSingle();
+
+    const parsed = Number.parseInt(data?.value || '15', 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 15;
+    }
+
+    return parsed;
 }
 
 /**
@@ -154,12 +171,14 @@ type TranscriptionCallRow = {
     transcription_status: string | null;
     transcript: string | null;
     recording_url: string | null;
+    duration_sec?: number | null;
+    raw_payload?: Record<string, any> | null;
 };
 
 async function loadCallForTranscription(callId: string): Promise<TranscriptionCallRow | null> {
     const { data: byCallId } = await supabase
         .from('raw_telphin_calls')
-        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
         .eq('telphin_call_id', callId)
         .limit(1)
         .maybeSingle();
@@ -174,7 +193,7 @@ async function loadCallForTranscription(callId: string): Promise<TranscriptionCa
 
     const { data: byEventId } = await supabase
         .from('raw_telphin_calls')
-        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
         .eq('event_id', parseInt(callId, 10))
         .limit(1)
         .maybeSingle();
@@ -192,7 +211,7 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
             .eq(column, value)
             .or(allowedStates)
             .is('transcript', null)
-            .select('telphin_call_id, event_id, transcription_status, transcript, recording_url')
+            .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
             .limit(1);
 
         if (error) {
@@ -220,6 +239,41 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
     }
 
     return { row: existing, claimed: false };
+}
+
+export async function getCallTranscriptionPreflight(callId: string) {
+    const row = await loadCallForTranscription(callId);
+    if (!row) {
+        throw new Error(`Call ${callId} not found in raw_telphin_calls`);
+    }
+
+    const minDuration = await getTranscriptionMinDuration();
+    const transcribable = isTranscribable(row, minDuration);
+
+    return {
+        row,
+        minDuration,
+        transcribable,
+        skipReason: transcribable
+            ? null
+            : `Skipped before OpenAI: duration < ${minDuration}s, missing recording, or call not completed`,
+    };
+}
+
+export async function markCallTranscriptionSkipped(callId: string, reason: string) {
+    const isNumeric = /^\d+$/.test(callId);
+    const payload = {
+        transcription_status: 'skipped',
+        am_detection_result: {
+            reason,
+            skipped_at: new Date().toISOString(),
+        },
+    };
+
+    await supabase.from('raw_telphin_calls').update(payload).eq('telphin_call_id', callId);
+    if (isNumeric) {
+        await supabase.from('raw_telphin_calls').update(payload).eq('event_id', parseInt(callId, 10));
+    }
 }
 
 export async function transcribeCall(callId: string, recordingUrl: string) {

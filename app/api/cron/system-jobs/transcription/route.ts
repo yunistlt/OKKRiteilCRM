@@ -8,7 +8,7 @@ import {
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
-import { transcribeCall } from '@/lib/transcribe';
+import { getCallTranscriptionPreflight, markCallTranscriptionSkipped, transcribeCall } from '@/lib/transcribe';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +67,23 @@ export async function GET(req: NextRequest) {
       }
 
       try {
+        const preflight = await getCallTranscriptionPreflight(callId);
+        if (!preflight.transcribable) {
+          await markCallTranscriptionSkipped(callId, preflight.skipReason || 'Skipped before OpenAI');
+          await completeSystemJob(job.id, {
+            telphin_call_id: callId,
+            status: 'skipped',
+            reason: preflight.skipReason,
+          });
+          results.push({
+            job_id: job.id,
+            telphin_call_id: callId,
+            status: 'skipped',
+            reason: preflight.skipReason,
+          });
+          continue;
+        }
+
         await transcribeCall(callId, recordingUrl);
 
         const { data: match } = await supabase

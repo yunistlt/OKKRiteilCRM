@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { transcribeCall } from '@/lib/transcribe';
+import { getCallTranscriptionPreflight, markCallTranscriptionSkipped, transcribeCall } from '@/lib/transcribe';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +12,12 @@ export async function POST(request: Request) {
         }
 
         console.log(`[API Transcribe] Triggering for ${callId}...`);
+        const preflight = await getCallTranscriptionPreflight(callId);
+        if (!preflight.transcribable) {
+            await markCallTranscriptionSkipped(callId, preflight.skipReason || 'Skipped before OpenAI');
+            return NextResponse.json({ success: true, status: 'skipped', reason: preflight.skipReason });
+        }
+
         const transcript = await transcribeCall(callId, recordingUrl);
 
         return NextResponse.json({ success: true, transcript });
