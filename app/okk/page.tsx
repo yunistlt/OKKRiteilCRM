@@ -658,38 +658,11 @@ function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
     );
 }
 
-// ─── Таймер обратного отсчета до Cron проверки ──────────
-function CountdownTimer() {
-    const [timeLeft, setTimeLeft] = useState('');
-
-    useEffect(() => {
-        const calculate = () => {
-            const now = new Date();
-            const mins = now.getMinutes();
-            const secs = now.getSeconds();
-
-            // Крон запускается каждые 30 минут (00 и 30)
-            let nextMins = mins < 30 ? 30 : 60;
-            let diffMins = nextMins - mins - 1;
-            let diffSecs = 60 - secs;
-
-            if (diffSecs === 60) {
-                diffSecs = 0;
-                diffMins += 1;
-            }
-
-            setTimeLeft(`${String(diffMins).padStart(2, '0')}:${String(diffSecs).padStart(2, '0')}`);
-        };
-
-        calculate();
-        const timer = setInterval(calculate, 1000);
-        return () => clearInterval(timer);
-    }, []);
-
+function FallbackOwnershipBadge() {
     return (
         <div className="flex flex-col items-center px-2 border-l border-gray-100">
-            <span className="text-[10px] font-black text-blue-500 tabular-nums leading-none tracking-tighter">{timeLeft}</span>
-            <span className="text-[7px] text-gray-400 font-bold uppercase tracking-tighter whitespace-nowrap">до проверки</span>
+            <span className="text-[10px] font-black text-amber-600 leading-none tracking-tighter">RT</span>
+            <span className="text-[7px] text-gray-400 font-bold uppercase tracking-tighter whitespace-nowrap">fallback only</span>
         </div>
     );
 }
@@ -810,7 +783,7 @@ function OKKContent() {
                 const res = await fetch(`/api/okk/evaluate/${targetOrderId}`, { method: 'POST' });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
-                setRunResult(`✅ Заказ #${targetOrderId} обновлен`);
+                setRunResult(`✅ Заказ #${targetOrderId} пересчитан`);
                 setTimeout(load, 1500);
                 return;
             }
@@ -821,10 +794,17 @@ function OKKContent() {
 
             const res = await fetch(`/api/okk/run-all?${query.toString()}`);
             const json = await res.json();
-            setRunResult(`✅ Обработано: ${json.processed}, ошибок: ${json.errors}`);
+            if (!res.ok) {
+                throw new Error(json.error || 'Fallback rebuild failed');
+            }
+            if (json.status === 'skipped') {
+                setRunResult(`ℹ️ ${json.reason || 'Fallback rebuild пропущен'}`);
+                return;
+            }
+            setRunResult(`✅ Fallback rebuild: ${json.processed ?? 0}, ошибок: ${json.errors ?? 0}`);
             setTimeout(load, 1500);
-        } catch {
-            setRunResult('❌ Ошибка запуска');
+        } catch (error: any) {
+            setRunResult(`❌ ${error?.message || 'Ошибка запуска'}`);
         } finally {
             setRunning(false);
         }
@@ -837,7 +817,7 @@ function OKKContent() {
             const res = await fetch(`/api/okk/evaluate/${orderId}`, { method: 'POST' });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
-            setRunResult(`✅ Заказ #${orderId} обновлен`);
+            setRunResult(`✅ Заказ #${orderId} пересчитан`);
             load();
         } catch (e) {
             setRunResult(`❌ Ошибка #${orderId}`);
@@ -1096,14 +1076,15 @@ function OKKContent() {
                                 <button
                                     onClick={runAll}
                                     disabled={running}
-                                    className={`${running ? 'bg-gray-200 text-gray-400' : 'bg-blue-600 text-white hover:bg-blue-700'} px-1.5 py-0.5 rounded text-[8px] font-black transition-all`}
+                                    title={targetOrderId ? 'Точечный пересчёт заказа' : 'Аварийный fallback rebuild'}
+                                    className={`${running ? 'bg-gray-200 text-gray-400' : targetOrderId ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-amber-500 text-white hover:bg-amber-600'} px-1.5 py-0.5 rounded text-[8px] font-black transition-all`}
                                 >
-                                    {running ? '..' : targetOrderId ? 'FIX' : 'RUN'}
+                                    {running ? '..' : targetOrderId ? 'ORDER' : 'FALLBACK'}
                                 </button>
-                                <CountdownTimer />
+                                <FallbackOwnershipBadge />
                             </>
                         ) : (
-                            <CountdownTimer />
+                            <FallbackOwnershipBadge />
                         )}
                     </div>
 
