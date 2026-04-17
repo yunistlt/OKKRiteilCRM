@@ -20,13 +20,16 @@ function resolveServiceUrl(serviceName: string) {
     if (serviceName.includes('Transcription Queue')) return '/api/cron/system-jobs/transcription';
     if (serviceName.includes('History Fallback')) return '/api/sync/history?force=true';
     if (serviceName.includes('Rule Engine')) return '/api/rules/execute?force=true';
+    if (serviceName.includes('Priorities Refresh')) return '/api/analysis/priorities/refresh?force=true';
     if (serviceName.includes('AI Insight Agent')) return '/api/analysis/insights/run?force=true';
     if (serviceName.includes('Transcription Fallback')) return '/api/cron/transcribe?force=true';
     return null;
 }
 
 function needsCronAuth(url: string) {
-    return url.startsWith('/api/cron/');
+    return url.startsWith('/api/cron/')
+        || url.startsWith('/api/rules/execute')
+        || url.startsWith('/api/analysis/priorities/refresh');
 }
 
 export async function POST(req: NextRequest) {

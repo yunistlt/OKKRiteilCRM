@@ -4,6 +4,16 @@ import { NextRequest, NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Max 5 minutes for Pro plan
 
+function buildInternalAuthHeaders() {
+    if (!process.env.CRON_SECRET) {
+        return undefined;
+    }
+
+    return {
+        authorization: `Bearer ${process.env.CRON_SECRET}`,
+    };
+}
+
 function ensureAuthorized(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
     if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -63,7 +73,10 @@ export async function GET(request: NextRequest) {
             } else {
                 console.log('[CRON] Step 2: Rules');
                 try {
-                    const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, { cache: 'no-store' });
+                    const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, {
+                        cache: 'no-store',
+                        headers: buildInternalAuthHeaders(),
+                    });
                     if (!rulesRes.ok) throw new Error(`HTTP ${rulesRes.status}: ${await rulesRes.text().then(t => t.substring(0, 200))}`);
                     const rulesJson = await rulesRes.json();
                     report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
@@ -81,7 +94,10 @@ export async function GET(request: NextRequest) {
             } else {
                 console.log('[CRON] Step 3: Priorities');
                 try {
-                    const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, { cache: 'no-store' });
+                    const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, {
+                        cache: 'no-store',
+                        headers: buildInternalAuthHeaders(),
+                    });
                     if (!prioRes.ok) throw new Error(`HTTP ${prioRes.status}: ${await prioRes.text().then(t => t.substring(0, 200))}`);
                     const prioJson = await prioRes.json();
                     report.push(`Priorities: ${prioJson.count || 0} updated`);

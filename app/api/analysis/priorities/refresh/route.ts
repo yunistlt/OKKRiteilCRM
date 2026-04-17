@@ -1,13 +1,26 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { refreshStoredPriorities, refreshStoredPriorityForOrder } from '@/lib/prioritization';
 import { executeRuleEngineWindow, isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for full refresh
 
+function hasCronAuthorization(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+}
+
 export async function GET(request: Request) {
     try {
+        const cronAuthorized = hasCronAuthorization(request);
+        const session = cronAuthorized ? null : await getSession();
+        if (!cronAuthorized && !hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 });
+        }
+
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
         const specificOrderId = searchParams.get('orderId') ? Number(searchParams.get('orderId')) : null;

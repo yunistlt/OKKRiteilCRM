@@ -296,7 +296,11 @@ export default function SystemStatusPage() {
     const refreshPriorities = async () => {
         setRefreshingPriorities(true);
         try {
-            const res = await fetch('/api/analysis/priorities/refresh?force=true');
+            const res = await fetch('/api/settings/system-status/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serviceName: 'Priorities Refresh' })
+            });
             const data = await res.json();
             if (data.ok) {
                 if (data.status === 'skipped') {
