@@ -327,14 +327,14 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Manager Aggregate Queue')) url = '/api/cron/system-jobs/manager-aggregate-refresh';
         if (serviceName.includes('Nightly Reconciliation')) url = '/api/cron/system-jobs/nightly-reconciliation';
         if (serviceName.includes('Semantic Rules Queue')) url = '/api/cron/system-jobs/call-semantic-rules';
-        if (serviceName.includes('Matching Service')) url = '/api/matching/process?force=true';
+        if (serviceName.includes('Matching Fallback')) url = '/api/matching/process?force=true';
         if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
         if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
         if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';
         if (serviceName.includes('History Sync')) url = '/api/sync/history';
         if (serviceName.includes('Rule Engine')) url = '/api/rules/execute?force=true';
         if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run';
-        if (serviceName.includes('Transcription Cron')) url = '/api/cron/transcribe?force=true';
+        if (serviceName.includes('Transcription Fallback')) url = '/api/cron/transcribe?force=true';
 
         if (!url) return;
 
@@ -413,11 +413,11 @@ export default function SystemStatusPage() {
         if (name.includes('Nightly Reconciliation')) return 'Ночной Fallback Reconciliation';
         if (name.includes('Semantic Rules Queue')) return 'Очередь Семантических Правил';
         if (name.includes('RetailCRM')) return 'Синхронизация Заказов (RetailCRM)';
-        if (name.includes('Matching Service')) return 'Служба Матчинга (Звонок + Заказ)';
+        if (name.includes('Matching Fallback')) return 'Fallback Sweep Матчинга';
         if (name.includes('Score Refresh Queue')) return 'Очередь Пересчета Score';
         if (name.includes('Insight Refresh Queue')) return 'Очередь AI Инсайтов';
         if (name.includes('Transcription Queue')) return 'Очередь Транскрибации';
-        if (name.includes('Transcription Cron')) return 'Служба Транскрибации (Semen)';
+        if (name.includes('Transcription Fallback')) return 'Fallback Sweep Транскрибации';
         if (name.includes('History Sync')) return 'События Заказов (History API)';
         if (name.includes('Rule Engine')) return 'Движок Проверки Правил';
         if (name.includes('AI Insight Agent')) return 'Аналитик Бизнес-Инсайтов (AI)';
@@ -436,10 +436,12 @@ export default function SystemStatusPage() {
         if (name.includes('Nightly Reconciliation')) return '🌙';
         if (name.includes('Semantic Rules Queue')) return '🧩';
         if (name.includes('RetailCRM')) return '🛍️';
+        if (name.includes('Matching Fallback')) return '🧯';
         if (name.includes('Matching')) return '🔗';
         if (name.includes('Score Refresh')) return '📈';
         if (name.includes('Insight Refresh')) return '🧠';
         if (name.includes('Transcription Queue')) return '🎧';
+        if (name.includes('Transcription Fallback')) return '🛟';
         if (name.includes('Transcription')) return '🎙️';
         if (name.includes('History')) return '⚡️';
         if (name.includes('Rule')) return '⚙️';

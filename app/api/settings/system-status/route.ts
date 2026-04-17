@@ -175,14 +175,19 @@ export async function GET() {
         };
 
         // --- Matching ---
+        const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
         const matchOk = (matches24h || 0) > 0;
         const matchStatus = {
-            service: 'Matching Service',
-            cursor: 'Realtime',
+            service: 'Matching Fallback Sweep',
+            cursor: 'Fallback only',
             last_run: new Date().toISOString(),
-            status: matchOk ? 'ok' : 'warning',
-            details: `${matches24h || 0} matches in last 24h`,
-            reason: matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.'
+            status: realtimePipelineEnabled ? 'ok' : (matchOk ? 'ok' : 'warning'),
+            details: realtimePipelineEnabled
+                ? 'Backup-only manual force sweep'
+                : `${matches24h || 0} matches in last 24h`,
+            reason: realtimePipelineEnabled
+                ? 'Primary matching ownership is handled by call_match queue in realtime pipeline.'
+                : (matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.')
         };
 
         // --- Transcription (Semen) ---
@@ -195,12 +200,14 @@ export async function GET() {
         const transCursor = transCursorKey?.value || 'Active Sync';
 
         const transStatus = {
-            service: 'Transcription Cron',
+            service: 'Transcription Fallback Sweep',
             cursor: transCursor.includes('T') ? transCursor.split('T')[0] : transCursor,
             last_run: transLastRun,
-            status: transActive ? 'ok' : 'warning',
-            details: transActive ? 'Processing Calls' : 'Idle / Stalled',
-            reason: transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.'
+            status: realtimePipelineEnabled ? 'ok' : (transActive ? 'ok' : 'warning'),
+            details: realtimePipelineEnabled ? 'Backup-only manual force sweep' : (transActive ? 'Processing Calls' : 'Idle / Stalled'),
+            reason: realtimePipelineEnabled
+                ? 'Primary transcription ownership is handled by call_transcription queue in realtime pipeline.'
+                : (transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.')
         };
 
         // --- Matching Backfill ---
