@@ -1,12 +1,34 @@
 import { NextResponse } from 'next/server';
 import { releaseRuntimeSyncLock, tryAcquireRuntimeSyncLock } from '@/lib/runtime-sync-locks';
 import { runTelphinSync } from '@/lib/sync/telphin';
+import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const TELPHIN_FALLBACK_LOCK_KEY = 'sync.telphin_fallback';
 const TELPHIN_FALLBACK_LOCK_TTL_SECONDS = 280;
+
+async function persistTelphinFallbackLockState(status: 'idle' | 'running' | 'contended', holder?: string | null) {
+    const now = new Date().toISOString();
+    const entries = [
+        {
+            key: 'telphin_fallback_lock_status',
+            value: status,
+            updated_at: now,
+        },
+        {
+            key: 'telphin_fallback_lock_holder',
+            value: holder || '',
+            updated_at: now,
+        },
+    ];
+
+    const { error } = await supabase.from('sync_state').upsert(entries, { onConflict: 'key' });
+    if (error) {
+        console.error('[TelphinSyncRoute] Failed to persist lock state:', error);
+    }
+}
 
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
@@ -21,6 +43,7 @@ export async function GET(request: Request) {
     });
 
     if (!lockAcquired) {
+        await persistTelphinFallbackLockState('contended');
         return NextResponse.json({
             success: true,
             status: 'locked',
@@ -29,6 +52,7 @@ export async function GET(request: Request) {
     }
 
     try {
+        await persistTelphinFallbackLockState('running', lockHolder);
         const result = await runTelphinSync(forceResync, hours);
 
         if (!result.success) {
@@ -43,5 +67,6 @@ export async function GET(request: Request) {
         }).catch((error) => {
             console.error('[TelphinSyncRoute] Failed to release runtime lock:', error);
         });
+        await persistTelphinFallbackLockState('idle');
     }
 }

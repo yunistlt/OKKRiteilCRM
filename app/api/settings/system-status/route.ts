@@ -19,6 +19,8 @@ export async function GET() {
                 'telphin_backfill_cursor',
                 'telphin_fallback_lag_seconds',
                 'telphin_fallback_last_error',
+                'telphin_fallback_lock_status',
+                'telphin_fallback_lock_holder',
                 'transcription_min_duration',
                 'transcription_last_run',
                 'rule_engine_last_run',
@@ -81,13 +83,16 @@ export async function GET() {
         const telphinMain = stateMap.get('telphin_last_sync_time');
         const telphinFallbackLagSeconds = parseInt(stateMap.get('telphin_fallback_lag_seconds')?.value || '0', 10);
         const telphinFallbackLastError = stateMap.get('telphin_fallback_last_error')?.value || '';
+        const telphinFallbackLockStatus = stateMap.get('telphin_fallback_lock_status')?.value || 'idle';
         const telphinOk = isFresh(telphinMain?.updated_at, 15);
         const telphinStatus = {
             service: 'Telphin Main Sync',
             cursor: telphinMain?.value || 'Never',
             last_run: telphinMain?.updated_at || null,
             status: telphinFallbackLastError ? 'warning' : (telphinOk ? 'ok' : 'warning'),
-            details: telphinOk ? `Active, lag ${Math.floor(telphinFallbackLagSeconds / 60)} min` : 'Stalled (>15m ago)',
+            details: telphinOk
+                ? `Active, lag ${Math.floor(telphinFallbackLagSeconds / 60)} min${telphinFallbackLockStatus === 'running' ? ', fallback running' : telphinFallbackLockStatus === 'contended' ? ', fallback busy' : ''}`
+                : 'Stalled (>15m ago)',
             reason: telphinFallbackLastError || getDiagnosis('telphin_main', telphinOk, telphinMain?.updated_at)
         };
 
@@ -98,9 +103,15 @@ export async function GET() {
             service: 'Telphin Backfill',
             cursor: telphinBackfill?.value || 'Never',
             last_run: telphinBackfill?.updated_at || null,
-            status: backfillOk ? 'ok' : 'warning',
-            details: backfillOk ? 'Running' : 'Stopped/Paused',
-            reason: getDiagnosis('telphin_backfill', backfillOk, telphinBackfill?.updated_at)
+            status: telphinFallbackLockStatus === 'running' ? 'ok' : (telphinFallbackLockStatus === 'contended' ? 'warning' : (backfillOk ? 'ok' : 'warning')),
+            details: telphinFallbackLockStatus === 'running'
+                ? 'Running (lock held)'
+                : telphinFallbackLockStatus === 'contended'
+                    ? 'Busy in another worker'
+                    : (backfillOk ? 'Running' : 'Stopped/Paused'),
+            reason: telphinFallbackLockStatus === 'contended'
+                ? 'Другой fallback worker уже держит lease-lock и выполняет синхронизацию.'
+                : getDiagnosis('telphin_backfill', backfillOk, telphinBackfill?.updated_at)
         };
 
         // --- RetailCRM ---

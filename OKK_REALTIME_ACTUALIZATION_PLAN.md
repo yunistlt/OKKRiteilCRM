@@ -389,6 +389,7 @@
 - [ ] RetailCRM history worker: concurrency 1.
 - [ ] Telphin fallback worker: concurrency 1.
 - [x] Telphin fallback worker: concurrency 1.
+- [x] Telphin fallback lock state (`running` / `contended` / `idle`) начал писаться в `sync_state`, чтобы status dashboard различал реальный fallback run, lock contention и простой route.
 - [ ] Matching worker: concurrency 1.
 - [ ] Transcription worker: concurrency 2.
 - [ ] Insight worker: concurrency 1.
