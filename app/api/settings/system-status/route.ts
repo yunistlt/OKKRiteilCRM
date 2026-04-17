@@ -283,14 +283,17 @@ export async function GET() {
         const insightRunKey = stateMap.get('insight_agent_last_run');
         const lastInsightRun = insightRunKey?.updated_at || null;
         const insightRunOk = isFresh(lastInsightRun, 120); // 2 hours threshold
+        const insightRealtimeOwned = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
 
         const insightStatus = {
             service: 'AI Insight Agent',
-            cursor: 'Deep Analysis',
+            cursor: insightRealtimeOwned ? 'Fallback only' : 'Deep Analysis',
             last_run: lastInsightRun,
-            status: insightRunOk ? 'ok' : 'warning',
-            details: insightRunOk ? 'Extracting Business Facts' : 'Idle or Stalled',
-            reason: !insightRunOk ? 'Аналитик не запускался более 2 часов.' : null
+            status: insightRealtimeOwned ? 'ok' : (insightRunOk ? 'ok' : 'warning'),
+            details: insightRealtimeOwned ? 'Backup-only targeted or force run' : (insightRunOk ? 'Extracting Business Facts' : 'Idle or Stalled'),
+            reason: insightRealtimeOwned
+                ? 'Primary insight ownership is handled by order_insight_refresh queue in realtime pipeline.'
+                : (!insightRunOk ? 'Аналитик не запускался более 2 часов.' : null)
         };
 
         // 4.8 Fetch Recent Insights for Monitor feed

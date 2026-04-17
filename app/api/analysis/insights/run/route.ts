@@ -9,10 +9,19 @@ export async function GET(req: Request) {
     try {
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('orderId');
+        const force = searchParams.get('force') === 'true';
 
         if (orderId) {
             const results = await runInsightAnalysis(parseInt(orderId));
             return NextResponse.json({ ok: true, results });
+        }
+
+        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+            return NextResponse.json({
+                ok: true,
+                status: 'skipped',
+                reason: 'Realtime pipeline owns production insight refresh. Use orderId for targeted refresh or force=true for emergency fallback run.',
+            });
         }
 
         // Default behavior: trigger for the latest 3 orders that don't have insights yet
