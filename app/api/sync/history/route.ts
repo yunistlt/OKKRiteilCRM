@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { enqueueOrderRefreshJob, isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
 
 // Environment variables
 const RETAILCRM_URL = process.env.RETAILCRM_URL;
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
 
-        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+        if (isSystemJobsPipelineEnabled() && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -111,6 +112,16 @@ export async function GET(request: Request) {
                 });
 
             if (processedEvents.length > 0) {
+                const latestOccurredAtByOrder = new Map<number, string>();
+                processedEvents.forEach((event: any) => {
+                    const orderId = Number(event.retailcrm_order_id);
+                    const occurredAt = event.occurred_at;
+                    const previous = latestOccurredAtByOrder.get(orderId);
+                    if (!previous || new Date(occurredAt).getTime() >= new Date(previous).getTime()) {
+                        latestOccurredAtByOrder.set(orderId, occurredAt);
+                    }
+                });
+
                 const { error: upsertError } = await supabase
                     .from('raw_order_events')
                     .upsert(processedEvents, {
@@ -226,6 +237,31 @@ export async function GET(request: Request) {
 
                     if (updatePromises.length > 0) {
                         await Promise.all(updatePromises);
+                    }
+                }
+
+                if (isSystemJobsPipelineEnabled()) {
+                    const enqueuePromises: Promise<any>[] = [];
+                    latestOccurredAtByOrder.forEach((occurredAt, orderId) => {
+                        enqueuePromises.push((async () => {
+                            try {
+                                await enqueueOrderRefreshJob({
+                                    jobType: 'order_score_refresh',
+                                    orderId,
+                                    source: 'retailcrm_history_fallback_sync',
+                                    payload: {
+                                        history_occurred_at: occurredAt,
+                                    },
+                                    priority: 25,
+                                });
+                            } catch (enqueueError) {
+                                console.error(`[History Sync] Failed to enqueue score refresh for order ${orderId}:`, enqueueError);
+                            }
+                        })());
+                    });
+
+                    if (enqueuePromises.length > 0) {
+                        await Promise.all(enqueuePromises);
                     }
                 }
             }

@@ -253,6 +253,7 @@
 - [x] Legacy `/api/sync/retailcrm` и `/api/sync/retailcrm/history` переведены в backup-only режим: при включенном realtime pipeline они по умолчанию `skip` и выполняются только через `force=true`.
 - [x] Legacy `/api/sync/retailcrm` перестал напрямую триггерить insight analysis при активном realtime pipeline: даже emergency fallback sync теперь ставит queue-safe `order_score_refresh` и `order_insight_refresh`, а direct `runInsightAnalysis` остаётся только для legacy mode без realtime pipeline.
 - [x] Legacy `/api/sync/history` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback history sync.
+- [x] Legacy `/api/sync/history` перестал быть write-only fallback path при активном realtime pipeline: emergency history sync теперь ставит queue-safe `order_score_refresh` по затронутым заказам вместо молчаливого обхода downstream recalculation ownership.
 - [x] Нагрузочная модель уточнена: помимо 20-30 новых заказов в день учитывается живой пул около 500 заказов в рабочих статусах; это закрепляет запрет на частые full-scan операции по активному массиву.
 - [x] Нагрузочная модель подтверждена по реальной базе: поток history-изменений составляет около 1000+ событий в день и около 600+ событий в день по текущим рабочим заказам, поэтому bulk evaluation нельзя держать как частый cron.
 
