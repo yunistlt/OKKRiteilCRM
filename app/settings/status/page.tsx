@@ -327,7 +327,7 @@ export default function SystemStatusPage() {
         if (serviceName.includes('Manager Aggregate Queue')) url = '/api/cron/system-jobs/manager-aggregate-refresh';
         if (serviceName.includes('Nightly Reconciliation')) url = '/api/cron/system-jobs/nightly-reconciliation';
         if (serviceName.includes('Semantic Rules Queue')) url = '/api/cron/system-jobs/call-semantic-rules';
-        if (serviceName.includes('Matching Service')) url = '/api/matching/process';
+        if (serviceName.includes('Matching Service')) url = '/api/matching/process?force=true';
         if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
         if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
         if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';

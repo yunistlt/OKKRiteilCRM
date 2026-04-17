@@ -229,6 +229,7 @@
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
+- [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.
 - [x] Status backend начал поднимать operator-facing service cards для доменных SLA `Transcription SLA` и `Order Score SLA`, чтобы деградация была видна в общем списке сервисов, а не только в latency grid.
