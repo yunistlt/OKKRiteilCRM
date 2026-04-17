@@ -1,12 +1,19 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { analyzeOrderWithAI } from '@/lib/prioritization';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm-mapping';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     const body = await req.json();
     const { prompt, orderId } = body;
 

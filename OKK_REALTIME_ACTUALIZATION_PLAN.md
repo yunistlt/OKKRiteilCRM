@@ -243,6 +243,7 @@
 - [x] Mixed fallback routes `analysis/priorities/refresh` и `rules/execute` переведены на hybrid auth (`admin` session или `CRON_SECRET`), а legacy `/api/cron` и status proxy начали пробрасывать server-side auth для этих вызовов.
 - [x] Admin settings APIs `settings/prompts` и `settings/training-examples` переведены на session-based `admin` access, чтобы системные prompt/dataset endpoints больше не оставались публичными.
 - [x] Admin rules APIs `rules/test`, `rules/dry-run`, `rules/audit-history` и server actions страницы правил переведены на `admin` session access; background audit из server action теперь пробрасывает cookies текущей сессии.
+- [x] Admin AI tooling routes `analysis/random-order` и `analysis/test-prompt`, используемые только из settings AI/training UX, переведены на `admin` session access.
 - [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.

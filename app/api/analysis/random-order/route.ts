@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 
 import { resolveRetailCRMLabel } from '@/lib/retailcrm-mapping';
@@ -8,6 +10,11 @@ export const dynamic = 'force-dynamic';
 
 // GET - Fetch a random order from working statuses for manual evaluation
 export async function GET() {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     // Get working statuses
     const { data: workingStatuses } = await supabase
         .from('status_settings')
