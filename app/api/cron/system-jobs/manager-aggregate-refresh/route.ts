@@ -11,6 +11,7 @@ import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-st
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.manager_aggregate_refresh';
+const MAX_MANAGER_AGGREGATE_CONCURRENCY = 1;
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -37,8 +38,10 @@ export async function GET(req: NextRequest) {
     const claimed = await claimSystemJobs({
       workerId: `manager-aggregate-refresh:${Date.now()}`,
       jobTypes: ['manager_aggregate_refresh'],
-      limit: 3,
+      limit: MAX_MANAGER_AGGREGATE_CONCURRENCY,
       lockSeconds: 240,
+      maxProcessing: MAX_MANAGER_AGGREGATE_CONCURRENCY,
+      concurrencyKey: 'system_jobs.manager_aggregate_refresh',
     });
 
     if (!claimed.length) {

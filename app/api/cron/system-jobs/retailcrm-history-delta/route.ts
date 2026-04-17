@@ -16,6 +16,7 @@ import { supabase } from '@/utils/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.retailcrm_history_delta';
+const MAX_RETAILCRM_HISTORY_CONCURRENCY = 1;
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -49,6 +50,8 @@ export async function GET(req: NextRequest) {
       jobTypes: ['retailcrm_history_delta_pull'],
       limit: 1,
       lockSeconds: 240,
+      maxProcessing: MAX_RETAILCRM_HISTORY_CONCURRENCY,
+      concurrencyKey: 'system_jobs.retailcrm_history_delta',
     });
 
     if (!claimed.length) {

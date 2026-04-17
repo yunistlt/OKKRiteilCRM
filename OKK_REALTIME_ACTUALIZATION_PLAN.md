@@ -257,6 +257,10 @@
 - [ ] Insight worker concurrency: 1-2.
 - [ ] Score worker concurrency: 2.
 - [ ] Aggregate worker concurrency: 1.
+- [x] Transcription worker concurrency: 2.
+- [x] Insight worker concurrency: 1.
+- [x] Score worker concurrency: 2.
+- [x] Aggregate worker concurrency: 1.
 - [ ] При потоке около 1000 history-изменений в день считать нормальным короткий event-driven rescore/coalescing, а не массовый `run-all` в рабочее время.
 - [ ] Любые full-scan операции по пулу ~500 активных заказов выполнять только ночью или вручную, но не как штатный cron каждые 1-10 минут.
 - [ ] Full rebuild ОКК: 1 раз ночью или вручную по кнопке администратора.
@@ -389,6 +393,14 @@
 - [ ] Insight worker: concurrency 1.
 - [ ] Scoring worker: concurrency 2.
 - [ ] Aggregate worker: concurrency 1.
+- [x] RetailCRM delta worker: concurrency 1.
+- [x] RetailCRM history worker: concurrency 1.
+- [ ] Telphin fallback worker: concurrency 1.
+- [x] Matching worker: concurrency 1.
+- [x] Transcription worker: concurrency 2.
+- [x] Insight worker: concurrency 1.
+- [x] Scoring worker: concurrency 2.
+- [x] Aggregate worker: concurrency 1.
 
 Результат фазы:
 - [ ] Есть схема процессов, которую можно реализовывать без споров по рантайму.

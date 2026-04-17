@@ -158,9 +158,13 @@ const MONITORED_WORKER_KEYS = [
 type WorkerStateMap = Map<string, { value: string; updated_at: string }>;
 
 const QUEUE_PROCESSING_LIMITS: Partial<Record<SystemJobType, number>> = {
+  retailcrm_order_delta_pull: 1,
+  retailcrm_history_delta_pull: 1,
+  call_match: 1,
   call_transcription: 2,
   order_insight_refresh: 1,
   order_score_refresh: 2,
+  manager_aggregate_refresh: 1,
 };
 
 function isMissingSystemJobsError(error: any) {
@@ -682,6 +686,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: stateMap.get('retailcrm_orders_queue_last_success_at')?.updated_at || stateMap.get('retailcrm_orders_sync')?.updated_at || null,
       queued: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'queued'),
       processing: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_order_delta_pull || null,
       deadLetter: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'dead_letter'),
       oldestQueuedMinutes: oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert']),
       warningMinutes: 5,
@@ -698,6 +703,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: stateMap.get('retailcrm_history_queue_last_success_at')?.updated_at || stateMap.get('retailcrm_history_sync')?.updated_at || null,
       queued: countJobs(rows, ['retailcrm_history_delta_pull'], 'queued'),
       processing: countJobs(rows, ['retailcrm_history_delta_pull'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_history_delta_pull || null,
       deadLetter: countJobs(rows, ['retailcrm_history_delta_pull'], 'dead_letter'),
       oldestQueuedMinutes: oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull']),
       warningMinutes: 10,
@@ -714,7 +720,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['call_match'], 'queued'),
       processing: countJobs(rows, ['call_match'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.call_match || null,
       deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
       oldestQueuedMinutes: oldestQueuedMinutes(rows, ['call_match']),
       warningMinutes: 5,
@@ -765,7 +771,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       lastRun: null,
       queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
       processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.manager_aggregate_refresh || null,
       deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
       oldestQueuedMinutes: managerAggregateOldest,
       warningMinutes: 10,
@@ -837,7 +843,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('RetailCRM Delta Queue')?.status || 'warning',
       queued: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'queued'),
       processing: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_order_delta_pull || null,
       deadLetter: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert']) === null
         ? null
@@ -850,7 +856,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('RetailCRM History Queue')?.status || 'warning',
       queued: countJobs(rows, ['retailcrm_history_delta_pull'], 'queued'),
       processing: countJobs(rows, ['retailcrm_history_delta_pull'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_history_delta_pull || null,
       deadLetter: countJobs(rows, ['retailcrm_history_delta_pull'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull']) === null
         ? null
@@ -863,7 +869,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Call Match Queue')?.status || 'warning',
       queued: countJobs(rows, ['call_match'], 'queued'),
       processing: countJobs(rows, ['call_match'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.call_match || null,
       deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
       oldestQueuedSeconds: oldestQueuedMinutes(rows, ['call_match']) === null ? null : oldestQueuedMinutes(rows, ['call_match'])! * 60,
       lastErrorSnippet: truncateSnippet(callMatchWorkerState.lastError),
@@ -907,7 +913,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       status: serviceMap.get('Manager Aggregate Queue')?.status || 'warning',
       queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
       processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
-      processingLimit: null,
+      processingLimit: QUEUE_PROCESSING_LIMITS.manager_aggregate_refresh || null,
       deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
       oldestQueuedSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
       lastErrorSnippet: truncateSnippet(aggregateWorkerState.lastError),
