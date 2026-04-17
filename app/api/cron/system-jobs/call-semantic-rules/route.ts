@@ -4,6 +4,7 @@ import {
   completeSystemJob,
   enqueueOrderRefreshJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
 import { runRuleEngine } from '@/lib/rule-engine';
@@ -19,13 +20,6 @@ function ensureAuthorized(req: NextRequest) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     throw new Error('Unauthorized');
   }
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 30;
-  if (attempts === 2) return 120;
-  if (attempts === 3) return 300;
-  return 900;
 }
 
 export async function GET(req: NextRequest) {
@@ -86,14 +80,24 @@ export async function GET(req: NextRequest) {
         }
 
         if (callRow.transcription_status !== 'completed' || !callRow.transcript) {
-          await failSystemJob(job.id, `Transcript is not ready for call ${callId}`, getRetryDelay(job.attempts || 0));
-          results.push({ job_id: job.id, telphin_call_id: callId, status: 'waiting_transcript' });
+          const retry = getAdaptiveSystemJobRetry({
+            attempts: job.attempts || 0,
+            errorMessage: `Transcript is not ready for call ${callId}`,
+            profile: 'fast',
+          });
+          await failSystemJob(job.id, `Transcript is not ready for call ${callId}`, retry.retryDelaySeconds);
+          results.push({ job_id: job.id, telphin_call_id: callId, status: 'waiting_transcript', retry_kind: retry.retryKind, retry_delay_seconds: retry.retryDelaySeconds });
           continue;
         }
 
         if (matchError || !matchRow?.retailcrm_order_id) {
-          await failSystemJob(job.id, `Matched order is not ready for call ${callId}`, getRetryDelay(job.attempts || 0));
-          results.push({ job_id: job.id, telphin_call_id: callId, status: 'waiting_match' });
+          const retry = getAdaptiveSystemJobRetry({
+            attempts: job.attempts || 0,
+            errorMessage: `Matched order is not ready for call ${callId}`,
+            profile: 'fast',
+          });
+          await failSystemJob(job.id, `Matched order is not ready for call ${callId}`, retry.retryDelaySeconds);
+          results.push({ job_id: job.id, telphin_call_id: callId, status: 'waiting_match', retry_kind: retry.retryKind, retry_delay_seconds: retry.retryDelaySeconds });
           continue;
         }
 
@@ -140,12 +144,19 @@ export async function GET(req: NextRequest) {
           violations_found: violationsFound,
         });
       } catch (error: any) {
-        await failSystemJob(job.id, error.message || 'Unknown semantic rules worker error', getRetryDelay(job.attempts || 0));
+        const retry = getAdaptiveSystemJobRetry({
+          attempts: job.attempts || 0,
+          errorMessage: error.message || 'Unknown semantic rules worker error',
+          profile: 'fast',
+        });
+        await failSystemJob(job.id, error.message || 'Unknown semantic rules worker error', retry.retryDelaySeconds);
         results.push({
           job_id: job.id,
           telphin_call_id: callId,
           status: 'failed',
           error: error.message,
+          retry_kind: retry.retryKind,
+          retry_delay_seconds: retry.retryDelaySeconds,
         });
       }
     }

@@ -4,6 +4,7 @@ import {
   completeSystemJob,
   enqueueOrderRefreshJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
 import {
@@ -22,13 +23,6 @@ function ensureAuthorized(req: NextRequest) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     throw new Error('Unauthorized');
   }
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 30;
-  if (attempts === 2) return 120;
-  if (attempts === 3) return 300;
-  return 900;
 }
 
 export async function GET(req: NextRequest) {
@@ -69,7 +63,19 @@ export async function GET(req: NextRequest) {
       try {
         const order = payload.order || await fetchRetailCrmOrder(orderId);
         if (!order) {
-          throw new Error(`RetailCRM order ${orderId} not found`);
+          await completeSystemJob(job.id, {
+            order_id: orderId,
+            source: payload.source || 'retailcrm_order_upsert',
+            result: 'skipped_not_found',
+          });
+
+          results.push({
+            job_id: job.id,
+            order_id: orderId,
+            status: 'skipped_not_found',
+            source: payload.source || 'retailcrm_order_upsert',
+          });
+          continue;
         }
 
         await upsertRetailCrmOrders([order]);
@@ -111,12 +117,19 @@ export async function GET(req: NextRequest) {
           source: payload.source || 'retailcrm_order_upsert',
         });
       } catch (error: any) {
-        await failSystemJob(job.id, error.message || 'Unknown order upsert worker error', getRetryDelay(job.attempts || 0));
+        const retry = getAdaptiveSystemJobRetry({
+          attempts: job.attempts || 0,
+          errorMessage: error.message || 'Unknown order upsert worker error',
+          profile: 'fast',
+        });
+        await failSystemJob(job.id, error.message || 'Unknown order upsert worker error', retry.retryDelaySeconds);
         results.push({
           job_id: job.id,
           order_id: orderId,
           status: 'failed',
           error: error.message,
+          retry_kind: retry.retryKind,
+          retry_delay_seconds: retry.retryDelaySeconds,
         });
       }
     }

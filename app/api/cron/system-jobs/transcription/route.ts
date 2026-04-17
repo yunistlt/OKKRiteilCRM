@@ -5,6 +5,7 @@ import {
   enqueueCallSemanticRulesJob,
   enqueueOrderRefreshJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -20,13 +21,6 @@ function ensureAuthorized(req: NextRequest) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     throw new Error('Unauthorized');
   }
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 30;
-  if (attempts === 2) return 120;
-  if (attempts === 3) return 300;
-  return 900;
 }
 
 export async function GET(req: NextRequest) {
@@ -128,12 +122,19 @@ export async function GET(req: NextRequest) {
           order_id: match?.retailcrm_order_id || null,
         });
       } catch (error: any) {
-        await failSystemJob(job.id, error.message || 'Unknown transcription worker error', getRetryDelay(job.attempts || 0));
+        const retry = getAdaptiveSystemJobRetry({
+          attempts: job.attempts || 0,
+          errorMessage: error.message || 'Unknown transcription worker error',
+          profile: 'fast',
+        });
+        await failSystemJob(job.id, error.message || 'Unknown transcription worker error', retry.retryDelaySeconds);
         results.push({
           job_id: job.id,
           telphin_call_id: callId,
           status: 'failed',
           error: error.message,
+          retry_kind: retry.retryKind,
+          retry_delay_seconds: retry.retryDelaySeconds,
         });
       }
     }

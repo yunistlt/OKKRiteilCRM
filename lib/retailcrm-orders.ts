@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
+const RETAILCRM_FETCH_TIMEOUT_MS = 15000;
 
 export function cleanRetailCrmPhone(val: any): string {
   if (!val) return '';
@@ -73,7 +74,20 @@ async function fetchRetailCrm(path: string, params: URLSearchParams) {
   params.set('apiKey', apiKey);
 
   const url = `${baseUrl}/api/v5/${path}?${params.toString()}`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RETAILCRM_FETCH_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`RetailCRM request timeout after ${RETAILCRM_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw new Error(`RetailCRM network error: ${error?.message || 'Unknown fetch error'}`);
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const errorBody = await response.text();
@@ -112,8 +126,15 @@ export async function fetchRetailCrmOrder(orderId: number) {
   const searchParams = new URLSearchParams();
   searchParams.set('by', 'id');
 
-  const data = await fetchRetailCrm(`orders/${orderId}`, searchParams);
-  return data.order || null;
+  try {
+    const data = await fetchRetailCrm(`orders/${orderId}`, searchParams);
+    return data.order || null;
+  } catch (error: any) {
+    if (String(error?.message || '').includes('RetailCRM API Error 404')) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function fetchRetailCrmHistoryPage(params: {

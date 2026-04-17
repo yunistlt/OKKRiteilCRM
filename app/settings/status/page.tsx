@@ -115,6 +115,13 @@ interface RealtimePipelineSnapshot {
             retryAttemptsLast24h: number;
             retriedJobsLast24h: number;
             deadLettersLast24h: number;
+            retryBacklogByKind: {
+                dependency_wait: number;
+                rate_limit: number;
+                network: number;
+                ai: number;
+                generic: number;
+            };
         };
     };
     queueStages: {
@@ -486,6 +493,44 @@ export default function SystemStatusPage() {
         },
     ];
 
+    const retryKindCards = pipelineMetrics ? [
+        {
+            key: 'dependency_wait',
+            title: 'Waiting Dependencies',
+            value: pipelineMetrics.metrics.recovery.retryBacklogByKind.dependency_wait || 0,
+            bg: 'bg-amber-50',
+            accent: 'text-amber-700',
+        },
+        {
+            key: 'rate_limit',
+            title: 'Rate Limited',
+            value: pipelineMetrics.metrics.recovery.retryBacklogByKind.rate_limit || 0,
+            bg: 'bg-rose-50',
+            accent: 'text-rose-700',
+        },
+        {
+            key: 'network',
+            title: 'Network / Timeout',
+            value: pipelineMetrics.metrics.recovery.retryBacklogByKind.network || 0,
+            bg: 'bg-blue-50',
+            accent: 'text-blue-700',
+        },
+        {
+            key: 'ai',
+            title: 'AI / OpenAI',
+            value: pipelineMetrics.metrics.recovery.retryBacklogByKind.ai || 0,
+            bg: 'bg-purple-50',
+            accent: 'text-purple-700',
+        },
+        {
+            key: 'generic',
+            title: 'Generic Failures',
+            value: pipelineMetrics.metrics.recovery.retryBacklogByKind.generic || 0,
+            bg: 'bg-gray-100',
+            accent: 'text-gray-700',
+        },
+    ] : [];
+
     // --- State: Transcription Details ---
     const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
     const [transcriptionDetails, setTranscriptionDetails] = useState<TranscriptionDetails | null>(null);
@@ -661,6 +706,16 @@ export default function SystemStatusPage() {
                     <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Dead Letters 24h</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
                 </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+                {retryKindCards.map((card) => (
+                    <div key={card.key} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
+                        <div className={`text-[9px] font-black uppercase tracking-widest mb-2 ${card.accent}`}>{card.title}</div>
+                        <div className="text-3xl font-black text-gray-900">{card.value}</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">active retry backlog</div>
+                    </div>
+                ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">

@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { classifySystemJobRetryKind, type SystemJobRetryKind } from '@/lib/system-jobs';
 
 type MonitorStatus = 'ok' | 'warning' | 'error';
 
@@ -29,6 +30,7 @@ interface RecoveryMetrics {
   retryAttemptsLast24h: number;
   retriedJobsLast24h: number;
   deadLettersLast24h: number;
+  retryBacklogByKind: Record<SystemJobRetryKind, number>;
 }
 
 interface QueueStageSnapshot {
@@ -76,6 +78,8 @@ export interface RealtimePipelineMonitoringSnapshot {
 type JobRow = {
   job_type: string;
   status: string;
+  attempts: number | null;
+  error_message: string | null;
   queued_at: string | null;
   available_at: string | null;
   started_at: string | null;
@@ -208,7 +212,33 @@ function buildRecoveryMetrics(rows: CompletedJobRow[]): RecoveryMetrics {
     retryAttemptsLast24h: retriedRows.reduce((sum, row) => sum + Math.max((row.attempts || 1) - 1, 0), 0),
     retriedJobsLast24h: retriedRows.length,
     deadLettersLast24h: rows.filter((row) => row.status === 'dead_letter').length,
+    retryBacklogByKind: {
+      dependency_wait: 0,
+      rate_limit: 0,
+      network: 0,
+      ai: 0,
+      generic: 0,
+    },
   };
+}
+
+function buildRetryBacklogByKind(rows: JobRow[]): Record<SystemJobRetryKind, number> {
+  const breakdown: Record<SystemJobRetryKind, number> = {
+    dependency_wait: 0,
+    rate_limit: 0,
+    network: 0,
+    ai: 0,
+    generic: 0,
+  };
+
+  rows
+    .filter((row) => (row.attempts || 0) > 1 || row.status === 'dead_letter' || Boolean(row.error_message))
+    .forEach((row) => {
+      const retryKind = classifySystemJobRetryKind(row.error_message);
+      breakdown[retryKind] += 1;
+    });
+
+  return breakdown;
 }
 
 function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
@@ -435,7 +465,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   try {
     const { data, error } = await supabase
       .from('system_jobs')
-      .select('job_type, status, queued_at, available_at, started_at, lock_expires_at')
+      .select('job_type, status, attempts, error_message, queued_at, available_at, started_at, lock_expires_at')
       .in('job_type', [...MONITORED_JOB_TYPES])
       .in('status', ['queued', 'processing', 'dead_letter']);
 
@@ -489,6 +519,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const scoreToAggregateLatency = buildLatencyDistribution(scoreToAggregateLeadTimes(completedRows));
   const callMatchToAggregateLatency = buildLatencyDistribution(callMatchToAggregateLeadTimes(completedRows));
   const recovery = buildRecoveryMetrics(completedRows);
+  recovery.retryBacklogByKind = buildRetryBacklogByKind(rows);
 
   const services: MonitorServiceStatus[] = [
     buildQueueService({

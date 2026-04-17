@@ -49,10 +49,16 @@ export interface BusinessInsights {
     last_processed_event_id?: string;
 }
 
+export interface InsightAnalysisResult {
+    status: 'updated' | 'skipped_no_metrics' | 'failed';
+    insights: BusinessInsights | null;
+    errorMessage?: string;
+}
+
 /**
  * Runs deep analysis on an order to extract structured business insights.
  */
-export async function runInsightAnalysis(orderId: number): Promise<BusinessInsights | null> {
+export async function runInsightAnalysisDetailed(orderId: number): Promise<InsightAnalysisResult> {
     await logAgentActivity('anna', 'working', `Изучаю детали заказа #${orderId}...`);
 
     try {
@@ -65,7 +71,10 @@ export async function runInsightAnalysis(orderId: number): Promise<BusinessInsig
 
         if (!metrics) {
             await logAgentActivity('anna', 'idle', 'Ожидаю данные для анализа');
-            return null; // Changed from { success: false, error: 'Metrics not found' } to null to match original return type
+            return {
+                status: 'skipped_no_metrics',
+                insights: null,
+            };
         }
 
         const order = metrics.full_order_context || {}; // Renamed to 'order' to match original variable name
@@ -134,7 +143,13 @@ KEY METRICS:
         });
 
         const content = completion.choices[0].message.content;
-        if (!content) return null;
+        if (!content) {
+            return {
+                status: 'failed',
+                insights: null,
+                errorMessage: 'Empty response from insight model',
+            };
+        }
 
         const insights = JSON.parse(content) as BusinessInsights;
 
@@ -164,10 +179,23 @@ KEY METRICS:
 
         await logAgentActivity('anna', 'idle', 'Анализ завершен, инсайты добавлены в карточку.');
 
-        return insights;
+        return {
+            status: 'updated',
+            insights,
+        };
 
-    } catch (error) {
+    } catch (error: any) {
         console.error(`[InsightAgent] Error for order ${orderId}:`, error);
-        return null;
+        await logAgentActivity('anna', 'idle', `Ошибка анализа заказа #${orderId}`);
+        return {
+            status: 'failed',
+            insights: null,
+            errorMessage: error?.message || 'Unknown insight analysis error',
+        };
     }
+}
+
+export async function runInsightAnalysis(orderId: number): Promise<BusinessInsights | null> {
+    const result = await runInsightAnalysisDetailed(orderId);
+    return result.insights;
 }

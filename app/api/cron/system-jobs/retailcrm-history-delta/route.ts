@@ -4,6 +4,7 @@ import {
   completeSystemJob,
   enqueueSystemJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
@@ -25,13 +26,6 @@ function ensureAuthorized(req: NextRequest) {
 
 function getSeedKey() {
   return `retailcrm_history_delta_pull:${new Date().toISOString().slice(0, 16)}`;
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 30;
-  if (attempts === 2) return 120;
-  if (attempts === 3) return 300;
-  return 900;
 }
 
 export async function GET(req: NextRequest) {
@@ -209,12 +203,17 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxOccurredAt?.toISOString() || null,
       });
     } catch (error: any) {
+      const retry = getAdaptiveSystemJobRetry({
+        attempts: job.attempts || 0,
+        errorMessage: error.message || 'Unknown retailcrm history worker error',
+        profile: 'fast',
+      });
       await recordRetailCrmSyncFailure({
         errorKey: 'retailcrm_history_last_error',
         message: error.message || 'Unknown retailcrm history worker error',
       });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm history worker error');
-      await failSystemJob(job.id, error.message || 'Unknown retailcrm history worker error', getRetryDelay(job.attempts || 0));
+      await failSystemJob(job.id, error.message || 'Unknown retailcrm history worker error', retry.retryDelaySeconds);
       throw error;
     }
   } catch (error: any) {

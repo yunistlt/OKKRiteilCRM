@@ -11,7 +11,7 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Тройная проверка качества, оценка звонков и сценариев.
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
-import { runInsightAnalysis } from './insight-agent';
+import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 
 let _openai: OpenAI | null = null;
@@ -45,6 +45,90 @@ function inferConfidence(result: boolean | null | undefined, reason: string | nu
     if (lower.includes('ошибка ai')) return 0.4;
     if (lower.includes('оценить нельзя') || lower.includes('нет данных')) return 0.45;
     return 0.82;
+}
+
+function formatAiError(error: unknown) {
+    if (error instanceof Error && error.message) return error.message;
+    return 'Неизвестная ошибка AI-пайплайна';
+}
+
+function createScriptEvaluationFallback(
+    transcript: string,
+    annaInsights: BusinessInsights | null,
+    options?: {
+        reason?: string;
+        degraded?: boolean;
+        scriptScorePct?: number | null;
+        evaluatorComment?: string;
+        evaluationSkipped?: boolean;
+    },
+) {
+    return {
+        script_greeting: { result: false, reason: 'Нет данных для анализа (нет звонков/транскрипции)' },
+        script_call_purpose: { result: false, reason: 'Нет данных для анализа' },
+        script_company_info: { result: false, reason: 'Нет данных для анализа' },
+        script_lpr_identified: { result: false, reason: 'Нет данных для анализа' },
+        script_budget_confirmed: { result: false, reason: 'Нет данных для анализа' },
+        script_urgency_identified: { result: false, reason: 'Нет данных для анализа' },
+        script_deadlines: { result: false, reason: 'Нет данных для анализа' },
+        script_tz_confirmed: { result: false, reason: 'Нет данных для анализа' },
+        script_objection_general: { result: false, reason: 'Нет данных для анализа (возражения не отработаны)' },
+        script_objection_delays: { result: false, reason: 'Нет данных для анализа' },
+        script_offer_best_tech: { result: false, reason: 'Нет данных для анализа' },
+        script_offer_best_terms: { result: false, reason: 'Нет данных для анализа' },
+        script_offer_best_price: { result: false, reason: 'Нет данных для анализа' },
+        script_cross_sell: { result: false, reason: 'Нет данных для анализа' },
+        script_next_step_agreed: { result: false, reason: 'Нет данных для анализа' },
+        script_dialogue_management: { result: false, reason: 'Нет данных для анализа' },
+        script_confident_speech: { result: false, reason: 'Нет данных для анализа' },
+        script_score_pct: options?.scriptScorePct ?? 0,
+        evaluator_comment: options?.evaluatorComment || 'Звонки не найдены или слишком короткие для анализа. Оценка 0.',
+        _meta: {
+            model: null,
+            transcript_length: transcript?.length || 0,
+            transcript_excerpt: transcript?.slice(0, 280) || null,
+            anna_insights_available: Boolean(annaInsights),
+            degraded: Boolean(options?.degraded),
+            degradation_reason: options?.reason || null,
+            evaluation_skipped: Boolean(options?.evaluationSkipped),
+        }
+    };
+}
+
+async function runInsightAnalysisSafely(orderId: number): Promise<{
+    insights: BusinessInsights | null;
+    meta: {
+        status: 'available' | 'unavailable' | 'failed';
+        degraded: boolean;
+        reason: string | null;
+    };
+}> {
+    try {
+        const result = await runInsightAnalysisDetailed(orderId);
+        return {
+            insights: result.insights,
+            meta: {
+                status: result.status === 'failed' ? 'failed' : result.insights ? 'available' : 'unavailable',
+                degraded: result.status === 'failed',
+                reason: result.status === 'failed'
+                    ? (result.errorMessage || 'AI insights worker failed')
+                    : result.insights
+                        ? null
+                        : 'AI insights временно недоступны или ещё не собраны',
+            },
+        };
+    } catch (error) {
+        const reason = formatAiError(error);
+        console.error(`[ОКК] Insight analysis degraded for #${orderId}:`, error);
+        return {
+            insights: null,
+            meta: {
+                status: 'failed',
+                degraded: true,
+                reason,
+            },
+        };
+    }
 }
 
 function pickRawPayload(data: Record<string, any>) {
@@ -776,33 +860,11 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 //            Работа с возражениями, В конце диалога, Ведение диалога
 // ═══════════════════════════════════════════════════════
 export async function evaluateScript(transcript: string, annaInsights: any = null) {
-    const empty = {
-        script_greeting: { result: false, reason: "Нет данных для анализа (нет звонков/транскрипции)" },
-        script_call_purpose: { result: false, reason: "Нет данных для анализа" },
-        script_company_info: { result: false, reason: "Нет данных для анализа" },
-        script_lpr_identified: { result: false, reason: "Нет данных для анализа" },
-        script_budget_confirmed: { result: false, reason: "Нет данных для анализа" },
-        script_urgency_identified: { result: false, reason: "Нет данных для анализа" },
-        script_deadlines: { result: false, reason: "Нет данных для анализа" },
-        script_tz_confirmed: { result: false, reason: "Нет данных для анализа" },
-        script_objection_general: { result: false, reason: "Нет данных для анализа (возражения не отработаны)" },
-        script_objection_delays: { result: false, reason: "Нет данных для анализа" },
-        script_offer_best_tech: { result: false, reason: "Нет данных для анализа" },
-        script_offer_best_terms: { result: false, reason: "Нет данных для анализа" },
-        script_offer_best_price: { result: false, reason: "Нет данных для анализа" },
-        script_cross_sell: { result: false, reason: "Нет данных для анализа" },
-        script_next_step_agreed: { result: false, reason: "Нет данных для анализа" },
-        script_dialogue_management: { result: false, reason: "Нет данных для анализа" },
-        script_confident_speech: { result: false, reason: "Нет данных для анализа" },
-        script_score_pct: 0,
-        evaluator_comment: "Звонки не найдены или слишком короткие для анализа. Оценка 0.",
-        _meta: {
-            model: null,
-            transcript_length: transcript?.length || 0,
-            transcript_excerpt: transcript?.slice(0, 280) || null,
-            anna_insights_available: Boolean(annaInsights),
-        }
-    };
+    const empty = createScriptEvaluationFallback(transcript, annaInsights, {
+        scriptScorePct: 0,
+        evaluatorComment: 'Звонки не найдены или слишком короткие для анализа. Оценка 0.',
+        evaluationSkipped: true,
+    });
 
     console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
     if (!transcript || transcript.length < 50) {
@@ -914,12 +976,20 @@ ${transcript.substring(0, 15000)}`
                 transcript_length: transcript.length,
                 transcript_excerpt: transcript.substring(0, 280),
                 anna_insights_available: Boolean(annaInsights),
+                degraded: false,
+                degradation_reason: null,
+                evaluation_skipped: false,
             }
         };
 
     } catch (e) {
         console.error('[Максим/GPT] Script evaluation failed:', e);
-        return empty as any;
+        return createScriptEvaluationFallback(transcript, annaInsights, {
+            reason: formatAiError(e),
+            degraded: true,
+            scriptScorePct: null,
+            evaluatorComment: 'AI-анализ скрипта временно недоступен. Сохранена базовая оценка без script score.',
+        }) as any;
     }
 }
 
@@ -1020,6 +1090,7 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0, penalty
                 source_values: {
                     transcript_length: data._script_meta?.transcript_length || 0,
                     anna_insights_available: Boolean(data._script_meta?.anna_insights_available),
+                    degraded: Boolean(data._script_meta?.degraded),
                 },
                 calculation_steps: ['AI анализирует всю историю транскрипций по сделке.', 'Для каждого пункта возвращается true/false и текстовое обоснование.'],
                 confidence: data[k].result === null || data[k].result === undefined ? 0.35 : 0.72,
@@ -1030,6 +1101,39 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0, penalty
             });
         }
     });
+
+    if (data._ai_pipeline_meta) {
+        const pipelineDegraded = Boolean(data._ai_pipeline_meta.degraded);
+        const degradationNotes = [
+            data._ai_pipeline_meta.insight?.reason,
+            data._ai_pipeline_meta.script?.reason,
+        ].filter(Boolean);
+
+        score_breakdown._ai_pipeline = createBreakdownEntry(
+            '_ai_pipeline',
+            pipelineDegraded ? false : true,
+            pipelineDegraded
+                ? `Часть AI-аналитики отработала в degraded mode: ${degradationNotes.join('; ')}`
+                : 'AI-ветка оценки отработала штатно.',
+            data,
+            {
+                rule_id: 'ai_pipeline_status',
+                owner: 'System',
+                group: 'AI',
+                source_refs: ['raw_telphin_calls.transcript', 'order_metrics.insights', 'sync_state'],
+                source_values: data._ai_pipeline_meta,
+                calculation_steps: [
+                    'Проверяется, были ли доступны insight-анализ и script AI-оценка.',
+                    'При деградации итоговый базовый deal score сохраняется, а script score не занижается искусственным нулём.',
+                ],
+                confidence: 1,
+                missing_data: [],
+                recommended_fix: pipelineDegraded ? 'Проверить доступность OpenAI и состояние AI workers.' : null,
+                ambiguous_explanation: false,
+                evidence_type: 'system',
+            },
+        );
+    }
 
     score_breakdown._meta = createBreakdownEntry('_meta', null, 'Служебная сводка explainability для итогового расчёта.', data, {
         rule_id: 'score_summary',
@@ -1044,6 +1148,7 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0, penalty
             total_score_before_penalty,
             total_score_after_penalty: total_score,
             total_penalty: totalPenalty,
+            ai_pipeline: data._ai_pipeline_meta || null,
         },
         calculation_steps: [
             `deal_score_pct = round(${dealPassed}/${dealChecks.length || 1} * 100) => ${deal_score_pct ?? 'null'}`,
@@ -1051,6 +1156,9 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0, penalty
             total_score_before_penalty !== null
                 ? `total_score = среднее итоговых процентов => ${total_score_before_penalty}`
                 : 'total_score не рассчитан из-за отсутствия базовых процентов.',
+            data._ai_pipeline_meta?.degraded
+                ? 'AI-ветка сработала в degraded mode, поэтому базовый score сохранён без блокировки пайплайна.'
+                : 'AI-ветка либо отработала штатно, либо была пропущена из-за отсутствия транскрипта.',
             totalPenalty > 0
                 ? `После штрафов итог уменьшен на ${totalPenalty} п. => ${total_score}`
                 : 'Штрафы не применялись.',
@@ -1089,10 +1197,21 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     const sla = await checkSLA(orderId, facts._order, facts.lead_received_at, facts.first_contact_attempt_at);
 
     // [СИНЕРГИЯ] Анна готовит глубокую аналитику для Максима
-    const annaInsights = await runInsightAnalysis(orderId);
+    const annaAnalysis = await runInsightAnalysisSafely(orderId);
+    const annaInsights = annaAnalysis.insights;
 
     // Максим оценивает скрипт (используя данные от Анны)
     const script = await evaluateScript(facts._transcript, annaInsights);
+    const aiPipelineMeta = {
+        degraded: Boolean(annaAnalysis.meta.degraded || script._meta?.degraded),
+        insight: annaAnalysis.meta,
+        script: {
+            degraded: Boolean(script._meta?.degraded),
+            skipped: Boolean(script._meta?.evaluation_skipped),
+            reason: script._meta?.degradation_reason || null,
+            transcript_length: script._meta?.transcript_length || 0,
+        },
+    };
 
     // Получаем список нарушений из Rule Engine, чтобы вычесть штрафные баллы
     const { data: orderViolations } = await supabase
@@ -1105,7 +1224,7 @@ export async function evaluateOrder(orderId: number): Promise<void> {
 
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
-    const scores = calcScores({ ...allData, _script_meta: script._meta || null }, totalPenalty, typedViolations);
+    const scores = calcScores({ ...allData, _script_meta: script._meta || null, _ai_pipeline_meta: aiPipelineMeta }, totalPenalty, typedViolations);
 
     const record = {
         order_id: orderId,

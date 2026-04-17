@@ -3,9 +3,10 @@ import {
   claimSystemJobs,
   completeSystemJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
 } from '@/lib/system-jobs';
-import { runInsightAnalysis } from '@/lib/insight-agent';
+import { runInsightAnalysisDetailed } from '@/lib/insight-agent';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +18,6 @@ function ensureAuthorized(req: NextRequest) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     throw new Error('Unauthorized');
   }
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 60;
-  if (attempts === 2) return 180;
-  if (attempts === 3) return 600;
-  return 1800;
 }
 
 export async function GET(req: NextRequest) {
@@ -58,26 +52,37 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        const insights = await runInsightAnalysis(orderId);
+        const insightResult = await runInsightAnalysisDetailed(orderId);
+
+        if (insightResult.status === 'failed') {
+          throw new Error(insightResult.errorMessage || 'Unknown insight worker error');
+        }
 
         await completeSystemJob(job.id, {
           order_id: orderId,
           source: payload.source || 'order_insight_refresh',
-          result: insights ? 'updated' : 'skipped_no_metrics',
+          result: insightResult.status,
         });
 
         results.push({
           job_id: job.id,
           order_id: orderId,
-          status: insights ? 'completed' : 'skipped_no_metrics',
+          status: insightResult.status === 'updated' ? 'completed' : 'skipped_no_metrics',
         });
       } catch (error: any) {
-        await failSystemJob(job.id, error.message || 'Unknown insight worker error', getRetryDelay(job.attempts || 0));
+        const retry = getAdaptiveSystemJobRetry({
+          attempts: job.attempts || 0,
+          errorMessage: error.message || 'Unknown insight worker error',
+          profile: 'slow',
+        });
+        await failSystemJob(job.id, error.message || 'Unknown insight worker error', retry.retryDelaySeconds);
         results.push({
           job_id: job.id,
           order_id: orderId,
           status: 'failed',
           error: error.message,
+          retry_kind: retry.retryKind,
+          retry_delay_seconds: retry.retryDelaySeconds,
         });
       }
     }

@@ -15,6 +15,8 @@ export type SystemJobType =
   | 'manager_aggregate_refresh'
   | 'nightly_reconciliation';
 
+export type SystemJobRetryKind = 'dependency_wait' | 'rate_limit' | 'network' | 'ai' | 'generic';
+
 export interface EnqueueSystemJobInput {
   jobType: SystemJobType;
   payload?: Record<string, any>;
@@ -314,6 +316,85 @@ export async function failSystemJob(jobId: number, errorMessage: string, retryDe
 
   if (error) throw error;
   return data;
+}
+
+function getBackoffDelay(attempts: number, delays: number[]) {
+  const normalizedAttempts = Math.max(1, attempts || 1);
+  const index = Math.min(normalizedAttempts - 1, delays.length - 1);
+  return delays[index];
+}
+
+export function classifySystemJobRetryKind(errorMessage?: string | null): SystemJobRetryKind {
+  const lower = String(errorMessage || '').toLowerCase();
+
+  if (
+    lower.includes('not ready') ||
+    lower.includes('waiting_') ||
+    lower.includes('already being transcribed') ||
+    lower.includes('try again later')
+  ) {
+    return 'dependency_wait';
+  }
+
+  if (
+    lower.includes('429') ||
+    lower.includes('rate limit') ||
+    lower.includes('too many requests')
+  ) {
+    return 'rate_limit';
+  }
+
+  if (
+    lower.includes('timeout') ||
+    lower.includes('timed out') ||
+    lower.includes('fetch failed') ||
+    lower.includes('network') ||
+    lower.includes('socket') ||
+    lower.includes('econnreset') ||
+    lower.includes('enotfound') ||
+    lower.includes('econnrefused') ||
+    lower.includes('audio download failed')
+  ) {
+    return 'network';
+  }
+
+  if (
+    lower.includes('openai') ||
+    lower.includes('whisper') ||
+    lower.includes('gpt-') ||
+    lower.includes('insight model') ||
+    lower.includes('ai ') ||
+    lower.includes('ai-')
+  ) {
+    return 'ai';
+  }
+
+  return 'generic';
+}
+
+export function getAdaptiveSystemJobRetry(params: {
+  attempts: number;
+  errorMessage?: string | null;
+  profile?: 'fast' | 'slow';
+}) {
+  const retryKind = classifySystemJobRetryKind(params.errorMessage);
+  const profile = params.profile || 'fast';
+  const genericDelays = profile === 'slow' ? [60, 180, 600, 1800] : [30, 120, 300, 900];
+
+  const retryDelaySeconds = retryKind === 'dependency_wait'
+    ? getBackoffDelay(params.attempts, profile === 'slow' ? [45, 90, 180, 300] : [15, 45, 90, 180])
+    : retryKind === 'rate_limit'
+      ? getBackoffDelay(params.attempts, profile === 'slow' ? [180, 600, 1800, 3600] : [120, 300, 900, 1800])
+      : retryKind === 'network'
+        ? getBackoffDelay(params.attempts, profile === 'slow' ? [120, 300, 900, 1800] : [60, 180, 600, 1200])
+        : retryKind === 'ai'
+          ? getBackoffDelay(params.attempts, profile === 'slow' ? [180, 600, 1800, 3600] : [90, 300, 900, 1800])
+          : getBackoffDelay(params.attempts, genericDelays);
+
+  return {
+    retryKind,
+    retryDelaySeconds,
+  };
 }
 
 export async function requeueExpiredSystemJobs() {

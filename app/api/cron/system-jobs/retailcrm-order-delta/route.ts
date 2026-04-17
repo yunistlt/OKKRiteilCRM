@@ -4,6 +4,7 @@ import {
   completeSystemJob,
   enqueueSystemJob,
   failSystemJob,
+  getAdaptiveSystemJobRetry,
   isSystemJobsPipelineEnabled,
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
@@ -25,13 +26,6 @@ function ensureAuthorized(req: NextRequest) {
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     throw new Error('Unauthorized');
   }
-}
-
-function getRetryDelay(attempts: number) {
-  if (attempts <= 1) return 30;
-  if (attempts === 2) return 120;
-  if (attempts === 3) return 300;
-  return 900;
 }
 
 function getSeedKey() {
@@ -168,12 +162,17 @@ export async function GET(req: NextRequest) {
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });
     } catch (error: any) {
+      const retry = getAdaptiveSystemJobRetry({
+        attempts: job.attempts || 0,
+        errorMessage: error.message || 'Unknown retailcrm delta worker error',
+        profile: 'fast',
+      });
       await recordRetailCrmSyncFailure({
         errorKey: 'retailcrm_orders_last_error',
         message: error.message || 'Unknown retailcrm delta worker error',
       });
       await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm delta worker error');
-      await failSystemJob(job.id, error.message || 'Unknown retailcrm delta worker error', getRetryDelay(job.attempts || 0));
+      await failSystemJob(job.id, error.message || 'Unknown retailcrm delta worker error', retry.retryDelaySeconds);
       throw error;
     }
   } catch (error: any) {

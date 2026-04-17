@@ -69,7 +69,7 @@
 - [ ] Ограничить concurrency транскрибации до 2 параллельных задач на старте.
 - [ ] Ограничить concurrency AI insights до 1-2 параллельных задач на старте.
 - [ ] Ограничить concurrency scoring по заказам до 2 параллельных задач на старте.
-- [ ] Ввести отдельные retry-правила для сетевых ошибок, таймаутов скачивания записи и ошибок OpenAI.
+- [x] Ввести отдельные retry-правила для сетевых ошибок, таймаутов скачивания записи и ошибок OpenAI.
 - [ ] Ввести dead-letter очередь для задач, которые не прошли после N попыток.
 
 ## 4. Целевая схема near realtime pipeline
@@ -180,7 +180,7 @@
 - [ ] Ограничить каждый worker короткой задачей с понятным time budget.
 - [ ] Все тяжёлые батчи выполнять вне пользовательского HTTP-запроса.
 - [ ] Ввести graceful degradation: при недоступности OpenAI не блокировать ingest заказа и звонка.
-- [ ] Ввести graceful degradation: при отставании analytics не блокировать запись фактов и базовых score.
+- [x] Ввести graceful degradation: при отставании analytics не блокировать запись фактов и базовых score.
 - [ ] Сохранять причину последней ошибки по каждому типу worker в sync_state или в monitoring-таблице.
 
 ## 14. Этап 10. Пошаговый rollout без риска для продакшна
@@ -203,6 +203,11 @@
 - [x] Monitoring endpoints обогащены lag/backlog метриками по `system_jobs`, RetailCRM cursors и oldest queued refresh/transcription jobs.
 - [x] `system-audit` расширен Telegram-alerting по SLA lag/backlog для realtime pipeline с дедупликацией через `sync_state` и recovery-уведомлением.
 - [x] Критичные system-jobs workers начали писать `last_success_at`, `last_error_at` и `last_error` в `sync_state` для диагностики и rollback-контроля.
+- [x] `evaluateOrder` переведён на graceful degradation для AI-ветки: сбои `insight`/`script` больше не валят `score_refresh`, а базовый deal score сохраняется без искусственного обнуления script score.
+- [x] `order_insight_refresh` перестал маскировать сбои AI под `skipped_no_metrics`: insight worker теперь различает отсутствие данных и реальный `failed`, чтобы очередь корректно ретраилась и отражала деградацию аналитики.
+- [x] Для `call_transcription`, `call_semantic_rules` и `order_insight_refresh` введён общий adaptive retry classifier: зависимости `not ready` ретраятся коротко, network/download ошибки мягче, а 429/OpenAI ошибки получают более длинный backoff.
+- [x] RetailCRM ingest усилен graceful degradation: API-запросы получили явный timeout, `retailcrm_order_delta` и `retailcrm_history_delta` переведены на adaptive retry, а `retailcrm_order_upsert` перестал падать на отсутствующем заказе и завершает такие кейсы как `skipped_not_found`.
+- [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
 - [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.
