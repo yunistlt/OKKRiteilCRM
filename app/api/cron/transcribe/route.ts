@@ -8,11 +8,16 @@ import { runRuleEngine } from '@/lib/rule-engine';
 
 export const dynamic = 'force-dynamic';
 
-// Vercel Cron protection (optional, but good practice)
-// function verifyCron(req: Request) { ... }
+function ensureAuthorized(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
 
 export async function GET(req: Request) {
     try {
+        ensureAuthorized(req);
         const { searchParams } = new URL(req.url);
         const force = searchParams.get('force') === 'true';
 
@@ -142,6 +147,7 @@ export async function GET(req: Request) {
 
     } catch (e: any) {
         console.error('Transcription Cron Error:', e);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        const isUnauthorized = e.message === 'Unauthorized';
+        return NextResponse.json({ error: e.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }

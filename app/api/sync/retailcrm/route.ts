@@ -14,12 +14,20 @@ export const dynamic = 'force-dynamic';
 
 export const maxDuration = 300;
 
+function ensureAuthorized(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
+
 export async function GET(request: Request) {
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }
 
     try {
+        ensureAuthorized(request);
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
 
@@ -183,6 +191,7 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('RetailCRM Sync Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }

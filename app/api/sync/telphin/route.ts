@@ -9,6 +9,11 @@ export const maxDuration = 300;
 const TELPHIN_FALLBACK_LOCK_KEY = 'sync.telphin_fallback';
 const TELPHIN_FALLBACK_LOCK_TTL_SECONDS = 280;
 
+function isAuthorized(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+}
+
 async function persistTelphinFallbackLockState(status: 'idle' | 'running' | 'contended', holder?: string | null) {
     const now = new Date().toISOString();
     const entries = [
@@ -31,6 +36,10 @@ async function persistTelphinFallbackLockState(status: 'idle' | 'running' | 'con
 }
 
 export async function GET(request: Request) {
+    if (!isAuthorized(request)) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const forceResync = searchParams.get('force') === 'true';
     const hours = parseInt(searchParams.get('hours') || '2');
