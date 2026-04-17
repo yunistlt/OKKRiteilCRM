@@ -624,7 +624,7 @@ export default function SystemStatusPage() {
     return (
         <div className="relative flex overflow-hidden bg-[#f8fafc]" style={{ height: 'calc(100dvh - 64px)' }}>
         <div className="min-w-0 flex-1 overflow-auto">
-        <div className="max-w-7xl mx-auto py-4 px-4 space-y-4 bg-[#f7f9fc] min-h-full">
+        <div className="w-full py-4 px-4 space-y-4 bg-[#f7f9fc] min-h-full">
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
