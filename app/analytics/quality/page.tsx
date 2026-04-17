@@ -42,11 +42,15 @@ function QualityContent() {
         setRefreshing(true);
         setRefreshHint('Запускаем fallback reconciliation витрины...');
         try {
-            const res = await fetch('/api/analysis/quality/refresh', { method: 'POST' });
+            const res = await fetch('/api/analysis/quality/refresh?force=true', { method: 'POST' });
             const json = await res.json();
             if (json.success) {
                 await fetchData();
-                setRefreshHint('Fallback reconciliation завершен');
+                if (json.status === 'skipped') {
+                    setRefreshHint(json.reason || 'Fallback reconciliation был пропущен');
+                } else {
+                    setRefreshHint('Fallback reconciliation завершен');
+                }
             }
         } catch (e) {
             console.error(e);

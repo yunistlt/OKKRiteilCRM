@@ -160,6 +160,7 @@
 - [x] Пересчитывать manager-level aggregates только для затронутого manager_id.
 - [x] Пересчитывать order_priorities только для затронутого order_id или для маленького набора изменившихся заказов.
 - [x] Оставить редкий полный reconciliation витрин 1 раз ночью.
+- [x] `analysis/quality/refresh` переведён в backup-only режим для bulk rebuild: при realtime pipeline без `force=true` route больше не пересобирает витрину по всем менеджерам и допускает targeted refresh через `managerId`.
 
 ## 12. Этап 8. Наблюдаемость и контроль лагов
 
