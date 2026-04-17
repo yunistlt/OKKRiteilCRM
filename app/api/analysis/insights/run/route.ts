@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
 import { supabase } from '@/utils/supabase';
 
@@ -7,6 +9,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin', 'okk', 'rop'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('orderId');
         const force = searchParams.get('force') === 'true';
