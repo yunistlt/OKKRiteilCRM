@@ -318,7 +318,7 @@ export default function SystemStatusPage() {
 
     const runService = async (serviceName: string) => {
         let url = '';
-        if (serviceName.includes('Telphin Main')) url = '/api/sync/telphin';
+        if (serviceName.includes('Telphin Fallback')) url = '/api/sync/telphin';
         if (serviceName.includes('RetailCRM Fallback')) url = '/api/sync/retailcrm?force=true';
         if (serviceName.includes('System Jobs Queue')) url = '/api/cron/system-jobs/watchdog';
         if (serviceName.includes('RetailCRM Delta Queue')) url = '/api/cron/system-jobs/retailcrm-order-delta';
@@ -402,7 +402,9 @@ export default function SystemStatusPage() {
     };
 
     const getRusServiceName = (name: string) => {
-        if (name.includes('Telphin Main')) return 'Синхронизация Звонков (Телфин)';
+        if (name.includes('Telphin Fallback')) return 'Fallback Sync Telphin';
+        if (name.includes('Telphin Backfill Sweep')) return 'Fallback Sweep Telphin';
+        if (name.includes('Matching Backfill Sweep')) return 'Fallback Sweep Матчинга Backfill';
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
         if (name.includes('RetailCRM Delta Queue')) return 'RetailCRM Delta Очередь';
         if (name.includes('RetailCRM History Queue')) return 'RetailCRM History Очередь';

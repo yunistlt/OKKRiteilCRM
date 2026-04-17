@@ -131,32 +131,30 @@ export async function GET() {
         const telphinFallbackLockStatus = stateMap.get('telphin_fallback_lock_status')?.value || 'idle';
         const telphinOk = isFresh(telphinMain?.updated_at, 15);
         const telphinStatus = {
-            service: 'Telphin Main Sync',
-            cursor: telphinMain?.value || 'Never',
+            service: 'Telphin Fallback Sync',
+            cursor: 'Fallback only',
             last_run: telphinMain?.updated_at || null,
-            status: telphinFallbackLastError ? 'warning' : (telphinOk ? 'ok' : 'warning'),
-            details: telphinOk
-                ? `Active, lag ${Math.floor(telphinFallbackLagSeconds / 60)} min${telphinFallbackLockStatus === 'running' ? ', fallback running' : telphinFallbackLockStatus === 'contended' ? ', fallback busy' : ''}`
-                : 'Stalled (>15m ago)',
-            reason: telphinFallbackLastError || getDiagnosis('telphin_main', telphinOk, telphinMain?.updated_at)
+            status: telphinFallbackLastError ? 'warning' : 'ok',
+            details: `Backup-only sync${telphinFallbackLagSeconds > 0 ? `, lag ${Math.floor(telphinFallbackLagSeconds / 60)} min` : ''}${telphinFallbackLockStatus === 'running' ? ', running' : telphinFallbackLockStatus === 'contended' ? ', busy' : ''}`,
+            reason: telphinFallbackLastError || 'Primary Telphin ownership is handled by webhook-first ingest; this route is fallback-only.'
         };
 
         // --- Telphin Backfill ---
         const telphinBackfill = stateMap.get('telphin_backfill_cursor');
         const backfillOk = isFresh(telphinBackfill?.updated_at, 5); // Strict 5m check
         const backfillStatus = {
-            service: 'Telphin Backfill',
-            cursor: telphinBackfill?.value || 'Never',
+            service: 'Telphin Backfill Sweep',
+            cursor: 'Fallback only',
             last_run: telphinBackfill?.updated_at || null,
-            status: telphinFallbackLockStatus === 'running' ? 'ok' : (telphinFallbackLockStatus === 'contended' ? 'warning' : (backfillOk ? 'ok' : 'warning')),
+            status: telphinFallbackLockStatus === 'contended' ? 'warning' : 'ok',
             details: telphinFallbackLockStatus === 'running'
-                ? 'Running (lock held)'
+                ? 'Backup sweep running (lock held)'
                 : telphinFallbackLockStatus === 'contended'
                     ? 'Busy in another worker'
-                    : (backfillOk ? 'Running' : 'Stopped/Paused'),
+                    : (backfillOk ? 'Idle / recently completed' : 'Idle / waiting manual run'),
             reason: telphinFallbackLockStatus === 'contended'
                 ? 'Другой fallback worker уже держит lease-lock и выполняет синхронизацию.'
-                : getDiagnosis('telphin_backfill', backfillOk, telphinBackfill?.updated_at)
+                : 'Fallback sweep for missed Telphin webhook gaps.'
         };
 
         const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
@@ -221,13 +219,12 @@ export async function GET() {
         const matchBackActive = isFresh(matchBackLastRun, 10);
 
         const matchBackStatus = {
-            service: 'Matching Backfill',
-            // Show only YYYY-MM-DD
-            cursor: matchBackCursor.includes('T') ? matchBackCursor.split('T')[0] : matchBackCursor,
+            service: 'Matching Backfill Sweep',
+            cursor: 'Fallback only',
             last_run: matchBackLastRun,
-            status: matchBackActive ? 'ok' : 'warning',
-            details: matchBackActive ? 'Matching...' : 'Idle / Finished',
-            reason: matchBackActive ? null : 'Скрипт ожидает запуска или завершил работу.'
+            status: 'ok',
+            details: matchBackActive ? 'Fallback sweep running' : 'Idle / manual fallback only',
+            reason: 'Legacy backfill sweep for missed matches outside primary call_match queue.'
         };
 
         // 4.5. Fetch Latest History Event (Rule Engine Source)
