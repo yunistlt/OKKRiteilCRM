@@ -8,6 +8,7 @@ import { DEFAULT_ROLE_CAPABILITIES } from '@/lib/access-control';
 import { getEffectiveRoleCapabilities } from '@/lib/access-control-server';
 import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { getEffectiveRouteRules } from '@/lib/rbac-server';
+import GlobalConsultantShell from '@/components/GlobalConsultantShell';
 
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
@@ -57,7 +58,7 @@ export default async function RootLayout({
                     <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
                         <Header />
                         <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
-                            {children}
+                            <GlobalConsultantShell>{children}</GlobalConsultantShell>
                         </main>
                     </div>
                 </AuthProvider>

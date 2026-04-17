@@ -7,7 +7,7 @@ import type { AppRole } from '@/lib/auth';
 import { MultiSelect } from '../components/MultiSelect';
 import CallInitiator from '@/components/calls/CallInitiator';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import OKKConsultantPanel from '@/components/OKKConsultantPanel';
+import { useConsultantSelection } from '@/components/consultant/ConsultantSelectionContext';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { getRoleCapability } from '@/lib/access-control';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
@@ -677,6 +677,7 @@ export default function OKKPage() {
 
 function OKKContent() {
     const { user, roleCapabilities } = useAuth();
+    const { setSelectedOrder } = useConsultantSelection();
     const currentCapability = useMemo(() => getRoleCapability((user?.role as AppRole | undefined) || null, roleCapabilities), [roleCapabilities, user?.role]);
 
     const [scores, setScores] = useState<OrderScore[]>([]);
@@ -905,6 +906,10 @@ function OKKContent() {
         [consultantOrderId, filtered, safeScores]
     );
 
+    useEffect(() => {
+        setSelectedOrder(consultantOrder);
+    }, [consultantOrder, setSelectedOrder]);
+
     // Удален локальный расчет avgScore так как получаем его с бекенда
 
 
@@ -1038,8 +1043,7 @@ function OKKContent() {
                     onClose={() => setSelectedOrderId(null)}
                 />
             )}
-            <div className="relative flex overflow-hidden bg-[#eef3f7]" style={{ height: 'calc(100dvh - 60px)' }}>
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden md:min-h-0 md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#eef3f7] md:min-h-0 md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]" style={{ height: 'calc(100dvh - 60px)' }}>
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-2.5 py-1 md:px-3 md:py-2 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-1.5">
@@ -1438,9 +1442,6 @@ function OKKContent() {
                 <ViolationsModal order={selectedViolationsOrder} onClose={() => setSelectedViolationsOrder(null)} />
             )}
             </div>
-
-            <OKKConsultantPanel selectedOrder={consultantOrder} />
-        </div>
         </>
     );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 
 // --- Types ---
 
@@ -622,7 +621,6 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <OKKConsultantWorkspace>
         <div className="min-h-full w-full overflow-auto bg-[#f7f9fc] px-4 py-4">
         <div className="w-full space-y-4">
 
@@ -1203,6 +1201,5 @@ export default function SystemStatusPage() {
             )}
         </div>
         </div>
-        </OKKConsultantWorkspace>
     );
 }

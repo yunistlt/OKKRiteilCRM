@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation';
 import OKKConsultantAudit from '@/components/OKKConsultantAudit';
-import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 import { getSession } from '@/lib/auth';
 import { getEffectiveCapabilityForRole } from '@/lib/access-control-server';
 
@@ -14,9 +13,5 @@ export default async function OKKAuditPage() {
         redirect('/okk');
     }
 
-    return (
-        <OKKConsultantWorkspace>
-            <OKKConsultantAudit />
-        </OKKConsultantWorkspace>
-    );
+    return <OKKConsultantAudit />;
 }

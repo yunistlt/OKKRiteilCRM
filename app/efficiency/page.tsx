@@ -2,7 +2,6 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
-import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 import { PriorityDashboard } from '../components/PriorityDashboard';
 
 interface EfficiencyReport {
@@ -36,8 +35,7 @@ function EfficiencyContent() {
     }, []);
 
     return (
-        <OKKConsultantWorkspace>
-            <div className="min-h-full bg-white p-6 md:p-8 font-sans">
+        <div className="min-h-full bg-white p-6 md:p-8 font-sans">
                 <div className="flex justify-between items-center mb-6 md:mb-10">
                     <div>
                         <h1 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight">Эффективность Менеджеров</h1>
@@ -120,7 +118,6 @@ function EfficiencyContent() {
                     )}
                 </div>
             </div>
-        </OKKConsultantWorkspace>
     );
 }
 
