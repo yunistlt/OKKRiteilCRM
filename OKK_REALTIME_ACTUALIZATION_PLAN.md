@@ -163,14 +163,14 @@
 
 ## 12. Этап 8. Наблюдаемость и контроль лагов
 
-- [ ] Добавить технический dashboard по lag на каждом этапе pipeline.
-- [ ] Показывать lag RetailCRM cursor до текущего времени.
-- [ ] Показывать oldest queued transcription job.
-- [ ] Показывать oldest queued score_refresh job.
+- [x] Добавить технический dashboard по lag на каждом этапе pipeline.
+- [x] Показывать lag RetailCRM cursor до текущего времени.
+- [x] Показывать oldest queued transcription job.
+- [x] Показывать oldest queued score_refresh job.
 - [ ] Показывать p50 и p95 времени от order_changed до обновлённого score.
 - [ ] Показывать p50 и p95 времени от recording_ready до transcript_ready.
-- [ ] Показывать backlog по каждому типу задач.
-- [ ] Показывать количество retry и dead-letter задач за сутки.
+- [x] Показывать backlog по каждому типу задач.
+- [x] Показывать количество retry и dead-letter задач за сутки.
 - [x] Переделать health-check так, чтобы он смотрел не только на raw_order_events, но и на все критичные очереди.
 - [ ] Сделать алертинг в Telegram при превышении SLA по lag, а не только при полном падении cron.
 

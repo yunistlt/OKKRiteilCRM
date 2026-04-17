@@ -80,8 +80,30 @@ interface LatencyDistribution {
     sampleSize: number;
 }
 
+interface QueueStageSnapshot {
+    service: string;
+    status: 'ok' | 'warning' | 'error';
+    queued: number;
+    processing: number;
+    deadLetter: number;
+    oldestQueuedSeconds: number | null;
+}
+
 interface RealtimePipelineSnapshot {
+    summary: {
+        queuedTotal: number;
+        processingTotal: number;
+        deadLetterTotal: number;
+        oldestQueuedMinutes: number | null;
+    };
     metrics: {
+        retailcrmCursorLagSeconds: number | null;
+        retailcrmHistoryCursorLagSeconds: number | null;
+        transcriptionQueueOldestSeconds: number | null;
+        semanticRulesQueueOldestSeconds: number | null;
+        managerAggregateQueueOldestSeconds: number | null;
+        scoreQueueOldestSeconds: number | null;
+        insightQueueOldestSeconds: number | null;
         transcriptionLatency: LatencyDistribution;
         semanticRulesLatency: LatencyDistribution;
         scoreRefreshLatency: LatencyDistribution;
@@ -94,6 +116,16 @@ interface RealtimePipelineSnapshot {
             retriedJobsLast24h: number;
             deadLettersLast24h: number;
         };
+    };
+    queueStages: {
+        retailcrmDelta: QueueStageSnapshot;
+        retailcrmHistory: QueueStageSnapshot;
+        callMatch: QueueStageSnapshot;
+        transcription: QueueStageSnapshot;
+        semanticRules: QueueStageSnapshot;
+        scoreRefresh: QueueStageSnapshot;
+        managerAggregate: QueueStageSnapshot;
+        insightRefresh: QueueStageSnapshot;
     };
 }
 
@@ -396,6 +428,25 @@ export default function SystemStatusPage() {
         return `${hours}ч ${minutes}м`;
     };
 
+    const queueStageCards = pipelineMetrics ? [
+        pipelineMetrics.queueStages.retailcrmDelta,
+        pipelineMetrics.queueStages.retailcrmHistory,
+        pipelineMetrics.queueStages.callMatch,
+        pipelineMetrics.queueStages.transcription,
+        pipelineMetrics.queueStages.semanticRules,
+        pipelineMetrics.queueStages.scoreRefresh,
+        pipelineMetrics.queueStages.managerAggregate,
+        pipelineMetrics.queueStages.insightRefresh,
+    ] : [];
+
+    const getQueueStageTheme = (status: 'ok' | 'warning' | 'error') => {
+        if (status === 'error') return 'bg-red-50 border-red-200 text-red-700';
+        if (status === 'warning') return 'bg-amber-50 border-amber-200 text-amber-700';
+        return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+    };
+
+    const formatServiceTitle = (service: string) => service.replace(' Queue', '');
+
     const latencyCards = [
         {
             title: 'Transcription',
@@ -609,6 +660,66 @@ export default function SystemStatusPage() {
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-red-50">
                     <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Dead Letters 24h</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">RetailCRM Cursor Lag</div>
+                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmCursorLagSeconds || null)}</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Orders delta cursor</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">History Cursor Lag</div>
+                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmHistoryCursorLagSeconds || null)}</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">History delta cursor</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-purple-50">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2">Transcription Oldest</div>
+                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.transcriptionQueueOldestSeconds || null)}</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Oldest queued call</div>
+                </div>
+                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
+                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Score Queue Oldest</div>
+                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.scoreQueueOldestSeconds || null)}</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Oldest queued refresh</div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Очереди и Backlog</h3>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400">
+                        queued {pipelineMetrics?.summary.queuedTotal || 0} / processing {pipelineMetrics?.summary.processingTotal || 0}
+                    </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+                    {queueStageCards.map((queue) => (
+                        <div key={queue.service} className={`rounded-2xl border p-4 ${getQueueStageTheme(queue.status)}`}>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="text-[10px] font-black uppercase tracking-widest">{formatServiceTitle(queue.service)}</div>
+                                <div className="text-[8px] font-black uppercase">{queue.status}</div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-wide mb-3">
+                                <div className="rounded-lg bg-white/70 px-2 py-2">
+                                    <div className="text-gray-400">Queued</div>
+                                    <div className="text-lg text-gray-900">{queue.queued}</div>
+                                </div>
+                                <div className="rounded-lg bg-white/70 px-2 py-2">
+                                    <div className="text-gray-400">Processing</div>
+                                    <div className="text-lg text-gray-900">{queue.processing}</div>
+                                </div>
+                                <div className="rounded-lg bg-white/70 px-2 py-2">
+                                    <div className="text-gray-400">Dead</div>
+                                    <div className="text-lg text-gray-900">{queue.deadLetter}</div>
+                                </div>
+                                <div className="rounded-lg bg-white/70 px-2 py-2">
+                                    <div className="text-gray-400">Oldest</div>
+                                    <div className="text-sm text-gray-900">{formatLatency(queue.oldestQueuedSeconds)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
 

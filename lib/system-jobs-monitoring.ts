@@ -31,6 +31,15 @@ interface RecoveryMetrics {
   deadLettersLast24h: number;
 }
 
+interface QueueStageSnapshot {
+  service: string;
+  status: MonitorStatus;
+  queued: number;
+  processing: number;
+  deadLetter: number;
+  oldestQueuedSeconds: number | null;
+}
+
 export interface RealtimePipelineMonitoringSnapshot {
   enabled: boolean;
   queueAvailable: boolean;
@@ -50,6 +59,16 @@ export interface RealtimePipelineMonitoringSnapshot {
     scoreToAggregateLatency: LatencyDistribution;
     callMatchToAggregateLatency: LatencyDistribution;
     recovery: RecoveryMetrics;
+  };
+  queueStages: {
+    retailcrmDelta: QueueStageSnapshot;
+    retailcrmHistory: QueueStageSnapshot;
+    callMatch: QueueStageSnapshot;
+    transcription: QueueStageSnapshot;
+    semanticRules: QueueStageSnapshot;
+    scoreRefresh: QueueStageSnapshot;
+    managerAggregate: QueueStageSnapshot;
+    insightRefresh: QueueStageSnapshot;
   };
   services: MonitorServiceStatus[];
 }
@@ -627,6 +646,79 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     }),
   ];
 
+  const serviceMap = new Map(services.map((service) => [service.service, service]));
+
+  const queueStages = {
+    retailcrmDelta: {
+      service: 'RetailCRM Delta Queue',
+      status: serviceMap.get('RetailCRM Delta Queue')?.status || 'warning',
+      queued: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'queued'),
+      processing: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'processing'),
+      deadLetter: countJobs(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'], 'dead_letter'),
+      oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert']) === null
+        ? null
+        : oldestQueuedMinutes(rows, ['retailcrm_order_delta_pull', 'retailcrm_order_upsert'])! * 60,
+    },
+    retailcrmHistory: {
+      service: 'RetailCRM History Queue',
+      status: serviceMap.get('RetailCRM History Queue')?.status || 'warning',
+      queued: countJobs(rows, ['retailcrm_history_delta_pull'], 'queued'),
+      processing: countJobs(rows, ['retailcrm_history_delta_pull'], 'processing'),
+      deadLetter: countJobs(rows, ['retailcrm_history_delta_pull'], 'dead_letter'),
+      oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull']) === null
+        ? null
+        : oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull'])! * 60,
+    },
+    callMatch: {
+      service: 'Call Match Queue',
+      status: serviceMap.get('Call Match Queue')?.status || 'warning',
+      queued: countJobs(rows, ['call_match'], 'queued'),
+      processing: countJobs(rows, ['call_match'], 'processing'),
+      deadLetter: countJobs(rows, ['call_match'], 'dead_letter'),
+      oldestQueuedSeconds: oldestQueuedMinutes(rows, ['call_match']) === null ? null : oldestQueuedMinutes(rows, ['call_match'])! * 60,
+    },
+    transcription: {
+      service: 'Transcription Queue',
+      status: serviceMap.get('Transcription Queue')?.status || 'warning',
+      queued: countJobs(rows, ['call_transcription'], 'queued'),
+      processing: countJobs(rows, ['call_transcription'], 'processing'),
+      deadLetter: countJobs(rows, ['call_transcription'], 'dead_letter'),
+      oldestQueuedSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
+    },
+    semanticRules: {
+      service: 'Semantic Rules Queue',
+      status: serviceMap.get('Semantic Rules Queue')?.status || 'warning',
+      queued: countJobs(rows, ['call_semantic_rules'], 'queued'),
+      processing: countJobs(rows, ['call_semantic_rules'], 'processing'),
+      deadLetter: countJobs(rows, ['call_semantic_rules'], 'dead_letter'),
+      oldestQueuedSeconds: semanticRulesOldest === null ? null : semanticRulesOldest * 60,
+    },
+    scoreRefresh: {
+      service: 'Score Refresh Queue',
+      status: serviceMap.get('Score Refresh Queue')?.status || 'warning',
+      queued: countJobs(rows, ['order_score_refresh'], 'queued'),
+      processing: countJobs(rows, ['order_score_refresh'], 'processing'),
+      deadLetter: countJobs(rows, ['order_score_refresh'], 'dead_letter'),
+      oldestQueuedSeconds: scoreOldest === null ? null : scoreOldest * 60,
+    },
+    managerAggregate: {
+      service: 'Manager Aggregate Queue',
+      status: serviceMap.get('Manager Aggregate Queue')?.status || 'warning',
+      queued: countJobs(rows, ['manager_aggregate_refresh'], 'queued'),
+      processing: countJobs(rows, ['manager_aggregate_refresh'], 'processing'),
+      deadLetter: countJobs(rows, ['manager_aggregate_refresh'], 'dead_letter'),
+      oldestQueuedSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
+    },
+    insightRefresh: {
+      service: 'Insight Refresh Queue',
+      status: serviceMap.get('Insight Refresh Queue')?.status || 'warning',
+      queued: countJobs(rows, ['order_insight_refresh'], 'queued'),
+      processing: countJobs(rows, ['order_insight_refresh'], 'processing'),
+      deadLetter: countJobs(rows, ['order_insight_refresh'], 'dead_letter'),
+      oldestQueuedSeconds: insightOldest === null ? null : insightOldest * 60,
+    },
+  };
+
   return {
     enabled,
     queueAvailable,
@@ -652,6 +744,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       callMatchToAggregateLatency,
       recovery,
     },
+    queueStages,
     services,
   };
 }
