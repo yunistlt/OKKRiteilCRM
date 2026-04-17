@@ -3,12 +3,19 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { runRuleEngine } from '@/lib/rule-engine';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import crypto from 'crypto';
 
 export const maxDuration = 60; // Allow enough time for synthetic test
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+    }
+
     // Generate distinct identifiers
     const testOrderUuid = crypto.randomUUID();
     const testOrderId = 99900000 + Math.floor(Math.random() * 99999); // Ensure safe integer range

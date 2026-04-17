@@ -1,10 +1,22 @@
 
 'use server'
 
+import { cookies } from 'next/headers';
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
+
+async function ensureAdminAccess() {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        throw new Error('Forbidden');
+    }
+}
 
 export async function getRules() {
+    await ensureAdminAccess();
+
     const { data, error } = await supabase
         .from('okk_rules')
         .select('*')
@@ -18,6 +30,8 @@ export async function getRules() {
 }
 
 export async function getRuleStats() {
+    await ensureAdminAccess();
+
     const { data, error } = await supabase
         .from('okk_violations')
         .select('rule_code');
@@ -39,6 +53,8 @@ export async function getRuleStats() {
 }
 
 export async function updateRuleStatus(code: string, isActive: boolean) {
+    await ensureAdminAccess();
+
     const { error } = await supabase
         .from('okk_rules')
         .update({ is_active: isActive })
@@ -49,6 +65,8 @@ export async function updateRuleStatus(code: string, isActive: boolean) {
 }
 
 export async function updateRuleParams(code: string, params: any) {
+    await ensureAdminAccess();
+
     const { error } = await supabase
         .from('okk_rules')
         .update({ parameters: params })
@@ -59,6 +77,8 @@ export async function updateRuleParams(code: string, params: any) {
 }
 
 export async function getViolations(limit = 100) {
+    await ensureAdminAccess();
+
     const { data, error } = await supabase
         .from('okk_violations')
         .select(`
@@ -89,6 +109,8 @@ export async function getViolations(limit = 100) {
 }
 
 export async function getCallTranscript(eventId: string) {
+    await ensureAdminAccess();
+
     const { data, error } = await supabase
         .from('raw_telphin_calls')
         .select('transcript')
@@ -103,6 +125,8 @@ export async function getCallTranscript(eventId: string) {
 }
 
 export async function createRule(ruleData: any, historyDays = 0) {
+    await ensureAdminAccess();
+
     // 1. If history requested, set initial status in parameters
     const initialParams = ruleData.parameters || {};
     if (historyDays > 0) {
@@ -121,9 +145,13 @@ export async function createRule(ruleData: any, historyDays = 0) {
     // 2. If history check requested, trigger background audit
     if (historyDays > 0 && data) {
         const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk-riteil-crm-aqwq.vercel.app'; // Fallback to current prod URL if env missing
+        const cookieHeader = cookies().toString();
         fetch(`${baseUrl}/api/rules/audit-history`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                ...(cookieHeader ? { cookie: cookieHeader } : {}),
+            },
             body: JSON.stringify({
                 ruleId: data.code, // IMPORTANT: Use string code, not numeric id
                 days: historyDays
@@ -135,6 +163,8 @@ export async function createRule(ruleData: any, historyDays = 0) {
 }
 
 export async function deleteRule(code: string) {
+    await ensureAdminAccess();
+
     const { error } = await supabase
         .from('okk_rules')
         .delete()

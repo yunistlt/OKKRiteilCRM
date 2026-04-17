@@ -1,12 +1,19 @@
 
 import { NextResponse } from 'next/server';
 import { runRuleEngine } from '@/lib/rule-engine';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
     try {
+        const session = await getSession();
+        if (!hasAnyRole(session, ['admin'])) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const body = await req.json();
         const { logic, entity_type, days = 7 } = body;
 
