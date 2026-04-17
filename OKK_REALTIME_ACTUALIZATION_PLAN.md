@@ -208,6 +208,7 @@
 - [x] Для `call_transcription`, `call_semantic_rules` и `order_insight_refresh` введён общий adaptive retry classifier: зависимости `not ready` ретраятся коротко, network/download ошибки мягче, а 429/OpenAI ошибки получают более длинный backoff.
 - [x] RetailCRM ingest усилен graceful degradation: API-запросы получили явный timeout, `retailcrm_order_delta` и `retailcrm_history_delta` переведены на adaptive retry, а `retailcrm_order_upsert` перестал падать на отсутствующем заказе и завершает такие кейсы как `skipped_not_found`.
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
+- [x] Telphin ingest и storage path усилены controlled timeout/degradation: общий helper теперь ограничивает token lookup, `user`, `call_history` и download записи по времени и возвращает нормализованные network/timeout ошибки вместо зависаний.
 - [x] Status dashboard начал показывать health workers по `sync_state`, включая последние ошибки, последние успехи и отдельную `Call Match Queue`.
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
 - [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.

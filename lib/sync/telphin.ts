@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { getTelphinToken } from '@/lib/telphin';
+import { fetchTelphin, getTelphinToken } from '@/lib/telphin';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 // Helper to format date for Telphin: YYYY-MM-DD HH:mm:ss
@@ -120,9 +120,13 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
         }
 
         // 2. Get Client ID
-        const userRes = await fetch('https://apiproxy.telphin.ru/api/ver1.0/user', {
+        const userRes = await fetchTelphin('https://apiproxy.telphin.ru/api/ver1.0/user', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (!userRes.ok) {
+            const text = await userRes.text();
+            throw new Error(`Telphin user lookup failed: ${userRes.status} ${text.substring(0, 200)}`);
+        }
         const userData = await userRes.json();
         const clientId = userData.client_id;
         if (!clientId) throw new Error('Could not resolve Telphin Client ID');
@@ -138,12 +142,13 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
         const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/call_history/?${params.toString()}`;
         console.log(`[Sync] Fetching ${url}`);
 
-        const res = await fetch(url, {
+        const res = await fetchTelphin(url, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
 
         if (!res.ok) {
-            throw new Error(`Telphin API Error: ${res.status} ${res.statusText}`);
+            const text = await res.text();
+            throw new Error(`Telphin API Error ${res.status}: ${text.substring(0, 200) || res.statusText}`);
         }
 
         const data = await res.json();

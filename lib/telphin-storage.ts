@@ -1,6 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Синхронизация записей звонков и наполнение медиа-архива.
 import { supabase } from '@/utils/supabase';
-import { getTelphinToken } from './telphin';
+import { fetchTelphin, getTelphinToken } from './telphin';
 
 /**
  * Downloads audio from Telphin and uploads it to Supabase Storage
@@ -24,14 +24,15 @@ export async function syncRecordingToStorage(telphinCallId: string, recordingUrl
 
         // 2. Download from Telphin
         const token = await getTelphinToken();
-        const res = await fetch(recordingUrl, {
+        const res = await fetchTelphin(recordingUrl, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
 
         if (!res.ok) {
-            throw new Error(`Telphin download failed: ${res.status}`);
+            const text = await res.text();
+            throw new Error(`Telphin download failed: ${res.status} ${text.substring(0, 200)}`);
         }
 
         const buffer = await res.arrayBuffer();
