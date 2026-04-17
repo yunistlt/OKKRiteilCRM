@@ -42,10 +42,22 @@ interface QueueStageSnapshot {
   oldestQueuedSeconds: number | null;
 }
 
+interface DominantRetryCauseSummary {
+  kind: SystemJobRetryKind;
+  count: number;
+}
+
+interface PipelineHotspotSummary {
+  queue: QueueStageSnapshot | null;
+  dominantRetryCause: DominantRetryCauseSummary | null;
+  operatorMessage: string | null;
+}
+
 export interface RealtimePipelineMonitoringSnapshot {
   enabled: boolean;
   queueAvailable: boolean;
   summary: QueueSummary;
+  hotspotSummary: PipelineHotspotSummary;
   metrics: {
     retailcrmCursorLagSeconds: number | null;
     retailcrmHistoryCursorLagSeconds: number | null;
@@ -239,6 +251,57 @@ function buildRetryBacklogByKind(rows: JobRow[]): Record<SystemJobRetryKind, num
     });
 
   return breakdown;
+}
+
+function getDominantRetryCauseSummary(retryBacklogByKind: Record<SystemJobRetryKind, number>): DominantRetryCauseSummary | null {
+  const entries = Object.entries(retryBacklogByKind)
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => right[1] - left[1]);
+
+  if (!entries.length) return null;
+
+  return {
+    kind: entries[0][0] as SystemJobRetryKind,
+    count: entries[0][1],
+  };
+}
+
+function getQueueHotspotSummary(queueStages: QueueStageSnapshot[]): QueueStageSnapshot | null {
+  const candidates = queueStages
+    .filter((queue) => queue.deadLetter > 0 || queue.queued > 0 || (queue.oldestQueuedSeconds || 0) > 0 || queue.status !== 'ok')
+    .sort((left, right) => {
+      if (right.deadLetter !== left.deadLetter) return right.deadLetter - left.deadLetter;
+      const rightOldest = right.oldestQueuedSeconds || 0;
+      const leftOldest = left.oldestQueuedSeconds || 0;
+      if (rightOldest !== leftOldest) return rightOldest - leftOldest;
+      if (right.queued !== left.queued) return right.queued - left.queued;
+      return right.processing - left.processing;
+    });
+
+  return candidates[0] || null;
+}
+
+function formatHotspotOperatorMessage(
+  queue: QueueStageSnapshot | null,
+  dominantRetryCause: DominantRetryCauseSummary | null
+) {
+  if (!queue && !dominantRetryCause) return null;
+
+  const parts: string[] = [];
+
+  if (queue) {
+    const queueParts = [`queued ${queue.queued}`];
+    if (queue.processing > 0) queueParts.push(`processing ${queue.processing}`);
+    if (queue.deadLetter > 0) queueParts.push(`dead-letter ${queue.deadLetter}`);
+    if (queue.oldestQueuedSeconds !== null) queueParts.push(`oldest ${Math.floor(queue.oldestQueuedSeconds / 60)} мин`);
+    parts.push(`hotspot ${queue.service}: ${queueParts.join(', ')}`);
+  }
+
+  if (dominantRetryCause) {
+    parts.push(`dominant retry ${dominantRetryCause.kind}: ${dominantRetryCause.count}`);
+  }
+
+  return parts.join('; ');
 }
 
 function jobLeadTimes(rows: CompletedJobRow[], jobType: string) {
@@ -750,6 +813,14 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     },
   };
 
+  const hotspotQueue = getQueueHotspotSummary(Object.values(queueStages));
+  const dominantRetryCause = getDominantRetryCauseSummary(recovery.retryBacklogByKind);
+  const hotspotSummary: PipelineHotspotSummary = {
+    queue: hotspotQueue,
+    dominantRetryCause,
+    operatorMessage: formatHotspotOperatorMessage(hotspotQueue, dominantRetryCause),
+  };
+
   return {
     enabled,
     queueAvailable,
@@ -759,6 +830,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       deadLetterTotal,
       oldestQueuedMinutes: oldestQueuedOverall,
     },
+    hotspotSummary,
     metrics: {
       retailcrmCursorLagSeconds: secondsSince(retailcrmCursor),
       retailcrmHistoryCursorLagSeconds: secondsSince(retailcrmHistoryCursor),

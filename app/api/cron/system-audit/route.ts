@@ -24,40 +24,6 @@ function formatRetryBacklogByKind(retryBacklogByKind: Record<string, number>) {
         .join(', ');
 }
 
-function getDominantRetryCause(retryBacklogByKind: Record<string, number>) {
-    const entries = Object.entries(retryBacklogByKind)
-        .filter(([, count]) => count > 0)
-        .sort((left, right) => right[1] - left[1]);
-
-    if (!entries.length) return null;
-
-    const [kind, count] = entries[0];
-    return `${kind} (${count})`;
-}
-
-function formatQueueHotspot(queueStages: Record<string, { service: string; queued: number; processing: number; deadLetter: number; oldestQueuedSeconds: number | null; status: string }>) {
-    const candidates = Object.values(queueStages)
-        .filter((queue) => queue.deadLetter > 0 || queue.queued > 0 || (queue.oldestQueuedSeconds || 0) > 0 || queue.status !== 'ok')
-        .sort((left, right) => {
-            if (right.deadLetter !== left.deadLetter) return right.deadLetter - left.deadLetter;
-            const rightOldest = right.oldestQueuedSeconds || 0;
-            const leftOldest = left.oldestQueuedSeconds || 0;
-            if (rightOldest !== leftOldest) return rightOldest - leftOldest;
-            if (right.queued !== left.queued) return right.queued - left.queued;
-            return right.processing - left.processing;
-        });
-
-    if (!candidates.length) return null;
-
-    const queue = candidates[0];
-    const parts = [`queued ${queue.queued}`];
-    if (queue.processing > 0) parts.push(`processing ${queue.processing}`);
-    if (queue.deadLetter > 0) parts.push(`dead-letter ${queue.deadLetter}`);
-    if (queue.oldestQueuedSeconds !== null) parts.push(`oldest ${Math.floor(queue.oldestQueuedSeconds / 60)} мин`);
-
-    return `${queue.service}: ${parts.join(', ')}`;
-}
-
 function hoursSince(dateStr?: string | null) {
     if (!dateStr) return null;
     return (Date.now() - new Date(dateStr).getTime()) / (60 * 60 * 1000);
@@ -191,13 +157,17 @@ export async function GET(req: Request) {
             if (retryBacklogSummary) {
                 realtimeAlertLines.push(`retry backlog по причинам: ${retryBacklogSummary}`);
             }
-            const dominantRetryCause = getDominantRetryCause(metrics.recovery.retryBacklogByKind);
+            const dominantRetryCause = realtimePipeline.hotspotSummary.dominantRetryCause;
             if (dominantRetryCause) {
-                realtimeAlertLines.push(`доминирующая причина retry: ${dominantRetryCause}`);
+                realtimeAlertLines.push(`доминирующая причина retry: ${dominantRetryCause.kind} (${dominantRetryCause.count})`);
             }
-            const queueHotspot = formatQueueHotspot(realtimePipeline.queueStages);
+            const queueHotspot = realtimePipeline.hotspotSummary.queue;
             if (queueHotspot) {
-                realtimeAlertLines.push(`главная проблемная очередь: ${queueHotspot}`);
+                const parts = [`queued ${queueHotspot.queued}`];
+                if (queueHotspot.processing > 0) parts.push(`processing ${queueHotspot.processing}`);
+                if (queueHotspot.deadLetter > 0) parts.push(`dead-letter ${queueHotspot.deadLetter}`);
+                if (queueHotspot.oldestQueuedSeconds !== null) parts.push(`oldest ${Math.floor(queueHotspot.oldestQueuedSeconds / 60)} мин`);
+                realtimeAlertLines.push(`главная проблемная очередь: ${queueHotspot.service}: ${parts.join(', ')}`);
             }
 
             if (realtimeAlertLines.length > 0) {

@@ -96,6 +96,14 @@ interface RealtimePipelineSnapshot {
         deadLetterTotal: number;
         oldestQueuedMinutes: number | null;
     };
+    hotspotSummary: {
+        queue: QueueStageSnapshot | null;
+        dominantRetryCause: {
+            kind: 'dependency_wait' | 'rate_limit' | 'network' | 'ai' | 'generic';
+            count: number;
+        } | null;
+        operatorMessage: string | null;
+    };
     metrics: {
         retailcrmCursorLagSeconds: number | null;
         retailcrmHistoryCursorLagSeconds: number | null;
@@ -447,16 +455,7 @@ export default function SystemStatusPage() {
     ] : [];
 
     const queueHotspot = queueStageCards.length
-        ? [...queueStageCards]
-            .filter((queue) => queue.deadLetter > 0 || queue.queued > 0 || (queue.oldestQueuedSeconds || 0) > 0 || queue.status !== 'ok')
-            .sort((left, right) => {
-                if (right.deadLetter !== left.deadLetter) return right.deadLetter - left.deadLetter;
-                const rightOldest = right.oldestQueuedSeconds || 0;
-                const leftOldest = left.oldestQueuedSeconds || 0;
-                if (rightOldest !== leftOldest) return rightOldest - leftOldest;
-                if (right.queued !== left.queued) return right.queued - left.queued;
-                return right.processing - left.processing;
-            })[0]
+        ? pipelineMetrics?.hotspotSummary.queue || null
         : null;
 
     const getQueueStageTheme = (status: 'ok' | 'warning' | 'error') => {
@@ -545,9 +544,7 @@ export default function SystemStatusPage() {
     ] : [];
 
     const dominantRetryCause = retryKindCards.length
-        ? [...retryKindCards]
-            .filter((card) => card.value > 0)
-            .sort((left, right) => right.value - left.value)[0] || null
+        ? pipelineMetrics?.hotspotSummary.dominantRetryCause || null
         : null;
 
     // --- State: Transcription Details ---
@@ -737,11 +734,11 @@ export default function SystemStatusPage() {
                             : 'all queues within normal bounds'}
                     </div>
                 </div>
-                <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? dominantRetryCause.bg : 'bg-white border-gray-100'}`}>
+                <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.bg || 'bg-white border-gray-100' : 'bg-white border-gray-100'}`}>
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Dominant Retry Cause</div>
-                    <div className="text-lg font-black text-gray-900">{dominantRetryCause ? dominantRetryCause.title : 'No retry backlog'}</div>
+                    <div className="text-lg font-black text-gray-900">{dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.title || dominantRetryCause.kind : 'No retry backlog'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
-                        {dominantRetryCause ? `${dominantRetryCause.value} active retry jobs` : 'retry backlog empty'}
+                        {dominantRetryCause ? `${dominantRetryCause.count} active retry jobs` : 'retry backlog empty'}
                     </div>
                 </div>
             </div>
