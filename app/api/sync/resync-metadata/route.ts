@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL;
@@ -9,6 +11,11 @@ export const maxDuration = 300;
 
 export async function GET() {
     console.log('[Resync Metadata] Starting from 2025-12-01...');
+
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'Missing RetailCRM credentials' }, { status: 500 });

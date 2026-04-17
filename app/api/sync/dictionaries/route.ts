@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -9,6 +11,11 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function GET() {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (!RETAILCRM_URL || !RETAILCRM_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }
