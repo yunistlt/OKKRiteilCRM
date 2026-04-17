@@ -446,6 +446,19 @@ export default function SystemStatusPage() {
         pipelineMetrics.queueStages.insightRefresh,
     ] : [];
 
+    const queueHotspot = queueStageCards.length
+        ? [...queueStageCards]
+            .filter((queue) => queue.deadLetter > 0 || queue.queued > 0 || (queue.oldestQueuedSeconds || 0) > 0 || queue.status !== 'ok')
+            .sort((left, right) => {
+                if (right.deadLetter !== left.deadLetter) return right.deadLetter - left.deadLetter;
+                const rightOldest = right.oldestQueuedSeconds || 0;
+                const leftOldest = left.oldestQueuedSeconds || 0;
+                if (rightOldest !== leftOldest) return rightOldest - leftOldest;
+                if (right.queued !== left.queued) return right.queued - left.queued;
+                return right.processing - left.processing;
+            })[0]
+        : null;
+
     const getQueueStageTheme = (status: 'ok' | 'warning' | 'error') => {
         if (status === 'error') return 'bg-red-50 border-red-200 text-red-700';
         if (status === 'warning') return 'bg-amber-50 border-amber-200 text-amber-700';
@@ -530,6 +543,12 @@ export default function SystemStatusPage() {
             accent: 'text-gray-700',
         },
     ] : [];
+
+    const dominantRetryCause = retryKindCards.length
+        ? [...retryKindCards]
+            .filter((card) => card.value > 0)
+            .sort((left, right) => right.value - left.value)[0] || null
+        : null;
 
     // --- State: Transcription Details ---
     const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
@@ -705,6 +724,25 @@ export default function SystemStatusPage() {
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-red-50">
                     <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Dead Letters 24h</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className={`rounded-2xl border shadow-sm p-4 ${queueHotspot?.status === 'error' ? 'bg-red-50 border-red-200' : queueHotspot?.status === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Pipeline Hotspot</div>
+                    <div className="text-lg font-black text-gray-900">{queueHotspot ? formatServiceTitle(queueHotspot.service) : 'No active hotspot'}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
+                        {queueHotspot
+                            ? `queued ${queueHotspot.queued} · processing ${queueHotspot.processing} · dead ${queueHotspot.deadLetter} · oldest ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
+                            : 'all queues within normal bounds'}
+                    </div>
+                </div>
+                <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? dominantRetryCause.bg : 'bg-white border-gray-100'}`}>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Dominant Retry Cause</div>
+                    <div className="text-lg font-black text-gray-900">{dominantRetryCause ? dominantRetryCause.title : 'No retry backlog'}</div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
+                        {dominantRetryCause ? `${dominantRetryCause.value} active retry jobs` : 'retry backlog empty'}
+                    </div>
                 </div>
             </div>
 
