@@ -142,16 +142,16 @@
 
 ## 10. Этап 6. Непрерывная аналитика и пересчёт ОКК
 
-- [ ] Разделить full evaluation и single-order evaluation как разные режимы.
-- [ ] Сделать single-order evaluation основным режимом production.
-- [ ] Оставить full evaluation только как ночной backfill и аварийный rebuild.
-- [ ] Запускать score_refresh по событию order_changed.
-- [ ] Запускать score_refresh по событию history_changed.
-- [ ] Запускать score_refresh по событию call_matched.
-- [ ] Запускать score_refresh по событию transcript_ready.
-- [ ] Запускать score_refresh по событию semantic_rule_result_changed.
-- [ ] Ввести coalescing: если по одному order_id пришло 5 событий за минуту, объединять их в один пересчёт.
-- [ ] Ввести debounce 15-30 секунд для burst-событий по одному заказу, чтобы не гонять одинаковый score несколько раз подряд.
+- [x] Разделить full evaluation и single-order evaluation как разные режимы.
+- [x] Сделать single-order evaluation основным режимом production.
+- [x] Оставить full evaluation только как ночной backfill и аварийный rebuild.
+- [x] Запускать score_refresh по событию order_changed.
+- [x] Запускать score_refresh по событию history_changed.
+- [x] Запускать score_refresh по событию call_matched.
+- [x] Запускать score_refresh по событию transcript_ready.
+- [x] Запускать score_refresh по событию semantic_rule_result_changed.
+- [x] Ввести coalescing: если по одному order_id пришло 5 событий за минуту, объединять их в один пересчёт.
+- [x] Ввести debounce 15-30 секунд для burst-событий по одному заказу, чтобы не гонять одинаковый score несколько раз подряд.
 
 ## 11. Этап 7. Агрегаты и витрины без тяжёлых полных refresh
 

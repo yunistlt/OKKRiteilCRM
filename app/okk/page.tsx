@@ -806,9 +806,17 @@ function OKKContent() {
         setRunning(true);
         setRunResult(null);
         try {
+            if (targetOrderId) {
+                const res = await fetch(`/api/okk/evaluate/${targetOrderId}`, { method: 'POST' });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
+                setRunResult(`✅ Заказ #${targetOrderId} обновлен`);
+                setTimeout(load, 1500);
+                return;
+            }
+
             const query = new URLSearchParams();
             if (runLimit) query.append('limit', runLimit.toString());
-            if (targetOrderId) query.append('orderId', targetOrderId);
             if (!targetOrderId) query.append('force', 'true');
 
             const res = await fetch(`/api/okk/run-all?${query.toString()}`);
@@ -826,7 +834,9 @@ function OKKContent() {
         setRunning(true);
         setRunResult(`Перепроверка заказа #${orderId}...`);
         try {
-            await fetch(`/api/okk/run-all?orderId=${orderId}`);
+            const res = await fetch(`/api/okk/evaluate/${orderId}`, { method: 'POST' });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
             setRunResult(`✅ Заказ #${orderId} обновлен`);
             load();
         } catch (e) {
@@ -855,7 +865,9 @@ function OKKContent() {
         for (const id of ids) {
             setRunResult(`Пакетная проверка: ${done + errs + 1}/${ids.length} (ID #${id})`);
             try {
-                await fetch(`/api/okk/run-all?orderId=${id}`);
+                const res = await fetch(`/api/okk/evaluate/${id}`, { method: 'POST' });
+                const json = await res.json();
+                if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
                 done++;
             } catch (e) {
                 errs++;
