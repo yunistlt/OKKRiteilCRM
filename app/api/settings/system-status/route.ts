@@ -6,6 +6,51 @@ import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
+function formatLatency(seconds: number | null) {
+    if (seconds === null) return 'n/a';
+    if (seconds < 60) return `${seconds}s`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours}h ${minutes}m`;
+}
+
+function buildSlaStatus(params: {
+    service: string;
+    metric: { p50Seconds: number | null; p95Seconds: number | null; sampleSize: number };
+    warningP95Seconds: number;
+    errorP95Seconds: number;
+    emptyReason: string;
+}) {
+    const { service, metric, warningP95Seconds, errorP95Seconds, emptyReason } = params;
+    const p95 = metric?.p95Seconds ?? null;
+    const p50 = metric?.p50Seconds ?? null;
+    const samples = metric?.sampleSize ?? 0;
+
+    let status = 'ok';
+    let reason = null;
+
+    if (samples === 0) {
+        status = 'warning';
+        reason = emptyReason;
+    } else if (p95 !== null && p95 > errorP95Seconds) {
+        status = 'error';
+        reason = `p95 выше SLA: ${formatLatency(p95)} > ${formatLatency(errorP95Seconds)}`;
+    } else if (p95 !== null && p95 > warningP95Seconds) {
+        status = 'warning';
+        reason = `p95 приближается к SLA: ${formatLatency(p95)}`;
+    }
+
+    return {
+        service,
+        cursor: 'Domain SLA',
+        last_run: new Date().toISOString(),
+        status,
+        details: `p50 ${formatLatency(p50)}, p95 ${formatLatency(p95)}, samples ${samples}`,
+        reason,
+    };
+}
+
 export async function GET() {
     try {
         // 1. Fetch Sync Cursors
@@ -262,10 +307,26 @@ export async function GET() {
         };
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
+        const transcriptionSlaStatus = buildSlaStatus({
+            service: 'Transcription SLA',
+            metric: realtimePipeline.metrics.recordingReadyToTranscriptLatency,
+            warningP95Seconds: 5 * 60,
+            errorP95Seconds: 7 * 60,
+            emptyReason: 'Недостаточно завершённых transcription jobs для расчёта SLA.',
+        });
+        const orderScoreSlaStatus = buildSlaStatus({
+            service: 'Order Score SLA',
+            metric: realtimePipeline.metrics.orderEventToScoreLatency,
+            warningP95Seconds: 2 * 60,
+            errorP95Seconds: 3 * 60,
+            emptyReason: 'Недостаточно завершённых score jobs для расчёта SLA.',
+        });
         const services = [
             telphinStatus,
             retailStatus,
             ...realtimePipeline.services,
+            transcriptionSlaStatus,
+            orderScoreSlaStatus,
             matchStatus,
             transStatus,
             historyStatus,

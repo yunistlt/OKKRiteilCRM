@@ -406,6 +406,8 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
         if (name.includes('RetailCRM Delta Queue')) return 'RetailCRM Delta Очередь';
         if (name.includes('RetailCRM History Queue')) return 'RetailCRM History Очередь';
+        if (name.includes('Transcription SLA')) return 'SLA Транскрибации';
+        if (name.includes('Order Score SLA')) return 'SLA Пересчета Score';
         if (name.includes('Call Match Queue')) return 'Очередь Матчинга Звонков';
         if (name.includes('Manager Aggregate Queue')) return 'Очередь Агрегатов Менеджеров';
         if (name.includes('Nightly Reconciliation')) return 'Ночной Fallback Reconciliation';
@@ -427,6 +429,8 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return '🧱';
         if (name.includes('RetailCRM Delta Queue')) return '📦';
         if (name.includes('RetailCRM History Queue')) return '🕘';
+        if (name.includes('Transcription SLA')) return '⏱️';
+        if (name.includes('Order Score SLA')) return '🛰️';
         if (name.includes('Call Match Queue')) return '🔀';
         if (name.includes('Manager Aggregate Queue')) return '👥';
         if (name.includes('Nightly Reconciliation')) return '🌙';
@@ -955,7 +959,7 @@ export default function SystemStatusPage() {
                                                     <div className="flex items-center gap-1.5">
                                                         <div className="font-black text-gray-900 leading-tight">{getRusServiceName(s.service)}</div>
                                                         <span className="text-[7px] px-1 bg-gray-100 text-gray-400 rounded font-bold uppercase">
-                                                            {s.service.includes('Insight') ? 'АННА' : 'СЕМЁН'}
+                                                            {(s.service.includes('Insight') || s.service.includes('Rule')) ? 'АННА' : 'СЕМЁН'}
                                                         </span>
                                                     </div>
                                                     <div className="text-[8px] font-bold text-gray-400 uppercase leading-none">{s.service}</div>
