@@ -237,6 +237,7 @@
 - [x] `/api/settings/system-status` тоже закрыт на admin session: internal monitoring snapshot и ручное изменение `sync_state` больше не остаются публичными рядом с операторским dashboard.
 - [x] Mixed UI+cron endpoints `/api/cron/reactivation-worker` и `/api/okk/run-all` приведены к гибридной auth-модели: route принимает либо operator session, либо `CRON_SECRET`, чтобы не ломать Vercel Cron при закрытии публичного доступа.
 - [x] Scheduled fallback routes из `vercel.json` для `telphin`, `retailcrm`, `retailcrm/history` и legacy `cron/transcribe` переведены на `CRON_SECRET`, а ручной запуск для оператора продолжает идти через server-side proxy status dashboard.
+- [x] Оставшиеся scheduled reference sync routes из `vercel.json` для `sync/managers` и `sync/retailcrm/clients` тоже переведены на `CRON_SECRET`, чтобы в cron-контуре не оставалось открытых hourly/nightly sync endpoints.
 - [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.

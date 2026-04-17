@@ -7,12 +7,20 @@ const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY;
 
 export const maxDuration = 300;
 
-export async function GET() {
+function ensureAuthorized(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
+
+export async function GET(req: Request) {
     if (!RETAILCRM_URL || !RETAILCRM_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }
 
     try {
+        ensureAuthorized(req);
         // Fetch users from RetailCRM
         const url = `${RETAILCRM_URL}/api/v5/users?apiKey=${RETAILCRM_KEY}&limit=100`;
         const res = await fetch(url);
@@ -66,6 +74,7 @@ export async function GET() {
         });
 
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }

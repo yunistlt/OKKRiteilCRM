@@ -8,6 +8,13 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
+function ensureAuthorized(req: Request) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
+
 // Helper to normalize phone numbers
 function cleanPhone(val: any): string {
     if (!val) return '';
@@ -20,6 +27,7 @@ export async function GET(request: Request) {
     }
 
     try {
+        ensureAuthorized(request);
         const { searchParams } = new URL(request.url);
         const startTime = Date.now();
         const maxTimeMs = 50000; // 50 seconds limit
@@ -239,6 +247,7 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('RetailCRM Corporate Clients Sync Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
 }
