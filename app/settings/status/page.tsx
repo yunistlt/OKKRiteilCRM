@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import OKKConsultantWorkspace from '@/components/OKKConsultantWorkspace';
 
 // --- Types ---
 
@@ -440,6 +441,34 @@ export default function SystemStatusPage() {
         return '⚙️';
     };
 
+    const askSemion = (prompt: string) => {
+        window.dispatchEvent(new CustomEvent('okk-consultant-ask', {
+            detail: { orderId: null, prompt },
+        }));
+    };
+
+    const formatQueueStageTitle = (service: string) => {
+        if (service.includes('RetailCRM Delta Queue')) return 'Заказы из RetailCRM';
+        if (service.includes('RetailCRM History Queue')) return 'История заказов';
+        if (service.includes('Call Match Queue')) return 'Связка звонков с заказами';
+        if (service.includes('Transcription Queue')) return 'Расшифровка звонков';
+        if (service.includes('Semantic Rules Queue')) return 'Проверка семантических правил';
+        if (service.includes('Score Refresh Queue')) return 'Пересчёт оценки заказа';
+        if (service.includes('Manager Aggregate Queue')) return 'Сводка по менеджерам';
+        if (service.includes('Insight Refresh Queue')) return 'AI-инсайты по заказам';
+        return getRusServiceName(service);
+    };
+
+    const formatQueueStatusLabel = (status: 'ok' | 'warning' | 'error') => {
+        if (status === 'error') return 'нужно внимание';
+        if (status === 'warning') return 'есть замедление';
+        return 'работает штатно';
+    };
+
+    const formatSamplesLabel = (sampleSize: number | null | undefined) => {
+        return `${sampleSize || 0} замеров`;
+    };
+
     const formatLatency = (seconds: number | null) => {
         if (seconds === null) return 'n/a';
         if (seconds < 60) return `${seconds}с`;
@@ -470,53 +499,59 @@ export default function SystemStatusPage() {
         return 'bg-emerald-50 border-emerald-200 text-emerald-700';
     };
 
-    const formatServiceTitle = (service: string) => service.replace(' Queue', '');
-
     const latencyCards = [
         {
-            title: 'Recording Ready → Transcript',
+            title: 'От записи до готовой расшифровки',
+            description: 'Показывает, как быстро новый звонок превращается в текст.',
             accent: 'text-violet-600',
             bg: 'bg-violet-50',
             metric: pipelineMetrics?.metrics.recordingReadyToTranscriptLatency,
         },
         {
-            title: 'Order Event → Score',
+            title: 'От события по заказу до новой оценки',
+            description: 'Показывает, как быстро заказ получает пересчитанный score после изменения.',
             accent: 'text-cyan-700',
             bg: 'bg-cyan-50',
             metric: pipelineMetrics?.metrics.orderEventToScoreLatency,
         },
         {
-            title: 'Transcription',
+            title: 'Скорость расшифровки',
+            description: 'Сколько времени в среднем занимает сама транскрибация.',
             accent: 'text-purple-600',
             bg: 'bg-purple-50',
             metric: pipelineMetrics?.metrics.transcriptionLatency,
         },
         {
-            title: 'Score Refresh',
+            title: 'Скорость пересчёта score',
+            description: 'Насколько быстро система обновляет оценку заказа.',
             accent: 'text-blue-600',
             bg: 'bg-blue-50',
             metric: pipelineMetrics?.metrics.scoreRefreshLatency,
         },
         {
-            title: 'Semantic Rules',
+            title: 'Скорость смысловых правил',
+            description: 'Время на AI и смысловые проверки по звонкам.',
             accent: 'text-fuchsia-600',
             bg: 'bg-fuchsia-50',
             metric: pipelineMetrics?.metrics.semanticRulesLatency,
         },
         {
-            title: 'Manager Aggregate',
+            title: 'Скорость сводки по менеджерам',
+            description: 'Как быстро обновляется агрегированная статистика.',
             accent: 'text-emerald-600',
             bg: 'bg-emerald-50',
             metric: pipelineMetrics?.metrics.managerAggregateLatency,
         },
         {
-            title: 'Score → Aggregate',
+            title: 'От score до сводки',
+            description: 'Показывает путь от оценки заказа до общей статистики.',
             accent: 'text-amber-600',
             bg: 'bg-amber-50',
             metric: pipelineMetrics?.metrics.scoreToAggregateLatency,
         },
         {
-            title: 'Call Match → Aggregate',
+            title: 'От найденного звонка до сводки',
+            description: 'Путь от матчинга звонка до обновлённых агрегатов.',
             accent: 'text-rose-600',
             bg: 'bg-rose-50',
             metric: pipelineMetrics?.metrics.callMatchToAggregateLatency,
@@ -526,21 +561,21 @@ export default function SystemStatusPage() {
     const retryKindCards = pipelineMetrics ? [
         {
             key: 'dependency_wait',
-            title: 'Waiting Dependencies',
+            title: 'Ждут зависимостей',
             value: pipelineMetrics.metrics.recovery.retryBacklogByKind.dependency_wait || 0,
             bg: 'bg-amber-50',
             accent: 'text-amber-700',
         },
         {
             key: 'rate_limit',
-            title: 'Rate Limited',
+            title: 'Упёрлись в лимиты',
             value: pipelineMetrics.metrics.recovery.retryBacklogByKind.rate_limit || 0,
             bg: 'bg-rose-50',
             accent: 'text-rose-700',
         },
         {
             key: 'network',
-            title: 'Network / Timeout',
+            title: 'Сеть / таймауты',
             value: pipelineMetrics.metrics.recovery.retryBacklogByKind.network || 0,
             bg: 'bg-blue-50',
             accent: 'text-blue-700',
@@ -554,7 +589,7 @@ export default function SystemStatusPage() {
         },
         {
             key: 'generic',
-            title: 'Generic Failures',
+            title: 'Прочие сбои',
             value: pipelineMetrics.metrics.recovery.retryBacklogByKind.generic || 0,
             bg: 'bg-gray-100',
             accent: 'text-gray-700',
@@ -587,7 +622,31 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <div className="max-w-7xl mx-auto py-1 px-4 space-y-4">
+        <OKKConsultantWorkspace>
+        <div className="max-w-7xl mx-auto py-4 px-4 space-y-4 bg-[#f7f9fc] min-h-full">
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="max-w-3xl">
+                        <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-600 mb-2">Статус систем простыми словами</div>
+                        <h2 className="text-2xl font-black text-gray-900 tracking-tight">Где всё в порядке, а где уже начинается задержка</h2>
+                        <p className="text-sm text-gray-600 mt-2 leading-relaxed">
+                            Этот экран нужен, чтобы быстро понять три вещи: какие цепочки идут без задержки, какая очередь сейчас тормозит пайплайн и нужно ли оператору вмешиваться вручную.
+                        </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full lg:w-auto">
+                        <button onClick={() => askSemion('Объясни простыми словами, что сейчас происходит на дашборде статуса систем.')} className="px-3 py-2 rounded-xl bg-slate-50 text-slate-700 text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-colors">
+                            Спросить Семёна: что происходит
+                        </button>
+                        <button onClick={() => askSemion('Какая метрика на этом экране самая тревожная и почему?')} className="px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-widest hover:bg-amber-500 hover:text-white transition-colors">
+                            Что самое тревожное
+                        </button>
+                        <button onClick={() => askSemion('Что оператору делать первым делом, если на этом дашборде есть отклонения?')} className="px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-colors">
+                            Что делать оператору
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             {/* ALERT: Technical Failure Log */}
             {lastRunError && (
@@ -624,7 +683,7 @@ export default function SystemStatusPage() {
                             <h1 className="text-lg font-black text-gray-900 tracking-tighter uppercase">Игорь: Диспетчер мониторинга</h1>
                             <span className="px-2 py-0.5 bg-blue-600 text-white text-[8px] font-bold rounded uppercase tracking-widest shadow-sm">LIVE MONITOR V1.3</span>
                         </div>
-                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">Системный Монитор // Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}</p>
+                        <p className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">Панель оператора // Обновлено: {lastUpdated ? lastUpdated.toLocaleTimeString() : '...'}</p>
                     </div>
                 </div>
 
@@ -647,7 +706,7 @@ export default function SystemStatusPage() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="md:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden">
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Пульс Системы: Работа Агентов</h3>
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Пульс системы: кто реально работал в последние окна</h3>
                         <div className="flex gap-4 text-[9px] font-black uppercase text-gray-300">
                             <span>15 минут</span>
                             <span>1 час</span>
@@ -705,19 +764,20 @@ export default function SystemStatusPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
                 {latencyCards.map((card) => (
                     <div key={card.title} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
-                        <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-3">{card.title} Latency</div>
+                        <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">{card.title}</div>
+                        <div className="text-[10px] font-bold text-gray-500 leading-relaxed mb-3">{card.description}</div>
                         <div className="flex items-end justify-between gap-4 mb-2">
                             <div>
-                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>p50</div>
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>обычно</div>
                                 <div className="text-xl font-black text-gray-900">{formatLatency(card.metric?.p50Seconds || null)}</div>
                             </div>
                             <div className="text-right">
-                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>p95</div>
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${card.accent}`}>в плохие моменты</div>
                                 <div className="text-xl font-black text-gray-900">{formatLatency(card.metric?.p95Seconds || null)}</div>
                             </div>
                         </div>
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
-                            samples: {card.metric?.sampleSize || 0}
+                            {formatSamplesLabel(card.metric?.sampleSize)}
                         </div>
                     </div>
                 ))}
@@ -725,31 +785,31 @@ export default function SystemStatusPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Jobs Completed 24h</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Успешно завершено за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.completedLast24h || 0}</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-amber-50">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-2">Retry Attempts 24h</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-2">Попыток повторного запуска за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retryAttemptsLast24h || 0}</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Retried Jobs 24h</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Задач ушло на повтор за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retriedJobsLast24h || 0}</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-red-50">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Dead Letters 24h</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Задач упало в dead letter за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
                 </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className={`rounded-2xl border shadow-sm p-4 ${queueHotspot?.status === 'error' ? 'bg-red-50 border-red-200' : queueHotspot?.status === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Pipeline Hotspot</div>
-                    <div className="text-lg font-black text-gray-900">{queueHotspot ? formatServiceTitle(queueHotspot.service) : 'No active hotspot'}</div>
+                        <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Главное узкое место прямо сейчас</div>
+                        <div className="text-lg font-black text-gray-900">{queueHotspot ? formatQueueStageTitle(queueHotspot.service) : 'Активного узкого места сейчас нет'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
                         {queueHotspot
-                            ? `queued ${queueHotspot.queued} · processing ${queueHotspot.processing}${queueHotspot.processingLimit ? `/${queueHotspot.processingLimit}` : ''} · dead ${queueHotspot.deadLetter} · oldest ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
-                            : 'all queues within normal bounds'}
+                            ? `ждут запуска ${queueHotspot.queued} · в работе ${queueHotspot.processing}${queueHotspot.processingLimit ? `/${queueHotspot.processingLimit}` : ''} · dead letter ${queueHotspot.deadLetter} · самая старая задача ждёт ${formatLatency(queueHotspot.oldestQueuedSeconds)}`
+                            : 'все очереди сейчас в рабочем диапазоне'}
                     </div>
                     {pipelineMetrics?.hotspotSummary.operatorMessage && (
                         <div className="text-[10px] font-bold text-gray-600 mt-3 leading-relaxed">
@@ -758,7 +818,7 @@ export default function SystemStatusPage() {
                     )}
                     {queueHotspot?.lastErrorSnippet && (
                         <div className="mt-3 rounded-xl border border-black/5 bg-white/60 px-3 py-2">
-                            <div className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Last Worker Error</div>
+                            <div className="text-[8px] font-black uppercase tracking-widest text-gray-400 mb-1">Последняя ошибка worker</div>
                             <div className="text-[10px] font-bold text-gray-700 leading-relaxed">{queueHotspot.lastErrorSnippet}</div>
                             {queueHotspot.lastErrorAt && (
                                 <div className="text-[8px] text-gray-400 font-bold mt-1">
@@ -769,10 +829,10 @@ export default function SystemStatusPage() {
                     )}
                 </div>
                 <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.bg || 'bg-white border-gray-100' : 'bg-white border-gray-100'}`}>
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Dominant Retry Cause</div>
-                    <div className="text-lg font-black text-gray-900">{dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.title || dominantRetryCause.kind : 'No retry backlog'}</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Основная причина повторных запусков</div>
+                    <div className="text-lg font-black text-gray-900">{dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.title || dominantRetryCause.kind : 'Повторные запуски сейчас не копятся'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
-                        {dominantRetryCause ? `${dominantRetryCause.count} active retry jobs` : 'retry backlog empty'}
+                        {dominantRetryCause ? `${dominantRetryCause.count} задач сейчас ждут повторного прогона` : 'очередь повторов сейчас пустая'}
                     </div>
                 </div>
             </div>
@@ -782,63 +842,63 @@ export default function SystemStatusPage() {
                     <div key={card.key} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
                         <div className={`text-[9px] font-black uppercase tracking-widest mb-2 ${card.accent}`}>{card.title}</div>
                         <div className="text-3xl font-black text-gray-900">{card.value}</div>
-                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">active retry backlog</div>
+                        <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">сейчас в очереди повторов</div>
                     </div>
                 ))}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">RetailCRM Cursor Lag</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток заказов RetailCRM</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmCursorLagSeconds || null)}</div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Orders delta cursor</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">по обновлениям заказов</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">History Cursor Lag</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток истории</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmHistoryCursorLagSeconds || null)}</div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">History delta cursor</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">по изменениям истории заказов</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-purple-50">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2">Transcription Oldest</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2">Самая старая задача на расшифровку</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.transcriptionQueueOldestSeconds || null)}</div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Oldest queued call</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый звонок</div>
                 </div>
                 <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Score Queue Oldest</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Самая старая задача на пересчёт score</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.scoreQueueOldestSeconds || null)}</div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">Oldest queued refresh</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый пересчёт</div>
                 </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Очереди и Backlog</h3>
+                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Все очереди по этапам</h3>
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400">
-                        queued {pipelineMetrics?.summary.queuedTotal || 0} / processing {pipelineMetrics?.summary.processingTotal || 0}
+                        ждут запуска {pipelineMetrics?.summary.queuedTotal || 0} / в работе {pipelineMetrics?.summary.processingTotal || 0}
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     {queueStageCards.map((queue) => (
                         <div key={queue.service} className={`rounded-2xl border p-4 ${getQueueStageTheme(queue.status)}`}>
                             <div className="flex items-center justify-between mb-3">
-                                <div className="text-[10px] font-black uppercase tracking-widest">{formatServiceTitle(queue.service)}</div>
-                                <div className="text-[8px] font-black uppercase">{queue.status}</div>
+                                <div className="text-[10px] font-black uppercase tracking-widest">{formatQueueStageTitle(queue.service)}</div>
+                                <div className="text-[8px] font-black uppercase">{formatQueueStatusLabel(queue.status)}</div>
                             </div>
                             <div className="grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-wide mb-3">
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
-                                    <div className="text-gray-400">Queued</div>
+                                    <div className="text-gray-400">Ждут запуска</div>
                                     <div className="text-lg text-gray-900">{queue.queued}</div>
                                 </div>
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
-                                    <div className="text-gray-400">Processing</div>
+                                    <div className="text-gray-400">В работе</div>
                                     <div className="text-lg text-gray-900">{queue.processing}{queue.processingLimit ? `/${queue.processingLimit}` : ''}</div>
                                 </div>
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
-                                    <div className="text-gray-400">Dead</div>
+                                    <div className="text-gray-400">Dead letter</div>
                                     <div className="text-lg text-gray-900">{queue.deadLetter}</div>
                                 </div>
                                 <div className="rounded-lg bg-white/70 px-2 py-2">
-                                    <div className="text-gray-400">Oldest</div>
+                                    <div className="text-gray-400">Самая старая</div>
                                     <div className="text-sm text-gray-900">{formatLatency(queue.oldestQueuedSeconds)}</div>
                                 </div>
                             </div>
@@ -860,12 +920,12 @@ export default function SystemStatusPage() {
                                 🧠
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-900 text-sm">OpenAI API Connection</h3>
+                                <h3 className="font-bold text-gray-900 text-sm">Связь с OpenAI</h3>
                                 <div className="flex items-center gap-2 mt-0.5">
                                     <div className={`w-2 h-2 rounded-full ${openai.status === 'ok' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                                     <span className={`text-xs font-semibold uppercase tracking-wide ${openai.status === 'ok' ? 'text-green-700' : 'text-red-700'
                                         }`}>
-                                        {openai.status === 'ok' ? 'Connected' : 'Error / Disconnected'}
+                                        {openai.status === 'ok' ? 'Связь есть' : 'Есть ошибка'}
                                     </span>
                                 </div>
                             </div>
@@ -908,7 +968,7 @@ export default function SystemStatusPage() {
                                 rel="noopener noreferrer"
                                 className="group flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-blue-600 transition-colors"
                             >
-                                Manage Billing
+                                Баланс и биллинг
                                 <svg className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                             </a>
                         )}
@@ -1141,5 +1201,6 @@ export default function SystemStatusPage() {
                 </div>
             )}
         </div>
+        </OKKConsultantWorkspace>
     );
 }
