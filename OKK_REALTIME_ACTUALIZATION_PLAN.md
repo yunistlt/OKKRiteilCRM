@@ -388,6 +388,7 @@
 - [ ] RetailCRM delta worker: concurrency 1.
 - [ ] RetailCRM history worker: concurrency 1.
 - [ ] Telphin fallback worker: concurrency 1.
+- [x] Telphin fallback worker: concurrency 1.
 - [ ] Matching worker: concurrency 1.
 - [ ] Transcription worker: concurrency 2.
 - [ ] Insight worker: concurrency 1.
@@ -396,6 +397,7 @@
 - [x] RetailCRM delta worker: concurrency 1.
 - [x] RetailCRM history worker: concurrency 1.
 - [ ] Telphin fallback worker: concurrency 1.
+- [x] Telphin fallback worker: concurrency 1.
 - [x] Matching worker: concurrency 1.
 - [x] Transcription worker: concurrency 2.
 - [x] Insight worker: concurrency 1.
