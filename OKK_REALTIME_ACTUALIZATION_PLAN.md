@@ -232,6 +232,8 @@
 - [x] Legacy `/api/cron` приведён к общей cron-модели безопасности: backup orchestration route теперь тоже требует `CRON_SECRET`, как и system-jobs workers, и не остаётся публичным тяжёлым endpoint.
 - [x] Неиспользуемые cron-style routes `/api/cron/productologist-worker` и `/api/cron/match-backfill` тоже переведены на `CRON_SECRET`, чтобы рядом с основным pipeline не оставались открытые automation/backfill endpoints без живых UI call sites.
 - [x] `/api/cron/system-audit` тоже приведён к cron-only auth-модели: alerting route теперь требует `CRON_SECRET` и не шлёт ложный crash alert в Telegram на неавторизованные вызовы.
+- [x] Admin-triggered `/api/cron/reactivation-worker` переведён не на cron secret, а на session-based role guard `admin|rop`, чтобы сохранить запуск из админки и при этом убрать публичный write endpoint.
+- [x] Status dashboard manual run больше не ходит браузером напрямую в secret-protected cron routes: добавлен server-side trigger proxy под `/api/settings/system-status/run`, который проверяет admin session и уже на сервере вызывает нужный endpoint с `CRON_SECRET` при необходимости.
 - [x] Legacy `/api/matching/process` переведён в backup-only режим: при включенном realtime pipeline route по умолчанию `skip` и выполняется только через `force=true` для аварийного fallback sweep.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать end-to-end p50/p95 для цепочки `call_match -> score_refresh -> manager_aggregate_refresh`.
 - [x] Monitoring snapshot, status dashboard и system-audit начали считать SLA p50/p95 для доменных цепочек `recording_ready -> transcript_ready` и `order event -> score_refresh`, используя event timestamps в payload jobs с fallback на queue time.

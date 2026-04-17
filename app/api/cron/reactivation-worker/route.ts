@@ -7,6 +7,8 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { generateReactivationEmail } from '@/lib/reactivation';
 import {
@@ -28,6 +30,11 @@ const RETAILCRM_SITE = process.env.RETAILCRM_SITE ?? '';
 const BATCH_SIZE = 5;
 
 export async function GET() {
+    const session = await getSession();
+    if (!hasAnyRole(session, ['admin', 'rop'])) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
     if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
         return NextResponse.json({ error: 'RetailCRM config missing' }, { status: 500 });
     }

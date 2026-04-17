@@ -317,34 +317,17 @@ export default function SystemStatusPage() {
     };
 
     const runService = async (serviceName: string) => {
-        let url = '';
-        if (serviceName.includes('Telphin Fallback')) url = '/api/sync/telphin';
-        if (serviceName.includes('RetailCRM Fallback')) url = '/api/sync/retailcrm?force=true';
-        if (serviceName.includes('System Jobs Queue')) url = '/api/cron/system-jobs/watchdog';
-        if (serviceName.includes('RetailCRM Delta Queue')) url = '/api/cron/system-jobs/retailcrm-order-delta';
-        if (serviceName.includes('RetailCRM History Queue')) url = '/api/cron/system-jobs/retailcrm-history-delta';
-        if (serviceName.includes('Call Match Queue')) url = '/api/cron/system-jobs/call-match';
-        if (serviceName.includes('Manager Aggregate Queue')) url = '/api/cron/system-jobs/manager-aggregate-refresh';
-        if (serviceName.includes('Nightly Reconciliation')) url = '/api/cron/system-jobs/nightly-reconciliation';
-        if (serviceName.includes('Semantic Rules Queue')) url = '/api/cron/system-jobs/call-semantic-rules';
-        if (serviceName.includes('Matching Fallback')) url = '/api/matching/process?force=true';
-        if (serviceName.includes('Score Refresh Queue')) url = '/api/cron/system-jobs/score-refresh';
-        if (serviceName.includes('Insight Refresh Queue')) url = '/api/cron/system-jobs/order-insight-refresh';
-        if (serviceName.includes('Transcription Queue')) url = '/api/cron/system-jobs/transcription';
-        if (serviceName.includes('History Fallback')) url = '/api/sync/history?force=true';
-        if (serviceName.includes('Rule Engine')) url = '/api/rules/execute?force=true';
-        if (serviceName.includes('AI Insight Agent')) url = '/api/analysis/insights/run?force=true';
-        if (serviceName.includes('Transcription Fallback')) url = '/api/cron/transcribe?force=true';
-
-        if (!url) return;
-
         setLastRunError(null);
         setSyncStatuses(prev => prev.map(s =>
             s.service === serviceName ? { ...s, details: 'Запуск...', status: 'warning' } : s
         ));
 
         try {
-            const res = await fetch(url);
+            const res = await fetch('/api/settings/system-status/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serviceName })
+            });
             if (!res.ok) {
                 const errorText = await res.text();
                 setLastRunError({ service: serviceName, error: errorText || res.statusText });
