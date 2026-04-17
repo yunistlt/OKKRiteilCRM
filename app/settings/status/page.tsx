@@ -621,10 +621,10 @@ export default function SystemStatusPage() {
     };
 
     return (
-        <div className="min-h-full w-full overflow-auto bg-[#f7f9fc] px-4 py-4">
-        <div className="w-full space-y-4">
+        <div className="min-h-full w-full overflow-auto bg-[#eef3f7]">
+        <div className="w-full space-y-0">
 
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="bg-white border-b border-slate-200 p-5">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div className="max-w-3xl">
                         <div className="text-[10px] font-black uppercase tracking-[0.25em] text-blue-600 mb-2">Статус систем простыми словами</div>
@@ -667,7 +667,7 @@ export default function SystemStatusPage() {
             )}
 
             {/* HEADER & GLOBAL HEALTH */}
-            <div className="flex items-center justify-between bg-white px-5 py-4 rounded-2xl border border-gray-100 shadow-sm relative overflow-hidden group">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 relative overflow-hidden group">
                 <div className="absolute right-0 top-0 bottom-0 w-32 opacity-[0.03] pointer-events-none group-hover:opacity-[0.08] transition-opacity">
                     <img src="/images/agents/igor.png" alt="" className="h-full object-contain object-right" />
                 </div>
@@ -702,8 +702,8 @@ export default function SystemStatusPage() {
             </div>
 
             {/* LIVE MONITOR: Trends Section - MOVED ABOVE OPENAI FOR VISIBILITY */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="md:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-4">
+                <div className="md:col-span-3 border-r border-slate-200 bg-white p-5 relative overflow-hidden">
                     <div className="flex items-center justify-between mb-4">
                         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Пульс системы: кто реально работал в последние окна</h3>
                         <div className="flex gap-4 text-[9px] font-black uppercase text-gray-300">
@@ -748,21 +748,21 @@ export default function SystemStatusPage() {
                 </div>
 
                 {/* Vertical Mini Stats for Quick Look */}
-                <div className="space-y-4">
-                    <div className="bg-blue-600 rounded-2xl p-4 text-white shadow-lg shadow-blue-100">
+                <div className="space-y-0 border-t border-slate-200 md:border-t-0">
+                    <div className="bg-blue-600 p-4 text-white">
                         <div className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">Матчи (24ч)</div>
                         <div className="text-3xl font-black">{dbStats?.matchedCalls || 0}</div>
                     </div>
-                    <div className="bg-purple-600 rounded-2xl p-4 text-white shadow-lg shadow-purple-100">
+                    <div className="border-t border-white/20 bg-purple-600 p-4 text-white">
                         <div className="text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">Транскрипции</div>
                         <div className="text-3xl font-black">{dbStats?.transcribedCalls || 0}</div>
                     </div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-2 xl:grid-cols-5">
                 {latencyCards.map((card) => (
-                    <div key={card.title} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
+                    <div key={card.title} className={`border-r border-slate-200 p-4 ${card.bg}`}>
                         <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">{card.title}</div>
                         <div className="text-[10px] font-bold text-gray-500 leading-relaxed mb-3">{card.description}</div>
                         <div className="flex items-end justify-between gap-4 mb-2">
@@ -782,27 +782,27 @@ export default function SystemStatusPage() {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-4">
+                <div className="border-r border-slate-200 bg-white p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Успешно завершено за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.completedLast24h || 0}</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-amber-50">
+                <div className="border-r border-slate-200 bg-amber-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-amber-600 mb-2">Попыток повторного запуска за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retryAttemptsLast24h || 0}</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
+                <div className="border-r border-slate-200 bg-blue-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Задач ушло на повтор за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.retriedJobsLast24h || 0}</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-red-50">
+                <div className="bg-red-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-red-600 mb-2">Задач упало в dead letter за 24 часа</div>
                     <div className="text-3xl font-black text-gray-900">{pipelineMetrics?.metrics.recovery.deadLettersLast24h || 0}</div>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className={`rounded-2xl border shadow-sm p-4 ${queueHotspot?.status === 'error' ? 'bg-red-50 border-red-200' : queueHotspot?.status === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 md:grid-cols-2">
+                <div className={`border-r border-slate-200 p-4 ${queueHotspot?.status === 'error' ? 'bg-red-50 border-red-200' : queueHotspot?.status === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
                         <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Главное узкое место прямо сейчас</div>
                         <div className="text-lg font-black text-gray-900">{queueHotspot ? formatQueueStageTitle(queueHotspot.service) : 'Активного узкого места сейчас нет'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
@@ -827,7 +827,7 @@ export default function SystemStatusPage() {
                         </div>
                     )}
                 </div>
-                <div className={`rounded-2xl border shadow-sm p-4 ${dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.bg || 'bg-white border-gray-100' : 'bg-white border-gray-100'}`}>
+                <div className={`p-4 ${dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.bg || 'bg-white border-gray-100' : 'bg-white border-gray-100'}`}>
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Основная причина повторных запусков</div>
                     <div className="text-lg font-black text-gray-900">{dominantRetryCause ? retryKindCards.find((card) => card.key === dominantRetryCause.kind)?.title || dominantRetryCause.kind : 'Повторные запуски сейчас не копятся'}</div>
                     <div className="text-[10px] font-bold uppercase tracking-wide text-gray-500 mt-2">
@@ -836,9 +836,9 @@ export default function SystemStatusPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-2 xl:grid-cols-5">
                 {retryKindCards.map((card) => (
-                    <div key={card.key} className={`rounded-2xl border border-gray-100 shadow-sm p-4 ${card.bg}`}>
+                    <div key={card.key} className={`border-r border-slate-200 p-4 ${card.bg}`}>
                         <div className={`text-[9px] font-black uppercase tracking-widest mb-2 ${card.accent}`}>{card.title}</div>
                         <div className="text-3xl font-black text-gray-900">{card.value}</div>
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">сейчас в очереди повторов</div>
@@ -846,30 +846,30 @@ export default function SystemStatusPage() {
                 ))}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-2 xl:grid-cols-4">
+                <div className="border-r border-slate-200 bg-white p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток заказов RetailCRM</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmCursorLagSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">по обновлениям заказов</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-white">
+                <div className="border-r border-slate-200 bg-white p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток истории</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmHistoryCursorLagSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">по изменениям истории заказов</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-purple-50">
+                <div className="border-r border-slate-200 bg-purple-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2">Самая старая задача на расшифровку</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.transcriptionQueueOldestSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый звонок</div>
                 </div>
-                <div className="rounded-2xl border border-gray-100 shadow-sm p-4 bg-blue-50">
+                <div className="bg-blue-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Самая старая задача на пересчёт score</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.scoreQueueOldestSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый пересчёт</div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <div className="border-b border-slate-200 bg-white p-5">
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Все очереди по этапам</h3>
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400">
@@ -878,7 +878,7 @@ export default function SystemStatusPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     {queueStageCards.map((queue) => (
-                        <div key={queue.service} className={`rounded-2xl border p-4 ${getQueueStageTheme(queue.status)}`}>
+                        <div key={queue.service} className={`border p-4 ${getQueueStageTheme(queue.status)}`}>
                             <div className="flex items-center justify-between mb-3">
                                 <div className="text-[10px] font-black uppercase tracking-widest">{formatQueueStageTitle(queue.service)}</div>
                                 <div className="text-[8px] font-black uppercase">{formatQueueStatusLabel(queue.status)}</div>
@@ -908,7 +908,7 @@ export default function SystemStatusPage() {
 
             {/* OPENAI STATUS CARD */}
             {openai.status !== 'loading' && (
-                <div className={`rounded-xl border shadow-sm p-4 relative overflow-hidden transition-all ${openai.status === 'ok'
+                <div className={`border-b border-slate-200 p-4 relative overflow-hidden transition-all ${openai.status === 'ok'
                     ? 'bg-gradient-to-br from-white to-green-50 border-green-200'
                     : 'bg-gradient-to-br from-white to-red-50 border-red-200'
                     }`}>
@@ -976,7 +976,7 @@ export default function SystemStatusPage() {
             )}
 
             {/* CORE MONITORING TABLE */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-lg overflow-hidden">
+            <div className="border-b border-slate-200 bg-white overflow-hidden">
                 <div className="overflow-x-auto text-[10px]">
                     <table className="w-full text-left border-collapse">
                         <thead>
@@ -1053,10 +1053,10 @@ export default function SystemStatusPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white lg:grid-cols-4">
 
                 {/* RULES INVENTORY - Ultra Compact */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-md p-4">
+                <div className="lg:col-span-2 border-r border-slate-200 bg-white p-4">
                     <div className="flex items-center justify-between mb-2">
                         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Реестр Правил (ОКК)</h3>
                         <div className="flex gap-2 text-[8px] font-black">
@@ -1067,7 +1067,7 @@ export default function SystemStatusPage() {
 
                     <div className="grid grid-cols-2 gap-1.5 max-h-[120px] overflow-y-auto pr-1">
                         {allRules.map((rule, idx) => (
-                            <div key={idx} className={`px-2 py-1 rounded-lg border flex items-center justify-between gap-2 ${rule.is_active ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200'}`}>
+                            <div key={idx} className={`px-2 py-1 border flex items-center justify-between gap-2 ${rule.is_active ? 'bg-white border-gray-100' : 'bg-gray-50 border-gray-200'}`}>
                                 <div className="truncate font-bold text-gray-700 text-[9px]">{rule.name}</div>
                                 <div className={`text-[7px] font-black uppercase ${rule.is_active ? 'text-green-500' : 'text-gray-400'}`}>
                                     {rule.is_active ? 'ВКЛ' : 'ВЫКЛ'}
@@ -1078,7 +1078,7 @@ export default function SystemStatusPage() {
                 </div>
 
                 {/* AI INSIGHTS LOG - NEW */}
-                <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-md p-4">
+                <div className="lg:col-span-2 bg-white p-4">
                     <div className="flex items-center justify-between mb-2">
                         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-blue-600">Лента инсайтов (Insight Agent)</h3>
                         <div className="text-[8px] font-black text-gray-300 uppercase underline cursor-pointer hover:text-blue-500">ВСЕ ИНСАЙТЫ</div>
@@ -1086,7 +1086,7 @@ export default function SystemStatusPage() {
 
                     <div className="space-y-1 max-h-[120px] overflow-y-auto pr-1">
                         {insightLogs.length > 0 ? insightLogs.map((log, idx) => (
-                            <div key={idx} className="px-2 py-1.5 bg-blue-50/30 border border-blue-100/50 rounded-lg flex items-start gap-3">
+                            <div key={idx} className="px-2 py-1.5 bg-blue-50/30 border border-blue-100/50 flex items-start gap-3">
                                 <div className="text-[9px] font-black text-blue-500 bg-white border border-blue-100 w-10 h-5 flex items-center justify-center rounded">#{log.order_number}</div>
                                 <div className="flex-1">
                                     <div className="text-[9px] font-bold text-gray-700 leading-tight">{log.summary}</div>
@@ -1100,7 +1100,7 @@ export default function SystemStatusPage() {
                 </div>
 
                 {/* Transcription + Stats in one column maybe? No, keep separate but smaller */}
-                <div className="bg-white rounded-2xl border border-gray-100 shadow-md p-4 flex flex-col justify-between h-full">
+                <div className="border-r border-slate-200 bg-white p-4 flex flex-col justify-between h-full">
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Транскрибация</h3>
                     <div className="flex items-center justify-between text-[11px] font-black text-purple-600 mb-1">
                         <span>Готово</span>
@@ -1127,13 +1127,13 @@ export default function SystemStatusPage() {
                             <span>{dbStats?.skippedCalls || 0}</span>
                         </div>
                     </div>
-                    <button onClick={fetchTranscriptionDetails} className="w-full py-1.5 bg-purple-50 text-purple-600 rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white">
+                    <button onClick={fetchTranscriptionDetails} className="w-full py-1.5 bg-purple-50 text-purple-600 text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white">
                         ОЧЕРЕДЬ
                     </button>
                 </div>
 
                 {/* Settings Block - Dense */}
-                <div className="bg-gray-900 rounded-2xl p-4 text-white flex flex-col justify-between h-full">
+                <div className="bg-gray-900 p-4 text-white flex flex-col justify-between h-full">
                     <div className="space-y-2">
                         <div className="flex justify-between items-center">
                             <label className="text-[8px] font-black text-gray-500 uppercase">Мин длина (сек)</label>
