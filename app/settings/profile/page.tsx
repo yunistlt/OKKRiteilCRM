@@ -125,7 +125,7 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="max-w-2xl">
+        <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-2">Профиль</h1>
             <p className="text-gray-500 mb-8 text-base">Управление личными данными и безопасностью аккаунта.</p>
 

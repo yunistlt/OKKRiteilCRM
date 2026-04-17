@@ -78,7 +78,7 @@ function QualityContent() {
     );
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50">
+        <div className="min-h-full w-full bg-gray-50 px-4 py-6 font-sans md:px-6 md:py-8">
             {/* Header */}
             <div className="mb-6 md:mb-10 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                 <div className="flex items-start gap-4">

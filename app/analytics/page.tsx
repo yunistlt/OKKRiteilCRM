@@ -5,7 +5,7 @@ import Link from 'next/link';
 
 function HubContent() {
     return (
-        <div className="max-w-5xl mx-auto px-2 md:px-0">
+        <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <div className="flex flex-col md:flex-row md:items-center gap-4 mb-10 md:mb-12">
                 <div className="flex items-center gap-4">
                     <Link href="/" className="p-2.5 md:p-3 bg-white rounded-xl md:rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all">

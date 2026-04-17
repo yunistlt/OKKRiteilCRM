@@ -672,8 +672,8 @@ export default function ReactivationPage() {
 
     return (
         <ProtectedRoute allowed={['admin', 'rop']}>
-        <div className="min-h-screen bg-zinc-950 text-white px-4 py-8 md:px-10">
-            <div className="max-w-7xl mx-auto space-y-8">
+        <div className="min-h-full bg-zinc-950 px-4 py-6 text-white md:px-6 md:py-8">
+            <div className="w-full space-y-8">
 
                 {/* Header */}
                 <div className="flex items-end justify-between">

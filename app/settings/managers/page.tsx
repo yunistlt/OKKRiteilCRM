@@ -83,7 +83,7 @@ export default function ManagerSettingsPage() {
     );
 
     return (
-        <div className="p-4 md:p-0 max-w-4xl mx-auto">
+        <div className="w-full px-4 py-6 md:px-6 md:py-8">
             {/* Compact Header */}
             <div className="flex flex-col gap-4 mb-6">
                 {/* Mobile-first text */}

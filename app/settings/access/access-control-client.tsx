@@ -170,7 +170,7 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     };
 
     return (
-        <div className="max-w-7xl px-2 md:px-0 space-y-5">
+        <div className="w-full space-y-5 px-4 py-6 md:px-6 md:py-8">
             <div>
                 <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-1">Доступы и права</h1>
                 <p className="text-sm md:text-base text-gray-500">Управление аккаунтами, ролями, бизнес-допусками и маршрутной матрицей доступа.</p>

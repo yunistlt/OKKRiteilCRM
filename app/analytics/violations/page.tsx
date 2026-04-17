@@ -119,7 +119,7 @@ function ViolationsContent() {
     );
 
     if (error) return (
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg">
                 <h3 className="font-bold">Ошибка загрузки данных</h3>
                 <p className="font-mono text-sm mt-2">{error}</p>
@@ -128,7 +128,7 @@ function ViolationsContent() {
     );
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans bg-gray-50 min-h-screen">
+        <div className="min-h-full w-full bg-gray-50 px-4 py-6 font-sans md:px-6 md:py-8">
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8 md:mb-10">
                 <div>
                     <h1 className="text-xl md:text-2xl lg:text-3xl font-extrabold text-gray-900 tracking-tight leading-tight">Нарушения Регламента</h1>

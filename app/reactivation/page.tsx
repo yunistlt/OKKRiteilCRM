@@ -48,7 +48,7 @@ export default function ReactivationDashboard() {
 
     return (
         <ProtectedRoute allowed={['admin', 'rop']}>
-        <div className="min-h-screen bg-gray-50 flex flex-col">
+        <div className="min-h-full bg-gray-50 flex flex-col">
             {/* Header */}
             <header className="bg-white border-b border-gray-100 px-8 py-6 flex items-center justify-between sticky top-0 z-10 shadow-sm">
                 <div className="flex items-center gap-4">
@@ -77,7 +77,7 @@ export default function ReactivationDashboard() {
             </header>
 
             {/* Content */}
-            <main className="flex-1 p-8 max-w-7xl mx-auto w-full">
+            <main className="flex-1 w-full px-4 py-6 md:px-6 md:py-8">
                 {loading ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-pulse">
                         {[1, 2, 3, 4].map(i => <div key={i} className="h-64 bg-white rounded-3xl border border-gray-100"></div>)}

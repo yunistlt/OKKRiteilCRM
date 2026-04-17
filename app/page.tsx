@@ -132,7 +132,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
 
     if (loading) return (
-        <div className={`w-full max-w-6xl mb-12 ${view === 'team' ? '' : 'bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50'} animate-pulse`}>
+        <div className={`mb-12 w-full ${view === 'team' ? '' : 'bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50'} animate-pulse`}>
             {view !== 'team' && <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="h-64 bg-gray-100 rounded-[32px]"></div>
@@ -170,7 +170,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
 
     if (view === 'team') {
         return (
-            <div className="w-full max-w-7xl animate-in fade-in duration-700">
+            <div className="w-full animate-in fade-in duration-700">
                 <div className="flex flex-col items-center mb-12">
                     <h2 className="text-3xl md:text-5xl font-black text-gray-900 mb-2 tracking-tight">Команда ИИ-агентов</h2>
                     <p className="text-gray-400 font-bold uppercase text-[10px] md:text-sm tracking-[0.2em]">Цифровые сотрудники OKKRiteilCRM</p>
@@ -348,7 +348,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     }
 
     return (
-        <div className="w-full max-w-6xl mb-12 bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
+        <div className="mb-12 w-full bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 md:w-12 md:h-12 bg-gray-900 text-white rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-lg flex-shrink-0">
@@ -711,11 +711,11 @@ function HomeContent() {
     }, [searchParams]);
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-[60vh] py-6 md:py-12">
+        <div className="flex min-h-[60vh] w-full flex-col justify-center px-4 py-6 md:px-6 md:py-8">
             <PriorityWidget view={view} setView={setView} />
 
             {view !== 'team' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full max-w-6xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+            <div className="grid w-full grid-cols-1 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 md:grid-cols-3 md:gap-6">
 
                 {/* Morning Sprint Card */}
                 <Link href="/efficiency"

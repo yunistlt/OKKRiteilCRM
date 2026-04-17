@@ -99,7 +99,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
     };
 
     return (
-        <div className="max-w-[1200px] mx-auto p-4 md:p-8 min-h-screen bg-white font-sans text-gray-800">
+        <div className="min-h-full w-full bg-white p-4 font-sans text-gray-800 md:p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-5 border-b border-gray-100">
                 <div className="flex items-center gap-4">
                     <a href="/" className="w-10 h-10 flex items-center justify-center bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">

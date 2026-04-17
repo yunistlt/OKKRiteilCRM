@@ -20,7 +20,7 @@ export default function DebugActionPage() {
     }
 
     return (
-        <div className="p-4 md:p-12 max-w-3xl mx-auto font-sans min-h-screen bg-gray-50 uppercase-none">
+        <div className="min-h-full w-full bg-gray-50 px-4 py-6 font-sans uppercase-none md:px-6 md:py-8">
             <div className="mb-8 md:mb-12">
                 <h1 className="text-2xl md:text-4xl font-black text-gray-900 tracking-tight leading-tight">Server Action Test</h1>
                 <p className="text-gray-400 font-bold uppercase text-[10px] md:text-xs tracking-widest mt-2 px-1">Isolation Testing</p>

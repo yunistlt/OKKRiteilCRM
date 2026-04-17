@@ -150,7 +150,7 @@ export default function ManagerProfilePage() {
     });
 
     return (
-        <div className="p-4 md:p-8 max-w-7xl mx-auto font-sans min-h-screen bg-gray-50 uppercase-none">
+        <div className="min-h-full w-full bg-gray-50 px-4 py-6 font-sans uppercase-none md:px-6 md:py-8">
             {/* Header */}
             <div className="mb-6 md:mb-10 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <button onClick={() => router.back()} className="p-3 bg-white rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all shrink-0">

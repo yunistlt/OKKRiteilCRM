@@ -14,7 +14,7 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
     const displayedRules = activeTab === 'active' ? activeRules : archivedRules;
 
     return (
-        <div className="p-4 md:p-8 max-w-4xl mx-auto">
+        <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                 <div>
                     <Link href="/violations" className="text-sm text-gray-500 hover:text-gray-900 mb-2 block">← Назад к журналу</Link>
