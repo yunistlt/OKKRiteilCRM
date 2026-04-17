@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -70,15 +70,11 @@ export async function POST(req: NextRequest) {
     });
 
     if (canonicalSync.queuedForTranscription) {
-      await safeEnqueueSystemJob({
-        jobType: 'call_transcription',
-        payload: {
-          telphin_call_id: call_id,
-          source: 'recording_webhook',
-          recording_url,
-        },
-        priority: 10,
-        idempotencyKey: `call_transcription:${call_id}`,
+      await safeEnqueueCallTranscriptionJob({
+        callId: call_id,
+        source: 'recording_webhook',
+        recordingUrl: recording_url,
+        startedAt: canonicalSync.startedAt,
       });
     }
 

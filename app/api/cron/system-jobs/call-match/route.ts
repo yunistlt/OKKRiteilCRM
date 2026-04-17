@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  calculateCallTranscriptionPriority,
   claimSystemJobs,
   completeSystemJob,
   enqueueCallSemanticRulesJob,
   enqueueOrderRefreshJob,
   failSystemJob,
   isSystemJobsPipelineEnabled,
+  safeEnqueueCallTranscriptionJob,
 } from '@/lib/system-jobs';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -89,6 +91,36 @@ export async function GET(req: NextRequest) {
           await saveMatches(matches);
 
           const uniqueOrderIds = Array.from(new Set(matches.map((match) => match.retailcrm_order_id)));
+          const { data: workingSettings } = await supabase
+            .from('status_settings')
+            .select('code')
+            .eq('is_working', true);
+
+          const workingCodes = new Set((workingSettings || []).map((item: any) => item.code));
+          const { data: matchedOrders } = await supabase
+            .from('orders')
+            .select('id, status')
+            .in('id', uniqueOrderIds);
+
+          const hasWorkingOrderMatch = (matchedOrders || []).some((order: any) => workingCodes.has(order.status));
+
+          if (callRow.recording_url && !callRow.transcript && callRow.transcription_status !== 'completed' && callRow.transcription_status !== 'processing' && callRow.transcription_status !== 'skipped') {
+            await safeEnqueueCallTranscriptionJob({
+              callId,
+              source: 'call_match_worker',
+              recordingUrl: callRow.recording_url,
+              startedAt: callRow.started_at,
+              hasWorkingOrderMatch,
+              priority: calculateCallTranscriptionPriority({
+                startedAt: callRow.started_at,
+                hasWorkingOrderMatch,
+              }),
+              payload: {
+                matched_order_ids: uniqueOrderIds,
+              },
+              parentJobId: job.id,
+            });
+          }
 
           if (callRow.transcription_status === 'completed' && callRow.transcript) {
             await enqueueCallSemanticRulesJob({

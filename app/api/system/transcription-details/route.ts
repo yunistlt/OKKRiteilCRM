@@ -31,39 +31,11 @@ export async function GET() {
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        // Fetch Queue (Pending)
-        const { data: pending, error: e1 } = await supabase
-            .from('raw_telphin_calls')
-            .select(`
+        const baseSelect = `
                 telphin_call_id,
                 started_at,
                 duration_sec,
-                call_order_matches!inner (
-                    orders!inner (
-                        order_id,
-                        number,
-                        status,
-                        totalsumm
-                    )
-                )
-            `)
-            .in('call_order_matches.orders.status', transcribableCodes)
-            .gte('started_at', thirtyDaysAgo.toISOString())
-            .gte('duration_sec', minDuration) // Apply Min Duration Filter
-            .is('transcript', null)
-            .is('raw_payload->transcript', null)
-            .order('started_at', { ascending: false })
-            .limit(50);
-
-        if (e1) throw e1;
-
-        // Fetch Completed
-        const { data: completed, error: e2 } = await supabase
-            .from('raw_telphin_calls')
-            .select(`
-                telphin_call_id,
-                started_at,
-                duration_sec,
+                transcription_status,
                 transcript,
                 call_order_matches!inner (
                     orders!inner (
@@ -73,14 +45,44 @@ export async function GET() {
                         totalsumm
                     )
                 )
-            `)
+            `;
+
+        // Fetch Queue (Ready)
+        const { data: queue, error: e1 } = await supabase
+            .from('raw_telphin_calls')
+            .select(baseSelect)
+            .in('call_order_matches.orders.status', transcribableCodes)
+            .gte('started_at', thirtyDaysAgo.toISOString())
+            .gte('duration_sec', minDuration) // Apply Min Duration Filter
+            .in('transcription_status', ['pending', 'ready_for_transcription'])
+            .order('started_at', { ascending: false })
+            .limit(50);
+
+        if (e1) throw e1;
+
+        // Fetch Processing
+        const { data: processing, error: e2 } = await supabase
+            .from('raw_telphin_calls')
+            .select(baseSelect)
+            .in('call_order_matches.orders.status', transcribableCodes)
+            .gte('started_at', thirtyDaysAgo.toISOString())
+            .eq('transcription_status', 'processing')
+            .order('started_at', { ascending: false })
+            .limit(50);
+
+        if (e2) throw e2;
+
+        // Fetch Completed
+        const { data: completed, error: e3 } = await supabase
+            .from('raw_telphin_calls')
+            .select(baseSelect)
             .in('call_order_matches.orders.status', transcribableCodes)
             .gte('started_at', thirtyDaysAgo.toISOString())
             .or('transcript.not.is.null,raw_payload->>transcript.not.is.null')
             .order('started_at', { ascending: false })
             .limit(50);
 
-        if (e2) throw e2;
+        if (e3) throw e3;
 
         const formatCall = (c: any) => {
             const order = c.call_order_matches?.[0]?.orders;
@@ -95,12 +97,14 @@ export async function GET() {
                     status_name: statusInfo?.name || order.status,
                     status_color: statusInfo?.color || '#333333'
                 } : null,
+                transcription_status: c.transcription_status || null,
                 transcript_preview: c.transcript ? c.transcript.substring(0, 50) + '...' : null
             };
         };
 
         return NextResponse.json({
-            queue: (pending || []).map(formatCall),
+            queue: (queue || []).map(formatCall),
+            processing: (processing || []).map(formatCall),
             completed: (completed || []).map(formatCall)
         });
 

@@ -170,6 +170,69 @@ export async function safeEnqueueCallSemanticRulesJob(input: EnqueueCallSemantic
   return safeEnqueueSystemJob(buildCallSemanticRulesJobInput(input));
 }
 
+interface CalculateCallTranscriptionPriorityInput {
+  startedAt?: string | null;
+  hasWorkingOrderMatch?: boolean;
+}
+
+export function calculateCallTranscriptionPriority(input: CalculateCallTranscriptionPriorityInput) {
+  const startedAt = input.startedAt ? new Date(input.startedAt) : null;
+  const ageMinutes = startedAt ? (Date.now() - startedAt.getTime()) / 60000 : null;
+
+  let priority = 18;
+
+  if (ageMinutes !== null) {
+    if (ageMinutes <= 15) priority = 6;
+    else if (ageMinutes <= 60) priority = 8;
+    else if (ageMinutes <= 6 * 60) priority = 12;
+  }
+
+  if (input.hasWorkingOrderMatch) {
+    priority = Math.max(1, priority - 4);
+  }
+
+  return priority;
+}
+
+interface EnqueueCallTranscriptionJobInput {
+  callId: string;
+  recordingUrl: string;
+  source: string;
+  startedAt?: string | null;
+  hasWorkingOrderMatch?: boolean;
+  priority?: number;
+  payload?: Record<string, any>;
+  maxAttempts?: number;
+  parentJobId?: number | null;
+}
+
+function buildCallTranscriptionJobInput(input: EnqueueCallTranscriptionJobInput): EnqueueSystemJobInput {
+  return {
+    jobType: 'call_transcription',
+    payload: {
+      ...(input.payload || {}),
+      telphin_call_id: input.callId,
+      source: input.source,
+      recording_url: input.recordingUrl,
+    },
+    priority: input.priority ?? calculateCallTranscriptionPriority({
+      startedAt: input.startedAt,
+      hasWorkingOrderMatch: input.hasWorkingOrderMatch,
+    }),
+    idempotencyKey: `call_transcription:${input.callId}`,
+    maxAttempts: input.maxAttempts ?? 5,
+    parentJobId: input.parentJobId ?? null,
+  };
+}
+
+export async function enqueueCallTranscriptionJob(input: EnqueueCallTranscriptionJobInput) {
+  return enqueueSystemJob(buildCallTranscriptionJobInput(input));
+}
+
+export async function safeEnqueueCallTranscriptionJob(input: EnqueueCallTranscriptionJobInput) {
+  return safeEnqueueSystemJob(buildCallTranscriptionJobInput(input));
+}
+
 function buildManagerAggregateRefreshIdempotencyKey(params: {
   managerId: number | string;
   windowSeconds?: number;

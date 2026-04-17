@@ -36,11 +36,11 @@ export async function GET() {
 
         const transcribableCodes = (transcribableSettings || []).map(s => s.code);
 
-        // 4. Count "Transcribed Matches"
+        // 4. Count transcription states for transcribable matched calls
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-        const { count: transcribedCount, error: e3 } = await supabase
+        const baseCallsQuery = () => supabase
             .from('raw_telphin_calls')
             .select(`
                 telphin_call_id,
@@ -51,28 +51,27 @@ export async function GET() {
                 )
             `, { count: 'exact', head: true })
             .in('call_order_matches.orders.status', transcribableCodes)
-            .gte('started_at', thirtyDaysAgo.toISOString())
-            .or('transcript.not.is.null,raw_payload->>transcript.not.is.null');
+            .gte('started_at', thirtyDaysAgo.toISOString());
+
+        const [
+            { count: transcribedCount, error: e3 },
+            { count: queuedCount, error: e4 },
+            { count: processingCount, error: e5 },
+            { count: failedCount, error: e6 },
+            { count: skippedCount, error: e7 },
+        ] = await Promise.all([
+            baseCallsQuery().or('transcript.not.is.null,raw_payload->>transcript.not.is.null'),
+            baseCallsQuery().in('transcription_status', ['pending', 'ready_for_transcription']),
+            baseCallsQuery().eq('transcription_status', 'processing'),
+            baseCallsQuery().eq('transcription_status', 'failed'),
+            baseCallsQuery().eq('transcription_status', 'skipped'),
+        ]);
 
         if (e3) throw e3;
-
-        // 5. Count "Pending Matches"
-        const { count: pendingCount, error: e4 } = await supabase
-            .from('raw_telphin_calls')
-            .select(`
-                telphin_call_id,
-                call_order_matches!inner (
-                    orders!inner (
-                        status
-                    )
-                )
-            `, { count: 'exact', head: true })
-            .in('call_order_matches.orders.status', transcribableCodes)
-            .gte('started_at', thirtyDaysAgo.toISOString())
-            .is('transcript', null)
-            .is('raw_payload->transcript', null);
-
         if (e4) throw e4;
+        if (e5) throw e5;
+        if (e6) throw e6;
+        if (e7) throw e7;
 
         // 6. Hourly Trends for the last 24 hours
         const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -125,7 +124,10 @@ export async function GET() {
                 workingOrders: workingOrdersCount || 0,
                 matchedCalls: matchedCallsCount || 0,
                 transcribedCalls: transcribedCount || 0,
-                pendingCalls: pendingCount || 0,
+                queuedCalls: queuedCount || 0,
+                processingCalls: processingCount || 0,
+                failedCalls: failedCount || 0,
+                skippedCalls: skippedCount || 0,
                 trends: {
                     matches: groupStatsByHour(matchedTrend, 'matched_at'),
                     transcriptions: groupStatsByHour(transcribedTrend, 'started_at'),

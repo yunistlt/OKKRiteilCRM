@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getTelphinToken } from '@/lib/telphin';
-import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 // Helper to format date for Telphin: YYYY-MM-DD HH:mm:ss
 function formatTelphinDate(date: Date) {
@@ -223,15 +223,11 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                 });
 
                 if (rawCall.recording_url) {
-                    await safeEnqueueSystemJob({
-                        jobType: 'call_transcription',
-                        payload: {
-                            telphin_call_id: rawCall.telphin_call_id,
-                            source: 'telphin_fallback_sync',
-                            recording_url: rawCall.recording_url,
-                        },
-                        priority: 10,
-                        idempotencyKey: `call_transcription:${rawCall.telphin_call_id}`,
+                    await safeEnqueueCallTranscriptionJob({
+                        callId: rawCall.telphin_call_id,
+                        source: 'telphin_fallback_sync',
+                        recordingUrl: rawCall.recording_url,
+                        startedAt: rawCall.started_at,
                     });
                 }
             }

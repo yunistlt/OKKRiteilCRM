@@ -31,12 +31,32 @@ interface DbStats {
     workingOrders: number;
     matchedCalls: number;
     transcribedCalls: number;
-    pendingCalls: number;
+    queuedCalls: number;
+    processingCalls: number;
+    failedCalls: number;
+    skippedCalls: number;
     trends?: {
         matches: number[];
         transcriptions: number[];
         evaluations: number[];
     };
+}
+
+interface TranscriptionDetailItem {
+    id: string;
+    date: string;
+    duration: number;
+    transcription_status?: string | null;
+    order: {
+        number?: string | null;
+    } | null;
+    transcript_preview?: string | null;
+}
+
+interface TranscriptionDetails {
+    queue: TranscriptionDetailItem[];
+    processing: TranscriptionDetailItem[];
+    completed: TranscriptionDetailItem[];
 }
 
 interface RuleItem {
@@ -417,8 +437,12 @@ export default function SystemStatusPage() {
 
     // --- State: Transcription Details ---
     const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
-    const [transcriptionDetails, setTranscriptionDetails] = useState<{ queue: any[], completed: any[] } | null>(null);
+    const [transcriptionDetails, setTranscriptionDetails] = useState<TranscriptionDetails | null>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
+    const activeTranscriptionCalls = (dbStats?.queuedCalls || 0) + (dbStats?.processingCalls || 0);
+    const transcriptionCompletionRate = dbStats
+        ? Math.round((dbStats.transcribedCalls / (dbStats.transcribedCalls + activeTranscriptionCalls || 1)) * 100)
+        : 0;
 
     const fetchTranscriptionDetails = async () => {
         setLoadingDetails(true);
@@ -786,10 +810,28 @@ export default function SystemStatusPage() {
                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Транскрибация</h3>
                     <div className="flex items-center justify-between text-[11px] font-black text-purple-600 mb-1">
                         <span>Готово</span>
-                        <span>{dbStats ? Math.round((dbStats.transcribedCalls / (dbStats.transcribedCalls + dbStats.pendingCalls || 1)) * 100) : 0}%</span>
+                        <span>{transcriptionCompletionRate}%</span>
                     </div>
                     <div className="w-full h-1 bg-purple-50 rounded-full overflow-hidden mb-3">
-                        <div className="h-full bg-purple-500" style={{ width: `${dbStats ? Math.round((dbStats.transcribedCalls / (dbStats.transcribedCalls + dbStats.pendingCalls || 1)) * 100) : 0}%` }}></div>
+                        <div className="h-full bg-purple-500" style={{ width: `${transcriptionCompletionRate}%` }}></div>
+                    </div>
+                    <div className="space-y-1 text-[8px] font-black uppercase tracking-wide mb-3">
+                        <div className="flex items-center justify-between text-purple-600">
+                            <span>В очереди</span>
+                            <span>{dbStats?.queuedCalls || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-blue-600">
+                            <span>В обработке</span>
+                            <span>{dbStats?.processingCalls || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-red-600">
+                            <span>Ошибки</span>
+                            <span>{dbStats?.failedCalls || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-gray-500">
+                            <span>Skip</span>
+                            <span>{dbStats?.skippedCalls || 0}</span>
+                        </div>
                     </div>
                     <button onClick={fetchTranscriptionDetails} className="w-full py-1.5 bg-purple-50 text-purple-600 rounded-lg text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white">
                         ОЧЕРЕДЬ
@@ -831,10 +873,10 @@ export default function SystemStatusPage() {
                             <h1 className="text-lg font-black text-gray-900 tracking-tighter uppercase">Очередь Транскрибации</h1>
                             <button onClick={() => setShowTranscriptionModal(false)} className="text-gray-400 hover:text-black font-bold">✕</button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-5 grid grid-cols-2 gap-6">
+                        <div className="flex-1 overflow-y-auto p-5 grid grid-cols-1 lg:grid-cols-3 gap-6">
                             <div className="space-y-2">
                                 <h4 className="font-black text-purple-600 uppercase">В очереди ({transcriptionDetails.queue.length})</h4>
-                                {transcriptionDetails.queue.slice(0, 15).map((item: any) => (
+                                {transcriptionDetails.queue.slice(0, 15).map((item) => (
                                     <div key={item.id} className="p-2 border border-gray-50 rounded-lg flex justify-between items-center">
                                         <span className="font-black text-gray-800">#{item.order?.number || '??'}</span>
                                         <span className="text-gray-400 font-bold">{item.duration} сек</span>
@@ -842,8 +884,17 @@ export default function SystemStatusPage() {
                                 ))}
                             </div>
                             <div className="space-y-2">
+                                <h4 className="font-black text-blue-600 uppercase">В обработке ({transcriptionDetails.processing.length})</h4>
+                                {transcriptionDetails.processing.slice(0, 15).map((item) => (
+                                    <div key={item.id} className="p-2 border border-gray-50 rounded-lg flex justify-between items-center text-blue-600">
+                                        <span className="font-black">#{item.order?.number || '??'}</span>
+                                        <span className="font-bold">PROCESSING</span>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="space-y-2">
                                 <h4 className="font-black text-green-600 uppercase">Готово ({transcriptionDetails.completed.length})</h4>
-                                {transcriptionDetails.completed.slice(0, 15).map((item: any) => (
+                                {transcriptionDetails.completed.slice(0, 15).map((item) => (
                                     <div key={item.id} className="p-2 border border-gray-50 rounded-lg flex justify-between items-center text-green-600">
                                         <span className="font-black">#{item.order?.number || '??'}</span>
                                         <span className="font-bold">ГОТОВО</span>
