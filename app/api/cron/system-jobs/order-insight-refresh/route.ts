@@ -12,6 +12,7 @@ import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-st
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.order_insight_refresh';
+const MAX_INSIGHT_CONCURRENCY = 1;
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -31,8 +32,10 @@ export async function GET(req: NextRequest) {
     const claimed = await claimSystemJobs({
       workerId: `order-insight-refresh:${Date.now()}`,
       jobTypes: ['order_insight_refresh'],
-      limit: 1,
+      limit: MAX_INSIGHT_CONCURRENCY,
       lockSeconds: 300,
+      maxProcessing: MAX_INSIGHT_CONCURRENCY,
+      concurrencyKey: 'system_jobs.order_insight_refresh',
     });
 
     if (!claimed.length) {

@@ -70,7 +70,10 @@
 - [ ] Ограничить concurrency AI insights до 1-2 параллельных задач на старте.
 - [ ] Ограничить concurrency scoring по заказам до 2 параллельных задач на старте.
 - [x] Ввести отдельные retry-правила для сетевых ошибок, таймаутов скачивания записи и ошибок OpenAI.
-- [ ] Ввести dead-letter очередь для задач, которые не прошли после N попыток.
+- [x] Ограничить concurrency транскрибации до 2 параллельных задач на старте.
+- [x] Ограничить concurrency AI insights до 1 параллельной задачи на старте.
+- [x] Ограничить concurrency scoring по заказам до 2 параллельных задач на старте.
+- [x] Ввести dead-letter очередь для задач, которые не прошли после N попыток.
 
 ## 4. Целевая схема near realtime pipeline
 
@@ -107,6 +110,7 @@
 - [ ] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать dead-letter слой для ручного разбора.
+- [x] Для `call_transcription`, `order_insight_refresh` и `order_score_refresh` concurrency теперь enforced в `claim_system_jobs` на уровне БД через advisory lock + global max processing cap, а не только локальным `limit` одного route-вызова.
 
 ## 7. Этап 3. RetailCRM near realtime sync
 

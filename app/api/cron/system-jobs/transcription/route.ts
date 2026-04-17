@@ -15,6 +15,7 @@ import { supabase } from '@/utils/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.transcription';
+const MAX_TRANSCRIPTION_CONCURRENCY = 2;
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
@@ -35,8 +36,10 @@ export async function GET(req: NextRequest) {
     const claimed = await claimSystemJobs({
       workerId,
       jobTypes: ['call_transcription'],
-      limit: 2,
+      limit: MAX_TRANSCRIPTION_CONCURRENCY,
       lockSeconds: 240,
+      maxProcessing: MAX_TRANSCRIPTION_CONCURRENCY,
+      concurrencyKey: 'system_jobs.call_transcription',
     });
 
     if (!claimed.length) {

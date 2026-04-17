@@ -285,12 +285,16 @@ export async function claimSystemJobs(params: {
   jobTypes?: SystemJobType[];
   limit?: number;
   lockSeconds?: number;
+  maxProcessing?: number | null;
+  concurrencyKey?: string | null;
 }) {
   const { data, error } = await supabase.rpc('claim_system_jobs', {
     p_worker_id: params.workerId,
     p_job_types: params.jobTypes || null,
     p_limit: params.limit ?? 10,
     p_lock_seconds: params.lockSeconds ?? 300,
+    p_max_processing: params.maxProcessing ?? null,
+    p_concurrency_key: params.concurrencyKey ?? null,
   });
 
   if (error) throw error;
