@@ -1,10 +1,17 @@
 
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Max 5 minutes for Pro plan
 
-export async function GET(request: Request) {
+function ensureAuthorized(req: NextRequest) {
+    const authHeader = req.headers.get('authorization');
+    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        throw new Error('Unauthorized');
+    }
+}
+
+export async function GET(request: NextRequest) {
     const baseUrl = new URL(request.url).origin;
     const report: string[] = [];
     const startTime = Date.now();
@@ -23,6 +30,7 @@ export async function GET(request: Request) {
     };
 
     try {
+        ensureAuthorized(request);
         console.log('--- CRON STARTED ---');
 
         // NOTE: Telphin, RetailCRM, and History syncs are now handled by separate Vercel Crons
@@ -96,6 +104,10 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('CRON Fatal Error:', error);
-        return NextResponse.json({ success: false, error: error.message, report }, { status: 500 });
+        const isUnauthorized = error.message === 'Unauthorized';
+        return NextResponse.json(
+            { success: false, error: error.message, report },
+            { status: isUnauthorized ? 401 : 500 }
+        );
     }
 }
