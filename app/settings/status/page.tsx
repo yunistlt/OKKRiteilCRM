@@ -419,7 +419,7 @@ export default function SystemStatusPage() {
 
     const getRusServiceName = (name: string) => {
         if (name.includes('Telphin Fallback')) return 'Fallback Sync Telphin';
-        if (name.includes('Telphin Legacy Compat')) return 'Legacy Совместимость Telphin';
+        if (name.includes('Telphin Legacy Compat')) return 'Compat-Слой Telphin';
         if (name.includes('Telphin Backfill Sweep')) return 'Fallback Sweep Telphin';
         if (name.includes('Matching Backfill Sweep')) return 'Fallback Sweep Матчинга Backfill';
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
@@ -1182,7 +1182,7 @@ export default function SystemStatusPage() {
                             </div>
                         </div>
                         <div>
-                            <div className="text-[8px] font-black text-gray-500 uppercase mb-1">Telphin legacy compat</div>
+                            <div className="text-[8px] font-black text-gray-500 uppercase mb-1">Telphin compat layer</div>
                             <select
                                 value={telphinLegacyCompatOverride}
                                 onChange={(e) => setTelphinLegacyCompatOverride(e.target.value as TelphinLegacyCompatOverride)}
@@ -1193,7 +1193,7 @@ export default function SystemStatusPage() {
                                 <option value="disabled">Принудительно OFF</option>
                             </select>
                             <div className="mt-1 text-[8px] font-bold uppercase tracking-wide text-gray-400">
-                                Сейчас эффективно: {telphinLegacyCompatEffectiveEnabled ? 'legacy compat ON' : 'legacy compat OFF'}
+                                Сейчас эффективно: {telphinLegacyCompatEffectiveEnabled ? 'compat layer ON' : 'compat layer OFF'}
                             </div>
                         </div>
                         <div className="flex justify-between items-center">

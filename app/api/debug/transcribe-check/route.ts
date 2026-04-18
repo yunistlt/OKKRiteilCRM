@@ -28,7 +28,7 @@ export async function GET(req: Request) {
             .eq('transcription_status', 'ready_for_transcription');
 
         log(`Calls with status NULL: ${nullCount}`);
-        log(`Calls with status 'pending' (legacy alias): ${pendingCount}`);
+        log(`Calls with status 'pending' (backward-compat alias for transcription queue): ${pendingCount}`);
         log(`Calls with status 'ready_for_transcription': ${readyCount}`);
 
         // 2. Check Status Settings
@@ -78,8 +78,13 @@ export async function GET(req: Request) {
 
             const isReady = c.transcription_status === 'pending' || c.transcription_status === 'ready_for_transcription';
             const hitsConfig = statuses.some((s: string) => transcribableCodes.includes(s));
+            const statusMeaning = c.transcription_status === 'pending'
+                ? 'pending/backward-compat'
+                : c.transcription_status === 'ready_for_transcription'
+                ? 'ready_for_transcription/canonical'
+                : c.transcription_status;
 
-            log(`Call ${c.telphin_call_id}: Status='${c.transcription_status}', OrderStatuses=[${statuses.join(', ')}] -> Ready for transcription? ${isReady && hitsConfig ? 'YES' : 'NO'}`);
+            log(`Call ${c.telphin_call_id}: Status='${statusMeaning}', OrderStatuses=[${statuses.join(', ')}] -> Ready for transcription? ${isReady && hitsConfig ? 'YES' : 'NO'}`);
         });
 
         return NextResponse.json({ logs });

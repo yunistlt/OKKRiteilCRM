@@ -122,7 +122,7 @@ export async function GET(req: Request) {
                     if (realtimePipelineEnabled) {
                         await safeEnqueueCallSemanticRulesJob({
                             callId: call.telphin_call_id || String(call.event_id),
-                            source: 'legacy_transcribe_cron',
+                            source: 'transcription_fallback_cron',
                             payload: {
                                 retailcrm_order_ids: (call.matches || []).map((match: any) => match.retailcrm_order_id),
                             },
