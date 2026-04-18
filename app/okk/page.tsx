@@ -700,6 +700,7 @@ function OKKContent() {
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [consultantOrderId, setConsultantOrderId] = useState<number | null>(null);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
+    const [availableStatuses, setAvailableStatuses] = useState<Array<{ code: string, label: string, color: string | null }>>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => loadHiddenColumns());
     const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
@@ -758,6 +759,7 @@ function OKKContent() {
             const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
             setScores(Array.isArray(json.scores) ? json.scores : []);
+            setAvailableStatuses(Array.isArray(json.availableStatuses) ? json.availableStatuses : []);
             if (json.pagination) {
                 setPagination(prev => ({ ...prev, ...json.pagination }));
             }
@@ -911,21 +913,6 @@ function OKKContent() {
     }, [consultantOrder, setSelectedOrder]);
 
     // Удален локальный расчет avgScore так как получаем его с бекенда
-
-
-    const statusMap = new Map<string, { label: string, color?: string }>();
-    scores.forEach(s => {
-        if (s.order_status && !statusMap.has(s.order_status)) {
-            statusMap.set(s.order_status, {
-                label: s.status_label || s.order_status,
-                color: s.status_color
-            });
-        }
-    });
-    const availableStatuses = Array.from(statusMap.entries()).map(([code, meta]) => ({
-        code,
-        ...meta
-    })).sort((a, b) => a.label.localeCompare(b.label));
 
     const handleSort = (key: string) => {
         if (sortBy === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');

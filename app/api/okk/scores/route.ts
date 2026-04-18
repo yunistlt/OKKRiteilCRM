@@ -23,11 +23,17 @@ export async function GET(req: Request) {
     const pageSize = parseInt(searchParams.get('pageSize') || '50');
     let filterManager = searchParams.get('manager');
     const filterStatus = searchParams.get('status');
+    const selectedStatuses = (filterStatus || '').split(',').filter(Boolean);
 
     // Насильно применяем фильтр для менеджера
     if (capability.dataScope === 'own' && retailCrmId) {
         filterManager = String(retailCrmId);
     }
+
+    const selectedManagerIds = (filterManager || '')
+        .split(',')
+        .map(m => parseInt(m, 10))
+        .filter(m => !isNaN(m));
 
     // 1. Получаем рабочие статусы
     const { data: settings } = await readClient
@@ -37,26 +43,29 @@ export async function GET(req: Request) {
 
     const workingStatuses = (settings || []).map(s => s.code);
 
+    const applyOrdersFilters = (query: any, options?: { includeStatusFilter?: boolean }) => {
+        const includeStatusFilter = options?.includeStatusFilter ?? true;
+
+        let nextQuery = query
+            .in('status', workingStatuses)
+            .lt('order_id', 99900000);
+
+        if (includeStatusFilter && selectedStatuses.length > 0) {
+            nextQuery = nextQuery.in('status', selectedStatuses);
+        }
+
+        if (selectedManagerIds.length > 0) {
+            nextQuery = nextQuery.in('manager_id', selectedManagerIds);
+        }
+
+        return nextQuery;
+    };
+
     // 2. Базовый запрос к orders (все активные)
-    let ordersQuery = readClient
+    let ordersQuery = applyOrdersFilters(readClient
         .from('orders')
         .select('order_id, status, created_at, manager_id, totalsumm, raw_payload', { count: 'exact' })
-        .in('status', workingStatuses)
-        .lt('order_id', 99900000); // Игнорируем тестовые
-
-    if (filterStatus) {
-        const statuses = filterStatus.split(',').filter(Boolean);
-        if (statuses.length > 0) {
-            ordersQuery = ordersQuery.in('status', statuses);
-        }
-    }
-
-    if (filterManager) {
-        const managerIds = filterManager.split(',').map(m => parseInt(m, 10)).filter(m => !isNaN(m));
-        if (managerIds.length > 0) {
-            ordersQuery = ordersQuery.in('manager_id', managerIds);
-        }
-    }
+    );
 
     // Пагинация
     const fromIdx = (page - 1) * pageSize;
@@ -109,6 +118,34 @@ export async function GET(req: Request) {
             .in('code', statusCodes);
 
         statusMap = Object.fromEntries((statuses || []).map(s => [s.code, { name: s.name, color: s.color }]));
+    }
+
+    // 5b. Загружаем все статусы для фильтра по текущему массиву заказов без ограничения page/pageSize.
+    const { data: statusOrders } = await applyOrdersFilters(
+        readClient
+            .from('orders')
+            .select('status'),
+        { includeStatusFilter: false }
+    );
+
+    const availableStatusCodes = Array.from(new Set(
+        [...(statusOrders || []).map(order => order.status).filter(Boolean), ...selectedStatuses]
+    ));
+
+    let availableStatuses: Array<{ code: string; label: string; color: string | null }> = [];
+    if (availableStatusCodes.length > 0) {
+        const { data: availableStatusRows } = await readClient
+            .from('statuses')
+            .select('code, name, color')
+            .in('code', availableStatusCodes);
+
+        availableStatuses = (availableStatusRows || [])
+            .map(status => ({
+                code: status.code,
+                label: status.name || status.code,
+                color: status.color || null,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
     }
 
     // 6. Получаем реальные нарушения из okk_violations
@@ -176,7 +213,11 @@ export async function GET(req: Request) {
 
     // B. Средний по текущим фильтрам (но без учета пагинации, то есть для ВСЕХ заказов под фильтрами)
     // First, get all order IDs matching the current FILTERS (ignoring page/pageSize)
-    const { data: filteredOrdersAllPages } = await ordersQuery.select('order_id');
+    const { data: filteredOrdersAllPages } = await applyOrdersFilters(
+        readClient
+            .from('orders')
+            .select('order_id')
+    );
     const filteredOrderIds = (filteredOrdersAllPages || []).map(o => o.order_id);
 
     if (filteredOrderIds.length > 0) {
@@ -212,6 +253,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
         scores: enriched,
+        availableStatuses,
         averages: {
             totalAvgScore,
             filteredAvgScore
