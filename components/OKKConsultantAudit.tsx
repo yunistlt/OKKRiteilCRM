@@ -26,6 +26,25 @@ type TraceMessage = {
     metadata?: Record<string, any> | null;
 };
 
+function inferLegacyReplyKind(metadata: Record<string, any> | null | undefined): string | null {
+    if (!metadata || typeof metadata !== 'object') return null;
+    if (typeof metadata.replyKind === 'string') return metadata.replyKind;
+    if (typeof metadata.criterion_key === 'string' && metadata.criterion_key) return 'criterion';
+    if (metadata.fallbackPromptKey || metadata.fallbackKnowledgeHits) return 'fallback';
+
+    switch (metadata.intent) {
+        case 'source': return 'order-source';
+        case 'score': return 'score';
+        case 'proof': return 'proof';
+        case 'technical': return 'technical';
+        case 'fix': return 'fix';
+        case 'failures': return 'failures';
+        case 'ambiguous': return 'ambiguous';
+        case 'missing': return 'missing';
+        default: return null;
+    }
+}
+
 export default function OKKConsultantAudit() {
     const [logs, setLogs] = useState<AuditLog[]>([]);
     const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
@@ -38,6 +57,18 @@ export default function OKKConsultantAudit() {
 
     const intents = useMemo(() => Array.from(new Set(logs.map((log) => log.intent).filter(Boolean))) as string[], [logs]);
     const selectedLog = useMemo(() => logs.find((log) => log.trace_id === selectedTraceId) || null, [logs, selectedTraceId]);
+    const selectedAgentMetadata = useMemo(
+        () => [...traceMessages].reverse().find((message) => message.role === 'agent')?.metadata || null,
+        [traceMessages],
+    );
+    const auditReplyKind = useMemo(
+        () => inferLegacyReplyKind(selectedAgentMetadata),
+        [selectedAgentMetadata],
+    );
+    const auditRoutingKind = useMemo(() => {
+        if (typeof selectedAgentMetadata?.routingKind === 'string') return selectedAgentMetadata.routingKind;
+        return auditReplyKind;
+    }, [auditReplyKind, selectedAgentMetadata]);
 
     async function loadLogs(traceId?: string | null) {
         const params = new URLSearchParams();
@@ -214,6 +245,8 @@ export default function OKKConsultantAudit() {
                                             <div><span className="font-black text-stone-900">trace_id:</span> {selectedLog.trace_id}</div>
                                             <div><span className="font-black text-stone-900">thread_id:</span> {selectedLog.thread_id}</div>
                                             <div><span className="font-black text-stone-900">criterion:</span> {selectedLog.criterion_key || '—'}</div>
+                                            <div><span className="font-black text-stone-900">routing:</span> {auditRoutingKind || '—'}</div>
+                                            <div><span className="font-black text-stone-900">reply_kind:</span> {auditReplyKind || '—'}</div>
                                             <div><span className="font-black text-stone-900">fallback:</span> {selectedLog.used_fallback ? 'да' : 'нет'}</div>
                                             <div><span className="font-black text-stone-900">created_at:</span> {new Date(selectedLog.created_at).toLocaleString('ru-RU')}</div>
                                         </div>

@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 import postgres from 'postgres';
 import { formatConsultantKnowledgeForEmbedding, generateEmbedding } from '../lib/embeddings';
-import { getConsultantCatalog } from '../lib/okk-consultant';
+import { buildConsultantKnowledgeSeedRows, type ConsultantKnowledgeSeedRow } from '../lib/okk-consultant-kb';
 import { DEFAULT_CONSULTANT_PROMPTS } from '../lib/okk-consultant-ai';
 
 dotenv.config({ path: '.env.local' });
@@ -13,92 +13,6 @@ if (!databaseUrl) {
 }
 
 const sql = postgres(databaseUrl, { ssl: 'require' });
-
-type SeedRow = {
-    slug: string;
-    type: string;
-    sectionKey: string | null;
-    title: string;
-    content: string;
-    tags: string[];
-    sourceRef: string;
-    metadata?: Record<string, any>;
-};
-
-function buildSeedRows(): SeedRow[] {
-    const catalog = getConsultantCatalog();
-    const rows: SeedRow[] = [];
-
-    for (const [formulaKey, formulaValue] of Object.entries(catalog.formulas)) {
-        rows.push({
-            slug: `formula:${formulaKey}`,
-            type: 'formula',
-            sectionKey: 'quality-dashboard',
-            title: formulaKey,
-            content: String(formulaValue),
-            tags: [formulaKey, 'formula', 'score'],
-            sourceRef: `formula:${formulaKey}`,
-        });
-    }
-
-    for (const term of catalog.glossary) {
-        rows.push({
-            slug: `glossary:${term.key}`,
-            type: 'glossary',
-            sectionKey: 'quality-dashboard',
-            title: term.term,
-            content: `${term.definition}\nСвязанные обозначения: ${[term.key, ...term.aliases].join(', ')}.`,
-            tags: [term.key, ...term.aliases],
-            sourceRef: `glossary:${term.key}`,
-        });
-    }
-
-    for (const criterion of catalog.criteria) {
-        rows.push({
-            slug: `criterion:${criterion.key}`,
-            type: 'criterion',
-            sectionKey: 'quality-dashboard',
-            title: criterion.label,
-            content: [
-                `Кто проверяет: ${criterion.owner}.`,
-                `Группа: ${criterion.group}.`,
-                `Как проверяется: ${criterion.howChecked}`,
-                `Источники данных: ${criterion.dataSources.join('; ')}.`,
-                `Когда это норма: ${criterion.whyPass}`,
-                `Когда это провал: ${criterion.whyFail}`,
-                `Как исправить: ${criterion.howToFix}`,
-            ].join('\n'),
-            tags: [criterion.key, criterion.group, criterion.owner, ...criterion.aliases],
-            sourceRef: `criterion:${criterion.key}`,
-        });
-    }
-
-    for (const section of catalog.sections) {
-        rows.push({
-            slug: `section:${section.key}`,
-            type: 'section_overview',
-            sectionKey: section.key,
-            title: section.title,
-            content: section.overviewAnswer || section.summary,
-            tags: [section.key, section.shortTitle, ...section.pathPrefixes],
-            sourceRef: `section:${section.key}`,
-        });
-
-        for (const topic of section.topics) {
-            rows.push({
-                slug: `section-topic:${section.key}:${topic.key}`,
-                type: 'section_topic',
-                sectionKey: section.key,
-                title: `${section.title}: ${topic.title}`,
-                content: topic.answer,
-                tags: [section.key, topic.key, ...topic.aliases],
-                sourceRef: `section-topic:${section.key}:${topic.key}`,
-            });
-        }
-    }
-
-    return rows;
-}
 
 async function ensureConsultantPrompts() {
     const rows = Object.values(DEFAULT_CONSULTANT_PROMPTS).map((prompt) => ({
@@ -154,7 +68,7 @@ async function ensureConsultantPrompts() {
 }
 
 async function seedKnowledgeBase() {
-    const rows = buildSeedRows();
+    const rows: ConsultantKnowledgeSeedRow[] = buildConsultantKnowledgeSeedRows();
     console.log(`Seeding ${rows.length} consultant KB rows`);
 
     for (const row of rows) {

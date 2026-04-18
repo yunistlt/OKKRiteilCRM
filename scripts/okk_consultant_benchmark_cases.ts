@@ -1,6 +1,6 @@
 export type BenchmarkCase = {
     id: string;
-    category: 'reference' | 'proof' | 'missing' | 'ambiguous' | 'historical' | 'paraphrase' | 'ui' | 'section';
+    category: 'reference' | 'proof' | 'missing' | 'ambiguous' | 'historical' | 'paraphrase' | 'ui' | 'section' | 'privacy' | 'formula';
     description: string;
     expectedFragments: string[];
     forbiddenFragments?: string[];
@@ -25,6 +25,20 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         description: 'Вопрос что такое SLA должен возвращать определение термина, а не уходить в частный критерий.',
         expectedFragments: ['SLA', 'Норматив по срокам реакции'],
         forbiddenFragments: ['Лид в работе менее суток с даты поступления'],
+    },
+    {
+        id: 'formula-total-score-specific',
+        category: 'formula',
+        description: 'Формульный вопрос по total_score должен возвращать именно формулу total_score, а не общий справочник.',
+        expectedFragments: ['Формула total_score', 'Что считается:', 'deal_score_pct, script_score_pct и штрафы'],
+        forbiddenFragments: ['Простыми словами:', 'Связанные обозначения:'],
+    },
+    {
+        id: 'formula-script-score-specific',
+        category: 'formula',
+        description: 'Формульный вопрос по script_score должен объяснять перевод процента в балльную шкалу.',
+        expectedFragments: ['Формула script_score', 'уже рассчитанный script_score_pct', 'балльную шкалу'],
+        forbiddenFragments: ['Простыми словами:', 'Итоговый процент ОКК'],
     },
     {
         id: 'missing-data-explicit-limitation',
@@ -55,6 +69,12 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         category: 'reference',
         description: 'Source-объяснение по критерию должно отделять факт и ограничение.',
         expectedFragments: ['Факт:', 'Источник результата:'],
+    },
+    {
+        id: 'criterion-fix-human-friendly',
+        category: 'reference',
+        description: 'Fix-объяснение по критерию должно использовать human-friendly формулировку вместо сухого инфинитива.',
+        expectedFragments: ['Что нужно сделать:', 'Чтобы исправить ситуацию, нужно'],
     },
     {
         id: 'violations-button-reference',
@@ -92,6 +112,55 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         forbiddenFragments: ['trace-id, история сообщений, intent, fallback', 'Экран аудита ответов Семёна'],
     },
     {
+        id: 'section-rules-overview',
+        category: 'section',
+        description: 'Общий вопрос по правилам должен объяснять управление логикой нарушений, а не уходить в справку по заказу.',
+        expectedFragments: ['управления автоматическими проверками нарушений', 'Как с этим экраном обычно работают', 'без поломки production-контура'],
+        forbiddenFragments: ['разбора конкретного заказа', 'Выберите сделку в таблице ОКК'],
+    },
+    {
+        id: 'section-rules-mode-history-audit',
+        category: 'section',
+        description: 'Вопрос по аудиту истории правила должен идти в mode-answer, а не в общий overview.',
+        expectedFragments: ['Аудит истории нужен', 'реальным событиям за выбранный период', 'более надёжный барьер'],
+        forbiddenFragments: ['Как с этим экраном обычно работают', 'какие проверки сейчас реально участвуют'],
+    },
+    {
+        id: 'section-system-status-entity-p95',
+        category: 'section',
+        description: 'Вопрос по p95 на экране статуса систем должен идти в entity-answer, а не в общий latency topic.',
+        expectedFragments: ['P95 показывает почти худший нормальный сценарий', 'важнее для операционного контроля', 'Цель SLA p95'],
+        forbiddenFragments: ['Карточки задержек показывают', 'p50 — типичное время'],
+    },
+    {
+        id: 'section-system-status-mode-fallback',
+        category: 'section',
+        description: 'Вопрос по fallback mode должен обрабатываться как mode-answer для статуса систем.',
+        expectedFragments: ['Fallback mode показывает', 'realtime pipeline ON', 'запасной механизм синхронизации'],
+        forbiddenFragments: ['Как с ним обычно работают', 'верхние карточки задержек'],
+    },
+    {
+        id: 'section-audit-entity-preview',
+        category: 'section',
+        description: 'Вопрос по answer preview в аудите должен идти в entity-answer, а не в общий fallback topic.',
+        expectedFragments: ['Answer Preview это короткая сохранённая версия ответа', 'первичный triage', 'открыть полную историю сообщений'],
+        forbiddenFragments: ['fallback показывает', 'intent показывает'],
+    },
+    {
+        id: 'section-efficiency-entity-overdue',
+        category: 'section',
+        description: 'Entity-вопрос по показателю просрочки в эффективности должен идти в сущность, а не в общий overview.',
+        expectedFragments: ['Показатель «Просрочено»', 'индикатор риска', 'нужен разбор'],
+        forbiddenFragments: ['Как с ним обычно работают', 'управленческую картину по скорости и приоритетам'],
+    },
+    {
+        id: 'section-ai-tools-mode-training',
+        category: 'section',
+        description: 'Вопрос по режиму обучения должен обрабатываться как mode-question, а не как общий topic.',
+        expectedFragments: ['Режим обучения нужен', 'корректировать спорные решения модели', 'обучающие примеры'],
+        forbiddenFragments: ['Как с этим экраном обычно работают', 'размер очереди и задают лимит'],
+    },
+    {
         id: 'meta-ui-visibility',
         category: 'reference',
         description: 'Meta-вопрос про видимость интерфейса должен честно обозначать ограничение и не уходить в заказ.',
@@ -123,5 +192,19 @@ export const OKK_CONSULTANT_BENCHMARK_CASES: BenchmarkCase[] = [
         category: 'paraphrase',
         description: 'Вторая формулировка того же вопроса должна опираться на тот же критерий.',
         expectedFragments: ['релевантный номер', 'Как правило работает'],
+    },
+    {
+        id: 'privacy-order-context-manager',
+        category: 'privacy',
+        description: 'Контекст для LLM после manager-sanitization не должен содержать полные телефон и email.',
+        expectedFragments: ['phone=79***22', 'buyer=О***'],
+        forbiddenFragments: ['+79990001122', 'client@example.com', 'ООО Клиент'],
+    },
+    {
+        id: 'privacy-evidence-summary-manager',
+        category: 'privacy',
+        description: 'Manager-facing evidence summary не должен раскрывать полные buyer, phone и email даже в итоговом тексте.',
+        expectedFragments: ['Покупатель: О***', 'Телефон: 79***22', 'Email: c***@example.com'],
+        forbiddenFragments: ['ООО Клиент', '+79990001122', 'client@example.com'],
     },
 ];

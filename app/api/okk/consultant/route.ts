@@ -5,6 +5,7 @@ import {
     buildConsultantMetaAnswer,
     buildCallEvidenceExplanation,
     buildCriterionExplanation,
+    buildFormulaExplanation,
     buildEvidenceSummary,
     buildFailedCriteriaSummary,
     buildGeneralRatingExplanation,
@@ -21,18 +22,18 @@ import {
     buildViolationsReferenceAnswer,
     ConsultantOrder,
     ConsultantReplyKind,
-    enrichEvidenceWithOrder,
     findConsultantSectionMention,
     findCriterionKey,
+    findFormulaKey,
     findGlossaryTerm,
     getReplyCriterionKey,
     getConsultantSectionConfig,
     isConsultantMetaQuestion,
+    isFormulaQuestion,
     isGlossaryQuestion,
     OKK_CONSULTANT_QUICK_QUESTIONS,
     OrderEvidence,
-    sanitizeEvidenceForRole,
-    sanitizeOrderForRole,
+    sanitizeConsultantContextForRole,
     shouldShowOrderCards,
 } from '@/lib/okk-consultant';
 import { loadConsultantEvidence, loadConsultantOrder } from '@/lib/okk-consultant-context';
@@ -254,18 +255,6 @@ function detectMode(message: string): 'why' | 'source' | 'fix' | 'score' | 'fail
     return 'general';
 }
 
-function applyResponseMode(reply: string, responseMode: 'short' | 'full'): string {
-    if (responseMode === 'full') return reply;
-
-    const compactLines = reply
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .slice(0, 6);
-
-    return compactLines.join('\n');
-}
-
 function getCachedReferenceAnswer(cacheKey: string, build: () => string): string {
     const now = Date.now();
     const cached = referenceAnswerCache.get(cacheKey);
@@ -361,6 +350,36 @@ function isSectionFollowupQuestion(message: string): boolean {
         || lower.includes('про экран');
 }
 
+function inferReplyKindFromMetadata(metadata: Record<string, any> | null | undefined): ConsultantReplyKind | null {
+    if (!metadata || typeof metadata !== 'object') return null;
+    if (typeof metadata.replyKind === 'string') return metadata.replyKind as ConsultantReplyKind;
+    if (typeof metadata.criterion_key === 'string' && metadata.criterion_key) return 'criterion';
+    if (metadata.fallbackPromptKey || metadata.fallbackKnowledgeHits) return 'fallback';
+
+    switch (metadata.intent) {
+        case 'source': return 'order-source';
+        case 'score': return 'score';
+        case 'proof': return 'proof';
+        case 'technical': return 'technical';
+        case 'fix': return 'fix';
+        case 'failures': return 'failures';
+        case 'ambiguous': return 'ambiguous';
+        case 'missing': return 'missing';
+        default: return null;
+    }
+}
+
+function resolveHistorySectionKey(metadata: Record<string, any> | null | undefined, fallbackSectionKey: string): string | null {
+    if (!metadata || typeof metadata !== 'object') return null;
+
+    if (typeof metadata.sectionKey === 'string') {
+        return getConsultantSectionConfig(metadata.sectionKey).key;
+    }
+
+    const legacyReplyKind = inferReplyKindFromMetadata(metadata);
+    return legacyReplyKind === 'section' ? fallbackSectionKey : null;
+}
+
 function resolveAnswerSectionKey(sectionKey: string, message: string, history: NormalizedHistoryItem[]): string {
     const explicitSection = findConsultantSectionMention(message);
     if (explicitSection) {
@@ -374,15 +393,13 @@ function resolveAnswerSectionKey(sectionKey: string, message: string, history: N
     for (const item of [...history].reverse()) {
         if (item.role !== 'agent') continue;
 
-        const historySectionKey = typeof item.metadata?.sectionKey === 'string'
-            ? getConsultantSectionConfig(item.metadata.sectionKey).key
-            : null;
+        const historySectionKey = resolveHistorySectionKey(item.metadata, sectionKey);
 
         if (historySectionKey) {
             return historySectionKey;
         }
 
-        if (item.metadata?.replyKind === 'section') {
+        if (inferReplyKindFromMetadata(item.metadata) === 'section') {
             return sectionKey;
         }
     }
@@ -398,7 +415,6 @@ function buildSuccessResponse(params: {
     cards?: any[];
     threadId?: string | null;
     traceId?: string | null;
-    responseMode?: 'short' | 'full';
     persistenceDisabled?: boolean;
     answerSource?: 'deterministic' | 'ai_generated';
     answerMetadata?: Record<string, any> | null;
@@ -411,7 +427,6 @@ function buildSuccessResponse(params: {
         suggestions: params.suggestions,
         threadId: params.threadId || null,
         traceId: params.traceId || null,
-        responseMode: params.responseMode,
         persistenceDisabled: params.persistenceDisabled || false,
         answerSource: params.answerSource || 'deterministic',
         answerMetadata: {
@@ -432,7 +447,6 @@ export async function POST(req: Request) {
 
         const body = await req.json();
         const message = String(body.message || '').trim();
-        const responseMode = body.responseMode === 'short' ? 'short' : 'full';
         const orderIdRaw = body.orderId;
         const history = normalizeHistory(body.history);
         const threadIdRaw = typeof body.threadId === 'string' ? body.threadId : null;
@@ -455,6 +469,7 @@ export async function POST(req: Request) {
 
         const effectiveSectionKey = resolveAnswerSectionKey(sectionKey, message, history);
         const criterionKey = findCriterionKey(message);
+        const formulaKey = findFormulaKey(message);
         const glossaryTerm = findGlossaryTerm(message);
         const mode = detectMode(message);
         const referenceQuestion = isReferenceQuestion(message.toLowerCase()) || isGlossaryQuestion(message);
@@ -511,6 +526,15 @@ export async function POST(req: Request) {
                 });
             }
 
+            if (formulaKey && isFormulaQuestion(message)) {
+                return buildSuccessResponse({
+                    reply: getCachedReferenceAnswer(`formula:${formulaKey}`, () => buildFormulaExplanation(formulaKey)),
+                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'formula',
+                    sectionKey: effectiveSectionKey,
+                });
+            }
+
             if (glossaryTerm && isGlossaryQuestion(message)) {
                 return buildSuccessResponse({
                     reply: getCachedReferenceAnswer(`glossary:${glossaryTerm.key}`, () => buildGlossaryAnswer(glossaryTerm)),
@@ -554,14 +578,17 @@ export async function POST(req: Request) {
             loadConsultantOrder(orderId, userRole, retailCrmManagerId),
             loadConsultantEvidence(orderId),
         ]);
-        const order = sanitizeOrderForRole(rawOrder, userRole);
-        const evidence = sanitizeEvidenceForRole(enrichEvidenceWithOrder(rawOrder, rawEvidence), userRole);
+        const { order, evidence } = sanitizeConsultantContextForRole({
+            order: rawOrder,
+            evidence: rawEvidence,
+            role: userRole,
+        });
 
         let thread: { id: string } | null = null;
         let persistenceDisabled = false;
 
         try {
-            thread = await getOrCreateThread(userId, username, orderId, threadIdRaw, sectionKey);
+            thread = await getOrCreateThread(userId, username, orderId, threadIdRaw, effectiveSectionKey);
         } catch (threadError: any) {
             if (isMissingConsultantPersistenceError(threadError)) {
                 persistenceDisabled = true;
@@ -581,6 +608,9 @@ export async function POST(req: Request) {
         } else if (violationsReferenceQuestion) {
             reply = buildViolationsReferenceAnswer(order);
             replyKind = 'violations-reference';
+        } else if (formulaKey && isFormulaQuestion(message)) {
+            reply = buildFormulaExplanation(formulaKey);
+            replyKind = 'formula';
         } else if (glossaryTerm && isGlossaryQuestion(message)) {
             reply = buildGlossaryAnswer(glossaryTerm);
             replyKind = 'glossary';
@@ -644,7 +674,7 @@ export async function POST(req: Request) {
                 evidence,
             })
             : [];
-        const formattedReply = applyResponseMode(reply, responseMode);
+        const formattedReply = reply;
 
         let traceId: string | null = null;
         if (thread) {
@@ -659,7 +689,13 @@ export async function POST(req: Request) {
                     intent: mode,
                     criterionKey: effectiveCriterionKey,
                     usedFallback,
-                    answerMetadata: { cards, responseMode, sectionKey, replyKind, ...(answerMetadata || {}) },
+                    answerMetadata: {
+                        cards,
+                        sectionKey: effectiveSectionKey,
+                        replyKind,
+                        routingKind: sectionReply ? 'section' : replyKind,
+                        ...(answerMetadata || {}),
+                    },
                 });
             } catch (persistError: any) {
                 if (isMissingConsultantPersistenceError(persistError)) {
@@ -677,12 +713,14 @@ export async function POST(req: Request) {
             suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.order,
             threadId: thread?.id || null,
             traceId,
-            responseMode,
             persistenceDisabled,
             answerSource: usedFallback ? 'ai_generated' : 'deterministic',
             replyKind,
             sectionKey: effectiveSectionKey,
-            answerMetadata: answerMetadata || null,
+            answerMetadata: {
+                routingKind: sectionReply ? 'section' : replyKind,
+                ...(answerMetadata || {}),
+            },
             orderContext: {
                 orderId: order.order_id,
                 manager: order.manager_name || '—',

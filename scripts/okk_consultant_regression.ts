@@ -1,9 +1,15 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import assert from 'node:assert/strict';
+import { buildConsultantKnowledgeSeedRows } from '../lib/okk-consultant-kb';
 import {
     buildAmbiguousCriteriaSummary,
     buildCallEvidenceExplanation,
     buildConsultantMetaAnswer,
     buildCriterionExplanation,
+    buildFormulaExplanation,
+    buildEvidenceSummary,
+    buildOrderContextForLLM,
     buildSectionAnswer,
     getReplyCriterionKey,
     buildGeneralRatingExplanation,
@@ -11,16 +17,36 @@ import {
     buildHistoryEvidenceExplanation,
     buildMissingDataSummary,
     buildOrderSourceExplanation,
+    getConsultantCatalog,
     shouldShowOrderCards,
     buildViolationsReferenceAnswer,
     enrichEvidenceWithOrder,
     findConsultantSectionMention,
     findGlossaryTerm,
+    formatConsultantSectionOverview,
     isGlossaryQuestion,
     type ConsultantOrder,
     type OrderEvidence,
+    sanitizeConsultantContextForRole,
 } from '../lib/okk-consultant';
 import { OKK_CONSULTANT_BENCHMARK_CASES } from './okk_consultant_benchmark_cases';
+
+type RealCaseFixture = {
+    id: string;
+    source: 'real-order-anonymized';
+    question: string;
+    answer: string;
+    metadata: {
+        caseLabel: string;
+        criterionKey?: string;
+        statusLabel?: string;
+        totalScore?: number | null;
+        dealScorePct?: number | null;
+        scriptScorePct?: number | null;
+    };
+};
+
+const REAL_CASE_FIXTURE_PATH = path.resolve(process.cwd(), 'scripts/okk_consultant_real_cases.fixture.json');
 
 const sampleOrder: ConsultantOrder = {
     order_id: 777001,
@@ -129,8 +155,58 @@ function assertNotContains(output: string, fragments: string[] | undefined, cont
     }
 }
 
+function validateRealCaseFixtures() {
+    assert.ok(fs.existsSync(REAL_CASE_FIXTURE_PATH), 'Real-case fixture file must exist for golden regression.');
+
+    const raw = fs.readFileSync(REAL_CASE_FIXTURE_PATH, 'utf8');
+    const fixtures = JSON.parse(raw) as RealCaseFixture[];
+
+    assert.ok(Array.isArray(fixtures), 'Real-case fixture file must contain an array.');
+    assert.ok(fixtures.length >= 6, 'Real-case fixture file must contain at least 6 cases.');
+
+    const uniqueIds = new Set(fixtures.map((item) => item.id));
+    const uniqueLabels = new Set(fixtures.map((item) => item.metadata.caseLabel));
+    assert.equal(uniqueIds.size, fixtures.length, 'Real-case fixture ids must be unique.');
+    assert.equal(uniqueLabels.size, fixtures.length, 'Real-case case labels must be unique.');
+
+    const expectedMarkers: Record<string, { markers: string[]; requireCaseLabelInAnswer?: boolean }> = {
+        'real-score-explanation': { markers: ['Deal score', 'Script score', 'Итоговый total score'], requireCaseLabelInAnswer: true },
+        'real-failed-criterion': { markers: ['Факт:', 'Почему:', 'Как исправить:'] },
+        'real-missing-data': { markers: ['Ограничение:', 'система явно зафиксировала нехватку данных'], requireCaseLabelInAnswer: true },
+        'real-ambiguous-criteria': { markers: ['Уверенность:', 'ручная проверка'], requireCaseLabelInAnswer: true },
+        'real-call-proof': { markers: ['Логика отбора:', 'вошёл в оценку'], requireCaseLabelInAnswer: true },
+        'real-history-proof': { markers: ['Какие события истории повлияли', 'Поле'], requireCaseLabelInAnswer: true },
+    };
+
+    for (const fixture of fixtures) {
+        assert.equal(fixture.source, 'real-order-anonymized', `${fixture.id}: unexpected fixture source.`);
+        assert.ok(fixture.question.trim().length > 0, `${fixture.id}: question must be non-empty.`);
+        assert.ok(fixture.answer.trim().length > 0, `${fixture.id}: answer must be non-empty.`);
+        assert.ok(/^CASE-\d{3}$/.test(fixture.metadata.caseLabel), `${fixture.id}: case label must match CASE-###.`);
+        assert.ok(!/#\d{4,}/.test(fixture.answer), `${fixture.id}: answer must not contain a raw numeric order id.`);
+        assert.ok(!/\+7\d{10}|8\d{10}|7\d{10}/.test(fixture.answer), `${fixture.id}: answer must not contain an unmasked phone.`);
+
+        const emails = fixture.answer.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+        assert.ok(emails.every((email) => /^.[*]{3}@example\.com$/i.test(email)), `${fixture.id}: answer must not contain non-anonymized email addresses.`);
+
+        const expectation = expectedMarkers[fixture.id] || { markers: [] };
+        if (expectation.requireCaseLabelInAnswer) {
+            assert.ok(fixture.answer.includes(fixture.metadata.caseLabel), `${fixture.id}: answer must contain its case label.`);
+        }
+
+        for (const marker of expectation.markers) {
+            assert.ok(fixture.answer.includes(marker), `${fixture.id}: expected golden marker not found: ${marker}`);
+        }
+    }
+}
+
 function run() {
     const enrichedEvidence = enrichEvidenceWithOrder(sampleOrder, baseEvidence);
+    const managerContext = sanitizeConsultantContextForRole({
+        order: sampleOrder,
+        evidence: baseEvidence,
+        role: 'manager',
+    });
     const oldFormatOrder: ConsultantOrder = {
         order_id: 777002,
         score_breakdown: {
@@ -145,21 +221,33 @@ function run() {
         'general-rating-formula': buildGeneralRatingExplanation(),
         'glossary-total-score': buildGlossaryAnswer(findGlossaryTerm('что такое total_score')!),
         'glossary-sla-definition': isGlossaryQuestion('что такое SLA ?') ? buildGlossaryAnswer(findGlossaryTerm('что такое SLA ?')!) : '',
+        'formula-total-score-specific': buildFormulaExplanation('total_score'),
+        'formula-script-score-specific': buildFormulaExplanation('script_score'),
         'missing-data-explicit-limitation': buildMissingDataSummary(sampleOrder),
         'ambiguous-confidence': buildAmbiguousCriteriaSummary(sampleOrder),
         'proof-no-history': buildHistoryEvidenceExplanation(sampleOrder, enrichedEvidence),
         'proof-no-calls': buildCallEvidenceExplanation(sampleOrder, enrichedEvidence),
         'criterion-source-explicit-fact': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'source', evidence: enrichedEvidence }),
+        'criterion-fix-human-friendly': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'fix', evidence: enrichedEvidence }),
         'violations-button-reference': buildViolationsReferenceAnswer(sampleOrder),
         'section-ai-tools-overview': buildSectionAnswer('ai-tools', 'как работает этот раздел') || '',
         'section-ai-tools-explicit-followup': buildSectionAnswer('quality-dashboard', 'при чем тут рейтинг окк если я спрашиваю про раздел Согласования Отмена') || '',
         'section-quality-overview': buildSectionAnswer('quality-dashboard', 'для чего этот экран') || '',
         'section-audit-overview': buildSectionAnswer('audit', 'что это за раздел') || '',
+        'section-rules-overview': buildSectionAnswer('rules', 'что это за раздел правил') || '',
+        'section-rules-mode-history-audit': buildSectionAnswer('rules', 'когда использовать аудит истории') || '',
+        'section-system-status-entity-p95': buildSectionAnswer('system-status', 'что значит p95') || '',
+        'section-system-status-mode-fallback': buildSectionAnswer('system-status', 'что значит fallback mode') || '',
+        'section-audit-entity-preview': buildSectionAnswer('audit', 'что значит answer preview') || '',
+        'section-efficiency-entity-overdue': buildSectionAnswer('efficiency', 'что значит просрочено') || '',
+        'section-ai-tools-mode-training': buildSectionAnswer('ai-tools', 'когда использовать режим обучения') || '',
         'meta-ui-visibility': buildConsultantMetaAnswer('Справка по ОКК'),
         'order-source-overview': buildOrderSourceExplanation(sampleOrder, enrichedEvidence),
         'historical-old-format-safe': buildCriterionExplanation({ order: oldFormatOrder, criterionKey: 'field_contact_data', mode: 'why' }),
         'paraphrase-same-criterion-a': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),
         'paraphrase-same-criterion-b': buildCriterionExplanation({ order: sampleOrder, criterionKey: 'relevant_number_found', mode: 'why', evidence: enrichedEvidence }),
+        'privacy-order-context-manager': buildOrderContextForLLM(managerContext.order, managerContext.evidence),
+        'privacy-evidence-summary-manager': buildEvidenceSummary(managerContext.order, managerContext.evidence),
     };
 
     for (const testCase of OKK_CONSULTANT_BENCHMARK_CASES) {
@@ -174,14 +262,30 @@ function run() {
     assert.equal(sourceA, sourceB, 'Criterion explanation should stay stable across paraphrases when criterionKey is the same.');
 
     assert.equal(shouldShowOrderCards('glossary'), false, 'Glossary replies should not attach order cards.');
+    assert.equal(shouldShowOrderCards('formula'), false, 'Formula replies should not attach order cards.');
     assert.equal(shouldShowOrderCards('section'), false, 'Section replies should not attach order cards.');
     assert.equal(shouldShowOrderCards('meta'), false, 'Meta replies should not attach order cards.');
     assert.equal(getReplyCriterionKey('glossary', 'lead_in_work_lt_1_day'), null, 'Glossary replies should not persist a criterion key.');
+    assert.equal(getReplyCriterionKey('formula', 'lead_in_work_lt_1_day'), null, 'Formula replies should not persist a criterion key.');
     assert.equal(getReplyCriterionKey('section', 'lead_in_work_lt_1_day'), null, 'Section replies should not persist a criterion key.');
     assert.equal(getReplyCriterionKey('criterion', 'lead_in_work_lt_1_day'), 'lead_in_work_lt_1_day', 'Criterion replies should keep the matched criterion key.');
     assert.equal(findConsultantSectionMention('я спрашиваю про раздел Согласование Отмена')?.key, 'ai-tools', 'Section alias should resolve to AI Tools.');
 
-    console.log(`OKK consultant regression passed: ${OKK_CONSULTANT_BENCHMARK_CASES.length} cases.`);
+    const seedRows = buildConsultantKnowledgeSeedRows();
+    const seedRowMap = new Map(seedRows.map((row) => [row.slug, row]));
+    const catalog = getConsultantCatalog();
+    const qualityDashboardSection = catalog.sections.find((section) => section.key === 'quality-dashboard');
+
+    assert.ok(seedRowMap.has('formula:total_score'), 'Seed rows should include total_score formula.');
+    assert.equal(seedRowMap.get('formula:total_score')?.content, buildFormulaExplanation('total_score'), 'Formula seed row should stay in sync with runtime formula builder.');
+    assert.ok(seedRowMap.has('glossary:total_score'), 'Seed rows should include total_score glossary term.');
+    assert.equal(seedRowMap.get('glossary:total_score')?.content, buildGlossaryAnswer(findGlossaryTerm('что такое total_score')!), 'Glossary seed row should stay in sync with runtime glossary builder.');
+    assert.ok(qualityDashboardSection, 'Quality dashboard section should exist in consultant catalog.');
+    assert.equal(seedRowMap.get('section:quality-dashboard')?.content, formatConsultantSectionOverview(qualityDashboardSection!), 'Section overview seed row should stay in sync with runtime section formatter.');
+
+    validateRealCaseFixtures();
+
+    console.log(`OKK consultant regression passed: ${OKK_CONSULTANT_BENCHMARK_CASES.length} benchmark cases + golden real-case fixture checks.`);
 }
 
 run();
