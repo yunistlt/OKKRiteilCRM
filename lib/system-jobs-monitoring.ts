@@ -1,6 +1,11 @@
 import { supabase } from '@/utils/supabase';
 import { getRealtimePipelineRuntimeState } from '@/lib/realtime-pipeline';
 import { classifySystemJobRetryKind, type SystemJobRetryKind, type SystemJobType } from '@/lib/system-jobs';
+import {
+  getOrderFreshnessIndicatorSeconds,
+  getRealtimeSlaStatus,
+  REALTIME_SLA_THRESHOLDS,
+} from '@/lib/realtime-sla';
 
 type MonitorStatus = 'ok' | 'warning' | 'error';
 
@@ -89,12 +94,28 @@ export interface RealtimePipelineMonitoringSnapshot {
   queueStages: {
     retailcrmDelta: QueueStageSnapshot;
     retailcrmHistory: QueueStageSnapshot;
+    orderContext: QueueStageSnapshot;
     callMatch: QueueStageSnapshot;
     transcription: QueueStageSnapshot;
     semanticRules: QueueStageSnapshot;
     scoreRefresh: QueueStageSnapshot;
     managerAggregate: QueueStageSnapshot;
     insightRefresh: QueueStageSnapshot;
+  };
+  sla: {
+    targets: {
+      orderFreshnessSeconds: number;
+      transcriptionReadySeconds: number;
+      scoreRefreshSeconds: number;
+    };
+    indicators: {
+      orderFreshnessSeconds: number | null;
+      orderFreshnessStatus: MonitorStatus;
+      transcriptionReadyP95Seconds: number | null;
+      transcriptionReadyStatus: MonitorStatus;
+      scoreRefreshP95Seconds: number | null;
+      scoreRefreshStatus: MonitorStatus;
+    };
   };
   services: MonitorServiceStatus[];
 }
@@ -126,6 +147,7 @@ const MONITORED_JOB_TYPES = [
   'retailcrm_order_delta_pull',
   'retailcrm_history_delta_pull',
   'retailcrm_order_upsert',
+  'retailcrm_order_context_refresh',
   'call_match',
   'call_transcription',
   'call_semantic_rules',
@@ -150,6 +172,7 @@ const MONITORED_WORKER_KEYS = [
   'system_jobs.watchdog',
   'system_jobs.retailcrm_order_delta',
   'system_jobs.retailcrm_history_delta',
+  'system_jobs.order_context_refresh',
   'system_jobs.call_match',
   'system_jobs.transcription',
   'system_jobs.call_semantic_rules',
@@ -164,6 +187,7 @@ type WorkerStateMap = Map<string, { value: string; updated_at: string }>;
 const QUEUE_PROCESSING_LIMITS: Partial<Record<SystemJobType, number>> = {
   retailcrm_order_delta_pull: 1,
   retailcrm_history_delta_pull: 1,
+  retailcrm_order_context_refresh: 2,
   call_match: 1,
   call_transcription: 2,
   order_insight_refresh: 1,
@@ -777,6 +801,23 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       stateMap,
     }),
     buildQueueService({
+      service: 'Order Context Queue',
+      cursor: 'retailcrm_order_context_refresh',
+      lastRun: null,
+      queued: countJobs(rows, ['retailcrm_order_context_refresh'], 'queued'),
+      processing: countJobs(rows, ['retailcrm_order_context_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_order_context_refresh || null,
+      deadLetter: countJobs(rows, ['retailcrm_order_context_refresh'], 'dead_letter'),
+      oldestQueuedMinutes: oldestQueuedMinutes(rows, ['retailcrm_order_context_refresh']),
+      warningMinutes: 5,
+      errorMinutes: 15,
+      warningQueued: 8,
+      errorQueued: 20,
+      disabledReason: queueDisabledReason,
+      workerKey: 'system_jobs.order_context_refresh',
+      stateMap,
+    }),
+    buildQueueService({
       service: 'Call Match Queue',
       cursor: 'call_match',
       lastRun: null,
@@ -895,6 +936,7 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const scoreWorkerState = getWorkerState(stateMap, 'system_jobs.score_refresh');
   const aggregateWorkerState = getWorkerState(stateMap, 'system_jobs.manager_aggregate_refresh');
   const insightWorkerState = getWorkerState(stateMap, 'system_jobs.order_insight_refresh');
+  const orderContextWorkerState = getWorkerState(stateMap, 'system_jobs.order_context_refresh');
   const callMatchWorkerState = getWorkerState(stateMap, 'system_jobs.call_match');
   const retailcrmDeltaWorkerState = getWorkerState(stateMap, 'system_jobs.retailcrm_order_delta');
   const retailcrmHistoryWorkerState = getWorkerState(stateMap, 'system_jobs.retailcrm_history_delta');
@@ -925,6 +967,19 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
         : oldestQueuedMinutes(rows, ['retailcrm_history_delta_pull'])! * 60,
       lastErrorSnippet: truncateSnippet(retailcrmHistoryWorkerState.lastError),
       lastErrorAt: retailcrmHistoryWorkerState.lastErrorAt,
+    },
+    orderContext: {
+      service: 'Order Context Queue',
+      status: serviceMap.get('Order Context Queue')?.status || 'warning',
+      queued: countJobs(rows, ['retailcrm_order_context_refresh'], 'queued'),
+      processing: countJobs(rows, ['retailcrm_order_context_refresh'], 'processing'),
+      processingLimit: QUEUE_PROCESSING_LIMITS.retailcrm_order_context_refresh || null,
+      deadLetter: countJobs(rows, ['retailcrm_order_context_refresh'], 'dead_letter'),
+      oldestQueuedSeconds: oldestQueuedMinutes(rows, ['retailcrm_order_context_refresh']) === null
+        ? null
+        : oldestQueuedMinutes(rows, ['retailcrm_order_context_refresh'])! * 60,
+      lastErrorSnippet: truncateSnippet(orderContextWorkerState.lastError),
+      lastErrorAt: orderContextWorkerState.lastErrorAt,
     },
     callMatch: {
       service: 'Call Match Queue',
@@ -996,6 +1051,12 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
 
   const hotspotQueue = getQueueHotspotSummary(Object.values(queueStages));
   const dominantRetryCause = getDominantRetryCauseSummary(recovery.retryBacklogByKind);
+  const retailcrmCursorLagSeconds = secondsSince(retailcrmCursor);
+  const retailcrmHistoryCursorLagSeconds = secondsSince(retailcrmHistoryCursor);
+  const orderFreshnessSeconds = getOrderFreshnessIndicatorSeconds({
+    retailcrmCursorLagSeconds,
+    orderEventToScoreP95Seconds: orderEventToScoreLatency.p95Seconds,
+  });
   const hotspotSummary: PipelineHotspotSummary = {
     queue: hotspotQueue,
     dominantRetryCause,
@@ -1013,8 +1074,8 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
     },
     hotspotSummary,
     metrics: {
-      retailcrmCursorLagSeconds: secondsSince(retailcrmCursor),
-      retailcrmHistoryCursorLagSeconds: secondsSince(retailcrmHistoryCursor),
+      retailcrmCursorLagSeconds,
+      retailcrmHistoryCursorLagSeconds,
       transcriptionQueueOldestSeconds: transcriptionOldest === null ? null : transcriptionOldest * 60,
       semanticRulesQueueOldestSeconds: semanticRulesOldest === null ? null : semanticRulesOldest * 60,
       managerAggregateQueueOldestSeconds: managerAggregateOldest === null ? null : managerAggregateOldest * 60,
@@ -1031,6 +1092,21 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
       recovery,
     },
     queueStages,
+    sla: {
+      targets: {
+        orderFreshnessSeconds: REALTIME_SLA_THRESHOLDS.orderFreshness.targetSeconds,
+        transcriptionReadySeconds: REALTIME_SLA_THRESHOLDS.transcriptionReady.targetSeconds,
+        scoreRefreshSeconds: REALTIME_SLA_THRESHOLDS.scoreRefresh.targetSeconds,
+      },
+      indicators: {
+        orderFreshnessSeconds,
+        orderFreshnessStatus: getRealtimeSlaStatus(orderFreshnessSeconds, REALTIME_SLA_THRESHOLDS.orderFreshness),
+        transcriptionReadyP95Seconds: recordingReadyToTranscriptLatency.p95Seconds,
+        transcriptionReadyStatus: getRealtimeSlaStatus(recordingReadyToTranscriptLatency.p95Seconds, REALTIME_SLA_THRESHOLDS.transcriptionReady),
+        scoreRefreshP95Seconds: orderEventToScoreLatency.p95Seconds,
+        scoreRefreshStatus: getRealtimeSlaStatus(orderEventToScoreLatency.p95Seconds, REALTIME_SLA_THRESHOLDS.scoreRefresh),
+      },
+    },
     services,
   };
 }

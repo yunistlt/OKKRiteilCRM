@@ -3,7 +3,10 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { refreshStoredPriorityForOrder } from '@/lib/prioritization';
+import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
+import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for full refresh
@@ -53,6 +56,43 @@ export async function GET(request: Request) {
         }
 
         if (specificOrderId) {
+            const realtimePipelineEnabled = await isRealtimePipelineEnabled();
+
+            if (realtimePipelineEnabled && !force) {
+                const manualTriggeredAt = new Date().toISOString();
+
+                await enqueueOrderRefreshJob({
+                    jobType: 'order_score_refresh',
+                    orderId: specificOrderId,
+                    source: 'manual_priority_refresh',
+                    priority: 10,
+                    windowSeconds: 1,
+                    payload: {
+                        manual_triggered_at: manualTriggeredAt,
+                        requested_via: 'api/analysis/priorities/refresh',
+                    },
+                });
+
+                const { data: cachedPriority } = await supabase
+                    .from('order_priorities')
+                    .select('level, score, reasons, summary, recommended_action, updated_at')
+                    .eq('order_id', specificOrderId)
+                    .maybeSingle();
+
+                return NextResponse.json({
+                    ok: true,
+                    mode: 'queued',
+                    orderId: specificOrderId,
+                    result: cachedPriority || null,
+                    cached_at: cachedPriority?.updated_at || null,
+                    message: cachedPriority
+                        ? `Priority refresh for order ${specificOrderId} was queued. Returning last stored priority until order_score_refresh completes.`
+                        : `Priority refresh for order ${specificOrderId} was queued. Fresh priority will appear after order_score_refresh completes.`,
+                    rule_engine: 'delegated_to_score_refresh_job',
+                    next_jobs: ['order_score_refresh'],
+                });
+            }
+
             const result = await refreshStoredPriorityForOrder(specificOrderId, true);
 
             return NextResponse.json({

@@ -41,6 +41,18 @@ function toIsoOrNull(value: string | null | undefined): string | null {
   return date.toISOString();
 }
 
+function createEmptyLegacyContext() {
+  return {
+    direction: 'unknown' as const,
+    fromNumber: null,
+    toNumber: null,
+    startedAt: null,
+    durationSeconds: null,
+    recordingUrl: null,
+    status: null,
+  };
+}
+
 
 export async function upsertCanonicalTelphinCall(
   input: CanonicalWebhookSyncInput
@@ -52,7 +64,19 @@ export async function upsertCanonicalTelphinCall(
     .limit(1);
 
   const existing = existingResult.data?.[0] || null;
-  const legacy = await loadLegacyCallContext(input.callId);
+  const needsLegacyContext =
+    !existing ||
+    (!input.direction && !existing.direction) ||
+    (!input.fromNumber && !existing.from_number) ||
+    (!input.toNumber && !existing.to_number) ||
+    (!input.startedAt && !existing.started_at) ||
+    (input.durationSeconds === undefined && existing?.duration_sec === null) ||
+    (!input.recordingUrl && !input.payload.recording_url && !existing.recording_url) ||
+    (!input.status && !input.payload.status);
+
+  const legacy = needsLegacyContext
+    ? await loadLegacyCallContext(input.callId)
+    : createEmptyLegacyContext();
 
   const direction =
     input.direction ||

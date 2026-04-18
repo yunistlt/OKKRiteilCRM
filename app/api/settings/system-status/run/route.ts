@@ -11,6 +11,7 @@ function resolveServiceUrl(serviceName: string) {
     if (serviceName.includes('System Jobs Queue')) return '/api/cron/system-jobs/watchdog';
     if (serviceName.includes('RetailCRM Delta Queue')) return '/api/cron/system-jobs/retailcrm-order-delta';
     if (serviceName.includes('RetailCRM History Queue')) return '/api/cron/system-jobs/retailcrm-history-delta';
+    if (serviceName.includes('Order Context Queue')) return '/api/cron/system-jobs/order-context-refresh';
     if (serviceName.includes('Call Match Queue')) return '/api/cron/system-jobs/call-match';
     if (serviceName.includes('Manager Aggregate Queue')) return '/api/cron/system-jobs/manager-aggregate-refresh';
     if (serviceName.includes('Nightly Reconciliation')) return '/api/cron/system-jobs/nightly-reconciliation';

@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { getRealtimePipelineRuntimeState, normalizeRealtimePipelineOverride } from '@/lib/realtime-pipeline';
+import { REALTIME_SLA_THRESHOLDS } from '@/lib/realtime-sla';
 import { getTelphinLegacyCompatRuntimeState, normalizeTelphinLegacyCompatOverride } from '@/lib/telphin-legacy-compat';
 import { supabase } from '@/utils/supabase';
 
@@ -25,8 +26,9 @@ function buildSlaStatus(params: {
     warningP95Seconds: number;
     errorP95Seconds: number;
     emptyReason: string;
+    targetP95Seconds?: number;
 }) {
-    const { service, metric, warningP95Seconds, errorP95Seconds, emptyReason } = params;
+    const { service, metric, warningP95Seconds, errorP95Seconds, emptyReason, targetP95Seconds } = params;
     const p95 = metric?.p95Seconds ?? null;
     const p50 = metric?.p50Seconds ?? null;
     const samples = metric?.sampleSize ?? 0;
@@ -42,7 +44,9 @@ function buildSlaStatus(params: {
         reason = `p95 выше SLA: ${formatLatency(p95)} > ${formatLatency(errorP95Seconds)}`;
     } else if (p95 !== null && p95 > warningP95Seconds) {
         status = 'warning';
-        reason = `p95 приближается к SLA: ${formatLatency(p95)}`;
+        reason = targetP95Seconds
+            ? `p95 приближается к SLA: ${formatLatency(p95)} при цели ${formatLatency(targetP95Seconds)}`
+            : `p95 приближается к SLA: ${formatLatency(p95)}`;
     }
 
     return {
@@ -70,6 +74,75 @@ function getWorkerHealth(stateMap: Map<any, any>, workerKey: string) {
         lastError: lastError?.value || '',
         lastErrorAt: lastErrorAtValue,
         hasActiveError,
+    };
+}
+
+function buildTelphinLegacyShutdownReadiness(params: {
+    realtimePipelineEnabled: boolean;
+    queueAvailable: boolean;
+    telphinLegacyCompatEnabled: boolean;
+    latestCanonicalCallAt: string | null;
+    deadLetterTotal: number;
+    orderFreshnessStatus: 'ok' | 'warning' | 'error';
+    transcriptionReadyStatus: 'ok' | 'warning' | 'error';
+    scoreRefreshStatus: 'ok' | 'warning' | 'error';
+    queueStageStatuses: Array<{ service: string; status: 'ok' | 'warning' | 'error' }>;
+}) {
+    const blockers: string[] = [];
+    const degradedSignals: string[] = [];
+    const hasRecentCanonicalCallActivity = params.latestCanonicalCallAt
+        ? Date.now() - new Date(params.latestCanonicalCallAt).getTime() < 24 * 60 * 60 * 1000
+        : false;
+
+    if (!params.realtimePipelineEnabled) {
+        blockers.push('Realtime pipeline сейчас не является эффективным production owner.');
+    }
+
+    if (!params.queueAvailable) {
+        blockers.push('system_jobs queue сейчас недоступна.');
+    }
+
+    if (!hasRecentCanonicalCallActivity) {
+        blockers.push('За последние 24 часа не видно свежей canonical активности в raw_telphin_calls.');
+    }
+
+    if (params.deadLetterTotal > 0) {
+        blockers.push(`В realtime queue есть dead-letter задачи: ${params.deadLetterTotal}.`);
+    }
+
+    if (params.orderFreshnessStatus === 'error') {
+        degradedSignals.push('SLA свежести заказа сейчас в error.');
+    }
+
+    if (params.transcriptionReadyStatus === 'error') {
+        degradedSignals.push('SLA транскрибации сейчас в error.');
+    }
+
+    if (params.scoreRefreshStatus === 'error') {
+        degradedSignals.push('SLA score refresh сейчас в error.');
+    }
+
+    const erroredStages = params.queueStageStatuses.filter((stage) => stage.status === 'error');
+    if (erroredStages.length) {
+        degradedSignals.push(`Есть queue stages в error: ${erroredStages.map((stage) => stage.service).join(', ')}.`);
+    }
+
+    const reasons = [...blockers, ...degradedSignals];
+    const alreadyDisabled = !params.telphinLegacyCompatEnabled;
+    const readyForDisable = !alreadyDisabled && reasons.length === 0;
+
+    return {
+        status: alreadyDisabled ? 'ok' : readyForDisable ? 'ok' : 'warning',
+        phase: alreadyDisabled ? 'already_disabled' : readyForDisable ? 'ready' : 'blocked',
+        ready_for_disable: readyForDisable,
+        already_disabled: alreadyDisabled,
+        direct_application_readers_detected: false,
+        direct_application_readers_note: 'По текущему аудиту приложения прямые читатели incoming_calls/outgoing_calls вне compat helper не обнаружены.',
+        latest_canonical_call_at: params.latestCanonicalCallAt,
+        has_recent_canonical_call_activity: hasRecentCanonicalCallActivity,
+        blockers,
+        degraded_signals: degradedSignals,
+        reasons,
     };
 }
 
@@ -407,6 +480,14 @@ export async function GET() {
             .order('computed_at', { ascending: false })
             .limit(5);
 
+        const { data: latestCanonicalCall } = await supabase
+            .from('raw_telphin_calls')
+            .select('ingested_at')
+            .not('ingested_at', 'is', null)
+            .order('ingested_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
         const logs = (recentInsights || []).map((ri: any) => ({
             order_number: ri.orders?.number,
             summary: ri.insights?.summary || 'Успешный анализ',
@@ -428,25 +509,58 @@ export async function GET() {
         };
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
+        const orderFreshnessSlaStatus = {
+            service: 'Order Freshness SLA',
+            cursor: 'Near realtime freshness',
+            last_run: new Date().toISOString(),
+            status: realtimePipeline.sla.indicators.orderFreshnessStatus,
+            details: `max(cursor lag, event→score p95) = ${formatLatency(realtimePipeline.sla.indicators.orderFreshnessSeconds)}`,
+            reason: realtimePipeline.sla.indicators.orderFreshnessSeconds === null
+                ? 'Недостаточно данных по cursor lag и score latency для расчёта SLA свежести.'
+                : realtimePipeline.sla.indicators.orderFreshnessSeconds > REALTIME_SLA_THRESHOLDS.orderFreshness.targetSeconds
+                ? `Свежесть заказа в ОКК вышла за целевой SLA ${formatLatency(REALTIME_SLA_THRESHOLDS.orderFreshness.targetSeconds)}.`
+                : null,
+        };
         const transcriptionSlaStatus = buildSlaStatus({
             service: 'Transcription SLA',
             metric: realtimePipeline.metrics.recordingReadyToTranscriptLatency,
-            warningP95Seconds: 5 * 60,
-            errorP95Seconds: 7 * 60,
+            warningP95Seconds: REALTIME_SLA_THRESHOLDS.transcriptionReady.warningSeconds,
+            errorP95Seconds: REALTIME_SLA_THRESHOLDS.transcriptionReady.criticalSeconds,
+            targetP95Seconds: REALTIME_SLA_THRESHOLDS.transcriptionReady.targetSeconds,
             emptyReason: 'Недостаточно завершённых transcription jobs для расчёта SLA.',
         });
         const orderScoreSlaStatus = buildSlaStatus({
             service: 'Order Score SLA',
             metric: realtimePipeline.metrics.orderEventToScoreLatency,
-            warningP95Seconds: 2 * 60,
-            errorP95Seconds: 3 * 60,
+            warningP95Seconds: REALTIME_SLA_THRESHOLDS.scoreRefresh.warningSeconds,
+            errorP95Seconds: REALTIME_SLA_THRESHOLDS.scoreRefresh.criticalSeconds,
+            targetP95Seconds: REALTIME_SLA_THRESHOLDS.scoreRefresh.targetSeconds,
             emptyReason: 'Недостаточно завершённых score jobs для расчёта SLA.',
+        });
+        settings.telphin_legacy_shutdown_readiness = buildTelphinLegacyShutdownReadiness({
+            realtimePipelineEnabled: realtimePipelineState.effectiveEnabled,
+            queueAvailable: realtimePipeline.queueAvailable,
+            telphinLegacyCompatEnabled: telphinLegacyCompatState.effectiveEnabled,
+            latestCanonicalCallAt: latestCanonicalCall?.ingested_at || null,
+            deadLetterTotal: realtimePipeline.summary.deadLetterTotal,
+            orderFreshnessStatus: realtimePipeline.sla.indicators.orderFreshnessStatus,
+            transcriptionReadyStatus: realtimePipeline.sla.indicators.transcriptionReadyStatus,
+            scoreRefreshStatus: realtimePipeline.sla.indicators.scoreRefreshStatus,
+            queueStageStatuses: [
+                realtimePipeline.queueStages.orderContext,
+                realtimePipeline.queueStages.callMatch,
+                realtimePipeline.queueStages.transcription,
+                realtimePipeline.queueStages.semanticRules,
+                realtimePipeline.queueStages.scoreRefresh,
+                realtimePipeline.queueStages.insightRefresh,
+            ].map((stage) => ({ service: stage.service, status: stage.status })),
         });
         const services = [
             telphinStatus,
             telphinLegacyCompatStatus,
             retailStatus,
             ...realtimePipeline.services,
+            orderFreshnessSlaStatus,
             transcriptionSlaStatus,
             orderScoreSlaStatus,
             matchStatus,
@@ -478,7 +592,7 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json();
-        const { key, value } = body;
+        const { key, value, force } = body;
 
         if (!key || value === undefined) {
             return NextResponse.json({ error: 'Missing key or value' }, { status: 400 });
@@ -490,15 +604,66 @@ export async function POST(req: Request) {
             ? normalizeTelphinLegacyCompatOverride(value)
             : String(value);
 
+        if (key === 'telphin_legacy_compat_override' && normalizedValue === 'disabled' && !force) {
+            const [realtimePipelineState, telphinLegacyCompatState, realtimePipeline, latestCanonicalCall] = await Promise.all([
+                getRealtimePipelineRuntimeState(),
+                getTelphinLegacyCompatRuntimeState(),
+                getRealtimePipelineMonitoringSnapshot(),
+                supabase
+                    .from('raw_telphin_calls')
+                    .select('ingested_at')
+                    .not('ingested_at', 'is', null)
+                    .order('ingested_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle(),
+            ]);
+
+            const readiness = buildTelphinLegacyShutdownReadiness({
+                realtimePipelineEnabled: realtimePipelineState.effectiveEnabled,
+                queueAvailable: realtimePipeline.queueAvailable,
+                telphinLegacyCompatEnabled: telphinLegacyCompatState.effectiveEnabled,
+                latestCanonicalCallAt: latestCanonicalCall.data?.ingested_at || null,
+                deadLetterTotal: realtimePipeline.summary.deadLetterTotal,
+                orderFreshnessStatus: realtimePipeline.sla.indicators.orderFreshnessStatus,
+                transcriptionReadyStatus: realtimePipeline.sla.indicators.transcriptionReadyStatus,
+                scoreRefreshStatus: realtimePipeline.sla.indicators.scoreRefreshStatus,
+                queueStageStatuses: [
+                    realtimePipeline.queueStages.orderContext,
+                    realtimePipeline.queueStages.callMatch,
+                    realtimePipeline.queueStages.transcription,
+                    realtimePipeline.queueStages.semanticRules,
+                    realtimePipeline.queueStages.scoreRefresh,
+                    realtimePipeline.queueStages.insightRefresh,
+                ].map((stage) => ({ service: stage.service, status: stage.status })),
+            });
+
+            if (!readiness.ready_for_disable && !readiness.already_disabled) {
+                return NextResponse.json({
+                    error: 'Telphin compat layer is not ready for safe disable',
+                    readiness,
+                }, { status: 409 });
+            }
+        }
+
         // Whitelist keys for safety if needed, but for now open for sync_state
         // Update sync_state
+        const upsertRows = [{
+            key,
+            value: normalizedValue,
+            updated_at: new Date().toISOString()
+        }];
+
+        if (key === 'telphin_legacy_compat_override' && normalizedValue === 'disabled') {
+            upsertRows.push({
+                key: 'telphin_legacy_shutdown_disabled_at',
+                value: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            });
+        }
+
         const { error } = await supabase
             .from('sync_state')
-            .upsert({
-                key,
-                value: normalizedValue,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'key' });
+            .upsert(upsertRows, { onConflict: 'key' });
 
         if (error) throw error;
 

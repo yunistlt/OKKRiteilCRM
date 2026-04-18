@@ -11,6 +11,7 @@ export type SystemJobType =
   | 'retailcrm_order_delta_pull'
   | 'retailcrm_history_delta_pull'
   | 'retailcrm_order_upsert'
+  | 'retailcrm_order_context_refresh'
   | 'telphin_call_upsert'
   | 'call_match'
   | 'call_transcription'
@@ -158,6 +159,39 @@ export async function enqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput)
 
 export async function safeEnqueueOrderRefreshJob(input: EnqueueOrderRefreshJobInput) {
   return safeEnqueueSystemJob(buildOrderRefreshJobInput(input));
+}
+
+interface EnqueueOrderContextRefreshJobInput {
+  orderId: number | string;
+  source: string;
+  priority?: number;
+  windowSeconds?: number;
+  payload?: Record<string, any>;
+  maxAttempts?: number;
+  parentJobId?: number | null;
+}
+
+function buildOrderContextRefreshJobInput(input: EnqueueOrderContextRefreshJobInput): EnqueueSystemJobInput {
+  return {
+    jobType: 'retailcrm_order_context_refresh',
+    payload: {
+      ...(input.payload || {}),
+      order_id: input.orderId,
+      source: input.source,
+    },
+    priority: input.priority ?? 22,
+    idempotencyKey: `retailcrm_order_context_refresh:${input.orderId}:bucket:${buildTimeBucket(input.windowSeconds ?? 30)}`,
+    maxAttempts: input.maxAttempts ?? 5,
+    parentJobId: input.parentJobId ?? null,
+  };
+}
+
+export async function enqueueOrderContextRefreshJob(input: EnqueueOrderContextRefreshJobInput) {
+  return enqueueSystemJob(buildOrderContextRefreshJobInput(input));
+}
+
+export async function safeEnqueueOrderContextRefreshJob(input: EnqueueOrderContextRefreshJobInput) {
+  return safeEnqueueSystemJob(buildOrderContextRefreshJobInput(input));
 }
 
 interface EnqueueCallSemanticRulesJobInput {

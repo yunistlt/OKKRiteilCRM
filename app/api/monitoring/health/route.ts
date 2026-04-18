@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
+import { REALTIME_SLA_THRESHOLDS } from '@/lib/realtime-sla';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -141,15 +142,25 @@ export async function GET() {
                         : `insight refresh oldest queued ${Math.floor(metrics.insightQueueOldestSeconds / 60)} min`,
                 },
                 {
+                    name: 'okk_order_freshness_sla',
+                    failing: realtimePipeline.sla.indicators.orderFreshnessSeconds !== null
+                        && realtimePipeline.sla.indicators.orderFreshnessSeconds > REALTIME_SLA_THRESHOLDS.orderFreshness.criticalSeconds,
+                    message: realtimePipeline.sla.indicators.orderFreshnessSeconds === null
+                        ? 'order freshness SLA unavailable'
+                        : `order freshness ${Math.floor(realtimePipeline.sla.indicators.orderFreshnessSeconds / 60)} min`,
+                },
+                {
                     name: 'recording_ready_to_transcript_latency_p95',
-                    failing: metrics.recordingReadyToTranscriptLatency.p95Seconds !== null && metrics.recordingReadyToTranscriptLatency.p95Seconds > 7 * 60,
+                    failing: metrics.recordingReadyToTranscriptLatency.p95Seconds !== null
+                        && metrics.recordingReadyToTranscriptLatency.p95Seconds > REALTIME_SLA_THRESHOLDS.transcriptionReady.criticalSeconds,
                     message: metrics.recordingReadyToTranscriptLatency.p95Seconds === null
                         ? 'recording_ready→transcript latency unavailable'
                         : `recording_ready→transcript p95 ${Math.floor(metrics.recordingReadyToTranscriptLatency.p95Seconds / 60)} min`,
                 },
                 {
                     name: 'order_event_to_score_latency_p95',
-                    failing: metrics.orderEventToScoreLatency.p95Seconds !== null && metrics.orderEventToScoreLatency.p95Seconds > 3 * 60,
+                    failing: metrics.orderEventToScoreLatency.p95Seconds !== null
+                        && metrics.orderEventToScoreLatency.p95Seconds > REALTIME_SLA_THRESHOLDS.scoreRefresh.criticalSeconds,
                     message: metrics.orderEventToScoreLatency.p95Seconds === null
                         ? 'order event→score latency unavailable'
                         : `order event→score p95 ${Math.floor(metrics.orderEventToScoreLatency.p95Seconds / 60)} min`,
@@ -185,6 +196,7 @@ export async function GET() {
             for (const serviceName of [
                 'RetailCRM Delta Queue',
                 'RetailCRM History Queue',
+                'Order Context Queue',
                 'Call Match Queue',
                 'Transcription Queue',
                 'Semantic Rules Queue',

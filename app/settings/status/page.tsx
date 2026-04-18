@@ -140,6 +140,7 @@ interface RealtimePipelineSnapshot {
     queueStages: {
         retailcrmDelta: QueueStageSnapshot;
         retailcrmHistory: QueueStageSnapshot;
+        orderContext: QueueStageSnapshot;
         callMatch: QueueStageSnapshot;
         transcription: QueueStageSnapshot;
         semanticRules: QueueStageSnapshot;
@@ -147,6 +148,35 @@ interface RealtimePipelineSnapshot {
         managerAggregate: QueueStageSnapshot;
         insightRefresh: QueueStageSnapshot;
     };
+    sla: {
+        targets: {
+            orderFreshnessSeconds: number;
+            transcriptionReadySeconds: number;
+            scoreRefreshSeconds: number;
+        };
+        indicators: {
+            orderFreshnessSeconds: number | null;
+            orderFreshnessStatus: 'ok' | 'warning' | 'error';
+            transcriptionReadyP95Seconds: number | null;
+            transcriptionReadyStatus: 'ok' | 'warning' | 'error';
+            scoreRefreshP95Seconds: number | null;
+            scoreRefreshStatus: 'ok' | 'warning' | 'error';
+        };
+    };
+}
+
+interface TelphinLegacyShutdownReadiness {
+    status: 'ok' | 'warning' | 'error';
+    phase: 'ready' | 'blocked' | 'already_disabled';
+    ready_for_disable: boolean;
+    already_disabled: boolean;
+    direct_application_readers_detected: boolean;
+    direct_application_readers_note: string;
+    latest_canonical_call_at: string | null;
+    has_recent_canonical_call_activity: boolean;
+    blockers: string[];
+    degraded_signals: string[];
+    reasons: string[];
 }
 
 type RealtimePipelineOverride = 'inherit' | 'enabled' | 'disabled';
@@ -173,6 +203,7 @@ export default function SystemStatusPage() {
     const [telphinLegacyCompatOverride, setTelphinLegacyCompatOverride] = useState<TelphinLegacyCompatOverride>('inherit');
     const [telphinLegacyCompatEffectiveEnabled, setTelphinLegacyCompatEffectiveEnabled] = useState(true);
     const [telphinLegacyCompatDefaultEnabled, setTelphinLegacyCompatDefaultEnabled] = useState(true);
+    const [telphinLegacyShutdownReadiness, setTelphinLegacyShutdownReadiness] = useState<TelphinLegacyShutdownReadiness | null>(null);
     const [insightLogs, setInsightLogs] = useState<any[]>([]);
     const [throughput, setThroughput] = useState<ThroughputMetric[]>([]);
     const [savingSettings, setSavingSettings] = useState(false);
@@ -204,6 +235,7 @@ export default function SystemStatusPage() {
                 setTelphinLegacyCompatOverride((data.settings.telphin_legacy_compat_override || 'inherit') as TelphinLegacyCompatOverride);
                 setTelphinLegacyCompatEffectiveEnabled(Boolean(data.settings.telphin_legacy_compat_effective_enabled));
                 setTelphinLegacyCompatDefaultEnabled(Boolean(data.settings.telphin_legacy_compat_default_enabled));
+                setTelphinLegacyShutdownReadiness((data.settings.telphin_legacy_shutdown_readiness || null) as TelphinLegacyShutdownReadiness | null);
             }
             if (data.insight_logs) {
                 setInsightLogs(data.insight_logs);
@@ -365,7 +397,7 @@ export default function SystemStatusPage() {
     const saveSettings = async () => {
         setSavingSettings(true);
         try {
-            await Promise.all([
+            const settingsRequests = [
                 fetch('/api/settings/system-status', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -375,17 +407,57 @@ export default function SystemStatusPage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: 'realtime_pipeline_override', value: realtimePipelineOverride })
-                }),
-                fetch('/api/settings/system-status', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ key: 'telphin_legacy_compat_override', value: telphinLegacyCompatOverride })
                 })
-            ]);
+            ];
+
+            if (telphinLegacyCompatOverride !== 'disabled') {
+                settingsRequests.push(
+                    fetch('/api/settings/system-status', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ key: 'telphin_legacy_compat_override', value: telphinLegacyCompatOverride })
+                    })
+                );
+            }
+
+            await Promise.all(settingsRequests);
             fetchSyncStatus();
         } catch (e) {
             console.error(e);
             alert('Ошибка сохранения!');
+        } finally {
+            setSavingSettings(false);
+        }
+    };
+
+    const disableTelphinCompatLayer = async () => {
+        if (!telphinLegacyShutdownReadiness?.ready_for_disable) {
+            alert('Compat layer пока нельзя безопасно выключить. Сначала устраните блокирующие сигналы readiness.');
+            return;
+        }
+
+        if (!window.confirm('Выключить Telphin compat layer сейчас? Это переведёт runtime override в disabled.')) {
+            return;
+        }
+
+        setSavingSettings(true);
+        try {
+            const res = await fetch('/api/settings/system-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'telphin_legacy_compat_override', value: 'disabled' })
+            });
+
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Не удалось выключить compat layer');
+            }
+
+            setTelphinLegacyCompatOverride('disabled');
+            await fetchSyncStatus();
+        } catch (e: any) {
+            console.error(e);
+            alert(e.message || 'Ошибка выключения compat layer');
         } finally {
             setSavingSettings(false);
         }
@@ -425,6 +497,8 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
         if (name.includes('RetailCRM Delta Queue')) return 'RetailCRM Delta Очередь';
         if (name.includes('RetailCRM History Queue')) return 'RetailCRM History Очередь';
+        if (name.includes('Order Context Queue')) return 'Очередь Контекста Заказа';
+        if (name.includes('Order Freshness SLA')) return 'SLA Свежести Заказа';
         if (name.includes('Transcription SLA')) return 'SLA Транскрибации';
         if (name.includes('Order Score SLA')) return 'SLA Пересчета Score';
         if (name.includes('Call Match Queue')) return 'Очередь Матчинга Звонков';
@@ -449,6 +523,8 @@ export default function SystemStatusPage() {
         if (name.includes('System Jobs Queue')) return '🧱';
         if (name.includes('RetailCRM Delta Queue')) return '📦';
         if (name.includes('RetailCRM History Queue')) return '🕘';
+        if (name.includes('Order Context Queue')) return '🧾';
+        if (name.includes('Order Freshness SLA')) return '⚡️';
         if (name.includes('Transcription SLA')) return '⏱️';
         if (name.includes('Order Score SLA')) return '🛰️';
         if (name.includes('Call Match Queue')) return '🔀';
@@ -480,6 +556,7 @@ export default function SystemStatusPage() {
     const formatQueueStageTitle = (service: string) => {
         if (service.includes('RetailCRM Delta Queue')) return 'Заказы из RetailCRM';
         if (service.includes('RetailCRM History Queue')) return 'История заказов';
+        if (service.includes('Order Context Queue')) return 'Обогащение контекста заказа';
         if (service.includes('Call Match Queue')) return 'Связка звонков с заказами';
         if (service.includes('Transcription Queue')) return 'Расшифровка звонков';
         if (service.includes('Semantic Rules Queue')) return 'Проверка семантических правил';
@@ -508,9 +585,17 @@ export default function SystemStatusPage() {
         return `${hours}ч ${minutes}м`;
     };
 
+    const formatCompactDate = (value: string | null) => {
+        if (!value) return 'n/a';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'n/a';
+        return date.toLocaleString('ru-RU');
+    };
+
     const queueStageCards = pipelineMetrics ? [
         pipelineMetrics.queueStages.retailcrmDelta,
         pipelineMetrics.queueStages.retailcrmHistory,
+        pipelineMetrics.queueStages.orderContext,
         pipelineMetrics.queueStages.callMatch,
         pipelineMetrics.queueStages.transcription,
         pipelineMetrics.queueStages.semanticRules,
@@ -536,6 +621,7 @@ export default function SystemStatusPage() {
             accent: 'text-violet-600',
             bg: 'bg-violet-50',
             metric: pipelineMetrics?.metrics.recordingReadyToTranscriptLatency,
+            targetSeconds: pipelineMetrics?.sla.targets.transcriptionReadySeconds || null,
         },
         {
             title: 'От события по заказу до новой оценки',
@@ -543,6 +629,7 @@ export default function SystemStatusPage() {
             accent: 'text-cyan-700',
             bg: 'bg-cyan-50',
             metric: pipelineMetrics?.metrics.orderEventToScoreLatency,
+            targetSeconds: pipelineMetrics?.sla.targets.scoreRefreshSeconds || null,
         },
         {
             title: 'Скорость расшифровки',
@@ -550,6 +637,7 @@ export default function SystemStatusPage() {
             accent: 'text-purple-600',
             bg: 'bg-purple-50',
             metric: pipelineMetrics?.metrics.transcriptionLatency,
+            targetSeconds: null,
         },
         {
             title: 'Скорость пересчёта score',
@@ -557,6 +645,7 @@ export default function SystemStatusPage() {
             accent: 'text-blue-600',
             bg: 'bg-blue-50',
             metric: pipelineMetrics?.metrics.scoreRefreshLatency,
+            targetSeconds: null,
         },
         {
             title: 'Скорость смысловых правил',
@@ -564,6 +653,7 @@ export default function SystemStatusPage() {
             accent: 'text-fuchsia-600',
             bg: 'bg-fuchsia-50',
             metric: pipelineMetrics?.metrics.semanticRulesLatency,
+            targetSeconds: null,
         },
         {
             title: 'Скорость сводки по менеджерам',
@@ -571,6 +661,7 @@ export default function SystemStatusPage() {
             accent: 'text-emerald-600',
             bg: 'bg-emerald-50',
             metric: pipelineMetrics?.metrics.managerAggregateLatency,
+            targetSeconds: null,
         },
         {
             title: 'От score до сводки',
@@ -578,6 +669,7 @@ export default function SystemStatusPage() {
             accent: 'text-amber-600',
             bg: 'bg-amber-50',
             metric: pipelineMetrics?.metrics.scoreToAggregateLatency,
+            targetSeconds: null,
         },
         {
             title: 'От найденного звонка до сводки',
@@ -585,6 +677,7 @@ export default function SystemStatusPage() {
             accent: 'text-rose-600',
             bg: 'bg-rose-50',
             metric: pipelineMetrics?.metrics.callMatchToAggregateLatency,
+            targetSeconds: null,
         },
     ];
 
@@ -809,6 +902,11 @@ export default function SystemStatusPage() {
                         <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
                             {formatSamplesLabel(card.metric?.sampleSize)}
                         </div>
+                        {card.targetSeconds && (
+                            <div className="text-[9px] font-bold text-gray-500 mt-2">
+                                Цель SLA: до {formatLatency(card.targetSeconds)}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -879,9 +977,10 @@ export default function SystemStatusPage() {
 
             <div className="grid grid-cols-1 gap-0 border-b border-slate-200 bg-white md:grid-cols-2 xl:grid-cols-4">
                 <div className="border-r border-slate-200 bg-white p-4">
-                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток заказов RetailCRM</div>
-                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.retailcrmCursorLagSeconds || null)}</div>
-                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">по обновлениям заказов</div>
+                    <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Свежесть заказа в ОКК</div>
+                    <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.sla.indicators.orderFreshnessSeconds || null)}</div>
+                    <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">max(cursor lag, event→score p95)</div>
+                    <div className="text-[9px] font-bold text-gray-500 mt-1">Цель SLA: до {formatLatency(pipelineMetrics?.sla.targets.orderFreshnessSeconds || null)}</div>
                 </div>
                 <div className="border-r border-slate-200 bg-white p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-2">Насколько отстаёт поток истории</div>
@@ -892,11 +991,13 @@ export default function SystemStatusPage() {
                     <div className="text-[9px] font-black uppercase tracking-widest text-purple-600 mb-2">Самая старая задача на расшифровку</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.transcriptionQueueOldestSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый звонок</div>
+                    <div className="text-[9px] font-bold text-gray-500 mt-1">Цель SLA p95: до {formatLatency(pipelineMetrics?.sla.targets.transcriptionReadySeconds || null)}</div>
                 </div>
                 <div className="bg-blue-50 p-4">
                     <div className="text-[9px] font-black uppercase tracking-widest text-blue-600 mb-2">Самая старая задача на пересчёт score</div>
                     <div className="text-3xl font-black text-gray-900">{formatLatency(pipelineMetrics?.metrics.scoreQueueOldestSeconds || null)}</div>
                     <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mt-2">как долго ждёт самый старый пересчёт</div>
+                    <div className="text-[9px] font-bold text-gray-500 mt-1">Цель SLA p95: до {formatLatency(pipelineMetrics?.sla.targets.scoreRefreshSeconds || null)}</div>
                 </div>
             </div>
 
@@ -1190,10 +1291,40 @@ export default function SystemStatusPage() {
                             >
                                 <option value="inherit">Наследовать env ({telphinLegacyCompatDefaultEnabled ? 'ON' : 'OFF'})</option>
                                 <option value="enabled">Принудительно ON</option>
-                                <option value="disabled">Принудительно OFF</option>
+                                {telphinLegacyCompatOverride === 'disabled' && <option value="disabled">Принудительно OFF</option>}
                             </select>
                             <div className="mt-1 text-[8px] font-bold uppercase tracking-wide text-gray-400">
                                 Сейчас эффективно: {telphinLegacyCompatEffectiveEnabled ? 'compat layer ON' : 'compat layer OFF'}
+                            </div>
+                            <div className="mt-2 rounded bg-gray-800/80 p-2 text-[8px]">
+                                <div className="flex items-center justify-between text-gray-300 uppercase font-black tracking-wide">
+                                    <span>Legacy shutdown</span>
+                                    <span className={telphinLegacyShutdownReadiness?.ready_for_disable ? 'text-green-400' : telphinLegacyShutdownReadiness?.already_disabled ? 'text-blue-300' : 'text-yellow-300'}>
+                                        {telphinLegacyShutdownReadiness?.already_disabled
+                                            ? 'already off'
+                                            : telphinLegacyShutdownReadiness?.ready_for_disable
+                                            ? 'ready'
+                                            : 'blocked'}
+                                    </span>
+                                </div>
+                                <div className="mt-1 text-gray-400 font-bold leading-tight">
+                                    Последняя canonical активность: {formatCompactDate(telphinLegacyShutdownReadiness?.latest_canonical_call_at || null)}
+                                </div>
+                                <div className="mt-1 text-gray-400 font-bold leading-tight">
+                                    Прямые app readers legacy-таблиц: {telphinLegacyShutdownReadiness?.direct_application_readers_detected ? 'обнаружены' : 'не найдены'}
+                                </div>
+                                {telphinLegacyShutdownReadiness?.reasons?.slice(0, 3).map((reason, idx) => (
+                                    <div key={idx} className="mt-1 text-yellow-300 font-bold leading-tight">
+                                        {reason}
+                                    </div>
+                                ))}
+                                <button
+                                    onClick={disableTelphinCompatLayer}
+                                    disabled={savingSettings || !telphinLegacyShutdownReadiness?.ready_for_disable || !telphinLegacyCompatEffectiveEnabled}
+                                    className="mt-2 w-full py-1 rounded bg-emerald-600 text-white disabled:bg-gray-700 disabled:text-gray-500 text-[8px] font-black uppercase tracking-widest"
+                                >
+                                    {telphinLegacyCompatEffectiveEnabled ? 'SAFE DISABLE COMPAT' : 'COMPAT УЖЕ OFF'}
+                                </button>
                             </div>
                         </div>
                         <div className="flex justify-between items-center">

@@ -21,9 +21,9 @@
 - [x] Зафиксировать по базе за последние 60 дней фактический поток изменений: в среднем 1059.46 изменений в день, p50 = 1082, p95 = 2050.5, максимум = 2142.
 - [x] Зафиксировать по базе рабочую часть потока изменений: в среднем 644.98 изменений в день по заказам, которые сейчас находятся в рабочих статусах, p50 = 749.5, p95 = 1156.4, максимум = 1303.
 - [x] Принять расчётный средний поток звонков: до 20 звонков в час в среднем и до 15-20 звонков за 10 минут в коротком всплеске.
-- [ ] Зафиксировать целевой SLA по свежести заказа в ОКК: до 1-2 минут при штатной работе.
-- [ ] Зафиксировать целевой SLA по появлению транскрипции после готовности записи: до 3-7 минут при штатной работе.
-- [ ] Зафиксировать целевой SLA по пересчёту score после нового события по заказу: до 1-3 минут.
+- [x] Зафиксировать целевой SLA по свежести заказа в ОКК: до 1-2 минут при штатной работе.
+- [x] Зафиксировать целевой SLA по появлению транскрипции после готовности записи: до 3-7 минут при штатной работе.
+- [x] Зафиксировать целевой SLA по пересчёту score после нового события по заказу: до 1-3 минут.
 
 ## 2. Архитектурный принцип исправления
 
@@ -78,9 +78,9 @@
 ## 4. Целевая схема near realtime pipeline
 
 - [x] Событие order_changed из RetailCRM должно сразу создавать job на upsert заказа в orders/raw_order_events.
-- [ ] После успешного upsert заказа автоматически создавать job на lightweight enrichment контекста.
+- [x] После успешного upsert заказа автоматически создавать job на lightweight enrichment контекста.
 - [x] После любого изменения заказа автоматически создавать job на recalculation нужных derived fields.
-- [ ] Событие history_changed из RetailCRM должно сразу создавать job на запись order_history_log и возможный rescore связанного заказа.
+- [x] Событие history_changed из RetailCRM должно сразу создавать job на запись order_history_log и возможный rescore связанного заказа.
 - [x] Событие call_created из Telphin должно сразу записываться в raw_telphin_calls.
 - [x] Событие call_created должно сразу создавать job на matching звонка к заказу.
 - [x] Событие recording_ready должно сразу создавать job на transcription.
@@ -90,7 +90,7 @@
 
 ## 5. Этап 1. Нормализация текущей схемы данных
 
-- [ ] Провести аудит всех мест, где пишутся данные звонков и транскрибации.
+- [x] Провести аудит всех мест, где пишутся данные звонков и транскрибации.
 - [x] Подтвердить один боевой источник правды для звонков: raw_telphin_calls.
 - [x] Подтвердить один боевой источник правды для транскрибации: transcription_status и transcript в raw_telphin_calls или отдельная каноническая очередь job.
 - [x] Убрать расхождение между webhook-обработчиками Telphin и боевым cron транскрибации.
@@ -107,7 +107,7 @@
 - [x] Сделать выборку задач маленькими батчами без длинных HTTP-цепочек.
 - [x] Ввести distributed lock на задачу и на тип worker, чтобы не было двойной обработки.
 - [x] Реализовать retries с backoff без бесконечных циклов.
-- [ ] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
+- [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать отдельный watchdog, который возвращает зависшие задачи из processing в queued после timeout.
 - [x] Реализовать dead-letter слой для ручного разбора.
 - [x] Для `call_transcription`, `order_insight_refresh` и `order_score_refresh` concurrency теперь enforced в `claim_system_jobs` на уровне БД через advisory lock + global max processing cap, а не только локальным `limit` одного route-вызова.
@@ -139,7 +139,7 @@
 - [x] Зафиксировать продуктовое правило: в боевом контуре транскрибируем все подряд звонки, а не только звонки по активным статусам или выборочным сценариям.
 - [x] Заменить cron-подход "раз в 10 минут по 10 звонков" на непрерывную очередь задач transcription.
 - [x] Обрабатывать звонки по мере появления recording_ready, а не ждать следующего cron-слота.
-- [ ] Оставить ограничение concurrency=2 на старте и поднимать только после замера реальной latency.
+- [x] Оставить ограничение concurrency=2 на старте и поднимать только после замера реальной latency.
 - [x] Ввести приоритет транскрибации для звонков по активным рабочим статусам.
 - [x] Ввести приоритет транскрибации для самых свежих звонков, чтобы карточка заказа обновлялась быстро.
 - [x] Skip допускается только для явных технических кейсов: битая запись, пустой media payload, дубликат или отсутствие доступной записи после ретраев; бизнес-нерелевантность не является причиной пропуска транскрибации.
@@ -192,10 +192,10 @@
 
 ## 14. Этап 10. Пошаговый rollout без риска для продакшна
 
-- [ ] Сначала внедрить только канонический ingest и очередь без отключения старых cron.
-- [ ] Потом перевести транскрибацию на новую очередь и оставить старый cron как backup-readonly режим.
+- [x] Сначала внедрить только канонический ingest и очередь без отключения старых cron.
+- [x] Потом перевести транскрибацию на новую очередь и оставить старый cron как backup-readonly режим.
 - [x] Потом перевести single-order scoring на события и снизить частоту /api/okk/run-all.
-- [ ] Потом перевести aggregates на инкрементальный пересчёт.
+- [x] Потом перевести aggregates на инкрементальный пересчёт.
 - [ ] Только после стабилизации выключить legacy-пути и старые параллельные таблицы.
 - [x] На каждом этапе иметь флаг feature toggle для быстрого возврата на старый поток.
 
@@ -204,7 +204,8 @@
 - [x] Вынесен общий RetailCRM helper-слой для fetch/upsert snapshot-заказов без дублирования логики между batch и queue path.
 - [x] Добавлен `retailcrm-order-delta` worker, который ставит отдельные `retailcrm_order_upsert` jobs по найденным изменениям.
 - [x] Добавлен `retailcrm-history-delta` worker с частым дельта-проходом по `orders/history` и постановкой `retailcrm_order_upsert` jobs.
-- [x] Добавлен `retailcrm-order-upsert` worker, который после upsert заказа запускает `order_score_refresh` и `order_insight_refresh`.
+- [x] Добавлен `retailcrm-order-upsert` worker, который после upsert заказа запускает `retailcrm_order_context_refresh`.
+- [x] Добавлен отдельный `order-context-refresh` worker: после `retailcrm_order_upsert` он обновляет `order_metrics.full_order_context` нормализованным lightweight-контекстом и только потом ставит `order_score_refresh` и `order_insight_refresh`.
 - [x] Добавлен `order-insight-refresh` worker и cron-расписание для CRM near realtime цепочки.
 - [x] Добавлен coalescing `order_score_refresh` и `order_insight_refresh` по `order_id` с 30-секундным debounce-окном.
 - [x] Monitoring endpoints обогащены lag/backlog метриками по `system_jobs`, RetailCRM cursors и oldest queued refresh/transcription jobs.
@@ -227,6 +228,8 @@
 - [x] Hotspot summary начал добавлять human-readable dependency hint (`RetailCRM`, `OpenAI`, media/download, upstream dependency wait`), чтобы оператор видел не только симптом очереди, но и вероятный внешний источник деградации.
 - [x] Hotspot summary начал поднимать `last_error` проблемной очереди из `sync_state`, чтобы Telegram alerting, health signal и status dashboard показывали последнюю причину сбоя без ручного поиска по worker state.
 - [x] Telphin ingest и storage path усилены controlled timeout/degradation: общий helper теперь ограничивает token lookup, `user`, `call_history` и download записи по времени и возвращает нормализованные network/timeout ошибки вместо зависаний.
+- [x] Добавлен admin-export `/api/settings/system-status/lag-report`: текущий lag/backlog/SLA snapshot теперь можно выгружать в markdown вместе с recent completed transcription/score samples для baseline-замеров без ручной сборки.
+- [x] Canonical Telphin webhook sync перестал безусловно читать `incoming_calls`/`outgoing_calls`: legacy fallback context теперь подтягивается только если в canonical row реально не хватает полей, что уменьшает скрытую зависимость от legacy-таблиц перед финальным shutdown.
 - [x] `system-audit` и health-check начали включать в сигнал dominant retry causes, чтобы Telegram/monitoring показывали не только факт backlog, но и его источник (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`).
 - [x] `system-audit` и health-check начали выделять конкретную hotspot-очередь (`transcription`, `score`, `insight` и т.д.), чтобы Telegram и health endpoint показывали не только общую деградацию, но и самый проблемный stage pipeline.
 - [x] Webhook-side Telphin canonical ingest отвязан от legacy-слоя: ошибки чтения/обновления `incoming_calls`/`outgoing_calls` теперь не должны блокировать upsert в `raw_telphin_calls` и постановку realtime jobs.
@@ -243,7 +246,11 @@
 - [x] Chat-инструмент `analyze_order` тоже переведён на queue-first semantics при активном realtime pipeline: conversational deep analysis больше не запускает production insight path напрямую, а ставит targeted `order_insight_refresh` и возвращает cached insight, если он уже сохранён.
 - [x] Health endpoint перестал публиковать legacy-style check name `transcription_queue_oldest`: мониторинг теперь называет этот SLA-сигнал по реальной queue stage `call_transcription_queue_oldest`.
 - [x] Debug/operator wording дочищен под новую модель: `transcribe-check` теперь явно помечает `pending` как backward-compat alias, status page использует формулировку `Telphin compat layer`, а transcription fallback jobs перестали маркироваться source-тегом `legacy_transcribe_cron`.
+- [x] Для финального legacy shutdown добавлен structured readiness-check в `/api/settings/system-status` и отдельная safe-disable кнопка на status page: оператор теперь видит блокеры (`queue unavailable`, `dead-letter`, SLA error, нет свежей canonical активности) до выключения `telphin_legacy_compat_override`.
+- [x] Выключение `telphin_legacy_compat_override=disabled` теперь дополнительно server-enforced: backend отклоняет shutdown при blocked readiness, generic settings save больше не может обойти safe-disable flow, а момент фактического выключения пишется в `sync_state.telphin_legacy_shutdown_disabled_at`.
+- [x] Legacy Vercel cron routes, которые при активном realtime pipeline уже только возвращали `skipped`, сняты со штатного расписания: `/api/sync/retailcrm`, `/api/sync/retailcrm/history`, `/api/matching/process`, `/api/rules/execute`, `/api/analysis/priorities/refresh`, `/api/cron/transcribe` оставлены как manual force / emergency fallback endpoints.
 - [x] Single-order path в `/api/okk/run-all?orderId=...` тоже перестал обходить queue-owned production flow при активном realtime pipeline: route теперь ставит targeted `order_score_refresh` + `order_insight_refresh`, а direct `runFullEvaluation` оставлен только для legacy mode или `force=true`.
+- [x] Single-order path в `/api/analysis/priorities/refresh?orderId=...` тоже переведён на queue-first semantics при активном realtime pipeline: route больше не вызывает `refreshStoredPriorityForOrder` напрямую, а ставит targeted `order_score_refresh` и при наличии возвращает cached priority.
 - [x] Legacy `/api/cron` перестал последовательно запускать backup matching + rules + priorities в одном запросе: orchestration разнесена на отдельные Vercel cron routes (`/api/matching/process`, `/api/rules/execute`, `/api/analysis/priorities/refresh`), а сам endpoint оставлен как лёгкий deprecated stub.
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
@@ -351,20 +358,20 @@
 
 ### Фаза 0. Зафиксировать текущее состояние
 
-- [ ] Снять снимок текущих cron-маршрутов, их расписания и фактических зависимостей между ними.
-- [ ] Составить таблицу: источник события, куда пишет, кто читает, какой следующий шаг pipeline.
-- [ ] Отдельно выписать все места записи в orders, raw_order_events, raw_telphin_calls, call_order_matches, order_metrics, okk_order_scores.
-- [ ] Отдельно выписать все места записи в incoming_calls, outgoing_calls, transcription_queue.
+- [x] Снять снимок текущих cron-маршрутов, их расписания и фактических зависимостей между ними.
+- [x] Составить таблицу: источник события, куда пишет, кто читает, какой следующий шаг pipeline.
+- [x] Отдельно выписать все места записи в orders, raw_order_events, raw_telphin_calls, call_order_matches, order_metrics, okk_order_scores.
+- [x] Отдельно выписать все места записи в incoming_calls, outgoing_calls, transcription_queue.
 - [ ] Зафиксировать текущее поведение по заказу: RetailCRM update -> когда это появляется в UI ОКК.
 - [ ] Зафиксировать текущее поведение по звонку: Telphin event -> когда звонок виден в карточке заказа.
 - [ ] Зафиксировать текущее поведение по транскрипции: recording ready -> когда transcript попадает в ОКК.
 - [ ] Зафиксировать текущее поведение по score: новое событие -> когда перерасчёт отражается в таблице ОКК.
-- [ ] Подготовить один короткий markdown-отчёт "as-is pipeline".
+- [x] Подготовить один короткий markdown-отчёт "as-is pipeline".
 - [ ] Подготовить один короткий markdown-отчёт "as-is lag measurements".
 
 Результат фазы:
-- [ ] Есть карта текущего pipeline.
-- [ ] Есть список старых и новых контуров данных.
+- [x] Есть карта текущего pipeline.
+- [x] Есть список старых и новых контуров данных.
 - [ ] Есть baseline по реальным задержкам.
 
 Критерий перехода дальше:
@@ -646,8 +653,8 @@
 
 ### Блок A. Аудит и спецификация
 
-- [ ] Подготовить документ с картой текущего pipeline.
-- [ ] Подготовить документ с картой всех таблиц и источников записи.
+- [x] Подготовить документ с картой текущего pipeline.
+- [x] Подготовить документ с картой всех таблиц и источников записи.
 - [ ] Подготовить документ с реальными лагами по 5-10 тестовым заказам и звонкам.
 - [ ] Подготовить документ с целевой job queue схемой.
 - [ ] Подготовить документ с новой state-моделью звонка и транскрибации.

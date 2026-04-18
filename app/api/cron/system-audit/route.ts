@@ -2,6 +2,7 @@
 // ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Системный аудитор: проверка здоровья базы и зависших процессов.
 import { NextRequest, NextResponse } from 'next/server';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
+import { REALTIME_SLA_THRESHOLDS } from '@/lib/realtime-sla';
 import { supabase } from '@/utils/supabase';
 import { sendTelegramNotification } from '@/lib/telegram';
 
@@ -124,9 +125,13 @@ export async function GET(req: NextRequest) {
         if (realtimePipeline.enabled && realtimePipeline.queueAvailable) {
             const metrics = realtimePipeline.metrics;
             const summary = realtimePipeline.summary;
+            const sla = realtimePipeline.sla;
 
             if (summary.deadLetterTotal > 0) {
                 realtimeAlertLines.push(`dead-letter задач: ${summary.deadLetterTotal}`);
+            }
+            if (sla.indicators.orderFreshnessSeconds !== null && sla.indicators.orderFreshnessSeconds > REALTIME_SLA_THRESHOLDS.orderFreshness.criticalSeconds) {
+                realtimeAlertLines.push(`свежесть заказа в ОКК: ${Math.floor(sla.indicators.orderFreshnessSeconds / 60)} мин`);
             }
             if (metrics.retailcrmCursorLagSeconds !== null && metrics.retailcrmCursorLagSeconds > 10 * 60) {
                 realtimeAlertLines.push(`lag RetailCRM cursor: ${Math.floor(metrics.retailcrmCursorLagSeconds / 60)} мин`);
@@ -146,10 +151,10 @@ export async function GET(req: NextRequest) {
             if (metrics.insightQueueOldestSeconds !== null && metrics.insightQueueOldestSeconds > 20 * 60) {
                 realtimeAlertLines.push(`очередь insight_refresh ждёт: ${Math.floor(metrics.insightQueueOldestSeconds / 60)} мин`);
             }
-            if (metrics.orderEventToScoreLatency.p95Seconds !== null && metrics.orderEventToScoreLatency.p95Seconds > 3 * 60) {
+            if (metrics.orderEventToScoreLatency.p95Seconds !== null && metrics.orderEventToScoreLatency.p95Seconds > REALTIME_SLA_THRESHOLDS.scoreRefresh.criticalSeconds) {
                 realtimeAlertLines.push(`p95 event→score latency: ${Math.floor(metrics.orderEventToScoreLatency.p95Seconds / 60)} мин`);
             }
-            if (metrics.recordingReadyToTranscriptLatency.p95Seconds !== null && metrics.recordingReadyToTranscriptLatency.p95Seconds > 7 * 60) {
+            if (metrics.recordingReadyToTranscriptLatency.p95Seconds !== null && metrics.recordingReadyToTranscriptLatency.p95Seconds > REALTIME_SLA_THRESHOLDS.transcriptionReady.criticalSeconds) {
                 realtimeAlertLines.push(`p95 recording_ready→transcript latency: ${Math.floor(metrics.recordingReadyToTranscriptLatency.p95Seconds / 60)} мин`);
             }
             if (metrics.scoreToAggregateLatency.p95Seconds !== null && metrics.scoreToAggregateLatency.p95Seconds > 10 * 60) {

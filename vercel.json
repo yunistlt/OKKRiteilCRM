@@ -10,30 +10,6 @@
             "schedule": "*/30 * * * *"
         },
         {
-            "path": "/api/sync/retailcrm",
-            "schedule": "*/10 * * * *"
-        },
-        {
-            "path": "/api/sync/retailcrm/history",
-            "schedule": "*/30 * * * *"
-        },
-        {
-            "path": "/api/matching/process",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/rules/execute",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/analysis/priorities/refresh",
-            "schedule": "*/5 * * * *"
-        },
-        {
-            "path": "/api/cron/transcribe",
-            "schedule": "*/10 * * * *"
-        },
-        {
             "path": "/api/cron/system-jobs/call-match",
             "schedule": "*/1 * * * *"
         },
@@ -43,6 +19,10 @@
         },
         {
             "path": "/api/cron/system-jobs/retailcrm-order-upsert",
+            "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/system-jobs/order-context-refresh",
             "schedule": "*/1 * * * *"
         },
         {
