@@ -51,6 +51,44 @@ export async function GET(request: Request) {
             }
         }
 
+        if (!specificOrderId) {
+            const nightlyUrl = new URL('/api/cron/system-jobs/nightly-reconciliation', request.url);
+            nightlyUrl.searchParams.set('scope', 'priorities');
+            if (force) {
+                nightlyUrl.searchParams.set('force', 'true');
+            }
+            if (limit && Number.isFinite(limit) && limit > 0) {
+                nightlyUrl.searchParams.set('limit', String(limit));
+            }
+
+            const headers: HeadersInit = {};
+            if (process.env.CRON_SECRET) {
+                headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
+            }
+
+            const fallbackResponse = await fetch(nightlyUrl.toString(), {
+                method: 'GET',
+                headers,
+                cache: 'no-store',
+            });
+
+            const fallbackJson = await fallbackResponse.json().catch(() => ({}));
+            if (!fallbackResponse.ok) {
+                const message = typeof fallbackJson?.error === 'string'
+                    ? fallbackJson.error
+                    : 'Fallback queue seeding failed';
+                throw new Error(message);
+            }
+
+            return NextResponse.json({
+                success: true,
+                mode: 'bulk_seeded',
+                queue_scope: 'priorities',
+                limit: limit || null,
+                ...fallbackJson,
+            });
+        }
+
         console.log(`[ОКК Cron] Starting evaluation run... limit=${limit}, orderId=${specificOrderId}`);
         const result = await runFullEvaluation({ limit, specificOrderId });
         console.log(`[ОКК Cron] Done: ${result.processed} processed, ${result.errors} errors`);

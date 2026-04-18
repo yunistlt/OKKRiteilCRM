@@ -804,6 +804,13 @@ function OKKContent() {
                 setRunResult(`ℹ️ ${json.reason || 'Fallback rebuild пропущен'}`);
                 return;
             }
+            if (json.mode === 'bulk_seeded') {
+                const seeded = json.priority_jobs_seeded ?? json.processed ?? 0;
+                const queuedStatus = json.status === 'chunked' ? 'и продолжится фоново' : 'в очереди';
+                setRunResult(`✅ Fallback rebuild поставлен в очередь: ${seeded} заказов ${queuedStatus}`);
+                setTimeout(load, 1500);
+                return;
+            }
             setRunResult(`✅ Fallback rebuild: ${json.processed ?? 0}, ошибок: ${json.errors ?? 0}`);
             setTimeout(load, 1500);
         } catch (error: any) {

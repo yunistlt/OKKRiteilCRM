@@ -61,6 +61,15 @@ function parseNonNegativeInt(value: unknown) {
   return parsed;
 }
 
+function parseOptionalPositiveInt(value: unknown) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return parsed;
+}
+
 async function writeNightlyState(params: {
   scope: NightlyScope;
   managerOffset: number;
@@ -172,6 +181,7 @@ export async function GET(req: NextRequest) {
         scope,
         manager_offset: storedOffsets.managerOffset,
         priority_offset: storedOffsets.priorityOffset,
+        priority_seed_limit: parseOptionalPositiveInt(req.nextUrl.searchParams.get('limit')),
         source: force ? 'manual_force' : 'scheduled',
       },
       priority: 70,
@@ -199,10 +209,12 @@ export async function GET(req: NextRequest) {
         scope?: NightlyScope;
         manager_offset?: number;
         priority_offset?: number;
+        priority_seed_limit?: number | null;
       };
       const jobScope = normalizeScope(payload.scope);
       const managerOffset = parseNonNegativeInt(payload.manager_offset);
       const priorityOffset = parseNonNegativeInt(payload.priority_offset);
+      const prioritySeedLimit = parseOptionalPositiveInt(payload.priority_seed_limit);
       await writeNightlyState({ scope: jobScope, managerOffset, priorityOffset, status: 'running' });
 
       const shouldSeedAggregates = jobScope === 'all' || jobScope === 'aggregates';
@@ -227,8 +239,14 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const priorityBatch = shouldSeedPriorities
-        ? await getWorkingOrderIds(priorityOffset, PRIORITY_BATCH_SIZE)
+      const remainingPriorityLimit = prioritySeedLimit === null
+        ? PRIORITY_BATCH_SIZE
+        : Math.max(0, prioritySeedLimit - priorityOffset);
+      const priorityBatchSize = shouldSeedPriorities
+        ? Math.min(PRIORITY_BATCH_SIZE, remainingPriorityLimit)
+        : 0;
+      const priorityBatch = priorityBatchSize > 0
+        ? await getWorkingOrderIds(priorityOffset, priorityBatchSize)
         : [];
       for (const orderId of priorityBatch) {
         await enqueueOrderRefreshJob({
@@ -249,7 +267,10 @@ export async function GET(req: NextRequest) {
       const nextManagerOffset = managerOffset + managerBatch.length;
       const nextPriorityOffset = priorityOffset + priorityBatch.length;
       const hasMoreManagers = shouldSeedAggregates && nextManagerOffset < controlledManagerIds.length;
-      const hasMorePriorities = shouldSeedPriorities && priorityBatch.length === PRIORITY_BATCH_SIZE;
+      const hasMorePriorities = shouldSeedPriorities
+        && priorityBatchSize > 0
+        && priorityBatch.length === priorityBatchSize
+        && (prioritySeedLimit === null || nextPriorityOffset < prioritySeedLimit);
 
       if (hasMoreManagers || hasMorePriorities) {
         await writeNightlyState({
@@ -265,6 +286,7 @@ export async function GET(req: NextRequest) {
             scope: jobScope,
             manager_offset: nextManagerOffset,
             priority_offset: nextPriorityOffset,
+            priority_seed_limit: prioritySeedLimit,
             source: 'follow_up',
           },
           priority: 70,
@@ -282,6 +304,7 @@ export async function GET(req: NextRequest) {
           next_priority_offset: nextPriorityOffset,
           has_more_managers: hasMoreManagers,
           has_more_priorities: hasMorePriorities,
+          priority_seed_limit: prioritySeedLimit,
         };
 
         await completeSystemJob(job.id, result);
@@ -298,6 +321,7 @@ export async function GET(req: NextRequest) {
         scope: jobScope,
         next_manager_offset: 0,
         next_priority_offset: 0,
+        priority_seed_limit: prioritySeedLimit,
       };
 
       await completeSystemJob(job.id, result);
