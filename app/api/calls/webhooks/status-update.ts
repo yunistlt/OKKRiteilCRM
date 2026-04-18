@@ -5,6 +5,15 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+const TERMINAL_CALL_STATUSES = new Set([
+  'completed',
+  'failed',
+  'missed',
+  'cancelled',
+  'busy',
+  'no_answer',
+]);
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
@@ -89,16 +98,37 @@ export async function POST(req: NextRequest) {
       idempotencyKey: `telphin_call_upsert:${call_id}:status:${status}`,
     });
 
-    await safeEnqueueSystemJob({
-      jobType: 'call_match',
-      payload: {
-        telphin_call_id: call_id,
-        source: 'status_update_webhook',
-        status,
-      },
-      priority: 30,
-      idempotencyKey: `call_match:${call_id}:status:${status}`,
-    });
+    const isTerminalStatus = TERMINAL_CALL_STATUSES.has(String(status || '').toLowerCase());
+    let shouldEnqueueCallMatch = true;
+    let callMatchSource = 'status_update_webhook';
+    let callMatchIdempotencyKey = `call_match:${call_id}:status:${status}`;
+
+    if (isTerminalStatus) {
+      const { count: existingMatchesCount } = await supabase
+        .from('call_order_matches')
+        .select('id', { count: 'exact', head: true })
+        .eq('telphin_call_id', call_id);
+
+      shouldEnqueueCallMatch = !existingMatchesCount;
+      if (shouldEnqueueCallMatch) {
+        callMatchSource = 'call_end_webhook';
+        callMatchIdempotencyKey = `call_match:${call_id}:call_end`;
+      }
+    }
+
+    if (shouldEnqueueCallMatch) {
+      await safeEnqueueSystemJob({
+        jobType: 'call_match',
+        payload: {
+          telphin_call_id: call_id,
+          source: callMatchSource,
+          status,
+          event: isTerminalStatus ? 'call_end' : 'status_update',
+        },
+        priority: 30,
+        idempotencyKey: callMatchIdempotencyKey,
+      });
+    }
 
     if (canonicalSync.queuedForTranscription) {
       await safeEnqueueCallTranscriptionJob({

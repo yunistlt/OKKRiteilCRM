@@ -16,22 +16,11 @@ function getOpenAI() {
 }
 
 /**
- * Validates if the call is suitable for transcription
+ * Production rule: if we have a recording, the call should go through transcription.
+ * Only technical absence of media is a valid reason to skip before OpenAI.
  */
-export function isTranscribable(call: any, minDuration: number = 15): boolean {
-    const duration = call.duration_sec || 0;
-    const status = call.status || call.raw_payload?.status || null;
-    const isCompletedLikeStatus = status === 'success' || status === 'completed' || duration > 0;
-
-    // Skip short calls (usually silence or answering machine hangup)
-    // Save money by ignoring < minDuration (default 15s)
-    if (duration < minDuration) return false;
-
-    if (!call.recording_url) return false;
-
-    if (!isCompletedLikeStatus) return false;
-
-    return true;
+export function isTranscribable(call: any, _minDuration: number = 15): boolean {
+    return Boolean(call?.recording_url);
 }
 
 export async function getTranscriptionMinDuration(): Promise<number> {
@@ -256,7 +245,7 @@ export async function getCallTranscriptionPreflight(callId: string) {
         transcribable,
         skipReason: transcribable
             ? null
-            : `Skipped before OpenAI: duration < ${minDuration}s, missing recording, or call not completed`,
+            : 'Skipped before OpenAI: missing recording URL or media payload',
     };
 }
 
