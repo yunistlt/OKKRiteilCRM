@@ -351,6 +351,12 @@ export function classifySystemJobRetryKind(errorMessage?: string | null): System
   if (
     lower.includes('timeout') ||
     lower.includes('timed out') ||
+    lower.includes('5xx') ||
+    lower.includes('502') ||
+    lower.includes('503') ||
+    lower.includes('504') ||
+    lower.includes('500') ||
+    lower.includes('upstream') ||
     lower.includes('fetch failed') ||
     lower.includes('network') ||
     lower.includes('socket') ||

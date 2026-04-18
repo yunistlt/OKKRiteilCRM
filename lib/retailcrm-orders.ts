@@ -4,6 +4,14 @@ const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_UR
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 const RETAILCRM_FETCH_TIMEOUT_MS = 15000;
 const RETAILCRM_ALLOWED_LIMITS = [20, 50, 100] as const;
+const RETAILCRM_CIRCUIT_FAILURE_THRESHOLD = Math.max(2, Number.parseInt(process.env.RETAILCRM_CIRCUIT_FAILURE_THRESHOLD || '3', 10) || 3);
+const RETAILCRM_CIRCUIT_OPEN_SECONDS = Math.max(60, Number.parseInt(process.env.RETAILCRM_CIRCUIT_OPEN_SECONDS || '900', 10) || 900);
+
+type RetailCrmCircuitState = {
+  failureCount: number;
+  openUntil: string | null;
+  lastError: string | null;
+};
 
 export function cleanRetailCrmPhone(val: any): string {
   if (!val) return '';
@@ -179,8 +187,109 @@ function ensureRetailCrmConfig() {
   };
 }
 
+async function getRetailCrmCircuitState(): Promise<RetailCrmCircuitState> {
+  const { data, error } = await supabase
+    .from('sync_state')
+    .select('key, value')
+    .in('key', [
+      'retailcrm_api_failure_count',
+      'retailcrm_api_circuit_open_until',
+      'retailcrm_api_last_error',
+    ]);
+
+  if (error) {
+    throw error;
+  }
+
+  const stateMap = new Map<string, string>((data || []).map((row: any) => [String(row.key), String(row.value || '')]));
+  return {
+    failureCount: Number.parseInt(stateMap.get('retailcrm_api_failure_count') || '0', 10) || 0,
+    openUntil: stateMap.get('retailcrm_api_circuit_open_until') || null,
+    lastError: stateMap.get('retailcrm_api_last_error') || null,
+  };
+}
+
+async function resetRetailCrmCircuitState() {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('sync_state').upsert([
+    {
+      key: 'retailcrm_api_failure_count',
+      value: '0',
+      updated_at: now,
+    },
+    {
+      key: 'retailcrm_api_circuit_open_until',
+      value: '',
+      updated_at: now,
+    },
+    {
+      key: 'retailcrm_api_last_error',
+      value: '',
+      updated_at: now,
+    },
+  ], { onConflict: 'key' });
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function recordRetailCrmCircuitFailure(params: {
+  errorMessage: string;
+  opensCircuit: boolean;
+}) {
+  const current = await getRetailCrmCircuitState();
+  const nextCount = params.opensCircuit ? current.failureCount + 1 : 0;
+  const now = new Date();
+  const shouldOpenCircuit = params.opensCircuit && nextCount >= RETAILCRM_CIRCUIT_FAILURE_THRESHOLD;
+  const openUntil = shouldOpenCircuit
+    ? new Date(now.getTime() + RETAILCRM_CIRCUIT_OPEN_SECONDS * 1000).toISOString()
+    : '';
+
+  const { error } = await supabase.from('sync_state').upsert([
+    {
+      key: 'retailcrm_api_failure_count',
+      value: String(nextCount),
+      updated_at: now.toISOString(),
+    },
+    {
+      key: 'retailcrm_api_last_error',
+      value: params.errorMessage.slice(0, 1500),
+      updated_at: now.toISOString(),
+    },
+    {
+      key: 'retailcrm_api_circuit_open_until',
+      value: openUntil,
+      updated_at: now.toISOString(),
+    },
+  ], { onConflict: 'key' });
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function ensureRetailCrmCircuitClosed() {
+  const circuit = await getRetailCrmCircuitState();
+  if (!circuit.openUntil) {
+    return;
+  }
+
+  const openUntilMs = new Date(circuit.openUntil).getTime();
+  if (Number.isNaN(openUntilMs)) {
+    return;
+  }
+
+  if (openUntilMs > Date.now()) {
+    throw new Error(`RetailCRM circuit breaker open until ${circuit.openUntil}${circuit.lastError ? `: ${circuit.lastError}` : ''}`);
+  }
+
+  await resetRetailCrmCircuitState();
+}
+
 async function fetchRetailCrm(path: string, params: URLSearchParams) {
   const { baseUrl, apiKey } = ensureRetailCrmConfig();
+  await ensureRetailCrmCircuitClosed();
   params.set('apiKey', apiKey);
 
   const url = `${baseUrl}/api/v5/${path}?${params.toString()}`;
@@ -201,13 +310,28 @@ async function fetchRetailCrm(path: string, params: URLSearchParams) {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`RetailCRM API Error ${response.status}: ${errorBody.substring(0, 200)}`);
+    const isRateLimitLike = response.status === 429 || response.status >= 500;
+    const errorMessage = response.status >= 500
+      ? `RetailCRM upstream 5xx ${response.status}: ${errorBody.substring(0, 200)}`
+      : `RetailCRM API Error ${response.status}: ${errorBody.substring(0, 200)}`;
+    await recordRetailCrmCircuitFailure({
+      errorMessage,
+      opensCircuit: isRateLimitLike,
+    });
+    throw new Error(errorMessage);
   }
 
   const data = await response.json();
   if (!data.success) {
-    throw new Error(`RetailCRM Success False: ${JSON.stringify(data).substring(0, 400)}`);
+    const errorMessage = `RetailCRM Success False: ${JSON.stringify(data).substring(0, 400)}`;
+    await recordRetailCrmCircuitFailure({
+      errorMessage,
+      opensCircuit: false,
+    });
+    throw new Error(errorMessage);
   }
+
+  await resetRetailCrmCircuitState();
 
   return data;
 }

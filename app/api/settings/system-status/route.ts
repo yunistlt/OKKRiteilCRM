@@ -86,7 +86,10 @@ export async function GET() {
                 'retailcrm_orders_sync',
                 'retailcrm_history_sync',
                 'retailcrm_orders_queue_last_success_at',
-                'retailcrm_history_queue_last_success_at'
+                'retailcrm_history_queue_last_success_at',
+                'retailcrm_api_failure_count',
+                'retailcrm_api_circuit_open_until',
+                'retailcrm_api_last_error'
             ]);
 
         if (syncError) throw syncError;
@@ -177,15 +180,21 @@ export async function GET() {
         const retailLastRun = stateMap.get('retailcrm_orders_queue_last_success_at')?.updated_at || retailCursorState?.updated_at || retailCursor || null;
         const retailOk = isFresh(retailLastRun, 15);
         const retailLagMinutes = retailCursor ? Math.floor((Date.now() - new Date(retailCursor).getTime()) / 60000) : null;
+        const retailCircuitOpenUntil = stateMap.get('retailcrm_api_circuit_open_until')?.value || '';
+        const retailCircuitError = stateMap.get('retailcrm_api_last_error')?.value || '';
+        const retailCircuitFailures = parseInt(stateMap.get('retailcrm_api_failure_count')?.value || '0', 10);
+        const retailCircuitOpen = retailCircuitOpenUntil && new Date(retailCircuitOpenUntil).getTime() > Date.now();
         const retailStatus = {
             service: 'RetailCRM Fallback Sync',
             cursor: realtimePipelineEnabled ? 'Fallback only' : (retailCursor || 'Never'),
             last_run: retailLastRun,
-            status: realtimePipelineEnabled ? 'ok' : (retailOk ? 'ok' : 'warning'),
+            status: retailCircuitOpen ? 'warning' : (realtimePipelineEnabled ? 'ok' : (retailOk ? 'ok' : 'warning')),
             details: realtimePipelineEnabled
-                ? `Backup-only manual force run${retailLagMinutes !== null ? `, cursor lag ${retailLagMinutes} min` : ''}`
+                ? `Backup-only manual force run${retailLagMinutes !== null ? `, cursor lag ${retailLagMinutes} min` : ''}${retailCircuitOpen ? ', circuit open' : retailCircuitFailures > 0 ? `, failures ${retailCircuitFailures}` : ''}`
                 : (retailLagMinutes !== null ? `Cursor lag ${retailLagMinutes} min` : 'No cursor yet'),
-            reason: realtimePipelineEnabled
+            reason: retailCircuitOpen
+                ? `Circuit breaker открыт до ${retailCircuitOpenUntil}. ${retailCircuitError || 'RetailCRM временно недоступен или отвечает 429/5xx.'}`
+                : realtimePipelineEnabled
                 ? 'Primary RetailCRM ownership is handled by retailcrm delta/history workers in realtime pipeline.'
                 : getDiagnosis('retailcrm', retailOk, retailLastRun)
         };

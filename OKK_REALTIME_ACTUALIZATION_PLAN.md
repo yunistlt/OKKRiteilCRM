@@ -49,9 +49,9 @@
 - [x] Поставить отдельный slow-path для полной проверки пропусков: 1 раз в 15 минут с lookback-окном.
 - [x] Использовать cursor по updatedAt или эквивалентному признаку обновления, а не по createdAt.
 - [x] Сохранять overlap-окно 2-5 минут для защиты от рассинхрона часов и задержек CRM.
-- [ ] Ограничить одновременный запуск RetailCRM sync worker до 1 экземпляра через distributed lock.
-- [ ] Ввести exponential backoff при 429 и 5xx от RetailCRM.
-- [ ] Ввести circuit breaker: при серии ошибок временно снизить частоту запросов, а не продолжать долбить API.
+- [x] Ограничить одновременный запуск RetailCRM sync worker до 1 экземпляра через distributed lock.
+- [x] Ввести exponential backoff при 429 и 5xx от RetailCRM.
+- [x] Ввести circuit breaker: при серии ошибок временно снизить частоту запросов, а не продолжать долбить API.
 
 ### Telphin
 
