@@ -54,6 +54,24 @@ function buildSlaStatus(params: {
     };
 }
 
+function getWorkerHealth(stateMap: Map<any, any>, workerKey: string) {
+    const lastSuccess = stateMap.get(`${workerKey}.last_success_at`);
+    const lastError = stateMap.get(`${workerKey}.last_error`);
+    const lastErrorAt = stateMap.get(`${workerKey}.last_error_at`);
+    const lastSuccessAt = lastSuccess?.value || lastSuccess?.updated_at || null;
+    const lastErrorAtValue = lastErrorAt?.value || lastErrorAt?.updated_at || null;
+    const hasActiveError = Boolean(
+        lastError?.value && (!lastSuccessAt || (lastErrorAtValue && new Date(lastErrorAtValue).getTime() >= new Date(lastSuccessAt).getTime()))
+    );
+
+    return {
+        lastSuccessAt,
+        lastError: lastError?.value || '',
+        lastErrorAt: lastErrorAtValue,
+        hasActiveError,
+    };
+}
+
 export async function GET() {
     try {
         const session = await getSession();
@@ -81,6 +99,21 @@ export async function GET() {
                 'realtime_pipeline_override',
                 'transcription_last_run',
                 'rule_engine_last_run',
+                'fallback.transcription.last_success_at',
+                'fallback.transcription.last_error_at',
+                'fallback.transcription.last_error',
+                'fallback.matching.last_success_at',
+                'fallback.matching.last_error_at',
+                'fallback.matching.last_error',
+                'fallback.retailcrm_sync.last_success_at',
+                'fallback.retailcrm_sync.last_error_at',
+                'fallback.retailcrm_sync.last_error',
+                'fallback.history_sync.last_success_at',
+                'fallback.history_sync.last_error_at',
+                'fallback.history_sync.last_error',
+                'fallback.insight_agent.last_success_at',
+                'fallback.insight_agent.last_error_at',
+                'fallback.insight_agent.last_error',
                 'system_jobs.rule_engine.last_success_at',
                 'system_jobs.rule_engine.last_error_at',
                 'system_jobs.rule_engine.last_error',
@@ -98,6 +131,11 @@ export async function GET() {
 
         const stateMap = new Map();
         syncStates?.forEach(s => stateMap.set(s.key, s));
+        const retailFallbackWorker = getWorkerHealth(stateMap, 'fallback.retailcrm_sync');
+        const matchingFallbackWorker = getWorkerHealth(stateMap, 'fallback.matching');
+        const transcriptionFallbackWorker = getWorkerHealth(stateMap, 'fallback.transcription');
+        const historyFallbackWorker = getWorkerHealth(stateMap, 'fallback.history_sync');
+        const insightFallbackWorker = getWorkerHealth(stateMap, 'fallback.insight_agent');
 
         // 2. Fetch Latest Order time
         const { data: lastOrder } = await supabase
@@ -180,7 +218,7 @@ export async function GET() {
         // --- RetailCRM ---
         const retailCursorState = stateMap.get('retailcrm_orders_sync');
         const retailCursor = retailCursorState?.value || lastOrder?.created_at || null;
-        const retailLastRun = stateMap.get('retailcrm_orders_queue_last_success_at')?.updated_at || retailCursorState?.updated_at || retailCursor || null;
+        const retailLastRun = retailFallbackWorker.lastSuccessAt || stateMap.get('retailcrm_orders_queue_last_success_at')?.updated_at || retailCursorState?.updated_at || retailCursor || null;
         const retailOk = isFresh(retailLastRun, 15);
         const retailLagMinutes = retailCursor ? Math.floor((Date.now() - new Date(retailCursor).getTime()) / 60000) : null;
         const retailCircuitOpenUntil = stateMap.get('retailcrm_api_circuit_open_until')?.value || '';
@@ -191,11 +229,15 @@ export async function GET() {
             service: 'RetailCRM Fallback Sync',
             cursor: realtimePipelineEnabled ? 'Fallback only' : (retailCursor || 'Never'),
             last_run: retailLastRun,
-            status: retailCircuitOpen ? 'warning' : (realtimePipelineEnabled ? 'ok' : (retailOk ? 'ok' : 'warning')),
+            status: retailFallbackWorker.hasActiveError
+                ? 'warning'
+                : (retailCircuitOpen ? 'warning' : (realtimePipelineEnabled ? 'ok' : (retailOk ? 'ok' : 'warning'))),
             details: realtimePipelineEnabled
                 ? `Backup-only manual force run${retailLagMinutes !== null ? `, cursor lag ${retailLagMinutes} min` : ''}${retailCircuitOpen ? ', circuit open' : retailCircuitFailures > 0 ? `, failures ${retailCircuitFailures}` : ''}`
                 : (retailLagMinutes !== null ? `Cursor lag ${retailLagMinutes} min` : 'No cursor yet'),
-            reason: retailCircuitOpen
+            reason: retailFallbackWorker.hasActiveError
+                ? retailFallbackWorker.lastError
+                : retailCircuitOpen
                 ? `Circuit breaker открыт до ${retailCircuitOpenUntil}. ${retailCircuitError || 'RetailCRM временно недоступен или отвечает 429/5xx.'}`
                 : realtimePipelineEnabled
                 ? 'Primary RetailCRM ownership is handled by retailcrm delta/history workers in realtime pipeline.'
@@ -206,12 +248,16 @@ export async function GET() {
         const matchStatus = {
             service: 'Matching Fallback Sweep',
             cursor: 'Fallback only',
-            last_run: new Date().toISOString(),
-            status: realtimePipelineEnabled ? 'ok' : (matchOk ? 'ok' : 'warning'),
+            last_run: matchingFallbackWorker.lastSuccessAt,
+            status: matchingFallbackWorker.hasActiveError
+                ? 'warning'
+                : (realtimePipelineEnabled ? 'ok' : (matchOk ? 'ok' : 'warning')),
             details: realtimePipelineEnabled
                 ? 'Backup-only manual force sweep'
                 : `${matches24h || 0} matches in last 24h`,
-            reason: realtimePipelineEnabled
+            reason: matchingFallbackWorker.hasActiveError
+                ? matchingFallbackWorker.lastError
+                : realtimePipelineEnabled
                 ? 'Primary matching ownership is handled by call_match queue in realtime pipeline.'
                 : (matchOk ? null : 'Нет матчей за 24 часа. Либо нет звонков, либо сбой алгоритма.')
         };
@@ -220,7 +266,7 @@ export async function GET() {
         const transLastRunKey = stateMap.get('transcription_last_run');
         const transCursorKey = stateMap.get('transcription_backfill_cursor');
 
-        const transLastRun = transLastRunKey?.updated_at || transCursorKey?.updated_at || null;
+        const transLastRun = transcriptionFallbackWorker.lastSuccessAt || transLastRunKey?.updated_at || transCursorKey?.updated_at || null;
         const transActive = isFresh(transLastRun, 65); // 1 hour + buffer
 
         const transCursor = transCursorKey?.value || 'Active Sync';
@@ -229,9 +275,13 @@ export async function GET() {
             service: 'Transcription Fallback Sweep',
             cursor: transCursor.includes('T') ? transCursor.split('T')[0] : transCursor,
             last_run: transLastRun,
-            status: realtimePipelineEnabled ? 'ok' : (transActive ? 'ok' : 'warning'),
+            status: transcriptionFallbackWorker.hasActiveError
+                ? 'warning'
+                : (realtimePipelineEnabled ? 'ok' : (transActive ? 'ok' : 'warning')),
             details: realtimePipelineEnabled ? 'Backup-only manual force sweep' : (transActive ? 'Processing Calls' : 'Idle / Stalled'),
-            reason: realtimePipelineEnabled
+            reason: transcriptionFallbackWorker.hasActiveError
+                ? transcriptionFallbackWorker.lastError
+                : realtimePipelineEnabled
                 ? 'Primary transcription ownership is handled by call_transcription queue in realtime pipeline.'
                 : (transActive ? null : 'Скрипт ожидает запуска cron или завершил работу.')
         };
@@ -261,13 +311,18 @@ export async function GET() {
 
         const historyCursor = lastHistoryEvent?.occurred_at || null;
         const historyOk = isFresh(historyCursor, 120); // 2 hours threshold
+        const historyLastRun = historyFallbackWorker.lastSuccessAt || historyCursor || null;
         const historyStatus = {
             service: 'History Fallback Sync',
             cursor: realtimePipelineEnabled ? 'Fallback only' : (historyCursor || 'Never'),
-            last_run: historyCursor || null,
-            status: realtimePipelineEnabled ? 'ok' : (historyOk ? 'ok' : 'warning'),
+            last_run: historyLastRun,
+            status: historyFallbackWorker.hasActiveError
+                ? 'warning'
+                : (realtimePipelineEnabled ? 'ok' : (historyOk ? 'ok' : 'warning')),
             details: realtimePipelineEnabled ? 'Backup-only manual force run' : (historyOk ? 'Events Flowing' : 'Stalled (>2h)'),
-            reason: realtimePipelineEnabled
+            reason: historyFallbackWorker.hasActiveError
+                ? historyFallbackWorker.lastError
+                : realtimePipelineEnabled
                 ? 'Primary history ownership is handled by retailcrm_history_delta worker in realtime pipeline.'
                 : getDiagnosis('history_sync', historyOk, historyCursor)
         };
@@ -308,7 +363,7 @@ export async function GET() {
 
         // 4.7 Insight Agent Health
         const insightRunKey = stateMap.get('insight_agent_last_run');
-        const lastInsightRun = insightRunKey?.updated_at || null;
+        const lastInsightRun = insightFallbackWorker.lastSuccessAt || insightRunKey?.updated_at || null;
         const insightRunOk = isFresh(lastInsightRun, 120); // 2 hours threshold
         const insightRealtimeOwned = realtimePipelineState.effectiveEnabled;
 
@@ -316,9 +371,13 @@ export async function GET() {
             service: 'AI Insight Agent',
             cursor: insightRealtimeOwned ? 'Fallback only' : 'Deep Analysis',
             last_run: lastInsightRun,
-            status: insightRealtimeOwned ? 'ok' : (insightRunOk ? 'ok' : 'warning'),
+            status: insightFallbackWorker.hasActiveError
+                ? 'warning'
+                : (insightRealtimeOwned ? 'ok' : (insightRunOk ? 'ok' : 'warning')),
             details: insightRealtimeOwned ? 'Backup-only targeted or force run' : (insightRunOk ? 'Extracting Business Facts' : 'Idle or Stalled'),
-            reason: insightRealtimeOwned
+            reason: insightFallbackWorker.hasActiveError
+                ? insightFallbackWorker.lastError
+                : insightRealtimeOwned
                 ? 'Primary insight ownership is handled by order_insight_refresh queue in realtime pipeline.'
                 : (!insightRunOk ? 'Аналитик не запускался более 2 часов.' : null)
         };

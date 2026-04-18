@@ -3,10 +3,12 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { isSystemJobsPipelineRuntimeEnabled, safeEnqueueCallSemanticRulesJob } from '@/lib/system-jobs';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 import { runRuleEngine } from '@/lib/rule-engine';
 
 export const dynamic = 'force-dynamic';
+const WORKER_KEY = 'fallback.transcription';
 
 function ensureAuthorized(req: Request) {
     const authHeader = req.headers.get('authorization');
@@ -23,6 +25,7 @@ export async function GET(req: Request) {
         const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
         if (realtimePipelineEnabled && !force) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'skipped', reason: 'realtime_owned' });
             return NextResponse.json({
                 ok: true,
                 status: 'skipped',
@@ -43,6 +46,7 @@ export async function GET(req: Request) {
         const transcribableStatuses = statusSettings?.map(s => s.code) || [];
 
         if (transcribableStatuses.length === 0) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'idle', reason: 'no_transcribable_statuses' });
             return NextResponse.json({ message: 'No statuses configured for transcription.' });
         }
 
@@ -83,6 +87,7 @@ export async function GET(req: Request) {
             }, { onConflict: 'key' });
 
         if (!calls || calls.length === 0) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'idle', processed: 0, reason: 'no_calls' });
             return NextResponse.json({ message: 'No transcribable ready calls found.' });
         }
 
@@ -141,6 +146,12 @@ export async function GET(req: Request) {
             }
         }
 
+        await recordWorkerSuccess(WORKER_KEY, {
+            status: 'completed',
+            processed: results.length,
+            errors: results.filter((item: any) => item.status === 'error').length,
+        });
+
         return NextResponse.json({
             processed: results.length,
             details: results
@@ -148,6 +159,9 @@ export async function GET(req: Request) {
 
     } catch (e: any) {
         console.error('Transcription Cron Error:', e);
+        if (e.message !== 'Unauthorized') {
+            await recordWorkerFailure(WORKER_KEY, e.message || 'Unknown transcription fallback error');
+        }
         const isUnauthorized = e.message === 'Unauthorized';
         return NextResponse.json({ error: e.message }, { status: isUnauthorized ? 401 : 500 });
     }

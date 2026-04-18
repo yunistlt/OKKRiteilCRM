@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { enqueueOrderRefreshJob, isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 // Environment variables
 const RETAILCRM_URL = process.env.RETAILCRM_URL;
@@ -8,6 +9,7 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes execution for lengthy syncs
+const WORKER_KEY = 'fallback.history_sync';
 
 export async function GET(request: Request) {
     console.log('[History Sync] Starting (Loop Mode)...');
@@ -18,6 +20,7 @@ export async function GET(request: Request) {
         const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
         if (realtimePipelineEnabled && !force) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'skipped', reason: 'realtime_owned' });
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -275,6 +278,13 @@ export async function GET(request: Request) {
 
         console.log(`[History Sync] Completed. Fetched: ${totalFetched}, Saved: ${totalSaved}`);
 
+        await recordWorkerSuccess(WORKER_KEY, {
+            status: 'completed',
+            fetched_events: totalFetched,
+            saved_events: totalSaved,
+            pages_processed: page - 1,
+        });
+
         return NextResponse.json({
             success: true,
             fetched_events: totalFetched,
@@ -284,6 +294,7 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('[History Sync] Failed:', error);
+        await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown history fallback sync error');
         return NextResponse.json({ success: false, error: error.message }, { status: 500 });
     }
 }

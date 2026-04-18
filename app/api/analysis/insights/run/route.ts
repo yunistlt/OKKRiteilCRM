@@ -4,9 +4,11 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
+const WORKER_KEY = 'fallback.insight_agent';
 
 export async function GET(req: Request) {
     try {
@@ -22,10 +24,12 @@ export async function GET(req: Request) {
 
         if (orderId) {
             const results = await runInsightAnalysis(parseInt(orderId));
+            await recordWorkerSuccess(WORKER_KEY, { status: 'targeted_completed', order_id: parseInt(orderId) });
             return NextResponse.json({ ok: true, results });
         }
 
         if (realtimePipelineEnabled && !force) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'skipped', reason: 'realtime_owned' });
             return NextResponse.json({
                 ok: true,
                 status: 'skipped',
@@ -40,7 +44,10 @@ export async function GET(req: Request) {
             .order('created_at', { ascending: false })
             .limit(10);
 
-        if (!recentOrders) return NextResponse.json({ ok: true, message: 'No orders' });
+        if (!recentOrders) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'idle', processed: 0, reason: 'no_orders' });
+            return NextResponse.json({ ok: true, message: 'No orders' });
+        }
 
         const results = [];
         for (const order of recentOrders) {
@@ -48,9 +55,15 @@ export async function GET(req: Request) {
             if (res) results.push(order.order_id);
         }
 
+        await recordWorkerSuccess(WORKER_KEY, {
+            status: 'completed',
+            processed: results.length,
+        });
+
         return NextResponse.json({ ok: true, processed: results });
 
     } catch (e: any) {
+        await recordWorkerFailure(WORKER_KEY, e.message || 'Unknown insight fallback error');
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

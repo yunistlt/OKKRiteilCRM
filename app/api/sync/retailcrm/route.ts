@@ -9,6 +9,7 @@ import {
     upsertRetailCrmOrders,
 } from '@/lib/retailcrm-orders';
 import { enqueueOrderRefreshJob, isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
+import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -16,6 +17,7 @@ const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 export const dynamic = 'force-dynamic';
 
 export const maxDuration = 300;
+const WORKER_KEY = 'fallback.retailcrm_sync';
 
 function ensureAuthorized(req: Request) {
     const authHeader = req.headers.get('authorization');
@@ -36,6 +38,7 @@ export async function GET(request: Request) {
         const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
         if (realtimePipelineEnabled && !forceResync) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'skipped', reason: 'realtime_owned' });
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -169,6 +172,14 @@ export async function GET(request: Request) {
             await logAgentActivity('semen', 'idle', 'Архив обновлен. Все данные разложены по полкам.');
         } catch (e) { }
 
+        await recordWorkerSuccess(WORKER_KEY, {
+            status: 'completed',
+            pages_processed: pagesProcessed,
+            total_orders_fetched: totalOrdersFetched,
+            catch_up_mode: catchUpMode,
+            has_more: hasMore,
+        });
+
         return NextResponse.json({
             success: true,
             method: 'orders_state_based_sync',
@@ -183,6 +194,9 @@ export async function GET(request: Request) {
 
     } catch (error: any) {
         console.error('RetailCRM Sync Error:', error);
+        if (error.message !== 'Unauthorized') {
+            await recordWorkerFailure(WORKER_KEY, error.message || 'Unknown retailcrm fallback sync error');
+        }
         const isUnauthorized = error.message === 'Unauthorized';
         return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
     }
