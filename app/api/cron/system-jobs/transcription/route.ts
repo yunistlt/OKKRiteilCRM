@@ -114,11 +114,23 @@ export async function GET(req: NextRequest) {
             },
             priority: 25,
           });
+
+          await enqueueOrderRefreshJob({
+            jobType: 'order_insight_refresh',
+            orderId: match.retailcrm_order_id,
+            source: 'call_transcription_worker',
+            payload: {
+              telphin_call_id: callId,
+              transcript_completed_at: transcriptCompletedAt,
+            },
+            priority: 35,
+            parentJobId: job.id,
+          });
         }
 
         await completeSystemJob(job.id, {
           telphin_call_id: callId,
-          next_jobs: match?.retailcrm_order_id ? ['call_semantic_rules', 'order_score_refresh'] : [],
+          next_jobs: match?.retailcrm_order_id ? ['call_semantic_rules', 'order_score_refresh', 'order_insight_refresh'] : [],
         });
 
         results.push({

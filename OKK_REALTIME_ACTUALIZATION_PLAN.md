@@ -77,16 +77,16 @@
 
 ## 4. Целевая схема near realtime pipeline
 
-- [ ] Событие order_changed из RetailCRM должно сразу создавать job на upsert заказа в orders/raw_order_events.
+- [x] Событие order_changed из RetailCRM должно сразу создавать job на upsert заказа в orders/raw_order_events.
 - [ ] После успешного upsert заказа автоматически создавать job на lightweight enrichment контекста.
-- [ ] После любого изменения заказа автоматически создавать job на recalculation нужных derived fields.
+- [x] После любого изменения заказа автоматически создавать job на recalculation нужных derived fields.
 - [ ] Событие history_changed из RetailCRM должно сразу создавать job на запись order_history_log и возможный rescore связанного заказа.
-- [ ] Событие call_created из Telphin должно сразу записываться в raw_telphin_calls.
-- [ ] Событие call_created должно сразу создавать job на matching звонка к заказу.
-- [ ] Событие recording_ready должно сразу создавать job на transcription.
-- [ ] Событие transcript_ready должно сразу создавать job на semantic rules и на insight refresh для связанного заказа.
-- [ ] После semantic rules должно автоматически запускаться scoring только по затронутому заказу.
-- [ ] После scoring должен запускаться лёгкий aggregate refresh только для затронутого менеджера и связанных витрин.
+- [x] Событие call_created из Telphin должно сразу записываться в raw_telphin_calls.
+- [x] Событие call_created должно сразу создавать job на matching звонка к заказу.
+- [x] Событие recording_ready должно сразу создавать job на transcription.
+- [x] Событие transcript_ready должно сразу создавать job на semantic rules и на insight refresh для связанного заказа.
+- [x] После semantic rules должно автоматически запускаться scoring только по затронутому заказу.
+- [x] После scoring должен запускаться лёгкий aggregate refresh только для затронутого менеджера и связанных витрин.
 
 ## 5. Этап 1. Нормализация текущей схемы данных
 
@@ -215,6 +215,7 @@
 - [x] Для `call_transcription`, `call_semantic_rules` и `order_insight_refresh` введён общий adaptive retry classifier: зависимости `not ready` ретраятся коротко, network/download ошибки мягче, а 429/OpenAI ошибки получают более длинный backoff.
 - [x] RetailCRM ingest усилен graceful degradation: API-запросы получили явный timeout, `retailcrm_order_delta` и `retailcrm_history_delta` переведены на adaptive retry, а `retailcrm_order_upsert` перестал падать на отсутствующем заказе и завершает такие кейсы как `skipped_not_found`.
 - [x] AI-only jobs (`call_transcription`, `call_semantic_rules`, `order_insight_refresh`) перестали безусловно ставиться из ingest path без OpenAI-конфига: order/call ingest продолжает сохранять факты и базовые refresh jobs, а AI-ветка мягко деградирует до skipped enqueue без request-path ошибки.
+- [x] `call_transcription` worker после `transcript_ready` для сматченного заказа теперь ставит не только `call_semantic_rules` и `order_score_refresh`, но и `order_insight_refresh`, чтобы deep AI path стартовал по тому же событию транскрибации, а не ждал отдельного CRM update.
 - [x] Legacy fallback workers (`sync/retailcrm`, `sync/history`, `matching/process`, `cron/transcribe`, `analysis/insights/run`) тоже начали писать `last_success_at`, `last_error_at` и `last_error` в `sync_state`, а status dashboard теперь поднимает эти structured worker states вместо ad-hoc `last_run` заглушек.
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Status dashboard начал отдельно выделять pipeline hotspot-очередь и dominant retry cause, чтобы оператор сразу видел главный bottleneck без чтения полного списка queue cards.
