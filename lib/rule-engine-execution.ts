@@ -1,4 +1,5 @@
 import { runRuleEngine } from '@/lib/rule-engine';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -12,8 +13,8 @@ function parsePositiveInt(value: string | undefined, fallback: number) {
   return parsed;
 }
 
-export function isRealtimeRuleEngineEnabled() {
-  return process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+export async function isRealtimeRuleEngineEnabled() {
+  return isRealtimePipelineEnabled();
 }
 
 export function getRuleEngineFallbackHours() {

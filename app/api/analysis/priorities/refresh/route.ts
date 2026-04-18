@@ -25,10 +25,11 @@ export async function GET(request: Request) {
         const force = searchParams.get('force') === 'true';
         const specificOrderId = searchParams.get('orderId') ? Number(searchParams.get('orderId')) : null;
         const limit = searchParams.get('limit') ? Number(searchParams.get('limit')) : 2000;
+        const realtimeRuleEngineEnabled = await isRealtimeRuleEngineEnabled();
 
         console.log('Refreshing priorities...', { force, specificOrderId, limit });
 
-        if (isRealtimeRuleEngineEnabled() && !specificOrderId && !force) {
+        if (realtimeRuleEngineEnabled && !specificOrderId && !force) {
             return NextResponse.json({
                 ok: true,
                 status: 'skipped',
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
             });
         }
 
-        if (!isRealtimeRuleEngineEnabled()) {
+        if (!realtimeRuleEngineEnabled) {
             try {
                 await executeRuleEngineWindow({ hours: 24 });
                 console.log('Rule Engine verification complete.');
@@ -59,7 +60,7 @@ export async function GET(request: Request) {
                 orderId: specificOrderId,
                 result,
                 message: `Priority refreshed for order ${specificOrderId}`,
-                rule_engine: isRealtimeRuleEngineEnabled() ? 'skipped_realtime_pipeline' : 'executed',
+                rule_engine: realtimeRuleEngineEnabled ? 'skipped_realtime_pipeline' : 'executed',
             });
         }
 
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
                 ok: true,
                 mode: force ? 'bulk_force_fallback' : 'bulk',
                 message: 'No orders to update',
-                rule_engine: isRealtimeRuleEngineEnabled() ? 'skipped_realtime_pipeline' : 'executed'
+                rule_engine: realtimeRuleEngineEnabled ? 'skipped_realtime_pipeline' : 'executed'
             });
         }
 
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
             count: result.count,
             deleted: result.deletedCount,
             message: 'Priorities refreshed',
-            rule_engine: isRealtimeRuleEngineEnabled() ? 'skipped_realtime_pipeline' : 'executed'
+            rule_engine: realtimeRuleEngineEnabled ? 'skipped_realtime_pipeline' : 'executed'
         });
     } catch (e: any) {
         console.error('[Refresh Priorities] Error:', e);

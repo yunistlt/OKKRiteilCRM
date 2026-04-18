@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
+import { getRealtimePipelineRuntimeState, normalizeRealtimePipelineOverride } from '@/lib/realtime-pipeline';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -77,6 +78,7 @@ export async function GET() {
                 'telphin_backfill_lock_status',
                 'telphin_backfill_lock_holder',
                 'transcription_min_duration',
+                'realtime_pipeline_override',
                 'transcription_last_run',
                 'rule_engine_last_run',
                 'system_jobs.rule_engine.last_success_at',
@@ -172,7 +174,8 @@ export async function GET() {
                 : 'Slow backlog-recovery sweep for missed Telphin webhook gaps.')
         };
 
-        const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+        const realtimePipelineState = await getRealtimePipelineRuntimeState();
+        const realtimePipelineEnabled = realtimePipelineState.effectiveEnabled;
 
         // --- RetailCRM ---
         const retailCursorState = stateMap.get('retailcrm_orders_sync');
@@ -307,7 +310,7 @@ export async function GET() {
         const insightRunKey = stateMap.get('insight_agent_last_run');
         const lastInsightRun = insightRunKey?.updated_at || null;
         const insightRunOk = isFresh(lastInsightRun, 120); // 2 hours threshold
-        const insightRealtimeOwned = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+        const insightRealtimeOwned = realtimePipelineState.effectiveEnabled;
 
         const insightStatus = {
             service: 'AI Insight Agent',
@@ -337,7 +340,11 @@ export async function GET() {
         // --- Settings ---
         // Get generic keys or specific ones
         const settings = {
-            transcription_min_duration: parseInt(stateMap.get('transcription_min_duration')?.value || '15')
+            transcription_min_duration: parseInt(stateMap.get('transcription_min_duration')?.value || '15'),
+            realtime_pipeline_override: normalizeRealtimePipelineOverride(stateMap.get('realtime_pipeline_override')?.value),
+            realtime_pipeline_effective_enabled: realtimePipelineState.effectiveEnabled,
+            realtime_pipeline_default_enabled: realtimePipelineState.defaultEnabled,
+            realtime_pipeline_override_updated_at: realtimePipelineState.overrideUpdatedAt,
         };
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
@@ -396,13 +403,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing key or value' }, { status: 400 });
         }
 
+        const normalizedValue = key === 'realtime_pipeline_override'
+            ? normalizeRealtimePipelineOverride(value)
+            : String(value);
+
         // Whitelist keys for safety if needed, but for now open for sync_state
         // Update sync_state
         const { error } = await supabase
             .from('sync_state')
             .upsert({
                 key,
-                value: String(value),
+                value: normalizedValue,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'key' });
 

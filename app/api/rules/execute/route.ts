@@ -26,9 +26,10 @@ export async function GET(request: Request) {
     // Default: Check last 24 hours to be safe (idempotency ensures no duplicates)
     // Or user can pass ?hours=1
     const hours = parseInt(searchParams.get('hours') || '24');
+    const realtimeRuleEngineEnabled = await isRealtimeRuleEngineEnabled();
 
     try {
-        if (isRealtimeRuleEngineEnabled() && !force) {
+        if (realtimeRuleEngineEnabled && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
 
         return NextResponse.json({
             success: true,
-            mode: isRealtimeRuleEngineEnabled() ? 'realtime_safe_runner' : 'legacy_compatible_runner',
+            mode: realtimeRuleEngineEnabled ? 'realtime_safe_runner' : 'legacy_compatible_runner',
             message: `Rule Engine executed for last ${result.hours} hours`,
             analyzed_window: result.analyzed_window,
             violations_found: result.violations_found,

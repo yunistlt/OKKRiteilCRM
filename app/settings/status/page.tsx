@@ -149,6 +149,8 @@ interface RealtimePipelineSnapshot {
     };
 }
 
+type RealtimePipelineOverride = 'inherit' | 'enabled' | 'disabled';
+
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
@@ -164,6 +166,9 @@ export default function SystemStatusPage() {
 
     // --- State: Settings & AI ---
     const [minDuration, setMinDuration] = useState(15);
+    const [realtimePipelineOverride, setRealtimePipelineOverride] = useState<RealtimePipelineOverride>('inherit');
+    const [realtimePipelineEffectiveEnabled, setRealtimePipelineEffectiveEnabled] = useState(false);
+    const [realtimePipelineDefaultEnabled, setRealtimePipelineDefaultEnabled] = useState(false);
     const [insightLogs, setInsightLogs] = useState<any[]>([]);
     const [throughput, setThroughput] = useState<ThroughputMetric[]>([]);
     const [savingSettings, setSavingSettings] = useState(false);
@@ -187,6 +192,11 @@ export default function SystemStatusPage() {
             }
             if (data.settings && data.settings.transcription_min_duration) {
                 setMinDuration(data.settings.transcription_min_duration);
+            }
+            if (data.settings) {
+                setRealtimePipelineOverride((data.settings.realtime_pipeline_override || 'inherit') as RealtimePipelineOverride);
+                setRealtimePipelineEffectiveEnabled(Boolean(data.settings.realtime_pipeline_effective_enabled));
+                setRealtimePipelineDefaultEnabled(Boolean(data.settings.realtime_pipeline_default_enabled));
             }
             if (data.insight_logs) {
                 setInsightLogs(data.insight_logs);
@@ -348,11 +358,18 @@ export default function SystemStatusPage() {
     const saveSettings = async () => {
         setSavingSettings(true);
         try {
-            await fetch('/api/settings/system-status', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ key: 'transcription_min_duration', value: minDuration })
-            });
+            await Promise.all([
+                fetch('/api/settings/system-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'transcription_min_duration', value: minDuration })
+                }),
+                fetch('/api/settings/system-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'realtime_pipeline_override', value: realtimePipelineOverride })
+                })
+            ]);
             fetchSyncStatus();
         } catch (e) {
             console.error(e);
@@ -1135,6 +1152,21 @@ export default function SystemStatusPage() {
                 {/* Settings Block - Dense */}
                 <div className="bg-gray-900 p-4 text-white flex flex-col justify-between h-full">
                     <div className="space-y-2">
+                        <div>
+                            <div className="text-[8px] font-black text-gray-500 uppercase mb-1">Realtime ownership</div>
+                            <select
+                                value={realtimePipelineOverride}
+                                onChange={(e) => setRealtimePipelineOverride(e.target.value as RealtimePipelineOverride)}
+                                className="w-full bg-gray-800 border-none rounded px-2 py-1 text-[10px] font-bold text-white"
+                            >
+                                <option value="inherit">Наследовать env ({realtimePipelineDefaultEnabled ? 'ON' : 'OFF'})</option>
+                                <option value="enabled">Принудительно ON</option>
+                                <option value="disabled">Принудительно OFF</option>
+                            </select>
+                            <div className="mt-1 text-[8px] font-bold uppercase tracking-wide text-gray-400">
+                                Сейчас эффективно: {realtimePipelineEffectiveEnabled ? 'realtime pipeline ON' : 'fallback mode'}
+                            </div>
+                        </div>
                         <div className="flex justify-between items-center">
                             <label className="text-[8px] font-black text-gray-500 uppercase">Мин длина (сек)</label>
                             <input

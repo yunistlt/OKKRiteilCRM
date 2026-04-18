@@ -1,5 +1,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Max 5 minutes for Pro plan
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
     const baseUrl = new URL(request.url).origin;
     const report: string[] = [];
     const startTime = Date.now();
-    const isRealtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+    const realtimePipelineEnabled = await isRealtimePipelineEnabled();
     // Leave 20s buffer before the hard 300s limit kills us
     const TIMEOUT_THRESHOLD_MS = 280 * 1000;
 
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
 
         // 1. Match Calls
         if (checkBudget('Matching')) {
-            if (isRealtimePipelineEnabled) {
+            if (realtimePipelineEnabled) {
                 console.log('[CRON] Step 1: Matching skipped, realtime pipeline owns call matching');
                 report.push('Matches: Skipped (realtime pipeline enabled)');
             } else {
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
 
         // 2. Run Rule Engine
         if (checkBudget('Rules')) {
-            if (isRealtimePipelineEnabled) {
+            if (realtimePipelineEnabled) {
                 console.log('[CRON] Step 2: Rules skipped, realtime pipeline owns rule engine');
                 report.push('Rules: Skipped (realtime pipeline enabled)');
             } else {
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
         }
         // 3. Refresh Priorities (Stagnation calculation)
         if (checkBudget('Priorities')) {
-            if (isRealtimePipelineEnabled) {
+            if (realtimePipelineEnabled) {
                 console.log('[CRON] Step 3: Priorities skipped, realtime pipeline owns refresh');
                 report.push('Priorities: Skipped (realtime pipeline enabled)');
             } else {

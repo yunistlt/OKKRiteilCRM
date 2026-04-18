@@ -5,7 +5,7 @@ import {
   enqueueOrderRefreshJob,
   failSystemJob,
   getAdaptiveSystemJobRetry,
-  isSystemJobsPipelineEnabled,
+  isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
 import {
   fetchRetailCrmOrder,
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isSystemJobsPipelineEnabled()) {
+    if (!(await isSystemJobsPipelineRuntimeEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

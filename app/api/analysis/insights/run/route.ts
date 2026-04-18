@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -17,13 +18,14 @@ export async function GET(req: Request) {
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('orderId');
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isRealtimePipelineEnabled();
 
         if (orderId) {
             const results = await runInsightAnalysis(parseInt(orderId));
             return NextResponse.json({ ok: true, results });
         }
 
-        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+        if (realtimePipelineEnabled && !force) {
             return NextResponse.json({
                 ok: true,
                 status: 'skipped',

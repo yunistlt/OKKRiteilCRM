@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { refreshControlledManagersDialogueStats, refreshManagerDialogueStats } from '@/lib/manager-aggregates';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 
 export async function POST(request: Request) {
     try {
@@ -14,9 +15,9 @@ export async function POST(request: Request) {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
         const managerId = searchParams.get('managerId');
-        const isRealtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+        const realtimePipelineEnabled = await isRealtimePipelineEnabled();
 
-        if (isRealtimePipelineEnabled && !managerId && !force) {
+        if (realtimePipelineEnabled && !managerId && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',

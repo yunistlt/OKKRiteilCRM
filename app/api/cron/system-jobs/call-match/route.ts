@@ -6,7 +6,7 @@ import {
   enqueueCallSemanticRulesJob,
   enqueueOrderRefreshJob,
   failSystemJob,
-  isSystemJobsPipelineEnabled,
+  isSystemJobsPipelineRuntimeEnabled,
   safeEnqueueCallTranscriptionJob,
 } from '@/lib/system-jobs';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isSystemJobsPipelineEnabled()) {
+    if (!(await isSystemJobsPipelineRuntimeEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

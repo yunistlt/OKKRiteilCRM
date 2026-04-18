@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { processUnmatchedCalls } from '@/lib/call-matching';
-import { isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
+import { isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes
@@ -12,8 +12,9 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const limit = parseInt(searchParams.get('limit') || '1000');
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
-        if (isSystemJobsPipelineEnabled() && !force) {
+        if (realtimePipelineEnabled && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',

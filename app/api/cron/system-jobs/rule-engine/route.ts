@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isRealtimeRuleEngineEnabled()) {
+    if (!(await isRealtimeRuleEngineEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

@@ -8,7 +8,7 @@ import {
     isRetailCrmCatchUpMode,
     upsertRetailCrmOrders,
 } from '@/lib/retailcrm-orders';
-import { enqueueOrderRefreshJob, isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
+import { enqueueOrderRefreshJob, isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -33,8 +33,9 @@ export async function GET(request: Request) {
         ensureAuthorized(request);
         const { searchParams } = new URL(request.url);
         const forceResync = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
-        if (isSystemJobsPipelineEnabled() && !forceResync) {
+        if (realtimePipelineEnabled && !forceResync) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -106,7 +107,7 @@ export async function GET(request: Request) {
             }
 
             if (eventsToUpsert.length > 0) {
-                if (isSystemJobsPipelineEnabled()) {
+                if (realtimePipelineEnabled) {
                     for (const order of eventsToUpsert) {
                         try {
                             await enqueueOrderRefreshJob({

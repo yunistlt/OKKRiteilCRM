@@ -4,7 +4,7 @@ import {
   completeSystemJob,
   enqueueManagerAggregateRefreshJob,
   failSystemJob,
-  isSystemJobsPipelineEnabled,
+  isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
 import { evaluateOrder } from '@/lib/okk-evaluator';
 import { refreshStoredPriorityForOrder } from '@/lib/prioritization';
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isSystemJobsPipelineEnabled()) {
+    if (!(await isSystemJobsPipelineRuntimeEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

@@ -1,4 +1,8 @@
 import { supabase } from '@/utils/supabase';
+import {
+  getDefaultRealtimePipelineEnabled,
+  isRealtimePipelineEnabled,
+} from '@/lib/realtime-pipeline';
 
 export type SystemJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'dead_letter';
 
@@ -36,7 +40,11 @@ function isMissingRelationError(error: any) {
 }
 
 export function isSystemJobsPipelineEnabled() {
-  return process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+  return getDefaultRealtimePipelineEnabled();
+}
+
+export async function isSystemJobsPipelineRuntimeEnabled() {
+  return isRealtimePipelineEnabled();
 }
 
 export async function enqueueSystemJob(input: EnqueueSystemJobInput) {
@@ -72,7 +80,7 @@ export async function enqueueSystemJob(input: EnqueueSystemJobInput) {
 }
 
 export async function safeEnqueueSystemJob(input: EnqueueSystemJobInput) {
-  if (!isSystemJobsPipelineEnabled()) {
+  if (!(await isSystemJobsPipelineRuntimeEnabled())) {
     return null;
   }
 

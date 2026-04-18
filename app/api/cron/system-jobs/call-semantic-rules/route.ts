@@ -5,7 +5,7 @@ import {
   enqueueOrderRefreshJob,
   failSystemJob,
   getAdaptiveSystemJobRetry,
-  isSystemJobsPipelineEnabled,
+  isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
 import { runRuleEngine } from '@/lib/rule-engine';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isSystemJobsPipelineEnabled()) {
+    if (!(await isSystemJobsPipelineRuntimeEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

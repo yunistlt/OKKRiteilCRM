@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { syncOrderFromRetailCRM } from '@/lib/okk-evaluator';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
@@ -26,8 +27,9 @@ export async function GET(request: Request) {
         ensureAuthorized(request);
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isRealtimePipelineEnabled();
 
-        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !force) {
+        if (realtimePipelineEnabled && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',

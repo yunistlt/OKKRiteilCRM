@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSystemJobsPipelineEnabled, requeueExpiredSystemJobs } from '@/lib/system-jobs';
+import { isSystemJobsPipelineRuntimeEnabled, requeueExpiredSystemJobs } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     ensureAuthorized(req);
 
-    if (!isSystemJobsPipelineEnabled()) {
+    if (!(await isSystemJobsPipelineRuntimeEnabled())) {
       return NextResponse.json({ ok: true, status: 'disabled' });
     }
 

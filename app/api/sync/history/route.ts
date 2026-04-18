@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { enqueueOrderRefreshJob, isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
+import { enqueueOrderRefreshJob, isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 
 // Environment variables
 const RETAILCRM_URL = process.env.RETAILCRM_URL;
@@ -15,8 +15,9 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
-        if (isSystemJobsPipelineEnabled() && !force) {
+        if (realtimePipelineEnabled && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',
@@ -240,7 +241,7 @@ export async function GET(request: Request) {
                     }
                 }
 
-                if (isSystemJobsPipelineEnabled()) {
+                if (realtimePipelineEnabled) {
                     const enqueuePromises: Promise<any>[] = [];
                     latestOccurredAtByOrder.forEach((occurredAt, orderId) => {
                         enqueuePromises.push((async () => {

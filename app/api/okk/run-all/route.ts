@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { runFullEvaluation } from '@/lib/okk-evaluator';
 import { getSession } from '@/lib/auth';
 import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/access-control-server';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +25,9 @@ export async function GET(request: Request) {
         const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : undefined;
         const specificOrderId = searchParams.get('orderId') ? parseInt(searchParams.get('orderId')!) : undefined;
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isRealtimePipelineEnabled();
 
-        if (process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true' && !specificOrderId && !force) {
+        if (realtimePipelineEnabled && !specificOrderId && !force) {
             return NextResponse.json({
                 success: true,
                 status: 'skipped',

@@ -2,7 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { isSystemJobsPipelineEnabled, safeEnqueueCallSemanticRulesJob } from '@/lib/system-jobs';
+import { isSystemJobsPipelineRuntimeEnabled, safeEnqueueCallSemanticRulesJob } from '@/lib/system-jobs';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 import { runRuleEngine } from '@/lib/rule-engine';
 
@@ -20,8 +20,9 @@ export async function GET(req: Request) {
         ensureAuthorized(req);
         const { searchParams } = new URL(req.url);
         const force = searchParams.get('force') === 'true';
+        const realtimePipelineEnabled = await isSystemJobsPipelineRuntimeEnabled();
 
-        if (isSystemJobsPipelineEnabled() && !force) {
+        if (realtimePipelineEnabled && !force) {
             return NextResponse.json({
                 ok: true,
                 status: 'skipped',
@@ -113,7 +114,7 @@ export async function GET(req: Request) {
                     .eq('rule_type', 'semantic');
 
                 if (rules && rules.length > 0) {
-                    if (isSystemJobsPipelineEnabled()) {
+                    if (realtimePipelineEnabled) {
                         await safeEnqueueCallSemanticRulesJob({
                             callId: call.telphin_call_id || String(call.event_id),
                             source: 'legacy_transcribe_cron',

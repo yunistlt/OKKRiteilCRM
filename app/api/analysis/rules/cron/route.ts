@@ -12,8 +12,9 @@ export async function GET(request: Request) {
         const { searchParams } = new URL(request.url);
         const force = searchParams.get('force') === 'true';
         const hasExplicitWindow = searchParams.has('start') || searchParams.has('end') || searchParams.has('rule');
+        const realtimeRuleEngineEnabled = await isRealtimeRuleEngineEnabled();
 
-        if (isRealtimeRuleEngineEnabled() && !force && !hasExplicitWindow) {
+        if (realtimeRuleEngineEnabled && !force && !hasExplicitWindow) {
             return NextResponse.json({
                 success: true,
                 deprecated: true,

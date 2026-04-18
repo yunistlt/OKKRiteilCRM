@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { getRealtimePipelineRuntimeState } from '@/lib/realtime-pipeline';
 import { classifySystemJobRetryKind, type SystemJobRetryKind, type SystemJobType } from '@/lib/system-jobs';
 
 type MonitorStatus = 'ok' | 'warning' | 'error';
@@ -621,7 +622,8 @@ function buildWorkerService(params: {
 }
 
 export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimePipelineMonitoringSnapshot> {
-  const enabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';
+  const realtimePipelineState = await getRealtimePipelineRuntimeState();
+  const enabled = realtimePipelineState.effectiveEnabled;
 
   const { data: syncStates, error: syncError } = await supabase
     .from('sync_state')
@@ -692,7 +694,9 @@ export async function getRealtimePipelineMonitoringSnapshot(): Promise<RealtimeP
   const retailcrmCursor = stateMap.get('retailcrm_orders_sync')?.value || null;
   const retailcrmHistoryCursor = stateMap.get('retailcrm_history_sync')?.value || null;
   const queueDisabledReason = !enabled
-    ? 'ENABLE_SYSTEM_JOBS_PIPELINE=false'
+    ? (realtimePipelineState.override === 'disabled'
+      ? 'realtime_pipeline_override=disabled'
+      : 'ENABLE_SYSTEM_JOBS_PIPELINE=false')
     : (!queueAvailable ? 'system_jobs migration еще не применена' : null);
 
   const transcriptionOldest = oldestQueuedMinutes(rows, ['call_transcription']);
