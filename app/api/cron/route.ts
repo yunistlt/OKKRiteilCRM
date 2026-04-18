@@ -1,19 +1,7 @@
-
 import { NextRequest, NextResponse } from 'next/server';
-import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // Max 5 minutes for Pro plan
-
-function buildInternalAuthHeaders() {
-    if (!process.env.CRON_SECRET) {
-        return undefined;
-    }
-
-    return {
-        authorization: `Bearer ${process.env.CRON_SECRET}`,
-    };
-}
+export const maxDuration = 60;
 
 function ensureAuthorized(req: NextRequest) {
     const authHeader = req.headers.get('authorization');
@@ -23,107 +11,25 @@ function ensureAuthorized(req: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-    const baseUrl = new URL(request.url).origin;
-    const report: string[] = [];
-    const startTime = Date.now();
-    const realtimePipelineEnabled = await isRealtimePipelineEnabled();
-    // Leave 20s buffer before the hard 300s limit kills us
-    const TIMEOUT_THRESHOLD_MS = 280 * 1000;
-
-    const checkBudget = (stepName: string) => {
-        const elapsed = Date.now() - startTime;
-        if (elapsed > TIMEOUT_THRESHOLD_MS) {
-            console.warn(`[CRON] Skipping ${stepName}: Time budget exceeded (${(elapsed / 1000).toFixed(1)}s elapsed)`);
-            report.push(`Skipped ${stepName}: Timeout`);
-            return false;
-        }
-        return true;
-    };
-
     try {
         ensureAuthorized(request);
-        console.log('--- CRON STARTED ---');
-
-        // NOTE: Telphin, RetailCRM, and History syncs are now handled by separate Vercel Crons
-        // This endpoint acts as the "Data Processor" (Matching -> Rules -> Analysis)
-
-        // 1. Match Calls
-        if (checkBudget('Matching')) {
-            if (realtimePipelineEnabled) {
-                console.log('[CRON] Step 1: Matching skipped, realtime pipeline owns call matching');
-                report.push('Matches: Skipped (realtime pipeline enabled)');
-            } else {
-                console.log('[CRON] Step 1: Matching');
-                try {
-                    const matchRes = await fetch(`${baseUrl}/api/matching/process`, { cache: 'no-store' });
-                    if (!matchRes.ok) throw new Error(`HTTP ${matchRes.status}: ${await matchRes.text().then(t => t.substring(0, 200))}`);
-                    const matchJson = await matchRes.json();
-                    report.push(`Matches: ${matchJson.matches_found || 0} new`);
-                } catch (e: any) {
-                    console.error('[CRON] Matching Error:', e);
-                    report.push(`Matches: Error (${e.message})`);
-                }
-            }
-        }
-
-        // 2. Run Rule Engine
-        if (checkBudget('Rules')) {
-            if (realtimePipelineEnabled) {
-                console.log('[CRON] Step 2: Rules skipped, realtime pipeline owns rule engine');
-                report.push('Rules: Skipped (realtime pipeline enabled)');
-            } else {
-                console.log('[CRON] Step 2: Rules');
-                try {
-                    const rulesRes = await fetch(`${baseUrl}/api/rules/execute?hours=24`, {
-                        cache: 'no-store',
-                        headers: buildInternalAuthHeaders(),
-                    });
-                    if (!rulesRes.ok) throw new Error(`HTTP ${rulesRes.status}: ${await rulesRes.text().then(t => t.substring(0, 200))}`);
-                    const rulesJson = await rulesRes.json();
-                    report.push(`Rules: ${rulesJson.success ? 'OK' : 'Fail'}`);
-                } catch (e: any) {
-                    console.error('[CRON] Rules Error:', e);
-                    report.push(`Rules: Error (${e.message})`);
-                }
-            }
-        }
-        // 3. Refresh Priorities (Stagnation calculation)
-        if (checkBudget('Priorities')) {
-            if (realtimePipelineEnabled) {
-                console.log('[CRON] Step 3: Priorities skipped, realtime pipeline owns refresh');
-                report.push('Priorities: Skipped (realtime pipeline enabled)');
-            } else {
-                console.log('[CRON] Step 3: Priorities');
-                try {
-                    const prioRes = await fetch(`${baseUrl}/api/analysis/priorities/refresh`, {
-                        cache: 'no-store',
-                        headers: buildInternalAuthHeaders(),
-                    });
-                    if (!prioRes.ok) throw new Error(`HTTP ${prioRes.status}: ${await prioRes.text().then(t => t.substring(0, 200))}`);
-                    const prioJson = await prioRes.json();
-                    report.push(`Priorities: ${prioJson.count || 0} updated`);
-                } catch (e: any) {
-                    console.error('[CRON] Priorities Error:', e);
-                    report.push(`Priorities: Error (${e.message})`);
-                }
-            }
-        }
-
-        const totalTime = (Date.now() - startTime) / 1000;
-        console.log(`--- CRON FINISHED in ${totalTime.toFixed(1)}s ---`);
-
         return NextResponse.json({
             success: true,
-            elapsed_seconds: totalTime,
-            summary: report,
-            timestamp: new Date().toISOString()
+            status: 'deprecated',
+            message: 'Legacy chained /api/cron orchestration has been removed. Matching, rule fallback, and priority refresh now run as separate cron routes.',
+            replacements: [
+                '/api/matching/process',
+                '/api/rules/execute',
+                '/api/analysis/priorities/refresh'
+            ],
+            timestamp: new Date().toISOString(),
         });
 
     } catch (error: any) {
         console.error('CRON Fatal Error:', error);
         const isUnauthorized = error.message === 'Unauthorized';
         return NextResponse.json(
-            { success: false, error: error.message, report },
+            { success: false, error: error.message },
             { status: isUnauthorized ? 401 : 500 }
         );
     }

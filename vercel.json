@@ -18,7 +18,15 @@
             "schedule": "*/30 * * * *"
         },
         {
-            "path": "/api/cron",
+            "path": "/api/matching/process",
+            "schedule": "*/5 * * * *"
+        },
+        {
+            "path": "/api/rules/execute",
+            "schedule": "*/5 * * * *"
+        },
+        {
+            "path": "/api/analysis/priorities/refresh",
             "schedule": "*/5 * * * *"
         },
         {

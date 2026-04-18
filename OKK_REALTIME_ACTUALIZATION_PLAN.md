@@ -183,7 +183,7 @@
 
 ## 13. Этап 9. Защита от таймаутов и деградации
 
-- [ ] Исключить длинные HTTP-цепочки, где один endpoint последовательно делает sync, matching, rules, scoring и aggregates.
+- [x] Исключить длинные HTTP-цепочки, где один endpoint последовательно делает sync, matching, rules, scoring и aggregates.
 - [x] Ограничить каждый worker короткой задачей с понятным time budget.
 - [ ] Все тяжёлые батчи выполнять вне пользовательского HTTP-запроса.
 - [ ] Ввести graceful degradation: при недоступности OpenAI не блокировать ingest заказа и звонка.
@@ -229,6 +229,7 @@
 - [x] Добавлен nightly reconciliation маршрут для `dialogue_stats` и `order_priorities` как fallback-backfill раз в сутки.
 - [x] `nightly_reconciliation` переведён с full batch на chunked system-jobs sweep: route теперь сеет ограниченные `manager_aggregate_refresh` и `order_score_refresh` jobs, хранит offsets в `sync_state` и сам себя дозапускает до завершения полного прохода.
 - [x] Bulk fallback routes `/api/analysis/priorities/refresh` и `/api/analysis/quality/refresh` перестали выполнять full rebuild inline: bulk path теперь делегирует scoped chunked seeding в `nightly_reconciliation`, а тяжёлый пересчёт уходит в короткие queue jobs.
+- [x] Legacy `/api/cron` перестал последовательно запускать backup matching + rules + priorities в одном запросе: orchestration разнесена на отдельные Vercel cron routes (`/api/matching/process`, `/api/rules/execute`, `/api/analysis/priorities/refresh`), а сам endpoint оставлен как лёгкий deprecated stub.
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
