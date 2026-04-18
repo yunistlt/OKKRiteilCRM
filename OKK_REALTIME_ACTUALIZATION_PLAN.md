@@ -97,7 +97,7 @@
 - [x] Обеспечить, чтобы webhook recording_ready сразу обновлял именно тот контур, который потом читает ОКК.
 - [x] Обеспечить, чтобы webhook status_update не писал только в legacy-таблицы без продолжения pipeline.
 - [x] Убедиться, что order_metrics, insights и okk_order_scores могут пересчитываться по одному order_id без полного batch-run.
-- [ ] Добавить миграционный план выключения legacy-таблиц после стабилизации.
+- [x] Добавить миграционный план выключения legacy-таблиц после стабилизации.
 
 ## 6. Этап 2. Очереди и worker-процессы
 
@@ -241,6 +241,7 @@
 - [x] Targeted manual insight refresh `/api/analysis/insights/run?orderId=...` при активном realtime pipeline тоже перестал обходить production AI path напрямую: route теперь ставит targeted `order_insight_refresh` job, а direct `runInsightAnalysis` оставлен только для legacy mode или `force=true`.
 - [x] Экранный manual deep analysis `/api/analysis/order/[id]` тоже переведён на queue-first semantics при активном realtime pipeline: route ставит targeted `order_insight_refresh` job и возвращает cached insight, если он уже есть, а UI показывает queued-state вместо скрытого прямого AI bypass.
 - [x] Chat-инструмент `analyze_order` тоже переведён на queue-first semantics при активном realtime pipeline: conversational deep analysis больше не запускает production insight path напрямую, а ставит targeted `order_insight_refresh` и возвращает cached insight, если он уже сохранён.
+- [x] Health endpoint перестал публиковать legacy-style check name `transcription_queue_oldest`: мониторинг теперь называет этот SLA-сигнал по реальной queue stage `call_transcription_queue_oldest`.
 - [x] Legacy `/api/cron` перестал последовательно запускать backup matching + rules + priorities в одном запросе: orchestration разнесена на отдельные Vercel cron routes (`/api/matching/process`, `/api/rules/execute`, `/api/analysis/priorities/refresh`), а сам endpoint оставлен как лёгкий deprecated stub.
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
@@ -373,9 +374,17 @@
 - [ ] Зафиксировать, что для матчинга каноническая таблица: call_order_matches.
 - [ ] Зафиксировать, что для заказа канонические таблицы: orders и raw_order_events.
 - [ ] Зафиксировать, что для транскрибации канонический статус должен жить либо в raw_telphin_calls, либо в job queue, но не в двух параллельных местах.
-- [ ] Зафиксировать, что incoming_calls, outgoing_calls и transcription_queue являются legacy-контуром до миграции.
-- [ ] Принять решение: удаляем legacy-контур полностью или временно держим как адаптер совместимости.
-- [ ] Зафиксировать это отдельным блоком в плане и использовать как правило для всех следующих изменений.
+- [x] Зафиксировать, что incoming_calls, outgoing_calls и transcription_queue являются legacy-контуром до миграции.
+- [x] Принять решение: удаляем legacy-контур полностью или временно держим как адаптер совместимости.
+- [x] Зафиксировать это отдельным блоком в плане и использовать как правило для всех следующих изменений.
+
+Правило cutover по legacy-контуру:
+- [x] Канонический production-контур для телефонии: raw_telphin_calls + call_order_matches + system_jobs (`call_match`, `call_transcription`, `call_semantic_rules`) + order_metrics.
+- [x] `incoming_calls`, `outgoing_calls` и `transcription_queue` считаются только legacy/compat-слоем и не должны использоваться как source of truth для нового runtime-кода.
+- [x] До окончательного отключения legacy writes допускаются только через централизованный compat-helper с runtime override `telphin_legacy_compat_override`; прямые записи в legacy-таблицы вне helper запрещены.
+- [x] Cutover-решение: legacy-контур не развивается и не сохраняется как постоянный адаптер; после стабилизации он выключается runtime override-ом и затем удаляется миграцией.
+- [x] Минимальные условия для выключения compat-слоя: все webhook/manual/fallback сценарии пишут в canonical contour, status dashboard показывает `Telphin Legacy Compat`, и ни один операторский сценарий больше не зависит от чтения `incoming_calls`/`outgoing_calls`.
+- [x] После перевода runtime override в OFF следующий шаг — выдержать окно наблюдения без regressions и только потом удалять legacy-таблицы отдельной миграцией.
 
 Результат фазы:
 - [ ] Есть одно решение по source of truth для каждого доменного объекта.

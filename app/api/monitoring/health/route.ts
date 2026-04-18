@@ -106,7 +106,7 @@ export async function GET() {
                         : `retailcrm history lag ${Math.floor(metrics.retailcrmHistoryCursorLagSeconds / 60)} min`,
                 },
                 {
-                    name: 'transcription_queue_oldest',
+                    name: 'call_transcription_queue_oldest',
                     failing: metrics.transcriptionQueueOldestSeconds !== null && metrics.transcriptionQueueOldestSeconds > 20 * 60,
                     message: metrics.transcriptionQueueOldestSeconds === null
                         ? 'transcription queue empty'
