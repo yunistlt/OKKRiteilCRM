@@ -186,7 +186,7 @@
 - [x] Исключить длинные HTTP-цепочки, где один endpoint последовательно делает sync, matching, rules, scoring и aggregates.
 - [x] Ограничить каждый worker короткой задачей с понятным time budget.
 - [ ] Все тяжёлые батчи выполнять вне пользовательского HTTP-запроса.
-- [ ] Ввести graceful degradation: при недоступности OpenAI не блокировать ingest заказа и звонка.
+- [x] Ввести graceful degradation: при недоступности OpenAI не блокировать ingest заказа и звонка.
 - [x] Ввести graceful degradation: при отставании analytics не блокировать запись фактов и базовых score.
 - [ ] Сохранять причину последней ошибки по каждому типу worker в sync_state или в monitoring-таблице.
 
@@ -214,6 +214,7 @@
 - [x] `order_insight_refresh` перестал маскировать сбои AI под `skipped_no_metrics`: insight worker теперь различает отсутствие данных и реальный `failed`, чтобы очередь корректно ретраилась и отражала деградацию аналитики.
 - [x] Для `call_transcription`, `call_semantic_rules` и `order_insight_refresh` введён общий adaptive retry classifier: зависимости `not ready` ретраятся коротко, network/download ошибки мягче, а 429/OpenAI ошибки получают более длинный backoff.
 - [x] RetailCRM ingest усилен graceful degradation: API-запросы получили явный timeout, `retailcrm_order_delta` и `retailcrm_history_delta` переведены на adaptive retry, а `retailcrm_order_upsert` перестал падать на отсутствующем заказе и завершает такие кейсы как `skipped_not_found`.
+- [x] AI-only jobs (`call_transcription`, `call_semantic_rules`, `order_insight_refresh`) перестали безусловно ставиться из ingest path без OpenAI-конфига: order/call ingest продолжает сохранять факты и базовые refresh jobs, а AI-ветка мягко деградирует до skipped enqueue без request-path ошибки.
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Status dashboard начал отдельно выделять pipeline hotspot-очередь и dominant retry cause, чтобы оператор сразу видел главный bottleneck без чтения полного списка queue cards.
 - [x] Hotspot summary realtime pipeline вынесен в общий monitoring snapshot, чтобы Telegram alerting, health endpoint и status dashboard использовали один и тот же расчёт bottleneck без расхождения логики.

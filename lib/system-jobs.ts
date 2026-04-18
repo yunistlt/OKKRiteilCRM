@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { isOpenAIConfigured } from '@/utils/openai';
 import {
   getDefaultRealtimePipelineEnabled,
   isRealtimePipelineEnabled,
@@ -31,6 +32,12 @@ export interface EnqueueSystemJobInput {
   parentJobId?: number | null;
 }
 
+const AI_DEPENDENT_JOB_TYPES = new Set<SystemJobType>([
+  'call_transcription',
+  'call_semantic_rules',
+  'order_insight_refresh',
+]);
+
 function isMissingRelationError(error: any) {
   return (
     error?.code === '42P01' ||
@@ -48,6 +55,11 @@ export async function isSystemJobsPipelineRuntimeEnabled() {
 }
 
 export async function enqueueSystemJob(input: EnqueueSystemJobInput) {
+  if (AI_DEPENDENT_JOB_TYPES.has(input.jobType) && !isOpenAIConfigured()) {
+    console.warn(`[SystemJobs] Skipping ${input.jobType} enqueue because OpenAI is unavailable.`);
+    return null;
+  }
+
   const insertPayload = {
     job_type: input.jobType,
     payload: input.payload || {},
