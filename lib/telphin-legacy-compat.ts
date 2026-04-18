@@ -22,6 +22,15 @@ interface LegacyIncomingInsertInput {
   createdAt?: string | null;
 }
 
+interface LegacyOutgoingInsertInput {
+  callId: string;
+  phoneNumber: string;
+  managerId: number;
+  orderId?: number | null;
+  status?: string | null;
+  createdAt?: string | null;
+}
+
 interface LegacyStatusUpdateInput {
   callId: string;
   status?: string | null;
@@ -34,6 +43,16 @@ interface LegacyStatusUpdateInput {
 interface LegacyRecordingUpdateInput {
   callId: string;
   recordingUrl: string;
+}
+
+export interface LegacyCallContext {
+  direction: LegacyCallKind;
+  fromNumber: string | null;
+  toNumber: string | null;
+  startedAt: string | null;
+  durationSeconds: number | null;
+  recordingUrl: string | null;
+  status: string | null;
 }
 
 function isMissingSyncStateRow(error: any) {
@@ -118,6 +137,74 @@ export async function getTelphinLegacyCompatRuntimeState(forceRefresh = false) {
     overrideUpdatedAt: override.updatedAt,
     defaultEnabled,
     effectiveEnabled: override.value === 'inherit' ? defaultEnabled : override.value === 'enabled',
+  };
+}
+
+export async function loadLegacyCallContext(callId: string): Promise<LegacyCallContext> {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return {
+      direction: 'unknown',
+      fromNumber: null,
+      toNumber: null,
+      startedAt: null,
+      durationSeconds: null,
+      recordingUrl: null,
+      status: null,
+    };
+  }
+
+  try {
+    const [outgoingResult, incomingResult] = await Promise.all([
+      supabase
+        .from('outgoing_calls')
+        .select('phone_number, created_at, duration_seconds, recording_url, status')
+        .eq('call_sid', callId)
+        .limit(1),
+      supabase
+        .from('incoming_calls')
+        .select('from_number, to_number, created_at, duration_seconds, recording_url, status')
+        .eq('call_sid', callId)
+        .limit(1),
+    ]);
+
+    const outgoing = outgoingResult.data?.[0];
+    const incoming = incomingResult.data?.[0];
+
+    if (incoming) {
+      return {
+        direction: 'incoming',
+        fromNumber: incoming.from_number || null,
+        toNumber: incoming.to_number || null,
+        startedAt: incoming.created_at || null,
+        durationSeconds: incoming.duration_seconds ?? null,
+        recordingUrl: incoming.recording_url || null,
+        status: incoming.status || null,
+      };
+    }
+
+    if (outgoing) {
+      return {
+        direction: 'outgoing',
+        fromNumber: null,
+        toNumber: outgoing.phone_number || null,
+        startedAt: outgoing.created_at || null,
+        durationSeconds: outgoing.duration_seconds ?? null,
+        recordingUrl: outgoing.recording_url || null,
+        status: outgoing.status || null,
+      };
+    }
+  } catch (error) {
+    console.warn(`[TelphinLegacyCompat] Legacy context lookup failed for ${callId}:`, error);
+  }
+
+  return {
+    direction: 'unknown',
+    fromNumber: null,
+    toNumber: null,
+    startedAt: null,
+    durationSeconds: null,
+    recordingUrl: null,
+    status: null,
   };
 }
 
@@ -219,6 +306,49 @@ export async function bestEffortInsertIncomingLegacyCall(input: LegacyIncomingIn
     }
   } catch (error) {
     console.warn(`[TelphinLegacyCompat] Incoming compat sync failed for ${input.callId}:`, error);
+  }
+}
+
+export async function bestEffortInsertOutgoingLegacyCall(input: LegacyOutgoingInsertInput) {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return;
+  }
+
+  try {
+    const existing = await detectLegacyCallKind(input.callId);
+    if (existing.kind === 'outgoing') {
+      const { error } = await supabase
+        .from('outgoing_calls')
+        .update({
+          phone_number: input.phoneNumber,
+          order_id: input.orderId ?? null,
+          manager_id: input.managerId,
+          status: input.status || 'initiated',
+        })
+        .eq('call_sid', input.callId);
+
+      if (error) {
+        console.warn(`[TelphinLegacyCompat] Failed to update existing outgoing call ${input.callId}:`, error);
+      }
+      return;
+    }
+
+    const { error } = await supabase
+      .from('outgoing_calls')
+      .insert({
+        call_sid: input.callId,
+        order_id: input.orderId ?? null,
+        manager_id: input.managerId,
+        phone_number: input.phoneNumber,
+        status: input.status || 'initiated',
+        created_at: input.createdAt || new Date().toISOString(),
+      });
+
+    if (error) {
+      console.warn(`[TelphinLegacyCompat] Failed to insert outgoing call ${input.callId}:`, error);
+    }
+  } catch (error) {
+    console.warn(`[TelphinLegacyCompat] Outgoing compat sync failed for ${input.callId}:`, error);
   }
 }
 

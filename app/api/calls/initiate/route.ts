@@ -1,6 +1,7 @@
-import { supabase } from '@/utils/supabase';
 import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
+import { bestEffortInsertOutgoingLegacyCall } from '@/lib/telphin-legacy-compat';
+import { upsertCanonicalTelphinCall } from '@/lib/telphin-webhook-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
     }
 
     let callSid: string;
+  const normalizedManagerId = parseInt(String(managerId), 10);
+  const normalizedOrderId = orderId ? parseInt(String(orderId), 10) : null;
 
     if (shouldMock) {
       if (simulateError) {
@@ -61,20 +64,41 @@ export async function POST(req: NextRequest) {
       callSid = (telphinResponse.data as any).call_id;
     }
 
-    const { error } = await supabase
-      .from('outgoing_calls')
-      .insert({
-        call_sid: callSid,
-        order_id: orderId ? parseInt(String(orderId)) : null,
-        manager_id: parseInt(String(managerId)),
-        phone_number: phoneNumber,
-        status: 'initiated',
-        created_at: new Date().toISOString(),
-      });
+    const initiatedAt = new Date().toISOString();
+    let trackingWarning: string | null = null;
 
-    if (error) {
-      console.error('Failed to log call:', error);
+    try {
+      await upsertCanonicalTelphinCall({
+        callId: callSid,
+        direction: 'outgoing',
+        fromNumber: `manager:${normalizedManagerId}`,
+        toNumber: phoneNumber,
+        startedAt: initiatedAt,
+        status: 'initiated',
+        payload: {
+          call_id: callSid,
+          status: 'initiated',
+          initiated_at: initiatedAt,
+          manager_id: normalizedManagerId,
+          order_id: normalizedOrderId,
+          phone_number: phoneNumber,
+          mock: shouldMock,
+        },
+        syncSource: 'manual_call_initiate',
+      });
+    } catch (trackingError) {
+      trackingWarning = 'canonical_call_tracking_failed';
+      console.error('Failed to track initiated call in raw_telphin_calls:', trackingError);
     }
+
+    await bestEffortInsertOutgoingLegacyCall({
+      callId: callSid,
+      orderId: normalizedOrderId,
+      managerId: normalizedManagerId,
+      phoneNumber,
+      status: 'initiated',
+      createdAt: initiatedAt,
+    });
 
     return NextResponse.json({
       success: true,
@@ -83,6 +107,7 @@ export async function POST(req: NextRequest) {
       timestamp: new Date().toISOString(),
       mock: shouldMock,
       mockReason,
+      trackingWarning,
     });
   } catch (error) {
     console.error('Call initiation error:', error);

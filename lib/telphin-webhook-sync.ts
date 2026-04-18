@@ -1,5 +1,6 @@
 import { normalizePhone } from './phone-utils';
 import { supabase } from '@/utils/supabase';
+import { loadLegacyCallContext } from './telphin-legacy-compat';
 
 type CallDirection = 'incoming' | 'outgoing';
 
@@ -14,16 +15,7 @@ interface CanonicalWebhookSyncInput {
   recordingUrl?: string | null;
   status?: string | null;
   queueForTranscription?: boolean;
-}
-
-interface LegacyContext {
-  direction: CallDirection | null;
-  fromNumber: string | null;
-  toNumber: string | null;
-  startedAt: string | null;
-  durationSeconds: number | null;
-  recordingUrl: string | null;
-  status: string | null;
+  syncSource?: string;
 }
 
 function inferDirection(payload: Record<string, any>): CallDirection {
@@ -49,63 +41,8 @@ function toIsoOrNull(value: string | null | undefined): string | null {
   return date.toISOString();
 }
 
-async function loadLegacyContext(callId: string): Promise<LegacyContext> {
-  try {
-    const [outgoingResult, incomingResult] = await Promise.all([
-      supabase
-        .from('outgoing_calls')
-        .select('phone_number, created_at, duration_seconds, recording_url, status')
-        .eq('call_sid', callId)
-        .limit(1),
-      supabase
-        .from('incoming_calls')
-        .select('from_number, to_number, created_at, duration_seconds, recording_url, status')
-        .eq('call_sid', callId)
-        .limit(1),
-    ]);
 
-    const outgoing = outgoingResult.data?.[0];
-    const incoming = incomingResult.data?.[0];
-
-    if (incoming) {
-      return {
-        direction: 'incoming',
-        fromNumber: incoming.from_number || null,
-        toNumber: incoming.to_number || null,
-        startedAt: incoming.created_at || null,
-        durationSeconds: incoming.duration_seconds ?? null,
-        recordingUrl: incoming.recording_url || null,
-        status: incoming.status || null,
-      };
-    }
-
-    if (outgoing) {
-      return {
-        direction: 'outgoing',
-        fromNumber: null,
-        toNumber: outgoing.phone_number || null,
-        startedAt: outgoing.created_at || null,
-        durationSeconds: outgoing.duration_seconds ?? null,
-        recordingUrl: outgoing.recording_url || null,
-        status: outgoing.status || null,
-      };
-    }
-  } catch (error) {
-    console.warn(`[TelphinWebhookSync] Legacy context lookup failed for ${callId}:`, error);
-  }
-
-  return {
-    direction: null,
-    fromNumber: null,
-    toNumber: null,
-    startedAt: null,
-    durationSeconds: null,
-    recordingUrl: null,
-    status: null,
-  };
-}
-
-export async function syncCanonicalTelphinCallFromWebhook(
+export async function upsertCanonicalTelphinCall(
   input: CanonicalWebhookSyncInput
 ) {
   const existingResult = await supabase
@@ -115,7 +52,7 @@ export async function syncCanonicalTelphinCallFromWebhook(
     .limit(1);
 
   const existing = existingResult.data?.[0] || null;
-  const legacy = await loadLegacyContext(input.callId);
+  const legacy = await loadLegacyCallContext(input.callId);
 
   const direction =
     input.direction ||
@@ -178,7 +115,7 @@ export async function syncCanonicalTelphinCallFromWebhook(
     status: status || previousPayload.status || null,
     recording_url: recordingUrl || previousPayload.recording_url || null,
     duration_seconds: durationSec ?? previousPayload.duration_seconds ?? null,
-    _sync_source: 'telphin_webhook',
+    _sync_source: input.syncSource || 'telphin_runtime',
     _recording_ready_at:
       previousPayload._recording_ready_at ||
       (input.queueForTranscription && recordingUrl
@@ -235,4 +172,13 @@ export async function syncCanonicalTelphinCallFromWebhook(
     startedAt,
     queuedForTranscription: shouldQueueTranscription,
   };
+}
+
+export async function syncCanonicalTelphinCallFromWebhook(
+  input: CanonicalWebhookSyncInput
+) {
+  return upsertCanonicalTelphinCall({
+    ...input,
+    syncSource: input.syncSource || 'telphin_webhook',
+  });
 }

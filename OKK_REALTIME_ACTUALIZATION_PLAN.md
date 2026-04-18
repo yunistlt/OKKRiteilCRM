@@ -220,6 +220,7 @@
 - [x] Telphin webhook legacy-compat writes в `incoming_calls`/`outgoing_calls` вынесены в общий best-effort helper: основной canonical ingest больше не размазывает legacy SQL по трём webhook routes и не держит совместимость-слой как скрытый source of truth.
 - [x] Для Telphin legacy compat writes добавлен runtime override через `sync_state`/status dashboard: совместимость-слой `incoming_calls`/`outgoing_calls` теперь можно отключить без деплоя после стабилизации webhook-first pipeline.
 - [x] Status dashboard получил отдельную service-card для `Telphin Legacy Compat`, чтобы runtime-состояние legacy writes было видно в общем health-листе, а не только в блоке settings.
+- [x] Manual outgoing call initiate тоже переведён на canonical-first tracking: `/api/calls/initiate` теперь сразу пишет исходящий звонок в `raw_telphin_calls`, а `outgoing_calls` остаётся только best-effort compat-слоем под тем же runtime override.
 - [x] Monitoring snapshot и status dashboard начали показывать active retry backlog по причинам (`dependency_wait`, `rate_limit`, `network`, `ai`, `generic`), чтобы было видно, что именно тормозит realtime pipeline.
 - [x] Status dashboard начал отдельно выделять pipeline hotspot-очередь и dominant retry cause, чтобы оператор сразу видел главный bottleneck без чтения полного списка queue cards.
 - [x] Hotspot summary realtime pipeline вынесен в общий monitoring snapshot, чтобы Telegram alerting, health endpoint и status dashboard использовали один и тот же расчёт bottleneck без расхождения логики.
