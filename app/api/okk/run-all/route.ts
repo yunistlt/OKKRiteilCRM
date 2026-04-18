@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { runFullEvaluation } from '@/lib/okk-evaluator';
 import { getSession } from '@/lib/auth';
 import { canAccessTargetManager, getEffectiveCapabilityForRole } from '@/lib/access-control-server';
+import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { supabase } from '@/utils/supabase';
 
@@ -86,6 +87,41 @@ export async function GET(request: Request) {
                 queue_scope: 'priorities',
                 limit: limit || null,
                 ...fallbackJson,
+            });
+        }
+
+        if (realtimePipelineEnabled && specificOrderId && !force) {
+            const manualTriggeredAt = new Date().toISOString();
+
+            await enqueueOrderRefreshJob({
+                jobType: 'order_score_refresh',
+                orderId: specificOrderId,
+                source: 'manual_run_all_single_order',
+                priority: 10,
+                windowSeconds: 1,
+                payload: {
+                    manual_triggered_at: manualTriggeredAt,
+                    requested_via: 'api/okk/run-all',
+                },
+            });
+
+            await enqueueOrderRefreshJob({
+                jobType: 'order_insight_refresh',
+                orderId: specificOrderId,
+                source: 'manual_run_all_single_order',
+                priority: 30,
+                windowSeconds: 1,
+                payload: {
+                    manual_triggered_at: manualTriggeredAt,
+                    requested_via: 'api/okk/run-all',
+                },
+            });
+
+            return NextResponse.json({
+                success: true,
+                order_id: specificOrderId,
+                mode: 'queued',
+                next_jobs: ['order_score_refresh', 'order_insight_refresh'],
             });
         }
 
