@@ -9,9 +9,12 @@ import {
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
 import {
+  buildRetailCrmUpdatedAtFrom,
   fetchRetailCrmOrdersPage,
+  getRetailCrmPageWindow,
   getRetailCrmOrderCursor,
   getRetailCrmOrderVersion,
+  isRetailCrmCatchUpMode,
 } from '@/lib/retailcrm-orders';
 import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -67,28 +70,19 @@ export async function GET(req: NextRequest) {
       const payload = (job.payload || {}) as { force?: boolean; days?: number };
       const startTime = Date.now();
       const maxTimeMs = 45000;
-      const maxPagesPerRun = 2;
-      let filterDateFrom = '';
+      const { data: state } = await supabase
+        .from('sync_state')
+        .select('value')
+        .eq('key', 'retailcrm_orders_sync')
+        .single();
 
-      if (!payload.force) {
-        const { data: state } = await supabase
-          .from('sync_state')
-          .select('value')
-          .eq('key', 'retailcrm_orders_sync')
-          .single();
-
-        if (state?.value) {
-          const lastSync = new Date(state.value);
-          lastSync.setMinutes(lastSync.getMinutes() - 5);
-          filterDateFrom = lastSync.toISOString().slice(0, 19).replace('T', ' ');
-        }
-      }
-
-      if (!filterDateFrom) {
-        const defaultLookback = new Date();
-        defaultLookback.setDate(defaultLookback.getDate() - (payload.days ?? 2));
-        filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
-      }
+      const cursorValue = state?.value || null;
+      const catchUpMode = Boolean(payload.force) || isRetailCrmCatchUpMode(cursorValue);
+      const { limit, maxPagesPerRun } = getRetailCrmPageWindow(catchUpMode);
+      const filterDateFrom = buildRetailCrmUpdatedAtFrom({
+        cursorValue: payload.force ? null : cursorValue,
+        fallbackDays: payload.days ?? 2,
+      });
 
       let page = 1;
       let pagesProcessed = 0;
@@ -99,8 +93,8 @@ export async function GET(req: NextRequest) {
       while (hasMore && pagesProcessed < maxPagesPerRun && Date.now() - startTime < maxTimeMs) {
         const { orders, pagination } = await fetchRetailCrmOrdersPage({
           page,
-          limit: 50,
-          createdAtFrom: filterDateFrom,
+          limit,
+          updatedAtFrom: filterDateFrom,
         });
 
         if (!orders.length) {
@@ -147,6 +141,8 @@ export async function GET(req: NextRequest) {
       await completeSystemJob(job.id, {
         queued_jobs: queuedJobs,
         pages_processed: pagesProcessed,
+        catch_up_mode: catchUpMode,
+        request_limit: limit,
         filter_date_from: filterDateFrom,
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });
@@ -161,6 +157,8 @@ export async function GET(req: NextRequest) {
         status: 'processed',
         queued_jobs: queuedJobs,
         pages_processed: pagesProcessed,
+        catch_up_mode: catchUpMode,
+        request_limit: limit,
         filter_date_from: filterDateFrom,
         last_cursor_stored: maxCursorFound?.toISOString() || null,
       });

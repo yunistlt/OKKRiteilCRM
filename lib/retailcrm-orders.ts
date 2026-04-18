@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
 const RETAILCRM_FETCH_TIMEOUT_MS = 15000;
+const RETAILCRM_ALLOWED_LIMITS = [20, 50, 100] as const;
 
 export function cleanRetailCrmPhone(val: any): string {
   if (!val) return '';
@@ -50,12 +51,73 @@ export function mapRetailCrmOrderToUpsertRow(order: any) {
 }
 
 export function getRetailCrmOrderCursor(order: any) {
-  const cursorValue = order?.createdAt || order?.updatedAt || null;
+  const cursorValue = order?.updatedAt || order?.createdAt || null;
   return cursorValue ? new Date(cursorValue) : null;
 }
 
 export function getRetailCrmOrderVersion(order: any) {
   return order?.updatedAt || order?.createdAt || new Date().toISOString();
+}
+
+export function normalizeRetailCrmLimit(limit?: number, fallback: 20 | 50 | 100 = 50): 20 | 50 | 100 {
+  const normalized = RETAILCRM_ALLOWED_LIMITS.find((allowed) => allowed === limit);
+  return normalized || fallback;
+}
+
+export function getRetailCrmOverlapMinutes(): number {
+  const parsed = Number.parseInt(process.env.RETAILCRM_OVERLAP_MINUTES || '5', 10);
+  if (!Number.isFinite(parsed)) {
+    return 5;
+  }
+
+  return Math.min(5, Math.max(2, parsed));
+}
+
+export function getRetailCrmCatchUpLagMinutes(): number {
+  const parsed = Number.parseInt(process.env.RETAILCRM_CATCH_UP_LAG_MINUTES || '120', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 120;
+  }
+
+  return parsed;
+}
+
+export function isRetailCrmCatchUpMode(cursorValue: string | null | undefined): boolean {
+  if (!cursorValue) {
+    return false;
+  }
+
+  const cursorMs = new Date(cursorValue).getTime();
+  if (Number.isNaN(cursorMs)) {
+    return false;
+  }
+
+  const lagMinutes = (Date.now() - cursorMs) / 60000;
+  return lagMinutes >= getRetailCrmCatchUpLagMinutes();
+}
+
+export function buildRetailCrmUpdatedAtFrom(params: {
+  cursorValue?: string | null;
+  fallbackDays?: number;
+}) {
+  if (params.cursorValue) {
+    const lastSync = new Date(params.cursorValue);
+    if (!Number.isNaN(lastSync.getTime())) {
+      lastSync.setMinutes(lastSync.getMinutes() - getRetailCrmOverlapMinutes());
+      return lastSync.toISOString().slice(0, 19).replace('T', ' ');
+    }
+  }
+
+  const fallbackDate = new Date();
+  fallbackDate.setDate(fallbackDate.getDate() - (params.fallbackDays ?? 2));
+  return fallbackDate.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+export function getRetailCrmPageWindow(catchUpMode: boolean) {
+  return {
+    limit: normalizeRetailCrmLimit(catchUpMode ? 100 : 50),
+    maxPagesPerRun: catchUpMode ? 10 : 2,
+  };
 }
 
 function ensureRetailCrmConfig() {
@@ -105,14 +167,14 @@ async function fetchRetailCrm(path: string, params: URLSearchParams) {
 export async function fetchRetailCrmOrdersPage(params: {
   page: number;
   limit?: 20 | 50 | 100;
-  createdAtFrom?: string;
+  updatedAtFrom?: string;
 }) {
   const searchParams = new URLSearchParams();
   searchParams.set('page', String(params.page));
-  searchParams.set('limit', String(params.limit ?? 100));
+  searchParams.set('limit', String(normalizeRetailCrmLimit(params.limit, 50)));
 
-  if (params.createdAtFrom) {
-    searchParams.set('filter[createdAtFrom]', params.createdAtFrom);
+  if (params.updatedAtFrom) {
+    searchParams.set('filter[updatedAtFrom]', params.updatedAtFrom);
   }
 
   const data = await fetchRetailCrm('orders', searchParams);

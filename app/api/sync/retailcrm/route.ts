@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import {
+    buildRetailCrmUpdatedAtFrom,
     fetchRetailCrmOrdersPage,
+    getRetailCrmPageWindow,
     getRetailCrmOrderCursor,
+    isRetailCrmCatchUpMode,
     upsertRetailCrmOrders,
 } from '@/lib/retailcrm-orders';
 import { enqueueOrderRefreshJob, isSystemJobsPipelineEnabled } from '@/lib/system-jobs';
@@ -41,33 +44,20 @@ export async function GET(request: Request) {
 
         const startTime = Date.now();
         const maxTimeMs = 50000;
-        const maxPagesPerRun = 20;
+        const { data: state } = await supabase
+            .from('sync_state')
+            .select('value')
+            .eq('key', 'retailcrm_orders_sync')
+            .single();
 
-        let filterDateFrom = '';
-
-        // 1. Determine Start Date from sync_state
-        if (!forceResync) {
-            const { data: state } = await supabase
-                .from('sync_state')
-                .select('value')
-                .eq('key', 'retailcrm_orders_sync')
-                .single();
-
-            if (state?.value) {
-                const lastSync = new Date(state.value);
-                // 10 minute overlap to be safe against race conditions or slight delay in CRM records
-                lastSync.setMinutes(lastSync.getMinutes() - 10);
-                filterDateFrom = lastSync.toISOString().slice(0, 19).replace('T', ' ');
-            }
-        }
-
-        // Fallback to default lookback if no state found or force resync
-        if (!filterDateFrom) {
-            const days = parseInt(searchParams.get('days') || '2');
-            const defaultLookback = new Date();
-            defaultLookback.setDate(defaultLookback.getDate() - days);
-            filterDateFrom = defaultLookback.toISOString().slice(0, 19).replace('T', ' ');
-        }
+        const days = parseInt(searchParams.get('days') || '2');
+        const cursorValue = state?.value || null;
+        const catchUpMode = forceResync || isRetailCrmCatchUpMode(cursorValue);
+        const { limit, maxPagesPerRun } = getRetailCrmPageWindow(catchUpMode);
+        const filterDateFrom = buildRetailCrmUpdatedAtFrom({
+            cursorValue: forceResync ? null : cursorValue,
+            fallbackDays: days,
+        });
 
         console.log(`[Orders Sync] Syncing updates from: ${filterDateFrom}`);
 
@@ -80,7 +70,6 @@ export async function GET(request: Request) {
 
         // 2. Loop Pages
         while (hasMore && pagesProcessed < maxPagesPerRun && (Date.now() - startTime) < maxTimeMs) {
-            const limit = 100;
             console.log(`[Orders Sync] Fetching Page ${page} from ${filterDateFrom}`);
 
             const { logAgentActivity } = await import('@/lib/agent-logger');
@@ -89,7 +78,7 @@ export async function GET(request: Request) {
             const data = await fetchRetailCrmOrdersPage({
                 page,
                 limit,
-                createdAtFrom: filterDateFrom,
+                updatedAtFrom: filterDateFrom,
             });
 
             const orders = data.orders || [];
@@ -184,6 +173,8 @@ export async function GET(request: Request) {
             method: 'orders_state_based_sync',
             last_sync_stored: maxCursorFound?.toISOString() || 'unchanged',
             filter_date_from: filterDateFrom,
+            catch_up_mode: catchUpMode,
+            request_limit: limit,
             pages_processed: pagesProcessed,
             total_orders_fetched: totalOrdersFetched,
             has_more: hasMore
