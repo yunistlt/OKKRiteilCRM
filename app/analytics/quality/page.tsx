@@ -15,8 +15,7 @@ function QualityContent() {
     const [data, setData] = useState<ManagerStats[]>([]);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [refreshHint, setRefreshHint] = useState('Данные обновляются автоматически через realtime pipeline');
+    const [refreshHint] = useState('Данные обновляются автоматически через realtime pipeline. Аварийный fallback rebuild доступен на экране статуса системы.');
 
     const fetchData = async () => {
         try {
@@ -37,28 +36,6 @@ function QualityContent() {
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, []);
-
-    const handleRefresh = async () => {
-        setRefreshing(true);
-        setRefreshHint('Запускаем fallback reconciliation витрины...');
-        try {
-            const res = await fetch('/api/analysis/quality/refresh?force=true', { method: 'POST' });
-            const json = await res.json();
-            if (json.success) {
-                await fetchData();
-                if (json.status === 'skipped') {
-                    setRefreshHint(json.reason || 'Fallback reconciliation был пропущен');
-                } else {
-                    setRefreshHint('Fallback reconciliation завершен');
-                }
-            }
-        } catch (e) {
-            console.error(e);
-            setRefreshHint('Fallback reconciliation завершился с ошибкой');
-        } finally {
-            setRefreshing(false);
-        }
-    };
 
     const formatDuration = (seconds: number) => {
         const h = Math.floor(seconds / 3600);
@@ -102,16 +79,12 @@ function QualityContent() {
                     </div>
                 </div>
 
-                <button
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className={`w-full sm:w-auto flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 bg-white border border-gray-100 rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all shadow-xl shadow-gray-200/50 hover:bg-gray-50 active:scale-95 disabled:opacity-50 ${refreshing ? 'animate-pulse' : ''}`}
-                >
-                    <svg className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <div className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 md:px-8 py-3 md:py-4 bg-white border border-gray-100 rounded-2xl md:rounded-3xl text-[10px] md:text-[11px] font-black uppercase tracking-widest shadow-xl shadow-gray-200/50 text-gray-500">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    {refreshing ? 'Собираем...' : 'Пересобрать витрину'}
-                </button>
+                    Витрина обновляется автоматически
+                </div>
             </div>
 
             {/* Table */}
