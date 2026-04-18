@@ -4,6 +4,9 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
+import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
+import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -25,6 +28,37 @@ export async function GET(
 
     try {
         console.log(`[Manual Analysis] Running for order ${orderId}...`);
+
+        const realtimePipelineEnabled = await isRealtimePipelineEnabled();
+
+        if (realtimePipelineEnabled) {
+            await enqueueOrderRefreshJob({
+                jobType: 'order_insight_refresh',
+                orderId,
+                source: 'manual_order_analysis_screen',
+                priority: 10,
+                windowSeconds: 1,
+                payload: {
+                    manual_triggered_at: new Date().toISOString(),
+                },
+            });
+
+            const { data: metrics } = await supabase
+                .from('order_metrics')
+                .select('insights, computed_at')
+                .eq('retailcrm_order_id', orderId)
+                .maybeSingle();
+
+            return NextResponse.json({
+                success: true,
+                orderId,
+                mode: 'queued',
+                insights: metrics?.insights || null,
+                cachedAt: metrics?.computed_at || null,
+                reason: 'Realtime pipeline owns deep order analysis. Targeted order_insight_refresh job queued.',
+                timestamp: new Date().toISOString(),
+            });
+        }
 
         const insights = await runInsightAnalysis(orderId);
 

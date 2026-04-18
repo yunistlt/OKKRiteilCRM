@@ -21,6 +21,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     const [crmUrl, setCrmUrl] = useState<string>('');
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
+    const [queuedAnalyses, setQueuedAnalyses] = useState<Record<number, { message: string; cachedAt?: string | null }>>({});
     const [agents, setAgents] = useState<Agent[]>([]);
     const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -120,7 +121,25 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
             const res = await fetch(`/api/analysis/order/${orderId}`);
             const data = await res.json();
             if (data.success) {
-                setAnalysisResults(prev => ({ ...prev, [orderId]: data.insights }));
+                if (data.insights) {
+                    setAnalysisResults(prev => ({ ...prev, [orderId]: data.insights }));
+                }
+
+                if (data.mode === 'queued') {
+                    setQueuedAnalyses(prev => ({
+                        ...prev,
+                        [orderId]: {
+                            message: data.reason || 'Анализ поставлен в очередь realtime pipeline.',
+                            cachedAt: data.cachedAt || null,
+                        },
+                    }));
+                } else {
+                    setQueuedAnalyses(prev => {
+                        const next = { ...prev };
+                        delete next[orderId];
+                        return next;
+                    });
+                }
             }
         } catch (e) {
             console.error('Analysis failed', e);
@@ -545,6 +564,18 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                         </div>
 
                                         {/* Deep Analysis Result (if available) */}
+                                        {queuedAnalyses[order.orderId] && (
+                                            <div className="mt-4 p-3 rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 animate-in fade-in slide-in-from-top-2 duration-500">
+                                                <div className="text-[10px] font-black uppercase tracking-widest text-amber-600 mb-1">Анна: обновление поставлено в очередь</div>
+                                                <div className="text-xs font-medium leading-relaxed">{queuedAnalyses[order.orderId].message}</div>
+                                                {queuedAnalyses[order.orderId].cachedAt && (
+                                                    <div className="text-[10px] text-amber-700/80 mt-1">
+                                                        Показываем последний сохранённый анализ от {new Date(queuedAnalyses[order.orderId].cachedAt as string).toLocaleString('ru-RU')}.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
                                         {analysisResults[order.orderId] && (
                                             <div className="mt-4 p-4 md:p-5 bg-indigo-50/50 rounded-2xl md:rounded-3xl border border-indigo-100 animate-in fade-in slide-in-from-top-2 duration-500">
                                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
