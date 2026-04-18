@@ -34,6 +34,18 @@ export interface SyncResult {
     error?: string;
 }
 
+interface TelphinSyncOptions {
+    storageKey: string;
+    errorKey: string;
+    lagKey?: string;
+    source: string;
+    defaultLookbackMinutes: number;
+    fetchCount: number;
+    forceResync?: boolean;
+    hours?: number;
+    modePrefix: string;
+}
+
 function getDefaultTelphinFallbackMinutes() {
     const parsed = Number.parseInt(process.env.TELPHIN_FALLBACK_MINUTES || '15', 10);
     if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -78,7 +90,64 @@ async function recordTelphinFallbackFailure(message: string) {
     if (error) throw error;
 }
 
-export async function runTelphinSync(forceResync: boolean = false, hours: number = 2): Promise<SyncResult> {
+async function recordTelphinSyncSuccess(cursor: string, options: TelphinSyncOptions) {
+    if (options.storageKey === 'telphin_last_sync_time') {
+        await recordTelphinFallbackSuccess(cursor);
+        return;
+    }
+
+    const now = new Date().toISOString();
+    const entries = [
+        {
+            key: options.storageKey,
+            value: cursor,
+            updated_at: now,
+        },
+        {
+            key: options.errorKey,
+            value: '',
+            updated_at: now,
+        },
+    ];
+
+    if (options.lagKey) {
+        const lagSeconds = Math.max(0, Math.floor((Date.now() - new Date(cursor).getTime()) / 1000));
+        entries.push({
+            key: options.lagKey,
+            value: String(lagSeconds),
+            updated_at: now,
+        });
+    }
+
+    const { error } = await supabase.from('sync_state').upsert(entries, { onConflict: 'key' });
+    if (error) throw error;
+}
+
+async function recordTelphinSyncFailure(message: string, options: TelphinSyncOptions) {
+    if (options.errorKey === 'telphin_fallback_last_error') {
+        await recordTelphinFallbackFailure(message);
+        return;
+    }
+
+    const now = new Date().toISOString();
+    const { error } = await supabase.from('sync_state').upsert({
+        key: options.errorKey,
+        value: message.slice(0, 1500),
+        updated_at: now,
+    }, { onConflict: 'key' });
+
+    if (error) throw error;
+}
+
+function getTelphinBacklogRecoveryHours() {
+    const parsed = Number.parseInt(process.env.TELPHIN_BACKLOG_RECOVERY_HOURS || '24', 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 24;
+    }
+    return parsed;
+}
+
+async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<SyncResult> {
     const TELPHIN_APP_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
     const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
@@ -89,37 +158,33 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
     try {
         const token = await getTelphinToken();
         const now = new Date();
-        const storageKey = 'telphin_last_sync_time';
-        const defaultFallbackMinutes = getDefaultTelphinFallbackMinutes();
-        const maxLookbackMs = defaultFallbackMinutes * 60 * 1000;
+        const maxLookbackMs = options.defaultLookbackMinutes * 60 * 1000;
 
-        // 1. Get Start Date from Persistent Cursor (Sync State)
         let start = new Date(Date.now() - maxLookbackMs);
 
-        if (!forceResync) {
+        if (!options.forceResync) {
             const { data: state } = await supabase
                 .from('sync_state')
                 .select('value')
-                .eq('key', storageKey)
+                .eq('key', options.storageKey)
                 .single();
 
             if (state?.value) {
-                // Ensure the cursor isn't in the future
                 const storedDate = new Date(state.value);
                 if (storedDate < now) {
                     const boundedStart = new Date(Math.max(storedDate.getTime(), now.getTime() - maxLookbackMs));
                     start = boundedStart;
-                    console.log('Incremental sync from state:', start.toISOString());
+                    console.log(`[TelphinSync:${options.source}] Incremental sync from state:`, start.toISOString());
                 } else {
-                    console.warn('Stored cursor is in the future, falling back to default window.', state.value);
+                    console.warn(`[TelphinSync:${options.source}] Stored cursor is in the future, falling back to default window.`, state.value);
                 }
             }
         } else {
-            console.log(`Forced resync requested. Looking back ${hours} hours.`);
-            start = new Date(Date.now() - hours * 60 * 60 * 1000);
+            const forceHours = options.hours || Math.max(1, Math.ceil(options.defaultLookbackMinutes / 60));
+            console.log(`[TelphinSync:${options.source}] Forced resync requested. Looking back ${forceHours} hours.`);
+            start = new Date(Date.now() - forceHours * 60 * 60 * 1000);
         }
 
-        // 2. Get Client ID
         const userRes = await fetchTelphin('https://apiproxy.telphin.ru/api/ver1.0/user', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
@@ -131,16 +196,15 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
         const clientId = userData.client_id;
         if (!clientId) throw new Error('Could not resolve Telphin Client ID');
 
-        // 3. Fetch Calls via call_history (Account-wide)
         const params = new URLSearchParams({
             start_datetime: formatTelphinDate(start),
             end_datetime: formatTelphinDate(now),
             order: 'asc',
-            count: '100' // Main sync can afford larger batches than backfill
+            count: String(options.fetchCount)
         });
 
         const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/call_history/?${params.toString()}`;
-        console.log(`[Sync] Fetching ${url}`);
+        console.log(`[TelphinSync:${options.source}] Fetching ${url}`);
 
         const res = await fetchTelphin(url, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -153,11 +217,11 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
 
         const data = await res.json();
         const calls = data.call_history || (Array.isArray(data) ? data : []);
-        console.log(`[Sync] Fetched ${calls.length} calls.`);
+        console.log(`[TelphinSync:${options.source}] Fetched ${calls.length} calls.`);
 
         let totalSynced = 0;
         let nextCursor = start.toISOString();
-        let fetchedCount = calls.length;
+        const fetchedCount = calls.length;
 
         if (calls.length > 0) {
             const rawCalls = calls.map((r: any) => {
@@ -180,10 +244,8 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                     toNumber = r.dest_number || r.to_number || r.to_username;
                 }
 
-                // Extract recording URL from nested CDR array if available
                 let recordingUrl = r.record_url || r.storage_url || r.url || null;
                 if (!recordingUrl && r.cdr && Array.isArray(r.cdr)) {
-                    // Find the first CDR with a storage_url
                     const cdrWithStorage = r.cdr.find((c: any) => c.storage_url);
                     if (cdrWithStorage) {
                         recordingUrl = cdrWithStorage.storage_url;
@@ -209,7 +271,7 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                 .upsert(rawCalls, { onConflict: 'telphin_call_id' });
 
             if (rawError) {
-                console.error('[Sync] Upsert Error:', rawError);
+                console.error(`[TelphinSync:${options.source}] Upsert Error:`, rawError);
                 throw rawError;
             }
 
@@ -220,17 +282,17 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                     jobType: 'call_match',
                     payload: {
                         telphin_call_id: rawCall.telphin_call_id,
-                        source: 'telphin_fallback_sync',
+                        source: options.source,
                         started_at: rawCall.started_at,
                     },
                     priority: 30,
-                    idempotencyKey: `call_match:${rawCall.telphin_call_id}:telphin_fallback`,
+                    idempotencyKey: `call_match:${rawCall.telphin_call_id}:${options.source}`,
                 });
 
                 if (rawCall.recording_url) {
                     await safeEnqueueCallTranscriptionJob({
                         callId: rawCall.telphin_call_id,
-                        source: 'telphin_fallback_sync',
+                        source: options.source,
                         recordingUrl: rawCall.recording_url,
                         startedAt: rawCall.started_at,
                         payload: {
@@ -240,30 +302,55 @@ export async function runTelphinSync(forceResync: boolean = false, hours: number
                 }
             }
 
-            // Advance cursor to the last record's time
             const lastCall = calls[calls.length - 1];
             const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
             const lastDate = new Date(lastTimeRaw + (lastTimeRaw.includes('Z') ? '' : 'Z'));
             nextCursor = lastDate.toISOString();
         } else {
-            // If No calls, we can advance to Now to keep it fresh
             nextCursor = now.toISOString();
         }
 
-        // 4. Update Cursor
-        await recordTelphinFallbackSuccess(nextCursor);
+        await recordTelphinSyncSuccess(nextCursor, options);
 
-        // 5. Trigger Rule Engine Analysis
         return {
             success: true,
             total_synced: totalSynced,
             new_cursor: nextCursor,
-            mode: forceResync ? 'forced_resync' : (fetchedCount === 100 ? 'fallback_partial' : 'fallback_caught_up')
+            mode: fetchedCount === options.fetchCount
+                ? `${options.modePrefix}_partial`
+                : `${options.modePrefix}_caught_up`
         };
 
     } catch (error: any) {
-        console.error('Telphin Sync Logic Error:', error);
-        await recordTelphinFallbackFailure(error.message || 'Unknown Telphin fallback sync error');
+        console.error(`Telphin Sync Logic Error (${options.source}):`, error);
+        await recordTelphinSyncFailure(error.message || `Unknown ${options.source} error`, options);
         return { success: false, error: error.message };
     }
+}
+
+export async function runTelphinSync(forceResync: boolean = false, hours: number = 2): Promise<SyncResult> {
+    return runTelphinCallHistorySync({
+        storageKey: 'telphin_last_sync_time',
+        errorKey: 'telphin_fallback_last_error',
+        lagKey: 'telphin_fallback_lag_seconds',
+        source: 'telphin_fallback_sync',
+        defaultLookbackMinutes: getDefaultTelphinFallbackMinutes(),
+        fetchCount: 50,
+        forceResync,
+        hours,
+        modePrefix: forceResync ? 'forced_resync' : 'fallback',
+    });
+}
+
+export async function runTelphinBacklogRecovery(forceResync: boolean = false, hours: number = getTelphinBacklogRecoveryHours()): Promise<SyncResult> {
+    return runTelphinCallHistorySync({
+        storageKey: 'telphin_backfill_cursor',
+        errorKey: 'telphin_backfill_last_error',
+        source: 'telphin_backlog_recovery',
+        defaultLookbackMinutes: hours * 60,
+        fetchCount: 100,
+        forceResync,
+        hours,
+        modePrefix: forceResync ? 'backfill_forced_resync' : 'backfill',
+    });
 }

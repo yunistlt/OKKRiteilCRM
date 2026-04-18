@@ -5,6 +5,7 @@ import { hasAnyRole } from '@/lib/rbac';
 export const dynamic = 'force-dynamic';
 
 function resolveServiceUrl(serviceName: string) {
+    if (serviceName.includes('Telphin Backfill')) return '/api/sync/telphin/recovery';
     if (serviceName.includes('Telphin Fallback')) return '/api/sync/telphin';
     if (serviceName.includes('RetailCRM Fallback')) return '/api/sync/retailcrm?force=true';
     if (serviceName.includes('System Jobs Queue')) return '/api/cron/system-jobs/watchdog';

@@ -67,12 +67,15 @@ export async function GET() {
             .in('key', [
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
+                'telphin_backfill_last_error',
                 'telphin_last_sync_time',
                 'telphin_backfill_cursor',
                 'telphin_fallback_lag_seconds',
                 'telphin_fallback_last_error',
                 'telphin_fallback_lock_status',
                 'telphin_fallback_lock_holder',
+                'telphin_backfill_lock_status',
+                'telphin_backfill_lock_holder',
                 'transcription_min_duration',
                 'transcription_last_run',
                 'rule_engine_last_run',
@@ -148,20 +151,22 @@ export async function GET() {
 
         // --- Telphin Backfill ---
         const telphinBackfill = stateMap.get('telphin_backfill_cursor');
+        const telphinBackfillLastError = stateMap.get('telphin_backfill_last_error')?.value || '';
+        const telphinBackfillLockStatus = stateMap.get('telphin_backfill_lock_status')?.value || 'idle';
         const backfillOk = isFresh(telphinBackfill?.updated_at, 5); // Strict 5m check
         const backfillStatus = {
             service: 'Telphin Backfill Sweep',
             cursor: 'Fallback only',
             last_run: telphinBackfill?.updated_at || null,
-            status: telphinFallbackLockStatus === 'contended' ? 'warning' : 'ok',
-            details: telphinFallbackLockStatus === 'running'
+            status: telphinBackfillLastError ? 'warning' : (telphinBackfillLockStatus === 'contended' ? 'warning' : 'ok'),
+            details: telphinBackfillLockStatus === 'running'
                 ? 'Backup sweep running (lock held)'
-                : telphinFallbackLockStatus === 'contended'
+                : telphinBackfillLockStatus === 'contended'
                     ? 'Busy in another worker'
                     : (backfillOk ? 'Idle / recently completed' : 'Idle / waiting manual run'),
-            reason: telphinFallbackLockStatus === 'contended'
+            reason: telphinBackfillLastError || (telphinBackfillLockStatus === 'contended'
                 ? 'Другой fallback worker уже держит lease-lock и выполняет синхронизацию.'
-                : 'Fallback sweep for missed Telphin webhook gaps.'
+                : 'Slow backlog-recovery sweep for missed Telphin webhook gaps.')
         };
 
         const realtimePipelineEnabled = process.env.ENABLE_SYSTEM_JOBS_PIPELINE === 'true';

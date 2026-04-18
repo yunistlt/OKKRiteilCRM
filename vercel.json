@@ -6,6 +6,10 @@
             "schedule": "*/2 * * * *"
         },
         {
+            "path": "/api/sync/telphin/recovery",
+            "schedule": "*/30 * * * *"
+        },
+        {
             "path": "/api/sync/retailcrm",
             "schedule": "*/10 * * * *"
         },
