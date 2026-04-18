@@ -9,12 +9,16 @@ import {
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
 import {
+  buildRetailCrmSlowPathUpdatedAtFrom,
   buildRetailCrmUpdatedAtFrom,
   fetchRetailCrmOrdersPage,
+  getRetailCrmDeltaCadenceSeconds,
+  getRetailCrmMoscowHour,
   getRetailCrmPageWindow,
   getRetailCrmOrderCursor,
   getRetailCrmOrderVersion,
   isRetailCrmCatchUpMode,
+  shouldRunRetailCrmSlowPath,
 } from '@/lib/retailcrm-orders';
 import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -70,19 +74,58 @@ export async function GET(req: NextRequest) {
       const payload = (job.payload || {}) as { force?: boolean; days?: number };
       const startTime = Date.now();
       const maxTimeMs = 45000;
+      const now = new Date();
       const { data: state } = await supabase
         .from('sync_state')
         .select('value')
         .eq('key', 'retailcrm_orders_sync')
         .single();
+      const { data: successState } = await supabase
+        .from('sync_state')
+        .select('value, updated_at')
+        .eq('key', 'retailcrm_orders_queue_last_success_at')
+        .single();
+      const { data: slowPathState } = await supabase
+        .from('sync_state')
+        .select('value, updated_at')
+        .eq('key', 'retailcrm_orders_slow_path_last_run')
+        .single();
 
       const cursorValue = state?.value || null;
       const catchUpMode = Boolean(payload.force) || isRetailCrmCatchUpMode(cursorValue);
-      const { limit, maxPagesPerRun } = getRetailCrmPageWindow(catchUpMode);
-      const filterDateFrom = buildRetailCrmUpdatedAtFrom({
-        cursorValue: payload.force ? null : cursorValue,
-        fallbackDays: payload.days ?? 2,
+      const cadenceSeconds = getRetailCrmDeltaCadenceSeconds(now);
+      const lastSuccessAt = successState?.value || successState?.updated_at || null;
+      const lastSuccessMs = lastSuccessAt ? new Date(lastSuccessAt).getTime() : null;
+      const cadenceActive = !payload.force && !catchUpMode && lastSuccessMs !== null && !Number.isNaN(lastSuccessMs) && (now.getTime() - lastSuccessMs) < cadenceSeconds * 1000;
+
+      if (cadenceActive) {
+        await completeSystemJob(job.id, {
+          skipped_by_cadence: true,
+          cadence_seconds: cadenceSeconds,
+          last_success_at: lastSuccessAt,
+          moscow_hour: getRetailCrmMoscowHour(now),
+        });
+
+        return NextResponse.json({
+          ok: true,
+          status: 'skipped_by_cadence',
+          cadence_seconds: cadenceSeconds,
+          last_success_at: lastSuccessAt,
+          moscow_hour: getRetailCrmMoscowHour(now),
+        });
+      }
+
+      const slowPathMode = !payload.force && !catchUpMode && shouldRunRetailCrmSlowPath({
+        now,
+        lastSlowPathAt: slowPathState?.value || slowPathState?.updated_at || null,
       });
+      const { limit, maxPagesPerRun } = getRetailCrmPageWindow(catchUpMode);
+      const filterDateFrom = slowPathMode
+        ? buildRetailCrmSlowPathUpdatedAtFrom(now)
+        : buildRetailCrmUpdatedAtFrom({
+            cursorValue: payload.force ? null : cursorValue,
+            fallbackDays: payload.days ?? 2,
+          });
 
       let page = 1;
       let pagesProcessed = 0;
@@ -138,10 +181,20 @@ export async function GET(req: NextRequest) {
         cursorValue: maxCursorFound?.toISOString() || null,
       });
 
+      if (slowPathMode) {
+        await supabase.from('sync_state').upsert({
+          key: 'retailcrm_orders_slow_path_last_run',
+          value: now.toISOString(),
+          updated_at: now.toISOString(),
+        }, { onConflict: 'key' });
+      }
+
       await completeSystemJob(job.id, {
         queued_jobs: queuedJobs,
         pages_processed: pagesProcessed,
         catch_up_mode: catchUpMode,
+        slow_path_mode: slowPathMode,
+        cadence_seconds: cadenceSeconds,
         request_limit: limit,
         filter_date_from: filterDateFrom,
         last_cursor_stored: maxCursorFound?.toISOString() || null,
@@ -158,6 +211,8 @@ export async function GET(req: NextRequest) {
         queued_jobs: queuedJobs,
         pages_processed: pagesProcessed,
         catch_up_mode: catchUpMode,
+        slow_path_mode: slowPathMode,
+        cadence_seconds: cadenceSeconds,
         request_limit: limit,
         filter_date_from: filterDateFrom,
         last_cursor_stored: maxCursorFound?.toISOString() || null,

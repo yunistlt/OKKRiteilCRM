@@ -120,6 +120,54 @@ export function getRetailCrmPageWindow(catchUpMode: boolean) {
   };
 }
 
+export function getRetailCrmMoscowHour(date: Date = new Date()) {
+  return (date.getUTCHours() + 3) % 24;
+}
+
+export function isRetailCrmWorkingWindow(date: Date = new Date()) {
+  const moscowHour = getRetailCrmMoscowHour(date);
+  return moscowHour >= 9 && moscowHour < 21;
+}
+
+export function getRetailCrmDeltaCadenceSeconds(date: Date = new Date()) {
+  return isRetailCrmWorkingWindow(date) ? 60 : 180;
+}
+
+export function getRetailCrmSlowPathMinutes() {
+  const parsed = Number.parseInt(process.env.RETAILCRM_SLOW_PATH_MINUTES || '60', 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 60;
+  }
+
+  return parsed;
+}
+
+export function shouldRunRetailCrmSlowPath(params: {
+  now?: Date;
+  lastSlowPathAt?: string | null;
+}) {
+  const now = params.now || new Date();
+  if (now.getUTCMinutes() % 15 !== 0) {
+    return false;
+  }
+
+  if (!params.lastSlowPathAt) {
+    return true;
+  }
+
+  const lastRunMs = new Date(params.lastSlowPathAt).getTime();
+  if (Number.isNaN(lastRunMs)) {
+    return true;
+  }
+
+  return now.getTime() - lastRunMs >= 15 * 60 * 1000;
+}
+
+export function buildRetailCrmSlowPathUpdatedAtFrom(now: Date = new Date()) {
+  const from = new Date(now.getTime() - getRetailCrmSlowPathMinutes() * 60 * 1000);
+  return from.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 function ensureRetailCrmConfig() {
   if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
     throw new Error('RetailCRM config missing');
