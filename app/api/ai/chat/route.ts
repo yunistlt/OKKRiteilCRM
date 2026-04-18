@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { getOpenAIClient } from '@/utils/openai';
 import { runInsightAnalysis } from '@/lib/insight-agent';
 import { getStoredPriorities } from '@/lib/prioritization';
+import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
+import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -369,6 +371,42 @@ export async function POST(req: Request) {
             if (functionName === 'analyze_order') {
                 const orderId = args.order_id;
                 try {
+                    const realtimePipelineEnabled = await isRealtimePipelineEnabled();
+
+                    if (realtimePipelineEnabled) {
+                        await enqueueOrderRefreshJob({
+                            jobType: 'order_insight_refresh',
+                            orderId,
+                            source: 'chat_analyze_order',
+                            priority: 10,
+                            windowSeconds: 1,
+                            payload: {
+                                manual_triggered_at: new Date().toISOString(),
+                            },
+                        });
+
+                        const { data: metrics } = await supabase
+                            .from('order_metrics')
+                            .select('insights, computed_at')
+                            .eq('retailcrm_order_id', orderId)
+                            .maybeSingle();
+
+                        const cachedInsights = metrics?.insights || null;
+                        const cachedAt = metrics?.computed_at || null;
+
+                        const replyText = cachedInsights
+                            ? `Анна поставила свежий deep analysis по заказу #${orderId} в realtime-очередь.\n\nПока показываю последний сохранённый разбор${cachedAt ? ` от ${new Date(cachedAt).toLocaleString('ru-RU')}` : ''}:\nЛПР: ${cachedInsights.lpr?.name || 'Неизвестен'} (${cachedInsights.lpr?.role || ''})\nРезюме: ${cachedInsights.summary}${cachedInsights.recommendations ? `\nРекомендации:\n- ${cachedInsights.recommendations.join('\n- ')}` : ''}`
+                            : `Анна поставила deep analysis по заказу #${orderId} в realtime-очередь. Свежий результат появится после выполнения targeted order_insight_refresh job.`;
+
+                        return NextResponse.json({
+                            success: true,
+                            agent: 'Анна',
+                            text: replyText,
+                            action: { type: 'analyze_order', orderId, result: cachedInsights },
+                            mode: 'queued',
+                        });
+                    }
+
                     const insights = await runInsightAnalysis(orderId);
 
                     if (!insights) {
