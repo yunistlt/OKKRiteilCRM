@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { bestEffortInsertIncomingLegacyCall } from '@/lib/telphin-legacy-compat';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
@@ -87,24 +88,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Логируем входящий звонок
-    const { data: incomingCall, error } = await supabase
-      .from('incoming_calls')
-      .insert({
-        call_sid: call_id,
-        from_number: normalizedNumber,
-        to_number: to_number,
-        order_id: matchedOrderId,
-        assigned_manager_id: assignedManagerId,
-        status: 'ringing',
-        created_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Failed to log incoming call:', error);
-    }
+    await bestEffortInsertIncomingLegacyCall({
+      callId: call_id,
+      fromNumber: normalizedNumber,
+      toNumber: to_number,
+      matchedOrderId,
+      assignedManagerId,
+      status: 'ringing',
+      createdAt: new Date().toISOString(),
+    });
 
     // Уведомляем менеджера в Telegram
     if (assignedManagerId) {

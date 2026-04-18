@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { bestEffortUpdateLegacyCallStatus } from '@/lib/telphin-legacy-compat';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -31,50 +32,14 @@ export async function POST(req: NextRequest) {
       ? new Date(ended_at || Date.now()).toISOString()
       : null;
 
-    // Определяем, исходящий или входящий звонок
-    const { data: outgoingCall } = await supabase
-      .from('outgoing_calls')
-      .select('id')
-      .eq('call_sid', call_id)
-      .single();
-
-    const { data: incomingCall } = await supabase
-      .from('incoming_calls')
-      .select('id, order_id')
-      .eq('call_sid', call_id)
-      .single();
-
-    if (outgoingCall) {
-      // Обновляем исходящий звонок
-      const { error } = await supabase
-        .from('outgoing_calls')
-        .update({
-          status,
-          duration_seconds,
-          recording_url,
-          answered_at: status === 'connected' ? new Date().toISOString() : null,
-          ended_at: ended_at ? new Date(ended_at).toISOString() : null,
-        })
-        .eq('call_sid', call_id);
-
-      if (error) console.error('Update outgoing call error:', error);
-
-    } else if (incomingCall) {
-      // Обновляем входящий звонок
-      const { error } = await supabase
-        .from('incoming_calls')
-        .update({
-          status,
-          duration_seconds,
-          recording_url,
-          answered_at: status === 'connected' ? new Date().toISOString() : null,
-          ended_at: ended_at ? new Date(ended_at).toISOString() : null,
-        })
-        .eq('call_sid', call_id);
-
-      if (error) console.error('Update incoming call error:', error);
-
-    }
+    await bestEffortUpdateLegacyCallStatus({
+      callId: call_id,
+      status,
+      durationSeconds: duration_seconds,
+      recordingUrl: recording_url,
+      answeredAt: status === 'connected' ? new Date().toISOString() : null,
+      endedAt: ended_at ? new Date(ended_at).toISOString() : null,
+    });
 
     const canonicalSync = await syncCanonicalTelphinCallFromWebhook({
       callId: call_id,

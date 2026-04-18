@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { bestEffortUpdateLegacyCallRecording } from '@/lib/telphin-legacy-compat';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -17,28 +18,10 @@ export async function POST(req: NextRequest) {
       timestamp,
     } = payload;
 
-    // Обновляем запись в таблице звонков
-    const { data: outgoingCall } = await supabase
-      .from('outgoing_calls')
-      .update({
-        recording_url,
-      })
-      .eq('call_sid', call_id)
-      .select()
-      .single();
-
-    if (!outgoingCall) {
-      const { error } = await supabase
-        .from('incoming_calls')
-        .update({
-          recording_url,
-        })
-        .eq('call_sid', call_id);
-
-      if (error) {
-        console.error('Update incoming call recording error:', error);
-      }
-    }
+    await bestEffortUpdateLegacyCallRecording({
+      callId: call_id,
+      recordingUrl: recording_url,
+    });
 
     const canonicalSync = await syncCanonicalTelphinCallFromWebhook({
       callId: call_id,
