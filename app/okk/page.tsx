@@ -786,6 +786,11 @@ function OKKContent() {
                 const res = await fetch(`/api/okk/evaluate/${targetOrderId}`, { method: 'POST' });
                 const json = await res.json();
                 if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
+                if (json.mode === 'queued') {
+                    setRunResult(`✅ Заказ #${targetOrderId} поставлен в очередь на пересчёт`);
+                    setTimeout(load, 1500);
+                    return;
+                }
                 setRunResult(`✅ Заказ #${targetOrderId} пересчитан`);
                 setTimeout(load, 1500);
                 return;
@@ -827,6 +832,11 @@ function OKKContent() {
             const res = await fetch(`/api/okk/evaluate/${orderId}`, { method: 'POST' });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Single order evaluation failed');
+            if (json.mode === 'queued') {
+                setRunResult(`✅ Заказ #${orderId} поставлен в очередь на пересчёт`);
+                load();
+                return;
+            }
             setRunResult(`✅ Заказ #${orderId} пересчитан`);
             load();
         } catch (e) {

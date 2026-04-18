@@ -194,7 +194,7 @@
 
 - [ ] Сначала внедрить только канонический ingest и очередь без отключения старых cron.
 - [ ] Потом перевести транскрибацию на новую очередь и оставить старый cron как backup-readonly режим.
-- [ ] Потом перевести single-order scoring на события и снизить частоту /api/okk/run-all.
+- [x] Потом перевести single-order scoring на события и снизить частоту /api/okk/run-all.
 - [ ] Потом перевести aggregates на инкрементальный пересчёт.
 - [ ] Только после стабилизации выключить legacy-пути и старые параллельные таблицы.
 - [x] На каждом этапе иметь флаг feature toggle для быстрого возврата на старый поток.
@@ -233,6 +233,7 @@
 - [x] `nightly_reconciliation` переведён с full batch на chunked system-jobs sweep: route теперь сеет ограниченные `manager_aggregate_refresh` и `order_score_refresh` jobs, хранит offsets в `sync_state` и сам себя дозапускает до завершения полного прохода.
 - [x] Bulk fallback routes `/api/analysis/priorities/refresh` и `/api/analysis/quality/refresh` перестали выполнять full rebuild inline: bulk path теперь делегирует scoped chunked seeding в `nightly_reconciliation`, а тяжёлый пересчёт уходит в короткие queue jobs.
 - [x] Bulk fallback `/api/okk/run-all` перестал выполнять inline `runFullEvaluation` для всего рабочего пула: route теперь сеет chunked `order_score_refresh` jobs через `nightly_reconciliation`, а синхронный HTTP-path оставлен только для `orderId` single-order rebuild.
+- [x] Manual single-order rebuild `/api/okk/evaluate/[orderId]` при активном realtime pipeline тоже переведён на queue seeding: route больше не обходит production `order_score_refresh` path синхронным `evaluateOrder`, а ставит targeted `order_score_refresh` + `order_insight_refresh` jobs.
 - [x] Legacy `/api/cron` перестал последовательно запускать backup matching + rules + priorities в одном запросе: orchestration разнесена на отдельные Vercel cron routes (`/api/matching/process`, `/api/rules/execute`, `/api/analysis/priorities/refresh`), а сам endpoint оставлен как лёгкий deprecated stub.
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
@@ -552,9 +553,9 @@
 - [ ] Реализовать debounce 15-30 секунд на burst-события.
 
 Подробный исполнимый порядок:
-- [ ] Сначала научить scoring пересчитывать 1 заказ независимо от run-all.
+- [x] Сначала научить scoring пересчитывать 1 заказ независимо от run-all.
 - [ ] Потом завязать scoring на события order_changed, history_changed, call_matched, transcript_ready.
-- [ ] Потом уменьшить роль /api/okk/run-all до nightly и manual fallback.
+- [x] Потом уменьшить роль /api/okk/run-all до nightly и manual fallback.
 
 Результат фазы:
 - [ ] Score ОКК обновляется на событиях, а не по таймеру каждые 30 минут.
