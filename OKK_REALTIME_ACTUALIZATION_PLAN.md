@@ -184,7 +184,7 @@
 ## 13. Этап 9. Защита от таймаутов и деградации
 
 - [ ] Исключить длинные HTTP-цепочки, где один endpoint последовательно делает sync, matching, rules, scoring и aggregates.
-- [ ] Ограничить каждый worker короткой задачей с понятным time budget.
+- [x] Ограничить каждый worker короткой задачей с понятным time budget.
 - [ ] Все тяжёлые батчи выполнять вне пользовательского HTTP-запроса.
 - [ ] Ввести graceful degradation: при недоступности OpenAI не блокировать ingest заказа и звонка.
 - [x] Ввести graceful degradation: при отставании analytics не блокировать запись фактов и базовых score.
@@ -227,6 +227,7 @@
 - [x] `score-refresh` теперь точечно пересчитывает `order_priorities` по одному `order_id` и ставит `manager_aggregate_refresh` job для `dialogue_stats`.
 - [x] Добавлен `manager-aggregate-refresh` worker, cron и мониторинг очереди агрегатов менеджеров.
 - [x] Добавлен nightly reconciliation маршрут для `dialogue_stats` и `order_priorities` как fallback-backfill раз в сутки.
+- [x] `nightly_reconciliation` переведён с full batch на chunked system-jobs sweep: route теперь сеет ограниченные `manager_aggregate_refresh` и `order_score_refresh` jobs, хранит offsets в `sync_state` и сам себя дозапускает до завершения полного прохода.
 - [x] Legacy `/api/cron` перестал делать full refresh priorities при включенном realtime pipeline и остался backup-контуром.
 - [x] Monitoring snapshot и status dashboard начали показывать p50/p95 latency по `transcription`, `score_refresh`, `manager_aggregate_refresh` и цепочке `score -> aggregate`.
 - [x] Legacy `/api/cron` перестал делать batch matching при включенном realtime pipeline, а monitoring начал показывать recovery-метрики по completed/retry/dead-letter jobs за 24 часа.
