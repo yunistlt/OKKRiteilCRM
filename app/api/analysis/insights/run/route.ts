@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { runInsightAnalysis } from '@/lib/insight-agent';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
+import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -23,8 +24,37 @@ export async function GET(req: Request) {
         const realtimePipelineEnabled = await isRealtimePipelineEnabled();
 
         if (orderId) {
-            const results = await runInsightAnalysis(parseInt(orderId));
-            await recordWorkerSuccess(WORKER_KEY, { status: 'targeted_completed', order_id: parseInt(orderId) });
+            const parsedOrderId = parseInt(orderId, 10);
+
+            if (realtimePipelineEnabled && !force) {
+                await enqueueOrderRefreshJob({
+                    jobType: 'order_insight_refresh',
+                    orderId: parsedOrderId,
+                    source: 'manual_insight_targeted_refresh',
+                    priority: 10,
+                    windowSeconds: 1,
+                    payload: {
+                        manual_triggered_at: new Date().toISOString(),
+                    },
+                });
+
+                await recordWorkerSuccess(WORKER_KEY, {
+                    status: 'targeted_queued',
+                    order_id: parsedOrderId,
+                    next_jobs: ['order_insight_refresh'],
+                });
+
+                return NextResponse.json({
+                    ok: true,
+                    status: 'queued',
+                    mode: 'queued',
+                    orderId: parsedOrderId,
+                    reason: 'Realtime pipeline owns production insight refresh. Targeted order_insight_refresh job queued.',
+                });
+            }
+
+            const results = await runInsightAnalysis(parsedOrderId);
+            await recordWorkerSuccess(WORKER_KEY, { status: 'targeted_completed', order_id: parsedOrderId });
             return NextResponse.json({ ok: true, results });
         }
 
