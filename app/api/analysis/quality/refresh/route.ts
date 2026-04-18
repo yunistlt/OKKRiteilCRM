@@ -2,8 +2,18 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
-import { refreshControlledManagersDialogueStats, refreshManagerDialogueStats } from '@/lib/manager-aggregates';
+import { refreshManagerDialogueStats } from '@/lib/manager-aggregates';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
+
+function buildCronHeaders() {
+    if (!process.env.CRON_SECRET) {
+        return undefined;
+    }
+
+    return {
+        authorization: `Bearer ${process.env.CRON_SECRET}`,
+    };
+}
 
 export async function POST(request: Request) {
     try {
@@ -38,18 +48,21 @@ export async function POST(request: Request) {
             });
         }
 
-        console.log('[QualityRefresh] Starting controlled managers aggregate refresh...', { force });
-        const results = await refreshControlledManagersDialogueStats();
-
-        return NextResponse.json({
-            success: true,
-            mode: force ? 'bulk_force_fallback' : 'bulk',
-            updatedManagers: results.length,
-            matchesFound: results.reduce((sum, item) => sum + (item.matchesFound || 0), 0),
-            callsLinked: results.reduce((sum, item) => sum + (item.callsLinked || 0), 0),
-            timestamp: new Date().toISOString(),
-            results,
+        const targetUrl = new URL(`/api/cron/system-jobs/nightly-reconciliation?scope=aggregates${force ? '&force=true' : ''}`, request.url);
+        const response = await fetch(targetUrl, {
+            method: 'GET',
+            headers: buildCronHeaders(),
+            cache: 'no-store',
         });
+
+        const payload = await response.json();
+        return NextResponse.json({
+            success: response.ok,
+            mode: force ? 'bulk_force_fallback_seeded' : 'bulk_seeded',
+            message: 'Manager aggregate bulk refresh was converted to chunked queue seeding.',
+            queue_seed: payload,
+            timestamp: new Date().toISOString(),
+        }, { status: response.status });
 
     } catch (e: any) {
         console.error('[QualityRefresh] Error:', e);

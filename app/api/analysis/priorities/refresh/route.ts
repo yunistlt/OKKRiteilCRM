@@ -2,8 +2,8 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
-import { refreshStoredPriorities, refreshStoredPriorityForOrder } from '@/lib/prioritization';
-import { executeRuleEngineWindow, isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
+import { refreshStoredPriorityForOrder } from '@/lib/prioritization';
+import { isRealtimeRuleEngineEnabled } from '@/lib/rule-engine-execution';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // Allow 5 minutes for full refresh
@@ -11,6 +11,16 @@ export const maxDuration = 300; // Allow 5 minutes for full refresh
 function hasCronAuthorization(req: Request) {
     const authHeader = req.headers.get('authorization');
     return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+}
+
+function buildCronHeaders() {
+    if (!process.env.CRON_SECRET) {
+        return undefined;
+    }
+
+    return {
+        authorization: `Bearer ${process.env.CRON_SECRET}`,
+    };
 }
 
 export async function GET(request: Request) {
@@ -38,17 +48,8 @@ export async function GET(request: Request) {
             });
         }
 
-        if (!realtimeRuleEngineEnabled) {
-            try {
-                await executeRuleEngineWindow({ hours: 24 });
-                console.log('Rule Engine verification complete.');
-            } catch (reErr) {
-                console.error('Rule Engine manual trigger failed:', reErr);
-            }
-        } else if (force) {
+        if (realtimeRuleEngineEnabled && force) {
             console.log('Realtime pipeline enabled: skipping broad Rule Engine pass, running emergency bulk priorities only.');
-        } else {
-            console.log('Skipping broad Rule Engine refresh because realtime pipeline owns rules execution.');
         }
 
         if (specificOrderId) {
@@ -65,25 +66,23 @@ export async function GET(request: Request) {
         }
 
         const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 5000) : 2000;
-        const result = await refreshStoredPriorities(safeLimit, true);
-
-        if (result.count === 0) {
-            return NextResponse.json({
-                ok: true,
-                mode: force ? 'bulk_force_fallback' : 'bulk',
-                message: 'No orders to update',
-                rule_engine: realtimeRuleEngineEnabled ? 'skipped_realtime_pipeline' : 'executed'
+        const scopeQuery = `/api/cron/system-jobs/nightly-reconciliation?scope=priorities${force ? '&force=true' : ''}`;
+        const targetUrl = new URL(scopeQuery, request.url);
+            const response = await fetch(targetUrl, {
+                method: 'GET',
+                headers: buildCronHeaders(),
+                cache: 'no-store',
             });
-        }
 
-        return NextResponse.json({
-            ok: true,
-            mode: force ? 'bulk_force_fallback' : 'bulk',
-            count: result.count,
-            deleted: result.deletedCount,
-            message: 'Priorities refreshed',
-            rule_engine: realtimeRuleEngineEnabled ? 'skipped_realtime_pipeline' : 'executed'
-        });
+            const payload = await response.json();
+            return NextResponse.json({
+                ok: response.ok,
+                mode: force ? 'bulk_force_fallback_seeded' : 'bulk_seeded',
+                limit: safeLimit,
+                message: 'Priority bulk refresh was converted to chunked queue seeding.',
+                rule_engine: 'delegated_to_score_refresh_jobs',
+                queue_seed: payload,
+            }, { status: response.status });
     } catch (e: any) {
         console.error('[Refresh Priorities] Error:', e);
         return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
