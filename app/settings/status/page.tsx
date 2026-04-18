@@ -150,6 +150,7 @@ interface RealtimePipelineSnapshot {
 }
 
 type RealtimePipelineOverride = 'inherit' | 'enabled' | 'disabled';
+type TelphinLegacyCompatOverride = 'inherit' | 'enabled' | 'disabled';
 
 export default function SystemStatusPage() {
     // --- State: Sync Monitor ---
@@ -169,6 +170,9 @@ export default function SystemStatusPage() {
     const [realtimePipelineOverride, setRealtimePipelineOverride] = useState<RealtimePipelineOverride>('inherit');
     const [realtimePipelineEffectiveEnabled, setRealtimePipelineEffectiveEnabled] = useState(false);
     const [realtimePipelineDefaultEnabled, setRealtimePipelineDefaultEnabled] = useState(false);
+    const [telphinLegacyCompatOverride, setTelphinLegacyCompatOverride] = useState<TelphinLegacyCompatOverride>('inherit');
+    const [telphinLegacyCompatEffectiveEnabled, setTelphinLegacyCompatEffectiveEnabled] = useState(true);
+    const [telphinLegacyCompatDefaultEnabled, setTelphinLegacyCompatDefaultEnabled] = useState(true);
     const [insightLogs, setInsightLogs] = useState<any[]>([]);
     const [throughput, setThroughput] = useState<ThroughputMetric[]>([]);
     const [savingSettings, setSavingSettings] = useState(false);
@@ -197,6 +201,9 @@ export default function SystemStatusPage() {
                 setRealtimePipelineOverride((data.settings.realtime_pipeline_override || 'inherit') as RealtimePipelineOverride);
                 setRealtimePipelineEffectiveEnabled(Boolean(data.settings.realtime_pipeline_effective_enabled));
                 setRealtimePipelineDefaultEnabled(Boolean(data.settings.realtime_pipeline_default_enabled));
+                setTelphinLegacyCompatOverride((data.settings.telphin_legacy_compat_override || 'inherit') as TelphinLegacyCompatOverride);
+                setTelphinLegacyCompatEffectiveEnabled(Boolean(data.settings.telphin_legacy_compat_effective_enabled));
+                setTelphinLegacyCompatDefaultEnabled(Boolean(data.settings.telphin_legacy_compat_default_enabled));
             }
             if (data.insight_logs) {
                 setInsightLogs(data.insight_logs);
@@ -368,6 +375,11 @@ export default function SystemStatusPage() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: 'realtime_pipeline_override', value: realtimePipelineOverride })
+                }),
+                fetch('/api/settings/system-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'telphin_legacy_compat_override', value: telphinLegacyCompatOverride })
                 })
             ]);
             fetchSyncStatus();
@@ -1165,6 +1177,21 @@ export default function SystemStatusPage() {
                             </select>
                             <div className="mt-1 text-[8px] font-bold uppercase tracking-wide text-gray-400">
                                 Сейчас эффективно: {realtimePipelineEffectiveEnabled ? 'realtime pipeline ON' : 'fallback mode'}
+                            </div>
+                        </div>
+                        <div>
+                            <div className="text-[8px] font-black text-gray-500 uppercase mb-1">Telphin legacy compat</div>
+                            <select
+                                value={telphinLegacyCompatOverride}
+                                onChange={(e) => setTelphinLegacyCompatOverride(e.target.value as TelphinLegacyCompatOverride)}
+                                className="w-full bg-gray-800 border-none rounded px-2 py-1 text-[10px] font-bold text-white"
+                            >
+                                <option value="inherit">Наследовать env ({telphinLegacyCompatDefaultEnabled ? 'ON' : 'OFF'})</option>
+                                <option value="enabled">Принудительно ON</option>
+                                <option value="disabled">Принудительно OFF</option>
+                            </select>
+                            <div className="mt-1 text-[8px] font-bold uppercase tracking-wide text-gray-400">
+                                Сейчас эффективно: {telphinLegacyCompatEffectiveEnabled ? 'legacy compat ON' : 'legacy compat OFF'}
                             </div>
                         </div>
                         <div className="flex justify-between items-center">

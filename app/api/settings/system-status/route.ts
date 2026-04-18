@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { getRealtimePipelineRuntimeState, normalizeRealtimePipelineOverride } from '@/lib/realtime-pipeline';
+import { getTelphinLegacyCompatRuntimeState, normalizeTelphinLegacyCompatOverride } from '@/lib/telphin-legacy-compat';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -97,6 +98,7 @@ export async function GET() {
                 'telphin_backfill_lock_holder',
                 'transcription_min_duration',
                 'realtime_pipeline_override',
+                'telphin_legacy_compat_override',
                 'transcription_last_run',
                 'rule_engine_last_run',
                 'fallback.transcription.last_success_at',
@@ -213,6 +215,7 @@ export async function GET() {
         };
 
         const realtimePipelineState = await getRealtimePipelineRuntimeState();
+        const telphinLegacyCompatState = await getTelphinLegacyCompatRuntimeState();
         const realtimePipelineEnabled = realtimePipelineState.effectiveEnabled;
 
         // --- RetailCRM ---
@@ -404,6 +407,10 @@ export async function GET() {
             realtime_pipeline_effective_enabled: realtimePipelineState.effectiveEnabled,
             realtime_pipeline_default_enabled: realtimePipelineState.defaultEnabled,
             realtime_pipeline_override_updated_at: realtimePipelineState.overrideUpdatedAt,
+            telphin_legacy_compat_override: normalizeTelphinLegacyCompatOverride(stateMap.get('telphin_legacy_compat_override')?.value),
+            telphin_legacy_compat_effective_enabled: telphinLegacyCompatState.effectiveEnabled,
+            telphin_legacy_compat_default_enabled: telphinLegacyCompatState.defaultEnabled,
+            telphin_legacy_compat_override_updated_at: telphinLegacyCompatState.overrideUpdatedAt,
         };
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
@@ -464,6 +471,8 @@ export async function POST(req: Request) {
 
         const normalizedValue = key === 'realtime_pipeline_override'
             ? normalizeRealtimePipelineOverride(value)
+            : key === 'telphin_legacy_compat_override'
+            ? normalizeTelphinLegacyCompatOverride(value)
             : String(value);
 
         // Whitelist keys for safety if needed, but for now open for sync_state

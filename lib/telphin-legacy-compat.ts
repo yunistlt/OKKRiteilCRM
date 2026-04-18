@@ -1,6 +1,16 @@
 import { supabase } from '@/utils/supabase';
 
+const TELPHIN_LEGACY_COMPAT_OVERRIDE_KEY = 'telphin_legacy_compat_override';
+const OVERRIDE_CACHE_TTL_MS = 5000;
+
 type LegacyCallKind = 'incoming' | 'outgoing' | 'unknown';
+type TelphinLegacyCompatOverride = 'inherit' | 'enabled' | 'disabled';
+
+let overrideCache: {
+  value: TelphinLegacyCompatOverride;
+  updatedAt: string | null;
+  expiresAt: number;
+} | null = null;
 
 interface LegacyIncomingInsertInput {
   callId: string;
@@ -26,10 +36,102 @@ interface LegacyRecordingUpdateInput {
   recordingUrl: string;
 }
 
+function isMissingSyncStateRow(error: any) {
+  return error?.code === 'PGRST116';
+}
+
+export function getDefaultTelphinLegacyCompatEnabled() {
+  return process.env.ENABLE_TELPHIN_LEGACY_COMPAT !== 'false';
+}
+
+export function normalizeTelphinLegacyCompatOverride(value: unknown): TelphinLegacyCompatOverride {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'enabled' || normalized === 'true' || normalized === 'on') {
+    return 'enabled';
+  }
+
+  if (normalized === 'disabled' || normalized === 'false' || normalized === 'off') {
+    return 'disabled';
+  }
+
+  return 'inherit';
+}
+
+export async function getTelphinLegacyCompatOverrideState(forceRefresh = false) {
+  if (!forceRefresh && overrideCache && overrideCache.expiresAt > Date.now()) {
+    return {
+      key: TELPHIN_LEGACY_COMPAT_OVERRIDE_KEY,
+      value: overrideCache.value,
+      updatedAt: overrideCache.updatedAt,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from('sync_state')
+    .select('value, updated_at')
+    .eq('key', TELPHIN_LEGACY_COMPAT_OVERRIDE_KEY)
+    .limit(1)
+    .maybeSingle();
+
+  if (error && !isMissingSyncStateRow(error)) {
+    throw error;
+  }
+
+  const value = normalizeTelphinLegacyCompatOverride(data?.value);
+  const updatedAt = data?.updated_at || null;
+
+  overrideCache = {
+    value,
+    updatedAt,
+    expiresAt: Date.now() + OVERRIDE_CACHE_TTL_MS,
+  };
+
+  return {
+    key: TELPHIN_LEGACY_COMPAT_OVERRIDE_KEY,
+    value,
+    updatedAt,
+  };
+}
+
+export async function isTelphinLegacyCompatEnabled() {
+  const override = await getTelphinLegacyCompatOverrideState();
+
+  if (override.value === 'enabled') {
+    return true;
+  }
+
+  if (override.value === 'disabled') {
+    return false;
+  }
+
+  return getDefaultTelphinLegacyCompatEnabled();
+}
+
+export async function getTelphinLegacyCompatRuntimeState(forceRefresh = false) {
+  const defaultEnabled = getDefaultTelphinLegacyCompatEnabled();
+  const override = await getTelphinLegacyCompatOverrideState(forceRefresh);
+
+  return {
+    key: TELPHIN_LEGACY_COMPAT_OVERRIDE_KEY,
+    override: override.value,
+    overrideUpdatedAt: override.updatedAt,
+    defaultEnabled,
+    effectiveEnabled: override.value === 'inherit' ? defaultEnabled : override.value === 'enabled',
+  };
+}
+
 export async function detectLegacyCallKind(callId: string): Promise<{
   kind: LegacyCallKind;
   incomingOrderId: number | null;
 }> {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return {
+      kind: 'unknown',
+      incomingOrderId: null,
+    };
+  }
+
   try {
     const [outgoingResult, incomingResult] = await Promise.all([
       supabase
@@ -76,6 +178,10 @@ export async function detectLegacyCallKind(callId: string): Promise<{
 }
 
 export async function bestEffortInsertIncomingLegacyCall(input: LegacyIncomingInsertInput) {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return;
+  }
+
   try {
     const existing = await detectLegacyCallKind(input.callId);
     if (existing.kind === 'incoming') {
@@ -117,6 +223,10 @@ export async function bestEffortInsertIncomingLegacyCall(input: LegacyIncomingIn
 }
 
 export async function bestEffortUpdateLegacyCallStatus(input: LegacyStatusUpdateInput) {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return;
+  }
+
   try {
     const lookup = await detectLegacyCallKind(input.callId);
     const updatePayload = {
@@ -155,6 +265,10 @@ export async function bestEffortUpdateLegacyCallStatus(input: LegacyStatusUpdate
 }
 
 export async function bestEffortUpdateLegacyCallRecording(input: LegacyRecordingUpdateInput) {
+  if (!(await isTelphinLegacyCompatEnabled())) {
+    return;
+  }
+
   try {
     const lookup = await detectLegacyCallKind(input.callId);
 
