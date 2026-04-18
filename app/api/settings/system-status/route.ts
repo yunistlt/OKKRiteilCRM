@@ -217,6 +217,20 @@ export async function GET() {
         const realtimePipelineState = await getRealtimePipelineRuntimeState();
         const telphinLegacyCompatState = await getTelphinLegacyCompatRuntimeState();
         const realtimePipelineEnabled = realtimePipelineState.effectiveEnabled;
+        const telphinLegacyCompatStatus = {
+            service: 'Telphin Legacy Compat',
+            cursor: telphinLegacyCompatState.override === 'inherit'
+                ? `inherit (${telphinLegacyCompatState.defaultEnabled ? 'env ON' : 'env OFF'})`
+                : telphinLegacyCompatState.override,
+            last_run: telphinLegacyCompatState.overrideUpdatedAt,
+            status: telphinLegacyCompatState.effectiveEnabled ? 'warning' : 'ok',
+            details: telphinLegacyCompatState.effectiveEnabled
+                ? 'Legacy writes in incoming_calls/outgoing_calls are still enabled as a compatibility layer.'
+                : 'Legacy Telphin writes are disabled; webhook-first canonical ingest runs without compat writes.',
+            reason: telphinLegacyCompatState.effectiveEnabled
+                ? 'Отключайте после стабилизации, когда ни один операторский или fallback сценарий больше не зависит от incoming_calls/outgoing_calls.'
+                : 'Legacy compatibility layer is disabled at runtime. Production webhook flow writes only to the canonical contour.',
+        };
 
         // --- RetailCRM ---
         const retailCursorState = stateMap.get('retailcrm_orders_sync');
@@ -430,6 +444,7 @@ export async function GET() {
         });
         const services = [
             telphinStatus,
+            telphinLegacyCompatStatus,
             retailStatus,
             ...realtimePipeline.services,
             transcriptionSlaStatus,

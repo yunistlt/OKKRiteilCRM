@@ -419,6 +419,7 @@ export default function SystemStatusPage() {
 
     const getRusServiceName = (name: string) => {
         if (name.includes('Telphin Fallback')) return 'Fallback Sync Telphin';
+        if (name.includes('Telphin Legacy Compat')) return 'Legacy Совместимость Telphin';
         if (name.includes('Telphin Backfill Sweep')) return 'Fallback Sweep Telphin';
         if (name.includes('Matching Backfill Sweep')) return 'Fallback Sweep Матчинга Backfill';
         if (name.includes('System Jobs Queue')) return 'Очередь Near Realtime Jobs';
@@ -443,6 +444,7 @@ export default function SystemStatusPage() {
     }
 
     const getIcon = (name: string) => {
+        if (name.includes('Telphin Legacy Compat')) return '🧬';
         if (name.includes('Telphin')) return '☎️';
         if (name.includes('System Jobs Queue')) return '🧱';
         if (name.includes('RetailCRM Delta Queue')) return '📦';
