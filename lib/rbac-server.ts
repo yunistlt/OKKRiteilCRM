@@ -1,8 +1,6 @@
 import { AppRole } from '@/lib/auth';
 import { canAccessPathWithRules, DEFAULT_ROUTE_RULES, normalizeAllowedRoles, RouteRule } from '@/lib/rbac';
 
-const RULES_CACHE_TTL_MS = 1000 * 30;
-
 let cachedRules: RouteRule[] | null = null;
 let cachedAt = 0;
 
@@ -26,10 +24,6 @@ function isMissingTableError(error: any) {
 }
 
 export async function getEffectiveRouteRules(): Promise<RouteRule[]> {
-    if (cachedRules && Date.now() - cachedAt < RULES_CACHE_TTL_MS) {
-        return cachedRules;
-    }
-
     try {
         const { url, key } = getSupabaseRestConfig();
         const response = await fetch(
@@ -40,7 +34,7 @@ export async function getEffectiveRouteRules(): Promise<RouteRule[]> {
                     Authorization: `Bearer ${key}`,
                     'Content-Type': 'application/json',
                 },
-                next: { revalidate: 30 },
+                cache: 'no-store',
             }
         );
 

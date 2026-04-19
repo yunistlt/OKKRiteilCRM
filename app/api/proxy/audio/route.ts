@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getTelphinToken } from '@/lib/telphin';
 
+export const dynamic = 'force-dynamic';
+
+const NO_STORE_AUDIO_HEADERS = {
+    'Cache-Control': 'private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store',
+};
+
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const url = searchParams.get('url');
@@ -27,12 +36,15 @@ export async function GET(request: Request) {
         return new Response(buffer, {
             headers: {
                 'Content-Type': contentType,
-                'Cache-Control': 'public, max-age=3600'
+                ...NO_STORE_AUDIO_HEADERS,
             }
         });
 
     } catch (e: any) {
         console.error('[AudioProxy] Error:', e);
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        return NextResponse.json({ error: e.message }, {
+            status: 500,
+            headers: NO_STORE_AUDIO_HEADERS,
+        });
     }
 }

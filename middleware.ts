@@ -4,6 +4,14 @@ import { getSession } from '@/lib/auth';
 import { getDefaultPathForRole } from '@/lib/rbac';
 import { canAccessPathServer } from '@/lib/rbac-server';
 
+function applyNoStoreHeaders(response: NextResponse) {
+    response.headers.set('Cache-Control', 'private, no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Surrogate-Control', 'no-store');
+    return response;
+}
+
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
@@ -25,26 +33,28 @@ export async function middleware(request: NextRequest) {
 
         if (!session?.user) {
             if (pathname.startsWith('/api')) {
-                return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
+                return applyNoStoreHeaders(NextResponse.json({ error: 'Неавторизован' }, { status: 401 }));
             }
-            return NextResponse.redirect(new URL('/login', request.url));
+            return applyNoStoreHeaders(NextResponse.redirect(new URL('/login', request.url)));
         }
 
         if (!(await canAccessPathServer(session.user.role, pathname))) {
             if (pathname.startsWith('/api')) {
-                return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
+                return applyNoStoreHeaders(NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 }));
             }
-            return NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url));
+            return applyNoStoreHeaders(NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url)));
         }
 
-        return NextResponse.next();
+        return applyNoStoreHeaders(NextResponse.next());
     }
 
     if (isAuthRoute) {
         const session = await getSession(request);
         if (session?.user) {
-            return NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url));
+            return applyNoStoreHeaders(NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url)));
         }
+
+        return applyNoStoreHeaders(NextResponse.next());
     }
 
     return NextResponse.next();

@@ -1,8 +1,6 @@
 import type { AppRole, SessionUser } from '@/lib/auth';
 import { DEFAULT_ROLE_CAPABILITIES, getRoleCapability, normalizeRoleCapabilityProfile, type RoleCapabilityProfile } from '@/lib/access-control';
 
-const CAPABILITIES_CACHE_TTL_MS = 1000 * 30;
-
 let cachedCapabilities: RoleCapabilityProfile[] | null = null;
 let cachedAt = 0;
 
@@ -26,10 +24,6 @@ function isMissingTableError(error: any) {
 }
 
 export async function getEffectiveRoleCapabilities(): Promise<RoleCapabilityProfile[]> {
-    if (cachedCapabilities && Date.now() - cachedAt < CAPABILITIES_CACHE_TTL_MS) {
-        return cachedCapabilities;
-    }
-
     try {
         const { url, key } = getSupabaseRestConfig();
         const response = await fetch(
@@ -40,7 +34,7 @@ export async function getEffectiveRoleCapabilities(): Promise<RoleCapabilityProf
                     Authorization: `Bearer ${key}`,
                     'Content-Type': 'application/json',
                 },
-                next: { revalidate: 30 },
+                cache: 'no-store',
             }
         );
 
