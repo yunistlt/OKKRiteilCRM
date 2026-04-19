@@ -26,6 +26,10 @@ function buildThreadTitle(orderId: number | null, sectionKey: string) {
     return orderId ? `Чат по заказу #${orderId}` : `Общий чат: ${section.title}`;
 }
 
+function applyOrderIdFilter<T extends { is: Function; eq: Function }>(query: T, orderId: number | null) {
+    return orderId === null ? query.is('order_id', null) : query.eq('order_id', orderId);
+}
+
 async function archiveExpiredThreads(userId: string) {
     const expiresAt = new Date(Date.now() - THREAD_TTL_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
@@ -44,16 +48,19 @@ async function getOrCreateThread(userId: string, username: string, orderId: numb
 
     const scopePrefix = buildThreadScopePrefix(orderId, sectionKey);
 
-    const { data: existing, error: existingError } = await supabase
+    const existingQuery = applyOrderIdFilter(
+        supabase
         .from('okk_consultant_threads')
         .select('*')
         .eq('user_id', userId)
         .is('archived_at', null)
-        .eq('order_id', orderId)
         .like('branch_key', `${scopePrefix}%`)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(1),
+        orderId,
+    );
+
+    const { data: existing, error: existingError } = await existingQuery.maybeSingle();
 
     if (existingError) throw existingError;
     if (existing) return existing;
@@ -85,7 +92,7 @@ async function listThreads(userId: string, orderId: number | null, sectionKey: s
         .order('updated_at', { ascending: false })
         .limit(20);
 
-    const scopedQuery = orderId === null ? query.is('order_id', null) : query.eq('order_id', orderId);
+    const scopedQuery = applyOrderIdFilter(query, orderId);
     const { data, error } = await scopedQuery;
     if (error) throw error;
     return data || [];
@@ -227,13 +234,17 @@ export async function POST(req: Request) {
             if (archiveError) throw archiveError;
         } else {
             const scopePrefix = buildThreadScopePrefix(orderId, sectionKey);
-            const { error: archiveError } = await supabase
+            const archiveQuery = applyOrderIdFilter(
+                supabase
                 .from('okk_consultant_threads')
                 .update({ archived_at: new Date().toISOString() })
                 .eq('user_id', userId)
-                .eq('order_id', orderId)
                 .like('branch_key', `${scopePrefix}%`)
-                .is('archived_at', null);
+                .is('archived_at', null),
+                orderId,
+            );
+
+            const { error: archiveError } = await archiveQuery;
 
             if (archiveError) throw archiveError;
         }

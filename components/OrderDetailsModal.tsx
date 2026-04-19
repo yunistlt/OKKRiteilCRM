@@ -120,6 +120,12 @@ const toNumber = (value: any) => {
     return Number.isFinite(parsed) ? parsed : null;
 };
 
+const toArray = (value: any) => {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') return Object.values(value);
+    return [];
+};
+
 export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
@@ -303,7 +309,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const customer = payload.customer ?? {};
         const customFields = (payload.customFields ?? {}) as Record<string, any>;
         const paymentSource = payload.payments ?? order.payments ?? {};
-        const paymentEntries = Array.isArray(paymentSource) ? paymentSource : (paymentSource && typeof paymentSource === 'object' ? Object.values(paymentSource) : []);
+        const paymentEntries = toArray(paymentSource);
         const contactPhones = (Array.isArray(contact.phones) ? contact.phones.map((p: any) => p.number).filter(Boolean) : []) as string[];
         const storedPhones = (Array.isArray(order.customer_phones) ? order.customer_phones : []) as string[];
         const normalizedPhones = [
@@ -365,7 +371,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const contactName = [contact.lastName, contact.firstName, contact.patronymic].filter(Boolean).join(' ').trim() || pickValue(payload.firstName, payload.lastName);
         const expectedDelivery = pickValue(customFields.when_need_delivery, customFields.plan_delivery_date);
         const paymentsSummary = paymentEntries.length > 0 ? paymentEntries : [];
-        const items = Array.isArray(payload.items) ? payload.items : Array.isArray(order.items) ? order.items : [];
+        const items = Array.isArray(payload.items) ? payload.items : toArray(order.items);
         const computedItemsTotal = items.reduce((sum: number, item: any) => {
             const price = extractItemPrice(item);
             const qty = extractItemQuantity(item);
@@ -478,7 +484,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                             const qty = extractItemQuantity(item);
                                             const cost = price * qty;
                                             const sku = pickValue(item.sku, item.article, item.offer?.article, item.offer?.externalId);
-                                            const properties = [...(item.offer?.properties || []), ...(item.properties || [])]
+                                            const properties = [...toArray(item.offer?.properties), ...toArray(item.properties)]
                                                 .map((prop: any) => prop.name || prop.value)
                                                 .filter(Boolean)
                                                 .join(', ');
