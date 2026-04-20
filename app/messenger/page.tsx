@@ -5,7 +5,7 @@ import MessengerPanel from '@/components/messenger/MessengerPanel';
 
 export default function MessengerPage() {
     return (
-        <div className="w-full px-0 py-0 md:px-6 md:py-8">
+        <div className="h-full min-h-0 w-full overflow-hidden bg-[#eef3f8] px-0 py-0 md:bg-transparent md:px-6 md:py-8">
             <div className="hidden md:mb-6 md:flex md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-gray-900">Корпоративный мессенджер</h1>
