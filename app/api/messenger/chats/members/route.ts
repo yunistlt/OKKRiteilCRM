@@ -10,6 +10,7 @@ import {
 } from '@/lib/messenger/domain';
 import { getMessengerErrorMessage } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
+import { loadManagerUsernames } from '@/lib/messenger/manager-usernames';
 import {
     getMessengerParticipant,
     messengerChatMembersBodySchema,
@@ -17,6 +18,17 @@ import {
 } from '@/lib/messenger/security';
 
 export const dynamic = 'force-dynamic';
+
+type ChatMemberRow = {
+    user_id: number;
+    role: string;
+    joined_at: string;
+    managers: {
+        id: number;
+        first_name: string | null;
+        last_name: string | null;
+    } | null;
+};
 
 /**
  * GET /api/messenger/chats/members?chat_id=xxx
@@ -54,15 +66,26 @@ export async function GET(req: Request) {
                 managers (
                     id,
                     first_name,
-                    last_name,
-                    username
+                    last_name
                 )
             `)
             .eq('chat_id', chatId);
 
         if (error) throw error;
 
-        return NextResponse.json({ members: data, myRole: myRecord.role });
+        const memberRows = (data || []) as ChatMemberRow[];
+        const usernamesByManagerId = await loadManagerUsernames(memberRows.map((member) => member.user_id));
+        const members = memberRows.map((member) => ({
+            ...member,
+            managers: member.managers
+                ? {
+                    ...member.managers,
+                    username: usernamesByManagerId.get(member.user_id) || null,
+                }
+                : null,
+        }));
+
+        return NextResponse.json({ members, myRole: myRecord.role });
     } catch (error: unknown) {
         logMessengerError('members.get', error, {
             userId,

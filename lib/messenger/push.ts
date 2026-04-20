@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { isMissingMessengerRelationError } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
+import { loadManagerUsernames } from '@/lib/messenger/manager-usernames';
 import { supabase } from '@/utils/supabase';
 
 type PushSubscriptionRow = {
@@ -34,7 +35,6 @@ type ChatParticipantRow = {
     managers: {
         first_name: string | null;
         last_name: string | null;
-        username: string | null;
     } | null;
 };
 
@@ -226,8 +226,7 @@ export async function dispatchMessengerPushNotifications(params: {
                     user_id,
                     managers (
                         first_name,
-                        last_name,
-                        username
+                        last_name
                     )
                 `)
                 .eq('chat_id', message.chat_id),
@@ -243,11 +242,12 @@ export async function dispatchMessengerPushNotifications(params: {
 
         const typedChatParticipants = (chatParticipants || []) as ChatParticipantRow[];
         const typedChat = (chat || null) as ChatRow | null;
+        const usernamesByManagerId = await loadManagerUsernames(typedChatParticipants.map((participant) => participant.user_id));
 
         const sender = typedChatParticipants.find((participant) => participant.user_id === message.sender_id);
         const participantByUserId = new Map(typedChatParticipants.map((participant) => [participant.user_id, participant]));
         const senderName = `${sender?.managers?.first_name || ''} ${sender?.managers?.last_name || ''}`.trim()
-            || sender?.managers?.username
+            || usernamesByManagerId.get(message.sender_id)
             || `Сотрудник ${message.sender_id}`;
 
         const recipientIds = typedChatParticipants
@@ -363,7 +363,7 @@ export async function dispatchMessengerPushNotifications(params: {
 
         await Promise.allSettled(primarySubscriptions.map(async (subscription) => {
             const recipient = participantByUserId.get(subscription.user_id);
-            const recipientUsername = recipient?.managers?.username || null;
+            const recipientUsername = usernamesByManagerId.get(subscription.user_id) || null;
             const body = buildNotificationBody(subscription, message, senderName);
             const payload = {
                 title,
