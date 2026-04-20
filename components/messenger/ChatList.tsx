@@ -22,7 +22,7 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
     }
 
     return (
-        <div className="flex flex-col">
+        <div className="flex flex-col divide-y divide-slate-200 bg-white md:divide-y-0 md:bg-transparent">
             {chats.map((chat) => {
                 const isSelected = selectedId === chat.id;
                 const lastMsg = chat.last_message;
@@ -34,10 +34,10 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                     <button
                         key={chat.id}
                         onClick={() => onSelect(chat.id)}
-                        className={`mx-2 my-1.5 rounded-[22px] border px-3 py-3 text-left transition-all ${
+                        className={`w-full rounded-none border-0 px-4 py-3 text-left transition-all md:mx-2 md:my-1.5 md:rounded-[22px] md:border ${
                             isSelected
-                                ? 'border-sky-200 bg-sky-50 shadow-sm shadow-sky-100'
-                                : 'border-transparent bg-white hover:border-slate-200 hover:bg-slate-50'
+                                ? 'bg-sky-50 md:border-sky-200 md:shadow-sm md:shadow-sky-100'
+                                : 'bg-white hover:bg-slate-50 md:border-transparent md:hover:border-slate-200'
                         }`}
                     >
                         <div className="flex items-start gap-3">

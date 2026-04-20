@@ -145,10 +145,10 @@ export default function MessengerPanel() {
     return (
         <div className="grid h-full min-h-0 gap-0 md:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
-            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-[#eef3f8] shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
+            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-white shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
             <div className="flex h-full min-h-0 flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
-            <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-[#eef3f8] md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
+            <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-white md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
                 <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] md:hidden">
                     <div className="flex items-center justify-between gap-2">
                         <button
@@ -269,7 +269,7 @@ export default function MessengerPanel() {
                     </div>
                 </div>
                 
-                <div className="no-scrollbar flex-1 overflow-y-auto px-0 pb-4 pt-2 md:px-0 md:pb-4">
+                <div className="no-scrollbar flex-1 overflow-y-auto bg-white px-0 pb-0 pt-0 md:px-0 md:pb-4 md:pt-2">
                     {loading ? (
                         <div className="p-6 text-center text-sm text-slate-500">Загрузка...</div>
                     ) : chatsError ? (
