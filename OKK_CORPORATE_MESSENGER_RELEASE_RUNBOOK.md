@@ -42,7 +42,7 @@
 ## 4. Рекомендуемый порядок финального прогона
 
 1. Применить все messenger-миграции к целевому Supabase-проекту.
-2. Убедиться, что в Vercel выставлены VAPID и Supabase env.
+2. Убедиться, что в Vercel выставлены Supabase env, а для push заданы `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
 3. Запушить актуальную ветку в GitHub.
 4. Дождаться deploy в Vercel именно того commit, который содержит messenger-изменения.
 5. Подготовить либо bearer токены, либо username/password двух реальных пользователей, а также один chat id, где разрешён безопасный probe-run.

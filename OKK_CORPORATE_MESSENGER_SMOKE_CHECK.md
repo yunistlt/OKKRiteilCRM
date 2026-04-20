@@ -12,9 +12,10 @@
   - [ ] NEXT_PUBLIC_SUPABASE_ANON_KEY
   - [ ] SUPABASE_SERVICE_ROLE_KEY
   - [ ] RETAILCRM_URL или RETAILCRM_BASE_URL или NEXT_PUBLIC_RETAILCRM_URL
-  - [ ] NEXT_PUBLIC_VAPID_PUBLIC_KEY
+  - [ ] VAPID_PUBLIC_KEY
   - [ ] VAPID_PRIVATE_KEY
   - [ ] VAPID_SUBJECT
+  - [ ] Если остался старый setup, `NEXT_PUBLIC_VAPID_PUBLIC_KEY` допускается только как fallback, но больше не является обязательным.
 - [ ] В Supabase существуют и доступны таблицы messenger-контура:
   - [ ] chats
   - [ ] chat_participants
