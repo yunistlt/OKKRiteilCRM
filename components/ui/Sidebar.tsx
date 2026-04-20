@@ -26,6 +26,7 @@ export default function Sidebar() {
     const { user, permissionRules } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    const isMessengerRoute = pathname.startsWith('/messenger');
 
     // Close mobile sidebar on route change
     useEffect(() => {
@@ -117,7 +118,12 @@ export default function Sidebar() {
             {/* Mobile Toggle Button (Floating) */}
             <button
                 onClick={() => setIsMobileOpen(!isMobileOpen)}
-                className="md:hidden fixed bottom-6 right-6 z-[100] w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center text-2xl active:scale-95 transition-all"
+                className={`md:hidden fixed z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white text-2xl shadow-2xl transition-all active:scale-95 ${
+                    isMessengerRoute
+                        ? 'left-3 top-[calc(env(safe-area-inset-top)+0.75rem)]'
+                        : 'bottom-6 right-6'
+                }`}
+                aria-label={isMobileOpen ? 'Закрыть меню' : 'Открыть меню'}
             >
                 {isMobileOpen ? '✕' : '☰'}
             </button>
@@ -130,7 +136,7 @@ export default function Sidebar() {
                 />
             )}
 
-            <aside className={`fixed md:sticky top-0 left-0 h-screen transition-all duration-300 z-[80] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 shadow-2xl no-scrollbar
+            <aside className={`fixed md:sticky top-0 left-0 h-screen transition-all duration-300 z-[120] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 shadow-2xl no-scrollbar
                 ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'}
                 ${isCollapsed ? 'md:w-20' : 'md:w-72'}
             `}>

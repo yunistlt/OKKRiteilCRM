@@ -15,6 +15,7 @@ export default function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
     const pathname = usePathname();
     const { user } = useAuth();
+    const hideOnMessengerMobile = pathname.startsWith('/messenger');
 
     useEffect(() => {
         if (user) {
@@ -75,7 +76,7 @@ export default function Header() {
     }, [pathname, unreadCount]);
 
     return (
-        <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">
+        <header className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50`}>
             <div className="px-8 flex justify-between items-center h-16">
                 
                 <div className="flex items-center gap-4">

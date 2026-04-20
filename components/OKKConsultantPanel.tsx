@@ -526,14 +526,16 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 {panelContent}
             </aside>
 
-            <button
-                type="button"
-                onClick={() => setMobileOpen(true)}
-                className="fixed bottom-4 right-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
-            >
-                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                Семён
-            </button>
+            {!pathname.startsWith('/messenger') && (
+                <button
+                    type="button"
+                    onClick={() => setMobileOpen(true)}
+                    className="fixed bottom-4 right-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
+                >
+                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                    Семён
+                </button>
+            )}
 
             {mobileOpen && (
                 <div className="fixed inset-0 z-[150] md:hidden">
