@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ChatList from './ChatList';
 import MessageView from './MessageView';
@@ -31,12 +31,13 @@ function getChatDisplayName(chat: MessengerChat | undefined, currentUserId?: num
 export default function MessengerPanel() {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const searchInputRef = useRef<HTMLInputElement | null>(null);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
     const [chats, setChats] = useState<MessengerChat[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [search, setSearch] = useState('');
-    const [chatFilter, setChatFilter] = useState<'all' | 'direct' | 'group'>('all');
+    const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'direct' | 'group'>('all');
     const [chatsError, setChatsError] = useState<string | null>(null);
     const { user: currentUser } = useAuth();
     const highlightedMessageId = searchParams.get('message_id');
@@ -126,8 +127,16 @@ export default function MessengerPanel() {
     const currentUserId = currentUser?.retail_crm_manager_id ?? undefined;
     const currentChatName = getChatDisplayName(currentChat, currentUserId);
     const isChatOpen = Boolean(selectedChatId);
+    const totalUnread = chats.reduce((sum, chat) => sum + (chat.unread_count || 0), 0);
+    const directChatsCount = chats.filter((chat) => chat.type === 'direct').length;
+    const groupChatsCount = chats.filter((chat) => chat.type === 'group').length;
+    const unreadChatsCount = chats.filter((chat) => (chat.unread_count || 0) > 0).length;
     const filteredChats = chats.filter((chat) => {
-        if (chatFilter !== 'all' && chat.type !== chatFilter) {
+        if (chatFilter === 'unread' && (chat.unread_count || 0) === 0) {
+            return false;
+        }
+
+        if (chatFilter !== 'all' && chatFilter !== 'unread' && chat.type !== chatFilter) {
             return false;
         }
 
@@ -150,8 +159,63 @@ export default function MessengerPanel() {
             <div className="flex h-[calc(100dvh-8rem)] min-h-[calc(100dvh-8rem)] flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
             <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-[#eef3f8] md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
+                <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:hidden">
+                    <div className="flex items-center justify-between gap-3">
+                        <button
+                            type="button"
+                            onClick={() => router.push('/')}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                            aria-label="Назад в CRM"
+                        >
+                            <span className="text-lg">‹</span>
+                        </button>
+
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                                <div className="flex -space-x-2">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-xs font-bold text-white shadow-sm">
+                                        {(currentUser?.username || 'U').slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-xs font-bold text-white shadow-sm">
+                                        {String(unreadChatsCount || 0).padStart(2, '0')}
+                                    </div>
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="truncate text-[21px] font-bold tracking-tight text-slate-900">Чаты</div>
+                                    <div className="truncate text-[11px] font-medium text-slate-400">
+                                        {currentUser?.username || 'Менеджер'} • {totalUnread > 0 ? `${totalUnread} новых` : 'всё прочитано'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => searchInputRef.current?.focus()}
+                                className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                                aria-label="Поиск"
+                            >
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0Z" />
+                                </svg>
+                            </button>
+                            <button 
+                                className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
+                                onClick={() => setIsCreateModalOpen(true)}
+                                title="Создать чат"
+                                aria-label="Создать чат"
+                            >
+                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="border-b border-slate-200 bg-white/90 px-4 pb-4 pt-4 backdrop-blur-sm md:px-5">
-                    <div className="flex items-center justify-between">
+                    <div className="hidden items-center justify-between md:flex">
                         <div>
                             <div className="text-[22px] font-bold tracking-tight text-slate-900">Чаты</div>
                             <div className="text-xs text-slate-400">Корпоративный мессенджер</div>
@@ -169,6 +233,7 @@ export default function MessengerPanel() {
 
                     <div className="mt-4">
                         <input
+                            ref={searchInputRef}
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -180,13 +245,14 @@ export default function MessengerPanel() {
                     <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
                         {[
                             { value: 'all', label: 'Все' },
+                            { value: 'unread', label: 'Новые' },
                             { value: 'group', label: 'Группы' },
                             { value: 'direct', label: 'Личные' },
                         ].map((filterOption) => (
                             <button
                                 key={filterOption.value}
                                 type="button"
-                                onClick={() => setChatFilter(filterOption.value as 'all' | 'direct' | 'group')}
+                                onClick={() => setChatFilter(filterOption.value as 'all' | 'unread' | 'direct' | 'group')}
                                 className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                                     chatFilter === filterOption.value
                                         ? 'bg-slate-900 text-white shadow-sm'
@@ -196,6 +262,18 @@ export default function MessengerPanel() {
                                 {filterOption.label}
                             </button>
                         ))}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar md:hidden">
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                            Всего {chats.length}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                            Личные {directChatsCount}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                            Группы {groupChatsCount}
+                        </span>
                     </div>
                 </div>
                 
@@ -260,6 +338,35 @@ export default function MessengerPanel() {
                     onClose={() => setIsCreateModalOpen(false)} 
                     onCreated={handleChatCreated}
                 />
+            )}
+
+            {!isChatOpen && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
+                    <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-[26px] border border-slate-200 bg-white/95 p-2 shadow-2xl shadow-slate-300/60 backdrop-blur-xl">
+                        {[
+                            { value: 'all', label: 'Все', count: chats.length },
+                            { value: 'unread', label: 'Новые', count: unreadChatsCount },
+                            { value: 'group', label: 'Группы', count: groupChatsCount },
+                            { value: 'direct', label: 'Личные', count: directChatsCount },
+                        ].map((item) => (
+                            <button
+                                key={item.value}
+                                type="button"
+                                onClick={() => setChatFilter(item.value as 'all' | 'unread' | 'group' | 'direct')}
+                                className={`rounded-2xl px-2 py-2 text-center transition ${
+                                    chatFilter === item.value
+                                        ? 'bg-sky-500 text-white shadow-lg shadow-sky-200'
+                                        : 'text-slate-500 hover:bg-slate-50'
+                                }`}
+                            >
+                                <div className="text-[11px] font-semibold">{item.label}</div>
+                                <div className={`mt-1 text-[10px] font-bold ${chatFilter === item.value ? 'text-white/90' : 'text-slate-400'}`}>
+                                    {item.count}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                </div>
             )}
             </div>
             </div>

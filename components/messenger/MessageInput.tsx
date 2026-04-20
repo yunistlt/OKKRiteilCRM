@@ -147,7 +147,7 @@ export default function MessageInput({
     const canSend = content.trim().length > 0 && !sending;
 
     return (
-        <div className="border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur-sm">
+        <div className="border-t border-slate-200 bg-white/95 px-4 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] backdrop-blur-sm">
             <div className="flex items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 shadow-sm">
             <input
                 type="file"

@@ -40,6 +40,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
     const [messagesError, setMessagesError] = useState<string | null>(null);
     const [loadingMore, setLoadingMore] = useState(false);
     const [hasMoreMessages, setHasMoreMessages] = useState(false);
+    const [showChatMeta, setShowChatMeta] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const didScrollToHighlightRef = useRef(false);
 
@@ -306,10 +307,43 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                             Участники
                         </button>
                     )}
+
+                    <button
+                        type="button"
+                        onClick={() => setShowChatMeta((current) => !current)}
+                        className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 md:hidden"
+                        aria-label="Показать данные чата"
+                    >
+                        <span className="text-lg">⋯</span>
+                    </button>
                 </div>
+
+                {showChatMeta && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 md:hidden">
+                        {chatType === 'group' && (
+                            <button
+                                type="button"
+                                onClick={() => setIsMembersModalOpen(true)}
+                                className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600"
+                            >
+                                Участники
+                            </button>
+                        )}
+                        {contextOrder?.retailcrm_url && (
+                            <a
+                                href={contextOrder.retailcrm_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-[11px] font-semibold text-cyan-700"
+                            >
+                                Открыть заказ
+                            </a>
+                        )}
+                    </div>
+                )}
             </div>
 
-            <div ref={scrollRef} className="no-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(191,219,254,0.4),_transparent_35%),linear-gradient(180deg,_rgba(248,251,255,0.92)_0%,_rgba(255,255,255,0.98)_28%,_#ffffff_100%)] px-3 py-4 md:px-6 md:py-5">
+            <div ref={scrollRef} className="no-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(191,219,254,0.4),_transparent_35%),linear-gradient(180deg,_rgba(248,251,255,0.92)_0%,_rgba(255,255,255,0.98)_28%,_#ffffff_100%)] px-3 py-4 pb-6 md:px-6 md:py-5">
                 {loading ? (
                     <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
                         Загрузка сообщений...
