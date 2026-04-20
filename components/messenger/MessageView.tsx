@@ -255,7 +255,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,_#dfe9f3_0%,_#edf3f8_14%,_#f8fbff_34%,_#ffffff_100%)]">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[linear-gradient(180deg,_#dfe9f3_0%,_#edf3f8_14%,_#f8fbff_34%,_#ffffff_100%)]">
             <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/92 px-3 py-3 shadow-sm backdrop-blur-sm md:px-5 md:py-4">
                 <div className="flex items-start gap-3">
                     <button
