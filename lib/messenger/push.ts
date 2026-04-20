@@ -154,12 +154,6 @@ function buildNotificationBody(subscription: PushSubscriptionRow, message: Dispa
     return normalizePreview(message);
 }
 
-function getSubscriptionPriorityScore(subscription: PushSubscriptionRow, activeEndpoints: Set<string>) {
-    const isActiveEndpoint = activeEndpoints.has(subscription.endpoint) ? 1 : 0;
-    const lastSeenAt = subscription.last_seen_at ? new Date(subscription.last_seen_at).getTime() : 0;
-    return [isActiveEndpoint, lastSeenAt] as const;
-}
-
 async function logDelivery(params: {
     messageId: string;
     chatId: string;
@@ -287,18 +281,11 @@ export async function dispatchMessengerPushNotifications(params: {
         if (activePresenceError) throw activePresenceError;
 
         const activePresenceRows = (activePresence || []) as PushPresenceRow[];
-        const activeEndpointSet = new Set(activePresenceRows.map((entry) => entry.endpoint));
-        const activeUsersInCurrentChat = new Set(
+        const activeEndpointsInCurrentChat = new Set(
             activePresenceRows
                 .filter((entry) => entry.chat_id === message.chat_id)
-                .map((entry) => entry.user_id)
+                .map((entry) => entry.endpoint)
         );
-        const subscriptionsByUserId = typedSubscriptions.reduce<Map<number, PushSubscriptionRow[]>>((acc, subscription) => {
-            const current = acc.get(subscription.user_id) || [];
-            current.push(subscription);
-            acc.set(subscription.user_id, current);
-            return acc;
-        }, new Map());
 
         const title = typedChat?.type === 'group'
             ? `${senderName} написал в «${typedChat?.name || 'Группа'}»`
@@ -306,62 +293,7 @@ export async function dispatchMessengerPushNotifications(params: {
         let delivered = 0;
         let skipped = 0;
 
-        const primarySubscriptions: PushSubscriptionRow[] = [];
-        await Promise.allSettled(Array.from(subscriptionsByUserId.entries()).map(async ([recipientUserId, userSubscriptions]) => {
-            if (activeUsersInCurrentChat.has(recipientUserId)) {
-                skipped += userSubscriptions.length;
-                await Promise.all(userSubscriptions.map((subscription) => logDelivery({
-                    messageId: message.id,
-                    chatId: message.chat_id,
-                    recipientUserId,
-                    endpoint: subscription.endpoint,
-                    status: 'skipped_active_chat_user',
-                    payload: {
-                        title,
-                        body: buildNotificationBody(subscription, message, senderName),
-                        chat_id: message.chat_id,
-                        message_id: message.id,
-                    },
-                })));
-                return;
-            }
-
-            const sortedSubscriptions = [...userSubscriptions].sort((left, right) => {
-                const [leftActive, leftLastSeenAt] = getSubscriptionPriorityScore(left, activeEndpointSet);
-                const [rightActive, rightLastSeenAt] = getSubscriptionPriorityScore(right, activeEndpointSet);
-
-                if (leftActive !== rightActive) {
-                    return rightActive - leftActive;
-                }
-
-                return rightLastSeenAt - leftLastSeenAt;
-            });
-
-            const primarySubscription = sortedSubscriptions[0];
-            primarySubscriptions.push(primarySubscription);
-
-            const duplicateSubscriptions = sortedSubscriptions.slice(1);
-            if (duplicateSubscriptions.length === 0) {
-                return;
-            }
-
-            skipped += duplicateSubscriptions.length;
-            await Promise.all(duplicateSubscriptions.map((subscription) => logDelivery({
-                messageId: message.id,
-                chatId: message.chat_id,
-                recipientUserId,
-                endpoint: subscription.endpoint,
-                status: 'skipped_duplicate_device',
-                payload: {
-                    title,
-                    body: buildNotificationBody(subscription, message, senderName),
-                    chat_id: message.chat_id,
-                    message_id: message.id,
-                },
-            })));
-        }));
-
-        await Promise.allSettled(primarySubscriptions.map(async (subscription) => {
+        await Promise.allSettled(typedSubscriptions.map(async (subscription) => {
             const recipient = participantByUserId.get(subscription.user_id);
             const recipientUsername = usernamesByManagerId.get(subscription.user_id) || null;
             const body = buildNotificationBody(subscription, message, senderName);
@@ -374,6 +306,19 @@ export async function dispatchMessengerPushNotifications(params: {
                 preview: body,
                 click_action: `/messenger?chat_id=${encodeURIComponent(message.chat_id)}&message_id=${encodeURIComponent(message.id)}`,
             };
+
+            if (activeEndpointsInCurrentChat.has(subscription.endpoint)) {
+                skipped += 1;
+                await logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId: subscription.user_id,
+                    endpoint: subscription.endpoint,
+                    status: 'skipped_active_chat_endpoint',
+                    payload,
+                });
+                return;
+            }
 
             if (isSubscriptionMuted(subscription, message.chat_id)) {
                 skipped += 1;
