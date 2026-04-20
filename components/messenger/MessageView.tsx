@@ -206,7 +206,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
             {
                 id: draft.localId,
                 local_id: draft.localId,
-                sender_id: currentUserId,
+                sender_id: currentUserId ?? null,
                 content: draft.content,
                 attachments: draft.attachments || [],
                 created_at: new Date().toISOString(),
@@ -355,7 +355,9 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                             <div className="mt-2 text-sm leading-6">{messagesError}</div>
                             <button
                                 type="button"
-                                onClick={fetchMessages}
+                                onClick={() => {
+                                    void fetchMessages();
+                                }}
                                 className="mt-4 rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
                             >
                                 Повторить
@@ -399,8 +401,12 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                                     const canDelete = isMine && !isPending && !isFailed && typeof msg.id === 'string';
 
                                     const otherParticipants = participants?.filter((participant) => participant.user_id !== currentUserId) || [];
+                                    const readTimestamps = otherParticipants
+                                        .map((participant) => participant.last_read_at)
+                                        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+                                        .map((value) => new Date(value).getTime());
                                     const latestReadAt = otherParticipants.length > 0
-                                        ? Math.max(...otherParticipants.map((participant) => new Date(participant.last_read_at).getTime()))
+                                        ? Math.max(...readTimestamps, 0)
                                         : 0;
                                     const isRead = new Date(msg.created_at).getTime() <= latestReadAt;
 

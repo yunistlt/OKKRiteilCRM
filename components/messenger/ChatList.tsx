@@ -38,6 +38,7 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                 const isSelected = selectedId === chat.id;
                 const lastMsg = chat.last_message;
                 const displayName = getChatDisplayName(chat, currentUserId);
+                const unreadCount = chat.unread_count || 0;
 
                 return (
                     <button
@@ -72,9 +73,9 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                                     <p className="min-h-[1.25rem] flex-1 truncate text-[13px] leading-5 text-slate-500">
                                         {lastMsg?.content || 'Нет сообщений'}
                                     </p>
-                                    {chat.unread_count > 0 && (
+                                    {unreadCount > 0 && (
                                         <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-sky-500 px-1.5 text-[11px] font-bold text-white shadow-sm shadow-sky-200">
-                                            {chat.unread_count > 99 ? '99+' : chat.unread_count}
+                                            {unreadCount > 99 ? '99+' : unreadCount}
                                         </span>
                                     )}
                                 </div>

@@ -64,15 +64,16 @@ export async function findExistingDirectMessengerChat(userA: number, userB: numb
     const { data: participantRows, error: participantError } = await supabase
         .from('chat_participants')
         .select('chat_id, user_id')
-        .in('user_id', [userA, userB])
-        .returns<ChatParticipantLookupRow[]>();
+        .in('user_id', [userA, userB]);
 
     if (participantError) {
         throw participantError;
     }
 
+    const typedParticipantRows = (participantRows || []) as ChatParticipantLookupRow[];
+
     const participantMap = new Map<string, Set<number>>();
-    for (const row of participantRows || []) {
+    for (const row of typedParticipantRows) {
         if (!participantMap.has(row.chat_id)) {
             participantMap.set(row.chat_id, new Set());
         }
@@ -93,14 +94,15 @@ export async function findExistingDirectMessengerChat(userA: number, userB: numb
         .in('id', candidateChatIds)
         .eq('type', 'direct')
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .returns<DirectChatRow[]>();
+        .limit(1);
 
     if (directChatsError) {
         throw directChatsError;
     }
 
-    return directChats?.[0] || null;
+    const typedDirectChats = (directChats || []) as DirectChatRow[];
+
+    return typedDirectChats[0] || null;
 }
 
 export async function leaveMessengerGroupChat(params: {
@@ -115,14 +117,14 @@ export async function leaveMessengerGroupChat(params: {
         .from('chat_participants')
         .select('user_id, role, joined_at')
         .eq('chat_id', chatId)
-        .order('joined_at', { ascending: true })
-        .returns<GroupMemberRow[]>();
+        .order('joined_at', { ascending: true });
 
     if (allMembersError) {
         throw allMembersError;
     }
 
-    const remainingMembers = (allMembers || []).filter((member) => member.user_id !== userId);
+    const typedAllMembers = (allMembers || []) as GroupMemberRow[];
+    const remainingMembers = typedAllMembers.filter((member) => member.user_id !== userId);
 
     const { error: leaveError } = await supabase
         .from('chat_participants')

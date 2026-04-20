@@ -1,5 +1,13 @@
 import { supabase } from '@/utils/supabase';
 
+type AttachmentRecord = {
+    path?: string | null;
+};
+
+type MessageAttachmentRow = {
+    attachments?: AttachmentRecord[] | null;
+};
+
 async function removeAttachmentPaths(paths: string[]) {
     if (paths.length === 0) {
         return { removed: 0 };
@@ -27,9 +35,9 @@ export async function deleteChatAttachmentObjects(chatId: string) {
     }
 
     const paths = Array.from(new Set(
-        (messages || [])
+        ((messages || []) as MessageAttachmentRow[])
             .flatMap((message) => Array.isArray(message.attachments) ? message.attachments : [])
-            .map((attachment: any) => typeof attachment?.path === 'string' ? attachment.path : null)
+            .map((attachment) => typeof attachment?.path === 'string' ? attachment.path : null)
             .filter((value): value is string => Boolean(value))
     ));
 
@@ -48,8 +56,10 @@ export async function deleteMessageAttachmentObjects(messageId: string) {
     }
 
     const paths = Array.from(new Set(
-        (Array.isArray(message?.attachments) ? message.attachments : [])
-            .map((attachment: any) => typeof attachment?.path === 'string' ? attachment.path : null)
+        (Array.isArray((message as MessageAttachmentRow | null)?.attachments)
+            ? ((message as MessageAttachmentRow).attachments || [])
+            : [])
+            .map((attachment) => typeof attachment?.path === 'string' ? attachment.path : null)
             .filter((value): value is string => Boolean(value))
     ));
 

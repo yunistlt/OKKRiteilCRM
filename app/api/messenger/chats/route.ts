@@ -61,9 +61,11 @@ type LastMessageRow = {
  * Returns a list of chats for the current user including last message and participant details.
  */
 export async function GET(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         const { searchParams } = new URL(req.url);
         const onlyCount = searchParams.get('count') === 'true';
 
@@ -75,19 +77,20 @@ export async function GET(req: Request) {
         const { data: participantRecords, error: participantError } = await supabase
             .from('chat_participants')
             .select('chat_id, last_read_at')
-            .eq('user_id', userId)
-            .returns<ParticipantRecord[]>();
+            .eq('user_id', userId);
 
         if (participantError) throw participantError;
 
-        if (!participantRecords || participantRecords.length === 0) {
+        const typedParticipantRecords = (participantRecords || []) as ParticipantRecord[];
+
+        if (typedParticipantRecords.length === 0) {
             return NextResponse.json(onlyCount ? { count: 0 } : []);
         }
 
         if (onlyCount) {
             // Efficiently count all unread messages across all chats
             let totalUnread = 0;
-            await Promise.all(participantRecords.map(async (p) => {
+            await Promise.all(typedParticipantRecords.map(async (p) => {
                 const { count } = await supabase
                     .from('messages')
                     .select('*', { count: 'exact', head: true })
@@ -99,7 +102,7 @@ export async function GET(req: Request) {
             return NextResponse.json({ count: totalUnread });
         }
 
-        const chatIds = participantRecords.map(p => p.chat_id);
+        const chatIds = typedParticipantRecords.map((p) => p.chat_id);
 
         // 2. Fetch chat details
         const { data: chats, error: chatsError } = await supabase
@@ -123,12 +126,13 @@ export async function GET(req: Request) {
                 )
             `)
             .in('id', chatIds)
-            .order('updated_at', { ascending: false })
-            .returns<ChatRow[]>();
+            .order('updated_at', { ascending: false });
 
         if (chatsError) throw chatsError;
 
-        const contextOrderIds = chats
+        const typedChats = (chats || []) as ChatRow[];
+
+        const contextOrderIds = typedChats
             .map((chat) => chat.context_order_id)
             .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
 
@@ -137,22 +141,24 @@ export async function GET(req: Request) {
                 .from('orders')
                 .select('order_id, number, status')
                 .in('order_id', contextOrderIds)
-                .returns<OrderContextRow[]>()
             : { data: [] as OrderContextRow[], error: null };
 
         if (relatedOrdersError) throw relatedOrdersError;
 
-        const orderById = new Map((relatedOrders || []).map((order) => [order.order_id, order]));
+        const typedRelatedOrders = (relatedOrders || []) as OrderContextRow[];
+
+        const orderById = new Map(typedRelatedOrders.map((order) => [order.order_id, order]));
 
         // 3. Fetch last message and unread count for each chat
-        const chatsWithMetadata = await Promise.all(chats.map(async (chat) => {
+        const chatsWithMetadata = await Promise.all(typedChats.map(async (chat) => {
             const { data: lastMessages } = await supabase
                 .from('messages')
                 .select('content, created_at, sender_id')
                 .eq('chat_id', chat.id)
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .returns<LastMessageRow[]>();
+                .limit(1);
+
+            const typedLastMessages = (lastMessages || []) as LastMessageRow[];
 
             // Get current user's last_read_at for this chat
             const userParticipant = chat.chat_participants.find((participant) => participant.user_id === userId);
@@ -172,7 +178,7 @@ export async function GET(req: Request) {
                     ...orderById.get(chat.context_order_id),
                     retailcrm_url: `${RETAILCRM_BASE}/orders/${chat.context_order_id}/edit`,
                 } : null,
-                last_message: lastMessages?.[0] || null,
+                last_message: typedLastMessages[0] || null,
                 unread_count: unreadCount || 0
             };
         }));
@@ -180,7 +186,7 @@ export async function GET(req: Request) {
         return NextResponse.json(chatsWithMetadata);
     } catch (error: unknown) {
         logMessengerError('chats.get', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'GET',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -192,9 +198,11 @@ export async function GET(req: Request) {
  * Creates a new chat. Handles direct duplication check.
  */
 export async function POST(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -206,6 +214,7 @@ export async function POST(req: Request) {
         }
 
         const { type, name, participant_ids, context_order_id } = parsedBody.data;
+        const directParticipantIds = participant_ids ?? [];
 
         if (context_order_id !== null && context_order_id !== undefined) {
             const { data: existingOrder } = await supabase
@@ -220,7 +229,11 @@ export async function POST(req: Request) {
         }
 
         if (type === 'direct') {
-            const otherUserId = participant_ids[0];
+            const otherUserId = directParticipantIds[0];
+
+            if (typeof otherUserId !== 'number' || directParticipantIds.length !== 1) {
+                return NextResponse.json({ error: 'Direct chat requires exactly one participant' }, { status: 400 });
+            }
 
             const existingChat = await findExistingDirectMessengerChat(userId, otherUserId);
 
@@ -282,7 +295,7 @@ export async function POST(req: Request) {
         return NextResponse.json(newChat);
     } catch (error: unknown) {
         logMessengerError('chats.create', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'POST',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -290,9 +303,12 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
+    let userId: number | null = null;
+    let operation: 'chats.rename' | 'chats.markRead' = 'chats.markRead';
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const parsedBody = messengerPatchChatBodySchema.safeParse(await req.json());
@@ -303,6 +319,7 @@ export async function PATCH(req: Request) {
         const { chat_id, name } = parsedBody.data;
 
         if (typeof name === 'string') {
+            operation = 'chats.rename';
             const normalizedName = name.trim();
 
             const { data: myRecord } = await supabase
@@ -357,8 +374,8 @@ export async function PATCH(req: Request) {
         if (error) throw error;
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
-        logMessengerError(typeof name === 'string' ? 'chats.rename' : 'chats.markRead', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+        logMessengerError(operation, error, {
+            userId,
             method: 'PATCH',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -366,9 +383,11 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const parsedBody = messengerDeleteChatBodySchema.safeParse(await req.json());
@@ -415,7 +434,7 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ success: true, deleted: true });
     } catch (error: unknown) {
         logMessengerError('chats.delete', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'DELETE',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

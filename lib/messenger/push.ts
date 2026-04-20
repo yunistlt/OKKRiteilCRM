@@ -219,26 +219,27 @@ export async function dispatchMessengerPushNotifications(params: {
                     username
                 )
             `)
-            .eq('chat_id', message.chat_id)
-            .returns<ChatParticipantRow[]>(),
+            .eq('chat_id', message.chat_id),
         supabase
             .from('chats')
             .select('id, type, name')
             .eq('id', message.chat_id)
-            .maybeSingle()
-            .returns<ChatRow>(),
+            .maybeSingle(),
     ]);
 
     if (participantsError) throw participantsError;
     if (chatError) throw chatError;
 
-    const sender = (chatParticipants || []).find((participant) => participant.user_id === message.sender_id);
-    const participantByUserId = new Map((chatParticipants || []).map((participant) => [participant.user_id, participant]));
+    const typedChatParticipants = (chatParticipants || []) as ChatParticipantRow[];
+    const typedChat = (chat || null) as ChatRow | null;
+
+    const sender = typedChatParticipants.find((participant) => participant.user_id === message.sender_id);
+    const participantByUserId = new Map(typedChatParticipants.map((participant) => [participant.user_id, participant]));
     const senderName = `${sender?.managers?.first_name || ''} ${sender?.managers?.last_name || ''}`.trim()
         || sender?.managers?.username
         || `Сотрудник ${message.sender_id}`;
 
-    const recipientIds = (chatParticipants || [])
+    const recipientIds = typedChatParticipants
         .map((participant) => participant.user_id)
         .filter((userId) => userId !== message.sender_id);
 
@@ -251,17 +252,18 @@ export async function dispatchMessengerPushNotifications(params: {
         .select('endpoint, p256dh, auth, user_id, platform, browser, device_label, last_seen_at, settings, chat_scope')
         .in('user_id', recipientIds)
         .is('revoked_at', null)
-        .eq('permission_state', 'granted')
-        .returns<PushSubscriptionRow[]>();
+        .eq('permission_state', 'granted');
 
     if (subscriptionsError) throw subscriptionsError;
 
-    if (!subscriptions || subscriptions.length === 0) {
+    const typedSubscriptions = (subscriptions || []) as PushSubscriptionRow[];
+
+    if (typedSubscriptions.length === 0) {
         return { delivered: 0, skipped: 0, reason: 'no_subscriptions' };
     }
 
     const activeSince = new Date(Date.now() - ACTIVE_PRESENCE_TTL_MS).toISOString();
-    const subscriptionEndpoints = subscriptions.map((subscription) => subscription.endpoint);
+    const subscriptionEndpoints = typedSubscriptions.map((subscription) => subscription.endpoint);
 
     const { data: activePresence, error: activePresenceError } = await supabase
         .from('messenger_push_presence')
@@ -269,27 +271,26 @@ export async function dispatchMessengerPushNotifications(params: {
         .in('endpoint', subscriptionEndpoints)
         .eq('page_visible', true)
         .eq('focused', true)
-        .gte('last_seen_at', activeSince)
-        .returns<PushPresenceRow[]>();
+        .gte('last_seen_at', activeSince);
 
     if (activePresenceError) throw activePresenceError;
 
-    const activePresenceRows = activePresence || [];
+    const activePresenceRows = (activePresence || []) as PushPresenceRow[];
     const activeEndpointSet = new Set(activePresenceRows.map((entry) => entry.endpoint));
     const activeUsersInCurrentChat = new Set(
         activePresenceRows
             .filter((entry) => entry.chat_id === message.chat_id)
             .map((entry) => entry.user_id)
     );
-    const subscriptionsByUserId = subscriptions.reduce<Map<number, PushSubscriptionRow[]>>((acc, subscription) => {
+    const subscriptionsByUserId = typedSubscriptions.reduce<Map<number, PushSubscriptionRow[]>>((acc, subscription) => {
         const current = acc.get(subscription.user_id) || [];
         current.push(subscription);
         acc.set(subscription.user_id, current);
         return acc;
     }, new Map());
 
-    const title = chat?.type === 'group'
-        ? `${senderName} написал в «${chat?.name || 'Группа'}»`
+    const title = typedChat?.type === 'group'
+        ? `${senderName} написал в «${typedChat?.name || 'Группа'}»`
         : `${senderName} написал вам`;
     let delivered = 0;
     let skipped = 0;

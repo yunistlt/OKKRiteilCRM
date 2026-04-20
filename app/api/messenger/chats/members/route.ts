@@ -22,9 +22,11 @@ export const dynamic = 'force-dynamic';
  * Returns all participants for a chat.
  */
 export async function GET(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const { searchParams } = new URL(req.url);
@@ -62,7 +64,7 @@ export async function GET(req: Request) {
         return NextResponse.json({ members: data, myRole: myRecord.role });
     } catch (error: unknown) {
         logMessengerError('members.get', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'GET',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -75,9 +77,11 @@ export async function GET(req: Request) {
  * Body: { chat_id, user_id }
  */
 export async function POST(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const parsedBody = messengerChatMembersBodySchema.safeParse(await req.json());
@@ -117,7 +121,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
         logMessengerError('members.post', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'POST',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -130,9 +134,11 @@ export async function POST(req: Request) {
  * Body: { chat_id, user_id }
  */
 export async function DELETE(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const parsedBody = messengerChatMembersBodySchema.safeParse(await req.json());
@@ -191,7 +197,7 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
         logMessengerError('members.delete', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'DELETE',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

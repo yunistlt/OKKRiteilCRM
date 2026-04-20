@@ -18,9 +18,11 @@ export const dynamic = 'force-dynamic';
  * Redirects to a short-lived signed download URL after access check.
  */
 export async function GET(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -55,7 +57,7 @@ export async function GET(req: Request) {
         return NextResponse.redirect(data.signedUrl, { status: 302 });
     } catch (error: unknown) {
         logMessengerError('attachments.get', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'GET',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -68,9 +70,11 @@ export async function GET(req: Request) {
  * Expects { chat_id, file_name, file_type }
  */
 export async function POST(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -109,7 +113,7 @@ export async function POST(req: Request) {
         });
     } catch (error: unknown) {
         logMessengerError('attachments.post', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'POST',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

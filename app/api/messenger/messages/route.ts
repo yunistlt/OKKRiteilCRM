@@ -18,9 +18,11 @@ export const dynamic = 'force-dynamic';
  * Returns message history for a specific chat.
  */
 export async function GET(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -67,7 +69,7 @@ export async function GET(req: Request) {
         });
     } catch (error: unknown) {
         logMessengerError('messages.get', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'GET',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -79,9 +81,11 @@ export async function GET(req: Request) {
  * Sends a new message to a chat.
  */
 export async function POST(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -137,7 +141,7 @@ export async function POST(req: Request) {
         return NextResponse.json(newMessage);
     } catch (error: unknown) {
         logMessengerError('messages.post', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'POST',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
@@ -150,9 +154,11 @@ export async function POST(req: Request) {
  * Body: { message_id }
  */
 export async function DELETE(req: Request) {
+    let userId: number | null = null;
+
     try {
         const session = await getSession();
-        const userId = session?.user?.retail_crm_manager_id;
+        userId = session?.user?.retail_crm_manager_id ?? null;
 
         if (!userId) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -201,7 +207,7 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ success: true, deleted: true, message_id });
     } catch (error: unknown) {
         logMessengerError('messages.delete', error, {
-            userId: session?.user?.retail_crm_manager_id ?? null,
+            userId,
             method: 'DELETE',
         });
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
