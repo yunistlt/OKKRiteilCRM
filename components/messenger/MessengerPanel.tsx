@@ -9,6 +9,7 @@ import CreateChatModal from './CreateChatModal';
 import PushPresenceBridge from './PushPresenceBridge';
 import PushNotificationsCard from './PushNotificationsCard';
 import { getChatAvatarUrl, getChatDisplayName } from './chat-identity';
+import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import type { MessengerChat, MessengerParticipant } from './types';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import { useAuth } from '@/components/auth/AuthProvider';
@@ -21,6 +22,7 @@ export default function MessengerPanel() {
     const [chats, setChats] = useState<MessengerChat[]>([]);
     const [loading, setLoading] = useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isUserModalOpen, setIsUserModalOpen] = useState(false);
     const [search, setSearch] = useState('');
     const [chatFilter, setChatFilter] = useState<'all' | 'unread' | 'direct' | 'group'>('all');
     const [chatsError, setChatsError] = useState<string | null>(null);
@@ -112,6 +114,9 @@ export default function MessengerPanel() {
     const currentUserId = currentUser?.retail_crm_manager_id ?? undefined;
     const currentChatName = getChatDisplayName(currentChat, currentUserId);
     const currentChatAvatarUrl = getChatAvatarUrl(currentChat, currentUserId);
+    const currentUserAvatarSrc = resolveMessengerAvatarSrc(currentUser?.avatar_url);
+    const currentUserDisplayName = [currentUser?.first_name, currentUser?.last_name].filter(Boolean).join(' ').trim() || currentUser?.username || 'Менеджер';
+    const currentUserInitials = `${currentUser?.first_name?.[0] || ''}${currentUser?.last_name?.[0] || ''}`.toUpperCase() || (currentUser?.username || 'U').slice(0, 2).toUpperCase();
     const isChatOpen = Boolean(selectedChatId);
     const totalUnread = chats.reduce((sum, chat) => sum + (chat.unread_count || 0), 0);
     const directChatsCount = chats.filter((chat) => chat.type === 'direct').length;
@@ -165,9 +170,18 @@ export default function MessengerPanel() {
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                                 <div className="flex -space-x-1.5">
-                                    <Link href="/settings/profile" className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-[11px] font-bold text-white shadow-sm overflow-hidden">
-                                        {(currentUser?.username || 'U').slice(0, 2).toUpperCase()}
-                                    </Link>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsUserModalOpen(true)}
+                                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-sky-500 text-[11px] font-bold text-white shadow-sm"
+                                        aria-label="Открыть профиль и push-настройки"
+                                    >
+                                        {currentUserAvatarSrc ? (
+                                            <img src={currentUserAvatarSrc} alt={currentUserDisplayName} className="h-full w-full object-cover" />
+                                        ) : (
+                                            currentUserInitials
+                                        )}
+                                    </button>
                                     <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-[11px] font-bold text-white shadow-sm">
                                         {String(unreadChatsCount || 0).padStart(2, '0')}
                                     </div>
@@ -331,6 +345,60 @@ export default function MessengerPanel() {
                     onClose={() => setIsCreateModalOpen(false)} 
                     onCreated={handleChatCreated}
                 />
+            )}
+
+            {isUserModalOpen && (
+                <div className="fixed inset-0 z-[140] flex items-end bg-slate-950/45 backdrop-blur-sm md:hidden" onClick={() => setIsUserModalOpen(false)}>
+                    <div
+                        className="flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl shadow-slate-900/20"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 pb-4 pt-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-sky-500 text-sm font-bold text-white shadow-sm">
+                                    {currentUserAvatarSrc ? (
+                                        <img src={currentUserAvatarSrc} alt={currentUserDisplayName} className="h-full w-full object-cover" />
+                                    ) : (
+                                        currentUserInitials
+                                    )}
+                                </div>
+                                <div className="min-w-0">
+                                    <div className="truncate text-base font-semibold text-slate-900">{currentUserDisplayName}</div>
+                                    <div className="truncate text-xs text-slate-500">@{currentUser?.username || 'user'}</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsUserModalOpen(false)}
+                                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500"
+                                aria-label="Закрыть"
+                            >
+                                <span className="text-lg">✕</span>
+                            </button>
+                        </div>
+
+                        <div className="no-scrollbar flex-1 overflow-y-auto px-4 py-4">
+                            <div className="mb-4 flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700">
+                                    {String(unreadChatsCount || 0).padStart(2, '0')}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                    <div className="font-semibold text-slate-900">Новых чатов: {unreadChatsCount}</div>
+                                    <div className="text-xs text-slate-500">Всего непрочитанных сообщений: {totalUnread}</div>
+                                </div>
+                                <Link
+                                    href="/settings/profile"
+                                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                                    onClick={() => setIsUserModalOpen(false)}
+                                >
+                                    Профиль
+                                </Link>
+                            </div>
+
+                            <PushNotificationsCard selectedChatId={selectedChatId} selectedChatType={currentChat?.type} />
+                        </div>
+                    </div>
+                </div>
             )}
 
             </div>
