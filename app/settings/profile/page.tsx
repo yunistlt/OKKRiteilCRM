@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 
 export default function ProfilePage() {
     const router = useRouter();
@@ -45,20 +46,32 @@ export default function ProfilePage() {
         setUploading(true);
         setError('');
         try {
-            const { createClient } = await import('@supabase/supabase-js');
-            const sb = createClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-            );
-            const ext = file.name.split('.').pop();
-            const path = `avatars/${Date.now()}.${ext}`;
-            const { error: uploadErr } = await sb.storage.from('chat-attachments').upload(path, file, {
-                upsert: true,
-                contentType: file.type
+            const preparation = await fetch('/api/auth/avatar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_name: file.name,
+                    file_type: file.type,
+                    file_size: file.size,
+                }),
             });
-            if (uploadErr) throw uploadErr;
-            const { data: { publicUrl } } = sb.storage.from('chat-attachments').getPublicUrl(path);
-            setAvatarUrl(publicUrl);
+
+            const payload = await preparation.json().catch(() => null);
+            if (!preparation.ok) {
+                throw new Error(payload?.error || 'Не удалось подготовить загрузку аватара');
+            }
+
+            const uploadResponse = await fetch(payload.upload_url, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type },
+            });
+
+            if (!uploadResponse.ok) {
+                throw new Error('Не удалось загрузить аватар');
+            }
+
+            setAvatarUrl(payload.file_path);
         } catch (err: any) {
             setError('Ошибка загрузки аватара: ' + (err.message || ''));
         } finally {
@@ -136,7 +149,7 @@ export default function ProfilePage() {
                     <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                         <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-200">
                             {avatarUrl ? (
-                                <img src={avatarUrl} alt="Аватар" className="w-full h-full object-cover" />
+                                <img src={resolveMessengerAvatarSrc(avatarUrl) || avatarUrl} alt="Аватар" className="w-full h-full object-cover" />
                             ) : (
                                 <span className="text-3xl font-black text-white">{initials}</span>
                             )}

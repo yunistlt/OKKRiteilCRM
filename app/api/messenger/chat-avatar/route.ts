@@ -61,14 +61,9 @@ export async function POST(req: Request) {
 
         if (error) throw error;
 
-        const { data: publicData } = supabase.storage
-            .from('chat-attachments')
-            .getPublicUrl(filePath);
-
         return NextResponse.json({
             upload_url: data.signedUrl,
             file_path: filePath,
-            public_url: publicData.publicUrl,
             content_type: file_type,
         });
     } catch (error: unknown) {

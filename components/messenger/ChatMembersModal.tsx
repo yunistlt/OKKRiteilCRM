@@ -297,7 +297,7 @@ export default function ChatMembersModal({ chatId, chatType, chatName, chatAvata
             const saveResponse = await fetch('/api/messenger/chats', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: chatId, avatar_url: uploadPayload.public_url }),
+                body: JSON.stringify({ chat_id: chatId, avatar_url: uploadPayload.file_path }),
             });
             const savePayload = await saveResponse.json().catch(() => null);
 
@@ -305,7 +305,7 @@ export default function ChatMembersModal({ chatId, chatType, chatName, chatAvata
                 throw new Error(savePayload?.error || 'Не удалось сохранить аватар чата');
             }
 
-            setGroupAvatarUrl(uploadPayload.public_url);
+            setGroupAvatarUrl(uploadPayload.file_path);
             onMembersChanged?.();
         } catch (error) {
             alert(error instanceof Error ? error.message : 'Ошибка загрузки аватара');

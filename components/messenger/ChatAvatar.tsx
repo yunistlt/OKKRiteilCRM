@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { getInitials } from './chat-identity';
 
 export default function ChatAvatar({
@@ -20,10 +21,12 @@ export default function ChatAvatar({
     sizeClass?: string;
     textClass?: string;
 }) {
-    if (avatarUrl) {
+    const resolvedAvatarSrc = resolveMessengerAvatarSrc(avatarUrl);
+
+    if (resolvedAvatarSrc) {
         return (
             <div className={`overflow-hidden rounded-full ${sizeClass}`}>
-                <img src={avatarUrl} alt={fallback || 'Аватар'} className="h-full w-full object-cover" />
+                <img src={resolvedAvatarSrc} alt={fallback || 'Аватар'} className="h-full w-full object-cover" />
             </div>
         );
     }
