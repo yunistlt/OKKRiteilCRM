@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { prepareAvatarFileForUpload } from '@/lib/messenger/avatar-client';
+import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
 import ChatAvatar from './ChatAvatar';
 import type { MessengerParticipant } from './types';
 
@@ -261,13 +263,15 @@ export default function ChatMembersModal({ chatId, chatType, chatName, chatAvata
     };
 
     const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file || !canRenameGroup || avatarUploading) {
+        const selectedFile = event.target.files?.[0];
+        if (!selectedFile || !canRenameGroup || avatarUploading) {
             return;
         }
 
         setAvatarUploading(true);
         try {
+            const file = await prepareAvatarFileForUpload(selectedFile);
+
             const uploadPreparation = await fetch('/api/messenger/chat-avatar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -284,15 +288,13 @@ export default function ChatMembersModal({ chatId, chatType, chatName, chatAvata
                 throw new Error(uploadPayload?.error || 'Не удалось подготовить загрузку аватара');
             }
 
-            const uploadResponse = await fetch(uploadPayload.upload_url, {
-                method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type },
+            await uploadFileToSignedStorageUrl({
+                bucket: 'chat-attachments',
+                filePath: uploadPayload.file_path,
+                token: uploadPayload.token,
+                file,
+                upsert: true,
             });
-
-            if (!uploadResponse.ok) {
-                throw new Error('Не удалось загрузить аватар');
-            }
 
             const saveResponse = await fetch('/api/messenger/chats', {
                 method: 'PATCH',

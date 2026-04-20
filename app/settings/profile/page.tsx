@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { prepareAvatarFileForUpload } from '@/lib/messenger/avatar-client';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
+import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
 
 export default function ProfilePage() {
     const router = useRouter();
@@ -41,11 +43,13 @@ export default function ProfilePage() {
     }, []);
 
     const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const selectedFile = e.target.files?.[0];
+        if (!selectedFile) return;
         setUploading(true);
         setError('');
         try {
+            const file = await prepareAvatarFileForUpload(selectedFile);
+
             const preparation = await fetch('/api/auth/avatar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -61,15 +65,13 @@ export default function ProfilePage() {
                 throw new Error(payload?.error || 'Не удалось подготовить загрузку аватара');
             }
 
-            const uploadResponse = await fetch(payload.upload_url, {
-                method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type },
+            await uploadFileToSignedStorageUrl({
+                bucket: 'chat-attachments',
+                filePath: payload.file_path,
+                token: payload.token,
+                file,
+                upsert: true,
             });
-
-            if (!uploadResponse.ok) {
-                throw new Error('Не удалось загрузить аватар');
-            }
 
             setAvatarUrl(payload.file_path);
         } catch (err: any) {

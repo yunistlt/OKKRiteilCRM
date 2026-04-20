@@ -64,6 +64,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
             upload_url: data.signedUrl,
             file_path: filePath,
+            token: data.token,
             content_type: file_type,
         });
     } catch (error: unknown) {

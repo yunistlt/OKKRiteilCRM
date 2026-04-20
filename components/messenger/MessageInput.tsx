@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
+import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
 
 export interface PendingMessageDraft {
     localId: string;
@@ -102,15 +103,14 @@ export default function MessageInput({
                 const data = await urlRes.json().catch(() => null);
                 throw new Error(data?.error || 'Не удалось подготовить загрузку файла');
             }
-            const { upload_url, file_path } = await urlRes.json();
+            const { file_path, token } = await urlRes.json();
 
-            const uploadRes = await fetch(upload_url, {
-                method: 'PUT',
-                body: file,
-                headers: { 'Content-Type': file.type }
+            await uploadFileToSignedStorageUrl({
+                bucket: 'chat-attachments',
+                filePath: file_path,
+                token,
+                file,
             });
-
-            if (!uploadRes.ok) throw new Error('Upload failed');
 
             const sendRes = await fetch('/api/messenger/messages', {
                 method: 'POST',

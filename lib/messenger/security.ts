@@ -18,6 +18,12 @@ const allowedAttachmentMimeTypes = new Set([
     'text/plain',
 ]);
 
+const messengerAvatarReferenceSchema = z.string().trim().max(2048).refine((value) => {
+    return value.startsWith('avatars/') || /^https?:\/\//.test(value);
+}, {
+    message: 'Invalid avatar reference',
+});
+
 export const messengerChatIdSchema = z.string().uuid();
 export const messengerAttachmentPathSchema = z.string().trim().min(1).max(512);
 
@@ -68,7 +74,7 @@ export const messengerChatMembersBodySchema = z.object({
 export const messengerCreateChatBodySchema = z.object({
     type: z.enum(['direct', 'group']),
     name: z.string().trim().min(2).max(120).optional().nullable(),
-    avatar_url: z.string().trim().url().max(2048).optional().nullable(),
+    avatar_url: messengerAvatarReferenceSchema.optional().nullable(),
     participant_ids: z.array(z.number().int().positive()).max(50).optional(),
     context_order_id: z.number().int().positive().optional().nullable(),
 }).superRefine((value, context) => {
@@ -95,7 +101,7 @@ export const messengerCreateChatBodySchema = z.object({
 export const messengerPatchChatBodySchema = z.object({
     chat_id: messengerChatIdSchema,
     name: z.string().trim().min(2).max(120).optional(),
-    avatar_url: z.string().trim().url().max(2048).nullable().optional(),
+    avatar_url: messengerAvatarReferenceSchema.nullable().optional(),
 });
 
 export const messengerDeleteChatBodySchema = z.object({

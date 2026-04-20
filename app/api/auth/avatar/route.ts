@@ -44,6 +44,7 @@ export async function POST(req: Request) {
         return NextResponse.json({
             upload_url: data.signedUrl,
             file_path: filePath,
+            token: data.token,
         });
     } catch (error: unknown) {
         return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
