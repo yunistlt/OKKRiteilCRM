@@ -152,6 +152,10 @@ export default function MessengerPanel() {
         return [displayName, lastMessage, orderLabel].some((value) => value.toLowerCase().includes(query));
     });
 
+    const openMobileSidebar = () => {
+        window.dispatchEvent(new Event('open-mobile-sidebar'));
+    };
+
     return (
         <div className="grid gap-0 md:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
@@ -163,11 +167,13 @@ export default function MessengerPanel() {
                     <div className="flex items-center justify-between gap-3">
                         <button
                             type="button"
-                            onClick={() => router.push('/')}
-                            className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
-                            aria-label="Назад в CRM"
+                            onClick={openMobileSidebar}
+                            className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
+                            aria-label="Открыть меню"
                         >
-                            <span className="text-lg">‹</span>
+                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h16M4 12h16M4 17h16" />
+                            </svg>
                         </button>
 
                         <div className="min-w-0 flex-1">
@@ -242,7 +248,7 @@ export default function MessengerPanel() {
                         />
                     </div>
 
-                    <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+                    <div className="mt-3 hidden gap-2 overflow-x-auto no-scrollbar md:flex">
                         {[
                             { value: 'all', label: 'Все' },
                             { value: 'unread', label: 'Новые' },
@@ -264,7 +270,7 @@ export default function MessengerPanel() {
                         ))}
                     </div>
 
-                    <div className="mt-3 flex items-center gap-2 overflow-x-auto no-scrollbar md:hidden">
+                    <div className="mt-3 hidden items-center gap-2 overflow-x-auto no-scrollbar md:hidden">
                         <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
                             Всего {chats.length}
                         </span>
@@ -277,7 +283,7 @@ export default function MessengerPanel() {
                     </div>
                 </div>
                 
-                <div className="no-scrollbar flex-1 overflow-y-auto pb-4 pt-2">
+                <div className="no-scrollbar flex-1 overflow-y-auto px-0 pb-28 pt-2 md:px-0 md:pb-4">
                     {loading ? (
                         <div className="p-6 text-center text-sm text-slate-500">Загрузка...</div>
                     ) : chatsError ? (
@@ -341,7 +347,7 @@ export default function MessengerPanel() {
             )}
 
             {!isChatOpen && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:hidden">
+                <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[90] px-4 md:hidden">
                     <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-[26px] border border-slate-200 bg-white/95 p-2 shadow-2xl shadow-slate-300/60 backdrop-blur-xl">
                         {[
                             { value: 'all', label: 'Все', count: chats.length },

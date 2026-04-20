@@ -33,6 +33,15 @@ export default function Sidebar() {
         setIsMobileOpen(false);
     }, [pathname]);
 
+    useEffect(() => {
+        const handleOpenMobileSidebar = () => {
+            setIsMobileOpen(true);
+        };
+
+        window.addEventListener('open-mobile-sidebar', handleOpenMobileSidebar);
+        return () => window.removeEventListener('open-mobile-sidebar', handleOpenMobileSidebar);
+    }, []);
+
     const groups: NavGroup[] = [
         {
             title: 'Управление',
@@ -116,17 +125,15 @@ export default function Sidebar() {
     return (
         <>
             {/* Mobile Toggle Button (Floating) */}
-            <button
-                onClick={() => setIsMobileOpen(!isMobileOpen)}
-                className={`md:hidden fixed z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white text-2xl shadow-2xl transition-all active:scale-95 ${
-                    isMessengerRoute
-                        ? 'left-3 top-[calc(env(safe-area-inset-top)+0.75rem)]'
-                        : 'bottom-6 right-6'
-                }`}
-                aria-label={isMobileOpen ? 'Закрыть меню' : 'Открыть меню'}
-            >
-                {isMobileOpen ? '✕' : '☰'}
-            </button>
+            {!isMessengerRoute && (
+                <button
+                    onClick={() => setIsMobileOpen(!isMobileOpen)}
+                    className="md:hidden fixed bottom-6 right-6 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white text-2xl shadow-2xl transition-all active:scale-95"
+                    aria-label={isMobileOpen ? 'Закрыть меню' : 'Открыть меню'}
+                >
+                    {isMobileOpen ? '✕' : '☰'}
+                </button>
+            )}
 
             {/* Mobile Overlay */}
             {isMobileOpen && (
