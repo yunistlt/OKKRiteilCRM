@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { getMessengerErrorMessage } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
 import {
     messengerDeletePushSubscriptionBodySchema,
@@ -36,7 +37,7 @@ export async function GET() {
             userId,
             method: 'GET',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось загрузить push-подписки') }, { status: 500 });
     }
 }
 
@@ -96,7 +97,7 @@ export async function PATCH(req: Request) {
             userId,
             method: 'PATCH',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось обновить настройки push') }, { status: 500 });
     }
 }
 
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
             userId,
             method: 'POST',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось сохранить push-подписку') }, { status: 500 });
     }
 }
 
@@ -184,6 +185,6 @@ export async function DELETE(req: Request) {
             userId,
             method: 'DELETE',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось отключить push') }, { status: 500 });
     }
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { getMessengerErrorMessage } from '@/lib/messenger/error';
 import {
     clearCurrentPushSubscription,
     getCurrentPushEndpoint,
@@ -14,7 +15,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
     const [subscriptions, setSubscriptions] = useState<MessengerPushSubscriptionSummary[]>([]);
     const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
     const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
-    const [pushConfig, setPushConfig] = useState<{ canSubscribe: boolean; canDispatch: boolean } | null>(null);
+    const [pushConfig, setPushConfig] = useState<{ canSubscribe: boolean; canDispatch: boolean; configError: string | null } | null>(null);
 
     const loadPushConfig = async () => {
         const response = await fetch('/api/messenger/push-config');
@@ -28,12 +29,14 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         setPushConfig({
             canSubscribe: Boolean(data.canSubscribe),
             canDispatch: Boolean(data.canDispatch),
+            configError: typeof data.configError === 'string' && data.configError.length > 0 ? data.configError : null,
         });
 
         return {
             publicKey: typeof data.publicKey === 'string' && data.publicKey.length > 0 ? data.publicKey : null,
             canSubscribe: Boolean(data.canSubscribe),
             canDispatch: Boolean(data.canDispatch),
+            configError: typeof data.configError === 'string' && data.configError.length > 0 ? data.configError : null,
         };
     };
 
@@ -50,7 +53,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             setSubscriptions(nextSubscriptions);
             return nextSubscriptions as MessengerPushSubscriptionSummary[];
         } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить push-подписки');
+            setError(getMessengerErrorMessage(loadError, 'Не удалось загрузить push-подписки'));
             return [] as MessengerPushSubscriptionSummary[];
         }
     };
@@ -74,7 +77,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             } catch (configError) {
                 if (!cancelled) {
                     setStatus('idle');
-                    setError(configError instanceof Error ? configError.message : 'Не удалось загрузить конфигурацию push');
+                    setError(getMessengerErrorMessage(configError, 'Не удалось загрузить конфигурацию push'));
                 }
                 return;
             }
@@ -84,6 +87,9 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                 if (!cancelled) {
                     setCurrentEndpoint(endpoint);
                     setStatus('not-configured');
+                    if (config.configError) {
+                        setError(config.configError);
+                    }
                 }
                 return;
             }
@@ -167,7 +173,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             await loadSubscriptions();
         } catch (subscriptionError) {
             setStatus('idle');
-            setError(subscriptionError instanceof Error ? subscriptionError.message : 'Не удалось включить push');
+            setError(getMessengerErrorMessage(subscriptionError, 'Не удалось включить push'));
         }
     };
 
@@ -183,7 +189,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             await loadSubscriptions();
         } catch (unsubscribeError) {
             setStatus('enabled');
-            setError(unsubscribeError instanceof Error ? unsubscribeError.message : 'Не удалось отключить push');
+            setError(getMessengerErrorMessage(unsubscribeError, 'Не удалось отключить push'));
         }
     };
 
@@ -196,7 +202,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         try {
             await updateCurrentSettings({ delivery_mode: deliveryMode });
         } catch (settingsError) {
-            setError(settingsError instanceof Error ? settingsError.message : 'Не удалось обновить режим доставки');
+            setError(getMessengerErrorMessage(settingsError, 'Не удалось обновить режим доставки'));
         }
     };
 
@@ -204,7 +210,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         try {
             await updateCurrentSettings({ preview_mode: previewMode });
         } catch (settingsError) {
-            setError(settingsError instanceof Error ? settingsError.message : 'Не удалось обновить режим preview');
+            setError(getMessengerErrorMessage(settingsError, 'Не удалось обновить режим preview'));
         }
     };
 
@@ -212,7 +218,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         try {
             await updateCurrentSettings({ enabled: activeSettings.enabled === false ? true : false });
         } catch (settingsError) {
-            setError(settingsError instanceof Error ? settingsError.message : 'Не удалось обновить статус уведомлений');
+            setError(getMessengerErrorMessage(settingsError, 'Не удалось обновить статус уведомлений'));
         }
     };
 
@@ -228,7 +234,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         try {
             await updateCurrentSettings({ muted_chat_ids: nextMutedChatIds });
         } catch (settingsError) {
-            setError(settingsError instanceof Error ? settingsError.message : 'Не удалось обновить mute для чата');
+            setError(getMessengerErrorMessage(settingsError, 'Не удалось обновить mute для чата'));
         }
     };
 
@@ -354,6 +360,12 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             {pushConfig && pushConfig.canSubscribe && !pushConfig.canDispatch && (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     Публичный VAPID ключ доступен, но серверная отправка ещё не настроена: проверьте VAPID_PRIVATE_KEY в Vercel env.
+                </div>
+            )}
+
+            {pushConfig?.configError && (
+                <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                    {pushConfig.configError}
                 </div>
             )}
 
