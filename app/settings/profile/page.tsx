@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
+import PushNotificationsCard from '@/components/messenger/PushNotificationsCard';
 import { prepareAvatarFileForUpload } from '@/lib/messenger/avatar-client';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
@@ -254,6 +255,14 @@ export default function ProfilePage() {
                         />
                     </div>
                 </div>
+            </div>
+
+            <div className="mb-6 rounded-3xl border border-gray-100 bg-white p-6 shadow-xl shadow-gray-100 md:p-8">
+                <div className="mb-4">
+                    <h2 className="text-lg font-black text-gray-900 mb-1">Push-уведомления</h2>
+                    <p className="text-sm text-gray-400">Включение уведомлений для этого устройства прямо из настроек аккаунта.</p>
+                </div>
+                <PushNotificationsCard selectedChatId={null} />
             </div>
 
             {/* Feedback */}
