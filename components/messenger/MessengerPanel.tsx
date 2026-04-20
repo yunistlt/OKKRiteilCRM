@@ -160,7 +160,7 @@ export default function MessengerPanel() {
         <div className="grid gap-0 md:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
             <div className="relative w-full overflow-hidden rounded-none border-y border-slate-200 bg-[#eef3f8] shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
-            <div className="flex h-[calc(100dvh-8rem)] min-h-[calc(100dvh-8rem)] flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
+            <div className="flex h-[100dvh] min-h-[100dvh] flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
             <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-[#eef3f8] md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
                 <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:hidden">
@@ -248,7 +248,7 @@ export default function MessengerPanel() {
                         />
                     </div>
 
-                    <div className="mt-3 hidden gap-2 overflow-x-auto no-scrollbar md:flex">
+                    <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
                         {[
                             { value: 'all', label: 'Все' },
                             { value: 'unread', label: 'Новые' },
@@ -283,7 +283,7 @@ export default function MessengerPanel() {
                     </div>
                 </div>
                 
-                <div className="no-scrollbar flex-1 overflow-y-auto px-0 pb-28 pt-2 md:px-0 md:pb-4">
+                <div className="no-scrollbar flex-1 overflow-y-auto px-0 pb-4 pt-2 md:px-0 md:pb-4">
                     {loading ? (
                         <div className="p-6 text-center text-sm text-slate-500">Загрузка...</div>
                     ) : chatsError ? (
@@ -346,34 +346,6 @@ export default function MessengerPanel() {
                 />
             )}
 
-            {!isChatOpen && (
-                <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+0.75rem)] z-[90] px-4 md:hidden">
-                    <div className="pointer-events-auto grid grid-cols-4 gap-2 rounded-[26px] border border-slate-200 bg-white/95 p-2 shadow-2xl shadow-slate-300/60 backdrop-blur-xl">
-                        {[
-                            { value: 'all', label: 'Все', count: chats.length },
-                            { value: 'unread', label: 'Новые', count: unreadChatsCount },
-                            { value: 'group', label: 'Группы', count: groupChatsCount },
-                            { value: 'direct', label: 'Личные', count: directChatsCount },
-                        ].map((item) => (
-                            <button
-                                key={item.value}
-                                type="button"
-                                onClick={() => setChatFilter(item.value as 'all' | 'unread' | 'group' | 'direct')}
-                                className={`rounded-2xl px-2 py-2 text-center transition ${
-                                    chatFilter === item.value
-                                        ? 'bg-sky-500 text-white shadow-lg shadow-sky-200'
-                                        : 'text-slate-500 hover:bg-slate-50'
-                                }`}
-                            >
-                                <div className="text-[11px] font-semibold">{item.label}</div>
-                                <div className={`mt-1 text-[10px] font-bold ${chatFilter === item.value ? 'text-white/90' : 'text-slate-400'}`}>
-                                    {item.count}
-                                </div>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            )}
             </div>
             </div>
 
