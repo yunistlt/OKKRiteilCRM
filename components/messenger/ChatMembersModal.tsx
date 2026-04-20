@@ -171,6 +171,7 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
         const name = `${m.first_name} ${m.last_name} ${m.username}`.toLowerCase();
         return name.includes(search.toLowerCase());
     });
+    const hasLocalFallbackMembers = members.length > 0;
 
     const getInitials = (first?: string | null, last?: string | null) => {
         return `${first?.[0] || ''}${last?.[0] || ''}`.toUpperCase() || '?';
@@ -375,10 +376,69 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
                     {loading ? (
                         <div className="pt-8 text-center text-sm text-slate-400">Загрузка...</div>
                     ) : membersError ? (
-                        <div className="pt-8 text-center text-sm text-slate-400">
-                            <div>{membersError}</div>
-                            {members.length > 0 && <div className="mt-2 text-xs text-slate-500">Показан локально сохранённый список участников.</div>}
-                        </div>
+                        hasLocalFallbackMembers ? (
+                            <div className="flex flex-col gap-4">
+                                <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900">
+                                    <div>{membersError}</div>
+                                    <div className="mt-1 text-xs text-amber-700">Показан локально сохранённый список участников.</div>
+                                </div>
+                                <div className="flex flex-col gap-3">
+                                    {filteredMembers.length === 0 ? (
+                                        <div className="pt-2 text-center text-sm text-slate-400">Никого не найдено</div>
+                                    ) : filteredMembers.map((member) => {
+                                        const manager = member.managers;
+                                        const isMe = member.user_id === currentUserId;
+                                        const isRemoving = processing === member.user_id;
+
+                                        return (
+                                            <div
+                                                key={member.user_id}
+                                                className={`flex items-center gap-3 rounded-2xl border px-3 py-3 shadow-sm ${
+                                                    isMe
+                                                        ? 'border-sky-200 bg-sky-50'
+                                                        : 'border-slate-200 bg-slate-50'
+                                                }`}
+                                            >
+                                                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
+                                                    {getInitials(manager?.first_name, manager?.last_name)}
+                                                </div>
+
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="truncate text-sm font-semibold text-slate-900">
+                                                        {manager ? `${manager.first_name} ${manager.last_name}` : `ID: ${member.user_id}`}
+                                                        {isMe && <span className="ml-2 text-xs font-medium text-sky-700">(вы)</span>}
+                                                    </div>
+                                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                                        {manager?.username && <span>@{manager.username}</span>}
+                                                        <span
+                                                            className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                                                            style={{ background: ROLE_COLORS[member.role] || '#868e96' }}
+                                                        >
+                                                            {ROLE_LABELS[member.role] || member.role}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {isAdmin && !isMe && (
+                                                    <button
+                                                        onClick={() => handleRemove(member.user_id)}
+                                                        disabled={!!processing}
+                                                        title="Удалить из чата"
+                                                        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 transition hover:bg-rose-50 disabled:cursor-default disabled:opacity-50"
+                                                    >
+                                                        {isRemoving ? '⏳' : '✕'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="pt-8 text-center text-sm text-slate-400">
+                                <div>{membersError}</div>
+                            </div>
+                        )
                     ) : tab === 'current' ? (
                         filteredMembers.length === 0 ? (
                             <div className="pt-8 text-center text-sm text-slate-400">Никого не найдено</div>

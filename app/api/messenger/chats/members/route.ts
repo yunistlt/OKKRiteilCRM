@@ -8,6 +8,7 @@ import {
     leaveMessengerGroupChat,
     touchMessengerChat,
 } from '@/lib/messenger/domain';
+import { getMessengerErrorMessage } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
 import {
     getMessengerParticipant,
@@ -67,7 +68,7 @@ export async function GET(req: Request) {
             userId,
             method: 'GET',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось загрузить участников чата') }, { status: 500 });
     }
 }
 
@@ -124,7 +125,7 @@ export async function POST(req: Request) {
             userId,
             method: 'POST',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось добавить участника') }, { status: 500 });
     }
 }
 
@@ -200,6 +201,6 @@ export async function DELETE(req: Request) {
             userId,
             method: 'DELETE',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось обновить состав участников') }, { status: 500 });
     }
 }
