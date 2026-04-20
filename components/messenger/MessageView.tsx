@@ -252,7 +252,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
     };
 
     return (
-        <div className="flex h-full flex-1 flex-col bg-[linear-gradient(180deg,_#dfe9f3_0%,_#edf3f8_14%,_#f8fbff_34%,_#ffffff_100%)]">
+        <div className="flex h-full min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,_#dfe9f3_0%,_#edf3f8_14%,_#f8fbff_34%,_#ffffff_100%)]">
             <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/92 px-3 py-3 shadow-sm backdrop-blur-sm md:px-5 md:py-4">
                 <div className="flex items-start gap-3">
                     <button
@@ -343,7 +343,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                 )}
             </div>
 
-            <div ref={scrollRef} className="no-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(191,219,254,0.4),_transparent_35%),linear-gradient(180deg,_rgba(248,251,255,0.92)_0%,_rgba(255,255,255,0.98)_28%,_#ffffff_100%)] px-3 py-4 pb-6 md:px-6 md:py-5">
+            <div ref={scrollRef} className="no-scrollbar flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(191,219,254,0.4),_transparent_35%),linear-gradient(180deg,_rgba(248,251,255,0.92)_0%,_rgba(255,255,255,0.98)_28%,_#ffffff_100%)] px-3 py-4 pb-6 md:px-6 md:py-5">
                 {loading ? (
                     <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
                         Загрузка сообщений...
@@ -552,6 +552,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                     chatType={chatType}
                     chatName={chatName}
                     currentUserId={currentUserId}
+                    initialMembers={participants}
                     onClose={() => setIsMembersModalOpen(false)}
                     onLeftChat={onLeftChat}
                     onDeletedChat={onDeletedChat}

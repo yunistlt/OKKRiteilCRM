@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import type { MessengerParticipant } from './types';
 
 interface Member {
     user_id: number;
@@ -25,14 +26,30 @@ interface ChatMembersModalProps {
     chatType?: string;
     chatName?: string;
     currentUserId?: number;
+    initialMembers?: MessengerParticipant[];
     onClose: () => void;
     onMembersChanged?: () => void;
     onLeftChat?: () => void;
     onDeletedChat?: () => void;
 }
 
-export default function ChatMembersModal({ chatId, chatType, chatName, currentUserId, onClose, onMembersChanged, onLeftChat, onDeletedChat }: ChatMembersModalProps) {
-    const [members, setMembers] = useState<Member[]>([]);
+function normalizeParticipants(participants?: MessengerParticipant[]): Member[] {
+    return (participants || []).map((participant) => ({
+        user_id: participant.user_id,
+        role: participant.role || 'member',
+        managers: participant.managers
+            ? {
+                id: participant.managers.id || participant.user_id,
+                first_name: participant.managers.first_name || '',
+                last_name: participant.managers.last_name || '',
+                username: participant.managers.username || '',
+            }
+            : null,
+    }));
+}
+
+export default function ChatMembersModal({ chatId, chatType, chatName, currentUserId, initialMembers, onClose, onMembersChanged, onLeftChat, onDeletedChat }: ChatMembersModalProps) {
+    const [members, setMembers] = useState<Member[]>(() => normalizeParticipants(initialMembers));
     const [myRole, setMyRole] = useState<string>('member');
     const [allManagers, setAllManagers] = useState<Manager[]>([]);
     const [loading, setLoading] = useState(true);
@@ -41,6 +58,7 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
     const [processing, setProcessing] = useState<number | null>(null);
     const [groupName, setGroupName] = useState(chatName || '');
     const [renaming, setRenaming] = useState(false);
+    const [membersError, setMembersError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchMembers();
@@ -48,20 +66,31 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
     }, [chatId]);
 
     useEffect(() => {
+        setMembers(normalizeParticipants(initialMembers));
+    }, [initialMembers]);
+
+    useEffect(() => {
         setGroupName(chatName || '');
     }, [chatName]);
 
     const fetchMembers = async () => {
         setLoading(true);
+        setMembersError(null);
         try {
             const res = await fetch(`/api/messenger/chats/members?chat_id=${chatId}`);
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw new Error(data?.error || 'Не удалось загрузить участников чата');
+            }
+
             const data = await res.json();
-            if (data.members) {
+            if (Array.isArray(data.members)) {
                 setMembers(data.members);
                 setMyRole(data.myRole || 'member');
             }
         } catch (err) {
             console.error('Failed to fetch members:', err);
+            setMembersError(err instanceof Error ? err.message : 'Не удалось загрузить участников чата');
         } finally {
             setLoading(false);
         }
@@ -345,6 +374,11 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
                 <div className="no-scrollbar flex-1 overflow-y-auto bg-white px-4 py-4 sm:px-5">
                     {loading ? (
                         <div className="pt-8 text-center text-sm text-slate-400">Загрузка...</div>
+                    ) : membersError ? (
+                        <div className="pt-8 text-center text-sm text-slate-400">
+                            <div>{membersError}</div>
+                            {members.length > 0 && <div className="mt-2 text-xs text-slate-500">Показан локально сохранённый список участников.</div>}
+                        </div>
                     ) : tab === 'current' ? (
                         filteredMembers.length === 0 ? (
                             <div className="pt-8 text-center text-sm text-slate-400">Никого не найдено</div>
