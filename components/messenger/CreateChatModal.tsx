@@ -86,23 +86,23 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
     );
 
     return (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
-                <div className="p-6 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+            <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-[28px]">
+                <div className="flex items-center justify-between border-b bg-slate-50 px-5 py-4 sm:px-6 sm:py-6">
                     <h2 className="text-xl font-bold text-gray-900">Новый чат</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-white hover:text-gray-600">
                         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
                 </div>
 
-                <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-4">
+                <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-5 py-5 sm:px-6">
                     {/* Search */}
                     <input 
                         type="text"
                         placeholder="Поиск сотрудников..."
-                        className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
@@ -114,7 +114,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                             <input 
                                 type="text"
                                 placeholder="Например: Обсуждение заказа #123"
-                                className="w-full p-3 bg-blue-50 border border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-medium text-blue-900"
+                                className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-3 font-medium text-blue-900 transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                                 value={groupName}
                                 onChange={(e) => setGroupName(e.target.value)}
                             />
@@ -127,7 +127,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                         <input 
                             type="number"
                             placeholder="Например: 51492 (необязательно)"
-                            className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                             value={contextOrderId}
                             onChange={(e) => setContextOrderId(e.target.value)}
                         />
@@ -145,7 +145,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                                         <button
                                             key={manager.id}
                                             onClick={() => handleToggleManager(manager.id)}
-                                            className={`flex items-center gap-3 p-3 rounded-xl transition-all border ${
+                                            className={`flex items-center gap-3 rounded-2xl border p-3 transition-all ${
                                                 isSelected 
                                                     ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-200' 
                                                     : 'bg-white border-transparent hover:bg-gray-50 text-gray-700'
@@ -173,11 +173,11 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                     </div>
                 </div>
 
-                <div className="p-6 border-t bg-gray-50 rounded-b-2xl">
+                <div className="border-t bg-slate-50 px-5 py-4 sm:px-6 sm:py-6">
                     <button
                         onClick={handleCreate}
                         disabled={selectedIds.length === 0 || creating}
-                        className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 disabled:opacity-50 disabled:bg-gray-300 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
+                        className="flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 py-4 text-lg font-bold text-white shadow-xl shadow-blue-100 transition-all hover:bg-blue-700 disabled:bg-gray-300 disabled:opacity-50"
                     >
                         {creating ? (
                             <>

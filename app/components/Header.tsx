@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { clearCurrentPushSubscription } from '@/lib/messenger/push-client';
+
+type NavigatorWithBadge = Navigator & {
+    setAppBadge?: (count?: number) => Promise<void>;
+    clearAppBadge?: () => Promise<void>;
+};
 
 export default function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
@@ -32,6 +38,7 @@ export default function Header() {
     };
 
     const handleLogout = async () => {
+        await clearCurrentPushSubscription().catch(() => undefined);
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/login';
     };
@@ -51,6 +58,21 @@ export default function Header() {
         if (pathname.startsWith('/admin')) return 'Администрирование';
         return 'Dashboard';
     };
+
+    useEffect(() => {
+        const baseTitle = getPageTitle();
+        document.title = unreadCount > 0 ? `(${unreadCount}) ${baseTitle}` : baseTitle;
+
+        const navigatorWithBadge = navigator as NavigatorWithBadge;
+        if (unreadCount > 0 && typeof navigatorWithBadge.setAppBadge === 'function') {
+            navigatorWithBadge.setAppBadge(unreadCount).catch(() => undefined);
+            return;
+        }
+
+        if (unreadCount === 0 && typeof navigatorWithBadge.clearAppBadge === 'function') {
+            navigatorWithBadge.clearAppBadge().catch(() => undefined);
+        }
+    }, [pathname, unreadCount]);
 
     return (
         <header className="bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50">

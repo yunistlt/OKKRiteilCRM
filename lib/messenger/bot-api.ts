@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { logMessengerError } from '@/lib/messenger/logger';
 
 /**
  * Utility for system bots to send messages to chats.
@@ -32,7 +33,10 @@ export async function sendSystemMessage(chatId: string, content: string, senderN
 
         return data;
     } catch (error) {
-        console.error(`[Bot API] Error sending message from ${senderName}:`, error);
+        logMessengerError('bot.sendSystemMessage', error, {
+            chatId,
+            details: { senderName },
+        });
         throw error;
     }
 }

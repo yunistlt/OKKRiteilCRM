@@ -22,12 +22,16 @@ interface Manager {
 
 interface ChatMembersModalProps {
     chatId: string;
+    chatType?: string;
+    chatName?: string;
     currentUserId?: number;
     onClose: () => void;
     onMembersChanged?: () => void;
+    onLeftChat?: () => void;
+    onDeletedChat?: () => void;
 }
 
-export default function ChatMembersModal({ chatId, currentUserId, onClose, onMembersChanged }: ChatMembersModalProps) {
+export default function ChatMembersModal({ chatId, chatType, chatName, currentUserId, onClose, onMembersChanged, onLeftChat, onDeletedChat }: ChatMembersModalProps) {
     const [members, setMembers] = useState<Member[]>([]);
     const [myRole, setMyRole] = useState<string>('member');
     const [allManagers, setAllManagers] = useState<Manager[]>([]);
@@ -35,11 +39,17 @@ export default function ChatMembersModal({ chatId, currentUserId, onClose, onMem
     const [search, setSearch] = useState('');
     const [tab, setTab] = useState<'current' | 'add'>('current');
     const [processing, setProcessing] = useState<number | null>(null);
+    const [groupName, setGroupName] = useState(chatName || '');
+    const [renaming, setRenaming] = useState(false);
 
     useEffect(() => {
         fetchMembers();
         fetchManagers();
     }, [chatId]);
+
+    useEffect(() => {
+        setGroupName(chatName || '');
+    }, [chatName]);
 
     const fetchMembers = async () => {
         setLoading(true);
@@ -115,6 +125,9 @@ export default function ChatMembersModal({ chatId, currentUserId, onClose, onMem
     };
 
     const isAdmin = myRole === 'admin';
+    const canLeaveGroup = chatType === 'group' && typeof currentUserId === 'number';
+    const canRenameGroup = chatType === 'group' && isAdmin;
+    const canDeleteGroup = chatType === 'group' && isAdmin;
     const memberIds = new Set(members.map(m => m.user_id));
 
     // Non-members available to add
@@ -144,162 +157,239 @@ export default function ChatMembersModal({ chatId, currentUserId, onClose, onMem
         member: 'Участник'
     };
 
+    const handleLeaveChat = async () => {
+        if (!currentUserId || processing) return;
+
+        const confirmed = window.confirm('Выйти из группового чата?');
+        if (!confirmed) return;
+
+        setProcessing(currentUserId);
+        try {
+            const res = await fetch('/api/messenger/chats/members', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, user_id: currentUserId })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Ошибка при выходе из чата');
+                return;
+            }
+
+            onMembersChanged?.();
+            onLeftChat?.();
+            onClose();
+        } catch (err) {
+            console.error('Failed to leave chat:', err);
+            alert('Ошибка при выходе из чата');
+        } finally {
+            setProcessing(null);
+        }
+    };
+
+    const handleRenameChat = async () => {
+        const normalizedName = groupName.trim();
+        if (!canRenameGroup || renaming) return;
+        if (normalizedName.length < 2) {
+            alert('Название группы должно быть не короче 2 символов');
+            return;
+        }
+
+        setRenaming(true);
+        try {
+            const res = await fetch('/api/messenger/chats', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, name: normalizedName })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Ошибка при переименовании');
+                return;
+            }
+
+            onMembersChanged?.();
+        } catch (err) {
+            console.error('Failed to rename chat:', err);
+            alert('Ошибка при переименовании');
+        } finally {
+            setRenaming(false);
+        }
+    };
+
+    const handleDeleteChat = async () => {
+        if (!canDeleteGroup || processing) return;
+
+        const confirmed = window.confirm('Удалить групповой чат целиком? Это действие удалит переписку и участников из этого чата.');
+        if (!confirmed) return;
+
+        setProcessing(-1);
+        try {
+            const res = await fetch('/api/messenger/chats', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                alert(data.error || 'Ошибка при удалении чата');
+                return;
+            }
+
+            onMembersChanged?.();
+            onDeletedChat?.();
+            onClose();
+        } catch (err) {
+            console.error('Failed to delete chat:', err);
+            alert('Ошибка при удалении чата');
+        } finally {
+            setProcessing(null);
+        }
+    };
+
     return (
         <div
-            style={{
-                position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-                backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', zIndex: 200, padding: 16
-            }}
+            className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div style={{
-                background: '#fff', borderRadius: 20, width: '100%', maxWidth: 420,
-                maxHeight: '85vh', display: 'flex', flexDirection: 'column',
-                boxShadow: '0 25px 60px rgba(0,0,0,0.25)', overflow: 'hidden'
-            }}>
-                {/* Header */}
-                <div style={{
-                    padding: '20px 20px 0', display: 'flex',
-                    justifyContent: 'space-between', alignItems: 'center'
-                }}>
-                    <div>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#111' }}>
-                            Участники чата
-                        </h2>
-                        <p style={{ margin: '2px 0 0', fontSize: 13, color: '#868e96' }}>
-                            {members.length} {members.length === 1 ? 'участник' : members.length < 5 ? 'участника' : 'участников'}
-                        </p>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        style={{
-                            background: '#f1f3f5', border: 'none', borderRadius: '50%',
-                            width: 36, height: 36, cursor: 'pointer', display: 'flex',
-                            alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                            color: '#495057', fontSize: 18, transition: 'background .15s'
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#e9ecef')}
-                        onMouseLeave={e => (e.currentTarget.style.background = '#f1f3f5')}
-                    >
-                        ✕
-                    </button>
-                </div>
-
-                {/* Tabs (only for admins) */}
-                {isAdmin && (
-                    <div style={{ display: 'flex', gap: 8, padding: '16px 20px 0' }}>
-                        {(['current', 'add'] as const).map(t => (
-                            <button
-                                key={t}
-                                onClick={() => setTab(t)}
-                                style={{
-                                    flex: 1, padding: '8px 0', borderRadius: 10, border: 'none',
-                                    cursor: 'pointer', fontWeight: 600, fontSize: 13,
-                                    background: tab === t ? '#1c7ed6' : '#f1f3f5',
-                                    color: tab === t ? '#fff' : '#495057',
-                                    transition: 'all .15s'
-                                }}
-                            >
-                                {t === 'current' ? '👥 Текущие' : '➕ Добавить'}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
-                {/* Search */}
-                <div style={{ padding: '12px 20px 0' }}>
-                    <input
-                        type="text"
-                        placeholder="Поиск..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        style={{
-                            width: '100%', padding: '9px 14px', borderRadius: 12,
-                            border: '1.5px solid #e9ecef', fontSize: 13, outline: 'none',
-                            background: '#f8f9fa', boxSizing: 'border-box', color: '#212529',
-                            transition: 'border-color .15s'
-                        }}
-                        onFocus={e => (e.currentTarget.style.borderColor = '#1c7ed6')}
-                        onBlur={e => (e.currentTarget.style.borderColor = '#e9ecef')}
-                    />
-                </div>
-
-                {/* List */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px 20px' }}>
-                    {loading ? (
-                        <div style={{ textAlign: 'center', color: '#aaa', paddingTop: 32, fontSize: 14 }}>
-                            Загрузка...
+            <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[85vh] sm:rounded-[28px]">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 pb-4 pt-4 sm:px-5 sm:pt-5">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="m-0 text-lg font-semibold text-slate-900">Участники чата</h2>
+                            <p className="mt-1 text-sm text-slate-500">
+                                {members.length} {members.length === 1 ? 'участник' : members.length < 5 ? 'участника' : 'участников'}
+                            </p>
                         </div>
+                        <button
+                            onClick={onClose}
+                            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    {isAdmin && (
+                        <div className="mt-4 flex gap-2 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-slate-200">
+                            {(['current', 'add'] as const).map((currentTab) => (
+                                <button
+                                    key={currentTab}
+                                    onClick={() => setTab(currentTab)}
+                                    className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold transition sm:text-sm ${
+                                        tab === currentTab
+                                            ? 'bg-slate-900 text-white shadow-sm'
+                                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+                                    }`}
+                                >
+                                    {currentTab === 'current' ? 'Текущие' : 'Добавить'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="mt-4">
+                        <input
+                            type="text"
+                            placeholder="Поиск"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+                        />
+                    </div>
+
+                    {canRenameGroup && (
+                        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <input
+                                type="text"
+                                value={groupName}
+                                onChange={(e) => setGroupName(e.target.value)}
+                                placeholder="Название группы"
+                                className="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-300 focus:ring-4 focus:ring-sky-100"
+                            />
+                            <button
+                                onClick={handleRenameChat}
+                                disabled={renaming || groupName.trim() === (chatName || '').trim()}
+                                className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-default disabled:bg-slate-300 sm:py-0"
+                            >
+                                {renaming ? '...' : 'Сохранить'}
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="mt-3 flex flex-col gap-2">
+                        {canLeaveGroup && (
+                            <button
+                                onClick={handleLeaveChat}
+                                disabled={!!processing}
+                                className="w-full rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-default disabled:opacity-60"
+                            >
+                                {processing === currentUserId ? 'Выход...' : 'Выйти из чата'}
+                            </button>
+                        )}
+
+                        {canDeleteGroup && (
+                            <button
+                                onClick={handleDeleteChat}
+                                disabled={!!processing}
+                                className="w-full rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-default disabled:opacity-60"
+                            >
+                                {processing === -1 ? 'Удаление...' : 'Удалить чат'}
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="no-scrollbar flex-1 overflow-y-auto bg-white px-4 py-4 sm:px-5">
+                    {loading ? (
+                        <div className="pt-8 text-center text-sm text-slate-400">Загрузка...</div>
                     ) : tab === 'current' ? (
                         filteredMembers.length === 0 ? (
-                            <div style={{ textAlign: 'center', color: '#aaa', paddingTop: 32, fontSize: 14 }}>
-                                Никого не найдено
-                            </div>
+                            <div className="pt-8 text-center text-sm text-slate-400">Никого не найдено</div>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {filteredMembers.map(member => {
-                                    const m = member.managers;
+                            <div className="flex flex-col gap-3">
+                                {filteredMembers.map((member) => {
+                                    const manager = member.managers;
                                     const isMe = member.user_id === currentUserId;
                                     const isRemoving = processing === member.user_id;
+
                                     return (
-                                        <div key={member.user_id} style={{
-                                            display: 'flex', alignItems: 'center', gap: 12,
-                                            padding: '10px 12px', borderRadius: 12,
-                                            background: isMe ? '#f0f7ff' : '#f8f9fa',
-                                            border: isMe ? '1.5px solid #d0e8fb' : '1.5px solid transparent',
-                                            transition: 'background .15s'
-                                        }}>
-                                            {/* Avatar */}
-                                            <div style={{
-                                                width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                                                background: 'linear-gradient(135deg, #4fa3e3, #1c7ed6)',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                color: '#fff', fontWeight: 700, fontSize: 15
-                                            }}>
-                                                {getInitials(m?.first_name, m?.last_name)}
+                                        <div
+                                            key={member.user_id}
+                                            className={`flex items-center gap-3 rounded-2xl border px-3 py-3 shadow-sm ${
+                                                isMe
+                                                    ? 'border-sky-200 bg-sky-50'
+                                                    : 'border-slate-200 bg-slate-50'
+                                            }`}
+                                        >
+                                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
+                                                {getInitials(manager?.first_name, manager?.last_name)}
                                             </div>
 
-                                            {/* Info */}
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 600, fontSize: 14, color: '#212529' }}>
-                                                    {m ? `${m.first_name} ${m.last_name}` : `ID: ${member.user_id}`}
-                                                    {isMe && (
-                                                        <span style={{ marginLeft: 6, fontSize: 11, color: '#1c7ed6', fontWeight: 500 }}>
-                                                            (вы)
-                                                        </span>
-                                                    )}
+                                            <div className="min-w-0 flex-1">
+                                                <div className="truncate text-sm font-semibold text-slate-900">
+                                                    {manager ? `${manager.first_name} ${manager.last_name}` : `ID: ${member.user_id}`}
+                                                    {isMe && <span className="ml-2 text-xs font-medium text-sky-700">(вы)</span>}
                                                 </div>
-                                                <div style={{ fontSize: 12, marginTop: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                    {m?.username && (
-                                                        <span style={{ color: '#868e96' }}>@{m.username}</span>
-                                                    )}
-                                                    <span style={{
-                                                        background: ROLE_COLORS[member.role] || '#868e96',
-                                                        color: '#fff', borderRadius: 6,
-                                                        padding: '1px 6px', fontSize: 10, fontWeight: 600
-                                                    }}>
+                                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                                                    {manager?.username && <span>@{manager.username}</span>}
+                                                    <span
+                                                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                                                        style={{ background: ROLE_COLORS[member.role] || '#868e96' }}
+                                                    >
                                                         {ROLE_LABELS[member.role] || member.role}
                                                     </span>
                                                 </div>
                                             </div>
 
-                                            {/* Remove button */}
                                             {isAdmin && !isMe && (
                                                 <button
                                                     onClick={() => handleRemove(member.user_id)}
                                                     disabled={!!processing}
                                                     title="Удалить из чата"
-                                                    style={{
-                                                        width: 32, height: 32, borderRadius: '50%', border: 'none',
-                                                        background: isRemoving ? '#f8d7da' : '#fff0f0',
-                                                        color: '#e03131', cursor: 'pointer', fontSize: 15,
-                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                        flexShrink: 0, transition: 'all .15s',
-                                                        opacity: processing && !isRemoving ? 0.5 : 1
-                                                    }}
-                                                    onMouseEnter={e => (e.currentTarget.style.background = '#ffc9c9')}
-                                                    onMouseLeave={e => (e.currentTarget.style.background = '#fff0f0')}
+                                                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 transition hover:bg-rose-50 disabled:cursor-default disabled:opacity-50"
                                                 >
                                                     {isRemoving ? '⏳' : '✕'}
                                                 </button>
@@ -309,60 +399,38 @@ export default function ChatMembersModal({ chatId, currentUserId, onClose, onMem
                                 })}
                             </div>
                         )
+                    ) : filteredNonMembers.length === 0 ? (
+                        <div className="pt-8 text-center text-sm text-slate-400">
+                            {nonMembers.length === 0 ? 'Все менеджеры уже в чате' : 'Никого не найдено'}
+                        </div>
                     ) : (
-                        // Add tab
-                        filteredNonMembers.length === 0 ? (
-                            <div style={{ textAlign: 'center', color: '#aaa', paddingTop: 32, fontSize: 14 }}>
-                                {nonMembers.length === 0 ? 'Все менеджеры уже в чате' : 'Никого не найдено'}
-                            </div>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {filteredNonMembers.map(manager => {
-                                    const isAdding = processing === manager.id;
-                                    return (
-                                        <button
-                                            key={manager.id}
-                                            onClick={() => handleAdd(manager.id)}
-                                            disabled={!!processing}
-                                            style={{
-                                                display: 'flex', alignItems: 'center', gap: 12,
-                                                padding: '10px 12px', borderRadius: 12, border: 'none',
-                                                background: '#f8f9fa', cursor: 'pointer', textAlign: 'left',
-                                                opacity: processing && !isAdding ? 0.5 : 1,
-                                                transition: 'all .15s', width: '100%'
-                                            }}
-                                            onMouseEnter={e => { if (!processing) e.currentTarget.style.background = '#e8f4fd'; }}
-                                            onMouseLeave={e => { e.currentTarget.style.background = '#f8f9fa'; }}
-                                        >
-                                            <div style={{
-                                                width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-                                                background: '#e9ecef',
-                                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                                color: '#868e96', fontWeight: 700, fontSize: 15
-                                            }}>
-                                                {getInitials(manager.first_name, manager.last_name)}
+                        <div className="flex flex-col gap-3">
+                            {filteredNonMembers.map((manager) => {
+                                const isAdding = processing === manager.id;
+
+                                return (
+                                    <button
+                                        key={manager.id}
+                                        onClick={() => handleAdd(manager.id)}
+                                        disabled={!!processing}
+                                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-left shadow-sm transition hover:border-sky-200 hover:bg-sky-50 disabled:cursor-default disabled:opacity-50"
+                                    >
+                                        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-bold text-slate-500 ring-1 ring-slate-200">
+                                            {getInitials(manager.first_name, manager.last_name)}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-semibold text-slate-900">
+                                                {manager.first_name} {manager.last_name}
                                             </div>
-                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                <div style={{ fontWeight: 600, fontSize: 14, color: '#212529' }}>
-                                                    {manager.first_name} {manager.last_name}
-                                                </div>
-                                                <div style={{ fontSize: 12, color: '#868e96', marginTop: 1 }}>
-                                                    @{manager.username}
-                                                </div>
-                                            </div>
-                                            <div style={{
-                                                width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                                                background: isAdding ? '#a5d8ff' : '#d0ebff',
-                                                color: '#1c7ed6', display: 'flex', alignItems: 'center',
-                                                justifyContent: 'center', fontSize: 18, fontWeight: 700
-                                            }}>
-                                                {isAdding ? '⏳' : '+'}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        )
+                                            <div className="mt-1 text-xs text-slate-500">@{manager.username}</div>
+                                        </div>
+                                        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-sky-100 text-lg font-bold text-sky-700">
+                                            {isAdding ? '⏳' : '+'}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
                     )}
                 </div>
             </div>

@@ -9,10 +9,19 @@ import { getEffectiveRoleCapabilities } from '@/lib/access-control-server';
 import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { getEffectiveRouteRules } from '@/lib/rbac-server';
 import GlobalConsultantShell from '@/components/GlobalConsultantShell';
+import PwaBootstrap from './components/PwaBootstrap';
 
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
     description: "RetailCRM and Telphin Analytics",
+    applicationName: 'OKKRiteilCRM',
+    manifest: '/manifest.webmanifest',
+    themeColor: '#0f172a',
+    appleWebApp: {
+        capable: true,
+        statusBarStyle: 'default',
+        title: 'OKKRiteilCRM',
+    },
     icons: {
         icon: "/favicon-v2.png",
         apple: "/favicon-v2.png",
@@ -52,6 +61,7 @@ export default async function RootLayout({
         <html lang="en">
             <body className="bg-gray-50 min-h-screen flex text-gray-900">
                 <AuthProvider initialSession={session} initialPermissionRules={permissionRules} initialRoleCapabilities={roleCapabilities}>
+                    <PwaBootstrap />
                     <Suspense fallback={<div className="w-72 bg-gray-900 h-screen" />}>
                         <Sidebar />
                     </Suspense>

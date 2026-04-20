@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
+import {
+    createMessengerSystemMessage,
+    getMessengerActorLabel,
+    getMessengerManagerLabel,
+    leaveMessengerGroupChat,
+    touchMessengerChat,
+} from '@/lib/messenger/domain';
+import { logMessengerError } from '@/lib/messenger/logger';
+import {
+    getMessengerParticipant,
+    messengerChatMembersBodySchema,
+    messengerMemberQuerySchema,
+} from '@/lib/messenger/security';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,16 +28,17 @@ export async function GET(req: Request) {
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const { searchParams } = new URL(req.url);
-        const chatId = searchParams.get('chat_id');
-        if (!chatId) return NextResponse.json({ error: 'chat_id is required' }, { status: 400 });
+        const parsedQuery = messengerMemberQuerySchema.safeParse({
+            chat_id: searchParams.get('chat_id'),
+        });
+        if (!parsedQuery.success) {
+            return NextResponse.json({ error: parsedQuery.error.issues[0]?.message || 'Invalid query params' }, { status: 400 });
+        }
+
+        const { chat_id: chatId } = parsedQuery.data;
 
         // Verify user is a participant of this chat
-        const { data: myRecord } = await supabase
-            .from('chat_participants')
-            .select('role')
-            .eq('chat_id', chatId)
-            .eq('user_id', userId)
-            .single();
+        const myRecord = await getMessengerParticipant(chatId, userId);
 
         if (!myRecord) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
@@ -46,9 +60,12 @@ export async function GET(req: Request) {
         if (error) throw error;
 
         return NextResponse.json({ members: data, myRole: myRecord.role });
-    } catch (error: any) {
-        console.error('[Members API GET]', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError('members.get', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'GET',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }
 
@@ -63,16 +80,15 @@ export async function POST(req: Request) {
         const userId = session?.user?.retail_crm_manager_id;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { chat_id, user_id } = await req.json();
-        if (!chat_id || !user_id) return NextResponse.json({ error: 'chat_id and user_id required' }, { status: 400 });
+        const parsedBody = messengerChatMembersBodySchema.safeParse(await req.json());
+        if (!parsedBody.success) {
+            return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
+        }
+
+        const { chat_id, user_id } = parsedBody.data;
 
         // Verify caller is admin of this chat
-        const { data: myRecord } = await supabase
-            .from('chat_participants')
-            .select('role')
-            .eq('chat_id', chat_id)
-            .eq('user_id', userId)
-            .single();
+        const myRecord = await getMessengerParticipant(chat_id, userId);
 
         if (!myRecord || myRecord.role !== 'admin') {
             return NextResponse.json({ error: 'Only admins can add members' }, { status: 403 });
@@ -94,17 +110,17 @@ export async function POST(req: Request) {
 
         if (error) throw error;
 
-        // Post system message
-        await supabase.from('messages').insert({
-            chat_id,
-            sender_id: null,
-            content: `Новый участник добавлен в чат`
-        });
+        const actorLabel = getMessengerActorLabel(session);
+        const addedUserLabel = await getMessengerManagerLabel(user_id);
+        await createMessengerSystemMessage(chat_id, `${actorLabel} добавил в чат ${addedUserLabel}`);
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        console.error('[Members API POST]', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError('members.post', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'POST',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }
 
@@ -119,24 +135,44 @@ export async function DELETE(req: Request) {
         const userId = session?.user?.retail_crm_manager_id;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { chat_id, user_id } = await req.json();
-        if (!chat_id || !user_id) return NextResponse.json({ error: 'chat_id and user_id required' }, { status: 400 });
+        const parsedBody = messengerChatMembersBodySchema.safeParse(await req.json());
+        if (!parsedBody.success) {
+            return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
+        }
 
-        // Verify caller is admin of this chat
-        const { data: myRecord } = await supabase
-            .from('chat_participants')
-            .select('role')
-            .eq('chat_id', chat_id)
-            .eq('user_id', userId)
+        const { chat_id, user_id } = parsedBody.data;
+
+        const myRecord = await getMessengerParticipant(chat_id, userId);
+
+        const { data: chatRecord } = await supabase
+            .from('chats')
+            .select('id, type')
+            .eq('id', chat_id)
             .single();
+
+        if (!chatRecord) {
+            return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+        }
+
+        const isSelfRemoval = user_id === userId;
+
+        if (isSelfRemoval) {
+            if (chatRecord.type !== 'group') {
+                return NextResponse.json({ error: 'Cannot leave direct chat' }, { status: 400 });
+            }
+
+            const result = await leaveMessengerGroupChat({
+                chatId: chat_id,
+                userId,
+                actorRole: myRecord?.role,
+                actorLabel: getMessengerActorLabel(session),
+            });
+
+            return NextResponse.json({ success: true, left: true, chat_deleted: result.chatDeleted });
+        }
 
         if (!myRecord || myRecord.role !== 'admin') {
             return NextResponse.json({ error: 'Only admins can remove members' }, { status: 403 });
-        }
-
-        // Can't remove yourself (use leave chat logic instead)
-        if (user_id === userId) {
-            return NextResponse.json({ error: 'Cannot remove yourself' }, { status: 400 });
         }
 
         const { error } = await supabase
@@ -147,16 +183,17 @@ export async function DELETE(req: Request) {
 
         if (error) throw error;
 
-        // Post system message
-        await supabase.from('messages').insert({
-            chat_id,
-            sender_id: null,
-            content: `Участник удалён из чата`
-        });
+        const actorLabel = getMessengerActorLabel(session);
+        const removedUserLabel = await getMessengerManagerLabel(user_id);
+        await createMessengerSystemMessage(chat_id, `${actorLabel} удалил из чата ${removedUserLabel}`);
+        await touchMessengerChat(chat_id);
 
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        console.error('[Members API DELETE]', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError('members.delete', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'DELETE',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }

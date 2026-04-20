@@ -5,13 +5,13 @@ import MessengerPanel from '@/components/messenger/MessengerPanel';
 
 export default function MessengerPage() {
     return (
-        <div className="w-full px-4 py-6 md:px-6 md:py-8">
-            <div className="mb-6 flex items-center justify-between">
-                <div>
+        <div className="w-full px-0 py-0 md:px-6 md:py-8">
+            <div className="hidden md:mb-6 md:flex md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-gray-900">Корпоративный мессенджер</h1>
                     <p className="text-sm text-gray-500">Обмен сообщениями и файлами между сотрудниками и ИИ-агентами</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 self-start">
                     <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
                         Realtime Active
@@ -21,7 +21,7 @@ export default function MessengerPage() {
             
             <MessengerPanel />
             
-            <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="mt-8 hidden grid-cols-1 gap-6 md:grid md:grid-cols-3">
                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                     <h4 className="font-semibold text-blue-900 mb-1 flex items-center gap-2">
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

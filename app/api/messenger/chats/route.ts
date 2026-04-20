@@ -1,9 +1,60 @@
-// @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
+import {
+    createMessengerSystemMessage,
+    findExistingDirectMessengerChat,
+    getMessengerActorLabel,
+} from '@/lib/messenger/domain';
+import { logMessengerError } from '@/lib/messenger/logger';
+import {
+    messengerCreateChatBodySchema,
+    messengerDeleteChatBodySchema,
+    messengerPatchChatBodySchema,
+} from '@/lib/messenger/security';
+import { deleteChatAttachmentObjects } from '@/lib/messenger/storage';
 
 export const dynamic = 'force-dynamic';
+
+const RETAILCRM_BASE = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || process.env.NEXT_PUBLIC_RETAILCRM_URL || 'https://zmktlt.retailcrm.ru').replace(/\/+$/, '');
+
+type ParticipantRecord = {
+    chat_id: string;
+    last_read_at: string;
+};
+
+type ChatParticipant = {
+    user_id: number;
+    role: string;
+    last_read_at: string;
+    managers: {
+        id: number;
+        first_name: string | null;
+        last_name: string | null;
+    } | null;
+};
+
+type ChatRow = {
+    id: string;
+    type: 'direct' | 'group';
+    name: string | null;
+    context_order_id: number | null;
+    created_at: string;
+    updated_at: string;
+    chat_participants: ChatParticipant[];
+};
+
+type OrderContextRow = {
+    order_id: number;
+    number: string | null;
+    status: string | null;
+};
+
+type LastMessageRow = {
+    content: string | null;
+    created_at: string;
+    sender_id: number | null;
+};
 
 /**
  * GET /api/messenger/chats
@@ -24,7 +75,8 @@ export async function GET(req: Request) {
         const { data: participantRecords, error: participantError } = await supabase
             .from('chat_participants')
             .select('chat_id, last_read_at')
-            .eq('user_id', userId);
+            .eq('user_id', userId)
+            .returns<ParticipantRecord[]>();
 
         if (participantError) throw participantError;
 
@@ -40,7 +92,8 @@ export async function GET(req: Request) {
                     .from('messages')
                     .select('*', { count: 'exact', head: true })
                     .eq('chat_id', p.chat_id)
-                    .gt('created_at', p.last_read_at);
+                    .gt('created_at', p.last_read_at)
+                    .or(`sender_id.is.null,sender_id.neq.${userId}`);
                 totalUnread += (count || 0);
             }));
             return NextResponse.json({ count: totalUnread });
@@ -70,9 +123,26 @@ export async function GET(req: Request) {
                 )
             `)
             .in('id', chatIds)
-            .order('updated_at', { ascending: false });
+            .order('updated_at', { ascending: false })
+            .returns<ChatRow[]>();
 
         if (chatsError) throw chatsError;
+
+        const contextOrderIds = chats
+            .map((chat) => chat.context_order_id)
+            .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+
+        const { data: relatedOrders, error: relatedOrdersError } = contextOrderIds.length > 0
+            ? await supabase
+                .from('orders')
+                .select('order_id, number, status')
+                .in('order_id', contextOrderIds)
+                .returns<OrderContextRow[]>()
+            : { data: [] as OrderContextRow[], error: null };
+
+        if (relatedOrdersError) throw relatedOrdersError;
+
+        const orderById = new Map((relatedOrders || []).map((order) => [order.order_id, order]));
 
         // 3. Fetch last message and unread count for each chat
         const chatsWithMetadata = await Promise.all(chats.map(async (chat) => {
@@ -81,10 +151,11 @@ export async function GET(req: Request) {
                 .select('content, created_at, sender_id')
                 .eq('chat_id', chat.id)
                 .order('created_at', { ascending: false })
-                .limit(1);
+                .limit(1)
+                .returns<LastMessageRow[]>();
 
             // Get current user's last_read_at for this chat
-            const userParticipant = (chat.chat_participants as any[]).find(p => p.user_id === userId);
+            const userParticipant = chat.chat_participants.find((participant) => participant.user_id === userId);
             const lastReadAt = userParticipant?.last_read_at || new Date(0).toISOString();
 
             // Count messages created after lastReadAt
@@ -92,19 +163,27 @@ export async function GET(req: Request) {
                 .from('messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('chat_id', chat.id)
-                .gt('created_at', lastReadAt);
+                .gt('created_at', lastReadAt)
+                .or(`sender_id.is.null,sender_id.neq.${userId}`);
 
             return {
                 ...chat,
+                context_order: chat.context_order_id ? {
+                    ...orderById.get(chat.context_order_id),
+                    retailcrm_url: `${RETAILCRM_BASE}/orders/${chat.context_order_id}/edit`,
+                } : null,
                 last_message: lastMessages?.[0] || null,
                 unread_count: unreadCount || 0
             };
         }));
 
         return NextResponse.json(chatsWithMetadata);
-    } catch (error: any) {
-        console.error('[Chats API GET] Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError('chats.get', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'GET',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }
 
@@ -121,30 +200,32 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await req.json();
-        const { type, name, participant_ids, context_order_id } = body;
+        const parsedBody = messengerCreateChatBodySchema.safeParse(await req.json());
+        if (!parsedBody.success) {
+            return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
+        }
+
+        const { type, name, participant_ids, context_order_id } = parsedBody.data;
+
+        if (context_order_id !== null && context_order_id !== undefined) {
+            const { data: existingOrder } = await supabase
+                .from('orders')
+                .select('order_id')
+                .eq('order_id', context_order_id)
+                .maybeSingle();
+
+            if (!existingOrder) {
+                return NextResponse.json({ error: 'Order not found for context_order_id' }, { status: 400 });
+            }
+        }
 
         if (type === 'direct') {
-            if (!participant_ids || participant_ids.length !== 1) {
-                console.error('[Messenger API] Direct chat invalid participants:', participant_ids);
-                return NextResponse.json({ error: 'Direct chat requires exactly one other participant' }, { status: 400 });
-            }
             const otherUserId = participant_ids[0];
 
-            // Check if direct chat already exists between these two
-            // Query for chats of type direct where both users are participants
-            const { data: existingChats, error: searchError } = await supabase
-                .rpc('find_direct_chat', { 
-                    user_a: userId, 
-                    user_b: otherUserId 
-                });
+            const existingChat = await findExistingDirectMessengerChat(userId, otherUserId);
 
-            if (searchError) {
-                console.error('[Messenger API] find_direct_chat RPC Error:', searchError);
-            }
-
-            if (existingChats && existingChats.length > 0) {
-                return NextResponse.json(existingChats[0]);
+            if (existingChat) {
+                return NextResponse.json(existingChat);
             }
         }
 
@@ -160,14 +241,18 @@ export async function POST(req: Request) {
             .single();
 
         if (createError) {
-            console.error('[Messenger API] Create Chat Error:', createError);
+            logMessengerError('chats.create', createError, {
+                userId,
+                method: 'POST',
+                details: { stage: 'create_chat' },
+            });
             throw createError;
         }
 
         // Add participants
         const participants = [
             { chat_id: newChat.id, user_id: userId, role: 'admin' },
-            ...(participant_ids || []).map((pId: number) => ({
+            ...(participant_ids || []).map((pId) => ({
                 chat_id: newChat.id,
                 user_id: pId,
                 role: 'member'
@@ -179,14 +264,28 @@ export async function POST(req: Request) {
             .insert(participants);
 
         if (partError) {
-            console.error('[Messenger API] Add Participants Error:', partError);
+            logMessengerError('chats.create', partError, {
+                userId,
+                chatId: newChat.id,
+                method: 'POST',
+                details: { stage: 'add_participants' },
+            });
             throw partError;
         }
 
+        if (type === 'group') {
+            const actorLabel = getMessengerActorLabel(session);
+            const groupLabel = (name || 'Группа').trim();
+            await createMessengerSystemMessage(newChat.id, `${actorLabel} создал группу «${groupLabel}»`);
+        }
+
         return NextResponse.json(newChat);
-    } catch (error: any) {
-        console.error('[Messenger API] POST Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError('chats.create', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'POST',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }
 
@@ -196,7 +295,58 @@ export async function PATCH(req: Request) {
         const userId = session?.user?.retail_crm_manager_id;
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const { chat_id } = await req.json();
+        const parsedBody = messengerPatchChatBodySchema.safeParse(await req.json());
+        if (!parsedBody.success) {
+            return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
+        }
+
+        const { chat_id, name } = parsedBody.data;
+
+        if (typeof name === 'string') {
+            const normalizedName = name.trim();
+
+            const { data: myRecord } = await supabase
+                .from('chat_participants')
+                .select('role')
+                .eq('chat_id', chat_id)
+                .eq('user_id', userId)
+                .single();
+
+            if (!myRecord || myRecord.role !== 'admin') {
+                return NextResponse.json({ error: 'Only admins can rename group chats' }, { status: 403 });
+            }
+
+            const { data: chatRecord } = await supabase
+                .from('chats')
+                .select('id, type, name')
+                .eq('id', chat_id)
+                .single();
+
+            if (!chatRecord) {
+                return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+            }
+
+            if (chatRecord.type !== 'group') {
+                return NextResponse.json({ error: 'Only group chats can be renamed' }, { status: 400 });
+            }
+
+            const { error: updateError } = await supabase
+                .from('chats')
+                .update({
+                    name: normalizedName,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq('id', chat_id);
+
+            if (updateError) throw updateError;
+
+            if (chatRecord.name !== normalizedName) {
+                const actorLabel = getMessengerActorLabel(session);
+                await createMessengerSystemMessage(chat_id, `${actorLabel} изменил название чата на «${normalizedName}»`);
+            }
+
+            return NextResponse.json({ success: true, renamed: true, name: normalizedName });
+        }
 
         const { error } = await supabase
             .from('chat_participants')
@@ -206,7 +356,68 @@ export async function PATCH(req: Request) {
 
         if (error) throw error;
         return NextResponse.json({ success: true });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error: unknown) {
+        logMessengerError(typeof name === 'string' ? 'chats.rename' : 'chats.markRead', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'PATCH',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    }
+}
+
+export async function DELETE(req: Request) {
+    try {
+        const session = await getSession();
+        const userId = session?.user?.retail_crm_manager_id;
+        if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+        const parsedBody = messengerDeleteChatBodySchema.safeParse(await req.json());
+        if (!parsedBody.success) {
+            return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
+        }
+
+        const { chat_id } = parsedBody.data;
+
+        const { data: myRecord } = await supabase
+            .from('chat_participants')
+            .select('role')
+            .eq('chat_id', chat_id)
+            .eq('user_id', userId)
+            .single();
+
+        if (!myRecord || myRecord.role !== 'admin') {
+            return NextResponse.json({ error: 'Only admins can delete group chats' }, { status: 403 });
+        }
+
+        const { data: chatRecord } = await supabase
+            .from('chats')
+            .select('id, type')
+            .eq('id', chat_id)
+            .single();
+
+        if (!chatRecord) {
+            return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
+        }
+
+        if (chatRecord.type !== 'group') {
+            return NextResponse.json({ error: 'Only group chats can be deleted' }, { status: 400 });
+        }
+
+        await deleteChatAttachmentObjects(chat_id);
+
+        const { error } = await supabase
+            .from('chats')
+            .delete()
+            .eq('id', chat_id);
+
+        if (error) throw error;
+
+        return NextResponse.json({ success: true, deleted: true });
+    } catch (error: unknown) {
+        logMessengerError('chats.delete', error, {
+            userId: session?.user?.retail_crm_manager_id ?? null,
+            method: 'DELETE',
+        });
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
     }
 }

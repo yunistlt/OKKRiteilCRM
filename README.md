@@ -52,5 +52,14 @@
 2. После этого проверяется drift через check.
 3. Перед завершением изменений прогоняется общий quality gate.
 
+## ✅ Корпоративный мессенджер: smoke и release
+
+Для корпоративного мессенджера есть отдельный release-контур:
+
+- `npm run messenger:api-smoke` — automated smoke для deployed messenger API.
+- [OKK_CORPORATE_MESSENGER_SMOKE_CHECK.md](OKK_CORPORATE_MESSENGER_SMOKE_CHECK.md) — production checklist для браузеров, push и ручных сценариев.
+- [OKK_CORPORATE_MESSENGER_RELEASE_RUNBOOK.md](OKK_CORPORATE_MESSENGER_RELEASE_RUNBOOK.md) — практический порядок финального прогона и env.
+- [scripts/messenger_api_smoke.env.example](scripts/messenger_api_smoke.env.example) — шаблон env для запуска smoke-скрипта.
+
 ---
 *Документация по ролям ИИ-команды: [AI_STAFF_ROLES.md](file:///Users/andreiterenkov/Downloads/OKKRiteilCRM-actual/AI_STAFF_ROLES.md)*

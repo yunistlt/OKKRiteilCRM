@@ -7,7 +7,7 @@ import { ConsultantSelectionProvider, useConsultantSelection } from '@/component
 function GlobalConsultantShellContent({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const { selectedOrder } = useConsultantSelection();
-    const hideConsultant = pathname === '/login';
+    const hideConsultant = pathname === '/login' || pathname.startsWith('/messenger');
 
     if (hideConsultant) {
         return <>{children}</>;
