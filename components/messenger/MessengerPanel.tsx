@@ -146,7 +146,7 @@ export default function MessengerPanel() {
         <div className="grid h-[100dvh] min-h-0 gap-0 md:h-full md:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
             <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-white shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
-            <div className="flex h-full min-h-0 flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
+            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
             <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-white md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
                 <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] md:hidden">
@@ -296,7 +296,7 @@ export default function MessengerPanel() {
             </div>
 
             {/* Main Window / Message View */}
-            <div className={`${isChatOpen ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col bg-white`}>
+            <div className={`${isChatOpen ? 'flex' : 'hidden md:flex'} min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white`}>
                 {selectedChatId ? (
                     <MessageView 
                         chatId={selectedChatId} 
