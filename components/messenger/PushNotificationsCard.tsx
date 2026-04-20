@@ -197,8 +197,9 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         }
     };
 
-    const activeSubscription = subscriptions.find((subscription) => subscription.endpoint === currentEndpoint) || subscriptions[0] || null;
-    const activeSettings = activeSubscription?.settings || {};
+    const currentDeviceSubscription = subscriptions.find((subscription) => subscription.endpoint === currentEndpoint) || null;
+    const otherSubscriptions = subscriptions.filter((subscription) => subscription.endpoint !== currentEndpoint);
+    const activeSettings = currentDeviceSubscription?.settings || {};
     const mutedChatIds = activeSettings.muted_chat_ids || [];
     const isCurrentChatMuted = selectedChatId ? mutedChatIds.includes(selectedChatId) : false;
 
@@ -256,18 +257,42 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                 </span>
             </div>
 
-            {activeSubscription && (
+            {currentDeviceSubscription && (
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                     <div className="font-medium text-slate-800">
-                        {activeSubscription.device_label || 'Текущее устройство'}
+                        {currentDeviceSubscription.device_label || 'Текущее устройство'}
                     </div>
                     <div className="mt-1 break-words">
-                        {activeSubscription.platform || 'Web'}{activeSubscription.browser ? ` / ${activeSubscription.browser}` : ''}
+                        {currentDeviceSubscription.platform || 'Web'}{currentDeviceSubscription.browser ? ` / ${currentDeviceSubscription.browser}` : ''}
                     </div>
                 </div>
             )}
 
-            {activeSubscription && (
+            {!currentDeviceSubscription && otherSubscriptions.length > 0 && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    На этом устройстве push пока не включён. Ниже показаны только другие активные устройства этого пользователя.
+                </div>
+            )}
+
+            {otherSubscriptions.length > 0 && (
+                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <div className="font-medium text-slate-800">Другие устройства</div>
+                    <div className="mt-2 space-y-2">
+                        {otherSubscriptions.map((subscription) => (
+                            <div key={subscription.endpoint} className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                                <div className="font-medium text-slate-800">
+                                    {subscription.device_label || 'Устройство'}
+                                </div>
+                                <div className="mt-1 break-words text-slate-500">
+                                    {subscription.platform || 'Web'}{subscription.browser ? ` / ${subscription.browser}` : ''}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {currentDeviceSubscription && (
                 <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div>
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус доставки</div>
