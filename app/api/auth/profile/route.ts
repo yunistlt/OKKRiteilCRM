@@ -111,6 +111,7 @@ export async function PATCH(req: Request) {
             first_name: enrichedUpdated.first_name || null,
             last_name: enrichedUpdated.last_name || null,
             email: enrichedUpdated.email || null,
+            avatar_url: enrichedUpdated.avatar_url || null,
         });
 
         return NextResponse.json({ user: enrichedUpdated });

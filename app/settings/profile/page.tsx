@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { prepareAvatarFileForUpload } from '@/lib/messenger/avatar-client';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
@@ -9,6 +10,7 @@ import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
 export default function ProfilePage() {
     const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { refresh } = useAuth();
 
     const [user, setUser] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -115,8 +117,12 @@ export default function ProfilePage() {
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Ошибка сохранения');
             setSuccess('Профиль успешно обновлён');
+            if (data.user) {
+                setUser(data.user);
+            }
             setPassword('');
             setConfirmPassword('');
+            await refresh();
         } catch (err: any) {
             setError(err.message);
         } finally {

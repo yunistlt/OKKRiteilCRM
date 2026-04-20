@@ -9,6 +9,7 @@ export type SessionUser = {
     username: string | null;
     first_name: string | null;
     last_name: string | null;
+    avatar_url: string | null;
     role: AppRole;
     retail_crm_manager_id: number | null;
     auth_source: 'supabase' | 'legacy';
@@ -65,6 +66,7 @@ function buildSessionUser(input: {
     username?: unknown;
     first_name?: unknown;
     last_name?: unknown;
+    avatar_url?: unknown;
     role: unknown;
     retail_crm_manager_id?: unknown;
     auth_source: 'supabase' | 'legacy';
@@ -82,6 +84,7 @@ function buildSessionUser(input: {
         username: typeof input.username === 'string' && input.username.trim() ? input.username : null,
         first_name: typeof input.first_name === 'string' && input.first_name.trim() ? input.first_name : null,
         last_name: typeof input.last_name === 'string' && input.last_name.trim() ? input.last_name : null,
+        avatar_url: typeof input.avatar_url === 'string' && input.avatar_url.trim() ? input.avatar_url : null,
         role,
         retail_crm_manager_id: normalizeRetailCrmManagerId(input.retail_crm_manager_id),
         auth_source: input.auth_source,
@@ -177,6 +180,7 @@ async function parseSupabaseToken(token: string, request?: RequestLike): Promise
             username: nestedUser.username || appMetadata.username || userMetadata.username || payload.email,
             first_name: userMetadata.first_name || appMetadata.first_name || nestedUser.first_name,
             last_name: userMetadata.last_name || appMetadata.last_name || nestedUser.last_name,
+            avatar_url: userMetadata.avatar_url || appMetadata.avatar_url || nestedUser.avatar_url,
             role: appMetadata.role || userMetadata.role || nestedUser.role || payload.role,
             retail_crm_manager_id: appMetadata.retail_crm_manager_id || userMetadata.retail_crm_manager_id || nestedUser.retail_crm_manager_id || payload.retail_crm_manager_id,
             auth_source: 'supabase',
@@ -204,6 +208,7 @@ function normalizeLegacySession(payload: any): AppSession | null {
         username: legacyUser?.username,
         first_name: legacyUser?.first_name,
         last_name: legacyUser?.last_name,
+        avatar_url: legacyUser?.avatar_url,
         role: legacyUser?.role,
         retail_crm_manager_id: legacyUser?.retail_crm_manager_id,
         auth_source: 'legacy',
@@ -246,6 +251,7 @@ export async function login(user: {
     first_name?: string | null,
     last_name?: string | null,
     email?: string | null,
+    avatar_url?: string | null,
 }) {
     const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const session = await encrypt({ user, expires });
@@ -295,6 +301,7 @@ export async function setSupabaseSession(session: {
         first_name: session.user.first_name,
         last_name: session.user.last_name,
         email: session.user.email,
+        avatar_url: session.user.avatar_url,
     });
 }
 

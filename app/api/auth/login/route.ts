@@ -25,7 +25,7 @@ async function loadProfileByIdentifier(identifier: string) {
 
     const profileResult = await supabase
         .from('profiles')
-        .select('id, email, username, first_name, last_name, role, retail_crm_manager_id')
+        .select('id, email, username, first_name, last_name, avatar_url, role, retail_crm_manager_id')
         .or(`email.eq.${normalized},username.eq.${normalized}`)
         .maybeSingle();
 
@@ -49,7 +49,7 @@ async function loadProfileByIdentifier(identifier: string) {
 async function loadProfileById(userId: string) {
     const profileResult = await supabase
         .from('profiles')
-        .select('id, email, username, first_name, last_name, role, retail_crm_manager_id')
+        .select('id, email, username, first_name, last_name, avatar_url, role, retail_crm_manager_id')
         .eq('id', userId)
         .maybeSingle();
 
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
                             username: profile.username || authData.user.email || null,
                             first_name: profile.first_name || null,
                             last_name: profile.last_name || null,
+                            avatar_url: profile.avatar_url || null,
                             role: profile.role,
                             retail_crm_manager_id: profile.retail_crm_manager_id ?? null,
                         },
@@ -138,6 +139,7 @@ export async function POST(req: Request) {
             first_name: user.first_name || null,
             last_name: user.last_name || null,
             email: user.email || null,
+            avatar_url: user.avatar_url || null,
         });
 
         return NextResponse.json({

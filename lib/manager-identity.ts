@@ -1,6 +1,13 @@
 import type { AppSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 
+type AccountIdentity = {
+    retail_crm_manager_id?: number | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    avatar_url?: string | null;
+};
+
 type ManagerIdentity = {
     id: number;
     first_name: string | null;
@@ -12,7 +19,32 @@ type ManagerLinkedIdentity = {
     retail_crm_manager_id?: number | null;
     first_name?: string | null;
     last_name?: string | null;
+    avatar_url?: string | null;
 };
+
+async function loadAccountIdentity(userId: string): Promise<AccountIdentity | null> {
+    const profileResult = await supabase
+        .from('profiles')
+        .select('retail_crm_manager_id, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (!profileResult.error && profileResult.data) {
+        return profileResult.data;
+    }
+
+    const userResult = await supabase
+        .from('users')
+        .select('retail_crm_manager_id, first_name, last_name, avatar_url')
+        .eq('id', userId)
+        .maybeSingle();
+
+    if (!userResult.error && userResult.data) {
+        return userResult.data;
+    }
+
+    return null;
+}
 
 export async function loadManagerIdentity(retailCrmManagerId: number | null | undefined): Promise<ManagerIdentity | null> {
     if (!retailCrmManagerId) {
@@ -54,7 +86,18 @@ export async function enrichSessionWithManagerIdentity(session: AppSession | nul
         return session;
     }
 
-    const enrichedUser = await enrichManagerLinkedIdentity(session.user);
+    const accountIdentity = await loadAccountIdentity(session.user.id);
+    const baseUser = accountIdentity
+        ? {
+            ...session.user,
+            retail_crm_manager_id: accountIdentity.retail_crm_manager_id ?? session.user.retail_crm_manager_id,
+            first_name: accountIdentity.first_name || session.user.first_name || null,
+            last_name: accountIdentity.last_name || session.user.last_name || null,
+            avatar_url: accountIdentity.avatar_url || session.user.avatar_url || null,
+        }
+        : session.user;
+
+    const enrichedUser = await enrichManagerLinkedIdentity(baseUser);
     if (!enrichedUser) {
         return session;
     }
@@ -62,9 +105,10 @@ export async function enrichSessionWithManagerIdentity(session: AppSession | nul
     return {
         ...session,
         user: {
-            ...session.user,
+            ...baseUser,
             first_name: enrichedUser.first_name || null,
             last_name: enrichedUser.last_name || null,
+            avatar_url: enrichedUser.avatar_url || baseUser.avatar_url || null,
         },
     };
 }

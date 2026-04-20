@@ -3,8 +3,6 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAuth } from '@/components/auth/AuthProvider';
-import { clearCurrentPushSubscription } from '@/lib/messenger/push-client';
 
 type NavigatorWithBadge = Navigator & {
     setAppBadge?: (count?: number) => Promise<void>;
@@ -14,17 +12,14 @@ type NavigatorWithBadge = Navigator & {
 export default function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
     const pathname = usePathname();
-    const { user } = useAuth();
     const hideOnMessengerMobile = pathname.startsWith('/messenger');
 
     useEffect(() => {
-        if (user) {
-            fetchUnreadCount();
-        }
+        fetchUnreadCount();
 
         const interval = setInterval(fetchUnreadCount, 30000); // Check every 30s
         return () => clearInterval(interval);
-    }, [user]);
+    }, []);
 
     const fetchUnreadCount = async () => {
         try {
@@ -36,12 +31,6 @@ export default function Header() {
         } catch (e) {
             console.error('Failed to fetch unread count:', e);
         }
-    };
-
-    const handleLogout = async () => {
-        await clearCurrentPushSubscription().catch(() => undefined);
-        await fetch('/api/auth/logout', { method: 'POST' });
-        window.location.href = '/login';
     };
 
     const getPageTitle = () => {
@@ -86,7 +75,7 @@ export default function Header() {
                 </div>
 
                 <div className="flex items-center gap-6">
-                    {/* Meta Info / Notifications / User */}
+                    {/* Meta Info / Notifications */}
                     <div className="flex items-center gap-4 pl-6 border-l border-gray-100">
                         {/* Notifications / Messenger Quick Link */}
                         <Link href="/messenger" className="relative p-2 text-gray-400 hover:text-blue-600 transition-all hover:scale-110">
@@ -97,35 +86,6 @@ export default function Header() {
                                 </span>
                             )}
                         </Link>
-
-                        {/* User Profile */}
-                        {user && (
-                            <div className="flex items-center gap-3 ml-2">
-                                {(() => {
-                                    const username = user.username || 'User';
-                                    return (
-                                        <>
-                                <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-gray-900 leading-tight truncate max-w-[120px]">{username}</span>
-                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">{user.role}</span>
-                                </div>
-                                <div className="w-9 h-9 rounded-xl bg-gray-900 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-lg shadow-gray-200">
-                                    {username.substring(0, 2).toUpperCase()}
-                                </div>
-                                        </>
-                                    );
-                                })()}
-                                <button
-                                    onClick={handleLogout}
-                                    className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                                    title="Выйти"
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                    </svg>
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>
