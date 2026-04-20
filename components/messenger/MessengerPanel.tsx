@@ -163,12 +163,12 @@ export default function MessengerPanel() {
             <div className="flex h-full min-h-0 flex-col md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
             <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-[#eef3f8] md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
-                <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:hidden">
-                    <div className="flex items-center justify-between gap-3">
+                <div className="border-b border-slate-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.98)_0%,_rgba(248,250,252,0.96)_100%)] px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.35rem)] md:hidden">
+                    <div className="flex items-center justify-between gap-2">
                         <button
                             type="button"
                             onClick={openMobileSidebar}
-                            className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
+                            className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
                             aria-label="Открыть меню"
                         >
                             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -178,17 +178,17 @@ export default function MessengerPanel() {
 
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                                <div className="flex -space-x-2">
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-xs font-bold text-white shadow-sm">
+                                <div className="flex -space-x-1.5">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-[11px] font-bold text-white shadow-sm">
                                         {(currentUser?.username || 'U').slice(0, 2).toUpperCase()}
                                     </div>
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-xs font-bold text-white shadow-sm">
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-[11px] font-bold text-white shadow-sm">
                                         {String(unreadChatsCount || 0).padStart(2, '0')}
                                     </div>
                                 </div>
                                 <div className="min-w-0">
-                                    <div className="truncate text-[21px] font-bold tracking-tight text-slate-900">Чаты</div>
-                                    <div className="truncate text-[11px] font-medium text-slate-400">
+                                    <div className="truncate text-[18px] font-bold tracking-tight text-slate-900">Чаты</div>
+                                    <div className="truncate text-[10px] font-medium leading-tight text-slate-400">
                                         {currentUser?.username || 'Менеджер'} • {totalUnread > 0 ? `${totalUnread} новых` : 'всё прочитано'}
                                     </div>
                                 </div>
@@ -199,20 +199,20 @@ export default function MessengerPanel() {
                             <button
                                 type="button"
                                 onClick={() => searchInputRef.current?.focus()}
-                                className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
                                 aria-label="Поиск"
                             >
-                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0Z" />
                                 </svg>
                             </button>
                             <button 
-                                className="flex h-11 w-11 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
+                                className="flex h-10 w-10 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-600"
                                 onClick={() => setIsCreateModalOpen(true)}
                                 title="Создать чат"
                                 aria-label="Создать чат"
                             >
-                                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                                 </svg>
                             </button>
@@ -220,7 +220,7 @@ export default function MessengerPanel() {
                     </div>
                 </div>
 
-                <div className="border-b border-slate-200 bg-white/90 px-4 pb-4 pt-4 backdrop-blur-sm md:px-5">
+                <div className="border-b border-slate-200 bg-white/90 px-4 pb-3 pt-3 backdrop-blur-sm md:px-5 md:pb-4 md:pt-4">
                     <div className="hidden items-center justify-between md:flex">
                         <div>
                             <div className="text-[22px] font-bold tracking-tight text-slate-900">Чаты</div>
@@ -237,18 +237,18 @@ export default function MessengerPanel() {
                     </button>
                     </div>
 
-                    <div className="mt-4">
+                    <div className="mt-0 md:mt-4">
                         <input
                             ref={searchInputRef}
                             type="text"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             placeholder="Поиск"
-                            className="w-full rounded-full border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
+                            className="w-full rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-700 outline-none transition focus:border-sky-300 focus:bg-white focus:ring-4 focus:ring-sky-100"
                         />
                     </div>
 
-                    <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar">
+                    <div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar">
                         {[
                             { value: 'all', label: 'Все' },
                             { value: 'unread', label: 'Новые' },
@@ -259,7 +259,7 @@ export default function MessengerPanel() {
                                 key={filterOption.value}
                                 type="button"
                                 onClick={() => setChatFilter(filterOption.value as 'all' | 'unread' | 'direct' | 'group')}
-                                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                                className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
                                     chatFilter === filterOption.value
                                         ? 'bg-slate-900 text-white shadow-sm'
                                         : 'bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50'
