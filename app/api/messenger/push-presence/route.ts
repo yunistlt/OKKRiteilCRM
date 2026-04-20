@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { getMessengerErrorMessage, isMissingMessengerRelationError } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
 import { messengerPushPresenceBodySchema } from '@/lib/messenger/security';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
+
+const PUSH_RUNTIME_TABLES = ['messenger_push_presence', 'messenger_push_subscriptions'];
+const PUSH_RUNTIME_MISSING_MESSAGE = 'Push runtime-таблицы ещё не применены в Supabase. Выполните SQL-миграции 20260420_messenger_push_subscriptions.sql и 20260420_messenger_push_runtime.sql.';
 
 export async function POST(req: Request) {
     let userId: number | null = null;
@@ -43,10 +47,18 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_RUNTIME_TABLES)) {
+            return NextResponse.json({
+                success: false,
+                skipped: 'push_runtime_tables_missing',
+                error: PUSH_RUNTIME_MISSING_MESSAGE,
+            });
+        }
+
         logMessengerError('push.presence', error, {
             userId,
             method: 'POST',
         });
-        return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+        return NextResponse.json({ error: getMessengerErrorMessage(error, 'Не удалось обновить push-presence') }, { status: 500 });
     }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { getMessengerErrorMessage } from '@/lib/messenger/error';
+import { getMessengerErrorMessage, isMissingMessengerRelationError } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
 import {
     messengerDeletePushSubscriptionBodySchema,
@@ -10,6 +10,9 @@ import {
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
+
+const PUSH_SUBSCRIPTIONS_TABLE = 'messenger_push_subscriptions';
+const PUSH_SUBSCRIPTIONS_MISSING_MESSAGE = 'Push-таблица messenger_push_subscriptions ещё не применена в Supabase. Выполните SQL-миграцию 20260420_messenger_push_subscriptions.sql.';
 
 export async function GET() {
     let userId: number | null = null;
@@ -33,6 +36,14 @@ export async function GET() {
 
         return NextResponse.json({ subscriptions: data || [] });
     } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_SUBSCRIPTIONS_TABLE)) {
+            return NextResponse.json({
+                subscriptions: [],
+                featureAvailable: false,
+                error: PUSH_SUBSCRIPTIONS_MISSING_MESSAGE,
+            });
+        }
+
         logMessengerError('push.get', error, {
             userId,
             method: 'GET',
@@ -93,6 +104,10 @@ export async function PATCH(req: Request) {
 
         return NextResponse.json({ success: true, subscription: data });
     } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_SUBSCRIPTIONS_TABLE)) {
+            return NextResponse.json({ error: PUSH_SUBSCRIPTIONS_MISSING_MESSAGE }, { status: 503 });
+        }
+
         logMessengerError('push.post', error, {
             userId,
             method: 'PATCH',
@@ -146,6 +161,10 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ success: true, subscription: data });
     } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_SUBSCRIPTIONS_TABLE)) {
+            return NextResponse.json({ error: PUSH_SUBSCRIPTIONS_MISSING_MESSAGE }, { status: 503 });
+        }
+
         logMessengerError('push.post', error, {
             userId,
             method: 'POST',
@@ -181,6 +200,10 @@ export async function DELETE(req: Request) {
 
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_SUBSCRIPTIONS_TABLE)) {
+            return NextResponse.json({ error: PUSH_SUBSCRIPTIONS_MISSING_MESSAGE }, { status: 503 });
+        }
+
         logMessengerError('push.delete', error, {
             userId,
             method: 'DELETE',

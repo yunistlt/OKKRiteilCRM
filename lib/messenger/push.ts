@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import { isMissingMessengerRelationError } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
 import { supabase } from '@/utils/supabase';
 
@@ -56,6 +57,11 @@ const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:ops@okkriteilcrm.local';
 const ACTIVE_PRESENCE_TTL_MS = 90_000;
+const PUSH_RUNTIME_TABLES = [
+    'messenger_push_subscriptions',
+    'messenger_push_presence',
+    'messenger_push_delivery_logs',
+];
 
 let vapidConfigured = false;
 
@@ -178,6 +184,10 @@ async function logDelivery(params: {
         });
 
     if (error) {
+        if (isMissingMessengerRelationError(error, 'messenger_push_delivery_logs')) {
+            return;
+        }
+
         logMessengerError('push.dispatch', error, {
             chatId: params.chatId,
             messageId: params.messageId,
@@ -198,113 +208,150 @@ async function revokeSubscription(endpoint: string) {
 export async function dispatchMessengerPushNotifications(params: {
     message: DispatchMessageRow;
 }) {
-    const { message } = params;
+    try {
+        const { message } = params;
 
-    if (!message.sender_id) {
-        return { delivered: 0, skipped: 0, reason: 'system_message' };
-    }
+        if (!message.sender_id) {
+            return { delivered: 0, skipped: 0, reason: 'system_message' };
+        }
 
-    if (!ensureVapidConfigured()) {
-        return { delivered: 0, skipped: 0, reason: 'vapid_not_configured' };
-    }
+        if (!ensureVapidConfigured()) {
+            return { delivered: 0, skipped: 0, reason: 'vapid_not_configured' };
+        }
 
-    const [{ data: chatParticipants, error: participantsError }, { data: chat, error: chatError }] = await Promise.all([
-        supabase
-            .from('chat_participants')
-            .select(`
-                user_id,
-                managers (
-                    first_name,
-                    last_name,
-                    username
-                )
-            `)
-            .eq('chat_id', message.chat_id),
-        supabase
-            .from('chats')
-            .select('id, type, name')
-            .eq('id', message.chat_id)
-            .maybeSingle(),
-    ]);
+        const [{ data: chatParticipants, error: participantsError }, { data: chat, error: chatError }] = await Promise.all([
+            supabase
+                .from('chat_participants')
+                .select(`
+                    user_id,
+                    managers (
+                        first_name,
+                        last_name,
+                        username
+                    )
+                `)
+                .eq('chat_id', message.chat_id),
+            supabase
+                .from('chats')
+                .select('id, type, name')
+                .eq('id', message.chat_id)
+                .maybeSingle(),
+        ]);
 
-    if (participantsError) throw participantsError;
-    if (chatError) throw chatError;
+        if (participantsError) throw participantsError;
+        if (chatError) throw chatError;
 
-    const typedChatParticipants = (chatParticipants || []) as ChatParticipantRow[];
-    const typedChat = (chat || null) as ChatRow | null;
+        const typedChatParticipants = (chatParticipants || []) as ChatParticipantRow[];
+        const typedChat = (chat || null) as ChatRow | null;
 
-    const sender = typedChatParticipants.find((participant) => participant.user_id === message.sender_id);
-    const participantByUserId = new Map(typedChatParticipants.map((participant) => [participant.user_id, participant]));
-    const senderName = `${sender?.managers?.first_name || ''} ${sender?.managers?.last_name || ''}`.trim()
-        || sender?.managers?.username
-        || `Сотрудник ${message.sender_id}`;
+        const sender = typedChatParticipants.find((participant) => participant.user_id === message.sender_id);
+        const participantByUserId = new Map(typedChatParticipants.map((participant) => [participant.user_id, participant]));
+        const senderName = `${sender?.managers?.first_name || ''} ${sender?.managers?.last_name || ''}`.trim()
+            || sender?.managers?.username
+            || `Сотрудник ${message.sender_id}`;
 
-    const recipientIds = typedChatParticipants
-        .map((participant) => participant.user_id)
-        .filter((userId) => userId !== message.sender_id);
+        const recipientIds = typedChatParticipants
+            .map((participant) => participant.user_id)
+            .filter((userId) => userId !== message.sender_id);
 
-    if (recipientIds.length === 0) {
-        return { delivered: 0, skipped: 0, reason: 'no_recipients' };
-    }
+        if (recipientIds.length === 0) {
+            return { delivered: 0, skipped: 0, reason: 'no_recipients' };
+        }
 
-    const { data: subscriptions, error: subscriptionsError } = await supabase
-        .from('messenger_push_subscriptions')
-        .select('endpoint, p256dh, auth, user_id, platform, browser, device_label, last_seen_at, settings, chat_scope')
-        .in('user_id', recipientIds)
-        .is('revoked_at', null)
-        .eq('permission_state', 'granted');
+        const { data: subscriptions, error: subscriptionsError } = await supabase
+            .from('messenger_push_subscriptions')
+            .select('endpoint, p256dh, auth, user_id, platform, browser, device_label, last_seen_at, settings, chat_scope')
+            .in('user_id', recipientIds)
+            .is('revoked_at', null)
+            .eq('permission_state', 'granted');
 
-    if (subscriptionsError) throw subscriptionsError;
+        if (subscriptionsError) throw subscriptionsError;
 
-    const typedSubscriptions = (subscriptions || []) as PushSubscriptionRow[];
+        const typedSubscriptions = (subscriptions || []) as PushSubscriptionRow[];
 
-    if (typedSubscriptions.length === 0) {
-        return { delivered: 0, skipped: 0, reason: 'no_subscriptions' };
-    }
+        if (typedSubscriptions.length === 0) {
+            return { delivered: 0, skipped: 0, reason: 'no_subscriptions' };
+        }
 
-    const activeSince = new Date(Date.now() - ACTIVE_PRESENCE_TTL_MS).toISOString();
-    const subscriptionEndpoints = typedSubscriptions.map((subscription) => subscription.endpoint);
+        const activeSince = new Date(Date.now() - ACTIVE_PRESENCE_TTL_MS).toISOString();
+        const subscriptionEndpoints = typedSubscriptions.map((subscription) => subscription.endpoint);
 
-    const { data: activePresence, error: activePresenceError } = await supabase
-        .from('messenger_push_presence')
-        .select('endpoint, user_id, chat_id')
-        .in('endpoint', subscriptionEndpoints)
-        .eq('page_visible', true)
-        .eq('focused', true)
-        .gte('last_seen_at', activeSince);
+        const { data: activePresence, error: activePresenceError } = await supabase
+            .from('messenger_push_presence')
+            .select('endpoint, user_id, chat_id')
+            .in('endpoint', subscriptionEndpoints)
+            .eq('page_visible', true)
+            .eq('focused', true)
+            .gte('last_seen_at', activeSince);
 
-    if (activePresenceError) throw activePresenceError;
+        if (activePresenceError) throw activePresenceError;
 
-    const activePresenceRows = (activePresence || []) as PushPresenceRow[];
-    const activeEndpointSet = new Set(activePresenceRows.map((entry) => entry.endpoint));
-    const activeUsersInCurrentChat = new Set(
-        activePresenceRows
-            .filter((entry) => entry.chat_id === message.chat_id)
-            .map((entry) => entry.user_id)
-    );
-    const subscriptionsByUserId = typedSubscriptions.reduce<Map<number, PushSubscriptionRow[]>>((acc, subscription) => {
-        const current = acc.get(subscription.user_id) || [];
-        current.push(subscription);
-        acc.set(subscription.user_id, current);
-        return acc;
-    }, new Map());
+        const activePresenceRows = (activePresence || []) as PushPresenceRow[];
+        const activeEndpointSet = new Set(activePresenceRows.map((entry) => entry.endpoint));
+        const activeUsersInCurrentChat = new Set(
+            activePresenceRows
+                .filter((entry) => entry.chat_id === message.chat_id)
+                .map((entry) => entry.user_id)
+        );
+        const subscriptionsByUserId = typedSubscriptions.reduce<Map<number, PushSubscriptionRow[]>>((acc, subscription) => {
+            const current = acc.get(subscription.user_id) || [];
+            current.push(subscription);
+            acc.set(subscription.user_id, current);
+            return acc;
+        }, new Map());
 
-    const title = typedChat?.type === 'group'
-        ? `${senderName} написал в «${typedChat?.name || 'Группа'}»`
-        : `${senderName} написал вам`;
-    let delivered = 0;
-    let skipped = 0;
+        const title = typedChat?.type === 'group'
+            ? `${senderName} написал в «${typedChat?.name || 'Группа'}»`
+            : `${senderName} написал вам`;
+        let delivered = 0;
+        let skipped = 0;
 
-    const primarySubscriptions: PushSubscriptionRow[] = [];
-    await Promise.allSettled(Array.from(subscriptionsByUserId.entries()).map(async ([recipientUserId, userSubscriptions]) => {
-        if (activeUsersInCurrentChat.has(recipientUserId)) {
-            skipped += userSubscriptions.length;
-            await Promise.all(userSubscriptions.map((subscription) => logDelivery({
+        const primarySubscriptions: PushSubscriptionRow[] = [];
+        await Promise.allSettled(Array.from(subscriptionsByUserId.entries()).map(async ([recipientUserId, userSubscriptions]) => {
+            if (activeUsersInCurrentChat.has(recipientUserId)) {
+                skipped += userSubscriptions.length;
+                await Promise.all(userSubscriptions.map((subscription) => logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId,
+                    endpoint: subscription.endpoint,
+                    status: 'skipped_active_chat_user',
+                    payload: {
+                        title,
+                        body: buildNotificationBody(subscription, message, senderName),
+                        chat_id: message.chat_id,
+                        message_id: message.id,
+                    },
+                })));
+                return;
+            }
+
+            const sortedSubscriptions = [...userSubscriptions].sort((left, right) => {
+                const [leftActive, leftLastSeenAt] = getSubscriptionPriorityScore(left, activeEndpointSet);
+                const [rightActive, rightLastSeenAt] = getSubscriptionPriorityScore(right, activeEndpointSet);
+
+                if (leftActive !== rightActive) {
+                    return rightActive - leftActive;
+                }
+
+                return rightLastSeenAt - leftLastSeenAt;
+            });
+
+            const primarySubscription = sortedSubscriptions[0];
+            primarySubscriptions.push(primarySubscription);
+
+            const duplicateSubscriptions = sortedSubscriptions.slice(1);
+            if (duplicateSubscriptions.length === 0) {
+                return;
+            }
+
+            skipped += duplicateSubscriptions.length;
+            await Promise.all(duplicateSubscriptions.map((subscription) => logDelivery({
                 messageId: message.id,
                 chatId: message.chat_id,
                 recipientUserId,
                 endpoint: subscription.endpoint,
-                status: 'skipped_active_chat_user',
+                status: 'skipped_duplicate_device',
                 payload: {
                     title,
                     body: buildNotificationBody(subscription, message, senderName),
@@ -312,137 +359,108 @@ export async function dispatchMessengerPushNotifications(params: {
                     message_id: message.id,
                 },
             })));
-            return;
-        }
+        }));
 
-        const sortedSubscriptions = [...userSubscriptions].sort((left, right) => {
-            const [leftActive, leftLastSeenAt] = getSubscriptionPriorityScore(left, activeEndpointSet);
-            const [rightActive, rightLastSeenAt] = getSubscriptionPriorityScore(right, activeEndpointSet);
-
-            if (leftActive !== rightActive) {
-                return rightActive - leftActive;
-            }
-
-            return rightLastSeenAt - leftLastSeenAt;
-        });
-
-        const primarySubscription = sortedSubscriptions[0];
-        primarySubscriptions.push(primarySubscription);
-
-        const duplicateSubscriptions = sortedSubscriptions.slice(1);
-        if (duplicateSubscriptions.length === 0) {
-            return;
-        }
-
-        skipped += duplicateSubscriptions.length;
-        await Promise.all(duplicateSubscriptions.map((subscription) => logDelivery({
-            messageId: message.id,
-            chatId: message.chat_id,
-            recipientUserId,
-            endpoint: subscription.endpoint,
-            status: 'skipped_duplicate_device',
-            payload: {
+        await Promise.allSettled(primarySubscriptions.map(async (subscription) => {
+            const recipient = participantByUserId.get(subscription.user_id);
+            const recipientUsername = recipient?.managers?.username || null;
+            const body = buildNotificationBody(subscription, message, senderName);
+            const payload = {
                 title,
-                body: buildNotificationBody(subscription, message, senderName),
+                body,
                 chat_id: message.chat_id,
                 message_id: message.id,
-            },
-        })));
-    }));
+                sender_name: senderName,
+                preview: body,
+                click_action: `/messenger?chat_id=${encodeURIComponent(message.chat_id)}&message_id=${encodeURIComponent(message.id)}`,
+            };
 
-    await Promise.allSettled(primarySubscriptions.map(async (subscription) => {
-        const recipient = participantByUserId.get(subscription.user_id);
-        const recipientUsername = recipient?.managers?.username || null;
-        const body = buildNotificationBody(subscription, message, senderName);
-        const payload = {
-            title,
-            body,
-            chat_id: message.chat_id,
-            message_id: message.id,
-            sender_name: senderName,
-            preview: body,
-            click_action: `/messenger?chat_id=${encodeURIComponent(message.chat_id)}&message_id=${encodeURIComponent(message.id)}`,
-        };
-
-        if (isSubscriptionMuted(subscription, message.chat_id)) {
-            skipped += 1;
-            await logDelivery({
-                messageId: message.id,
-                chatId: message.chat_id,
-                recipientUserId: subscription.user_id,
-                endpoint: subscription.endpoint,
-                status: 'skipped_muted',
-                payload,
-            });
-            return;
-        }
-
-        if (!shouldSendByDeliveryMode({ subscription, chat: chat || null, recipientUsername, message })) {
-            skipped += 1;
-            await logDelivery({
-                messageId: message.id,
-                chatId: message.chat_id,
-                recipientUserId: subscription.user_id,
-                endpoint: subscription.endpoint,
-                status: 'skipped_delivery_mode',
-                payload,
-            });
-            return;
-        }
-
-        try {
-            await webpush.sendNotification(
-                {
+            if (isSubscriptionMuted(subscription, message.chat_id)) {
+                skipped += 1;
+                await logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId: subscription.user_id,
                     endpoint: subscription.endpoint,
-                    keys: {
-                        p256dh: subscription.p256dh,
-                        auth: subscription.auth,
-                    },
-                },
-                JSON.stringify(payload),
-            );
-
-            delivered += 1;
-            await logDelivery({
-                messageId: message.id,
-                chatId: message.chat_id,
-                recipientUserId: subscription.user_id,
-                endpoint: subscription.endpoint,
-                status: 'sent',
-                payload,
-            });
-        } catch (error: unknown) {
-            const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
-                ? String((error as { statusCode?: number }).statusCode)
-                : undefined;
-            const errorMessage = error instanceof Error ? error.message : String(error);
-
-            if (statusCode === '404' || statusCode === '410') {
-                await revokeSubscription(subscription.endpoint);
+                    status: 'skipped_muted',
+                    payload,
+                });
+                return;
             }
 
-            await logDelivery({
-                messageId: message.id,
-                chatId: message.chat_id,
-                recipientUserId: subscription.user_id,
-                endpoint: subscription.endpoint,
-                status: 'failed',
-                payload,
-                errorCode: statusCode,
-                errorMessage,
-            });
-
-            logMessengerError('push.dispatch', error, {
-                chatId: message.chat_id,
-                messageId: message.id,
-                userId: subscription.user_id,
-                details: {
+            if (!shouldSendByDeliveryMode({ subscription, chat: chat || null, recipientUsername, message })) {
+                skipped += 1;
+                await logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId: subscription.user_id,
                     endpoint: subscription.endpoint,
-                    statusCode,
-                },
-            });
-        }
-    }));
+                    status: 'skipped_delivery_mode',
+                    payload,
+                });
+                return;
+            }
 
-    return { delivered, skipped, reason: 'completed' };
+            try {
+                await webpush.sendNotification(
+                    {
+                        endpoint: subscription.endpoint,
+                        keys: {
+                            p256dh: subscription.p256dh,
+                            auth: subscription.auth,
+                        },
+                    },
+                    JSON.stringify(payload),
+                );
+
+                delivered += 1;
+                await logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId: subscription.user_id,
+                    endpoint: subscription.endpoint,
+                    status: 'sent',
+                    payload,
+                });
+            } catch (error: unknown) {
+                const statusCode = typeof error === 'object' && error !== null && 'statusCode' in error
+                    ? String((error as { statusCode?: number }).statusCode)
+                    : undefined;
+                const errorMessage = error instanceof Error ? error.message : String(error);
+
+                if (statusCode === '404' || statusCode === '410') {
+                    await revokeSubscription(subscription.endpoint);
+                }
+
+                await logDelivery({
+                    messageId: message.id,
+                    chatId: message.chat_id,
+                    recipientUserId: subscription.user_id,
+                    endpoint: subscription.endpoint,
+                    status: 'failed',
+                    payload,
+                    errorCode: statusCode,
+                    errorMessage,
+                });
+
+                logMessengerError('push.dispatch', error, {
+                    chatId: message.chat_id,
+                    messageId: message.id,
+                    userId: subscription.user_id,
+                    details: {
+                        endpoint: subscription.endpoint,
+                        statusCode,
+                    },
+                });
+            }
+        }));
+
+        return { delivered, skipped, reason: 'completed' };
+    } catch (error: unknown) {
+        if (isMissingMessengerRelationError(error, PUSH_RUNTIME_TABLES)) {
+            return { delivered: 0, skipped: 0, reason: 'push_tables_missing' };
+        }
+
+        throw error;
+    }
 }

@@ -43,13 +43,17 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
     const loadSubscriptions = async () => {
         try {
             const response = await fetch('/api/messenger/push-subscriptions');
+            const data = await response.json();
             if (!response.ok) {
-                const data = await response.json().catch(() => null);
                 throw new Error(data?.error || 'Не удалось загрузить push-подписки');
             }
 
-            const data = await response.json();
             const nextSubscriptions = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+
+            if (typeof data.error === 'string' && data.error.length > 0) {
+                setError(data.error);
+            }
+
             setSubscriptions(nextSubscriptions);
             return nextSubscriptions as MessengerPushSubscriptionSummary[];
         } catch (loadError) {
