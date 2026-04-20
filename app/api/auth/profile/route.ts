@@ -89,28 +89,31 @@ export async function PATCH(req: Request) {
             );
         }
 
-        const { data: updated, error } = await supabase
+        const { error } = await supabase
             .from(profile.source)
             .update(updates)
-            .eq('id', session.user.id)
-            .select('id, email, username, role, retail_crm_manager_id, first_name, last_name, avatar_url')
-            .single();
+            .eq('id', session.user.id);
 
         if (error) throw error;
 
-        const enrichedUpdated = await enrichManagerLinkedIdentity(updated);
+        const refreshedProfile = await loadProfile(session.user.id);
+        if (!refreshedProfile?.user) {
+            return NextResponse.json({ error: 'Не удалось перечитать профиль после сохранения' }, { status: 500 });
+        }
+
+        const enrichedUpdated = refreshedProfile.user;
 
         await login({
-            id: updated.id,
-            username: updated.username || updated.email,
-            role: updated.role,
-            retail_crm_manager_id: updated.retail_crm_manager_id,
-            first_name: enrichedUpdated?.first_name || updated.first_name || null,
-            last_name: enrichedUpdated?.last_name || updated.last_name || null,
-            email: updated.email || null,
+            id: enrichedUpdated.id,
+            username: enrichedUpdated.username || enrichedUpdated.email,
+            role: enrichedUpdated.role,
+            retail_crm_manager_id: enrichedUpdated.retail_crm_manager_id,
+            first_name: enrichedUpdated.first_name || null,
+            last_name: enrichedUpdated.last_name || null,
+            email: enrichedUpdated.email || null,
         });
 
-        return NextResponse.json({ user: enrichedUpdated || updated });
+        return NextResponse.json({ user: enrichedUpdated });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
