@@ -3,6 +3,7 @@ export interface MessengerManagerSummary {
     first_name?: string | null;
     last_name?: string | null;
     username?: string | null;
+    avatar_url?: string | null;
 }
 
 export interface MessengerParticipant {
@@ -41,6 +42,7 @@ export interface MessengerChat {
     id: string;
     type: 'direct' | 'group';
     name: string | null;
+    avatar_url?: string | null;
     context_order_id?: number | null;
     context_order?: MessengerOrderContext | null;
     chat_participants?: MessengerParticipant[];

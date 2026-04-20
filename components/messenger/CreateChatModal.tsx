@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import ChatAvatar from './ChatAvatar';
 
 interface Manager {
     id: number;
     first_name: string;
     last_name: string;
     username: string;
+    avatar_url?: string | null;
 }
 
 interface CreateChatModalProps {
@@ -151,10 +153,16 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                                                     : 'bg-white border-transparent hover:bg-gray-50 text-gray-700'
                                             }`}
                                         >
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${
-                                                isSelected ? 'bg-white text-blue-600' : 'bg-gray-100 text-gray-400'
-                                            }`}>
-                                                {manager.first_name?.[0]}{manager.last_name?.[0]}
+                                            <div className={isSelected ? 'rounded-full border-2 border-white' : ''}>
+                                                <ChatAvatar
+                                                    avatarUrl={manager.avatar_url}
+                                                    firstName={manager.first_name}
+                                                    lastName={manager.last_name}
+                                                    fallback={`${manager.first_name} ${manager.last_name}`}
+                                                    type="direct"
+                                                    sizeClass="h-8 w-8"
+                                                    textClass="text-xs"
+                                                />
                                             </div>
                                             <div className="flex-1 text-left">
                                                 <div className="font-semibold">{manager.first_name} {manager.last_name}</div>

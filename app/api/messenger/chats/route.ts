@@ -6,6 +6,7 @@ import {
     findExistingDirectMessengerChat,
     getMessengerActorLabel,
 } from '@/lib/messenger/domain';
+import { loadManagerAccountDirectory } from '@/lib/messenger/manager-usernames';
 import { logMessengerError } from '@/lib/messenger/logger';
 import {
     messengerCreateChatBodySchema,
@@ -31,6 +32,8 @@ type ChatParticipant = {
         id: number;
         first_name: string | null;
         last_name: string | null;
+        username?: string | null;
+        avatar_url?: string | null;
     } | null;
 };
 
@@ -38,6 +41,7 @@ type ChatRow = {
     id: string;
     type: 'direct' | 'group';
     name: string | null;
+    avatar_url: string | null;
     context_order_id: number | null;
     created_at: string;
     updated_at: string;
@@ -111,6 +115,7 @@ export async function GET(req: Request) {
                 id,
                 type,
                 name,
+                avatar_url,
                 context_order_id,
                 created_at,
                 updated_at,
@@ -131,6 +136,9 @@ export async function GET(req: Request) {
         if (chatsError) throw chatsError;
 
         const typedChats = (chats || []) as ChatRow[];
+        const managerDirectory = await loadManagerAccountDirectory(
+            typedChats.flatMap((chat) => chat.chat_participants.map((participant) => participant.user_id))
+        );
 
         const contextOrderIds = typedChats
             .map((chat) => chat.context_order_id)
@@ -174,6 +182,16 @@ export async function GET(req: Request) {
 
             return {
                 ...chat,
+                chat_participants: chat.chat_participants.map((participant) => ({
+                    ...participant,
+                    managers: participant.managers
+                        ? {
+                            ...participant.managers,
+                            username: managerDirectory.get(participant.user_id)?.username || null,
+                            avatar_url: managerDirectory.get(participant.user_id)?.avatar_url || null,
+                        }
+                        : null,
+                })),
                 context_order: chat.context_order_id ? {
                     ...orderById.get(chat.context_order_id),
                     retailcrm_url: `${RETAILCRM_BASE}/orders/${chat.context_order_id}/edit`,
@@ -213,7 +231,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
         }
 
-        const { type, name, participant_ids, context_order_id } = parsedBody.data;
+        const { type, name, participant_ids, context_order_id, avatar_url } = parsedBody.data as typeof parsedBody.data & { avatar_url?: string | null };
         const directParticipantIds = participant_ids ?? [];
 
         if (context_order_id !== null && context_order_id !== undefined) {
@@ -248,6 +266,7 @@ export async function POST(req: Request) {
             .insert({
                 type,
                 name: type === 'group' ? name : null,
+                avatar_url: type === 'group' ? avatar_url || null : null,
                 context_order_id: context_order_id || null
             })
             .select()
@@ -316,11 +335,11 @@ export async function PATCH(req: Request) {
             return NextResponse.json({ error: parsedBody.error.issues[0]?.message || 'Invalid request body' }, { status: 400 });
         }
 
-        const { chat_id, name } = parsedBody.data;
+        const { chat_id, name, avatar_url } = parsedBody.data;
 
-        if (typeof name === 'string') {
+        if (typeof name === 'string' || avatar_url !== undefined) {
             operation = 'chats.rename';
-            const normalizedName = name.trim();
+            const normalizedName = typeof name === 'string' ? name.trim() : undefined;
 
             const { data: myRecord } = await supabase
                 .from('chat_participants')
@@ -347,22 +366,31 @@ export async function PATCH(req: Request) {
                 return NextResponse.json({ error: 'Only group chats can be renamed' }, { status: 400 });
             }
 
+            const updates: Record<string, unknown> = {
+                updated_at: new Date().toISOString(),
+            };
+
+            if (normalizedName) {
+                updates.name = normalizedName;
+            }
+
+            if (avatar_url !== undefined) {
+                updates.avatar_url = avatar_url;
+            }
+
             const { error: updateError } = await supabase
                 .from('chats')
-                .update({
-                    name: normalizedName,
-                    updated_at: new Date().toISOString(),
-                })
+                .update(updates)
                 .eq('id', chat_id);
 
             if (updateError) throw updateError;
 
-            if (chatRecord.name !== normalizedName) {
+            if (normalizedName && chatRecord.name !== normalizedName) {
                 const actorLabel = getMessengerActorLabel(session);
                 await createMessengerSystemMessage(chat_id, `${actorLabel} изменил название чата на «${normalizedName}»`);
             }
 
-            return NextResponse.json({ success: true, renamed: true, name: normalizedName });
+            return NextResponse.json({ success: true, renamed: Boolean(normalizedName), name: normalizedName || chatRecord.name, avatar_url: avatar_url ?? chatRecord.avatar_url ?? null });
         }
 
         const { error } = await supabase

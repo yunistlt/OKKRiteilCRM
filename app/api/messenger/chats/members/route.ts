@@ -10,7 +10,7 @@ import {
 } from '@/lib/messenger/domain';
 import { getMessengerErrorMessage } from '@/lib/messenger/error';
 import { logMessengerError } from '@/lib/messenger/logger';
-import { loadManagerUsernames } from '@/lib/messenger/manager-usernames';
+import { loadManagerAccountDirectory } from '@/lib/messenger/manager-usernames';
 import {
     getMessengerParticipant,
     messengerChatMembersBodySchema,
@@ -27,6 +27,8 @@ type ChatMemberRow = {
         id: number;
         first_name: string | null;
         last_name: string | null;
+        username?: string | null;
+        avatar_url?: string | null;
     } | null;
 };
 
@@ -74,13 +76,14 @@ export async function GET(req: Request) {
         if (error) throw error;
 
         const memberRows = (data || []) as ChatMemberRow[];
-        const usernamesByManagerId = await loadManagerUsernames(memberRows.map((member) => member.user_id));
+        const managerDirectory = await loadManagerAccountDirectory(memberRows.map((member) => member.user_id));
         const members = memberRows.map((member) => ({
             ...member,
             managers: member.managers
                 ? {
                     ...member.managers,
-                    username: usernamesByManagerId.get(member.user_id) || null,
+                    username: managerDirectory.get(member.user_id)?.username || null,
+                    avatar_url: managerDirectory.get(member.user_id)?.avatar_url || null,
                 }
                 : null,
         }));

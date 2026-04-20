@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import MessageInput, { PendingMessageDraft } from './MessageInput';
+import ChatAvatar from './ChatAvatar';
 import ChatMembersModal from './ChatMembersModal';
+import { getInitials } from './chat-identity';
 import type {
     MessengerAttachment,
     MessengerChat,
@@ -17,6 +19,7 @@ interface MessageViewProps {
     highlightedMessageId?: string | null;
     currentUserId?: number;
     chatName?: string;
+    chatAvatarUrl?: string | null;
     participants?: MessengerParticipant[];
     chatType?: MessengerChat['type'];
     contextOrder?: MessengerOrderContext | null;
@@ -31,7 +34,7 @@ type MessagesResponse = {
     total?: number;
 };
 
-export default function MessageView({ chatId, highlightedMessageId, currentUserId, chatName, participants, chatType, contextOrder, onBack, onMembersChanged, onLeftChat, onDeletedChat }: MessageViewProps) {
+export default function MessageView({ chatId, highlightedMessageId, currentUserId, chatName, chatAvatarUrl, participants, chatType, contextOrder, onBack, onMembersChanged, onLeftChat, onDeletedChat }: MessageViewProps) {
     const pageSize = 50;
     const [messages, setMessages] = useState<MessengerMessage[]>([]);
     const [pendingMessages, setPendingMessages] = useState<MessengerMessage[]>([]);
@@ -263,9 +266,15 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                     >
                         <span className="text-lg">‹</span>
                     </button>
-                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-sky-500 text-base font-bold text-white shadow-sm shadow-sky-200">
-                        {chatName ? chatName[0].toUpperCase() : 'Ч'}
-                    </div>
+                    <ChatAvatar
+                        avatarUrl={chatAvatarUrl}
+                        firstName={chatType === 'direct' ? participants?.find((participant) => participant.user_id !== currentUserId)?.managers?.first_name : null}
+                        lastName={chatType === 'direct' ? participants?.find((participant) => participant.user_id !== currentUserId)?.managers?.last_name : null}
+                        fallback={chatName || 'Чат'}
+                        type={chatType === 'group' ? 'group' : 'direct'}
+                        sizeClass="h-11 w-11"
+                        textClass="text-base"
+                    />
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-[15px] font-semibold text-slate-900">{chatName || 'Чат'}</div>
                         {contextOrder?.order_id && (
@@ -551,6 +560,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                     chatId={chatId}
                     chatType={chatType}
                     chatName={chatName}
+                    chatAvatarUrl={chatAvatarUrl}
                     currentUserId={currentUserId}
                     initialMembers={participants}
                     onClose={() => setIsMembersModalOpen(false)}
@@ -558,7 +568,6 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                     onDeletedChat={onDeletedChat}
                     onMembersChanged={() => {
                         onMembersChanged?.();
-                        setIsMembersModalOpen(false);
                     }}
                 />
             )}

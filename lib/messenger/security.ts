@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { supabase } from '@/utils/supabase';
 
 export const MESSENGER_MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024;
+export const MESSENGER_MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024;
 
 const allowedAttachmentMimeTypes = new Set([
     'application/msword',
@@ -67,6 +68,7 @@ export const messengerChatMembersBodySchema = z.object({
 export const messengerCreateChatBodySchema = z.object({
     type: z.enum(['direct', 'group']),
     name: z.string().trim().min(2).max(120).optional().nullable(),
+    avatar_url: z.string().trim().url().max(2048).optional().nullable(),
     participant_ids: z.array(z.number().int().positive()).max(50).optional(),
     context_order_id: z.number().int().positive().optional().nullable(),
 }).superRefine((value, context) => {
@@ -93,10 +95,18 @@ export const messengerCreateChatBodySchema = z.object({
 export const messengerPatchChatBodySchema = z.object({
     chat_id: messengerChatIdSchema,
     name: z.string().trim().min(2).max(120).optional(),
+    avatar_url: z.string().trim().url().max(2048).nullable().optional(),
 });
 
 export const messengerDeleteChatBodySchema = z.object({
     chat_id: messengerChatIdSchema,
+});
+
+export const messengerChatAvatarUploadRequestSchema = z.object({
+    chat_id: messengerChatIdSchema,
+    file_name: z.string().trim().min(1).max(255),
+    file_type: z.enum(['image/jpeg', 'image/png', 'image/webp', 'image/gif']),
+    file_size: z.number().int().min(1).max(MESSENGER_MAX_AVATAR_SIZE_BYTES),
 });
 
 const webPushSubscriptionKeysSchema = z.object({

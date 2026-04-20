@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import ChatAvatar from './ChatAvatar';
 import type { MessengerParticipant } from './types';
 
 interface Member {
@@ -11,6 +12,7 @@ interface Member {
         first_name: string;
         last_name: string;
         username: string;
+        avatar_url?: string | null;
     } | null;
 }
 
@@ -19,12 +21,14 @@ interface Manager {
     first_name: string;
     last_name: string;
     username: string;
+    avatar_url?: string | null;
 }
 
 interface ChatMembersModalProps {
     chatId: string;
     chatType?: string;
     chatName?: string;
+    chatAvatarUrl?: string | null;
     currentUserId?: number;
     initialMembers?: MessengerParticipant[];
     onClose: () => void;
@@ -43,12 +47,13 @@ function normalizeParticipants(participants?: MessengerParticipant[]): Member[] 
                 first_name: participant.managers.first_name || '',
                 last_name: participant.managers.last_name || '',
                 username: participant.managers.username || '',
+                avatar_url: participant.managers.avatar_url || null,
             }
             : null,
     }));
 }
 
-export default function ChatMembersModal({ chatId, chatType, chatName, currentUserId, initialMembers, onClose, onMembersChanged, onLeftChat, onDeletedChat }: ChatMembersModalProps) {
+export default function ChatMembersModal({ chatId, chatType, chatName, chatAvatarUrl, currentUserId, initialMembers, onClose, onMembersChanged, onLeftChat, onDeletedChat }: ChatMembersModalProps) {
     const [members, setMembers] = useState<Member[]>(() => normalizeParticipants(initialMembers));
     const [myRole, setMyRole] = useState<string>('member');
     const [allManagers, setAllManagers] = useState<Manager[]>([]);
@@ -57,7 +62,9 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
     const [tab, setTab] = useState<'current' | 'add'>('current');
     const [processing, setProcessing] = useState<number | null>(null);
     const [groupName, setGroupName] = useState(chatName || '');
+    const [groupAvatarUrl, setGroupAvatarUrl] = useState<string | null>(chatAvatarUrl || null);
     const [renaming, setRenaming] = useState(false);
+    const [avatarUploading, setAvatarUploading] = useState(false);
     const [membersError, setMembersError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -72,6 +79,10 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
     useEffect(() => {
         setGroupName(chatName || '');
     }, [chatName]);
+
+    useEffect(() => {
+        setGroupAvatarUrl(chatAvatarUrl || null);
+    }, [chatAvatarUrl]);
 
     const fetchMembers = async () => {
         setLoading(true);
@@ -249,6 +260,61 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
         }
     };
 
+    const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file || !canRenameGroup || avatarUploading) {
+            return;
+        }
+
+        setAvatarUploading(true);
+        try {
+            const uploadPreparation = await fetch('/api/messenger/chat-avatar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chat_id: chatId,
+                    file_name: file.name,
+                    file_type: file.type,
+                    file_size: file.size,
+                }),
+            });
+
+            const uploadPayload = await uploadPreparation.json().catch(() => null);
+            if (!uploadPreparation.ok) {
+                throw new Error(uploadPayload?.error || 'Не удалось подготовить загрузку аватара');
+            }
+
+            const uploadResponse = await fetch(uploadPayload.upload_url, {
+                method: 'PUT',
+                body: file,
+                headers: { 'Content-Type': file.type },
+            });
+
+            if (!uploadResponse.ok) {
+                throw new Error('Не удалось загрузить аватар');
+            }
+
+            const saveResponse = await fetch('/api/messenger/chats', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: chatId, avatar_url: uploadPayload.public_url }),
+            });
+            const savePayload = await saveResponse.json().catch(() => null);
+
+            if (!saveResponse.ok) {
+                throw new Error(savePayload?.error || 'Не удалось сохранить аватар чата');
+            }
+
+            setGroupAvatarUrl(uploadPayload.public_url);
+            onMembersChanged?.();
+        } catch (error) {
+            alert(error instanceof Error ? error.message : 'Ошибка загрузки аватара');
+        } finally {
+            setAvatarUploading(false);
+            event.target.value = '';
+        }
+    };
+
     const handleDeleteChat = async () => {
         if (!canDeleteGroup || processing) return;
 
@@ -288,11 +354,32 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
             <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[85vh] sm:rounded-[28px]">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 pb-4 pt-4 sm:px-5 sm:pt-5">
                     <div className="flex items-start justify-between gap-4">
-                        <div>
+                        <div className="flex items-center gap-3">
+                            {chatType === 'group' && (
+                                <label className={`relative block ${canRenameGroup ? 'cursor-pointer' : 'cursor-default'}`}>
+                                    <ChatAvatar
+                                        avatarUrl={groupAvatarUrl}
+                                        fallback={chatName || 'Группа'}
+                                        type="group"
+                                        sizeClass="h-14 w-14"
+                                        textClass="text-base"
+                                    />
+                                    {canRenameGroup && (
+                                        <>
+                                            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={handleAvatarUpload} />
+                                            <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border border-white bg-sky-500 text-xs text-white shadow-sm">
+                                                {avatarUploading ? '…' : '✎'}
+                                            </span>
+                                        </>
+                                    )}
+                                </label>
+                            )}
+                            <div>
                             <h2 className="m-0 text-lg font-semibold text-slate-900">Участники чата</h2>
                             <p className="mt-1 text-sm text-slate-500">
                                 {members.length} {members.length === 1 ? 'участник' : members.length < 5 ? 'участника' : 'участников'}
                             </p>
+                            </div>
                         </div>
                         <button
                             onClick={onClose}
@@ -399,9 +486,15 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
                                                         : 'border-slate-200 bg-slate-50'
                                                 }`}
                                             >
-                                                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
-                                                    {getInitials(manager?.first_name, manager?.last_name)}
-                                                </div>
+                                                <ChatAvatar
+                                                    avatarUrl={manager?.avatar_url}
+                                                    firstName={manager?.first_name}
+                                                    lastName={manager?.last_name}
+                                                    fallback={manager ? `${manager.first_name} ${manager.last_name}` : `ID ${member.user_id}`}
+                                                    type="direct"
+                                                    sizeClass="h-11 w-11"
+                                                    textClass="text-sm"
+                                                />
 
                                                 <div className="min-w-0 flex-1">
                                                     <div className="truncate text-sm font-semibold text-slate-900">
@@ -458,9 +551,15 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
                                                     : 'border-slate-200 bg-slate-50'
                                             }`}
                                         >
-                                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-900 text-sm font-bold text-white">
-                                                {getInitials(manager?.first_name, manager?.last_name)}
-                                            </div>
+                                            <ChatAvatar
+                                                avatarUrl={manager?.avatar_url}
+                                                firstName={manager?.first_name}
+                                                lastName={manager?.last_name}
+                                                fallback={manager ? `${manager.first_name} ${manager.last_name}` : `ID ${member.user_id}`}
+                                                type="direct"
+                                                sizeClass="h-11 w-11"
+                                                textClass="text-sm"
+                                            />
 
                                             <div className="min-w-0 flex-1">
                                                 <div className="truncate text-sm font-semibold text-slate-900">
@@ -509,9 +608,15 @@ export default function ChatMembersModal({ chatId, chatType, chatName, currentUs
                                         disabled={!!processing}
                                         className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-left shadow-sm transition hover:border-sky-200 hover:bg-sky-50 disabled:cursor-default disabled:opacity-50"
                                     >
-                                        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white text-sm font-bold text-slate-500 ring-1 ring-slate-200">
-                                            {getInitials(manager.first_name, manager.last_name)}
-                                        </div>
+                                        <ChatAvatar
+                                            avatarUrl={manager.avatar_url}
+                                            firstName={manager.first_name}
+                                            lastName={manager.last_name}
+                                            fallback={`${manager.first_name} ${manager.last_name}`}
+                                            type="direct"
+                                            sizeClass="h-11 w-11"
+                                            textClass="text-sm"
+                                        />
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-semibold text-slate-900">
                                                 {manager.first_name} {manager.last_name}

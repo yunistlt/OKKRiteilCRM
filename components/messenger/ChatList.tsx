@@ -1,6 +1,8 @@
 'use client';
 
 import React from 'react';
+import ChatAvatar from './ChatAvatar';
+import { getChatAvatarUrl, getChatDisplayName } from './chat-identity';
 import type { MessengerChat, MessengerParticipant } from './types';
 
 interface ChatListProps {
@@ -8,19 +10,6 @@ interface ChatListProps {
     selectedId: string | null;
     currentUserId?: number;
     onSelect: (id: string) => void;
-}
-
-function getChatDisplayName(chat: MessengerChat, currentUserId?: number) {
-    if (chat.type !== 'direct') {
-        return chat.name || 'Диалог';
-    }
-
-    const otherParticipant = chat.chat_participants?.find((participant: MessengerParticipant) => participant.user_id !== currentUserId);
-    const firstName = otherParticipant?.managers?.first_name || '';
-    const lastName = otherParticipant?.managers?.last_name || '';
-    const fullName = `${firstName} ${lastName}`.trim();
-
-    return fullName || chat.name || 'Личный чат';
 }
 
 export default function ChatList({ chats, selectedId, currentUserId, onSelect }: ChatListProps) {
@@ -37,8 +26,9 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
             {chats.map((chat) => {
                 const isSelected = selectedId === chat.id;
                 const lastMsg = chat.last_message;
-                const displayName = getChatDisplayName(chat, currentUserId);
+                const displayName = getChatDisplayName(chat, currentUserId) || 'Чат';
                 const unreadCount = chat.unread_count || 0;
+                const directParticipant = chat.chat_participants?.find((participant: MessengerParticipant) => participant.user_id !== currentUserId);
 
                 return (
                     <button
@@ -51,13 +41,13 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                         }`}
                     >
                         <div className="flex items-start gap-3">
-                            <div className={`flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold ${
-                                chat.type === 'group'
-                                    ? 'bg-amber-100 text-amber-800'
-                                    : 'bg-sky-100 text-sky-800'
-                            }`}>
-                                {displayName.slice(0, 2).toUpperCase()}
-                            </div>
+                            <ChatAvatar
+                                avatarUrl={getChatAvatarUrl(chat, currentUserId)}
+                                firstName={chat.type === 'direct' ? directParticipant?.managers?.first_name : null}
+                                lastName={chat.type === 'direct' ? directParticipant?.managers?.last_name : null}
+                                fallback={displayName}
+                                type={chat.type}
+                            />
 
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2">
@@ -79,14 +69,7 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                                         </span>
                                     )}
                                 </div>
-
                                 <div className="mt-2 flex items-center gap-2">
-                                    {chat.type === 'group' && (
-                                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                                            Группа
-                                        </span>
-                                    )}
-
                                     {chat.context_order_id && (
                                         <span className="inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">
                                             Заказ {chat.context_order_id}

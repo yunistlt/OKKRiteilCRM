@@ -22,17 +22,18 @@ export async function GET() {
         const { data: users, error: usersError } = managerIds.length
             ? await supabase
                 .from('users')
-                .select('username, retail_crm_manager_id')
+                .select('username, avatar_url, retail_crm_manager_id')
                 .in('retail_crm_manager_id', managerIds)
             : { data: [], error: null };
 
         if (usersError) throw usersError;
 
-        const accessByManagerId = new Map<number, { username: string | null }>();
+        const accessByManagerId = new Map<number, { username: string | null; avatar_url: string | null }>();
         for (const user of users || []) {
             if (typeof user.retail_crm_manager_id === 'number') {
                 accessByManagerId.set(user.retail_crm_manager_id, {
                     username: user.username || null,
+                    avatar_url: typeof user.avatar_url === 'string' ? user.avatar_url : null,
                 });
             }
         }
@@ -41,6 +42,7 @@ export async function GET() {
             ...manager,
             has_okk_access: accessByManagerId.has(manager.id),
             okk_username: accessByManagerId.get(manager.id)?.username || null,
+            avatar_url: accessByManagerId.get(manager.id)?.avatar_url || null,
         })));
     } catch (e: any) {
         console.error('Error fetching managers:', e);

@@ -1,32 +1,17 @@
 'use client';
 
 import React, { useRef, useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ChatList from './ChatList';
 import MessageView from './MessageView';
 import CreateChatModal from './CreateChatModal';
 import PushPresenceBridge from './PushPresenceBridge';
 import PushNotificationsCard from './PushNotificationsCard';
+import { getChatAvatarUrl, getChatDisplayName } from './chat-identity';
 import type { MessengerChat, MessengerParticipant } from './types';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import { useAuth } from '@/components/auth/AuthProvider';
-
-function getChatDisplayName(chat: MessengerChat | undefined, currentUserId?: number) {
-    if (!chat) {
-        return undefined;
-    }
-
-    if (chat.type !== 'direct') {
-        return chat.name || 'Чат';
-    }
-
-    const otherParticipant = chat.chat_participants?.find((participant: MessengerParticipant) => participant.user_id !== currentUserId);
-    const firstName = otherParticipant?.managers?.first_name || '';
-    const lastName = otherParticipant?.managers?.last_name || '';
-    const fullName = `${firstName} ${lastName}`.trim();
-
-    return fullName || chat.name || 'Личный чат';
-}
 
 export default function MessengerPanel() {
     const router = useRouter();
@@ -126,6 +111,7 @@ export default function MessengerPanel() {
     const currentChat = chats.find((chat) => chat.id === selectedChatId);
     const currentUserId = currentUser?.retail_crm_manager_id ?? undefined;
     const currentChatName = getChatDisplayName(currentChat, currentUserId);
+    const currentChatAvatarUrl = getChatAvatarUrl(currentChat, currentUserId);
     const isChatOpen = Boolean(selectedChatId);
     const totalUnread = chats.reduce((sum, chat) => sum + (chat.unread_count || 0), 0);
     const directChatsCount = chats.filter((chat) => chat.type === 'direct').length;
@@ -179,9 +165,9 @@ export default function MessengerPanel() {
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                                 <div className="flex -space-x-1.5">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-[11px] font-bold text-white shadow-sm">
+                                    <Link href="/settings/profile" className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-sky-500 text-[11px] font-bold text-white shadow-sm overflow-hidden">
                                         {(currentUser?.username || 'U').slice(0, 2).toUpperCase()}
-                                    </div>
+                                    </Link>
                                     <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-emerald-500 text-[11px] font-bold text-white shadow-sm">
                                         {String(unreadChatsCount || 0).padStart(2, '0')}
                                     </div>
@@ -317,6 +303,7 @@ export default function MessengerPanel() {
                         highlightedMessageId={highlightedMessageId}
                         currentUserId={currentUserId}
                         chatName={currentChatName}
+                        chatAvatarUrl={currentChatAvatarUrl}
                         participants={currentChat?.chat_participants}
                         chatType={currentChat?.type}
                         contextOrder={currentChat?.context_order}
