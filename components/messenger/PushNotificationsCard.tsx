@@ -13,8 +13,29 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
     const [error, setError] = useState<string | null>(null);
     const [subscriptions, setSubscriptions] = useState<MessengerPushSubscriptionSummary[]>([]);
     const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
+    const [vapidPublicKey, setVapidPublicKey] = useState<string | null>(null);
+    const [pushConfig, setPushConfig] = useState<{ canSubscribe: boolean; canDispatch: boolean } | null>(null);
 
-    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const loadPushConfig = async () => {
+        const response = await fetch('/api/messenger/push-config');
+        if (!response.ok) {
+            const data = await response.json().catch(() => null);
+            throw new Error(data?.error || 'Не удалось загрузить конфигурацию push');
+        }
+
+        const data = await response.json();
+        setVapidPublicKey(typeof data.publicKey === 'string' && data.publicKey.length > 0 ? data.publicKey : null);
+        setPushConfig({
+            canSubscribe: Boolean(data.canSubscribe),
+            canDispatch: Boolean(data.canDispatch),
+        });
+
+        return {
+            publicKey: typeof data.publicKey === 'string' && data.publicKey.length > 0 ? data.publicKey : null,
+            canSubscribe: Boolean(data.canSubscribe),
+            canDispatch: Boolean(data.canDispatch),
+        };
+    };
 
     const loadSubscriptions = async () => {
         try {
@@ -47,7 +68,18 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                 return;
             }
 
-            if (!vapidPublicKey) {
+            let config;
+            try {
+                config = await loadPushConfig();
+            } catch (configError) {
+                if (!cancelled) {
+                    setStatus('idle');
+                    setError(configError instanceof Error ? configError.message : 'Не удалось загрузить конфигурацию push');
+                }
+                return;
+            }
+
+            if (!config.publicKey) {
                 const endpoint = await getCurrentPushEndpoint().catch(() => null);
                 if (!cancelled) {
                     setCurrentEndpoint(endpoint);
@@ -58,7 +90,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
 
             const currentSubscriptions = await loadSubscriptions();
             const reconcileResult = await reconcileCurrentPushSubscription({
-                vapidPublicKey,
+                vapidPublicKey: config.publicKey,
                 subscriptions: currentSubscriptions,
             });
 
@@ -79,7 +111,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
         return () => {
             cancelled = true;
         };
-    }, [vapidPublicKey]);
+    }, []);
 
     const updateCurrentSettings = async (nextSettings: MessengerPushSubscriptionSettings) => {
         if (!currentEndpoint) {
@@ -106,7 +138,9 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
     };
 
     const handleEnablePush = async () => {
-        if (!vapidPublicKey) {
+        const publicKey = vapidPublicKey || (await loadPushConfig()).publicKey;
+
+        if (!publicKey) {
             setStatus('not-configured');
             setError('VAPID public key не настроен');
             return;
@@ -124,7 +158,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
             }
 
             const reconcileResult = await reconcileCurrentPushSubscription({
-                vapidPublicKey,
+                vapidPublicKey: publicKey,
                 subscriptions,
             });
 
@@ -317,6 +351,12 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                 </div>
             )}
 
+            {pushConfig && pushConfig.canSubscribe && !pushConfig.canDispatch && (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Публичный VAPID ключ доступен, но серверная отправка ещё не настроена: проверьте VAPID_PRIVATE_KEY в Vercel env.
+                </div>
+            )}
+
             {status === 'enabled' && (
                 <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-5 text-emerald-800">
                     Подписка self-heal: после повторного login, локальной очистки browser subscription или рассинхрона клиент автоматически восстанавливает текущее устройство и повторно синхронизирует endpoint с сервером.
@@ -329,7 +369,7 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                 </div>
             ) : status === 'not-configured' ? (
                 <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Push flow готов в коде, но отсутствует NEXT_PUBLIC_VAPID_PUBLIC_KEY.
+                    Push flow готов в коде, но отсутствует VAPID public key в runtime-конфиге.
                 </div>
             ) : (
                 <div className="mt-4 flex flex-col gap-2 sm:flex-row">
