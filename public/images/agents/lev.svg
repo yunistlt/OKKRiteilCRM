@@ -1,0 +1,7 @@
+<svg width="320" height="320" viewBox="0 0 320 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="320" height="320" rx="64" fill="#0F172A"/>
+  <circle cx="160" cy="132" r="72" fill="#F59E0B"/>
+  <path d="M84 270C101 224 125 202 160 202C195 202 219 224 236 270" fill="#FDBA74"/>
+  <path d="M111 121C111 92 133 70 160 70C187 70 209 92 209 121V145H111V121Z" fill="#78350F"/>
+  <text x="160" y="292" text-anchor="middle" fill="#E2E8F0" font-family="Arial, sans-serif" font-size="34" font-weight="700">LEV</text>
+</svg>

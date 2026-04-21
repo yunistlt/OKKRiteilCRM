@@ -125,7 +125,7 @@ export default function LegalChatPanel() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Юр. помощник</h2>
-            <p className="mt-1 text-xs text-slate-500">Агент Александр отвечает по внутренней базе знаний и уводит в ручную эскалацию вне покрытия.</p>
+            <p className="mt-1 text-xs text-slate-500">Дарья отвечает по внутренней базе знаний и уводит в ручную эскалацию вне покрытия.</p>
           </div>
           <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800">KB-first</span>
         </div>
@@ -169,7 +169,7 @@ export default function LegalChatPanel() {
 
         {loading ? (
           <div className="mr-10 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-            Александр ищет ответ в базе знаний...
+            Дарья ищет ответ в базе знаний...
           </div>
         ) : null}
       </div>

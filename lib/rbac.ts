@@ -11,6 +11,7 @@ export type RouteRule = {
 };
 
 export const DEFAULT_ROUTE_RULES: RouteRule[] = [
+    { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/settings/ai/training-examples', label: 'Примеры обучения', description: 'Управление обучающими примерами и датасетом.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/training-examples', label: 'API примеров обучения', description: 'Серверные операции для примеров обучения.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/access', label: 'Доступы и права', description: 'Управление ролями и матрицей доступа.', category: 'Система', allowed: ['admin'] },
