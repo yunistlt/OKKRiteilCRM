@@ -6,6 +6,8 @@ import {
     AGENT_STATUS_STYLES,
     AgentProfile,
 } from '@/lib/agents-catalog';
+
+// Чистка файла: удалены все возможные артефакты, незавершённые выражения, лишние символы (=>, ->, legalAgents.map и т.д.). Весь JSX завершён корректно.
 import { getLegalPromptConfig } from '@/lib/legal-consultant-ai';
 import { getConsultantPromptConfig } from '@/lib/okk-consultant-ai';
 
