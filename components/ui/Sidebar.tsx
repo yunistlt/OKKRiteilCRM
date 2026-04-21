@@ -70,6 +70,12 @@ export default function Sidebar() {
             ]
         },
         {
+            title: 'Юридический отдел',
+            items: [
+                { name: 'Юридический отдел', href: '/legal', icon: '⚖️', allowed: ['admin', 'okk', 'rop', 'manager'] },
+            ]
+        },
+        {
             title: 'Система',
             items: [
                 { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },

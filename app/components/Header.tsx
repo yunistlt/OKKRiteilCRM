@@ -36,6 +36,7 @@ export default function Header() {
     const getPageTitle = () => {
         if (pathname === '/') return 'Центр Управления';
         if (pathname.startsWith('/okk')) return 'Контроль Качества';
+        if (pathname.startsWith('/legal')) return 'Юридический отдел';
         if (pathname.startsWith('/messenger')) return 'Мессенджер';
         if (pathname.startsWith('/analytics')) return 'Аналитика';
         if (pathname.startsWith('/efficiency')) return 'Эффективность';

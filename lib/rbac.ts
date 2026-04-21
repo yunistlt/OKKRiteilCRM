@@ -41,6 +41,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/okk', label: 'API ОКК', description: 'Серверные методы экрана контроля качества.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
+    { prefix: '/legal', label: 'Юридический отдел', description: 'Дашборд юридического модуля и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы legal helpdesk и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/messenger', label: 'Мессенджер', description: 'Рабочий раздел внутренних диалогов.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/messenger', label: 'API мессенджера', description: 'Серверные методы мессенджера.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/', label: 'Центр управления', description: 'Главная страница и дашборд офиса.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
