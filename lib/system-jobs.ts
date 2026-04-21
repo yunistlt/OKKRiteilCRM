@@ -1,3 +1,13 @@
+// Enqueue job для асинхронного анализа контракта
+export async function enqueueLegalContractAnalyzeJob(reviewId: number) {
+  return enqueueSystemJob({
+    jobType: 'legal_contract_analyze',
+    payload: { review_id: reviewId },
+    priority: 60,
+    idempotencyKey: `legal_contract_analyze:${reviewId}`,
+    maxAttempts: 3,
+  });
+}
 import { supabase } from '@/utils/supabase';
 import { isOpenAIConfigured } from '@/utils/openai';
 import {
@@ -19,7 +29,18 @@ export type SystemJobType =
   | 'order_insight_refresh'
   | 'order_score_refresh'
   | 'manager_aggregate_refresh'
-  | 'nightly_reconciliation';
+  | 'nightly_reconciliation'
+  | 'legal_contract_scan';
+// Enqueue job для антивирусной проверки контракта
+export async function enqueueLegalContractScanJob(reviewId: number) {
+  return enqueueSystemJob({
+    jobType: 'legal_contract_scan',
+    payload: { review_id: reviewId },
+    priority: 50,
+    idempotencyKey: `legal_contract_scan:${reviewId}`,
+    maxAttempts: 3,
+  });
+}
 
 export type SystemJobRetryKind = 'dependency_wait' | 'rate_limit' | 'network' | 'ai' | 'generic';
 

@@ -1,0 +1,44 @@
+Table legal_contract_reviews {
+  id int [pk, increment]
+  order_id int
+  title varchar
+  file_name varchar
+  storage_bucket varchar
+  storage_path varchar
+  content_type varchar
+  file_size_bytes int
+  upload_status varchar
+  scan_status varchar
+  analysis_status varchar
+  analysis_error varchar
+  risk_score varchar
+  extracted_text text
+  extracted_data jsonb
+  reviewed_at timestamp
+  updated_at timestamp
+  latest_version int
+}
+
+Table legal_contract_review_versions {
+  id int [pk, increment]
+  review_id int
+  version_number int
+  file_url varchar
+  extracted_text text
+  extracted_data jsonb
+  risk_score varchar
+  analysis_status varchar
+  analysis_error varchar
+  created_by varchar
+  created_at timestamp
+}
+
+Table legal_audit_log {
+  id int [pk, increment]
+  action varchar
+  entity varchar
+  entity_id int
+  performed_by varchar
+  details jsonb
+  created_at timestamp
+}

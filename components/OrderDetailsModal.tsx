@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
@@ -126,10 +127,11 @@ const toArray = (value: any) => {
     return [];
 };
 
-export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
+    const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
     const [qualityCalls, setQualityCalls] = useState<any[]>([]);
     const [qualityScore, setQualityScore] = useState<any | null>(null);
@@ -165,12 +167,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             fetchQualityScore(); // Fetch score immediately on open for the header
             setViewTab('card');
             setQualityCalls([]);
-            // setQualityScore(null); -> Commented out so we don't clear right before fetch
             setQualityError(null);
             setSelectedCallIndex(0);
             setQualityMobileTab('calls');
             setQualityFetched(false);
             setTranscribing(false);
+            setCounterpartyScore(null);
         }
     }, [isOpen, orderId, fetchQualityScore]);
 
@@ -182,6 +184,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json);
+            // Проверка контрагента по ИНН
+            const inn = json?.order?.inn || json?.raw_payload?.inn || json?.order?.customer_inn;
+            if (inn) {
+                setCounterpartyScoreLoading(true);
+                try {
+                    const resp = await fetch('/api/legal/counterparty/score', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ inn })
+                    });
+                    if (resp.ok) {
+                        const score = await resp.json();
+                        setCounterpartyScore(score);
+                    }
+                } catch {}
+                setCounterpartyScoreLoading(false);
+            }
         } catch (e: any) {
             setError(e.message);
         } finally {
@@ -994,6 +1013,21 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     <span>Менеджер: {data.order.manager_name || '—'}</span>
                                 </div>
                             )}
+                            {/* Блок светофора по контрагенту */}
+                            {counterpartyScoreLoading ? (
+                                <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">Проверка контрагента...</div>
+                            ) : counterpartyScore ? (
+                                <div className="mt-2 flex items-center gap-2">
+                                    <span className={`inline-block w-3 h-3 rounded-full ${
+                                        counterpartyScore.risk_score === 'red' ? 'bg-red-500' :
+                                        counterpartyScore.risk_score === 'yellow' ? 'bg-yellow-400' :
+                                        'bg-green-500'
+                                    }`}></span>
+                                    <span className="text-xs font-semibold">
+                                        {counterpartyScore.summary}
+                                    </span>
+                                </div>
+                            ) : null}
                         </div>
 
                         {/* Deal Score Header Block */}

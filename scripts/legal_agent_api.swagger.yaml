@@ -1,0 +1,43 @@
+openapi: 3.0.0
+info:
+  title: Legal Agent API
+  version: 1.0.0
+  description: API для работы с договорами и legal review
+servers:
+  - url: /api/legal
+paths:
+  /contracts/analyze:
+    post:
+      summary: Анализ договора
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegalContractAnalyzeRequest'
+      responses:
+        '200':
+          description: Результат анализа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContractAnalyzeResponse'
+components:
+  schemas:
+    LegalContractAnalyzeRequest:
+      type: object
+      properties:
+        review_id:
+          type: integer
+          example: 123
+      required:
+        - review_id
+    LegalContractAnalyzeResponse:
+      type: object
+      properties:
+        review:
+          type: object
+        extraction:
+          type: object
+        evaluation:
+          type: object
