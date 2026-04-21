@@ -127,6 +127,8 @@ const toArray = (value: any) => {
     return [];
 };
 
+export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
+
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

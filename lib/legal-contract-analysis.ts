@@ -1,9 +1,6 @@
 import mammoth from 'mammoth';
-import pdfParse from 'pdf-parse';
 import { supabase } from '@/utils/supabase';
 import { extractTextFromImageBuffer } from '@/lib/legal-ocr';
-import pdf from 'pdf-parse';
-import { fromBuffer as pdfToPng } from 'pdf2pic';
 
 export type ContractExtractionStatus = 'completed' | 'manual_review_required' | 'failed';
 
@@ -54,6 +51,8 @@ export async function extractTextFromContract(params: {
 
     try {
         if (fileKind === 'txt') {
+            const pdfParseModule = await import('pdf-parse');
+            const pdfParse = (pdfParseModule as any).default || pdfParseModule;
             return {
                 text: normalizeExtractedText(buffer.toString('utf-8')),
                 status: 'completed',
@@ -76,7 +75,8 @@ export async function extractTextFromContract(params: {
 
 
         if (fileKind === 'pdf') {
-            // Сначала пробуем обычный pdf-parse
+            const pdfParseModule = await import('pdf-parse');
+            const pdfParse = (pdfParseModule as any).default || pdfParseModule;
             const result = await pdfParse(buffer);
             const plainText = result.text || '';
             if (plainText.trim().length > 40) {
@@ -86,28 +86,12 @@ export async function extractTextFromContract(params: {
                     warnings,
                 };
             }
-            // Если текст не извлечён — пробуем OCR по страницам
-            warnings.push('PDF не содержит текстового слоя, пробую OCR по страницам...');
-            try {
-                // pdf2pic: конвертируем страницы в PNG и прогоняем через tesseract.js
-                const convert = pdfToPng({ density: 180, format: 'png', savePath: '/tmp', saveFilename: 'page' });
-                const pageCount = result.numpages || 1;
-                let ocrText = '';
-                for (let i = 1; i <= pageCount; i++) {
-                    const page = await convert(buffer, i);
-                    const pageBuffer = page.path ? require('fs').readFileSync(page.path) : page.base64 ? Buffer.from(page.base64, 'base64') : null;
-                    if (pageBuffer) {
-                        ocrText += await extractTextFromImageBuffer(pageBuffer) + '\n';
-                    }
-                }
-                return {
-                    text: normalizeExtractedText(ocrText),
-                    status: ocrText.trim().length > 40 ? 'completed' : 'manual_review_required',
-                    warnings,
-                };
-            } catch (ocrErr) {
-                warnings.push('OCR для PDF не удался: ' + (ocrErr?.message || ocrErr));
-            }
+            warnings.push('PDF не содержит текстового слоя. Для такого файла нужна ручная валидация или runtime c PDF OCR-конвертацией.');
+            return {
+                text: null,
+                status: 'manual_review_required',
+                warnings,
+            };
         }
 
         // Если это изображение (jpeg/png/webp)
@@ -119,7 +103,7 @@ export async function extractTextFromContract(params: {
                     status: ocrText.trim().length > 40 ? 'completed' : 'manual_review_required',
                     warnings,
                 };
-            } catch (imgErr) {
+            } catch (imgErr: any) {
                 warnings.push('OCR для изображения не удался: ' + (imgErr?.message || imgErr));
             }
         }

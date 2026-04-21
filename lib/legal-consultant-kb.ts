@@ -179,7 +179,7 @@ export function buildLegalKnowledgeSeedRows(): LegalKnowledgeSeedRow[] {
         sectionKey: section.sectionKey,
         title: row.title,
         content: row.content,
-        tags: row.tags,
+        tags: [...row.tags],
         sourceRef: `${section.sectionKey}:${row.slug}`,
         metadata: {
             audience: row.audience,

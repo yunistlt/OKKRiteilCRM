@@ -1,5 +1,3 @@
-import fetch from 'node-fetch';
-
 export interface CounterpartyScoreResult {
   inn: string;
   risk_score: 'green' | 'yellow' | 'red';

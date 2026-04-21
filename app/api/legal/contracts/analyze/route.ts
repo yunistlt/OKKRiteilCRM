@@ -1,16 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { extractTextFromContract } from '@/lib/legal-contract-analysis';
-import { assertLegalOrderAccess, legalContractAnalyzeRequestSchema, saveContractReviewVersion } from '@/lib/legal-contracts';
-        // Получить текущий latest_version
-        const { data: reviewRow } = await supabase
-            .from('legal_contract_reviews')
-            .select('latest_version')
-            .eq('id', reviewId)
-            .single();
-        const nextVersion = (reviewRow?.latest_version || 1) + 1;
-
-import { evaluateLegalContractText } from '@/lib/legal-evaluator';
+import { assertLegalOrderAccess, legalContractAnalyzeRequestSchema } from '@/lib/legal-contracts';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';

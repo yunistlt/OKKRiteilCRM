@@ -18,7 +18,12 @@ type ReviewItem = {
   extracted_data?: {
     evaluation?: {
       summary?: string;
-      issues?: Array<{ title?: string; severity?: string }>;
+      issues?: Array<{
+        title?: string;
+        severity?: string;
+        evidence?: string;
+        recommendation?: string;
+      }>;
     };
     warnings?: string[];
   } | null;
