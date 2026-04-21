@@ -4,7 +4,10 @@ import {
     AGENT_PROFILES,
     AGENT_STATUS_LABELS,
     AGENT_STATUS_STYLES,
+    AgentProfile,
 } from '@/lib/agents-catalog';
+import { getLegalPromptConfig } from '@/lib/legal-consultant-ai';
+import { getConsultantPromptConfig } from '@/lib/okk-consultant-ai';
 
 type AgentsPageProps = {
     searchParams?: Promise<{ domain?: string }>;
@@ -16,13 +19,51 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
         ? resolvedSearchParams?.domain as (typeof AGENT_DOMAINS)[number]
         : 'all';
 
+    // Определяем агентов, для которых нужен runtime prompt fetch
+    const RUNTIME_PROMPT_AGENTS: Record<string, { type: 'legal' | 'consultant', key: string }> = {
+        darya: { type: 'legal', key: 'legal_consultant_main_chat' },
+        lev: { type: 'legal', key: 'legal_consultant_main_chat' },
+        // Можно добавить других агентов при необходимости
+    };
+
+    // Получаем runtime prompts для нужных агентов
+    const runtimePromptResults: Record<string, { prompt: string; isDefault: boolean }> = {};
+    for (const agentId of Object.keys(RUNTIME_PROMPT_AGENTS)) {
+        const { type, key } = RUNTIME_PROMPT_AGENTS[agentId];
+        let prompt = '';
+        let isDefault = false;
+        if (type === 'legal') {
+            const config = await getLegalPromptConfig(key as any);
+            prompt = config.systemPrompt;
+            // Если prompt совпадает с дефолтным, считаем его дефолтным
+            isDefault = config === undefined || config.systemPrompt === undefined || config.systemPrompt === '';
+        } else if (type === 'consultant') {
+            const config = await getConsultantPromptConfig(key as any);
+            prompt = config.systemPrompt;
+            isDefault = config === undefined || config.systemPrompt === undefined || config.systemPrompt === '';
+        }
+        runtimePromptResults[agentId] = { prompt, isDefault };
+    }
+
     const visibleAgents = activeDomain === 'all'
         ? AGENT_PROFILES
         : AGENT_PROFILES.filter((agent) => agent.domain === activeDomain);
 
+    // Подменяем promptText для runtime-агентов
+    const visibleAgentsWithPrompts: AgentProfile[] = visibleAgents.map((agent) => {
+        if (runtimePromptResults[agent.id]) {
+            return {
+                ...agent,
+                promptText: runtimePromptResults[agent.id].prompt,
+                promptSourceLabel: runtimePromptResults[agent.id].isDefault ? 'DEFAULT_LEGAL_PROMPTS' : 'ai_prompts (runtime)',
+            };
+        }
+        return agent;
+    });
+
     const groupedAgents = AGENT_DOMAINS.map((domain) => ({
         domain,
-        agents: visibleAgents.filter((agent) => agent.domain === domain),
+        agents: visibleAgentsWithPrompts.filter((agent) => agent.domain === domain),
     })).filter((group) => group.agents.length > 0);
 
     return (
