@@ -19,31 +19,32 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
         ? resolvedSearchParams?.domain as (typeof AGENT_DOMAINS)[number]
         : 'all';
 
-    // Определяем агентов, для которых нужен runtime prompt fetch
+    // Агентов, для которых нужен runtime prompt fetch
     const RUNTIME_PROMPT_AGENTS: Record<string, { type: 'legal' | 'consultant', key: string }> = {
         darya: { type: 'legal', key: 'legal_consultant_main_chat' },
         lev: { type: 'legal', key: 'legal_consultant_main_chat' },
-        // Можно добавить других агентов при необходимости
     };
 
-    // Получаем runtime prompts для нужных агентов
-    const runtimePromptResults: Record<string, { prompt: string; isDefault: boolean }> = {};
-    for (const agentId of Object.keys(RUNTIME_PROMPT_AGENTS)) {
-        const { type, key } = RUNTIME_PROMPT_AGENTS[agentId];
-        let prompt = '';
-        let isDefault = false;
-        if (type === 'legal') {
-            const config = await getLegalPromptConfig(key as any);
-            prompt = config.systemPrompt;
-            // Если prompt совпадает с дефолтным, считаем его дефолтным
-            isDefault = config === undefined || config.systemPrompt === undefined || config.systemPrompt === '';
-        } else if (type === 'consultant') {
-            const config = await getConsultantPromptConfig(key as any);
-            prompt = config.systemPrompt;
-            isDefault = config === undefined || config.systemPrompt === undefined || config.systemPrompt === '';
-        }
-        runtimePromptResults[agentId] = { prompt, isDefault };
-    }
+    // Получаем runtime prompts параллельно
+    const agentPromptEntries = await Promise.all(
+        Object.entries(RUNTIME_PROMPT_AGENTS).map(async ([agentId, { type, key }]) => {
+            if (type === 'legal') {
+                const config = await getLegalPromptConfig(key as any);
+                return [agentId, {
+                    prompt: config.systemPrompt,
+                    isDefault: !config || !config.systemPrompt || config.systemPrompt === '',
+                }];
+            } else if (type === 'consultant') {
+                const config = await getConsultantPromptConfig(key as any);
+                return [agentId, {
+                    prompt: config.systemPrompt,
+                    isDefault: !config || !config.systemPrompt || config.systemPrompt === '',
+                }];
+            }
+            return [agentId, { prompt: '', isDefault: true }];
+        })
+    );
+    const runtimePromptResults: Record<string, { prompt: string; isDefault: boolean }> = Object.fromEntries(agentPromptEntries);
 
     const visibleAgents = activeDomain === 'all'
         ? AGENT_PROFILES
