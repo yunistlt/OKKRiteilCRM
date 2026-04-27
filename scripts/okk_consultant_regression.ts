@@ -1,3 +1,30 @@
+// CLI-скрипт для регрессионного тестирования ответов Семёна по базе знаний
+import { getProductFaqAnswer } from '../lib/okk-consultant-ai';
+
+const testCases = [
+    {
+        question: 'Как считается доставка?',
+        expected: 'доставка', // ключевое слово или фраза из answer_consultant
+    },
+    // Добавить ещё 5-10 кейсов по базе знаний
+];
+
+async function main() {
+    let passed = 0;
+    for (const test of testCases) {
+        const answer = await getProductFaqAnswer(test.question);
+        if (answer && answer.includes(test.expected)) {
+            console.log(`✅ PASS: ${test.question}`);
+            passed++;
+        } else {
+            console.log(`❌ FAIL: ${test.question}`);
+            console.log('  Got:', answer);
+        }
+    }
+    console.log(`\n${passed} / ${testCases.length} тестов пройдено`);
+}
+
+main().catch(console.error);
 import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';

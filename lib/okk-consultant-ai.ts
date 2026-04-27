@@ -143,6 +143,16 @@ export async function searchConsultantKnowledge(
     }
 }
 
+// --- Product FAQ knowledge retrieval ---
+// Если intent 'product_faq', ищем ответ в базе знаний
+export async function getProductFaqAnswer(question: string): Promise<string | null> {
+  const hits = await searchConsultantKnowledge(question, null, 3, 0.58);
+  if (hits.length === 0) {
+    return 'Извините, по вашему вопросу пока нет ответа в базе знаний. Ваш запрос будет передан для доработки.';
+  }
+  return hits.map(h => h.content).join('\n---\n');
+}
+
 export function formatConsultantKnowledgeContext(hits: ConsultantKnowledgeHit[]): string {
     if (hits.length === 0) {
         return 'Подходящие записи в базе знаний не найдены.';

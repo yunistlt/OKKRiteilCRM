@@ -1,3 +1,11 @@
+// --- Product FAQ intent routing ---
+// TODO: реализовать полную логику product_faq, knowledge retrieval и инъекции ответа
+// Пример:
+// if (detectedIntent === 'product_faq') {
+//   const answer = await getProductFaqAnswer(userQuestion);
+//   if (answer) return answer;
+//   // fallback: "Нет ответа в базе знаний"
+// }
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 export type BreakdownEntry = {
@@ -628,7 +636,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
                     'Как это интерпретировать:',
                     '1. Это не итоговый рейтинг, а только часть общей оценки ОКК.',
                     '2. Если deal score проседает, обычно проблема в полях CRM, сроках реакции, следующем контакте или обязательных действиях по сделке.',
-                    '3. Смотреть его нужно вместе с script score и штрафами, чтобы понять, где именно просела общая оценка.',
+                    '3. Смотреть его нужно вместе с script score и штрафами, чтобы понять, где именно просели критерии и были ли штрафы.',
                 ].join('\n'),
             },
             {
@@ -647,7 +655,7 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
             {
                 key: 'total_score',
                 title: 'Total score',
-                aliases: ['total score', 'total_score', 'итоговый процент', 'общий балл', 'итоговая оценка'],
+                aliases: ['total score', 'total_score', 'итоговый балл', 'итоговый рейтинг', 'итоговый процент', 'как считается total score'],
                 answer: [
                     'Total score это итоговый процент ОКК после объединения deal score, script score и возможных штрафов.',
                     '',
@@ -2292,7 +2300,7 @@ export function buildTechnicalExplanation(order: ConsultantOrder, evidence: Orde
         `lead_received_at=${evidence.dates?.leadReceivedAt || '—'}`,
         `first_contact_attempt_at=${evidence.dates?.firstContactAttemptAt || '—'}`,
         `next_contact_date=${evidence.dates?.nextContactDate || '—'}`,
-        `ai_model=${evidence.aiEvidence?.model || '—'}`,
+        `ai_model=${evidence.aiEvidence?.model || 'нет'}`,
         `ai_transcript_length=${evidence.aiEvidence?.transcriptLength ?? '—'}`,
         `ambiguous_criteria=${evidence.qualityFlags?.ambiguousCriteria.join(',') || '—'}`,
         `fallback_criteria=${evidence.qualityFlags?.fallbackCriteria.join(',') || '—'}`,
