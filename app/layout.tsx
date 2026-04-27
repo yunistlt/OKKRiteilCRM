@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Header from "./components/Header";
 import { Suspense } from 'react';
@@ -11,12 +11,15 @@ import { getEffectiveRouteRules } from '@/lib/rbac-server';
 import GlobalConsultantShell from '@/components/GlobalConsultantShell';
 import PwaBootstrap from './components/PwaBootstrap';
 
+export const viewport: Viewport = {
+    themeColor: '#0f172a',
+};
+
 export const metadata: Metadata = {
     title: "OKKRiteilCRM",
     description: "RetailCRM and Telphin Analytics",
     applicationName: 'OKKRiteilCRM',
     manifest: '/manifest.webmanifest',
-    themeColor: '#0f172a',
     appleWebApp: {
         capable: true,
         statusBarStyle: 'default',
