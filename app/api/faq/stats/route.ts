@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import { sql } from '@vercel/postgres';
+import { supabase } from '@/utils/supabase';
 
 export async function GET() {
   // Получить статистику по вопросам, претензиям, замечаниям
-  const { rows } = await sql`
-    select type, count(*) as count
-    from knowledge_base_qa
-    group by type
-  `;
-  // Общий счётчик
-  const { rows: totalRows } = await sql`
-    select count(*) as total from knowledge_base_qa
-  `;
+  const { data: stats, error: statsError } = await supabase
+    .from('knowledge_base_qa')
+    .select('type, count:type')
+    .group('type');
+  const { count: total, error: totalError } = await supabase
+    .from('knowledge_base_qa')
+    .select('*', { count: 'exact', head: true });
+  if (statsError || totalError) {
+    return NextResponse.json({ error: statsError?.message || totalError?.message }, { status: 500 });
+  }
   return NextResponse.json({
-    stats: rows,
-    total: totalRows[0]?.total || 0,
+    stats: stats || [],
+    total: total || 0,
   });
 }
