@@ -17,6 +17,17 @@ const lvzSupabase = process.env.LVZ_SUPABASE_URL && process.env.LVZ_SUPABASE_ANO
     ? createClient(process.env.LVZ_SUPABASE_URL, process.env.LVZ_SUPABASE_ANON_KEY)
     : null;
 
+const ADJECTIVES = ['Мягкий', 'Быстрый', 'Смелый', 'Умный', 'Яркий', 'Тихий', 'Мудрый', 'Ловкий', 'Верный', 'Гордый'];
+const COLORS = ['Малиновый', 'Синий', 'Оранжевый', 'Зеленый', 'Золотой', 'Серебряный', 'Изумрудный', 'Алый', 'Бирюзовый', 'Фиолетовый'];
+const ANIMALS = ['Лев', 'Медведь', 'Лис', 'Орел', 'Тигр', 'Слон', 'Волк', 'Дельфин', 'Рысь', 'Пантера'];
+
+function generateNickname() {
+    const adj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+    const col = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const ani = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
+    return `${adj} ${col} ${ani}`;
+}
+
 export async function OPTIONS() {
     return NextResponse.json({}, { headers: CORS_HEADERS });
 }
@@ -102,7 +113,8 @@ export async function POST(req: Request) {
                     landing_page: visitorData?.landingPage,
                     user_agent: visitorData?.userAgent,
                     geo_city: city,
-                    interested_products: visitorData?.cartItems || []
+                    interested_products: visitorData?.cartItems || [],
+                    nickname: generateNickname()
                 })
                 .select('*')
                 .single();
