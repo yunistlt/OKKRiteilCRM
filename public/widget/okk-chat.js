@@ -15,6 +15,16 @@
         pollingInterval: 3000
     };
 
+    // 1. IMMEDIATE UI RESTORE (Before even finding elements)
+    const wasOpen = localStorage.getItem(WIDGET_CONFIG.storageKeys.widgetOpen) === 'true';
+    const styleId = 'okk-chat-immediate-styles';
+    if (wasOpen && !document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.innerHTML = '#okk-chat-widget.minimized { bottom: 0 !important; height: 500px !important; } .okk-chat-toggle { transform: rotate(180deg); }';
+        document.head.appendChild(style);
+    }
+
     let lastMessageTimestamp = localStorage.getItem('okk_last_msg_time') || new Date().toISOString();
 
     const tracking = {
@@ -99,27 +109,31 @@
         const d = document.createElement('div');
         d.className = 'okk-msg ' + type;
         d.innerText = text;
-        messages.appendChild(d);
-        messages.scrollTop = messages.scrollHeight;
+        if (messages) {
+            messages.appendChild(d);
+            messages.scrollTop = messages.scrollHeight;
+        }
 
         if (!skipSave) {
             const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
             cache.push({ text, type });
-            localStorage.setItem(WIDGET_CONFIG.storageKeys.chatCache, JSON.stringify(cache.slice(-30)));
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.chatCache, JSON.stringify(cache.slice(-50)));
         }
     }
 
     function restoreChat() {
+        if (!messages) return;
         const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
         if (cache.length > 0) {
-            messages.innerHTML = ''; // Clear initial greeting if we have history
+            messages.innerHTML = ''; 
             cache.forEach(m => addMsg(m.text, m.type, true));
         }
 
-        const isOpen = localStorage.getItem(WIDGET_CONFIG.storageKeys.widgetOpen) === 'true';
-        if (isOpen && widget) {
+        if (wasOpen && widget) {
             widget.classList.remove('minimized');
             if (toggle) toggle.innerHTML = '▼';
+            const styles = document.getElementById(styleId);
+            if (styles) styles.remove(); // Clean up temporary styles
         }
     }
 
@@ -139,9 +153,12 @@
             const data = await res.json();
             if (data.reply) addMsg(data.reply, 'ai');
             
-            // Only show greeting if it's a new session or cache is empty
+            // MAGIC GREETING PROTECTION:
+            // Don't show greeting if we have user messages in cache
             const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
-            if (data.magicGreeting && cache.length < 2) {
+            const hasUserMsg = cache.some(m => m.type === 'user');
+            
+            if (data.magicGreeting && !hasUserMsg && cache.length < 2) {
                 addMsg(data.magicGreeting, 'ai');
             }
             return data;
@@ -166,23 +183,29 @@
         } catch (e) {}
     }
 
-    document.getElementById('okk-chat-send').onclick = () => {
-        const val = input.value.trim();
-        if (val) {
-            addMsg(val, 'user');
-            input.value = '';
-            apiCall('chat', { message: val });
-        }
-    };
+    if (document.getElementById('okk-chat-send')) {
+        document.getElementById('okk-chat-send').onclick = () => {
+            const val = input.value.trim();
+            if (val) {
+                addMsg(val, 'user');
+                input.value = '';
+                apiCall('chat', { message: val });
+            }
+        };
+    }
 
-    input.onkeypress = (e) => { if (e.key === 'Enter') document.getElementById('okk-chat-send').click(); };
+    if (input) {
+        input.onkeypress = (e) => { if (e.key === 'Enter') document.getElementById('okk-chat-send').click(); };
+    }
     
     if (document.getElementById('okk-chat-header')) {
         document.getElementById('okk-chat-header').onclick = () => {
-            widget.classList.toggle('minimized');
-            const isOpen = !widget.classList.contains('minimized');
-            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, isOpen);
-            if (toggle) toggle.innerHTML = isOpen ? '▼' : '▲';
+            if (widget) {
+                widget.classList.toggle('minimized');
+                const isOpen = !widget.classList.contains('minimized');
+                localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, isOpen);
+                if (toggle) toggle.innerHTML = isOpen ? '▼' : '▲';
+            }
         };
     }
 
