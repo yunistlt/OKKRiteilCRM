@@ -129,6 +129,8 @@ export async function POST(req: Request) {
             session.nickname = newNickname;
         }
 
+        const sessionId = session!.id;
+
         // Update session activity timestamp and interested products
         await supabase
             .from('widget_sessions')
