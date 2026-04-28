@@ -43,7 +43,7 @@ export async function GET(req: Request) {
 
             if (msgsError || !messages || messages.length === 0) continue;
 
-            const chatLog = messages.map(m => `${m.role === 'user' ? 'Клиент' : 'ИИ'}: ${m.content}`).join('\n');
+            const chatLog = messages.map((m: any) => `${m.role === 'user' ? 'Клиент' : 'ИИ'}: ${m.content}`).join('\n');
 
             const extractionResponse = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
