@@ -6,7 +6,9 @@
             utm: 'okk_utm',
             history: 'okk_pages',
             landing: 'okk_landing',
-            cart: 'okk_cart'
+            cart: 'okk_cart',
+            widgetOpen: 'okk_widget_open',
+            chatCache: 'okk_chat_cache'
         },
         maxHistory: 20,
         interestTimerMs: 10000,
@@ -92,17 +94,36 @@
     const messages = document.getElementById('okk-chat-messages');
     const toggle = document.getElementById('okk-chat-toggle');
 
-    function addMsg(text, type) {
+    function addMsg(text, type, skipSave = false) {
         if (!text) return;
         const d = document.createElement('div');
         d.className = 'okk-msg ' + type;
         d.innerText = text;
         messages.appendChild(d);
         messages.scrollTop = messages.scrollHeight;
+
+        if (!skipSave) {
+            const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
+            cache.push({ text, type });
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.chatCache, JSON.stringify(cache.slice(-30)));
+        }
+    }
+
+    function restoreChat() {
+        const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
+        if (cache.length > 0) {
+            messages.innerHTML = ''; // Clear initial greeting if we have history
+            cache.forEach(m => addMsg(m.text, m.type, true));
+        }
+
+        const isOpen = localStorage.getItem(WIDGET_CONFIG.storageKeys.widgetOpen) === 'true';
+        if (isOpen && widget) {
+            widget.classList.remove('minimized');
+            if (toggle) toggle.innerHTML = '▼';
+        }
     }
 
     async function apiCall(type, extra = {}) {
-        console.log('OKK Widget Call:', type, extra);
         try {
             const res = await fetch(WIDGET_CONFIG.apiEndpoint, {
                 method: 'POST',
@@ -115,21 +136,16 @@
                 })
             });
             
-            if (!res.ok) {
-                const errText = await res.text();
-                console.error('OKK API Error Status:', res.status, errText);
-                addMsg('Ошибка связи с сервером (' + res.status + ')', 'ai');
-                return { error: errText };
-            }
-
             const data = await res.json();
-            console.log('OKK Widget Response:', data);
             if (data.reply) addMsg(data.reply, 'ai');
-            if (data.magicGreeting) addMsg(data.magicGreeting, 'ai');
+            
+            // Only show greeting if it's a new session or cache is empty
+            const cache = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache) || '[]');
+            if (data.magicGreeting && cache.length < 2) {
+                addMsg(data.magicGreeting, 'ai');
+            }
             return data;
         } catch (e) { 
-            console.error('OKK Widget Network Error:', e);
-            addMsg('Ошибка сети: проверьте подключение', 'ai');
             return { error: e.message }; 
         }
     }
@@ -164,10 +180,13 @@
     if (document.getElementById('okk-chat-header')) {
         document.getElementById('okk-chat-header').onclick = () => {
             widget.classList.toggle('minimized');
-            if (toggle) toggle.innerHTML = widget.classList.contains('minimized') ? '▲' : '▼';
+            const isOpen = !widget.classList.contains('minimized');
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, isOpen);
+            if (toggle) toggle.innerHTML = isOpen ? '▼' : '▲';
         };
     }
 
+    restoreChat();
     apiCall('init');
     setInterval(poll, WIDGET_CONFIG.pollingInterval);
 })();
