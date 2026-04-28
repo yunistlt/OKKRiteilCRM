@@ -5,6 +5,16 @@ import { createLeadInCrm } from '@/lib/retailcrm-leads';
 
 export const dynamic = 'force-dynamic';
 
+const CORS_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export async function OPTIONS() {
+    return NextResponse.json({}, { headers: CORS_HEADERS });
+}
+
 const SYSTEM_PROMPT_TEMPLATE = `
 Ты — умный помощник компании ЗМК (Завод Металлических Конструкций). 
 Твоя цель: проконсультировать клиента по услугам (заборы, ворота, металлоконструкции) и продукции, используя базу знаний.
@@ -31,10 +41,10 @@ export async function GET(req: Request) {
     const visitorId = searchParams.get('visitorId');
     const after = searchParams.get('after');
 
-    if (!visitorId) return NextResponse.json({ error: 'Missing visitorId' }, { status: 400 });
+    if (!visitorId) return NextResponse.json({ error: 'Missing visitorId' }, { status: 400, headers: CORS_HEADERS });
 
     const { data: session } = await supabase.from('widget_sessions').select('id').eq('visitor_id', visitorId).single();
-    if (!session) return NextResponse.json({ newMessages: [] });
+    if (!session) return NextResponse.json({ newMessages: [] }, { headers: CORS_HEADERS });
 
     let query = supabase
         .from('widget_messages')
@@ -48,7 +58,7 @@ export async function GET(req: Request) {
     }
 
     const { data: messages } = await query;
-    return NextResponse.json({ newMessages: messages || [] });
+    return NextResponse.json({ newMessages: messages || [] }, { headers: CORS_HEADERS });
 }
 
 export async function POST(req: Request) {
@@ -57,7 +67,7 @@ export async function POST(req: Request) {
         const { visitorId, message, visitorData, type } = body;
 
         if (!visitorId) {
-            return NextResponse.json({ error: 'Missing visitorId' }, { status: 400 });
+            return NextResponse.json({ error: 'Missing visitorId' }, { status: 400, headers: CORS_HEADERS });
         }
 
         // 1. Get or Create Session
@@ -113,7 +123,7 @@ export async function POST(req: Request) {
             }
 
             if (session?.is_human_takeover) {
-                return NextResponse.json({ success: true, isHumanTakeover: true });
+                return NextResponse.json({ success: true, isHumanTakeover: true }, { headers: CORS_HEADERS });
             }
 
             const { count: msgCount } = await supabase
@@ -125,14 +135,14 @@ export async function POST(req: Request) {
                 return NextResponse.json({ 
                     success: true, 
                     magicGreeting: `С возвращением! Вижу, вы интересовались товаром "${visitorData.cartItems[0]}". Нужна помощь с расчетом или консультация инженера?` 
-                });
+                }, { headers: CORS_HEADERS });
             }
 
-            return NextResponse.json({ success: true });
+            return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
         }
 
         // 3. Log Message from User
-        if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+        if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400, headers: CORS_HEADERS });
         
         await supabase.from('widget_messages').insert({
             session_id: sessionId,
@@ -142,7 +152,7 @@ export async function POST(req: Request) {
 
         // 4. Human Takeover Check
         if (session?.is_human_takeover) {
-            return NextResponse.json({ reply: null, isHumanTakeover: true });
+            return NextResponse.json({ reply: null, isHumanTakeover: true }, { headers: CORS_HEADERS });
         }
 
         // 5. RAG & OpenAI
@@ -237,16 +247,16 @@ export async function POST(req: Request) {
                 
                 const reply = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные.';
                 await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: reply });
-                return NextResponse.json({ reply });
+                return NextResponse.json({ reply }, { headers: CORS_HEADERS });
             }
         }
 
         const replyText = assistantMessage.content || 'Чем могу помочь?';
         await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: replyText });
-        return NextResponse.json({ reply: replyText });
+        return NextResponse.json({ reply: replyText }, { headers: CORS_HEADERS });
 
     } catch (error: any) {
         console.error('Widget API Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500, headers: CORS_HEADERS });
     }
 }
