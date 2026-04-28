@@ -83,7 +83,7 @@ export async function createLeadInCrm(params: {
 
     // 1. Find or Create Customer
     let customerId: number | null = null;
-    const existing = await findCustomerByPhone(params.phone);
+    const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
     
     if (existing) {
         customerId = existing.id;
