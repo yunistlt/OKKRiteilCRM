@@ -16,9 +16,10 @@ export async function OPTIONS() {
 }
 
 const SYSTEM_PROMPT_TEMPLATE = `
-Ты — умный помощник компании ЗМК (Завод Металлических Конструкций). 
-Твоя цель: проконсультировать клиента по услугам (заборы, ворота, металлоконструкции) и продукции, используя базу знаний.
-Твоя главная задача: ненавязчиво получить контактные данные клиента (имя, номер телефона, email или ник в Telegram), чтобы инженер мог сделать точный расчет сметы.
+Ты — Елена, эксперт-продуктолог компании ЗМК (Завод Металлических Конструкций). 
+Твоя роль: Быть самым компетентным помощником на сайте. Ты досконально знаешь весь ассортимент продукции: от простых стеллажей до специализированных шкафов ЛВЖ.
+
+Твоя цель: Проконсультировать клиента по техническим характеристикам, помочь с выбором и ненавязчиво получить контактные данные (имя, телефон, email или ник в Telegram), чтобы инженер мог сделать точный расчет сметы.
 
 Контекст посетителя:
 - Домен: {{domain}}
@@ -28,12 +29,12 @@ const SYSTEM_PROMPT_TEMPLATE = `
 Релевантные знания из базы:
 {{knowledgeContext}}
 
-Правила общения:
-1. Будь вежливым и профессиональным.
-2. Используй информацию о просмотренных товарах, чтобы сделать общение персональным.
-3. Если клиент спрашивает цену, объясни, что она зависит от параметров (длина, высота, тип монтажа) и предложи расчет сметы инженером.
-4. Если клиент оставил любые контактные данные (телефон, почту, телеграм), используй инструмент create_lead_in_crm, чтобы передать данные в CRM.
-5. Не вызывай функцию создания лида, если клиент не оставил контактов. Просто продолжай консультировать.
+Твои принципы общения:
+1. Представляйся как Елена, продуктолог ЗМК.
+2. Говори профессионально, но доступно (H2H-стиль).
+3. Используй данные о просмотренных товарах, чтобы начать диалог персонально.
+4. Если клиент оставил контакты, обязательно используй инструмент create_lead_in_crm.
+5. Если данных в базе недостаточно, предложи консультацию инженера (для этого тоже нужны контакты).
 `;
 
 export async function GET(req: Request) {
@@ -70,7 +71,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Missing visitorId' }, { status: 400, headers: CORS_HEADERS });
         }
 
-        // 1. Get or Create Session
         let { data: session, error: sessionError } = await supabase
             .from('widget_sessions')
             .select('*')
@@ -102,15 +102,10 @@ export async function POST(req: Request) {
             
             if (createError) throw createError;
             session = newSession;
-        } else {
-            if (city && !session.geo_city) {
-                await supabase.from('widget_sessions').update({ geo_city: city }).eq('id', session.id);
-            }
         }
 
         const sessionId = session!.id;
 
-        // 2. Handle 'init' event
         if (type === 'init') {
             if (visitorData?.visitedPages?.length > 0) {
                 const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
@@ -134,14 +129,16 @@ export async function POST(req: Request) {
             if (visitorData?.cartItems?.length > 0 && (msgCount || 0) < 2) {
                 return NextResponse.json({ 
                     success: true, 
-                    magicGreeting: `С возвращением! Вижу, вы интересовались товаром "${visitorData.cartItems[0]}". Нужна помощь с расчетом или консультация инженера?` 
+                    magicGreeting: `Здравствуйте! Я Елена, продуктолог ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подсказать вам технические детали или помочь с расчетом?` 
                 }, { headers: CORS_HEADERS });
             }
 
-            return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
+            return NextResponse.json({ 
+                success: true,
+                magicGreeting: "Здравствуйте! Я Елена, продуктолог ЗМК. Если у вас возникнут вопросы по нашей продукции или техническим характеристикам — я с радостью отвечу!"
+            }, { headers: CORS_HEADERS });
         }
 
-        // 3. Log Message from User
         if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400, headers: CORS_HEADERS });
         
         await supabase.from('widget_messages').insert({
@@ -150,12 +147,10 @@ export async function POST(req: Request) {
             content: message
         });
 
-        // 4. Human Takeover Check
         if (session?.is_human_takeover) {
             return NextResponse.json({ reply: null, isHumanTakeover: true }, { headers: CORS_HEADERS });
         }
 
-        // 5. RAG & OpenAI
         const openai = getOpenAIClient();
         const embeddingRes = await openai.embeddings.create({
             model: 'text-embedding-3-small',
@@ -221,19 +216,28 @@ export async function POST(req: Request) {
             const toolCall = (assistantMessage.tool_calls as any)[0];
             if (toolCall.function.name === 'create_lead_in_crm') {
                 const args = JSON.parse(toolCall.function.arguments);
-                await createLeadInCrm({
-                    ...args,
-                    domain: visitorData?.domain,
-                    utm: visitorData?.utm,
-                    items: visitorData?.cartItems,
-                    city: session?.geo_city,
-                    history: chatHistory,
-                    visitedPages: visitorData?.visitedPages
-                });
                 
-                await supabase.from('widget_messages').insert({
-                    session_id: sessionId, role: 'system', content: `Лид создан: ${args.phone || args.telegram || args.email}`
-                });
+                // CRITICAL FIX: Safe execution of CRM creation
+                try {
+                    await createLeadInCrm({
+                        ...args,
+                        domain: visitorData?.domain,
+                        utm: visitorData?.utm,
+                        items: visitorData?.cartItems,
+                        city: session?.geo_city,
+                        history: chatHistory,
+                        visitedPages: visitorData?.visitedPages
+                    });
+                    
+                    await supabase.from('widget_messages').insert({
+                        session_id: sessionId, role: 'system', content: `Лид успешно отправлен в CRM: ${args.phone || args.telegram || args.email}`
+                    });
+                } catch (crmError) {
+                    console.error('CRM Error (Safe Catch):', crmError);
+                    await supabase.from('widget_messages').insert({
+                        session_id: sessionId, role: 'system', content: `Ошибка отправки в CRM, контакт сохранен в БД: ${args.phone || args.telegram || args.email}`
+                    });
+                }
 
                 const followUp = await openai.chat.completions.create({
                     model: 'gpt-4o-mini',
@@ -245,7 +249,7 @@ export async function POST(req: Request) {
                     ]
                 });
                 
-                const reply = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные.';
+                const reply = followUp.choices[0].message.content || 'Спасибо! Я передала ваши контакты инженеру, он свяжется с вами в ближайшее время.';
                 await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: reply });
                 return NextResponse.json({ reply }, { headers: CORS_HEADERS });
             }

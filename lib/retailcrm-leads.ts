@@ -143,8 +143,8 @@ ${historyLog}
     }
 
     // Site mapping based on domain
-    if (params.domain) {
-        orderData.site = params.domain; // Or map it to RetailCRM site code
+    if (params.domain && params.domain.includes('.')) {
+        // orderData.site = params.domain; // Removed to prevent 400 errors if site code mismatch
     }
 
     // Add items as comments or actual items if they exist in CRM catalog

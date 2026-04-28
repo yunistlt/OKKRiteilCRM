@@ -12,8 +12,8 @@ async function run() {
     }
     try {
         console.log('📝 Executing SQL:', query);
-        await sql_conn.unsafe(query);
-        console.log('✅ Success!');
+        const result = await sql_conn.unsafe(query);
+        console.log('✅ Result:', JSON.stringify(result, null, 2));
     } catch (e) {
         console.error('❌ Error:', e);
     } finally {
