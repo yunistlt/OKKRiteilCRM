@@ -102,6 +102,7 @@
     }
 
     async function apiCall(type, extra = {}) {
+        console.log('OKK Widget Call:', type, extra);
         try {
             const res = await fetch(WIDGET_CONFIG.apiEndpoint, {
                 method: 'POST',
@@ -113,23 +114,38 @@
                     ...extra
                 })
             });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                console.error('OKK API Error Status:', res.status, errText);
+                addMsg('Ошибка связи с сервером (' + res.status + ')', 'ai');
+                return { error: errText };
+            }
+
             const data = await res.json();
+            console.log('OKK Widget Response:', data);
             if (data.reply) addMsg(data.reply, 'ai');
             if (data.magicGreeting) addMsg(data.magicGreeting, 'ai');
             return data;
-        } catch (e) { return { error: e.message }; }
+        } catch (e) { 
+            console.error('OKK Widget Network Error:', e);
+            addMsg('Ошибка сети: проверьте подключение', 'ai');
+            return { error: e.message }; 
+        }
     }
 
     async function poll() {
         try {
             const res = await fetch(`${WIDGET_CONFIG.apiEndpoint}?visitorId=${tracking.ensureVisitorId()}&after=${lastMessageTimestamp}`);
-            const data = await res.json();
-            if (data.newMessages && data.newMessages.length > 0) {
-                data.newMessages.forEach(m => {
-                    addMsg(m.content, 'ai');
-                    lastMessageTimestamp = m.created_at;
-                    localStorage.setItem('okk_last_msg_time', lastMessageTimestamp);
-                });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.newMessages && data.newMessages.length > 0) {
+                    data.newMessages.forEach(m => {
+                        addMsg(m.content, 'ai');
+                        lastMessageTimestamp = m.created_at;
+                        localStorage.setItem('okk_last_msg_time', lastMessageTimestamp);
+                    });
+                }
             }
         } catch (e) {}
     }
