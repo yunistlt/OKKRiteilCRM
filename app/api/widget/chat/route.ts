@@ -95,7 +95,8 @@ export async function POST(req: Request) {
                     referrer: visitorData?.referrer,
                     landing_page: visitorData?.landingPage,
                     user_agent: visitorData?.userAgent,
-                    geo_city: city
+                    geo_city: city,
+                    interested_products: visitorData?.cartItems || []
                 })
                 .select('*')
                 .single();
@@ -105,6 +106,14 @@ export async function POST(req: Request) {
         }
 
         const sessionId = session!.id;
+
+        // Update interested products for existing session
+        if (visitorData?.cartItems?.length > 0) {
+            await supabase
+                .from('widget_sessions')
+                .update({ interested_products: visitorData.cartItems })
+                .eq('id', sessionId);
+        }
 
         if (type === 'init') {
             if (visitorData?.visitedPages?.length > 0) {

@@ -14,7 +14,9 @@ interface Session {
     referrer: string | null;
     landing_page: string | null;
     is_human_takeover: boolean;
+    interested_products: string[] | null;
     created_at: string;
+    user_agent: string | null;
 }
 
 interface Message {
@@ -249,6 +251,39 @@ export default function LeadCatcherPage() {
                             {/* Footprint Sidebar */}
                             <div className="w-80 border-l bg-white p-6 overflow-y-auto space-y-8">
                                 <div>
+                                    <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Детали сессии</h3>
+                                    <div className="bg-gray-50 rounded-2xl p-4 space-y-3 mb-8">
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] font-black text-gray-400 uppercase">Источник</span>
+                                            <span className="text-xs font-bold text-gray-700">{selectedSession.utm_source || 'Organic / Direct'}</span>
+                                        </div>
+                                        {selectedSession.utm_campaign && (
+                                            <div className="flex flex-col">
+                                                <span className="text-[9px] font-black text-gray-400 uppercase">Кампания</span>
+                                                <span className="text-xs font-bold text-gray-700">{selectedSession.utm_campaign}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col">
+                                            <span className="text-[9px] font-black text-gray-400 uppercase">Посадочная</span>
+                                            <span className="text-[10px] font-medium text-gray-500 break-all">{selectedSession.landing_page}</span>
+                                        </div>
+                                    </div>
+
+                                    {selectedSession.interested_products && selectedSession.interested_products.length > 0 && (
+                                        <div className="mb-8">
+                                            <h3 className="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                                <span className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span> 🔥 Интересы (Товары)
+                                            </h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                {selectedSession.interested_products.map((p, idx) => (
+                                                    <span key={idx} className="bg-blue-50 text-blue-700 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-blue-100 shadow-sm">
+                                                        {p}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Цифровой след</h3>
                                     <div className="space-y-4">
                                         {events.map(e => (
