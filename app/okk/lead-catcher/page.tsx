@@ -67,7 +67,7 @@ export default function LeadCatcherPage() {
             .limit(100);
         
         if (sessData) {
-            const sessionsWithPreview = await Promise.all(sessData.map(async (s) => {
+            const sessionsWithPreview = await Promise.all(sessData.map(async (s: any) => {
                 const { data: lastMsg } = await supabase
                     .from('widget_messages')
                     .select('content, created_at')
@@ -132,7 +132,7 @@ export default function LeadCatcherPage() {
                 table: 'widget_messages', 
                 filter: `session_id=eq.${selectedSessionId}` 
             }, (payload: any) => {
-                setMessages(prev => [...prev, payload.new as Message]);
+                setMessages((prev: Message[]) => [...prev, payload.new as Message]);
             })
             .on('postgres_changes', {
                 event: 'INSERT',
@@ -140,7 +140,7 @@ export default function LeadCatcherPage() {
                 table: 'widget_events',
                 filter: `session_id=eq.${selectedSessionId}`
             }, (payload: any) => {
-                setEvents(prev => [payload.new as Event, ...prev]);
+                setEvents((prev: Event[]) => [payload.new as Event, ...prev]);
             })
             .subscribe();
 
@@ -154,7 +154,7 @@ export default function LeadCatcherPage() {
     const filteredSessions = useMemo(() => {
         if (!search.trim()) return sessions;
         const s = search.toLowerCase();
-        return sessions.filter(sess => 
+        return sessions.filter((sess: Session) => 
             (sess.nickname?.toLowerCase().includes(s)) || 
             (sess.geo_city?.toLowerCase().includes(s)) ||
             (sess.id.toLowerCase().includes(s))
@@ -179,16 +179,16 @@ export default function LeadCatcherPage() {
     const saveNotes = async () => {
         if (!selectedSessionId) return;
         await supabase.from('widget_sessions').update({ manager_notes: notes }).eq('id', selectedSessionId);
-        setSessions(prev => prev.map(s => s.id === selectedSessionId ? { ...s, manager_notes: notes } : s));
+        setSessions((prev: Session[]) => prev.map((s: Session) => s.id === selectedSessionId ? { ...s, manager_notes: notes } : s));
     };
 
     const toggleTakeover = async (sessionId: string, current: boolean) => {
         await supabase.from('widget_sessions').update({ is_human_takeover: !current }).eq('id', sessionId);
-        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, is_human_takeover: !current } : s));
+        setSessions((prev: Session[]) => prev.map((s: Session) => s.id === sessionId ? { ...s, is_human_takeover: !current } : s));
     };
 
-    const selectedSession = sessions.find(s => s.id === selectedSessionId);
-    const getInitials = (name: string | null) => name ? name.split(' ').map(n => n[0]).join('').slice(-2).toUpperCase() : '??';
+    const selectedSession = sessions.find((s: Session) => s.id === selectedSessionId);
+    const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';
 
     return (
         <div className="flex h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
