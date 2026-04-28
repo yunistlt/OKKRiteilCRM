@@ -156,30 +156,28 @@ export async function POST(req: Request) {
                 return NextResponse.json({ success: true, isHumanTakeover: true }, { headers: CORS_HEADERS });
             }
 
-            const { count: msgCount } = await supabase
+            const { count: assistantMsgCount } = await supabase
                 .from('widget_messages')
                 .select('*', { count: 'exact', head: true })
-                .eq('session_id', sessionId);
+                .eq('session_id', sessionId)
+                .eq('role', 'assistant');
 
-            if (visitorData?.cartItems?.length > 0 && (msgCount || 0) < 2) {
-                const greeting = `Здравствуйте! Я Елена, продуктолог ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подсказать вам технические детали или помочь с подбором по вашему ТЗ?`;
+            if ((assistantMsgCount || 0) === 0) {
+                const greeting = (visitorData?.cartItems?.length > 0)
+                    ? `Здравствуйте! Я Елена, продуктолог ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подсказать вам технические детали или помочь с подбором по вашему ТЗ?`
+                    : "Добрый день! Я Елена, эксперт ЗМК. Могу помочь вам подобрать оборудование. Вы можете прикрепить файл с ТЗ, прислать список текстом или просто задать вопрос — я подберу модели под ваши параметры.";
+                
                 await supabase.from('widget_messages').insert({
                     session_id: sessionId,
                     role: 'assistant',
                     content: greeting
                 });
+
                 return NextResponse.json({ 
                     success: true, 
                     magicGreeting: greeting 
                 }, { headers: CORS_HEADERS });
             }
-
-            const defaultGreeting = "Добрый день! Я Елена, эксперт ЗМК. Могу помочь вам подобрать оборудование. Вы можете прикрепить файл с ТЗ, прислать список текстом или просто задать вопрос — я подберу модели под ваши параметры.";
-            await supabase.from('widget_messages').insert({
-                session_id: sessionId,
-                role: 'assistant',
-                content: defaultGreeting
-            });
 
             return NextResponse.json({ 
                 success: true,
