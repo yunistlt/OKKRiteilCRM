@@ -153,15 +153,28 @@ export async function POST(req: Request) {
                 .eq('session_id', sessionId);
 
             if (visitorData?.cartItems?.length > 0 && (msgCount || 0) < 2) {
+                const greeting = `Здравствуйте! Я Елена, продуктолог ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подсказать вам технические детали или помочь с расчетом?`;
+                await supabase.from('widget_messages').insert({
+                    session_id: sessionId,
+                    role: 'assistant',
+                    content: greeting
+                });
                 return NextResponse.json({ 
                     success: true, 
-                    magicGreeting: `Здравствуйте! Я Елена, продуктолог ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подсказать вам технические детали или помочь с расчетом?` 
+                    magicGreeting: greeting 
                 }, { headers: CORS_HEADERS });
             }
 
+            const defaultGreeting = "Здравствуйте! Я Елена, продуктолог ЗМК. Если у вас возникнут вопросы по нашей продукции или техническим характеристикам — я с радостью отвечу!";
+            await supabase.from('widget_messages').insert({
+                session_id: sessionId,
+                role: 'assistant',
+                content: defaultGreeting
+            });
+
             return NextResponse.json({ 
                 success: true,
-                magicGreeting: "Здравствуйте! Я Елена, продуктолог ЗМК. Если у вас возникнут вопросы по нашей продукции или техническим характеристикам — я с радостью отвечу!"
+                magicGreeting: defaultGreeting
             }, { headers: CORS_HEADERS });
         }
 
