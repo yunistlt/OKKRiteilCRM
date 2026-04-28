@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '@/utils/openai';
 import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,11 @@ const CORS_HEADERS = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
+
+// External Supabase for LVZ Knowledge
+const lvzSupabase = process.env.LVZ_SUPABASE_URL && process.env.LVZ_SUPABASE_ANON_KEY
+    ? createClient(process.env.LVZ_SUPABASE_URL, process.env.LVZ_SUPABASE_ANON_KEY)
+    : null;
 
 export async function OPTIONS() {
     return NextResponse.json({}, { headers: CORS_HEADERS });
@@ -26,7 +32,7 @@ const SYSTEM_PROMPT_TEMPLATE = `
 - Интересовался товарами: {{cartItems}}
 - Просмотренные страницы: {{visitedPages}}
 
-Релевантные знания из базы:
+Релевантные знания из базы (включая тех. базу ЛВЖ):
 {{knowledgeContext}}
 
 Твои принципы общения:
@@ -107,7 +113,6 @@ export async function POST(req: Request) {
 
         const sessionId = session!.id;
 
-        // Update interested products for existing session
         if (visitorData?.cartItems?.length > 0) {
             await supabase
                 .from('widget_sessions')
@@ -167,13 +172,31 @@ export async function POST(req: Request) {
         });
         const embedding = embeddingRes.data[0].embedding;
 
-        const { data: knowledge } = await supabase.rpc('match_okk_consultant_knowledge', {
-            query_embedding: embedding,
-            match_threshold: 0.5,
-            match_count: 5
-        });
+        // PARALLEL KNOWLEDGE SEARCH
+        const searchPromises = [
+            supabase.rpc('match_okk_consultant_knowledge', {
+                query_embedding: embedding,
+                match_threshold: 0.5,
+                match_count: 5
+            })
+        ];
 
-        const knowledgeContext = knowledge?.map((k: any) => `[${k.title}]: ${k.content}`).join('\n\n') || '';
+        if (lvzSupabase) {
+            searchPromises.push(
+                lvzSupabase.rpc('match_knowledge', {
+                    query_embedding: embedding,
+                    match_threshold: 0.5,
+                    match_count: 5
+                })
+            );
+        }
+
+        const searchResults = await Promise.all(searchPromises);
+        
+        const localKnowledge = searchResults[0].data?.map((k: any) => `[ЗМК Общее]: ${k.content}`) || [];
+        const lvzKnowledge = searchResults[1]?.data?.map((k: any) => `[ЗМК ЛВЖ Тех]: ${k.content_chunk || k.content}`) || [];
+        
+        const knowledgeContext = [...localKnowledge, ...lvzKnowledge].join('\n\n') || '';
 
         const { data: history } = await supabase
             .from('widget_messages')
@@ -225,8 +248,6 @@ export async function POST(req: Request) {
             const toolCall = (assistantMessage.tool_calls as any)[0];
             if (toolCall.function.name === 'create_lead_in_crm') {
                 const args = JSON.parse(toolCall.function.arguments);
-                
-                // CRITICAL FIX: Safe execution of CRM creation
                 try {
                     await createLeadInCrm({
                         ...args,
@@ -237,14 +258,12 @@ export async function POST(req: Request) {
                         history: chatHistory,
                         visitedPages: visitorData?.visitedPages
                     });
-                    
                     await supabase.from('widget_messages').insert({
-                        session_id: sessionId, role: 'system', content: `Лид успешно отправлен в CRM: ${args.phone || args.telegram || args.email}`
+                        session_id: sessionId, role: 'system', content: `Лид отправлен: ${args.phone || args.telegram}`
                     });
-                } catch (crmError) {
-                    console.error('CRM Error (Safe Catch):', crmError);
+                } catch (e) {
                     await supabase.from('widget_messages').insert({
-                        session_id: sessionId, role: 'system', content: `Ошибка отправки в CRM, контакт сохранен в БД: ${args.phone || args.telegram || args.email}`
+                        session_id: sessionId, role: 'system', content: `Ошибка CRM, контакт сохранен: ${args.phone || args.telegram}`
                     });
                 }
 
@@ -257,8 +276,7 @@ export async function POST(req: Request) {
                         { role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ success: true }) }
                     ]
                 });
-                
-                const reply = followUp.choices[0].message.content || 'Спасибо! Я передала ваши контакты инженеру, он свяжется с вами в ближайшее время.';
+                const reply = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные.';
                 await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: reply });
                 return NextResponse.json({ reply }, { headers: CORS_HEADERS });
             }
