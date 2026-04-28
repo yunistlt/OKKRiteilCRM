@@ -289,6 +289,14 @@ export async function POST(req: Request) {
                         history: chatHistory,
                         visitedPages: visitorData?.visitedPages
                     });
+
+                    // Update nickname to real name if provided
+                    if (args.name) {
+                        await supabase
+                            .from('widget_sessions')
+                            .update({ nickname: args.name })
+                            .eq('id', sessionId);
+                    }
                     await supabase.from('widget_messages').insert({
                         session_id: sessionId, role: 'system', content: `Лид отправлен: ${args.phone || args.telegram}`
                     });
