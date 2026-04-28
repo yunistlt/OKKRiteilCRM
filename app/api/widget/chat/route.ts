@@ -129,14 +129,14 @@ export async function POST(req: Request) {
             session.nickname = newNickname;
         }
 
-        const sessionId = session!.id;
-
-        if (visitorData?.cartItems?.length > 0) {
-            await supabase
-                .from('widget_sessions')
-                .update({ interested_products: visitorData.cartItems })
-                .eq('id', sessionId);
-        }
+        // Update session activity timestamp and interested products
+        await supabase
+            .from('widget_sessions')
+            .update({ 
+                updated_at: new Date().toISOString(),
+                interested_products: visitorData?.cartItems || session.interested_products
+            })
+            .eq('id', sessionId);
 
         if (type === 'init') {
             if (visitorData?.visitedPages?.length > 0) {

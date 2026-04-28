@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/utils/supabase';
 
 interface Session {
@@ -19,7 +19,8 @@ interface Session {
     manager_notes: string | null;
     user_agent: string | null;
     created_at: string;
-    last_message?: string; // New field for UI
+    updated_at: string; // Used for online status
+    last_message?: string;
     last_message_time?: string;
 }
 
@@ -47,19 +48,25 @@ export default function LeadCatcherPage() {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [notes, setNotes] = useState('');
+    const [search, setSearch] = useState('');
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // 1. Fetch Sessions with last message preview
+    // Check if session is "Online" (active in last 5 mins)
+    const isOnline = (updatedAt: string) => {
+        const lastActive = new Date(updatedAt).getTime();
+        const now = new Date().getTime();
+        return (now - lastActive) < 5 * 60 * 1000; // 5 minutes window
+    };
+
     const fetchSessions = async () => {
-        // Fetch sessions
         const { data: sessData } = await supabase
             .from('widget_sessions')
             .select('*')
-            .order('created_at', { ascending: false });
+            .order('updated_at', { ascending: false })
+            .limit(100);
         
         if (sessData) {
-            // For each session, get the latest message
             const sessionsWithPreview = await Promise.all(sessData.map(async (s) => {
                 const { data: lastMsg } = await supabase
                     .from('widget_messages')
@@ -76,18 +83,14 @@ export default function LeadCatcherPage() {
                 };
             }));
 
-            // Sort by last activity (message time or session creation time)
-            const sorted = sessionsWithPreview.sort((a, b) => 
-                new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
-            );
-
-            setSessions(sorted);
+            setSessions(sessionsWithPreview);
         }
         setLoading(false);
     };
 
     useEffect(() => {
         fetchSessions();
+        const interval = setInterval(fetchSessions, 30000); // Auto-refresh list every 30s
 
         const channel = supabase.channel('global-updates')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'widget_sessions' }, () => {
@@ -98,10 +101,12 @@ export default function LeadCatcherPage() {
             })
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
+        return () => { 
+            supabase.removeChannel(channel);
+            clearInterval(interval);
+        };
     }, []);
 
-    // 2. Fetch Messages and Events for selected session
     useEffect(() => {
         if (!selectedSessionId) return;
 
@@ -142,10 +147,19 @@ export default function LeadCatcherPage() {
         return () => { supabase.removeChannel(channel); };
     }, [selectedSessionId]);
 
-    // Scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    const filteredSessions = useMemo(() => {
+        if (!search.trim()) return sessions;
+        const s = search.toLowerCase();
+        return sessions.filter(sess => 
+            (sess.nickname?.toLowerCase().includes(s)) || 
+            (sess.geo_city?.toLowerCase().includes(s)) ||
+            (sess.id.toLowerCase().includes(s))
+        );
+    }, [sessions, search]);
 
     const handleSend = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -174,11 +188,7 @@ export default function LeadCatcherPage() {
     };
 
     const selectedSession = sessions.find(s => s.id === selectedSessionId);
-
-    const getInitials = (name: string | null) => {
-        if (!name) return '??';
-        return name.split(' ').map(n => n[0]).join('').slice(-2).toUpperCase();
-    };
+    const getInitials = (name: string | null) => name ? name.split(' ').map(n => n[0]).join('').slice(-2).toUpperCase() : '??';
 
     return (
         <div className="flex h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
@@ -189,47 +199,58 @@ export default function LeadCatcherPage() {
                         <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span> 
                         Ловец Лидов
                     </h1>
-                    <div className="mt-2 flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Активно: {sessions.length}</span>
+                    <div className="mt-4">
+                        <input 
+                            type="text" 
+                            placeholder="Поиск по имени или городу..." 
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="w-full bg-gray-800 border-none rounded-xl py-2 px-4 text-xs text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
+                        />
                     </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     {loading ? (
                         <div className="p-10 text-center text-gray-300 animate-pulse font-bold uppercase text-[10px]">Синхронизация...</div>
-                    ) : sessions.length === 0 ? (
-                        <div className="p-10 text-center text-gray-400 italic text-sm">Нет активных сессий</div>
+                    ) : filteredSessions.length === 0 ? (
+                        <div className="p-10 text-center text-gray-400 italic text-sm">Ничего не найдено</div>
                     ) : (
-                        sessions.map(s => (
+                        filteredSessions.map(s => (
                             <div 
                                 key={s.id} 
                                 onClick={() => setSelectedSessionId(s.id)}
                                 className={`p-4 border-b cursor-pointer transition-all hover:bg-blue-50/50 relative group ${selectedSessionId === s.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
                             >
                                 <div className="flex items-start gap-3">
-                                    <div className={`w-10 h-10 rounded-2xl flex-shrink-0 flex items-center justify-center text-xs font-black shadow-sm ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                                        {getInitials(s.nickname)}
+                                    <div className="relative">
+                                        <div className={`w-10 h-10 rounded-2xl flex-shrink-0 flex items-center justify-center text-xs font-black shadow-sm ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                            {getInitials(s.nickname)}
+                                        </div>
+                                        {isOnline(s.updated_at) && (
+                                            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
+                                        )}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-center mb-1">
                                             <span className="text-sm font-black text-gray-900 truncate">{s.nickname || 'Аноним'}</span>
-                                            <span className="text-[8px] text-gray-400 font-bold">{new Date(s.last_message_time || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-[8px] text-gray-400 font-bold">{new Date(s.updated_at || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
                                         <div className="text-[11px] text-blue-600 font-black truncate">
                                             {s.last_message ? (
-                                                <span className="text-gray-500 font-medium">💬 {s.last_message}</span>
+                                                <span className="text-gray-500 font-medium italic">💬 {s.last_message}</span>
                                             ) : (
                                                 <span className="text-gray-300 font-normal italic">Нет сообщений</span>
                                             )}
                                         </div>
                                         <div className="text-[9px] text-gray-400 mt-1 flex items-center gap-1">
-                                            <span>📍 {s.geo_city || 'Неизвестно'}</span>
+                                            <span className="font-bold">{s.geo_city || 'Неизвестно'}</span>
                                             <span>•</span>
                                             <span>{s.domain}</span>
                                         </div>
                                     </div>
                                     {s.is_human_takeover && (
-                                        <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1"></div>
+                                        <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1 animate-pulse"></div>
                                     )}
                                 </div>
                             </div>
@@ -245,17 +266,22 @@ export default function LeadCatcherPage() {
                         {/* Session Header */}
                         <div className="px-8 py-6 border-b flex justify-between items-center bg-white/80 backdrop-blur-md z-10 sticky top-0">
                             <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 rounded-3xl bg-gray-900 text-white flex items-center justify-center text-lg font-black">
-                                    {getInitials(selectedSession.nickname)}
+                                <div className="relative">
+                                    <div className="w-12 h-12 rounded-3xl bg-gray-900 text-white flex items-center justify-center text-lg font-black">
+                                        {getInitials(selectedSession.nickname)}
+                                    </div>
+                                    {isOnline(selectedSession.updated_at) && (
+                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-lg"></div>
+                                    )}
                                 </div>
                                 <div>
                                     <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
                                         {selectedSession.nickname}
                                         {selectedSession.is_human_takeover && (
-                                            <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase">Менеджер на связи</span>
+                                            <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider">Прямой эфир</span>
                                         )}
                                     </h2>
-                                    <p className="text-xs text-gray-400 font-medium">ID: {selectedSession.id.slice(0,8)} • {selectedSession.visitor_id.slice(-8)}</p>
+                                    <p className="text-xs text-gray-400 font-medium">Сессия: {selectedSession.id.slice(0,8)} • {selectedSession.geo_city || 'Братислава?'}</p>
                                 </div>
                             </div>
                             
@@ -285,7 +311,7 @@ export default function LeadCatcherPage() {
                                     ) : (
                                         messages.map(m => (
                                             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-                                                <div className={`max-w-[75%] p-5 rounded-3xl text-sm shadow-xl transition-all hover:scale-[1.02] ${
+                                                <div className={`max-w-[75%] p-5 rounded-3xl text-sm shadow-xl transition-all hover:scale-[1.01] ${
                                                     m.role === 'user' 
                                                     ? 'bg-white text-gray-800 border border-gray-100 rounded-bl-none' 
                                                     : m.role === 'assistant' 
@@ -325,7 +351,7 @@ export default function LeadCatcherPage() {
                                 </form>
                             </div>
 
-                            {/* User Data Panel (CQ-Style) */}
+                            {/* User Data Panel */}
                             <div className="w-96 border-l bg-white flex flex-col h-full overflow-hidden">
                                 <div className="flex-1 overflow-y-auto p-6 space-y-8 no-scrollbar">
                                     {/* Properties */}
