@@ -71,7 +71,7 @@ export async function GET(req: Request) {
 
             if (extractedData.phone || extractedData.email || extractedData.telegram) {
                 try {
-                    await createLeadInCrm({
+                    const crmResult = await createLeadInCrm({
                         name: extractedData.name || session.nickname || 'Клиент из чата',
                         phone: extractedData.phone,
                         email: extractedData.email,
@@ -91,7 +91,7 @@ export async function GET(req: Request) {
                     await supabase.from('widget_messages').insert({
                         session_id: session.id,
                         role: 'system',
-                        content: `✅ Заказ успешно создан в CRM (Семён-Архивариус)`
+                        content: `✅ Заказ #${crmResult.order?.number || crmResult.id} успешно создан в CRM (Семён-Архивариус)`
                     });
 
                     results.push({ sessionId: session.id, status: 'success', data: extractedData });
