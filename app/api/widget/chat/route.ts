@@ -32,14 +32,13 @@ export async function OPTIONS() {
     return NextResponse.json({}, { headers: CORS_HEADERS });
 }
 
-const SYSTEM_PROMPT_TEMPLATE = `Ты — Елена, эксперт ЗМК (Завод Металлической Мебели). Твоя задача — консультировать и продавать.
+const SYSTEM_PROMPT_TEMPLATE = `Ты — Елена, эксперт ЗМК. Твоя задача — консультировать и помогать с выбором.
 
-СТРОГИЕ ПРАВИЛА (НАРУШЕНИЕ ЗАПРЕЩЕНО):
-1. ПАМЯТЬ: Ты ОБЯЗАНА помнить всё, что клиент писал ранее. Если телефон (+7..., 8...) или ник Telegram (@...) мелькали в истории — НИКОГДА не спрашивай их снова.
-2. РАСПОЗНАВАНИЕ ТЕЛЕФОНА: Если клиент написал цифры, похожие на телефон (например, 7927..., 8917...), ты ОБЯЗАНА СРАЗУ вызвать инструмент 'create_lead_in_crm'. Сначала вызывай инструмент, потом отвечай текстом.
-3. НИКАКИХ ПОВТОРОВ: Запрещено использовать фразы "Я помню, что вы интересовались...". Это звучит по-роботски. Если клиент спрашивает про муфельную печь или Омск — отвечай по существу текущего вопроса.
-4. СТИЛЬ H2H: Представь, что ты профессионал-продавец. Пиши кратко: "Записала номер. Сейчас уточню по муфельным печам и доставке в Омск".
-5. ФАЙЛЫ: Если клиент прислал файл, поблагодари и скажи, что ТЫ его сейчас изучишь (не менеджер, а ты сама, чтобы повысить лояльность).
+ПРАВИЛА:
+1. ПОМОЩЬ: Отвечай на технические вопросы, рассчитывай (ориентировочно) доставку, помогай подобрать модель.
+2. СБОР ДАННЫХ: Если клиенту нужен расчет или консультация инженера, мягко скажи: "Напишите ваш телефон или ник в Telegram, я передам данные в отдел расчетов".
+3. ФАЙЛЫ: Если клиент прислал файл (ТЗ), подтверди получение: "Файл получила, сейчас изучу его и передам детали инженерам".
+4. СТИЛЬ: Общайся просто и по-человечески (H2H).
 
 КОНТЕКСТ О ТОВАРАХ:
 {{knowledgeContext}}
@@ -246,83 +245,21 @@ export async function POST(req: Request) {
             .replace('{{visitedPages}}', visitorData?.visitedPages?.slice(-3).map((p: any) => p.title).join(', ') || '')
             .replace('{{knowledgeContext}}', knowledgeContext);
 
-        const tools: any[] = [{
-            type: 'function',
-            function: {
-                name: 'create_lead_in_crm',
-                description: 'Создает лида в RetailCRM',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        name: { type: 'string' },
-                        phone: { type: 'string' },
-                        email: { type: 'string' },
-                        telegram: { type: 'string' },
-                        query_summary: { type: 'string' }
-                    },
-                    required: ['query_summary']
-                }
-            }
-        }];
-
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
-            messages: [{ role: 'system', content: systemPrompt }, ...chatHistory],
-            tools,
-            tool_choice: 'auto'
+            messages: [{ role: 'system', content: systemPrompt }, ...chatHistory, { role: 'user', content: message }],
+            temperature: 0.7
         });
 
-        const assistantMessage = response.choices[0].message;
+        const reply = response.choices[0].message.content || 'Чем могу помочь?';
+        
+        await supabase.from('widget_messages').insert({
+            session_id: sessionId,
+            role: 'assistant',
+            content: reply
+        });
 
-        if (assistantMessage.tool_calls) {
-            const toolCall = (assistantMessage.tool_calls as any)[0];
-            if (toolCall.function.name === 'create_lead_in_crm') {
-                const args = JSON.parse(toolCall.function.arguments);
-                try {
-                    await createLeadInCrm({
-                        ...args,
-                        domain: visitorData?.domain,
-                        utm: visitorData?.utm,
-                        items: visitorData?.cartItems,
-                        city: session?.geo_city,
-                        history: chatHistory,
-                        visitedPages: visitorData?.visitedPages
-                    });
-
-                    // Update nickname to real name if provided
-                    if (args.name) {
-                        await supabase
-                            .from('widget_sessions')
-                            .update({ nickname: args.name })
-                            .eq('id', sessionId);
-                    }
-                    await supabase.from('widget_messages').insert({
-                        session_id: sessionId, role: 'system', content: `Лид отправлен: ${args.phone || args.telegram || args.name || 'Контакты'}`
-                    });
-                } catch (e) {
-                    await supabase.from('widget_messages').insert({
-                        session_id: sessionId, role: 'system', content: `Ошибка CRM, контакт сохранен: ${args.phone || args.telegram || args.name || 'не указан'}`
-                    });
-                }
-
-                const followUp = await openai.chat.completions.create({
-                    model: 'gpt-4o-mini',
-                    messages: [
-                        { role: 'system', content: systemPrompt },
-                        ...chatHistory,
-                        assistantMessage,
-                        { role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ success: true }) }
-                    ]
-                });
-                const reply = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные.';
-                await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: reply });
-                return NextResponse.json({ reply }, { headers: CORS_HEADERS });
-            }
-        }
-
-        const replyText = assistantMessage.content || 'Чем могу помочь?';
-        await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: replyText });
-        return NextResponse.json({ reply: replyText }, { headers: CORS_HEADERS });
+        return NextResponse.json({ reply }, { headers: CORS_HEADERS });
 
     } catch (error: any) {
         console.error('Widget API Error:', error);
