@@ -90,7 +90,7 @@ export default function LeadCatcherPage() {
                 schema: 'public', 
                 table: 'widget_messages', 
                 filter: `session_id=eq.${selectedSessionId}` 
-            }, (payload) => {
+            }, (payload: any) => {
                 setMessages(prev => [...prev, payload.new as Message]);
             })
             .on('postgres_changes', {
@@ -98,7 +98,7 @@ export default function LeadCatcherPage() {
                 schema: 'public',
                 table: 'widget_events',
                 filter: `session_id=eq.${selectedSessionId}`
-            }, (payload) => {
+            }, (payload: any) => {
                 setEvents(prev => [payload.new as Event, ...prev]);
             })
             .subscribe();

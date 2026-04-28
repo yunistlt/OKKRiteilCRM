@@ -168,8 +168,8 @@ export async function POST(req: Request) {
             .order('created_at', { ascending: true })
             .limit(10);
 
-        const chatHistory = history?.map(h => ({
-            role: h.role as any,
+        const chatHistory = history?.map((h: any) => ({
+            role: h.role,
             content: h.content
         })) || [];
 
