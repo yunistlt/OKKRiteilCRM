@@ -19,6 +19,8 @@ interface Session {
     manager_notes: string | null;
     user_agent: string | null;
     created_at: string;
+    last_message?: string; // New field for UI
+    last_message_time?: string;
 }
 
 interface Message {
@@ -48,22 +50,50 @@ export default function LeadCatcherPage() {
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // 1. Fetch Sessions
-    useEffect(() => {
-        const fetchSessions = async () => {
-            const { data, error } = await supabase
-                .from('widget_sessions')
-                .select('*')
-                .order('created_at', { ascending: false });
-            
-            if (data) setSessions(data);
-            setLoading(false);
-        };
+    // 1. Fetch Sessions with last message preview
+    const fetchSessions = async () => {
+        // Fetch sessions
+        const { data: sessData } = await supabase
+            .from('widget_sessions')
+            .select('*')
+            .order('created_at', { ascending: false });
+        
+        if (sessData) {
+            // For each session, get the latest message
+            const sessionsWithPreview = await Promise.all(sessData.map(async (s) => {
+                const { data: lastMsg } = await supabase
+                    .from('widget_messages')
+                    .select('content, created_at')
+                    .eq('session_id', s.id)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .single();
+                
+                return {
+                    ...s,
+                    last_message: lastMsg?.content || null,
+                    last_message_time: lastMsg?.created_at || s.created_at
+                };
+            }));
 
+            // Sort by last activity (message time or session creation time)
+            const sorted = sessionsWithPreview.sort((a, b) => 
+                new Date(b.last_message_time).getTime() - new Date(a.last_message_time).getTime()
+            );
+
+            setSessions(sorted);
+        }
+        setLoading(false);
+    };
+
+    useEffect(() => {
         fetchSessions();
 
-        const channel = supabase.channel('sessions-channel')
+        const channel = supabase.channel('global-updates')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'widget_sessions' }, () => {
+                fetchSessions();
+            })
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'widget_messages' }, () => {
                 fetchSessions();
             })
             .subscribe();
@@ -90,7 +120,7 @@ export default function LeadCatcherPage() {
 
         fetchData();
 
-        const channel = supabase.channel(`messages-${selectedSessionId}`)
+        const channel = supabase.channel(`session-detail-${selectedSessionId}`)
             .on('postgres_changes', { 
                 event: 'INSERT', 
                 schema: 'public', 
@@ -110,7 +140,7 @@ export default function LeadCatcherPage() {
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [selectedSessionId, sessions]);
+    }, [selectedSessionId]);
 
     // Scroll to bottom
     useEffect(() => {
@@ -153,27 +183,20 @@ export default function LeadCatcherPage() {
     return (
         <div className="flex h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
             {/* Lead List Sidebar */}
-            <div className="w-80 border-r bg-white flex flex-col shadow-lg z-20">
+            <div className="w-96 border-r bg-white flex flex-col shadow-lg z-20">
                 <div className="p-6 border-b bg-gray-900 text-white">
                     <h1 className="text-xl font-black flex items-center gap-2">
                         <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span> 
                         Ловец Лидов
                     </h1>
                     <div className="mt-2 flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Онлайн: {sessions.length}</span>
-                        <div className="flex -space-x-2">
-                            {sessions.slice(0, 3).map(s => (
-                                <div key={s.id} className="w-5 h-5 rounded-full border border-gray-900 bg-blue-500 text-[8px] flex items-center justify-center font-bold">
-                                    {getInitials(s.nickname)}
-                                </div>
-                            ))}
-                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Активно: {sessions.length}</span>
                     </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     {loading ? (
-                        <div className="p-10 text-center text-gray-300 animate-pulse font-bold uppercase text-[10px]">Загрузка базы...</div>
+                        <div className="p-10 text-center text-gray-300 animate-pulse font-bold uppercase text-[10px]">Синхронизация...</div>
                     ) : sessions.length === 0 ? (
                         <div className="p-10 text-center text-gray-400 italic text-sm">Нет активных сессий</div>
                     ) : (
@@ -183,21 +206,30 @@ export default function LeadCatcherPage() {
                                 onClick={() => setSelectedSessionId(s.id)}
                                 className={`p-4 border-b cursor-pointer transition-all hover:bg-blue-50/50 relative group ${selectedSessionId === s.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-xs font-black shadow-sm transition-transform group-hover:scale-110 ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                <div className="flex items-start gap-3">
+                                    <div className={`w-10 h-10 rounded-2xl flex-shrink-0 flex items-center justify-center text-xs font-black shadow-sm ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
                                         {getInitials(s.nickname)}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex justify-between items-center mb-1">
                                             <span className="text-sm font-black text-gray-900 truncate">{s.nickname || 'Аноним'}</span>
-                                            <span className="text-[8px] text-gray-400">{new Date(s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="text-[8px] text-gray-400 font-bold">{new Date(s.last_message_time || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
-                                        <div className="text-[10px] text-gray-500 truncate flex items-center gap-1">
-                                            <span className="opacity-70">📍</span> {s.geo_city || 'Неизвестно'}
+                                        <div className="text-[11px] text-blue-600 font-black truncate">
+                                            {s.last_message ? (
+                                                <span className="text-gray-500 font-medium">💬 {s.last_message}</span>
+                                            ) : (
+                                                <span className="text-gray-300 font-normal italic">Нет сообщений</span>
+                                            )}
+                                        </div>
+                                        <div className="text-[9px] text-gray-400 mt-1 flex items-center gap-1">
+                                            <span>📍 {s.geo_city || 'Неизвестно'}</span>
+                                            <span>•</span>
+                                            <span>{s.domain}</span>
                                         </div>
                                     </div>
                                     {s.is_human_takeover && (
-                                        <div className="absolute top-2 right-2 w-2 h-2 bg-orange-500 rounded-full"></div>
+                                        <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1"></div>
                                     )}
                                 </div>
                             </div>
@@ -220,10 +252,10 @@ export default function LeadCatcherPage() {
                                     <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
                                         {selectedSession.nickname}
                                         {selectedSession.is_human_takeover && (
-                                            <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase">Кожа</span>
+                                            <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase">Менеджер на связи</span>
                                         )}
                                     </h2>
-                                    <p className="text-xs text-gray-400 font-medium">Сессия: {selectedSession.visitor_id.slice(-8)} • {selectedSession.domain}</p>
+                                    <p className="text-xs text-gray-400 font-medium">ID: {selectedSession.id.slice(0,8)} • {selectedSession.visitor_id.slice(-8)}</p>
                                 </div>
                             </div>
                             
@@ -236,7 +268,7 @@ export default function LeadCatcherPage() {
                                         : 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200'
                                     }`}
                                 >
-                                    {selectedSession.is_human_takeover ? 'ИИ на связи' : 'Взять управление'}
+                                    {selectedSession.is_human_takeover ? 'Вернуть ИИ' : 'Перехватить диалог'}
                                 </button>
                             </div>
                         </div>
@@ -245,22 +277,29 @@ export default function LeadCatcherPage() {
                             {/* Chat Window */}
                             <div className="flex-1 flex flex-col bg-gray-50/30">
                                 <div className="flex-1 overflow-y-auto p-8 space-y-6 no-scrollbar">
-                                    {messages.map(m => (
-                                        <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
-                                            <div className={`max-w-[75%] p-5 rounded-3xl text-sm shadow-xl transition-all hover:scale-[1.02] ${
-                                                m.role === 'user' 
-                                                ? 'bg-white text-gray-800 border border-gray-100 rounded-bl-none' 
-                                                : m.role === 'assistant' 
-                                                    ? 'bg-gray-900 text-white rounded-br-none'
-                                                    : 'bg-blue-50 text-blue-600 text-[10px] italic py-2 border border-blue-100 w-full text-center rounded-xl'
-                                            }`}>
-                                                {m.content}
-                                                <div className={`text-[8px] mt-2 font-bold opacity-40 text-right ${m.role === 'assistant' ? 'text-gray-400' : 'text-gray-400'}`}>
-                                                    {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {messages.length === 0 ? (
+                                        <div className="h-full flex flex-col items-center justify-center text-gray-300">
+                                            <span className="text-4xl mb-4 opacity-30">💬</span>
+                                            <p className="text-sm font-bold uppercase tracking-widest opacity-50">Диалог еще не начат</p>
+                                        </div>
+                                    ) : (
+                                        messages.map(m => (
+                                            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-start' : 'justify-end'}`}>
+                                                <div className={`max-w-[75%] p-5 rounded-3xl text-sm shadow-xl transition-all hover:scale-[1.02] ${
+                                                    m.role === 'user' 
+                                                    ? 'bg-white text-gray-800 border border-gray-100 rounded-bl-none' 
+                                                    : m.role === 'assistant' 
+                                                        ? 'bg-gray-900 text-white rounded-br-none'
+                                                        : 'bg-blue-50 text-blue-600 text-[10px] italic py-2 border border-blue-100 w-full text-center rounded-xl'
+                                                }`}>
+                                                    {m.content}
+                                                    <div className={`text-[8px] mt-2 font-bold opacity-40 text-right ${m.role === 'assistant' ? 'text-gray-400' : 'text-gray-400'}`}>
+                                                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))
+                                    )}
                                     <div ref={messagesEndRef} />
                                 </div>
 
