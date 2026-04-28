@@ -208,7 +208,7 @@ export async function POST(req: Request) {
         const assistantMessage = response.choices[0].message;
 
         if (assistantMessage.tool_calls) {
-            const toolCall = assistantMessage.tool_calls[0];
+            const toolCall = (assistantMessage.tool_calls as any)[0];
             if (toolCall.function.name === 'create_lead_in_crm') {
                 const args = JSON.parse(toolCall.function.arguments);
                 await createLeadInCrm({
