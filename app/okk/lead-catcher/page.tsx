@@ -118,7 +118,10 @@ export default function LeadCatcherPage() {
                 supabase.from('widget_events').select('*').eq('session_id', selectedSessionId).order('created_at', { ascending: false })
             ]);
 
-            if (msgRes.data) setMessages(msgRes.data);
+            if (msgRes.data) {
+                console.log('DEBUG: Messages loaded', msgRes.data);
+                setMessages(msgRes.data);
+            }
             if (evtRes.data) setEvents(evtRes.data);
             
             const currentSession = sessions.find(s => s.id === selectedSessionId);
@@ -323,16 +326,19 @@ export default function LeadCatcherPage() {
                                                     {m.content}
                                                     
                                                     {m.file_url && (
-                                                        <div className="mt-3 p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between gap-4">
-                                                            <div className="flex items-center gap-2 overflow-hidden">
-                                                                <span className="text-xl">📄</span>
-                                                                <span className="text-[10px] font-bold text-gray-600 truncate">{m.file_name || 'Файл'}</span>
+                                                        <div className="mt-4 p-4 bg-blue-50/50 rounded-2xl border-2 border-blue-100 flex items-center justify-between gap-4 shadow-sm">
+                                                            <div className="flex items-center gap-3 overflow-hidden">
+                                                                <span className="text-2xl">📎</span>
+                                                                <div className="flex flex-col overflow-hidden">
+                                                                    <span className="text-[10px] font-black text-blue-900 truncate uppercase tracking-tighter">Прикрепленный файл</span>
+                                                                    <span className="text-[9px] text-blue-600 truncate opacity-70">{m.file_name || 'документ'}</span>
+                                                                </div>
                                                             </div>
                                                             <a 
                                                                 href={m.file_url} 
                                                                 target="_blank" 
                                                                 rel="noopener noreferrer"
-                                                                className="bg-blue-600 text-white text-[9px] px-3 py-1 rounded-lg font-black uppercase hover:bg-blue-700 transition-all"
+                                                                className="bg-blue-600 text-white text-[10px] px-4 py-2 rounded-xl font-black uppercase hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
                                                             >
                                                                 Открыть
                                                             </a>
