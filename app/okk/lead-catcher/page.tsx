@@ -28,6 +28,8 @@ interface Message {
     id: string;
     role: 'user' | 'assistant' | 'system';
     content: string;
+    file_url?: string;
+    file_name?: string;
     created_at: string;
 }
 
@@ -319,6 +321,24 @@ export default function LeadCatcherPage() {
                                                         : 'bg-blue-50 text-blue-600 text-[10px] italic py-2 border border-blue-100 w-full text-center rounded-xl'
                                                 }`}>
                                                     {m.content}
+                                                    
+                                                    {m.file_url && (
+                                                        <div className="mt-3 p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between gap-4">
+                                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                                <span className="text-xl">📄</span>
+                                                                <span className="text-[10px] font-bold text-gray-600 truncate">{m.file_name || 'Файл'}</span>
+                                                            </div>
+                                                            <a 
+                                                                href={m.file_url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                className="bg-blue-600 text-white text-[9px] px-3 py-1 rounded-lg font-black uppercase hover:bg-blue-700 transition-all"
+                                                            >
+                                                                Открыть
+                                                            </a>
+                                                        </div>
+                                                    )}
+
                                                     <div className={`text-[8px] mt-2 font-bold opacity-40 text-right ${m.role === 'assistant' ? 'text-gray-400' : 'text-gray-400'}`}>
                                                         {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                     </div>

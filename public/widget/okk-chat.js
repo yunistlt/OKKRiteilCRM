@@ -167,6 +167,30 @@
         }
     }
 
+    async function uploadFile(file) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('visitorId', tracking.ensureVisitorId());
+        
+        addMsg(`Загрузка файла: ${file.name}...`, 'system');
+
+        try {
+            const res = await fetch('https://okk.zmksoft.com/api/widget/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            if (data.success) {
+                addMsg(`📎 Файл загружен: ${file.name}`, 'user');
+                return data;
+            } else {
+                addMsg(`❌ Ошибка загрузки: ${data.error}`, 'system');
+            }
+        } catch (e) {
+            addMsg(`❌ Ошибка сети при загрузке`, 'system');
+        }
+    }
+
     async function poll() {
         try {
             const res = await fetch(`${WIDGET_CONFIG.apiEndpoint}?visitorId=${tracking.ensureVisitorId()}&after=${lastMessageTimestamp}`);
@@ -196,6 +220,20 @@
 
     if (input) {
         input.onkeypress = (e) => { if (e.key === 'Enter') document.getElementById('okk-chat-send').click(); };
+    }
+
+    const fileInput = document.getElementById('okk-chat-file-input');
+    const fileBtn = document.getElementById('okk-chat-file-btn');
+
+    if (fileBtn && fileInput) {
+        fileBtn.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                uploadFile(file);
+                fileInput.value = ''; // Reset
+            }
+        };
     }
     
     if (document.getElementById('okk-chat-header')) {
