@@ -1,6 +1,6 @@
 (function() {
     const WIDGET_CONFIG = {
-        apiEndpoint: '/api/widget/chat',
+        apiEndpoint: 'https://okk.zmksoft.com/api/widget/chat',
         storageKeys: {
             visitorId: 'okk_visitor_id',
             utm: 'okk_utm',
@@ -9,8 +9,11 @@
             cart: 'okk_cart'
         },
         maxHistory: 20,
-        interestTimerMs: 10000
+        interestTimerMs: 10000,
+        pollingInterval: 3000
     };
+
+    let lastMessageTimestamp = localStorage.getItem('okk_last_msg_time') || new Date().toISOString();
 
     const tracking = {
         init: function() {
@@ -21,84 +24,53 @@
             this.setupCartTracking();
             this.setupInterestTimer();
         },
-
         ensureVisitorId: function() {
-            let visitorId = localStorage.getItem(WIDGET_CONFIG.storageKeys.visitorId);
-            if (!visitorId) {
-                visitorId = 'v_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
-                localStorage.setItem(WIDGET_CONFIG.storageKeys.visitorId, visitorId);
+            let id = localStorage.getItem(WIDGET_CONFIG.storageKeys.visitorId);
+            if (!id) {
+                id = 'v_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+                localStorage.setItem(WIDGET_CONFIG.storageKeys.visitorId, id);
             }
-            return visitorId;
+            return id;
         },
-
         trackUTM: function() {
-            const urlParams = new URLSearchParams(window.location.search);
+            const params = new URLSearchParams(window.location.search);
             const utm = {};
-            ['source', 'medium', 'campaign', 'content', 'term'].forEach(key => {
-                const val = urlParams.get('utm_' + key);
-                if (val) utm[key] = val;
+            ['source', 'medium', 'campaign', 'content', 'term'].forEach(k => {
+                if (params.get('utm_'+k)) utm[k] = params.get('utm_'+k);
             });
-
-            if (Object.keys(utm).length > 0) {
-                localStorage.setItem(WIDGET_CONFIG.storageKeys.utm, JSON.stringify(utm));
-            }
+            if (Object.keys(utm).length) localStorage.setItem(WIDGET_CONFIG.storageKeys.utm, JSON.stringify(utm));
         },
-
         trackLandingPage: function() {
             if (!localStorage.getItem(WIDGET_CONFIG.storageKeys.landing)) {
                 localStorage.setItem(WIDGET_CONFIG.storageKeys.landing, window.location.href);
             }
         },
-
         trackPageView: function() {
             let history = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
-            const currentPage = {
-                url: window.location.pathname + window.location.search,
-                title: document.title,
-                timestamp: new Date().toISOString()
-            };
-
-            if (history.length === 0 || history[history.length - 1].url !== currentPage.url) {
-                history.push(currentPage);
-                if (history.length > WIDGET_CONFIG.maxHistory) {
-                    history.shift();
-                }
-                localStorage.setItem(WIDGET_CONFIG.storageKeys.history, JSON.stringify(history));
-            }
+            history.push({ url: window.location.pathname, title: document.title });
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.history, JSON.stringify(history.slice(-WIDGET_CONFIG.maxHistory)));
         },
-
         setupCartTracking: function() {
             document.addEventListener('click', (e) => {
-                const cartBtn = e.target.closest('.add-to-cart, [data-cart-add], .js-add-to-cart');
-                if (cartBtn) {
-                    const productName = document.querySelector('h1')?.innerText || 'Product';
-                    this.markInterest(productName);
+                if (e.target.closest('.add-to-cart, .js-add-to-cart, [data-cart-add]')) {
+                    const name = document.querySelector('h1')?.innerText || 'Товар';
+                    this.markInterest(name);
                 }
             });
         },
-
         setupInterestTimer: function() {
             const h1 = document.querySelector('h1');
-            // Detect product page (Webasyst common patterns)
-            const isProductPage = window.location.pathname.includes('/product/') || 
-                                 document.querySelector('.product-info') || 
-                                 document.querySelector('.js-product');
-
-            if (h1 && isProductPage) {
-                setTimeout(() => {
-                    this.markInterest(h1.innerText);
-                }, WIDGET_CONFIG.interestTimerMs);
+            if (h1 && (window.location.pathname.includes('/product/') || document.querySelector('.product-info'))) {
+                setTimeout(() => this.markInterest(h1.innerText), WIDGET_CONFIG.interestTimerMs);
             }
         },
-
-        markInterest: function(item) {
+        markInterest: function(name) {
             let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
-            if (!cart.includes(item)) {
-                cart.push(item);
+            if (!cart.includes(name)) {
+                cart.push(name);
                 localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
             }
         },
-
         getPayload: function() {
             return {
                 domain: window.location.hostname,
@@ -114,30 +86,72 @@
 
     tracking.init();
 
-    window.OKKWidget = {
-        apiCall: async function(type, extra = {}) {
-            try {
-                const response = await fetch(WIDGET_CONFIG.apiEndpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type,
-                        visitorId: tracking.ensureVisitorId(),
-                        visitorData: tracking.getPayload(),
-                        ...extra
-                    })
+    // UI & Logic
+    const widget = document.getElementById('okk-chat-widget');
+    const input = document.getElementById('okk-chat-input');
+    const messages = document.getElementById('okk-chat-messages');
+    const toggle = document.getElementById('okk-chat-toggle');
+
+    function addMsg(text, type) {
+        if (!text) return;
+        const d = document.createElement('div');
+        d.className = 'okk-msg ' + type;
+        d.innerText = text;
+        messages.appendChild(d);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function apiCall(type, extra = {}) {
+        try {
+            const res = await fetch(WIDGET_CONFIG.apiEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type,
+                    visitorId: tracking.ensureVisitorId(),
+                    visitorData: tracking.getPayload(),
+                    ...extra
+                })
+            });
+            const data = await res.json();
+            if (data.reply) addMsg(data.reply, 'ai');
+            if (data.magicGreeting) addMsg(data.magicGreeting, 'ai');
+            return data;
+        } catch (e) { return { error: e.message }; }
+    }
+
+    async function poll() {
+        try {
+            const res = await fetch(`${WIDGET_CONFIG.apiEndpoint}?visitorId=${tracking.ensureVisitorId()}&after=${lastMessageTimestamp}`);
+            const data = await res.json();
+            if (data.newMessages && data.newMessages.length > 0) {
+                data.newMessages.forEach(m => {
+                    addMsg(m.content, 'ai');
+                    lastMessageTimestamp = m.created_at;
+                    localStorage.setItem('okk_last_msg_time', lastMessageTimestamp);
                 });
-                return await response.json();
-            } catch (err) {
-                console.error('OKK Widget Error:', err);
-                return { error: 'Connection failed' };
             }
-        },
-        sendMessage: function(message) {
-            return this.apiCall('chat', { message });
-        },
-        init: function() {
-            return this.apiCall('init');
+        } catch (e) {}
+    }
+
+    document.getElementById('okk-chat-send').onclick = () => {
+        const val = input.value.trim();
+        if (val) {
+            addMsg(val, 'user');
+            input.value = '';
+            apiCall('chat', { message: val });
         }
     };
+
+    input.onkeypress = (e) => { if (e.key === 'Enter') document.getElementById('okk-chat-send').click(); };
+    
+    if (document.getElementById('okk-chat-header')) {
+        document.getElementById('okk-chat-header').onclick = () => {
+            widget.classList.toggle('minimized');
+            if (toggle) toggle.innerHTML = widget.classList.contains('minimized') ? '▲' : '▼';
+        };
+    }
+
+    apiCall('init');
+    setInterval(poll, WIDGET_CONFIG.pollingInterval);
 })();

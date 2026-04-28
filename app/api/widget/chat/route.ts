@@ -26,6 +26,31 @@ const SYSTEM_PROMPT_TEMPLATE = `
 5. Не вызывай функцию создания лида, если клиент не оставил контактов. Просто продолжай консультировать.
 `;
 
+export async function GET(req: Request) {
+    const { searchParams } = new URL(req.url);
+    const visitorId = searchParams.get('visitorId');
+    const after = searchParams.get('after');
+
+    if (!visitorId) return NextResponse.json({ error: 'Missing visitorId' }, { status: 400 });
+
+    const { data: session } = await supabase.from('widget_sessions').select('id').eq('visitor_id', visitorId).single();
+    if (!session) return NextResponse.json({ newMessages: [] });
+
+    let query = supabase
+        .from('widget_messages')
+        .select('*')
+        .eq('session_id', session.id)
+        .eq('role', 'assistant')
+        .order('created_at', { ascending: true });
+    
+    if (after) {
+        query = query.gt('created_at', after);
+    }
+
+    const { data: messages } = await query;
+    return NextResponse.json({ newMessages: messages || [] });
+}
+
 export async function POST(req: Request) {
     try {
         const body = await req.json();
@@ -68,7 +93,6 @@ export async function POST(req: Request) {
             if (createError) throw createError;
             session = newSession;
         } else {
-            // Update session if needed (e.g. city)
             if (city && !session.geo_city) {
                 await supabase.from('widget_sessions').update({ geo_city: city }).eq('id', session.id);
             }
@@ -76,9 +100,8 @@ export async function POST(req: Request) {
 
         const sessionId = session!.id;
 
-        // 2. Handle 'init' event (Magic happens here)
+        // 2. Handle 'init' event
         if (type === 'init') {
-            // Log the page view if provided
             if (visitorData?.visitedPages?.length > 0) {
                 const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
                 await supabase.from('widget_events').insert({
@@ -89,13 +112,15 @@ export async function POST(req: Request) {
                 });
             }
 
-            // Check for returning visitor magic
+            if (session?.is_human_takeover) {
+                return NextResponse.json({ success: true, isHumanTakeover: true });
+            }
+
             const { count: msgCount } = await supabase
                 .from('widget_messages')
                 .select('*', { count: 'exact', head: true })
                 .eq('session_id', sessionId);
 
-            // If user has been here before but hasn't chatted much, or has items in cart
             if (visitorData?.cartItems?.length > 0 && (msgCount || 0) < 2) {
                 return NextResponse.json({ 
                     success: true, 
@@ -106,8 +131,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: true });
         }
 
-        // 3. Log Message from User (for regular chat messages)
-        if (!message) return NextResponse.json({ error: 'Message is required for chat' }, { status: 400 });
+        // 3. Log Message from User
+        if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400 });
         
         await supabase.from('widget_messages').insert({
             session_id: sessionId,
@@ -115,37 +140,27 @@ export async function POST(req: Request) {
             content: message
         });
 
-        // 3. Log Event (optional)
-        if (visitorData?.visitedPages?.length > 0) {
-            const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
-            await supabase.from('widget_events').insert({
-                session_id: sessionId,
-                event_type: 'page_view',
-                url: lastPage.url,
-                page_title: lastPage.title
-            });
+        // 4. Human Takeover Check
+        if (session?.is_human_takeover) {
+            return NextResponse.json({ reply: null, isHumanTakeover: true });
         }
 
-        // 4. Get Knowledge Base Context (RAG)
+        // 5. RAG & OpenAI
         const openai = getOpenAIClient();
-        
-        // Generate embedding for the message
-        const embeddingResponse = await openai.embeddings.create({
+        const embeddingRes = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: message,
         });
-        const embedding = embeddingResponse.data[0].embedding;
+        const embedding = embeddingRes.data[0].embedding;
 
-        // Search Knowledge Base
-        const { data: knowledge, error: searchError } = await supabase.rpc('match_okk_consultant_knowledge', {
+        const { data: knowledge } = await supabase.rpc('match_okk_consultant_knowledge', {
             query_embedding: embedding,
             match_threshold: 0.5,
             match_count: 5
         });
 
-        const knowledgeContext = knowledge?.map((k: any) => `[${k.title}]: ${k.content}`).join('\n\n') || 'База знаний пуста или ничего не найдено.';
+        const knowledgeContext = knowledge?.map((k: any) => `[${k.title}]: ${k.content}`).join('\n\n') || '';
 
-        // 5. Get History
         const { data: history } = await supabase
             .from('widget_messages')
             .select('role, content')
@@ -154,31 +169,29 @@ export async function POST(req: Request) {
             .limit(10);
 
         const chatHistory = history?.map(h => ({
-            role: h.role as 'user' | 'assistant' | 'system',
+            role: h.role as any,
             content: h.content
         })) || [];
 
-        // 6. Build System Prompt
         const systemPrompt = SYSTEM_PROMPT_TEMPLATE
-            .replace('{{domain}}', visitorData?.domain || 'неизвестно')
-            .replace('{{cartItems}}', visitorData?.cartItems?.join(', ') || 'нет товаров')
-            .replace('{{visitedPages}}', visitorData?.visitedPages?.slice(-3).map((p: any) => p.title).join(', ') || 'неизвестно')
+            .replace('{{domain}}', visitorData?.domain || '')
+            .replace('{{cartItems}}', visitorData?.cartItems?.join(', ') || '')
+            .replace('{{visitedPages}}', visitorData?.visitedPages?.slice(-3).map((p: any) => p.title).join(', ') || '')
             .replace('{{knowledgeContext}}', knowledgeContext);
 
-        // 7. OpenAI Chat Completion
         const tools: any[] = [{
             type: 'function',
             function: {
                 name: 'create_lead_in_crm',
-                description: 'Создает лида в RetailCRM, когда клиент оставил любые контактные данные',
+                description: 'Создает лида в RetailCRM',
                 parameters: {
                     type: 'object',
                     properties: {
-                        name: { type: 'string', description: 'Имя клиента' },
-                        phone: { type: 'string', description: 'Номер телефона клиента' },
-                        email: { type: 'string', description: 'Email клиента' },
-                        telegram: { type: 'string', description: 'Ник в Telegram' },
-                        query_summary: { type: 'string', description: 'Краткая суть запроса клиента' }
+                        name: { type: 'string' },
+                        phone: { type: 'string' },
+                        email: { type: 'string' },
+                        telegram: { type: 'string' },
+                        query_summary: { type: 'string' }
                     },
                     required: ['query_summary']
                 }
@@ -187,91 +200,53 @@ export async function POST(req: Request) {
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                ...chatHistory
-            ],
+            messages: [{ role: 'system', content: systemPrompt }, ...chatHistory],
             tools,
-            tool_choice: 'auto',
-            temperature: 0.7
+            tool_choice: 'auto'
         });
 
         const assistantMessage = response.choices[0].message;
 
-        // 8. Handle Tool Calls
         if (assistantMessage.tool_calls) {
-            for (const toolCall of assistantMessage.tool_calls) {
-                if (toolCall.function.name === 'create_lead_in_crm') {
-                    const args = JSON.parse(toolCall.function.arguments);
-                    try {
-                        // Load full session for context
-                        const { data: sessionData } = await supabase
-                            .from('widget_sessions')
-                            .select('*')
-                            .eq('id', sessionId)
-                            .single();
+            const toolCall = assistantMessage.tool_calls[0];
+            if (toolCall.function.name === 'create_lead_in_crm') {
+                const args = JSON.parse(toolCall.function.arguments);
+                await createLeadInCrm({
+                    ...args,
+                    domain: visitorData?.domain,
+                    utm: visitorData?.utm,
+                    items: visitorData?.cartItems,
+                    city: session?.geo_city,
+                    history: chatHistory,
+                    visitedPages: visitorData?.visitedPages
+                });
+                
+                await supabase.from('widget_messages').insert({
+                    session_id: sessionId, role: 'system', content: `Лид создан: ${args.phone || args.telegram || args.email}`
+                });
 
-                        await createLeadInCrm({
-                            ...args,
-                            domain: visitorData?.domain,
-                            utm: visitorData?.utm,
-                            items: visitorData?.cartItems,
-                            city: sessionData?.geo_city,
-                            history: chatHistory,
-                            visitedPages: visitorData?.visitedPages
-                        });
-                        
-                        // Add a system message to history about success
-                        await supabase.from('widget_messages').insert({
-                            session_id: sessionId,
-                            role: 'system',
-                            content: `Лид успешно создан для ${args.name} (${args.phone})`
-                        });
-
-                        // Optionally follow up with AI to confirm to user
-                        const followUp = await openai.chat.completions.create({
-                            model: 'gpt-4o-mini',
-                            messages: [
-                                { role: 'system', content: systemPrompt },
-                                ...chatHistory,
-                                assistantMessage,
-                                {
-                                    role: 'tool',
-                                    tool_call_id: toolCall.id,
-                                    content: JSON.stringify({ success: true })
-                                }
-                            ]
-                        });
-                        
-                        const followUpText = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные и скоро свяжемся.';
-                        
-                        await supabase.from('widget_messages').insert({
-                            session_id: sessionId,
-                            role: 'assistant',
-                            content: followUpText
-                        });
-
-                        return NextResponse.json({ reply: followUpText });
-                    } catch (crmError) {
-                        console.error('CRM Integration Error:', crmError);
-                        return NextResponse.json({ reply: 'Извините, произошла ошибка при сохранении ваших данных. Пожалуйста, попробуйте позже или позвоните нам.' });
-                    }
-                }
+                const followUp = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        ...chatHistory,
+                        assistantMessage,
+                        { role: 'tool', tool_call_id: toolCall.id, content: JSON.stringify({ success: true }) }
+                    ]
+                });
+                
+                const reply = followUp.choices[0].message.content || 'Спасибо! Мы получили ваши данные.';
+                await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: reply });
+                return NextResponse.json({ reply });
             }
         }
 
-        // 9. Save Assistant Response and Return
-        const replyText = assistantMessage.content || 'Я здесь, чем могу помочь?';
-        await supabase.from('widget_messages').insert({
-            session_id: sessionId,
-            role: 'assistant',
-            content: replyText
-        });
-
+        const replyText = assistantMessage.content || 'Чем могу помочь?';
+        await supabase.from('widget_messages').insert({ session_id: sessionId, role: 'assistant', content: replyText });
         return NextResponse.json({ reply: replyText });
 
     } catch (error: any) {
         console.error('Widget API Error:', error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
