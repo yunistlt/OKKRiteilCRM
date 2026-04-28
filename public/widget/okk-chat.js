@@ -4,11 +4,12 @@
         storageKeys: {
             visitorId: 'okk_visitor_id',
             utm: 'okk_utm',
-            history: 'okk_visited_pages',
-            landing: 'okk_landing_page',
-            cart: 'okk_cart_items'
+            history: 'okk_pages',
+            landing: 'okk_landing',
+            cart: 'okk_cart'
         },
-        maxHistory: 20
+        maxHistory: 20,
+        interestTimerMs: 10000
     };
 
     const tracking = {
@@ -16,9 +17,9 @@
             this.ensureVisitorId();
             this.trackUTM();
             this.trackLandingPage();
-            this.trackReferrer();
             this.trackPageView();
             this.setupCartTracking();
+            this.setupInterestTimer();
         },
 
         ensureVisitorId: function() {
@@ -49,12 +50,6 @@
             }
         },
 
-        trackReferrer: function() {
-            if (document.referrer && !localStorage.getItem('okk_referrer')) {
-                localStorage.setItem('okk_referrer', document.referrer);
-            }
-        },
-
         trackPageView: function() {
             let history = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
             const currentPage = {
@@ -63,7 +58,6 @@
                 timestamp: new Date().toISOString()
             };
 
-            // Avoid duplicate consecutive entries
             if (history.length === 0 || history[history.length - 1].url !== currentPage.url) {
                 history.push(currentPage);
                 if (history.length > WIDGET_CONFIG.maxHistory) {
@@ -74,17 +68,30 @@
         },
 
         setupCartTracking: function() {
-            // Webasyst specific or generic "In cart" button tracking
             document.addEventListener('click', (e) => {
                 const cartBtn = e.target.closest('.add-to-cart, [data-cart-add], .js-add-to-cart');
                 if (cartBtn) {
                     const productName = document.querySelector('h1')?.innerText || 'Product';
-                    this.addToCart(productName);
+                    this.markInterest(productName);
                 }
             });
         },
 
-        addToCart: function(item) {
+        setupInterestTimer: function() {
+            const h1 = document.querySelector('h1');
+            // Detect product page (Webasyst common patterns)
+            const isProductPage = window.location.pathname.includes('/product/') || 
+                                 document.querySelector('.product-info') || 
+                                 document.querySelector('.js-product');
+
+            if (h1 && isProductPage) {
+                setTimeout(() => {
+                    this.markInterest(h1.innerText);
+                }, WIDGET_CONFIG.interestTimerMs);
+            }
+        },
+
+        markInterest: function(item) {
             let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
             if (!cart.includes(item)) {
                 cart.push(item);
@@ -92,44 +99,45 @@
             }
         },
 
-        getPayload: function(message) {
+        getPayload: function() {
             return {
-                visitorId: this.ensureVisitorId(),
-                message: message,
-                visitorData: {
-                    domain: window.location.hostname,
-                    utm: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.utm) || '{}'),
-                    referrer: localStorage.getItem('okk_referrer') || document.referrer,
-                    landingPage: localStorage.getItem(WIDGET_CONFIG.storageKeys.landing),
-                    visitedPages: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]'),
-                    cartItems: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]'),
-                    userAgent: navigator.userAgent
-                }
+                domain: window.location.hostname,
+                utm: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.utm) || '{}'),
+                referrer: document.referrer,
+                landingPage: localStorage.getItem(WIDGET_CONFIG.storageKeys.landing),
+                visitedPages: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]'),
+                cartItems: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]'),
+                userAgent: navigator.userAgent
             };
         }
     };
 
-    // Initialize tracking
     tracking.init();
 
-    // Expose global object for the UI to use
     window.OKKWidget = {
-        sendMessage: async function(message) {
-            const payload = tracking.getPayload(message);
+        apiCall: async function(type, extra = {}) {
             try {
                 const response = await fetch(WIDGET_CONFIG.apiEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({
+                        type,
+                        visitorId: tracking.ensureVisitorId(),
+                        visitorData: tracking.getPayload(),
+                        ...extra
+                    })
                 });
                 return await response.json();
             } catch (err) {
                 console.error('OKK Widget Error:', err);
-                return { error: 'Failed to send message' };
+                return { error: 'Connection failed' };
             }
         },
-        getHistory: () => JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]')
+        sendMessage: function(message) {
+            return this.apiCall('chat', { message });
+        },
+        init: function() {
+            return this.apiCall('init');
+        }
     };
-
-    console.log('OKK Chat Widget Initialized');
 })();

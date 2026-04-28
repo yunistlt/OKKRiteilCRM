@@ -29,23 +29,24 @@ const SYSTEM_PROMPT_TEMPLATE = `
 export async function POST(req: Request) {
     try {
         const body = await req.json();
-        const { visitorId, message, visitorData } = body;
+        const { visitorId, message, visitorData, type } = body;
 
-        if (!visitorId || !message) {
-            return NextResponse.json({ error: 'Missing visitorId or message' }, { status: 400 });
+        if (!visitorId) {
+            return NextResponse.json({ error: 'Missing visitorId' }, { status: 400 });
         }
 
         // 1. Get or Create Session
         let { data: session, error: sessionError } = await supabase
             .from('widget_sessions')
-            .select('id')
+            .select('*')
             .eq('visitor_id', visitorId)
             .maybeSingle();
 
         if (sessionError) throw sessionError;
 
+        const city = req.headers.get('x-vercel-ip-city');
+
         if (!session) {
-            const city = req.headers.get('x-vercel-ip-city');
             const { data: newSession, error: createError } = await supabase
                 .from('widget_sessions')
                 .insert({
@@ -61,16 +62,53 @@ export async function POST(req: Request) {
                     user_agent: visitorData?.userAgent,
                     geo_city: city
                 })
-                .select('id')
+                .select('*')
                 .single();
             
             if (createError) throw createError;
             session = newSession;
+        } else {
+            // Update session if needed (e.g. city)
+            if (city && !session.geo_city) {
+                await supabase.from('widget_sessions').update({ geo_city: city }).eq('id', session.id);
+            }
         }
 
         const sessionId = session!.id;
 
-        // 2. Log Message from User
+        // 2. Handle 'init' event (Magic happens here)
+        if (type === 'init') {
+            // Log the page view if provided
+            if (visitorData?.visitedPages?.length > 0) {
+                const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
+                await supabase.from('widget_events').insert({
+                    session_id: sessionId,
+                    event_type: 'page_view',
+                    url: lastPage.url,
+                    page_title: lastPage.title
+                });
+            }
+
+            // Check for returning visitor magic
+            const { count: msgCount } = await supabase
+                .from('widget_messages')
+                .select('*', { count: 'exact', head: true })
+                .eq('session_id', sessionId);
+
+            // If user has been here before but hasn't chatted much, or has items in cart
+            if (visitorData?.cartItems?.length > 0 && (msgCount || 0) < 2) {
+                return NextResponse.json({ 
+                    success: true, 
+                    magicGreeting: `С возвращением! Вижу, вы интересовались товаром "${visitorData.cartItems[0]}". Нужна помощь с расчетом или консультация инженера?` 
+                });
+            }
+
+            return NextResponse.json({ success: true });
+        }
+
+        // 3. Log Message from User (for regular chat messages)
+        if (!message) return NextResponse.json({ error: 'Message is required for chat' }, { status: 400 });
+        
         await supabase.from('widget_messages').insert({
             session_id: sessionId,
             role: 'user',
