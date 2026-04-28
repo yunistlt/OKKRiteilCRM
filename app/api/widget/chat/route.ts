@@ -123,6 +123,16 @@ export async function POST(req: Request) {
             session = newSession;
         }
 
+        if (session && !session.nickname) {
+            // Give nickname to old anonymous session
+            const newNickname = generateNickname();
+            await supabase
+                .from('widget_sessions')
+                .update({ nickname: newNickname })
+                .eq('id', session.id);
+            session.nickname = newNickname;
+        }
+
         const sessionId = session!.id;
 
         if (visitorData?.cartItems?.length > 0) {
