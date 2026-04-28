@@ -1,15 +1,16 @@
 import { supabase } from '@/utils/supabase';
 
-const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
-const RETAILCRM_API_KEY = process.env.RETAILCRM_API_KEY;
+async function getCrmConfig() {
+    const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
+    const key = process.env.RETAILCRM_API_KEY;
+    const site = process.env.RETAILCRM_SITE;
+    if (!url || !key) throw new Error('RetailCRM config missing');
+    return { url: url.replace(/\/+$/, ''), key, site };
+}
 
 async function fetchRetailCrm(path: string, method: 'GET' | 'POST', body?: any) {
-    if (!RETAILCRM_URL || !RETAILCRM_API_KEY) {
-        throw new Error('RetailCRM config missing');
-    }
-
-    const baseUrl = RETAILCRM_URL.replace(/\/+$/, '');
-    const url = `${baseUrl}/api/v5/${path}?apiKey=${RETAILCRM_API_KEY}`;
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}`;
 
     const response = await fetch(url, {
         method,
@@ -36,12 +37,15 @@ async function fetchRetailCrm(path: string, method: 'GET' | 'POST', body?: any) 
 }
 
 // More standard fetch for RetailCRM
-async function postRetailCrm(path: string, rootKey: string, data: any) {
-    const baseUrl = RETAILCRM_URL!.replace(/\/+$/, '');
-    const url = `${baseUrl}/api/v5/${path}?apiKey=${RETAILCRM_API_KEY}`;
+async function postRetailCrm(path: string, rootKey: string, data: any, site?: string) {
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}`;
     
     const body = new URLSearchParams();
     body.append(rootKey, JSON.stringify(data));
+    if (site) {
+        body.append('site', site);
+    }
 
     const response = await fetch(url, {
         method: 'POST',
@@ -56,8 +60,8 @@ async function postRetailCrm(path: string, rootKey: string, data: any) {
 }
 
 export async function findCustomerByPhone(phone: string) {
-    const baseUrl = RETAILCRM_URL!.replace(/\/+$/, '');
-    const url = `${baseUrl}/api/v5/customers?apiKey=${RETAILCRM_API_KEY}&filter[name]=${phone}`;
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const url = `${baseUrl}/api/v5/customers?apiKey=${apiKey}&filter[name]=${phone}`;
     const response = await fetch(url);
     const data = await response.json();
     if (data.success && data.customers && data.customers.length > 0) {
@@ -88,11 +92,12 @@ export async function createLeadInCrm(params: {
     if (existing) {
         customerId = existing.id;
     } else {
+        const { site } = await getCrmConfig();
         const customerResult = await postRetailCrm('customers/create', 'customer', {
             firstName: params.name || 'Клиент из чата',
             phones: params.phone ? [{ number: params.phone }] : [],
             email: params.email
-        });
+        }, site);
         if (customerResult.success) {
             customerId = customerResult.id;
         } else {
@@ -124,7 +129,7 @@ ${historyLog}
 
     // 2. Create Order/Lead
     const orderData: any = {
-        status: 'new',
+        status: 'novyi-1', // Correct code for "Новый" from dictionary
         orderMethod: 'live-chat',
         lastName: 'ИИ-Лид',
         firstName: params.name || 'Клиент',
@@ -142,17 +147,12 @@ ${historyLog}
         orderData.customer = { id: customerId };
     }
 
-    // Site mapping based on domain
-    if (params.domain && params.domain.includes('.')) {
-        // orderData.site = params.domain; // Removed to prevent 400 errors if site code mismatch
-    }
-
-    // Add items as comments or actual items if they exist in CRM catalog
     if (params.items && params.items.length > 0) {
         orderData.customerComment += `\nИнтересовался товарами: ${params.items.join(', ')}`;
     }
 
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData);
+    const { site: configSite } = await getCrmConfig();
+    const orderResult = await postRetailCrm('orders/create', 'order', orderData, configSite);
     
     if (!orderResult.success) {
         console.error('Failed to create order:', orderResult);
