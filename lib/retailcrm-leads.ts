@@ -4,7 +4,8 @@ async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
     const key = process.env.RETAILCRM_API_KEY;
     const site = process.env.RETAILCRM_SITE;
-    if (!url || !key) throw new Error('RetailCRM config missing');
+    if (!url || !key) throw new Error('RetailCRM config missing: URL or API_KEY');
+    if (!site) throw new Error('RetailCRM config missing: RETAILCRM_SITE (shop code) is not set in environment variables');
     return { url: url.replace(/\/+$/, ''), key, site };
 }
 
@@ -38,8 +39,9 @@ async function fetchRetailCrm(path: string, method: 'GET' | 'POST', body?: any) 
 
 // More standard fetch for RetailCRM
 async function postRetailCrm(path: string, rootKey: string, data: any, site?: string) {
-    const { url: baseUrl, key: apiKey } = await getCrmConfig();
-    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}`;
+    const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
+    const targetSite = site || configSite;
+    const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}${targetSite ? `&site=${targetSite}` : ''}`;
     
     const body = new URLSearchParams();
     body.append(rootKey, JSON.stringify(data));
