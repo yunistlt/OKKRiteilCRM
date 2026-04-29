@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -102,6 +103,21 @@ export async function GET(req: Request) {
                         role: 'system',
                         content: `✅ Заказ #${orderNumber} успешно создан в CRM (Семён-Архивариус)`
                     });
+
+                    // Инициируем звонок через очередь задач
+                    if (extractedData.phone) {
+                        await safeEnqueueSystemJob({
+                            jobType: 'telphin_callback',
+                            payload: {
+                                visitorId: session.visitor_id,
+                                phone: extractedData.phone,
+                                sessionId: session.id,
+                                crm_order_number: orderNumber
+                            },
+                            priority: 15,
+                            idempotencyKey: `telphin_callback:${extractedData.phone}:${session.id}`
+                        });
+                    }
 
                     results.push({ sessionId: session.id, status: 'success', data: extractedData });
                 } catch (crmError: any) {

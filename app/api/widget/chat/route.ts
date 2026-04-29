@@ -268,24 +268,13 @@ export async function POST(req: Request) {
         if (phoneMatch) {
             const normalizedPhone = normalizePhone(phoneMatch[0]);
             if (normalizedPhone) {
-                await safeEnqueueSystemJob({
-                    jobType: 'telphin_callback',
-                    payload: {
-                        visitorId,
-                        phone: normalizedPhone,
-                        sessionId: sessionId
-                    },
-                    priority: 15,
-                    idempotencyKey: `telphin_callback:${normalizedPhone}:${visitorId}`
-                });
-                
                 // Выставляем флаг, что в сессии ЕСТЬ контакты для Семёна
                 await supabase
                     .from('widget_sessions')
                     .update({ has_contacts: true })
                     .eq('id', sessionId);
                 
-                // Создаем запись в таблице запросов
+                // Создаем запись в таблице запросов (Семён подхватит её позже)
                 await supabase.from('widget_callback_requests').insert({
                     session_id: sessionId,
                     visitor_id: visitorId,
