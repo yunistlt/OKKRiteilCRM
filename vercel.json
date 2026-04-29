@@ -87,7 +87,7 @@
         },
         {
             "path": "/api/cron/lead-catcher",
-            "schedule": "*/5 * * * *"
+            "schedule": "*/1 * * * *"
         }
     ]
 }

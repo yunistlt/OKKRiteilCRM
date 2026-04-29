@@ -17,14 +17,11 @@ export async function GET(req: Request) {
             // In development, we might skip this
         }
 
-        // 1. Find sessions that need processing
-        const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-        
+        // 1. Find sessions that need processing (any session that isn't a lead yet)
         const { data: sessions, error: sessionsError } = await supabase
             .from('widget_sessions')
             .select('*')
             .eq('is_lead_created', false)
-            .lt('updated_at', threeMinutesAgo)
             .limit(10);
 
         if (sessionsError) throw sessionsError;
@@ -88,15 +85,20 @@ export async function GET(req: Request) {
                         visitedPages: []
                     });
 
+                    const orderNumber = crmResult.order?.number || crmResult.id?.toString();
+
                     await supabase
                         .from('widget_sessions')
-                        .update({ is_lead_created: true })
+                        .update({ 
+                            is_lead_created: true,
+                            crm_order_number: orderNumber
+                        })
                         .eq('id', session.id);
 
                     await supabase.from('widget_messages').insert({
                         session_id: session.id,
                         role: 'system',
-                        content: `✅ Заказ #${crmResult.order?.number || crmResult.id} успешно создан в CRM (Семён-Архивариус)`
+                        content: `✅ Заказ #${orderNumber} успешно создан в CRM (Семён-Архивариус)`
                     });
 
                     results.push({ sessionId: session.id, status: 'success', data: extractedData });
