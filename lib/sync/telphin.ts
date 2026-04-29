@@ -301,6 +301,9 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
                     });
                 }
             }
+            
+            // После того как все звонки сохранены в raw_telphin_calls, проверяем, нет ли среди них наших колбэков
+            await processCallbackMatches(rawCalls.map(c => c.telphin_call_id));
 
             const lastCall = calls[calls.length - 1];
             const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
@@ -353,4 +356,52 @@ export async function runTelphinBacklogRecovery(forceResync: boolean = false, ho
         hours,
         modePrefix: forceResync ? 'backfill_forced_resync' : 'backfill',
     });
+}
+
+async function processCallbackMatches(syncedCallIds: string[]) {
+    if (syncedCallIds.length === 0) return;
+
+    // 1. Находим запросы на звонок, которые сейчас в статусе 'calling' и имеют один из синхронизированных ID
+    const { data: requests, error: fetchError } = await supabase
+        .from('widget_callback_requests')
+        .select('*')
+        .in('telphin_call_id', syncedCallIds)
+        .eq('status', 'calling');
+
+    if (fetchError || !requests || requests.length === 0) return;
+
+    for (const request of requests) {
+        // 2. Получаем детали звонка из уже сохраненных сырых данных
+        const { data: callData } = await supabase
+            .from('raw_telphin_calls')
+            .select('*')
+            .eq('telphin_call_id', request.telphin_call_id)
+            .single();
+
+        if (!callData) continue;
+
+        // 3. Определяем успех звонка
+        // В Телфине, если duration_sec > 0, значит разговор состоялся (bridged)
+        const isSuccess = (callData.duration_sec || 0) > 0;
+        const newStatus = isSuccess ? 'completed' : 'failed';
+
+        // 4. Обновляем статус запроса
+        await supabase
+            .from('widget_callback_requests')
+            .update({ status: newStatus })
+            .eq('id', request.id);
+
+        // 5. Артем пишет финальное сообщение в чат
+        const finalMessage = isSuccess 
+            ? '✅ Звонок завершен. Рад, что удалось пообщаться! Если возникнут вопросы — я всегда на связи в этом чате.'
+            : '⚠️ К сожалению, не удалось установить соединение (не ответили или занято). Менеджеры попробуют перезвонить вам вручную чуть позже.';
+
+        await supabase.from('widget_messages').insert({
+            session_id: request.session_id,
+            role: 'system',
+            content: finalMessage
+        });
+        
+        console.log(`[Artem:Callback] Match found for ${request.telphin_call_id}. Result: ${newStatus}`);
+    }
 }
