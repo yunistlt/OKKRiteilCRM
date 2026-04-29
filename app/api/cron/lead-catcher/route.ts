@@ -98,11 +98,18 @@ export async function GET(req: Request) {
                         })
                         .eq('id', session.id);
 
-                    await supabase.from('widget_messages').insert({
-                        session_id: session.id,
-                        role: 'system',
-                        content: `✅ Заказ #${orderNumber} успешно создан в CRM (Семён-Архивариус)`
-                    });
+                    await supabase.from('widget_messages').insert([
+                        {
+                            session_id: session.id,
+                            role: 'system',
+                            content: `✅ Заказ #${orderNumber} успешно создан в CRM (Семён-Архивариус)`
+                        },
+                        {
+                            session_id: session.id,
+                            role: 'system',
+                            content: `🗣️ Передаю сделку Артему для голосовой квалификации...`
+                        }
+                    ]);
 
                     // Инициируем звонок через очередь задач
                     if (extractedData.phone) {

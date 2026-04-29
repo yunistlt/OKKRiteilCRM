@@ -198,7 +198,8 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                                         {[...safeAgents, 
                                             ...(safeAgents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
-                                            ...(safeAgents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }])
+                                            ...(safeAgents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }]),
+                                            ...(safeAgents.find(a => a.agent_id === 'artem') ? [] : [{ agent_id: 'artem', name: 'Артем', role: 'Голосовой Менеджер', status: 'idle' }])
                     ].map((agent: any) => {
                         const profile = ({
                             anna: {
@@ -254,6 +255,15 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                 connection: "Работает в фоне, передает данные Максиму и Виктории.",
                                 load: agent.status === 'working' ? 80 : 10,
                                 stateDesc: agent.status === 'working' ? "Верификация заказов" : "База знаний"
+                            },
+                            artem: {
+                                role: "Голосовой менеджер",
+                                mission: "Автоматизация первичных звонков и квалификация лидов голосом.",
+                                functions: ["Исходящие звонки по новым лидам", "Квалификация через голосовой диалог", "Передача горячих клиентов менеджерам"],
+                                instruments: "Telphin API, AI Voice Engine (TTS/STT), GPT-4o-realtime.",
+                                connection: "Получает данные от Семёна, передает готовые сделки в RetailCRM.",
+                                load: agent.status === 'working' ? 92 : 0,
+                                stateDesc: agent.status === 'working' ? "Голосовой диалог" : "Режим ожидания"
                             }
                         } as any)[agent.agent_id] || {
                             role: agent.role,
