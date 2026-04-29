@@ -279,6 +279,12 @@ export async function POST(req: Request) {
                     idempotencyKey: `telphin_callback:${normalizedPhone}:${visitorId}`
                 });
                 
+                // Выставляем флаг, что в сессии ЕСТЬ контакты для Семёна
+                await supabase
+                    .from('widget_sessions')
+                    .update({ has_contacts: true })
+                    .eq('id', sessionId);
+                
                 // Создаем запись в таблице запросов
                 await supabase.from('widget_callback_requests').insert({
                     session_id: sessionId,
@@ -287,6 +293,12 @@ export async function POST(req: Request) {
                     status: 'pending'
                 });
             }
+        }
+
+        // Детекция Email для Семёна
+        const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        if (emailMatch) {
+            await supabase.from('widget_sessions').update({ has_contacts: true }).eq('id', sessionId);
         }
 
         return NextResponse.json({ reply }, { headers: CORS_HEADERS });

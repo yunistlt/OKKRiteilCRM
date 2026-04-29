@@ -22,6 +22,8 @@ export async function GET(req: Request) {
             .from('widget_sessions')
             .select('*')
             .eq('is_lead_created', false)
+            .eq('has_contacts', true) // Берем только те, где Лена нашла контакты
+            .order('updated_at', { ascending: false })
             .limit(10);
 
         if (sessionsError) throw sessionsError;
@@ -107,6 +109,12 @@ export async function GET(req: Request) {
                     results.push({ sessionId: session.id, status: 'crm_error', error: crmError.message });
                 }
             } else {
+                // Если контактов нет, все равно помечаем как проверенную, чтобы не зацикливаться
+                await supabase
+                    .from('widget_sessions')
+                    .update({ is_lead_created: true }) // Считаем обработанной (пустой)
+                    .eq('id', session.id);
+                    
                 results.push({ sessionId: session.id, status: 'no_contacts_found' });
             }
         }
