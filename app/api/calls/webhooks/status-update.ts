@@ -63,6 +63,52 @@ export async function POST(req: NextRequest) {
       idempotencyKey: `telphin_call_upsert:${call_id}:status:${status}`,
     });
 
+    // Sync with widget callback requests
+    if (call_id) {
+        const { data: callbackReq } = await supabase
+            .from('widget_callback_requests')
+            .select('*')
+            .eq('telphin_call_id', call_id)
+            .maybeSingle();
+
+        if (callbackReq) {
+            let nextStatus = callbackReq.status;
+            
+            if (status === 'connected') {
+                nextStatus = 'calling_customer';
+            } else if (status === 'completed') {
+                nextStatus = 'completed';
+            } else if (['failed', 'busy', 'no_answer', 'cancelled'].includes(status)) {
+                // If it's a terminal failure from PBX
+                nextStatus = 'failed';
+            }
+
+            if (nextStatus !== callbackReq.status) {
+                await supabase
+                    .from('widget_callback_requests')
+                    .update({ 
+                        status: nextStatus,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', callbackReq.id);
+                
+                // Add system message to chat
+                let systemMsg = '';
+                if (nextStatus === 'calling_customer') systemMsg = '📞 Менеджер на линии, соединяем с вами...';
+                else if (nextStatus === 'completed') systemMsg = '✅ Звонок завершен. Спасибо за общение!';
+                else if (nextStatus === 'failed') systemMsg = '❌ Не удалось установить соединение. Мы попробуем перезвонить позже.';
+
+                if (systemMsg) {
+                    await supabase.from('widget_messages').insert({
+                        session_id: callbackReq.session_id,
+                        role: 'system',
+                        content: systemMsg
+                    });
+                }
+            }
+        }
+    }
+
     const isTerminalStatus = TERMINAL_CALL_STATUSES.has(String(status || '').toLowerCase());
     let shouldEnqueueCallMatch = true;
     let callMatchSource = 'status_update_webhook';

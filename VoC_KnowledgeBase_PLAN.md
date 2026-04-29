@@ -12,118 +12,90 @@
 ## 0. Ограничения и {literal}
 <style>
   #okk-chat-widget {
-    position: fixed; 
-    bottom: 50px; 
-    left: 50px; /* Перенесли налево, подальше от CarrotQuest! */
-    width: 400px; 
-    height: 600px; /* Сделали окно огромным */
-    background: #fff; 
-    border: 5px solid red; /* Толстая красная рамка */
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(255,0,0,0.6); /* Красная тень */
-    display: flex; flex-direction: column;
-    font-family: Arial, sans-serif;
-    z-index: 2147483647; /* Максимально возможный z-index в CSS */
-    overflow: hidden;
-    transition: transform 0.3s ease;
-  }
-  #okk-chat-widget.minimized { 
-    transform: translateY(540px); /* Чтобы прятался вниз, оставляя красную шапку */
-  }
-  #okk-chat-header {
-    background: red; /* Ярко-красная шапка */
-    color: #fff;
-    padding: 20px; 
-    cursor: pointer;
-    font-weight: bold; 
-    font-size: 18px;
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 380px;
+    height: 700px;
+    background: #ffffff;
+    border-radius: 24px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
     display: flex;
+    flex-direction: column;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    z-index: 2147483647;
+    overflow: hidden;
+    transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+  }
+
+  #okk-chat-widget.minimized {
+    height: 64px;
+    width: 64px;
+    border-radius: 32px;
+    bottom: 30px;
+    cursor: pointer;
+  }
+
+  #okk-chat-header {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #fff;
+    padding: 16px 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
     justify-content: space-between;
+    font-weight: 600;
   }
+
+  #okk-chat-widget.minimized #okk-chat-header {
+    padding: 0; width: 100%; height: 100%; justify-content: center; background: #10b981;
+  }
+
+  .agent-info { display: flex; align-items: center; gap: 12px; }
+  .agent-avatar { width: 32px; height: 32px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); object-fit: cover; }
+  #okk-chat-widget.minimized .agent-avatar { width: 64px; height: 64px; border: none; }
+  .agent-status { font-size: 11px; opacity: 0.8; font-weight: 400; }
+
   #okk-chat-messages {
-    flex: 1; padding: 15px; overflow-y: auto; background: #f5f7fa;
+    flex: 1; padding: 20px; overflow-y: auto; background: #f9fafb; display: flex; flex-direction: column; gap: 12px;
   }
-  .okk-msg { margin-bottom: 10px; padding: 12px; border-radius: 8px; max-width: 80%; line-height: 1.4; font-size: 16px;}
-  .okk-msg.user { background: #d1e3ff; margin-left: auto; }
-  .okk-msg.ai { background: #fff; border: 1px solid #e1e1e1; margin-right: auto; }
-  #okk-chat-input-area { display: flex; border-top: 1px solid #eee; background: #fff; }
-  #okk-chat-input { flex: 1; border: none; padding: 15px; outline: none; font-size: 16px;}
-  #okk-chat-send { background: none; border: none; padding: 0 15px; color: red; cursor: pointer; font-weight: bold; font-size: 16px;}
+
+  .okk-msg { max-width: 85%; padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.5; animation: okkFadeIn 0.3s ease-out; }
+  @keyframes okkFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .okk-msg.ai { background: #ffffff; color: #1f2937; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #f3f4f6; }
+  .okk-msg.user { background: #10b981; color: #ffffff; align-self: flex-end; border-bottom-right-radius: 4px; }
+
+  #okk-chat-input-area { padding: 16px; background: #fff; border-top: 1px solid #f3f4f6; display: flex; align-items: center; gap: 10px; }
+  #okk-chat-input { flex: 1; border: 1px solid #e5e7eb; border-radius: 20px; padding: 10px 16px; outline: none; font-size: 14px; }
+  #okk-chat-send { background: none; border: none; color: #10b981; cursor: pointer; }
+
+  #okk-chat-preview {
+    position: fixed; bottom: 100px; right: 20px; background: #fff; padding: 12px 16px; border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12); font-size: 13px; display: none; z-index: 2147483646;
+  }
+  #okk-chat-preview.active { display: block; }
 </style>
 
-<!-- Убрали класс minimized, теперь он сразу открыт на пол-экрана! -->
-<div id="okk-chat-widget" class="">
+<div id="okk-chat-widget" class="minimized">
   <div id="okk-chat-header">
-    <span>🔴 ОКК ТЕСТ</span>
-    <span id="okk-chat-toggle">▼</span>
+    <div class="agent-info">
+      <img src="/images/agents/elena.png" alt="Елена" class="agent-avatar">
+      <div>
+        <div>Елена (ЗМК)</div>
+        <div class="agent-status">В сети • Продуктолог</div>
+      </div>
+    </div>
+    <span id="okk-chat-toggle">▲</span>
   </div>
-  <div id="okk-chat-messages">
-    <div class="okk-msg ai">Если вы видите это окно, значит код на сайт встал успешно!</div>
-  </div>
+  <div id="okk-chat-messages"></div>
   <div id="okk-chat-input-area">
-    <input type="text" id="okk-chat-input" placeholder="Введите сообщение...">
-    <button id="okk-chat-send">Отправить</button>
+    <input type="text" id="okk-chat-input" placeholder="Введите ваш вопрос...">
+    <button id="okk-chat-send">▶</button>
   </div>
 </div>
 
-<script>
-  (function() {
-    const widget = document.getElementById('okk-chat-widget');
-    const header = document.getElementById('okk-chat-header');
-    const toggle = document.getElementById('okk-chat-toggle');
-    const messagesContainer = document.getElementById('okk-chat-messages');
-    const input = document.getElementById('okk-chat-input');
-    const sendBtn = document.getElementById('okk-chat-send');
-    
-    let sessionId = localStorage.getItem('okk_chat_session') || null;
-
-    header.addEventListener('click', () => {
-      widget.classList.toggle('minimized');
-      toggle.innerText = widget.classList.contains('minimized') ? '▲' : '▼';
-    });
-
-    function addMessage(text, sender) {
-      const msgEl = document.createElement('div');
-      msgEl.className = 'okk-msg ' + sender;
-      msgEl.innerText = text;
-      messagesContainer.appendChild(msgEl);
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
-
-    async function sendMessage() {
-      const text = input.value.trim();
-      if (!text) return;
-
-      addMessage(text, 'user');
-      input.value = '';
-
-      try {
-        const response = await fetch('https://okk.zmksoft.com/api/widget/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, sessionId: sessionId })
-        });
-
-        const data = await response.json();
-        
-        if (data.sessionId && !sessionId) {
-          sessionId = data.sessionId;
-          localStorage.setItem('okk_chat_session', sessionId);
-        }
-
-        addMessage(data.reply || data.error || 'Ошибка ответа', 'ai');
-      } catch (err) {
-        console.error(err);
-        addMessage('Извините, произошла ошибка подключения к серверу.', 'ai');
-      }
-    }
-
-    sendBtn.addEventListener('click', sendMessage);
-    input.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
-  })();
-</script>
+<script src="/widget/okk-chat.js"></script>
 {/literal}
 безопасность
  - [ ] Добавить лимиты на количество запросов к OpenAI (batch-size, max-total)

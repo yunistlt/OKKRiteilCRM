@@ -3,6 +3,8 @@ import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '@/utils/openai';
 import { createLeadInCrm } from '@/lib/retailcrm-leads';
 import { createClient } from '@supabase/supabase-js';
+import { normalizePhone } from '@/lib/phone-utils';
+import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +40,9 @@ const SYSTEM_PROMPT_TEMPLATE = `Ты — Елена, эксперт ЗМК. Тв
 1. ПОМОЩЬ: Отвечай на технические вопросы, рассчитывай (ориентировочно) доставку, помогай подобрать модель.
 2. СБОР ДАННЫХ: Если клиенту нужен расчет или консультация инженера, мягко скажи: "Напишите ваш телефон или ник в Telegram, я передам данные в отдел расчетов".
 3. ФАЙЛЫ: Если клиент прислал файл (ТЗ), подтверди получение: "Файл получила, сейчас изучу его и передам детали инженерам".
-4. СТИЛЬ: Общайся просто и по-человечески (H2H).
+4. ЗВОНОК: Если клиент оставил номер телефона для связи, подтверди: "Спасибо! Звоню нашим менеджерам, ожидайте соединения...".
+5. СТИЛЬ: Общайся просто и по-человечески (H2H).
+6. CRM: НИКОГДА не пиши фразы типа "Заказ создан", "Контакт сохранен" или "Ошибка CRM". Это делает Семён-Архивариус в фоне. Ты просто общаешься.
 
 КОНТЕКСТ О ТОВАРАХ:
 {{knowledgeContext}}
@@ -63,7 +67,7 @@ export async function GET(req: Request) {
         .from('widget_messages')
         .select('*')
         .eq('session_id', session.id)
-        .eq('role', 'assistant')
+        .in('role', ['assistant', 'system'])
         .order('created_at', { ascending: true });
     
     if (after) {
@@ -258,6 +262,32 @@ export async function POST(req: Request) {
             role: 'assistant',
             content: reply
         });
+
+        // Детекция номера телефона для автоматического звонка
+        const phoneMatch = message.match(/(\+7|8|7)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
+        if (phoneMatch) {
+            const normalizedPhone = normalizePhone(phoneMatch[0]);
+            if (normalizedPhone) {
+                await safeEnqueueSystemJob({
+                    jobType: 'telphin_callback',
+                    payload: {
+                        visitorId,
+                        phone: normalizedPhone,
+                        sessionId: sessionId
+                    },
+                    priority: 15,
+                    idempotencyKey: `telphin_callback:${normalizedPhone}:${visitorId}`
+                });
+                
+                // Создаем запись в таблице запросов
+                await supabase.from('widget_callback_requests').insert({
+                    session_id: sessionId,
+                    visitor_id: visitorId,
+                    phone: normalizedPhone,
+                    status: 'pending'
+                });
+            }
+        }
 
         return NextResponse.json({ reply }, { headers: CORS_HEADERS });
 

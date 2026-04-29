@@ -48,3 +48,38 @@ export async function getTelphinToken() {
     const data = await res.json();
     return data.access_token;
 }
+
+export async function initiateMakeCall(params: {
+    extensionId: string;
+    source: string;
+    destination: string;
+}) {
+    const token = await getTelphinToken();
+    const TELPHIN_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
+
+    // API URL: https://apiproxy.telphin.ru/api/ver1.0/client/{client_id}/extension/{extension_id}/makecall
+    // Source: Number to call first (managers group)
+    // Destination: Number to call second (client)
+    const res = await fetchTelphin(`https://apiproxy.telphin.ru/api/ver1.0/client/${TELPHIN_KEY}/extension/${params.extensionId}/makecall`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            source: params.source,
+            destination: params.destination
+        })
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Telphin MakeCall Failed: ${res.status} ${text}`);
+    }
+
+    const data = await res.json();
+    return {
+        callId: data.call_id,
+        success: true
+    };
+}

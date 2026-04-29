@@ -21,7 +21,8 @@ export type SystemJobType =
   | 'manager_aggregate_refresh'
   | 'nightly_reconciliation'
   | 'legal_contract_analyze'
-  | 'legal_contract_scan';
+  | 'legal_contract_scan'
+  | 'telphin_callback';
 
 // Enqueue job для асинхронного анализа контракта
 export async function enqueueLegalContractAnalyzeJob(reviewId: number) {
@@ -41,6 +42,21 @@ export async function enqueueLegalContractScanJob(reviewId: number) {
     priority: 50,
     idempotencyKey: `legal_contract_scan:${reviewId}`,
     maxAttempts: 3,
+  });
+}
+
+// Enqueue job для автоматического обратного звонка Телфин
+export async function enqueueTelphinCallbackJob(params: {
+  visitorId: string;
+  phone: string;
+  sessionId: string;
+}) {
+  return enqueueSystemJob({
+    jobType: 'telphin_callback',
+    payload: params,
+    priority: 15, // Высокий приоритет
+    idempotencyKey: `telphin_callback:${params.phone}:${params.visitorId}`,
+    maxAttempts: 20, // Много попыток для дозвона менеджерам
   });
 }
 
