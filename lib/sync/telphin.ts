@@ -303,7 +303,7 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
             }
             
             // После того как все звонки сохранены в raw_telphin_calls, проверяем, нет ли среди них наших колбэков
-            await processCallbackMatches(rawCalls.map(c => c.telphin_call_id));
+            await processCallbackMatches(rawCalls.map((c: any) => c.telphin_call_id));
 
             const lastCall = calls[calls.length - 1];
             const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
