@@ -160,8 +160,9 @@ ${historyLog.split('\n').slice(-10).join('\n')}
     const orderResult = await postRetailCrm('orders/create', 'order', orderData, configSite);
     
     if (!orderResult.success) {
-        console.error('Failed to create order:', orderResult);
-        throw new Error(`CRM Order Creation Failed: ${JSON.stringify(orderResult.errors)}`);
+        console.error('Failed to create order:', JSON.stringify(orderResult, null, 2));
+        const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
+        throw new Error(`CRM Order Creation Failed: ${errorMessage} (Full response: ${JSON.stringify(orderResult)})`);
     }
 
     return orderResult;
