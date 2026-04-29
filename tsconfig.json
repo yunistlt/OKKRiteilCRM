@@ -38,6 +38,7 @@
         "node_modules",
         "scripts",
         "supabase",
-        "functions"
+        "functions",
+        "scratch"
     ]
 }
