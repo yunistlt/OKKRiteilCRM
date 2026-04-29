@@ -115,16 +115,21 @@ export async function createLeadInCrm(params: {
         historyLog = params.history.map(h => `${h.role === 'user' ? 'Клиент' : 'ИИ'}: ${h.content}`).join('\n');
     }
 
-    const managerComment = `[Лид из ИИ-чата]
-${telegramStr}
-Клиент смотрел страницы: ${visitedPagesStr}
-Город: ${cityStr}
+    const managerComment = `🔥 НОВЫЙ ЛИД ИЗ ИИ-ЧАТА
 
--- Краткая суть разговора (Summary от ИИ): --
+📍 ГЕО: ${cityStr}
+📱 КОНТАКТЫ: ${telegramStr || params.phone || params.email || 'указаны в карточке'}
+
+📝 СУТЬ ЗАПРОСА (Анализ от Семёна):
 ${params.query_summary}
 
--- Лог диалога: --
-${historyLog}
+-------------------------------------------
+🔎 ДЕТАЛИ:
+- Страницы: ${visitedPagesStr}
+- Товары: ${params.items?.join(', ') || 'не указаны'}
+
+📜 КРАТКИЙ ЛОГ ДИАЛОГА:
+${historyLog.split('\n').slice(-10).join('\n')}
 `;
 
     // 2. Create Order/Lead
