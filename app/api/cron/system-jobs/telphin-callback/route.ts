@@ -97,7 +97,7 @@ export async function GET(req: NextRequest) {
         await supabase.from('widget_messages').insert({
             session_id: sessionId,
             role: 'system',
-            content: '📞 Голосовой менеджер Артем инициировал звонок. Дозваниваюсь менеджерам...'
+            content: '📞 Голосовой менеджер Артем инициировал звонок. Соединяю вас с менеджером Юлей (доб. 106)...'
         });
 
         await completeSystemJob(job.id, {
