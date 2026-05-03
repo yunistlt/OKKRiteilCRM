@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
         const { orders, pagination } = await fetchRetailCrmOrdersPage({
           page,
           limit,
-          updatedAtFrom: filterDateFrom,
+          createdAtFrom: filterDateFrom,
         });
 
         if (!orders.length) {

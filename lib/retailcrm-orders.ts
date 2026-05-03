@@ -339,14 +339,15 @@ async function fetchRetailCrm(path: string, params: URLSearchParams) {
 export async function fetchRetailCrmOrdersPage(params: {
   page: number;
   limit?: 20 | 50 | 100;
-  updatedAtFrom?: string;
+  createdAtFrom?: string;
 }) {
   const searchParams = new URLSearchParams();
   searchParams.set('page', String(params.page));
   searchParams.set('limit', String(normalizeRetailCrmLimit(params.limit, 50)));
 
-  if (params.updatedAtFrom) {
-    searchParams.set('filter[updatedAtFrom]', params.updatedAtFrom);
+  if (params.createdAtFrom) {
+    // RetailCRM API accepts Y-m-d format for createdAtFrom
+    searchParams.set('filter[createdAtFrom]', params.createdAtFrom.slice(0, 10));
   }
 
   const data = await fetchRetailCrm('orders', searchParams);

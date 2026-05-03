@@ -82,7 +82,7 @@ export async function GET(request: Request) {
             const data = await fetchRetailCrmOrdersPage({
                 page,
                 limit,
-                updatedAtFrom: filterDateFrom,
+                createdAtFrom: filterDateFrom,
             });
 
             const orders = data.orders || [];
