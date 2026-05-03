@@ -19,12 +19,25 @@ export async function GET(request: Request) {
     }
 
     try {
-        const token = await getTelphinToken();
-        const res = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${token}`
+        let res = await fetch(url);
+
+        // Some Telphin links require OAuth token. Use it as fallback, not as strict prerequisite.
+        if ((res.status === 401 || res.status === 403) && !res.ok) {
+            let token: string | null = null;
+            try {
+                token = await getTelphinToken();
+            } catch {
+                token = null;
             }
-        });
+
+            if (token) {
+                res = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+            }
+        }
 
         if (!res.ok) {
             throw new Error(`Audio fetch failed: ${res.status}`);
@@ -33,7 +46,6 @@ export async function GET(request: Request) {
         const blob = await res.blob();
         const response = new NextResponse(blob);
 
-        // Pass through content type
         const contentType = res.headers.get('content-type') || 'audio/mpeg';
         response.headers.set('Content-Type', contentType);
         Object.entries(NO_STORE_AUDIO_HEADERS).forEach(([key, value]) => {

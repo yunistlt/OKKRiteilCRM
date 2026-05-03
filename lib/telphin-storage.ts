@@ -22,13 +22,25 @@ export async function syncRecordingToStorage(telphinCallId: string, recordingUrl
             return callData.raw_payload.storage_url;
         }
 
-        // 2. Download from Telphin
-        const token = await getTelphinToken();
-        const res = await fetchTelphin(recordingUrl, {
-            headers: {
-                'Authorization': `Bearer ${token}`
+        // 2. Download from Telphin (public first, OAuth fallback)
+        let res = await fetchTelphin(recordingUrl);
+
+        if ((res.status === 401 || res.status === 403) && !res.ok) {
+            let token: string | null = null;
+            try {
+                token = await getTelphinToken();
+            } catch {
+                token = null;
             }
-        });
+
+            if (token) {
+                res = await fetchTelphin(recordingUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                    },
+                });
+            }
+        }
 
         if (!res.ok) {
             const text = await res.text();

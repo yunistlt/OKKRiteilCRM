@@ -42,32 +42,31 @@ export async function getTranscriptionMinDuration(): Promise<number> {
  * Downloads audio from Telphin (or URL) and converts to File object for OpenAI
  */
 async function downloadAudio(recordingUrl: string): Promise<File> {
-    // If URL is internal Telphin, we might need Auth headers.
-    // Usually Telphin recording_url is accessible if we have the link, 
-    // OR we need to fetch binary with Token.
+    // Most storage.telphin.ru links are publicly readable; OAuth is a fallback only.
+    let res = await fetch(recordingUrl);
 
-    const token = await getTelphinToken();
-
-    // Assume recording_url is full URL. If relative, prepend host.
-    // Telphin API usually returns "https://..." or relative.
-    // If we need to sign it, we use the token.
-
-    // Official Telphin docs: GET /api/ver1.0/client/@me/record/{uuid}/storage
-    // BUT our 'recording_url' in DB might be just the UUID or full Link.
-    // Let's assume it's a fetchable link for now, adding Bearer just in case.
-
-    const res = await fetch(recordingUrl, {
-        headers: {
-            'Authorization': `Bearer ${token}`
+    if ((res.status === 401 || res.status === 403) && !res.ok) {
+        let token: string | null = null;
+        try {
+            token = await getTelphinToken();
+        } catch {
+            token = null;
         }
-    });
+
+        if (token) {
+            res = await fetch(recordingUrl, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+        }
+    }
 
     if (!res.ok) {
         throw new Error(`Audio download failed: ${res.status} ${res.statusText}`);
     }
 
     const blob = await res.blob();
-    // Convert Blob to File (Node.js compabitility for OpenAI SDK)
     return new File([blob], 'audio.mp3', { type: 'audio/mpeg' });
 }
 
