@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
 
             await enqueueOrderRefreshJob({
               jobType: 'order_score_refresh',
-              orderId: matchOrderId,
+              orderId: matchOrderId as string,
               source: 'call_transcription_worker',
               payload: {
                 telphin_call_id: callId,
@@ -132,7 +132,7 @@ export async function GET(req: NextRequest) {
 
             await enqueueOrderRefreshJob({
               jobType: 'order_insight_refresh',
-              orderId: matchOrderId,
+              orderId: matchOrderId as string,
               source: 'call_transcription_worker',
               payload: {
                 telphin_call_id: callId,
