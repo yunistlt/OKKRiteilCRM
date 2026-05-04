@@ -229,22 +229,6 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
     return { row: existing, claimed: false };
 }
 
-async function hasActiveCallTranscriptionJob(callId: string): Promise<boolean> {
-    const { data, error } = await supabase
-        .from('system_jobs')
-        .select('id')
-        .eq('job_type', 'call_transcription')
-        .eq('status', 'processing')
-        .contains('payload', { telphin_call_id: callId })
-        .limit(1);
-
-    if (error) {
-        throw error;
-    }
-
-    return Boolean(data && data.length > 0);
-}
-
 async function resetCallToPending(callId: string) {
     await supabase
         .from('raw_telphin_calls')
@@ -304,16 +288,15 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
 
         let { row, claimed } = await claimCallForTranscription(callId);
 
-        // Recover from stale processing markers when no active transcription job exists.
+        // Recover from stale processing markers: if we hold the job in system_jobs but
+        // the call row is still 'processing' from a previous crashed run, reset it.
+        // Concurrent access is impossible since claim_system_jobs RPC prevents duplicate jobs.
         if (!claimed && row.transcription_status === 'processing') {
-            const hasActiveJob = await hasActiveCallTranscriptionJob(callId);
-            if (!hasActiveJob) {
-                console.warn(`[Transcribe] Stale processing status detected for ${callId}, resetting to pending`);
-                await resetCallToPending(callId);
-                const reclaimed = await claimCallForTranscription(callId);
-                row = reclaimed.row;
-                claimed = reclaimed.claimed;
-            }
+            console.warn(`[Transcribe] Stale processing status detected for ${callId}, resetting to pending`);
+            await resetCallToPending(callId);
+            const reclaimed = await claimCallForTranscription(callId);
+            row = reclaimed.row;
+            claimed = reclaimed.claimed;
         }
 
         claimedForProcessing = claimed;
