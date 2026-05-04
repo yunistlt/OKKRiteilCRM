@@ -44,6 +44,7 @@ interface TelphinSyncOptions {
     forceResync?: boolean;
     hours?: number;
     modePrefix: string;
+    unboundedCursor?: boolean;
 }
 
 function getDefaultTelphinFallbackMinutes() {
@@ -173,7 +174,12 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
             if (state?.value) {
                 const storedDate = new Date(state.value);
                 if (storedDate < now) {
-                    const boundedStart = new Date(Math.max(storedDate.getTime(), now.getTime() - maxLookbackMs));
+                    // For backfill/recovery: always honour the stored cursor even if it's older than maxLookbackMs.
+                    // For regular fallback: bound to maxLookbackMs so we don't accidentally query months of data.
+                    const useUnboundedCursor = storedDate.getTime() < now.getTime() - maxLookbackMs;
+                    const boundedStart = useUnboundedCursor && options.unboundedCursor
+                        ? storedDate
+                        : new Date(Math.max(storedDate.getTime(), now.getTime() - maxLookbackMs));
                     start = boundedStart;
                     console.log(`[TelphinSync:${options.source}] Incremental sync from state:`, start.toISOString());
                 } else {
@@ -356,6 +362,7 @@ export async function runTelphinBacklogRecovery(forceResync: boolean = false, ho
         forceResync,
         hours,
         modePrefix: forceResync ? 'backfill_forced_resync' : 'backfill',
+        unboundedCursor: true,
     });
 }
 
