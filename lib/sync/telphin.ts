@@ -152,6 +152,7 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
     const TELPHIN_APP_SECRET = process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET;
 
     if (!TELPHIN_APP_KEY || !TELPHIN_APP_SECRET) {
+        await recordTelphinSyncFailure('Telphin config missing: TELPHIN_APP_KEY or TELPHIN_APP_SECRET not set', options);
         return { success: false, error: 'Telphin config missing' };
     }
 
