@@ -96,6 +96,7 @@ export async function GET(req: NextRequest) {
 
         // Phase 4: downstream enqueue is best-effort — transcription completion must not depend on it
         let downstreamJobs: string[] = [];
+        let matchOrderId: string | null = null;
         try {
           const { data: match } = await supabase
             .from('call_order_matches')
@@ -106,11 +107,12 @@ export async function GET(req: NextRequest) {
             .single();
 
           if (match?.retailcrm_order_id) {
+            matchOrderId = match.retailcrm_order_id;
             await enqueueCallSemanticRulesJob({
               callId,
               source: 'call_transcription_worker',
               payload: {
-                retailcrm_order_id: match.retailcrm_order_id,
+                retailcrm_order_id: matchOrderId,
                 transcript_completed_at: transcriptCompletedAt,
               },
               priority: 20,
@@ -119,7 +121,7 @@ export async function GET(req: NextRequest) {
 
             await enqueueOrderRefreshJob({
               jobType: 'order_score_refresh',
-              orderId: match.retailcrm_order_id,
+              orderId: matchOrderId,
               source: 'call_transcription_worker',
               payload: {
                 telphin_call_id: callId,
@@ -130,7 +132,7 @@ export async function GET(req: NextRequest) {
 
             await enqueueOrderRefreshJob({
               jobType: 'order_insight_refresh',
-              orderId: match.retailcrm_order_id,
+              orderId: matchOrderId,
               source: 'call_transcription_worker',
               payload: {
                 telphin_call_id: callId,
@@ -155,7 +157,7 @@ export async function GET(req: NextRequest) {
           job_id: job.id,
           telphin_call_id: callId,
           status: 'completed',
-          order_id: match?.retailcrm_order_id || null,
+          order_id: matchOrderId,
         });
       } catch (error: any) {
         const msg = error.message || 'Unknown transcription worker error';
