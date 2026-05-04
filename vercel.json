@@ -7,7 +7,7 @@
         },
         {
             "path": "/api/sync/telphin/recovery",
-            "schedule": "*/30 * * * *"
+            "schedule": "*/1 * * * *"
         },
         {
             "path": "/api/cron/system-jobs/call-match",
