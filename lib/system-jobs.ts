@@ -427,7 +427,6 @@ export function classifySystemJobRetryKind(errorMessage?: string | null): System
   if (
     lower.includes('not ready') ||
     lower.includes('waiting_') ||
-    lower.includes('already being transcribed') ||
     lower.includes('try again later')
   ) {
     return 'dependency_wait';
