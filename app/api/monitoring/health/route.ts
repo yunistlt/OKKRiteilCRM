@@ -80,6 +80,37 @@ export async function GET() {
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
         const queueSummary = realtimePipeline.summary;
 
+        // Phase 6: Transcription-specific health checks
+        const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+        const [staleCallsResult, transcriptionWorkerState] = await Promise.all([
+            supabase
+                .from('raw_telphin_calls')
+                .select('telphin_call_id', { count: 'exact', head: true })
+                .eq('transcription_status', 'processing')
+                .lt('started_at', fiveMinutesAgo)
+                .catch(() => null),
+            supabase
+                .from('sync_state')
+                .select('key, value')
+                .in('key', [
+                    'system_jobs.transcription.last_success_at',
+                    'system_jobs.transcription.last_error',
+                ])
+                .then(r => r.data || []),
+        ]);
+
+        const staleProcessingCount = staleCallsResult?.count ?? null;
+
+        const workerStateMap = Object.fromEntries(
+            (transcriptionWorkerState as any[]).map((r: any) => [r.key, r.value])
+        );
+        const lastSuccessAt = workerStateMap['system_jobs.transcription.last_success_at'];
+        const lastSuccessAgeMs = lastSuccessAt
+            ? now.getTime() - new Date(lastSuccessAt).getTime()
+            : null;
+        const transcriptionStalled = lastSuccessAgeMs !== null && lastSuccessAgeMs > 3 * 60 * 1000
+            && queueSummary.queuedTotal > 0;
+
         if (realtimePipeline.enabled && realtimePipeline.queueAvailable) {
             const metrics = realtimePipeline.metrics;
             const serviceByName = new Map(realtimePipeline.services.map((service) => [service.service, service]));
@@ -181,6 +212,23 @@ export async function GET() {
                     message: queueHotspot
                         ? `${queueHotspot.service} (queued=${queueHotspot.queued}, processing=${queueHotspot.processing}, dead_letter=${queueHotspot.deadLetter}, oldest=${queueHotspot.oldestQueuedSeconds !== null ? Math.floor(queueHotspot.oldestQueuedSeconds / 60) : 0} min)`
                         : 'no queue hotspot',
+                },
+                // Phase 6: transcription-specific checks
+                {
+                    name: 'stale_processing_calls',
+                    failing: staleProcessingCount !== null && staleProcessingCount > 0,
+                    message: staleProcessingCount === null
+                        ? 'stale processing check unavailable'
+                        : staleProcessingCount === 0
+                            ? 'no stale processing calls'
+                            : `${staleProcessingCount} call(s) stuck in processing >5 min — likely timed-out Vercel run`,
+                },
+                {
+                    name: 'transcription_worker_throughput',
+                    failing: transcriptionStalled,
+                    message: lastSuccessAt
+                        ? `last success ${Math.round((lastSuccessAgeMs || 0) / 60000)} min ago${transcriptionStalled ? ' — worker may be stalled' : ''}`
+                        : 'no transcription worker success recorded',
                 },
             ];
 
