@@ -96,7 +96,7 @@ export async function GET() {
                     'system_jobs.transcription.last_success_at',
                     'system_jobs.transcription.last_error',
                 ])
-                .then(r => r.data || []),
+                .then((r: { data: { key: string; value: string }[] | null }) => r.data || []),
         ]);
 
         const staleProcessingCount = staleCallsResult?.count ?? null;
