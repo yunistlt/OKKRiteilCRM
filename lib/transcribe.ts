@@ -190,7 +190,9 @@ async function loadCallForTranscription(callId: string): Promise<TranscriptionCa
 }
 
 async function claimCallForTranscription(callId: string): Promise<{ row: TranscriptionCallRow; claimed: boolean }> {
-    const allowedStates = 'transcription_status.is.null,transcription_status.eq.pending,transcription_status.eq.ready_for_transcription,transcription_status.eq.failed';
+    // Include 'processing' so stale rows from timed-out runs can be re-claimed.
+    // Concurrent access is not possible because claim_system_jobs RPC prevents duplicate job dispatch.
+    const allowedStates = 'transcription_status.is.null,transcription_status.eq.pending,transcription_status.eq.ready_for_transcription,transcription_status.eq.failed,transcription_status.eq.processing';
 
     const claimByColumn = async (column: 'telphin_call_id' | 'event_id', value: string | number) => {
         const { data, error } = await supabase
@@ -227,22 +229,6 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
     }
 
     return { row: existing, claimed: false };
-}
-
-async function resetCallToPending(callId: string) {
-    await supabase
-        .from('raw_telphin_calls')
-        .update({ transcription_status: 'pending' })
-        .eq('telphin_call_id', callId)
-        .is('transcript', null);
-
-    if (/^\d+$/.test(callId)) {
-        await supabase
-            .from('raw_telphin_calls')
-            .update({ transcription_status: 'pending' })
-            .eq('event_id', parseInt(callId, 10))
-            .is('transcript', null);
-    }
 }
 
 export async function getCallTranscriptionPreflight(callId: string) {
@@ -287,17 +273,6 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         console.log(`[Transcribe] Processing ${callId}...`);
 
         let { row, claimed } = await claimCallForTranscription(callId);
-
-        // Recover from stale processing markers: if we hold the job in system_jobs but
-        // the call row is still 'processing' from a previous crashed run, reset it.
-        // Concurrent access is impossible since claim_system_jobs RPC prevents duplicate jobs.
-        if (!claimed && row.transcription_status === 'processing') {
-            console.warn(`[Transcribe] Stale processing status detected for ${callId}, resetting to pending`);
-            await resetCallToPending(callId);
-            const reclaimed = await claimCallForTranscription(callId);
-            row = reclaimed.row;
-            claimed = reclaimed.claimed;
-        }
 
         claimedForProcessing = claimed;
 
