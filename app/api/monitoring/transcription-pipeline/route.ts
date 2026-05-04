@@ -134,7 +134,7 @@ export async function GET(req: NextRequest) {
       call_rows: countByStatus,
       stale_processing: {
         count: staleProcessingCount ?? 0,
-        sample: (staleSample || []).map(r => ({
+        sample: (staleSample || []).map((r: { telphin_call_id: string; started_at: string }) => ({
           id: r.telphin_call_id.slice(0, 8),
           age_min: Math.round((now.getTime() - new Date(r.started_at).getTime()) / 60000),
         })),
