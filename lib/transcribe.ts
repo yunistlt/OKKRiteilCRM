@@ -229,6 +229,38 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
     return { row: existing, claimed: false };
 }
 
+async function hasActiveCallTranscriptionJob(callId: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('system_jobs')
+        .select('id')
+        .eq('job_type', 'call_transcription')
+        .eq('status', 'processing')
+        .contains('payload', { telphin_call_id: callId })
+        .limit(1);
+
+    if (error) {
+        throw error;
+    }
+
+    return Boolean(data && data.length > 0);
+}
+
+async function resetCallToPending(callId: string) {
+    await supabase
+        .from('raw_telphin_calls')
+        .update({ transcription_status: 'pending' })
+        .eq('telphin_call_id', callId)
+        .is('transcript', null);
+
+    if (/^\d+$/.test(callId)) {
+        await supabase
+            .from('raw_telphin_calls')
+            .update({ transcription_status: 'pending' })
+            .eq('event_id', parseInt(callId, 10))
+            .is('transcript', null);
+    }
+}
+
 export async function getCallTranscriptionPreflight(callId: string) {
     const row = await loadCallForTranscription(callId);
     if (!row) {
@@ -270,7 +302,20 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
     try {
         console.log(`[Transcribe] Processing ${callId}...`);
 
-        const { row, claimed } = await claimCallForTranscription(callId);
+        let { row, claimed } = await claimCallForTranscription(callId);
+
+        // Recover from stale processing markers when no active transcription job exists.
+        if (!claimed && row.transcription_status === 'processing') {
+            const hasActiveJob = await hasActiveCallTranscriptionJob(callId);
+            if (!hasActiveJob) {
+                console.warn(`[Transcribe] Stale processing status detected for ${callId}, resetting to pending`);
+                await resetCallToPending(callId);
+                const reclaimed = await claimCallForTranscription(callId);
+                row = reclaimed.row;
+                claimed = reclaimed.claimed;
+            }
+        }
+
         claimedForProcessing = claimed;
 
         if (!claimed) {
