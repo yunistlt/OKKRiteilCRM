@@ -193,12 +193,27 @@
         pollingInterval: 3000,
         autoExpandDelay: 30000, 
         typingSpeed: 25,
-        lazyLoadMs: 10000 // 10 секунд задержка ПЕРВОЙ загрузки
+        lazyLoadMs: 500 // минимальная задержка первой загрузки
     };
 
     async function initWidget() {
         let lastMessageTimestamp = localStorage.getItem('okk_lc_last_msg_time') || new Date().toISOString();
         let autoExpandTimer = null;
+
+        function getStoredCart() {
+            try {
+                const raw = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                if (!Array.isArray(raw)) return [];
+                // Сохраняем только объектные записи товаров, вычищаем легаси-строки (категории/старый формат)
+                return raw.filter(item => item && typeof item === 'object' && !!item.name && !!item.url);
+            } catch (_) {
+                return [];
+            }
+        }
+
+        function setStoredCart(cart) {
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart.slice(-WIDGET_CONFIG.maxHistory)));
+        }
 
         const tracking = {
             init: function() {
@@ -238,23 +253,28 @@
                 const h1 = document.querySelector('h1');
                 if (!h1) return;
 
-                // Определяем страницу товара по признакам: цена + (кнопка корзины ИЛИ og:type=product)
-                const hasPrice = !!document.querySelector(
-                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, .summary .amount'
-                );
-                const hasCartBtn = !!document.querySelector(
-                    '#add-to-cart, .add-to-cart, [data-action="add-to-cart"], .wa-add-to-cart, form[action*="cart"]'
-                );
+                // Жесткий фильтр: только карточка товара, категории и листинги исключаем
                 const ogType = (document.querySelector('meta[property="og:type"]') || {}).content || '';
-                const isProductPage = hasPrice || hasCartBtn || ogType === 'product';
+                const hasProductLdJson = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
+                    .some(s => /"@type"\s*:\s*"Product"/i.test(s.textContent || ''));
+                const hasSingleProductGallery = !!document.querySelector(
+                    '.wa-product-photos, .product-photos, .product-image, .s-product-photo, .image-nav'
+                );
+                const hasSingleProductBuyBox = !!document.querySelector(
+                    '#add-to-cart, .wa-add-to-cart, form[action*="cart/add"], .add-to-cart'
+                );
+                const isListingPage = !!document.querySelector(
+                    '.products, .product-list, .wa-products, .category-products, .shop-products'
+                );
+                const isProductPage = ogType === 'product' || hasProductLdJson || (hasSingleProductGallery && hasSingleProductBuyBox && !isListingPage);
 
-                if (!isProductPage) return; // каталог/раздел — пропускаем
+                if (!isProductPage) return;
 
                 setTimeout(() => {
-                    let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                    let cart = getStoredCart();
                     const pageUrl = window.location.href;
                     // Уже есть этот товар?
-                    if (cart.find(c => typeof c === 'object' ? c.url === pageUrl : false)) return;
+                    if (cart.find(c => c.url === pageUrl)) return;
                     // Картинка: og:image → первый img товарной галереи
                     const ogImg = document.querySelector('meta[property="og:image"]');
                     const bodyImg = document.querySelector(
@@ -262,13 +282,11 @@
                     );
                     const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
                     cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
-                    localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
+                    setStoredCart(cart);
                 }, WIDGET_CONFIG.interestTimerMs);
             },
             getPayload: function() {
-                const rawCart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
-                // Нормализуем: старые записи могут быть строками
-                const cartNames = rawCart.map(c => typeof c === 'string' ? c : c.name);
+                const cartNames = getStoredCart().map(c => c.name);
                 return {
                     domain: window.location.hostname,
                     utm: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.utm) || '{}'),
@@ -611,8 +629,7 @@
                 }
                 btn.disabled = true;
                 btn.textContent = 'Отправляю...';
-                const rawCart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
-                const products = rawCart.map(c => typeof c === 'string' ? c : c.name);
+                const products = getStoredCart().map(c => c.name);
                 fetch(WIDGET_CONFIG.wishlistEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -639,7 +656,7 @@
 
         function triggerExitIntent() {
             if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
-            const products = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+            const products = getStoredCart();
             if (products.length === 0) return;
 
             localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentFired, '1');
