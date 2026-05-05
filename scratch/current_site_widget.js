@@ -189,7 +189,7 @@
             exitIntentFired: 'okk_lc_exit_intent_fired'
         },
         maxHistory: 20,
-        interestTimerMs: 10000,
+        interestTimerMs: 2000,
         pollingInterval: 3000,
         autoExpandDelay: 30000, 
         typingSpeed: 25,
@@ -236,20 +236,34 @@
             },
             setupInterestTimer: function() {
                 const h1 = document.querySelector('h1');
-                if (h1) {
-                    setTimeout(() => {
-                        let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
-                        const pageUrl = window.location.href;
-                        // Уже есть эта страница?
-                        if (cart.find(c => (c.url || c) === pageUrl || (typeof c === 'object' && c.name === h1.innerText.trim()))) return;
-                        // Картинка: og:image или первый img в теле товара
-                        const ogImg = document.querySelector('meta[property="og:image"]');
-                        const bodyImg = document.querySelector('.wa-product-photos img, .product-photos img, .wa-shop img, article img');
-                        const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
-                        cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
-                        localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
-                    }, WIDGET_CONFIG.interestTimerMs);
-                }
+                if (!h1) return;
+
+                // Определяем страницу товара по признакам: цена + (кнопка корзины ИЛИ og:type=product)
+                const hasPrice = !!document.querySelector(
+                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, .summary .amount'
+                );
+                const hasCartBtn = !!document.querySelector(
+                    '#add-to-cart, .add-to-cart, [data-action="add-to-cart"], .wa-add-to-cart, form[action*="cart"]'
+                );
+                const ogType = (document.querySelector('meta[property="og:type"]') || {}).content || '';
+                const isProductPage = hasPrice || hasCartBtn || ogType === 'product';
+
+                if (!isProductPage) return; // каталог/раздел — пропускаем
+
+                setTimeout(() => {
+                    let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                    const pageUrl = window.location.href;
+                    // Уже есть этот товар?
+                    if (cart.find(c => typeof c === 'object' ? c.url === pageUrl : false)) return;
+                    // Картинка: og:image → первый img товарной галереи
+                    const ogImg = document.querySelector('meta[property="og:image"]');
+                    const bodyImg = document.querySelector(
+                        '.wa-product-photos img, .product-photos img, .product-image img, .s-product-photo img'
+                    );
+                    const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                    cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
+                    localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
+                }, WIDGET_CONFIG.interestTimerMs);
             },
             getPayload: function() {
                 const rawCart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
