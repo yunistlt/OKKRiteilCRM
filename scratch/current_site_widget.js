@@ -239,19 +239,27 @@
                 if (h1) {
                     setTimeout(() => {
                         let cart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
-                        if (!cart.includes(h1.innerText)) {
-                            cart.push(h1.innerText);
-                            localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
-                        }
+                        const pageUrl = window.location.href;
+                        // Уже есть эта страница?
+                        if (cart.find(c => (c.url || c) === pageUrl || (typeof c === 'object' && c.name === h1.innerText.trim()))) return;
+                        // Картинка: og:image или первый img в теле товара
+                        const ogImg = document.querySelector('meta[property="og:image"]');
+                        const bodyImg = document.querySelector('.wa-product-photos img, .product-photos img, .wa-shop img, article img');
+                        const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                        cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
+                        localStorage.setItem(WIDGET_CONFIG.storageKeys.cart, JSON.stringify(cart));
                     }, WIDGET_CONFIG.interestTimerMs);
                 }
             },
             getPayload: function() {
+                const rawCart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                // Нормализуем: старые записи могут быть строками
+                const cartNames = rawCart.map(c => typeof c === 'string' ? c : c.name);
                 return {
                     domain: window.location.hostname,
                     utm: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.utm) || '{}'),
                     visitedPages: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]'),
-                    cartItems: JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]'),
+                    cartItems: cartNames,
                     landingPage: localStorage.getItem(WIDGET_CONFIG.storageKeys.landing)
                 };
             }
@@ -504,16 +512,56 @@
             if (!messages || !products || products.length === 0) return;
             const wrap = document.createElement('div');
             wrap.className = 'okk-msg ai okk-product-cards-wrap';
+            wrap.style.cssText = 'max-width:100%;padding:10px 14px;';
 
             const label = document.createElement('div');
-            label.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:8px;';
-            label.textContent = 'Вы просматривали:';
+            label.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:8px;font-weight:600;';
+            label.textContent = 'Вы просматривали (' + products.length + ' товара):';
             wrap.appendChild(label);
 
-            products.forEach(function(name) {
-                const card = document.createElement('div');
-                card.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;';
-                card.innerHTML = '<span style="font-size:18px;">📦</span><span>' + name + '</span>';
+            products.forEach(function(item) {
+                const name = typeof item === 'string' ? item : item.name;
+                const url  = typeof item === 'object' && item.url  ? item.url  : null;
+                const img  = typeof item === 'object' && item.img  ? item.img  : null;
+
+                const card = url ? document.createElement('a') : document.createElement('div');
+                if (url) {
+                    card.href = url;
+                    card.target = '_blank';
+                    card.rel = 'noopener noreferrer';
+                }
+                card.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;text-decoration:none;cursor:' + (url ? 'pointer' : 'default') + ';transition:background 0.15s;';
+                if (url) {
+                    card.onmouseenter = function() { card.style.background = '#f0fdf4'; card.style.borderColor = '#86efac'; };
+                    card.onmouseleave = function() { card.style.background = '#f8fafc'; card.style.borderColor = '#e2e8f0'; };
+                }
+
+                const imgEl = document.createElement('img');
+                imgEl.style.cssText = 'width:44px;height:44px;object-fit:cover;border-radius:8px;flex-shrink:0;background:#e2e8f0;';
+                imgEl.alt = name;
+                if (img) {
+                    imgEl.src = img;
+                    imgEl.onerror = function() { imgEl.style.display = 'none'; };
+                } else {
+                    imgEl.style.display = 'none';
+                }
+
+                const nameEl = document.createElement('span');
+                nameEl.style.cssText = 'flex:1;line-height:1.4;';
+                nameEl.textContent = name;
+
+                if (url) {
+                    const arrow = document.createElement('span');
+                    arrow.style.cssText = 'color:#10b981;font-size:16px;flex-shrink:0;';
+                    arrow.textContent = '→';
+                    card.appendChild(imgEl);
+                    card.appendChild(nameEl);
+                    card.appendChild(arrow);
+                } else {
+                    card.appendChild(imgEl);
+                    card.appendChild(nameEl);
+                }
+
                 wrap.appendChild(card);
             });
 
@@ -549,7 +597,8 @@
                 }
                 btn.disabled = true;
                 btn.textContent = 'Отправляю...';
-                const products = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                const rawCart = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+                const products = rawCart.map(c => typeof c === 'string' ? c : c.name);
                 fetch(WIDGET_CONFIG.wishlistEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
