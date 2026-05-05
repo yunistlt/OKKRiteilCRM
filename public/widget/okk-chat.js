@@ -1,6 +1,7 @@
 (function() {
     const WIDGET_CONFIG = {
         apiEndpoint: 'https://okk.zmksoft.com/api/widget/chat',
+        wishlistEndpoint: 'https://okk.zmksoft.com/api/widget/wishlist-email',
         storageKeys: {
             visitorId: 'okk_visitor_id',
             utm: 'okk_utm',
@@ -9,7 +10,8 @@
             cart: 'okk_cart',
             widgetOpen: 'okk_widget_open',
             chatCache: 'okk_chat_cache',
-            hasInteracted: 'okk_has_interacted'
+            hasInteracted: 'okk_has_interacted',
+            exitIntentFired: 'okk_exit_intent_fired'
         },
         maxHistory: 20,
         interestTimerMs: 10000,
@@ -132,6 +134,119 @@
         preview.style.display = 'block';
         setTimeout(() => preview.style.display = 'none', 6000);
     }
+
+    // ─── WISHLIST / EXIT-INTENT LOGIC ─────────────────────────────────────────
+
+    function addProductCards(products) {
+        if (!messages || !products || products.length === 0) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'okk-msg ai okk-product-cards-wrap';
+
+        const label = document.createElement('div');
+        label.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:8px;';
+        label.textContent = 'Вы просматривали:';
+        wrap.appendChild(label);
+
+        products.forEach(function(name) {
+            const card = document.createElement('div');
+            card.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;font-size:13px;color:#1e293b;';
+            card.innerHTML = '<span style="font-size:18px;">📦</span><span>' + name + '</span>';
+            wrap.appendChild(card);
+        });
+
+        messages.appendChild(wrap);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function addEmailCapture() {
+        if (!messages) return;
+        const existing = document.getElementById('okk-email-capture');
+        if (existing) return;
+
+        const wrap = document.createElement('div');
+        wrap.id = 'okk-email-capture';
+        wrap.className = 'okk-msg ai';
+        wrap.style.cssText = 'padding:0;background:transparent;box-shadow:none;';
+
+        const inner = document.createElement('div');
+        inner.style.cssText = 'background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:12px;';
+
+        const inp = document.createElement('input');
+        inp.type = 'email';
+        inp.placeholder = 'Ваш email...';
+        inp.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Отправить список на почту';
+        btn.style.cssText = 'width:100%;background:#10b981;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;';
+        btn.onclick = function() {
+            const email = inp.value.trim();
+            if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                inp.style.borderColor = '#ef4444';
+                return;
+            }
+            btn.disabled = true;
+            btn.textContent = 'Отправляю...';
+            const products = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+            fetch(WIDGET_CONFIG.wishlistEndpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    visitorId: tracking.ensureVisitorId(),
+                    email: email,
+                    products: products
+                })
+            }).then(function(r) { return r.json(); }).then(function(data) {
+                wrap.remove();
+                addMsg('Отлично! Список товаров уже летит на ' + email + ' — проверяйте почту 📬', 'ai', false, false);
+            }).catch(function() {
+                btn.disabled = false;
+                btn.textContent = 'Попробовать снова';
+            });
+        };
+
+        inner.appendChild(inp);
+        inner.appendChild(btn);
+        wrap.appendChild(inner);
+        messages.appendChild(wrap);
+        messages.scrollTop = messages.scrollHeight;
+    }
+
+    function triggerExitIntent() {
+        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+        const products = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.cart) || '[]');
+        if (products.length === 0) return;
+
+        localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentFired, '1');
+
+        // Открываем виджет
+        if (widget && widget.classList.contains('minimized')) {
+            widget.classList.remove('minimized');
+            if (toggle) toggle.innerHTML = '▼';
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, 'true');
+        }
+
+        // Карточки + сообщение + форма
+        addProductCards(products);
+        setTimeout(function() {
+            addMsg('Подождите, не уходите! Вы просматривали товары — отправить список вам на почту, чтобы не потерять?', 'ai', false, true);
+            setTimeout(addEmailCapture, 2000);
+        }, 400);
+    }
+
+    function setupExitIntent() {
+        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+        var fired = false;
+        document.addEventListener('mouseleave', function onLeave(e) {
+            if (e.clientY <= 5 && !fired) {
+                fired = true;
+                document.removeEventListener('mouseleave', onLeave);
+                triggerExitIntent();
+            }
+        });
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
 
     function restoreChat() {
         if (!messages) return;
@@ -263,5 +378,6 @@
 
     restoreChat();
     apiCall('init');
+    setupExitIntent();
     setInterval(poll, WIDGET_CONFIG.pollingInterval);
 })();
