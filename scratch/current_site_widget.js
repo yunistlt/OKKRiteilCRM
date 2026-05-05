@@ -197,6 +197,7 @@
     };
 
     async function initWidget() {
+        console.log('[OKK Widget] initWidget starting...');
         let lastMessageTimestamp = localStorage.getItem('okk_lc_last_msg_time') || new Date().toISOString();
         let autoExpandTimer = null;
 
@@ -253,36 +254,46 @@
                 const h1 = document.querySelector('h1');
                 if (!h1) return;
 
-                // Жесткий фильтр: только карточка товара, категории и листинги исключаем
-                const ogType = (document.querySelector('meta[property="og:type"]') || {}).content || '';
+                // Мягкий фильтр: элементы товаров + избегаем листингов
+                const ogTypeMeta = document.querySelector('meta[property="og:type"]');
+                const ogType = ogTypeMeta ? ogTypeMeta.getAttribute('content') : '';
                 const hasProductLdJson = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
                     .some(s => /"@type"\s*:\s*"Product"/i.test(s.textContent || ''));
-                const hasSingleProductGallery = !!document.querySelector(
-                    '.wa-product-photos, .product-photos, .product-image, .s-product-photo, .image-nav'
+                const hasPrice = !!document.querySelector(
+                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, .product-item-price'
                 );
-                const hasSingleProductBuyBox = !!document.querySelector(
-                    '#add-to-cart, .wa-add-to-cart, form[action*="cart/add"], .add-to-cart'
+                const hasBuyBtn = !!document.querySelector(
+                    '#add-to-cart, .add-to-cart, .wa-add-to-cart, form[action*="cart/add"]'
                 );
-                const isListingPage = !!document.querySelector(
-                    '.products, .product-list, .wa-products, .category-products, .shop-products'
+                const isNotListing = !document.querySelector(
+                    '.products, .product-list, .wa-products, .category-products'
                 );
-                const isProductPage = ogType === 'product' || hasProductLdJson || (hasSingleProductGallery && hasSingleProductBuyBox && !isListingPage);
+                const isProductPage = ogType === 'product' || hasProductLdJson || (hasPrice && hasBuyBtn && isNotListing);
+                console.log('[OKK Widget] setupInterestTimer: isProductPage=', isProductPage, ', h1=', h1?.innerText);
 
-                if (!isProductPage) return;
+                if (!isProductPage) {
+                    console.log('[OKK Widget] not a product page, skipping');
+                    return;
+                }
 
                 setTimeout(() => {
                     let cart = getStoredCart();
                     const pageUrl = window.location.href;
                     // Уже есть этот товар?
-                    if (cart.find(c => c.url === pageUrl)) return;
+                    if (cart.find(c => c.url === pageUrl)) {
+                        console.log('[OKK Widget] Already in cart:', pageUrl);
+                        return;
+                    }
                     // Картинка: og:image → первый img товарной галереи
                     const ogImg = document.querySelector('meta[property="og:image"]');
                     const bodyImg = document.querySelector(
                         '.wa-product-photos img, .product-photos img, .product-image img, .s-product-photo img'
                     );
                     const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
-                    cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
+                    const item = { name: h1.innerText.trim(), url: pageUrl, img: img };
+                    cart.push(item);
                     setStoredCart(cart);
+                    console.log('[OKK Widget] Added to cart:', item, ', total:', cart.length);
                 }, WIDGET_CONFIG.interestTimerMs);
             },
             getPayload: function() {
@@ -413,6 +424,7 @@
 
         async function apiCall(type, extra = {}) {
             try {
+                console.log('[OKK Widget] apiCall:', type, 'with data:', tracking.getPayload());
                 const res = await fetch(WIDGET_CONFIG.apiEndpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -424,12 +436,14 @@
                     })
                 });
                 const data = await res.json();
+                console.log('[OKK Widget] apiCall response:', type, data);
                 if (data.reply) addMsg(data.reply, 'ai', false, true);
                 
                 const cacheStr = localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache);
                 const hasHistory = cacheStr && JSON.parse(cacheStr).length > 0;
                 
                 if (data.magicGreeting && !hasHistory) {
+                    console.log('[OKK Widget] Got magicGreeting:', data.magicGreeting);
                     // Предотвращаем подхват этого сообщения через poll
                     lastMessageTimestamp = new Date().toISOString();
                     localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
@@ -449,6 +463,7 @@
                     setTimeout(() => {
                         const interacted = localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) === 'true';
                         if (!interacted) {
+                            console.log('[OKK Widget] Showing greeting part1:', part1);
                             addMsg(part1, 'ai', false, true);
                         }
                     }, 10000);
@@ -458,13 +473,17 @@
                         setTimeout(() => {
                             const interacted = localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) === 'true';
                             if (!interacted) {
+                                console.log('[OKK Widget] Showing greeting part2:', part2);
                                 addMsg(part2, 'ai', false, true);
                             }
                         }, 20000);
                     }
                 }
                 return data;
-            } catch (e) { return { error: e.message }; }
+            } catch (e) { 
+                console.error('[OKK Widget] apiCall error:', e);
+                return { error: e.message }; 
+            }
         }
 
         async function poll() {
@@ -655,9 +674,17 @@
         }
 
         function triggerExitIntent() {
-            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+            console.log('[OKK Widget] triggerExitIntent called');
+            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) {
+                console.log('[OKK Widget] exitIntentFired already set, skipping');
+                return;
+            }
             const products = getStoredCart();
-            if (products.length === 0) return;
+            console.log('[OKK Widget] stored cart products:', products);
+            if (products.length === 0) {
+                console.log('[OKK Widget] no products in cart, skipping');
+                return;
+            }
 
             localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentFired, '1');
 
@@ -676,10 +703,16 @@
         }
 
         function setupExitIntent() {
-            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+            console.log('[OKK Widget] setupExitIntent starting');
+            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) {
+                console.log('[OKK Widget] exitIntentFired already set, skipping setupExitIntent');
+                return;
+            }
             var fired = false;
             document.addEventListener('mouseleave', function onLeave(e) {
+                console.log('[OKK Widget] mouseleave event, clientY:', e.clientY);
                 if (e.clientY <= 5 && !fired) {
+                    console.log('[OKK Widget] mouseleave triggered exit-intent');
                     fired = true;
                     document.removeEventListener('mouseleave', onLeave);
                     triggerExitIntent();
@@ -689,14 +722,17 @@
 
         // ─────────────────────────────────────────────────────────────────────────
 
+        console.log('[OKK Widget] Restoring chat and initializing...');
         restoreChat();
         await apiCall('init');
         // Обновим время ПОСЛЕ инициализации, чтобы poll не тащил то, что уже есть
         lastMessageTimestamp = new Date().toISOString();
         localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
 
+        console.log('[OKK Widget] Setting up exit intent...');
         setupExitIntent();
         setInterval(poll, WIDGET_CONFIG.pollingInterval);
+        console.log('[OKK Widget] Initialization complete');
     }
 
     // Lazy Loading Логика (задержка только при первом посещении)
