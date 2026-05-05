@@ -254,22 +254,59 @@
                 const h1 = document.querySelector('h1');
                 if (!h1) return;
 
-                // Мягкий фильтр: элементы товаров + избегаем листингов
+                // Проверка 1: Meta тегами и JSON-LD
                 const ogTypeMeta = document.querySelector('meta[property="og:type"]');
                 const ogType = ogTypeMeta ? ogTypeMeta.getAttribute('content') : '';
                 const hasProductLdJson = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
                     .some(s => /"@type"\s*:\s*"Product"/i.test(s.textContent || ''));
-                const hasPrice = !!document.querySelector(
-                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, .product-item-price'
-                );
+                
+                // Проверка 2: Признаки товарной страницы (расширенная)
+                // Цена: ищем ₽, рубль, цифры с точкой/запятой
+                const bodyText = document.body.innerText || '';
+                const hasPriceSymbol = /₽|рубль|\d+\s*₽/.test(bodyText);
+                
+                // Кнопка "Купить" или "В корзину"
                 const hasBuyBtn = !!document.querySelector(
-                    '#add-to-cart, .add-to-cart, .wa-add-to-cart, form[action*="cart/add"]'
+                    'button, a, input[type="button"], input[type="submit"]'
+                ) && (
+                    bodyText.includes('Купить') || 
+                    bodyText.includes('корзину') || 
+                    bodyText.includes('В наличии') ||
+                    bodyText.includes('кредит')
                 );
+                
+                // Обширный поиск по селекторам цены
+                const hasPriceSelector = !!document.querySelector(
+                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, ' +
+                    '.product-item-price, .item-price, .goods-price, .current-price, ' +
+                    '.summary .amount, [data-price], .product-cost, .sum, .final-price, ' +
+                    '[class*="price"], [class*="cost"], [class*="amount"]'
+                );
+                
+                // Обширный поиск по селекторам кнопки
+                const hasBuyBtnSelector = !!document.querySelector(
+                    '#add-to-cart, .add-to-cart, .wa-add-to-cart, form[action*="cart/add"], ' +
+                    '[data-action="add-to-cart"], [data-role="add-to-cart"], .buy-button, ' +
+                    '.add-basket, [data-add-to-cart], [class*="cart"], [class*="buy"], ' +
+                    'button[name*="cart"], button[name*="buy"], a[href*="cart"]'
+                );
+                
+                // НЕ листинговая страница
                 const isNotListing = !document.querySelector(
-                    '.products, .product-list, .wa-products, .category-products'
+                    '.products, .product-list, .wa-products, .category-products, ' +
+                    '.shop-products, [class*="products"], [class*="listing"]'
                 );
-                const isProductPage = ogType === 'product' || hasProductLdJson || (hasPrice && hasBuyBtn && isNotListing);
-                console.log('[OKK Widget] setupInterestTimer: isProductPage=', isProductPage, ', h1=', h1?.innerText);
+                
+                // Детекция: мета-теги ИЛИ (цена И кнопка) ИЛИ (символ ₽ И "Купить")
+                const isProductPage = ogType === 'product' || 
+                                     hasProductLdJson || 
+                                     (hasPriceSelector && hasBuyBtnSelector && isNotListing) ||
+                                     (hasPriceSymbol && hasBuyBtn && isNotListing);
+                
+                console.log('[OKK Widget] setupInterestTimer checks:', {
+                    ogType, hasProductLdJson, hasPriceSymbol, hasBuyBtn, 
+                    hasPriceSelector, hasBuyBtnSelector, isNotListing, isProductPage
+                }, ', h1=', h1?.innerText);
 
                 if (!isProductPage) {
                     console.log('[OKK Widget] not a product page, skipping');
