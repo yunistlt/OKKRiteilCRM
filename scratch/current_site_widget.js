@@ -731,14 +731,38 @@
                 console.log('[OKK Widget] exitIntentFired already set, skipping setupExitIntent');
                 return;
             }
-            var fired = false;
-            document.addEventListener('mouseleave', function onLeave(e) {
-                console.log('[OKK Widget] mouseleave event, clientY:', e.clientY);
-                if (e.clientY <= 5 && !fired) {
-                    console.log('[OKK Widget] mouseleave triggered exit-intent');
+            
+            let fired = false;
+            
+            // Метод 1: mouseleave на document.documentElement (когда мышь выходит из окна браузера)
+            document.documentElement.addEventListener('mouseleave', function onMouseLeave() {
+                console.log('[OKK Widget] mouseleave on documentElement detected');
+                if (!fired) {
                     fired = true;
-                    document.removeEventListener('mouseleave', onLeave);
+                    document.documentElement.removeEventListener('mouseleave', onMouseLeave);
                     triggerExitIntent();
+                }
+            });
+            
+            // Метод 2: mouseout с проверкой clientY < 0 (резервный способ)
+            document.addEventListener('mouseout', function(e) {
+                if (e.clientY < 0 && !fired) {
+                    console.log('[OKK Widget] mouseout detected with clientY < 0');
+                    fired = true;
+                    triggerExitIntent();
+                }
+            });
+            
+            // Метод 3: Escape клавиша (для пользователей на мобильных или с особенностями ввода)
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !fired) {
+                    console.log('[OKK Widget] Escape key pressed');
+                    // Не срабатываем сразу при Escape, но это может быть признаком намерения уйти
+                    // Срабатываем через 2 секунды если пользователь не вернулся
+                    fired = true;
+                    setTimeout(() => {
+                        if (fired) triggerExitIntent();
+                    }, 2000);
                 }
             });
         }
