@@ -158,8 +158,13 @@
   - [x] Доступна без авторизации по токену
 
 ### 4.4 Отправка КП
-- [ ] При создании КП → отправить email клиенту с ссылкой (через wishlist email транспорт)
-- [ ] Обновить статус в RetailCRM: "КП отправлено" + ссылка
+- [x] Создать `app/api/lead-catcher/proposals/[id]/send/route.ts`
+  - [x] `POST /api/lead-catcher/proposals/{id}/send` → отправить email клиенту
+  - [x] Email-шаблон в стиле Елены (ЗМК): ссылка на онлайн-страницу + PDF
+  - [x] Обновить статус КП → `sent`
+  - [x] Добавить комментарий к заказу в RetailCRM
+- [x] Создать `migrations/20260506_widget_sessions_extend.sql`
+  - [x] Колонки: nickname, has_contacts, interested_products, contact_name/email/phone/company, crm_order_id
 
 ---
 
