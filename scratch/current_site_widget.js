@@ -252,85 +252,68 @@
             },
             setupInterestTimer: function() {
                 const h1 = document.querySelector('h1');
-                if (!h1) return;
+                if (!h1) {
+                    console.log('[OKK Widget] setupInterestTimer: no h1 found');
+                    return;
+                }
 
-                // Проверка 1: Meta тегами и JSON-LD
+                // ============ МАКСИМАЛЬНО МЯГКИЙ ФИЛЬТР ============
+                
+                // Проверка 1: мета-теги и JSON-LD (стандартные)
                 const ogTypeMeta = document.querySelector('meta[property="og:type"]');
                 const ogType = ogTypeMeta ? ogTypeMeta.getAttribute('content') : '';
                 const hasProductLdJson = Array.from(document.querySelectorAll('script[type="application/ld+json"]'))
                     .some(s => /"@type"\s*:\s*"Product"/i.test(s.textContent || ''));
                 
-                // Проверка 2: Признаки товарной страницы (расширенная)
-                // Цена: ищем ₽, рубль, цифры с точкой/запятой
-                const bodyText = document.body.innerText || '';
-                const hasPriceSymbol = /₽|рубль|\d+\s*₽/.test(bodyText);
-                
-                // Кнопка "Купить" или "В корзину"
-                const hasBuyBtn = !!document.querySelector(
-                    'button, a, input[type="button"], input[type="submit"]'
-                ) && (
-                    bodyText.includes('Купить') || 
-                    bodyText.includes('корзину') || 
-                    bodyText.includes('В наличии') ||
-                    bodyText.includes('кредит')
-                );
-                
-                // Обширный поиск по селекторам цены
-                const hasPriceSelector = !!document.querySelector(
-                    '.price, .wa-price, .product-price, [itemprop="price"], .s-price, ' +
-                    '.product-item-price, .item-price, .goods-price, .current-price, ' +
-                    '.summary .amount, [data-price], .product-cost, .sum, .final-price, ' +
-                    '[class*="price"], [class*="cost"], [class*="amount"]'
-                );
-                
-                // Обширный поиск по селекторам кнопки
-                const hasBuyBtnSelector = !!document.querySelector(
-                    '#add-to-cart, .add-to-cart, .wa-add-to-cart, form[action*="cart/add"], ' +
-                    '[data-action="add-to-cart"], [data-role="add-to-cart"], .buy-button, ' +
-                    '.add-basket, [data-add-to-cart], [class*="cart"], [class*="buy"], ' +
-                    'button[name*="cart"], button[name*="buy"], a[href*="cart"]'
-                );
-                
-                // НЕ листинговая страница
-                const isNotListing = !document.querySelector(
-                    '.products, .product-list, .wa-products, .category-products, ' +
-                    '.shop-products, [class*="products"], [class*="listing"]'
-                );
-                
-                // Детекция: мета-теги ИЛИ (цена И кнопка) ИЛИ (символ ₽ И "Купить")
-                const isProductPage = ogType === 'product' || 
-                                     hasProductLdJson || 
-                                     (hasPriceSelector && hasBuyBtnSelector && isNotListing) ||
-                                     (hasPriceSymbol && hasBuyBtn && isNotListing);
-                
-                console.log('[OKK Widget] setupInterestTimer checks:', {
-                    ogType, hasProductLdJson, hasPriceSymbol, hasBuyBtn, 
-                    hasPriceSelector, hasBuyBtnSelector, isNotListing, isProductPage
-                }, ', h1=', h1?.innerText);
-
-                if (!isProductPage) {
-                    console.log('[OKK Widget] not a product page, skipping');
-                    return;
+                if (ogType === 'product' || hasProductLdJson) {
+                    console.log('[OKK Widget] setupInterestTimer: detected by meta/JSON-LD');
+                } else {
+                    // Проверка 2: очень мягкие условия - просто наличие цены ИЛИ кнопки
+                    const hasAnyPrice = !!document.querySelector(
+                        '[class*="price"], [class*="cost"], [class*="amount"], [id*="price"], ' +
+                        '[data-price], [itemprop*="price"], input[value*="₽"], ' +
+                        'span:contains("₽"), *:contains("₽")'
+                    ) || /₽|рубль|\d+\s+[p₽]/.test(document.body.innerText);
+                    
+                    const hasAnyBuyBtn = !!document.querySelector(
+                        'button, a[href*="cart"], input[type="button"], input[type="submit"], ' +
+                        '[class*="buy"], [class*="cart"], [class*="order"], [id*="cart"], [id*="buy"]'
+                    ) || /Купить|В корзину|Заказать|Buy|Добавить|корзин|заказ/i.test(document.body.innerText);
+                    
+                    const isNotListingPage = !document.querySelector(
+                        '.products, .product-list, .shop-products, [class*="products"], ' +
+                        '[class*="catalog"], [class*="category"], [id*="products"]'
+                    );
+                    
+                    if (!(hasAnyPrice && hasAnyBuyBtn && isNotListingPage)) {
+                        console.log('[OKK Widget] setupInterestTimer: not a product page. hasPrice=' + hasAnyPrice + 
+                            ', hasBuyBtn=' + hasAnyBuyBtn + ', isNotListing=' + isNotListingPage);
+                        return;
+                    }
+                    console.log('[OKK Widget] setupInterestTimer: detected by soft filters');
                 }
+
+                console.log('[OKK Widget] setupInterestTimer: isProductPage=true, h1=' + h1.innerText);
 
                 setTimeout(() => {
                     let cart = getStoredCart();
                     const pageUrl = window.location.href;
+                    
                     // Уже есть этот товар?
                     if (cart.find(c => c.url === pageUrl)) {
                         console.log('[OKK Widget] Already in cart:', pageUrl);
                         return;
                     }
-                    // Картинка: og:image → первый img товарной галереи
+                    
+                    // Картинка: og:image → первый img
                     const ogImg = document.querySelector('meta[property="og:image"]');
-                    const bodyImg = document.querySelector(
-                        '.wa-product-photos img, .product-photos img, .product-image img, .s-product-photo img'
-                    );
+                    const bodyImg = document.querySelector('img[alt], img[src]');
                     const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                    
                     const item = { name: h1.innerText.trim(), url: pageUrl, img: img };
                     cart.push(item);
                     setStoredCart(cart);
-                    console.log('[OKK Widget] Added to cart:', item, ', total:', cart.length);
+                    console.log('[OKK Widget] Added to cart:', item, 'cart now has:', cart.length, 'items');
                 }, WIDGET_CONFIG.interestTimerMs);
             },
             getPayload: function() {
@@ -474,7 +457,11 @@
                 });
                 const data = await res.json();
                 console.log('[OKK Widget] apiCall response:', type, data);
-                if (data.reply) addMsg(data.reply, 'ai', false, true);
+                
+                // НЕ показываем data.reply если это тип 'init' и есть magicGreeting
+                if (data.reply && type !== 'init') {
+                    addMsg(data.reply, 'ai', false, true);
+                }
                 
                 const cacheStr = localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache);
                 const hasHistory = cacheStr && JSON.parse(cacheStr).length > 0;
