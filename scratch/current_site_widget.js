@@ -271,8 +271,7 @@
                     // Проверка 2: очень мягкие условия - просто наличие цены ИЛИ кнопки
                     const hasAnyPrice = !!document.querySelector(
                         '[class*="price"], [class*="cost"], [class*="amount"], [id*="price"], ' +
-                        '[data-price], [itemprop*="price"], input[value*="₽"], ' +
-                        'span:contains("₽"), *:contains("₽")'
+                        '[data-price], [itemprop*="price"], input[value*="₽"]'
                     ) || /₽|рубль|\d+\s+[p₽]/.test(document.body.innerText);
                     
                     const hasAnyBuyBtn = !!document.querySelector(
