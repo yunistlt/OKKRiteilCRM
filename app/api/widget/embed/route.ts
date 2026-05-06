@@ -542,11 +542,9 @@ async function initWidget() {
     function setupExitIntent() {
         if (!WIDGET_CONFIG.exitIntentEnabled) return;
         if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
-        // Не показываем exit-intent пока пользователь не накопил историю:
-        // нужно ≥2 посещённых страниц ИЛИ ≥2 товаров в корзине
+        // Не показываем exit-intent пока пользователь не посетил ≥2 страниц
         var visitedPages = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
-        var cartSize = getStoredCart().length;
-        if (visitedPages.length < 2 && cartSize < 2) {
+        if (visitedPages.length < 2) {
             if (!scenario.exitIntentPending) {
                 scenario.exitIntentPending = true;
                 setTimeout(function() { scenario.exitIntentPending = false; setupExitIntent(); }, 8000);
