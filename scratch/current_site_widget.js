@@ -753,18 +753,6 @@
                 }
             });
             
-            // Метод 3: Escape клавиша (для пользователей на мобильных или с особенностями ввода)
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && !fired) {
-                    console.log('[OKK Widget] Escape key pressed');
-                    // Не срабатываем сразу при Escape, но это может быть признаком намерения уйти
-                    // Срабатываем через 2 секунды если пользователь не вернулся
-                    fired = true;
-                    setTimeout(() => {
-                        if (fired) triggerExitIntent();
-                    }, 2000);
-                }
-            });
         }
 
         // ─────────────────────────────────────────────────────────────────────────
