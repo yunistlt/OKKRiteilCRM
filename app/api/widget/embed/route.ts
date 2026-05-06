@@ -106,7 +106,7 @@ var WIDGET_CONFIG = {
 async function initWidget() {
     var lastMessageTimestamp = localStorage.getItem('okk_lc_last_msg_time') || new Date().toISOString();
     var autoExpandTimer = null;
-    var scenario = { listenersBound: false, pageExitPromptShown: false };
+    var scenario = { listenersBound: false, pageExitPromptShown: false, exitIntentPending: false };
 
     function wasGreetingShown() { return sessionStorage.getItem(WIDGET_CONFIG.storageKeys.greetingShown) === '1'; }
     function markGreetingShown() { sessionStorage.setItem(WIDGET_CONFIG.storageKeys.greetingShown, '1'); }
@@ -541,7 +541,19 @@ async function initWidget() {
 
     function setupExitIntent() {
         if (!WIDGET_CONFIG.exitIntentEnabled) return;
-        if (scenario.listenersBound || localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
+        // Не показываем exit-intent пока пользователь не накопил историю:
+        // нужно ≥2 посещённых страниц ИЛИ ≥2 товаров в корзине
+        var visitedPages = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
+        var cartSize = getStoredCart().length;
+        if (visitedPages.length < 2 && cartSize < 2) {
+            if (!scenario.exitIntentPending) {
+                scenario.exitIntentPending = true;
+                setTimeout(function() { scenario.exitIntentPending = false; setupExitIntent(); }, 8000);
+            }
+            return;
+        }
+        if (scenario.listenersBound) return;
         scenario.listenersBound = true;
         var fired = false;
         function fireOnce(reason) {
@@ -567,6 +579,8 @@ async function initWidget() {
     lastMessageTimestamp = new Date().toISOString();
     localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
     setupExitIntent();
+    // Перепроверяем exit-intent при каждом возврате на страницу (bfcache/history navigation)
+    window.addEventListener('pageshow', function() { setupExitIntent(); });
     setInterval(poll, WIDGET_CONFIG.pollingInterval);
 }
 
