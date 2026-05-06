@@ -141,7 +141,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
                             publicUrl,
                             pdfUrl: proposal.pdf_url || undefined,
                             validUntil: proposal.valid_until || undefined,
-                            managerName: managerSession.user.email,
+                            managerName: managerSession.user.email ?? undefined,
                         }),
                     });
                     emailSent = true;

@@ -54,8 +54,8 @@ class RateLimiter {
 
         // Periodic cleanup to prevent unbounded memory growth
         if (this.buckets.size > 10_000) {
-            for (const [k, b] of this.buckets.entries()) {
-                if (b.timestamps.every(t => t <= cutoff)) {
+            for (const [k, b] of Array.from(this.buckets.entries())) {
+                if (b.timestamps.every((t: number) => t <= cutoff)) {
                     this.buckets.delete(k);
                 }
             }

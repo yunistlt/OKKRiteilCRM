@@ -34,9 +34,9 @@ export async function GET(req: NextRequest) {
                 .gte('created_at', since),
         ]);
 
-        const sessions = sessionsRes.data || [];
-        const proposals = proposalsRes.data || [];
-        const invoices = invoicesRes.data || [];
+        const sessions: any[] = sessionsRes.data || [];
+        const proposals: any[] = proposalsRes.data || [];
+        const invoices: any[] = invoicesRes.data || [];
 
         // --- Воронка конверсии ---
         const totalSessions = sessions.length;

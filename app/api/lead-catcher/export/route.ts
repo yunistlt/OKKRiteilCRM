@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
             .gte('created_at', since)
             .order('created_at', { ascending: false });
 
-        const rows = (data || []).map(s => ({
+        const rows = (data as any[] || []).map(s => ({
             ID:              s.id,
             Никнейм:         s.nickname || '',
             Сайт:            s.domain,
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
             .gte('created_at', since)
             .order('created_at', { ascending: false });
 
-        const rows = (data || []).map(p => ({
+        const rows = (data as any[] || []).map(p => ({
             ID:          p.id,
             Заголовок:   p.title,
             Статус:      p.status,
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
             .gte('created_at', since)
             .order('created_at', { ascending: false });
 
-        const rows = (data || []).map(i => ({
+        const rows = (data as any[] || []).map(i => ({
             Номер:         i.invoice_number,
             Заголовок:     i.title,
             Статус:        i.status,

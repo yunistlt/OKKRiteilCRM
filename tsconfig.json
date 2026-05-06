@@ -39,6 +39,7 @@
         "scripts",
         "supabase",
         "functions",
-        "scratch"
+        "scratch",
+        "tests"
     ]
 }
