@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +16,16 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: Request) {
+    const rateLimitResp = checkRateLimit(req, 'leads-catch', { limit: 5, windowMs: 60_000 }, CORS_HEADERS);
+    if (rateLimitResp) return rateLimitResp;
+
     try {
         const body = await req.json();
+
+        // Honeypot: если поле заполнено — это бот
+        if (body._hp && String(body._hp).length > 0) {
+            return NextResponse.json({ success: true, lead_id: 'hp' }, { headers: CORS_HEADERS });
+        }
 
         // ── Шаг 1: email + specs → создать запись, вернуть lead_id ──────────
         if (!body.lead_id) {

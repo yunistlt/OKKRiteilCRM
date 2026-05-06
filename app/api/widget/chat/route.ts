@@ -5,6 +5,7 @@ import { createLeadInCrm } from '@/lib/retailcrm-leads';
 import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/phone-utils';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +80,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+    const rateLimitResp = checkRateLimit(req, 'widget-chat', { limit: 30, windowMs: 60_000 }, CORS_HEADERS);
+    if (rateLimitResp) return rateLimitResp;
+
     try {
         const body = await req.json();
         const { visitorId, message, visitorData, type } = body;

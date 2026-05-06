@@ -732,6 +732,14 @@
             const inner = document.createElement('div');
             inner.style.cssText = 'background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:12px;';
 
+            // Honeypot: скрытое поле — боты заполняют, люди нет
+            const hp = document.createElement('input');
+            hp.type = 'text';
+            hp.name = 'website';
+            hp.tabIndex = -1;
+            hp.autocomplete = 'off';
+            hp.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+
             const inp = document.createElement('input');
             inp.type = 'email';
             inp.placeholder = 'Ваш email...';
@@ -755,7 +763,8 @@
                     body: JSON.stringify({
                         visitorId: tracking.ensureVisitorId(),
                         email: email,
-                        products: products
+                        products: products,
+                        _hp: hp.value  // honeypot
                     })
                 }).then(function(r) { return r.json(); }).then(function() {
                     wrap.remove();
@@ -766,6 +775,7 @@
                 });
             };
 
+            inner.appendChild(hp);
             inner.appendChild(inp);
             inner.appendChild(btn);
             wrap.appendChild(inner);

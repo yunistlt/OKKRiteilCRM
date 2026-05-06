@@ -230,8 +230,13 @@
 
 - [ ] Убрать `interestTimerMs: 2000` из `WIDGET_CONFIG` (уже не используется)
 - [ ] Перенести логику захвата товаров в отдельную функцию `captureCurrentProduct()`
-- [ ] Добавить rate limiting на API endpoints (против спама)
-- [ ] Добавить honeypot поле в форму захвата контактов (защита от ботов)
+- [x] Добавить rate limiting на API endpoints (против спама) → `lib/rate-limit.ts`
+  - `/api/leads/catch` — 5 req/min per IP
+  - `/api/widget/chat` — 30 req/min per IP
+  - `/api/widget/wishlist-email` — 5 req/min per IP
+- [x] Добавить honeypot поле в форму захвата контактов (защита от ботов)
+  - Скрытое поле `_hp` в виджете (wishlist email форма)
+  - Проверка `_hp` на сервере в `/api/leads/catch` и `/api/widget/wishlist-email`
 - [ ] Мониторинг ошибок (Sentry или логи в Supabase)
 - [ ] Тесты для критических путей: захват лида, создание КП, подтверждение оплаты
 

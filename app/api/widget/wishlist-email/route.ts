@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import nodemailer from 'nodemailer';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,9 +76,17 @@ function buildEmailHtml(products: string[]): string {
 }
 
 export async function POST(req: Request) {
+    const rateLimitResp = checkRateLimit(req, 'wishlist-email', { limit: 5, windowMs: 60_000 }, CORS_HEADERS);
+    if (rateLimitResp) return rateLimitResp;
+
     try {
         const body = await req.json();
         const { visitorId, email, products } = body;
+
+        // Honeypot
+        if (body._hp && String(body._hp).length > 0) {
+            return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
+        }
 
         if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return NextResponse.json({ error: 'Invalid email' }, { status: 400, headers: CORS_HEADERS });
