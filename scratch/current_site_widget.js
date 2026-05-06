@@ -141,6 +141,36 @@
         align-items: center;
     }
 
+    /* Quick-action buttons */
+    .okk-quick-btns {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 2px 0 6px 0;
+        scrollbar-width: none;
+        align-self: flex-start;
+        max-width: 100%;
+        animation: okkFadeIn 0.3s ease-out;
+    }
+    .okk-quick-btns::-webkit-scrollbar { display: none; }
+    .okk-quick-btn {
+        flex-shrink: 0;
+        background: #f0fdf4;
+        color: #059669;
+        border: 1px solid #a7f3d0;
+        border-radius: 20px;
+        padding: 7px 14px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, border-color 0.15s;
+    }
+    .okk-quick-btn:hover {
+        background: #d1fae5;
+        border-color: #6ee7b7;
+    }
+
     .okk-typing-dots { display: flex; gap: 4px; padding: 4px 0; }
     .okk-dot { width: 6px; height: 6px; background: #10b981; border-radius: 50%; animation: okkDotPulse 1.4s infinite ease-in-out; }
     .okk-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -539,6 +569,15 @@
                             }
                         }, 20000);
                     }
+
+                    // Кнопки быстрых действий через 25 секунд (если не взаимодействовал)
+                    setTimeout(() => {
+                        const interacted = localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) === 'true';
+                        if (!interacted) {
+                            console.log('[OKK Widget] Showing quick action buttons');
+                            addQuickButtons();
+                        }
+                    }, 25000);
                 }
                 return data;
             } catch (e) { 
@@ -732,6 +771,117 @@
             wrap.appendChild(inner);
             messages.appendChild(wrap);
             messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addQuickButtons() {
+            if (!messages) return;
+            if (document.getElementById('okk-lc-quick-btns')) return;
+
+            const wrap = document.createElement('div');
+            wrap.id = 'okk-lc-quick-btns';
+            wrap.className = 'okk-quick-btns';
+
+            var btnList = [
+                { label: '📋 Хочу КП', action: 'kp' },
+                { label: '📞 Позвоните мне', action: 'callback' },
+                { label: '💬 Есть вопрос', action: 'question' }
+            ];
+
+            btnList.forEach(function(cfg) {
+                var btn = document.createElement('button');
+                btn.className = 'okk-quick-btn';
+                btn.textContent = cfg.label;
+                btn.onclick = function() {
+                    wrap.remove();
+                    if (cfg.action === 'kp') {
+                        var text = 'Хочу получить коммерческое предложение';
+                        localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
+                        addMsg(text, 'user');
+                        apiCall('chat', { message: text });
+                    } else if (cfg.action === 'callback') {
+                        addPhoneCapture();
+                    } else if (cfg.action === 'question') {
+                        if (input) {
+                            if (widget.classList.contains('minimized')) {
+                                widget.classList.remove('minimized');
+                                if (toggle) toggle.innerHTML = '▼';
+                                localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, 'true');
+                            }
+                            input.focus();
+                        }
+                    }
+                };
+                wrap.appendChild(btn);
+            });
+
+            messages.appendChild(wrap);
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addPhoneCapture() {
+            if (!messages) return;
+            if (document.getElementById('okk-lc-phone-capture')) return;
+
+            var wrap = document.createElement('div');
+            wrap.id = 'okk-lc-phone-capture';
+            wrap.className = 'okk-msg ai';
+            wrap.style.cssText = 'padding:0;background:transparent;box-shadow:none;border:none;';
+
+            var inner = document.createElement('div');
+            inner.style.cssText = 'background:#fff;border:1px solid #d1fae5;border-radius:12px;padding:12px;';
+
+            var nameInp = document.createElement('input');
+            nameInp.type = 'text';
+            nameInp.placeholder = 'Ваше имя...';
+            nameInp.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
+
+            var phoneInp = document.createElement('input');
+            phoneInp.type = 'tel';
+            phoneInp.placeholder = '+7 (___) ___-__-__';
+            phoneInp.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
+
+            var companyInp = document.createElement('input');
+            companyInp.type = 'text';
+            companyInp.placeholder = 'Компания (необязательно)';
+            companyInp.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
+
+            var submitBtn = document.createElement('button');
+            submitBtn.textContent = 'Перезвоните мне';
+            submitBtn.style.cssText = 'width:100%;background:#10b981;color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:600;cursor:pointer;';
+
+            submitBtn.onclick = function() {
+                var name = nameInp.value.trim();
+                var phone = phoneInp.value.trim();
+                var company = companyInp.value.trim();
+
+                if (!name) { nameInp.style.borderColor = '#ef4444'; nameInp.focus(); return; }
+                if (!phone || !/^(\+7|8|7)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}$/.test(phone.replace(/\s/g, ''))) {
+                    phoneInp.style.borderColor = '#ef4444'; phoneInp.focus(); return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Отправляю...';
+                localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
+
+                apiCall('callback', { name: name, phone: phone, company: company || null })
+                    .then(function() {
+                        wrap.remove();
+                        addMsg('Отлично, ' + name + '! Перезвоним вам на ' + phone + ' в течение 15 минут 📞', 'ai', false, false);
+                    })
+                    .catch(function() {
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Попробовать снова';
+                    });
+            };
+
+            inner.appendChild(nameInp);
+            inner.appendChild(phoneInp);
+            inner.appendChild(companyInp);
+            inner.appendChild(submitBtn);
+            wrap.appendChild(inner);
+            messages.appendChild(wrap);
+            messages.scrollTop = messages.scrollHeight;
+            nameInp.focus();
         }
 
         function triggerExitIntent() {
