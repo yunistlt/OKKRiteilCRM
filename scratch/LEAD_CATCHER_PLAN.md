@@ -207,18 +207,22 @@
 ## Фаза 6 — Аналитика (Месяц 3)
 
 ### 6.1 Дашборд
-- [ ] Создать `app/lead-catcher/admin/analytics/page.tsx`
-- [ ] Метрики:
-  - [ ] Лиды за период (день/неделя/месяц)
-  - [ ] Конверсия: лид → контакт → КП → оплата
-  - [ ] Топ просматриваемых товаров
-  - [ ] Топ UTM-источников
-  - [ ] Среднее время ответа менеджера
-  - [ ] Средний чек КП и счёта
+- [x] Создать `app/lead-catcher/admin/analytics/page.tsx` + `LeadAnalyticsClient.tsx`
+- [x] Метрики:
+  - [x] Лиды за период (7/30/90/365 дней)
+  - [x] Воронка конверсии: лид → контакт → КП → счёт → оплата
+  - [x] Топ просматриваемых товаров
+  - [x] Топ UTM-источников
+  - [x] Средний чек КП и счёта
+  - [x] Выручка по оплаченным счетам
+  - [x] График по дням (лиды / КП / оплаты)
+- [x] Создать `app/api/lead-catcher/analytics/route.ts` — API аналитики
 
 ### 6.2 Экспорт
-- [ ] Выгрузка лидов в CSV
-- [ ] Выгрузка КП в Excel
+- [x] Выгрузка лидов в CSV
+- [x] Выгрузка КП в CSV
+- [x] Выгрузка счётов в CSV
+- [x] Создать `app/api/lead-catcher/export/route.ts` — CSV с UTF-8 BOM (для Excel)
 
 ---
 
@@ -249,8 +253,11 @@
 | `app/api/cron/lead-reminders/route.ts` | ✅ Создан | Cron напоминаний (каждый час) |
 | `app/lead-catcher/admin/page.tsx` | ✅ Есть (okk/lead-catcher) | Панель менеджера |
 | `app/lead-catcher/proposal/[token]/page.tsx` | ✅ Создана | Публичная страница КП |
-| `app/lead-catcher/invoice/[token]/page.tsx` | ❌ Создать | Страница счёта |
+| `app/lead-catcher/invoice/[token]/page.tsx` | ✅ Создана | Страница счёта |
+| `app/lead-catcher/admin/analytics/page.tsx` | ✅ Создана | Дашборд аналитики |
 | `app/api/lead-catcher/proposals/route.ts` | ✅ Создан | API для КП |
-| `app/api/lead-catcher/invoices/route.ts` | ❌ Создать | API для счётов |
+| `app/api/lead-catcher/invoices/route.ts` | ✅ Создан | API для счётов |
+| `app/api/lead-catcher/analytics/route.ts` | ✅ Создан | API аналитики |
+| `app/api/lead-catcher/export/route.ts` | ✅ Создан | CSV экспорт (лиды/КП/счета) |
 | `app/api/cron/lead-reminders/route.ts` | ✅ Создан | Cron напоминаний (каждый час) |
 | `lib/pdf-generator.ts` | ✅ Создан | Генерация PDF (@react-pdf/renderer) |
