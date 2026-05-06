@@ -138,30 +138,28 @@
 ## Фаза 4 — Коммерческие предложения (Месяц 2)
 
 ### 4.1 База данных
-- [ ] Создать миграцию: таблица `lead_proposals`
-  - id, session_id, items JSONB, status, pdf_url, viewed_at, token, expires_at
-  - status: draft | sent | viewed | accepted | rejected
+- [x] Создать миграцию `migrations/20260506_lead_proposals.sql`
+- [x] Таблица `lead_proposals`: id, session_id, title, intro, items JSONB, discount_pct, valid_until, status, token (unique), pdf_url, viewed_at, sent_at, created_by
 
 ### 4.2 Генерация КП
-- [ ] Создать `app/api/lead-catcher/proposals/route.ts`
-  - `POST` → создать КП из wishlist + параметры (скидка, срок, условия)
-  - AI генерирует текст введения на основе диалога (GPT-4o-mini)
-- [ ] Создать `lib/pdf-generator.ts`
-  - Установить `@react-pdf/renderer` или `pdfmake`
-  - Шаблон: шапка ЗМК, таблица позиций, итог, подпись
-  - Сохранить PDF в Supabase Storage `okk-assets/proposals/{token}.pdf`
+- [x] Создать `app/api/lead-catcher/proposals/route.ts`
+  - [x] `GET ?session_id=` → список КП сессии
+  - [x] `POST` → создать КП, AI-введение (`generate_intro: true`), генерация PDF
+- [x] Создать `lib/pdf-generator.ts`
+  - [x] Установить `@react-pdf/renderer` v4.5.1
+  - [x] Шаблон PDF: шапка ЗМК, таблица позиций, скидка, итог с НДС, условия, подпись
+  - [x] Сохранить PDF в Supabase Storage `okk-assets/proposals/{token}.pdf`
 
 ### 4.3 Публичная страница КП
-- [ ] Создать `app/lead-catcher/proposal/[token]/page.tsx`
-  - Красивая страница: логотип, позиции товаров, кнопка "Скачать PDF"
-  - При открытии → UPDATE `lead_proposals.viewed_at` + уведомление менеджеру
-  - Доступна без авторизации по уникальному токену
-- [ ] Кнопки: "Принять КП" → статус accepted + уведомление, "Запросить изменения" → форма
+- [x] Создать `app/lead-catcher/proposal/[token]/page.tsx`
+  - [x] Отображение позиций, итого, условий
+  - [x] При открытии → UPDATE `viewed_at` + статус `viewed`
+  - [x] Кнопка "Скачать PDF" (если есть pdf_url)
+  - [x] Доступна без авторизации по токену
 
 ### 4.4 Отправка КП
-- [ ] При создании КП → отправить email клиенту с ссылкой
-- [ ] Трекинг открытия: при открытии страницы `/proposal/[token]` → фиксируем viewed_at
-- [ ] Создать запись в RetailCRM: статус "КП отправлено" + ссылка на КП
+- [ ] При создании КП → отправить email клиенту с ссылкой (через wishlist email транспорт)
+- [ ] Обновить статус в RetailCRM: "КП отправлено" + ссылка
 
 ---
 
@@ -238,9 +236,9 @@
 | `migrations/20260506_lead_reminders.sql` | ✅ Создана | Миграция таблицы lead_reminders |
 | `app/api/cron/lead-reminders/route.ts` | ✅ Создан | Cron напоминаний (каждый час) |
 | `app/lead-catcher/admin/page.tsx` | ✅ Есть (okk/lead-catcher) | Панель менеджера |
-| `app/lead-catcher/proposal/[token]/page.tsx` | ❌ Создать | Публичная страница КП |
+| `app/lead-catcher/proposal/[token]/page.tsx` | ✅ Создана | Публичная страница КП |
 | `app/lead-catcher/invoice/[token]/page.tsx` | ❌ Создать | Страница счёта |
-| `app/api/lead-catcher/proposals/route.ts` | ❌ Создать | API для КП |
+| `app/api/lead-catcher/proposals/route.ts` | ✅ Создан | API для КП |
 | `app/api/lead-catcher/invoices/route.ts` | ❌ Создать | API для счётов |
-| `app/api/cron/lead-reminders/route.ts` | ❌ Создать | Cron напоминаний |
-| `lib/pdf-generator.ts` | ❌ Создать | Генерация PDF |
+| `app/api/cron/lead-reminders/route.ts` | ✅ Создан | Cron напоминаний (каждый час) |
+| `lib/pdf-generator.ts` | ✅ Создан | Генерация PDF (@react-pdf/renderer) |
