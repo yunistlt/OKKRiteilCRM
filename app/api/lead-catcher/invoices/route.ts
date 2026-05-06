@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
 import { generateInvoicePDF, InvoiceData, ProposalItem } from '@/lib/pdf-generator';
+import { logError } from '@/lib/error-monitor';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
                 invoice.pdf_url = urlData.publicUrl;
             }
         } catch (pdfErr) {
-            console.error('[invoices] PDF error:', pdfErr);
+            logError('invoices/pdf', pdfErr);
         }
 
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com';
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ success: true, invoice: { ...invoice, public_url: publicUrl } });
     } catch (e: any) {
-        console.error('[invoices] POST error:', e);
+        logError('invoices/POST', e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

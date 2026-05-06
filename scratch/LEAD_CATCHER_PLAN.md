@@ -237,8 +237,16 @@
 - [x] Добавить honeypot поле в форму захвата контактов (защита от ботов)
   - Скрытое поле `_hp` в виджете (wishlist email форма)
   - Проверка `_hp` на сервере в `/api/leads/catch` и `/api/widget/wishlist-email`
-- [ ] Мониторинг ошибок (Sentry или логи в Supabase)
-- [ ] Тесты для критических путей: захват лида, создание КП, подтверждение оплаты
+- [x] Мониторинг ошибок (логи в Supabase таблицу `error_logs`)
+  - `lib/error-monitor.ts` — централизованный логгер (error/warn/info), fire-and-forget
+  - `migrations/20260506_error_logs.sql` — таблица `error_logs`
+  - Подключён к: leads/catch, invoices POST, proposals POST
+- [x] Тесты для критических путей (vitest)
+  - `tests/rate-limit.test.ts` — 11 тестов rate limiter
+  - `tests/leads-catch.test.ts` — 5 тестов захвата лида
+  - `tests/proposals.test.ts` — 5 тестов создания КП
+  - `tests/invoice-status.test.ts` — 6 тестов PATCH статуса счёта
+  - Всего: 27 тестов, все проходят
 
 ---
 

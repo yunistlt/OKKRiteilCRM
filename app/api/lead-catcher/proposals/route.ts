@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
 import { generateProposalPDF, ProposalData } from '@/lib/pdf-generator';
 import { getOpenAIClient } from '@/utils/openai';
+import { logError } from '@/lib/error-monitor';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,10 @@ export async function POST(req: NextRequest) {
         if (!session_id) return NextResponse.json({ error: 'session_id required' }, { status: 400 });
         if (!Array.isArray(items) || items.length === 0) {
             return NextResponse.json({ error: 'items required' }, { status: 400 });
+        }
+        const invalidItem = items.find((i: any) => !i.name || typeof i.price !== 'number');
+        if (invalidItem) {
+            return NextResponse.json({ error: 'Each item must have name and numeric price' }, { status: 400 });
         }
 
         // Опционально: AI-генерация введения на основе диалога
@@ -144,7 +149,7 @@ export async function POST(req: NextRequest) {
             proposal: { ...proposal, public_url: publicUrl },
         });
     } catch (e: any) {
-        console.error('[proposals] POST error:', e);
+        logError('proposals/POST', e);
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm-leads';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { logError } from '@/lib/error-monitor';
 
 export const dynamic = 'force-dynamic';
 
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
 
     } catch (err: any) {
-        console.error('[leads/catch] Unhandled error:', err);
+        logError('leads/catch', err);
         return NextResponse.json(
             { success: false, error: 'Внутренняя ошибка сервера' },
             { status: 500, headers: CORS_HEADERS }
