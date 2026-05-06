@@ -116,7 +116,17 @@
       zmkCalculatePrice();
     }
 
+    var zmkRequestInProgress = false;
+
     function zmkRequestKP() {
+      if (zmkRequestInProgress) return;
+      zmkRequestInProgress = true;
+      var btn = document.querySelector('#zmk-configurator-1369 .zmk-submit-btn');
+      if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+      var restore = function() {
+        zmkRequestInProgress = false;
+        if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+      };
       var specs = {
         category_id: 1369,
         category_name: 'Муфельные печи СНОЛЭКС-ЗМК',
@@ -125,16 +135,17 @@
         phase: zmkState.phase
       };
       if (typeof window.__OKK_OPEN_WITH_CONTEXT__ === 'function') {
-        window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price);
+        Promise.resolve(window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price)).finally(restore);
       } else {
         // Виджет ещё не загрузился — ждём и повторяем
         var attempts = 0;
         var interval = setInterval(function() {
           if (typeof window.__OKK_OPEN_WITH_CONTEXT__ === 'function') {
             clearInterval(interval);
-            window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price);
+            Promise.resolve(window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price)).finally(restore);
           } else if (++attempts > 10) {
             clearInterval(interval);
+            restore();
             alert('Пожалуйста, напишите нам в чат — кнопка внизу справа.');
           }
         }, 500);

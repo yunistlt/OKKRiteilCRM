@@ -27,10 +27,30 @@ export async function OPTIONS() {
     return NextResponse.json({}, { headers: CORS_HEADERS });
 }
 
-function buildEmailHtml(products: string[]): string {
-    const rows = products
-        .map(p => `<tr><td style="padding:10px 12px;border-bottom:1px solid #f1f5f9;">📦 ${p}</td></tr>`)
-        .join('');
+interface ProductItem {
+    name: string;
+    url?: string;
+    img?: string;
+}
+
+function buildEmailHtml(products: (ProductItem | string)[]): string {
+    const items: ProductItem[] = products.map(p =>
+        typeof p === 'string' ? { name: p } : p
+    );
+
+    const rows = items.map(p => {
+        const href = p.url ? (p.url.startsWith('http') ? p.url : `https://zmktlt.ru${p.url}`) : 'https://zmktlt.ru';
+        const img = p.img
+            ? `<td style="padding:8px;width:72px;vertical-align:middle;"><a href="${href}"><img src="${p.img}" width="64" height="64" style="object-fit:cover;border-radius:6px;display:block;border:0;" alt=""></a></td>`
+            : `<td style="padding:8px;width:72px;vertical-align:middle;"><div style="width:64px;height:64px;background:#f1f5f9;border-radius:6px;"></div></td>`;
+        return `<tr style="border-bottom:1px solid #f1f5f9;">
+          ${img}
+          <td style="padding:8px 12px 8px 4px;vertical-align:middle;">
+            <a href="${href}" style="font-size:14px;color:#1e293b;text-decoration:none;font-weight:500;line-height:1.4;">${p.name}</a><br>
+            <a href="${href}" style="font-size:12px;color:#10b981;text-decoration:none;margin-top:2px;display:inline-block;">Перейти к товару →</a>
+          </td>
+        </tr>`;
+    }).join('');
 
     return `<!DOCTYPE html>
 <html lang="ru">
@@ -53,11 +73,6 @@ function buildEmailHtml(products: string[]): string {
             Вы просматривали эти товары на сайте ЗМК и попросили сохранить список, чтобы не потерять.
           </p>
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
-            <thead>
-              <tr style="background:#f8fafc;">
-                <th style="padding:10px 12px;text-align:left;font-size:13px;color:#64748b;font-weight:600;border-bottom:1px solid #e2e8f0;">Товар</th>
-              </tr>
-            </thead>
             <tbody>${rows}</tbody>
           </table>
           <a href="https://zmktlt.ru" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:12px 28px;border-radius:10px;font-size:14px;font-weight:600;">
@@ -96,8 +111,18 @@ export async function POST(req: Request) {
         }
         // Sanitize inputs
         const safeEmail = email.trim().toLowerCase().substring(0, 320);
-        const safeProducts: string[] = products.slice(0, 50).map((p: unknown) =>
-            typeof p === 'string' ? p.replace(/[<>]/g, '').substring(0, 200) : ''
+        const safeProducts: ProductItem[] = products.slice(0, 50).map((p: unknown) => {
+            if (typeof p === 'string') return { name: p.replace(/[<>]/g, '').substring(0, 200) };
+            if (p && typeof p === 'object') {
+                const o = p as Record<string, unknown>;
+                return {
+                    name: typeof o.name === 'string' ? o.name.replace(/[<>]/g, '').substring(0, 200) : '',
+                    url: typeof o.url === 'string' ? o.url.replace(/[<>"']/g, '').substring(0, 500) : undefined,
+                    img: typeof o.img === 'string' ? o.img.replace(/[<>"']/g, '').substring(0, 500) : undefined,
+                };
+            }
+            return { name: '' };
+        }
         ).filter(Boolean);
 
         // Fetch session id if available

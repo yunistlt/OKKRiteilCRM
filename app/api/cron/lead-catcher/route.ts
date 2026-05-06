@@ -27,6 +27,16 @@ export async function GET(req: Request) {
             .order('updated_at', { ascending: false })
             .limit(10);
 
+        // Закрываем старые сессии (> 3 дней без движения) у которых has_contacts = false,
+        // чтобы они не крутились вечно
+        const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+        await supabase
+            .from('widget_sessions')
+            .update({ is_lead_created: true })
+            .eq('is_lead_created', false)
+            .eq('has_contacts', false)
+            .lt('updated_at', cutoff3d);
+
         if (sessionsError) throw sessionsError;
         if (!sessions || sessions.length === 0) {
             return NextResponse.json({ message: 'No sessions to process' });
@@ -94,7 +104,8 @@ export async function GET(req: Request) {
                         .from('widget_sessions')
                         .update({ 
                             is_lead_created: true,
-                            crm_order_number: orderNumber
+                            crm_order_number: orderNumber,
+                            ...(extractedData.email ? { contact_email: extractedData.email } : {}),
                         })
                         .eq('id', session.id);
 
@@ -132,12 +143,8 @@ export async function GET(req: Request) {
                     results.push({ sessionId: session.id, status: 'crm_error', error: crmError.message });
                 }
             } else {
-                // Если контактов нет, все равно помечаем как проверенную, чтобы не зацикливаться
-                await supabase
-                    .from('widget_sessions')
-                    .update({ is_lead_created: true }) // Считаем обработанной (пустой)
-                    .eq('id', session.id);
-                    
+                // GPT не смог извлечь контакты из диалога — НЕ помечаем как обработанную,
+                // чтобы при следующем запуске попробовать снова (пользователь может написать позже)
                 results.push({ sessionId: session.id, status: 'no_contacts_found' });
             }
         }

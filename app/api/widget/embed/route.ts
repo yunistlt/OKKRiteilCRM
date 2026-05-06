@@ -205,6 +205,10 @@ async function initWidget() {
 
     // ── Публичный API для внешних скриптов (калькулятор на странице) ──────────
     window.__OKK_OPEN_WITH_CONTEXT__ = async function(specs, price) {
+        // Защита от двойного вызова в рамках одной страницы
+        var calcKey = 'okk_calc_sent_' + (specs && specs.category_id ? specs.category_id : '0');
+        if (sessionStorage.getItem(calcKey)) return;
+        sessionStorage.setItem(calcKey, '1');
         localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
         if (autoExpandTimer) clearTimeout(autoExpandTimer);
         // Открыть виджет
@@ -456,7 +460,7 @@ async function initWidget() {
             btn.disabled = true; btn.textContent = 'Отправляю...';
             fetch(WIDGET_CONFIG.wishlistEndpoint, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ visitorId: tracking.ensureVisitorId(), email: email, products: getStoredCart().map(function(c) { return c.name; }), _hp: hp.value })
+                body: JSON.stringify({ visitorId: tracking.ensureVisitorId(), email: email, products: getStoredCart(), _hp: hp.value })
             }).then(function(r) { return r.json(); }).then(function() {
                 wrap.remove();
                 addMsg('Отлично! Список товаров уже летит на ' + email + ' — проверяйте почту 📬', 'ai', false, false);

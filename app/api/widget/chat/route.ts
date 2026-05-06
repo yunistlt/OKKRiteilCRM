@@ -239,6 +239,29 @@ export async function POST(req: Request) {
         }
 
         const openai = getOpenAIClient();
+
+        // Детекция контактов — ДО вызова OpenAI, чтобы не потерять данные при ошибке GPT
+        const phoneMatch = message.match(/(\+7|8|7)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
+        if (phoneMatch) {
+            const normalizedPhone = normalizePhone(phoneMatch[0]);
+            if (normalizedPhone) {
+                await supabase
+                    .from('widget_sessions')
+                    .update({ has_contacts: true })
+                    .eq('id', sessionId);
+                await supabase.from('widget_callback_requests').insert({
+                    session_id: sessionId,
+                    visitor_id: visitorId,
+                    phone: normalizedPhone,
+                    status: 'pending'
+                });
+            }
+        }
+        const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        if (emailMatch) {
+            await supabase.from('widget_sessions').update({ has_contacts: true }).eq('id', sessionId);
+        }
+
         const embeddingRes = await openai.embeddings.create({
             model: 'text-embedding-3-small',
             input: message,
@@ -302,33 +325,6 @@ export async function POST(req: Request) {
             role: 'assistant',
             content: reply
         });
-
-        // Детекция номера телефона для автоматического звонка
-        const phoneMatch = message.match(/(\+7|8|7)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
-        if (phoneMatch) {
-            const normalizedPhone = normalizePhone(phoneMatch[0]);
-            if (normalizedPhone) {
-                // Выставляем флаг, что в сессии ЕСТЬ контакты для Семёна
-                await supabase
-                    .from('widget_sessions')
-                    .update({ has_contacts: true })
-                    .eq('id', sessionId);
-                
-                // Создаем запись в таблице запросов (Семён подхватит её позже)
-                await supabase.from('widget_callback_requests').insert({
-                    session_id: sessionId,
-                    visitor_id: visitorId,
-                    phone: normalizedPhone,
-                    status: 'pending'
-                });
-            }
-        }
-
-        // Детекция Email для Семёна
-        const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-        if (emailMatch) {
-            await supabase.from('widget_sessions').update({ has_contacts: true }).eq('id', sessionId);
-        }
 
         return NextResponse.json({ reply }, { headers: CORS_HEADERS });
 
