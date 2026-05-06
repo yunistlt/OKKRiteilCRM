@@ -100,14 +100,30 @@ export async function GET(req: Request) {
 
                     const orderNumber = crmResult.order?.number || crmResult.id?.toString();
 
-                    await supabase
+                    const updatePayload: any = {
+                        is_lead_created: true,
+                        crm_order_number: orderNumber,
+                    };
+                    if (extractedData.email) updatePayload.contact_email = extractedData.email;
+
+                    const { error: updateError } = await supabase
                         .from('widget_sessions')
-                        .update({ 
-                            is_lead_created: true,
-                            crm_order_number: orderNumber,
-                            ...(extractedData.email ? { contact_email: extractedData.email } : {}),
-                        })
+                        .update(updatePayload)
                         .eq('id', session.id);
+
+                    // Совместимость схемы: в части окружений колонки contact_email еще нет.
+                    if (updateError && extractedData.email && String(updateError.message || '').includes('contact_email')) {
+                        const { error: fallbackError } = await supabase
+                            .from('widget_sessions')
+                            .update({
+                                is_lead_created: true,
+                                crm_order_number: orderNumber,
+                            })
+                            .eq('id', session.id);
+                        if (fallbackError) throw fallbackError;
+                    } else if (updateError) {
+                        throw updateError;
+                    }
 
                     await supabase.from('widget_messages').insert([
                         {
