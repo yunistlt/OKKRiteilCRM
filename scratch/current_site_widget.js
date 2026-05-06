@@ -322,26 +322,35 @@
 
                 console.log('[OKK Widget] setupInterestTimer: isProductPage=true, h1=' + h1.innerText);
 
-                setTimeout(() => {
-                    let cart = getStoredCart();
-                    const pageUrl = window.location.href;
-                    
-                    // Уже есть этот товар?
-                    if (cart.find(c => c.url === pageUrl)) {
+                // Сохраняем товар мгновенно — без задержек
+                (function saveProduct() {
+                    var cart = getStoredCart();
+                    var pageUrl = window.location.href;
+                    if (cart.find(function(c) { return c.url === pageUrl; })) {
                         console.log('[OKK Widget] Already in cart:', pageUrl);
                         return;
                     }
-                    
-                    // Картинка: og:image → первый img
-                    const ogImg = document.querySelector('meta[property="og:image"]');
-                    const bodyImg = document.querySelector('img[alt], img[src]');
-                    const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
-                    
-                    const item = { name: h1.innerText.trim(), url: pageUrl, img: img };
+                    var ogImg = document.querySelector('meta[property="og:image"]');
+                    var bodyImg = document.querySelector('img[alt], img[src]');
+                    var img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                    var item = { name: h1.innerText.trim(), url: pageUrl, img: img };
                     cart.push(item);
                     setStoredCart(cart);
                     console.log('[OKK Widget] Added to cart:', item, 'cart now has:', cart.length, 'items');
-                }, WIDGET_CONFIG.interestTimerMs);
+                })();
+
+                // Страховка: при уходе со страницы сохраняем если вдруг не успело
+                window.addEventListener('beforeunload', function() {
+                    var cart = getStoredCart();
+                    var pageUrl = window.location.href;
+                    if (!cart.find(function(c) { return c.url === pageUrl; })) {
+                        var ogImg = document.querySelector('meta[property="og:image"]');
+                        var bodyImg = document.querySelector('img[alt], img[src]');
+                        var img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                        cart.push({ name: h1.innerText.trim(), url: pageUrl, img: img });
+                        setStoredCart(cart);
+                    }
+                });
             },
             getPayload: function() {
                 const cartNames = getStoredCart().map(c => c.name);
@@ -761,9 +770,10 @@
             }
 
             addProductCards(products);
+            // 400ms — ждём CSS-анимацию раскрытия виджета, затем показываем мгновенно
             setTimeout(function() {
-                addMsg('Подождите, не уходите! Вы просматривали товары — отправить список вам на почту, чтобы не потерять?', 'ai', false, true);
-                setTimeout(addEmailCapture, 2000);
+                addMsg('Подождите, не уходите! Вы просматривали товары — отправить список вам на почту, чтобы не потерять?', 'ai', false, false);
+                addEmailCapture();
             }, 400);
         }
 
@@ -820,6 +830,24 @@
             // Дополнительный сигнал: потеря фокуса окна (переход к закрытию/другой вкладке)
             window.addEventListener('blur', function() {
                 fireOnce('window.blur');
+            }, { passive: true });
+
+            // Метод 5: Превентивный — мышка движется в верхнюю часть ДО выхода из окна.
+            // Срабатывает на опережение: мышка идёт вверх → ждём 150ms (debounce) → показываем.
+            var exitPreviewTimer = null;
+            document.addEventListener('mousemove', function(e) {
+                if (e.clientY < 80) {
+                    if (!exitPreviewTimer) {
+                        exitPreviewTimer = setTimeout(function() {
+                            fireOnce('mousemove.top');
+                        }, 150);
+                    }
+                } else {
+                    if (exitPreviewTimer) {
+                        clearTimeout(exitPreviewTimer);
+                        exitPreviewTimer = null;
+                    }
+                }
             }, { passive: true });
             
         }
