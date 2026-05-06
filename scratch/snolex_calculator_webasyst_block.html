@@ -1,0 +1,149 @@
+# Калькулятор СНОЛЭКС для Webasyst — новая версия (интеграция с Ловцом Лидов)
+#
+# Вставить в настройки страницы категории Webasyst вместо старого кода.
+# Скрипт виджета уже подключён через блок okk_chat.
+# Этот блок содержит ТОЛЬКО конфигуратор. Захват контакта — в виджете.
+
+<!-- ИНТЕРАКТИВНЫЙ КАЛЬКУЛЯТОР СНОЛЭКС v2 (интегрирован с Ловцом Лидов) -->
+<div class="zmk-compact-selector" id="zmk-configurator-1369">
+  <style>
+    .zmk-compact-selector {
+      background: radial-gradient(circle at top left, #2e2f34, #1a1b1e);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 24px;
+      margin: 20px 0 30px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      color: #fff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    .zmk-selector-header { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 12px; }
+    .zmk-selector-header h3 { font-size: 1.25rem; font-weight: 700; color: #fff; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .zmk-selector-header p { font-size: 0.88rem; color: #a0a5b1; margin: 0; }
+    .zmk-selector-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 24px; }
+    @media (max-width: 768px) { .zmk-selector-grid { grid-template-columns: 1fr; gap: 16px; } }
+    .zmk-selector-col { display: flex; flex-direction: column; gap: 8px; }
+    .zmk-label { font-size: 0.82rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #e85f4c; }
+    .zmk-btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .zmk-btn {
+      flex: 1; min-width: 70px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px; padding: 10px 14px;
+      color: #e2e4e9; font-size: 0.9rem; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; text-align: center; user-select: none;
+    }
+    .zmk-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.25); color: #fff; }
+    .zmk-btn.active { background: #d44b38; border-color: #d44b38; color: #fff; box-shadow: 0 4px 12px rgba(212,75,56,0.35); font-weight: 600; }
+    .zmk-price-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 16px; text-align: center; margin-bottom: 20px; }
+    .zmk-price-label { font-size: 0.85rem; color: #a0a5b1; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 4px; }
+    .zmk-price-value { font-size: 2.2rem; font-weight: 800; color: #e85f4c; text-shadow: 0 2px 10px rgba(232,95,76,0.2); margin-bottom: 4px; transition: all 0.3s ease; }
+    .zmk-price-sub { font-size: 0.78rem; color: #727681; }
+    .zmk-cta-row { text-align: center; }
+    .zmk-submit-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: linear-gradient(135deg, #e85f4c, #d44b38);
+      border: none; border-radius: 8px; padding: 14px 32px;
+      color: #fff; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: all 0.25s;
+      box-shadow: 0 4px 15px rgba(212,75,56,0.3);
+    }
+    .zmk-submit-btn:hover { background: linear-gradient(135deg, #f07463, #e85f4c); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(212,75,56,0.45); }
+    .zmk-hint { margin-top: 10px; font-size: 0.78rem; color: #6b6f78; }
+  </style>
+
+  <div class="zmk-selector-header">
+    <h3>Быстрый конфигуратор СНОЛЭКС-ЗМК</h3>
+    <p>Выберите требуемые параметры, чтобы получить точный расчет цены от КБ завода</p>
+  </div>
+
+  <div class="zmk-selector-grid">
+    <div class="zmk-selector-col">
+      <span class="zmk-label">Температура нагрева</span>
+      <div class="zmk-btn-group" id="zmk-temp-group">
+        <div class="zmk-btn active" onclick="zmkSelectOption(this,'temp','1100')">1100 °C</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'temp','1250')">1250 °C</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'temp','1350')">1350 °C</div>
+      </div>
+    </div>
+    <div class="zmk-selector-col">
+      <span class="zmk-label">Объем камеры</span>
+      <div class="zmk-btn-group" id="zmk-vol-group">
+        <div class="zmk-btn active" onclick="zmkSelectOption(this,'vol','10')">10 л</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'vol','20')">20 л</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'vol','50')">50 л</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'vol','100')">100 л</div>
+      </div>
+    </div>
+    <div class="zmk-selector-col">
+      <span class="zmk-label">Электропитание</span>
+      <div class="zmk-btn-group" id="zmk-phase-group">
+        <div class="zmk-btn active" onclick="zmkSelectOption(this,'phase','220')">220 В</div>
+        <div class="zmk-btn" onclick="zmkSelectOption(this,'phase','380')">380 В</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="zmk-price-section">
+    <div class="zmk-price-label">Ориентировочная цена базовой модели:</div>
+    <div class="zmk-price-value" id="zmk-price-display">95 000 руб.</div>
+    <div class="zmk-price-sub">с учетом НДС, базовой комплектации и заводской гарантии 12 месяцев</div>
+  </div>
+
+  <div class="zmk-cta-row">
+    <button class="zmk-submit-btn" onclick="zmkRequestKP()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Рассчитать <span id="zmk-btn-model">СНОЛЭКС-10/1100 (220В)</span> →
+    </button>
+    <div class="zmk-hint">Точный расчёт + КП на бланке завода — в течение 15 минут</div>
+  </div>
+
+  <script>
+    var zmkState = { temp: '1100', vol: '10', phase: '220', price: 95000 };
+
+    function zmkCalculatePrice() {
+      var base = 95000;
+      var vMult = { '10': 1.0, '20': 1.35, '50': 2.10, '100': 3.20 };
+      var tMult = { '1100': 1.0, '1250': 1.30, '1350': 1.65 };
+      var pMult = { '220': 1.0, '380': 1.08 };
+      zmkState.price = Math.round(base * (vMult[zmkState.vol] || 1) * (tMult[zmkState.temp] || 1) * (pMult[zmkState.phase] || 1));
+      var el = document.getElementById('zmk-price-display');
+      if (el) el.textContent = zmkState.price.toLocaleString('ru-RU') + ' руб.';
+      var btn = document.getElementById('zmk-btn-model');
+      if (btn) btn.textContent = 'СНОЛЭКС-' + zmkState.vol + '/' + zmkState.temp + ' (' + zmkState.phase + 'В)';
+    }
+
+    function zmkSelectOption(el, key, val) {
+      var buttons = el.parentNode.getElementsByClassName('zmk-btn');
+      for (var i = 0; i < buttons.length; i++) buttons[i].classList.remove('active');
+      el.classList.add('active');
+      zmkState[key] = val;
+      zmkCalculatePrice();
+    }
+
+    function zmkRequestKP() {
+      var specs = {
+        category_id: 1369,
+        category_name: 'Муфельные печи СНОЛЭКС-ЗМК',
+        volume: zmkState.vol,
+        temp: zmkState.temp,
+        phase: zmkState.phase
+      };
+      if (typeof window.__OKK_OPEN_WITH_CONTEXT__ === 'function') {
+        window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price);
+      } else {
+        // Виджет ещё не загрузился — ждём и повторяем
+        var attempts = 0;
+        var interval = setInterval(function() {
+          if (typeof window.__OKK_OPEN_WITH_CONTEXT__ === 'function') {
+            clearInterval(interval);
+            window.__OKK_OPEN_WITH_CONTEXT__(specs, zmkState.price);
+          } else if (++attempts > 10) {
+            clearInterval(interval);
+            alert('Пожалуйста, напишите нам в чат — кнопка внизу справа.');
+          }
+        }, 500);
+      }
+    }
+  </script>
+</div>

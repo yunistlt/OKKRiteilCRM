@@ -203,6 +203,22 @@ async function initWidget() {
 
     if (widget) widget.style.display = 'flex';
 
+    // ── Публичный API для внешних скриптов (калькулятор на странице) ──────────
+    window.__OKK_OPEN_WITH_CONTEXT__ = async function(specs, price) {
+        localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
+        if (autoExpandTimer) clearTimeout(autoExpandTimer);
+        // Открыть виджет
+        if (widget && widget.classList.contains('minimized')) {
+            widget.classList.remove('minimized');
+            if (toggle) toggle.innerHTML = '▼';
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, 'true');
+            window.OKK_LEAD_CATCHER_CALLBACKS.onWidgetToggle(true);
+        }
+        if (preview) preview.style.display = 'none';
+        // Вызов API с типом calc_lead
+        await apiCall('calc_lead', { specs: specs, price: price });
+    };
+
     function showTyping(show) {
         if (!typingIndicator) return;
         typingIndicator.style.display = show ? 'block' : 'none';

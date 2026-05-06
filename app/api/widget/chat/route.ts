@@ -147,6 +147,42 @@ export async function POST(req: Request) {
             })
             .eq('id', sessionId);
 
+        // ── Калькулятор: пользователь нажал "Получить КП" на конфигураторе ────────
+        if (type === 'calc_lead') {
+            const { specs, price } = body as { specs?: Record<string, string>, price?: number };
+
+            // Сохраняем товар в сессию
+            const productName = specs?.category_name
+                ? `${specs.category_name} ${specs.temp || ''}°C / ${specs.volume || ''}л`
+                : 'Муфельная печь СНОЛЭКС';
+            await supabase.from('widget_sessions')
+                .update({ interested_products: [productName] })
+                .eq('id', sessionId);
+
+            // Логируем событие
+            await supabase.from('widget_events').insert({
+                session_id: sessionId,
+                event_type: 'calc_lead',
+                url: visitorData?.visitedPages?.slice(-1)[0]?.url || null,
+                page_title: visitorData?.visitedPages?.slice(-1)[0]?.title || null,
+            });
+
+            const volLabel  = specs?.volume ? `${specs.volume} л` : '';
+            const tempLabel = specs?.temp   ? `${specs.temp} °C`  : '';
+            const phaseLabel = specs?.phase ? `${specs.phase} В`  : '';
+            const priceStr = price ? price.toLocaleString('ru-RU') + ' руб.' : '';
+
+            const greeting = `Отличный выбор! 🔥 Вы подобрали СНОЛЭКС ${tempLabel} / ${volLabel} (${phaseLabel}) — ориентировочная цена ${priceStr} с учётом НДС.\n\nЧтобы отправить вам точное КП на бланке завода с окончательной ценой и техпаспортом, напишите ваш email или телефон 📋`;
+
+            await supabase.from('widget_messages').insert({
+                session_id: sessionId,
+                role: 'assistant',
+                content: greeting,
+            });
+
+            return NextResponse.json({ reply: greeting }, { headers: CORS_HEADERS });
+        }
+
         if (type === 'init') {
             if (visitorData?.visitedPages?.length > 0) {
                 const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
