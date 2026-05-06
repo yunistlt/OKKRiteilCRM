@@ -88,6 +88,10 @@
         {
             "path": "/api/cron/lead-catcher",
             "schedule": "*/1 * * * *"
+        },
+        {
+            "path": "/api/cron/lead-reminders",
+            "schedule": "0 * * * *"
         }
     ]
 }

@@ -90,50 +90,48 @@
 
 ---
 
-## Фаза 2 — Панель менеджера (Неделя 2-3)
+## Фаза 2 — Панель менеджера ✅ УЖЕ РЕАЛИЗОВАНА
+
+> Существует: `app/okk/lead-catcher/page.tsx` — полноценная панель с real-time чатом.
 
 ### 2.1 Список лидов
-- [ ] Создать `app/lead-catcher/admin/page.tsx`
-- [ ] Таблица: дата, никнейм, домен, статус, последнее сообщение, UTM-источник
-- [ ] Фильтры: по статусу, дате, домену
-- [ ] Пагинация (20 записей на страницу)
-- [ ] Создать `app/api/lead-catcher/admin/route.ts` → SELECT из `widget_sessions`
-- [ ] Добавить роль `lead_catcher_admin` в RBAC ([lib/access-control.ts](../lib/access-control.ts))
+- [x] `app/okk/lead-catcher/page.tsx` — список сессий с поиском
+- [x] Таблица: дата, никнейм, домен, статус, последнее сообщение
+- [x] Фильтр поиска по имени и городу
+- [x] Онлайн-статус (зелёная точка — активен < 5 мин)
+- [x] Realtime подписка через Supabase channels
 
 ### 2.2 Карточка лида
-- [ ] Создать `app/lead-catcher/admin/[sessionId]/page.tsx`
-- [ ] Секция: Контакты (имя, телефон, email, компания)
-- [ ] Секция: История чата (сообщения из `widget_messages`)
-- [ ] Секция: Просмотренные товары (из `interested_products`)
-- [ ] Секция: UTM и источник трафика
-- [ ] Секция: Ссылка на лид в RetailCRM (если `crm_lead_id` есть)
-- [ ] Кнопка: "Ответить в чат" → открывает форму ручного ответа
+- [x] История чата (все сообщения из `widget_messages`)
+- [x] Просмотренные товары, UTM, Landing Page, город
+- [x] Логи событий (`widget_events`)
+- [x] Заметки менеджера (`manager_notes`)
 
 ### 2.3 Ответ менеджера в чат
-- [ ] Добавить поле `is_human_takeover` в `widget_sessions` (уже есть)
-- [ ] API: `POST /api/lead-catcher/admin/[sessionId]/message` → INSERT в `widget_messages` с role='system'
-- [ ] Виджет через poll() подхватывает сообщение менеджера
-- [ ] Уведомление менеджера при новом сообщении от клиента (email или браузер)
+- [x] Кнопка «Перехватить диалог» → `is_human_takeover = true`
+- [x] Поле ввода → INSERT в `widget_messages` с role='assistant'
+- [x] Виджет подхватывает через `poll()` каждые 3 сек
 
 ---
 
 ## Фаза 3 — Напоминания (Неделя 3-4)
 
 ### 3.1 База данных
-- [ ] Создать миграцию `supabase/migrations/XXXXXX_lead_reminders.sql`
-- [ ] Таблица `lead_reminders`: id, session_id, type, scheduled_at, status, message, sent_at
+- [x] Создать миграцию `migrations/20260506_lead_reminders.sql`
+- [x] Таблица `lead_reminders`: id, session_id, type, scheduled_at, status, recipient_email, manager_email, sent_at, error_message
+- [x] Уникальный индекс `(session_id, type)` — не дублировать напоминания
 
 ### 3.2 Сценарии напоминаний
-- [ ] **Брошенные товары**: если лид просматривал товары но не оставил контакт → письмо через 24 часа
-- [ ] **Нет ответа**: если лид написал но менеджер не ответил > 4 часов → уведомление менеджеру
-- [ ] **Запланированный звонок**: если клиент сказал "позвоните мне в X" → напоминание менеджеру
-- [ ] **Реактивация**: если лид создан > 7 дней назад и статус не изменился → письмо
+- [x] **Брошенные товары** (`abandoned_cart`): нет контакта, > 24ч → уведомление менеджеру
+- [x] **Нет ответа** (`no_manager_reply`): последнее сообщение от user, нет ответа > 4ч → уведомление менеджеру
+- [x] **Реактивация** (`reactivation`): лид > 7 дней без движения + есть email → письмо клиенту
 
 ### 3.3 Cron
-- [ ] Создать `app/api/cron/lead-reminders/route.ts`
-- [ ] Добавить в `vercel.json`: `"*/60 * * * *": "/api/cron/lead-reminders"`
-- [ ] Отправка email через существующий Яндекс SMTP (lib/)
-- [ ] Отправка SMS через Telphin (если настроено)
+- [x] Создать `app/api/cron/lead-reminders/route.ts`
+- [x] Добавить в `vercel.json`: `"0 * * * *"` (каждый час)
+- [x] Отправка email через Яндекс SMTP (`SMTP_USER` / `SMTP_PASS`)
+- [x] Настроить `MANAGER_NOTIFICATION_EMAIL` в env (или fallback на `SMTP_USER`)
+- [ ] Применить миграцию `20260506_lead_reminders.sql` в Supabase
 
 ---
 
@@ -237,7 +235,9 @@
 | `scratch/snolex_calculator_package.md` | ✅ Есть | Готовый пакет калькулятора СНОЛЕКС |
 | `app/api/leads/catch/route.ts` | ✅ Создан | API приёма заявок с калькулятора |
 | `migrations/20260506_calculator_leads.sql` | ✅ Создана | Миграция таблицы calculator_leads |
-| `app/lead-catcher/admin/page.tsx` | ❌ Создать | Панель менеджера |
+| `migrations/20260506_lead_reminders.sql` | ✅ Создана | Миграция таблицы lead_reminders |
+| `app/api/cron/lead-reminders/route.ts` | ✅ Создан | Cron напоминаний (каждый час) |
+| `app/lead-catcher/admin/page.tsx` | ✅ Есть (okk/lead-catcher) | Панель менеджера |
 | `app/lead-catcher/proposal/[token]/page.tsx` | ❌ Создать | Публичная страница КП |
 | `app/lead-catcher/invoice/[token]/page.tsx` | ❌ Создать | Страница счёта |
 | `app/api/lead-catcher/proposals/route.ts` | ❌ Создать | API для КП |
