@@ -167,6 +167,12 @@
 
 <script>
 (function() {
+    if (window.__OKK_LEAD_CATCHER_BOOTSTRAPPED__) {
+        console.log('[OKK Widget] already bootstrapped, skip duplicate init');
+        return;
+    }
+    window.__OKK_LEAD_CATCHER_BOOTSTRAPPED__ = true;
+
     // 1. Конфигурация колбэков (можно переопределить на сайте)
     window.OKK_LEAD_CATCHER_CALLBACKS = window.OKK_LEAD_CATCHER_CALLBACKS || {
         onMessage: (msg) => console.log('[OKK] New message:', msg),
@@ -187,7 +193,8 @@
             chatCache: 'okk_lc_chat_cache',
             hasInteracted: 'okk_lc_has_interacted',
             exitIntentFired: 'okk_lc_exit_intent_fired',
-            exitIntentPath: 'okk_lc_exit_intent_path'
+            exitIntentPath: 'okk_lc_exit_intent_path',
+            greetingShown: 'okk_lc_greeting_shown'
         },
         maxHistory: 20,
         interestTimerMs: 2000,
@@ -201,6 +208,18 @@
         console.log('[OKK Widget] initWidget starting...');
         let lastMessageTimestamp = localStorage.getItem('okk_lc_last_msg_time') || new Date().toISOString();
         let autoExpandTimer = null;
+        const scenario = {
+            listenersBound: false,
+            pageExitPromptShown: false
+        };
+
+        function wasGreetingShown() {
+            return sessionStorage.getItem(WIDGET_CONFIG.storageKeys.greetingShown) === '1';
+        }
+
+        function markGreetingShown() {
+            sessionStorage.setItem(WIDGET_CONFIG.storageKeys.greetingShown, '1');
+        }
 
         function getStoredCart() {
             try {
@@ -474,8 +493,9 @@
                 const cacheStr = localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache);
                 const hasHistory = cacheStr && JSON.parse(cacheStr).length > 0;
                 
-                if (data.magicGreeting && !hasHistory) {
+                if (data.magicGreeting && !hasHistory && !wasGreetingShown()) {
                     console.log('[OKK Widget] Got magicGreeting:', data.magicGreeting);
+                    markGreetingShown();
                     // Предотвращаем подхват этого сообщения через poll
                     lastMessageTimestamp = new Date().toISOString();
                     localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
@@ -749,15 +769,22 @@
 
         function setupExitIntent() {
             console.log('[OKK Widget] setupExitIntent starting');
+            if (scenario.listenersBound) {
+                console.log('[OKK Widget] setupExitIntent already bound in this page lifecycle');
+                return;
+            }
             if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) {
                 console.log('[OKK Widget] exitIntentFired already set, skipping setupExitIntent');
                 return;
             }
+            scenario.listenersBound = true;
             
             let fired = false;
             const fireOnce = function(reason) {
                 if (fired) return;
                 fired = true;
+                if (scenario.pageExitPromptShown) return;
+                scenario.pageExitPromptShown = true;
                 console.log('[OKK Widget] exit-intent fired by:', reason);
                 triggerExitIntent();
             };
@@ -789,6 +816,11 @@
                     fireOnce('escape');
                 }
             });
+
+            // Дополнительный сигнал: потеря фокуса окна (переход к закрытию/другой вкладке)
+            window.addEventListener('blur', function() {
+                fireOnce('window.blur');
+            }, { passive: true });
             
         }
 
