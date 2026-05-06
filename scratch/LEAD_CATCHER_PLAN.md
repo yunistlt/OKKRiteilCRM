@@ -55,15 +55,15 @@
 > **Двухшаговая лид-генерация**: Шаг 1 = email + спецификация, Шаг 2 = телефон + подарок (Алиса).
 
 ### 1.5.1 Бэкенд: API `/api/leads/catch`
-- [ ] Создать `app/api/leads/catch/route.ts`
-- [ ] **Шаг 1** (email + specs): валидация email → INSERT в новую таблицу `calculator_leads` → вернуть `lead_id`
-- [ ] **Шаг 2** (lead_id + phone + gift): UPDATE записи → создать лид в RetailCRM через `lib/retailcrm-leads.ts`
-- [ ] Маппинг в RetailCRM: `orderMethod = "quiz-calculator"`, теги `Калькулятор`, `СНОЛЕКС`, `Ловец_Лидов_ОКК`
-- [ ] Комментарий менеджера: объём, температура, сеть, цена, подарок, бонус "бесплатная онлайн-настройка"
+- [x] Создать `app/api/leads/catch/route.ts`
+- [x] **Шаг 1** (email + specs): валидация email → INSERT в новую таблицу `calculator_leads` → вернуть `lead_id`
+- [x] **Шаг 2** (lead_id + phone + gift): UPDATE записи → создать лид в RetailCRM через `lib/retailcrm-leads.ts`
+- [x] Маппинг в RetailCRM: `orderMethod = "quiz-calculator"`, теги `Калькулятор`, `СНОЛЕКС`, `Ловец_Лидов_ОКК`
+- [x] Комментарий менеджера: объём, температура, сеть, цена, подарок, бонус "бесплатная онлайн-настройка"
 
 ### 1.5.2 База данных
-- [ ] Создать миграцию `supabase/migrations/XXXXXX_calculator_leads.sql`
-- [ ] Таблица `calculator_leads`:
+- [x] Создать миграцию `migrations/20260506_calculator_leads.sql`
+- [x] Таблица `calculator_leads`:
   - `id` UUID PRIMARY KEY
   - `email` TEXT NOT NULL
   - `phone` TEXT
@@ -77,7 +77,7 @@
 
 ### 1.5.3 Фронтенд: виджет калькулятора (готов, нужна интеграция)
 - [ ] Взять готовый HTML/CSS/JS из `scratch/snolex_calculator_package.md`
-- [ ] Заменить `OKK_API_URL` на `https://okk.zmksoft.com/api/leads/catch`
+- [x] Заменить `OKK_API_URL` на `https://okk.zmksoft.com/api/leads/catch`
 - [ ] Вставить в Webasyst блок `{literal}` на странице категории 1369
 - [ ] Проверить работу расчёта цены (client-side формула): 10л=95к, 20л=×1.35, 50л=×2.1, 100л=×3.2 + температурные/фазовые коэффициенты
 - [ ] Проверить маску телефона (Vanilla JS без jQuery)
@@ -235,7 +235,8 @@
 | `app/api/widget/upload/route.ts` | ✅ Есть | Загрузка файлов |
 | `lib/retailcrm-leads.ts` | ✅ Есть | Создание лидов в RetailCRM |
 | `scratch/snolex_calculator_package.md` | ✅ Есть | Готовый пакет калькулятора СНОЛЕКС |
-| `app/api/leads/catch/route.ts` | ❌ Создать | API приёма заявок с калькулятора |
+| `app/api/leads/catch/route.ts` | ✅ Создан | API приёма заявок с калькулятора |
+| `migrations/20260506_calculator_leads.sql` | ✅ Создана | Миграция таблицы calculator_leads |
 | `app/lead-catcher/admin/page.tsx` | ❌ Создать | Панель менеджера |
 | `app/lead-catcher/proposal/[token]/page.tsx` | ❌ Создать | Публичная страница КП |
 | `app/lead-catcher/invoice/[token]/page.tsx` | ❌ Создать | Страница счёта |
