@@ -48,6 +48,48 @@
 
 ---
 
+## Фаза 1.5 — Калькулятор-квиз СНОЛЕКС (Неделя 1-2)
+
+> Источник: `scratch/snolex_calculator_package.md` (разработан Gemini)
+> Интерактивный конфигуратор муфельных печей категории 1369, встраивается на страницу категории Webasyst.
+> **Двухшаговая лид-генерация**: Шаг 1 = email + спецификация, Шаг 2 = телефон + подарок (Алиса).
+
+### 1.5.1 Бэкенд: API `/api/leads/catch`
+- [ ] Создать `app/api/leads/catch/route.ts`
+- [ ] **Шаг 1** (email + specs): валидация email → INSERT в новую таблицу `calculator_leads` → вернуть `lead_id`
+- [ ] **Шаг 2** (lead_id + phone + gift): UPDATE записи → создать лид в RetailCRM через `lib/retailcrm-leads.ts`
+- [ ] Маппинг в RetailCRM: `orderMethod = "quiz-calculator"`, теги `Калькулятор`, `СНОЛЕКС`, `Ловец_Лидов_ОКК`
+- [ ] Комментарий менеджера: объём, температура, сеть, цена, подарок, бонус "бесплатная онлайн-настройка"
+
+### 1.5.2 База данных
+- [ ] Создать миграцию `supabase/migrations/XXXXXX_calculator_leads.sql`
+- [ ] Таблица `calculator_leads`:
+  - `id` UUID PRIMARY KEY
+  - `email` TEXT NOT NULL
+  - `phone` TEXT
+  - `gift` TEXT
+  - `price` INTEGER
+  - `specs` JSONB — `{category_id, category_name, volume, temp, phase}`
+  - `crm_order_id` TEXT — ID заказа в RetailCRM после Шага 2
+  - `step` INTEGER DEFAULT 1 — текущий шаг (1 или 2)
+  - `created_at` TIMESTAMPTZ DEFAULT NOW()
+  - `updated_at` TIMESTAMPTZ DEFAULT NOW()
+
+### 1.5.3 Фронтенд: виджет калькулятора (готов, нужна интеграция)
+- [ ] Взять готовый HTML/CSS/JS из `scratch/snolex_calculator_package.md`
+- [ ] Заменить `OKK_API_URL` на `https://okk.zmksoft.com/api/leads/catch`
+- [ ] Вставить в Webasyst блок `{literal}` на странице категории 1369
+- [ ] Проверить работу расчёта цены (client-side формула): 10л=95к, 20л=×1.35, 50л=×2.1, 100л=×3.2 + температурные/фазовые коэффициенты
+- [ ] Проверить маску телефона (Vanilla JS без jQuery)
+- [ ] Проверить двухшаговый флоу: email → step-2 → phone → step-3 (success)
+
+### 1.5.4 Масштабирование (задел на будущее)
+- [ ] API `/api/leads/catch` сделать универсальным — принимает любой `specs` JSONB
+- [ ] Заложить возможность клонирования фронтенда на другие категории (верстаки, ЛВЖ-шкафы)
+- [ ] Параметр `category_id` в payload — для аналитики по категориям
+
+---
+
 ## Фаза 2 — Панель менеджера (Неделя 2-3)
 
 ### 2.1 Список лидов
@@ -192,6 +234,8 @@
 | `app/api/widget/wishlist-email/route.ts` | ✅ Есть | Отправка wishlist |
 | `app/api/widget/upload/route.ts` | ✅ Есть | Загрузка файлов |
 | `lib/retailcrm-leads.ts` | ✅ Есть | Создание лидов в RetailCRM |
+| `scratch/snolex_calculator_package.md` | ✅ Есть | Готовый пакет калькулятора СНОЛЕКС |
+| `app/api/leads/catch/route.ts` | ❌ Создать | API приёма заявок с калькулятора |
 | `app/lead-catcher/admin/page.tsx` | ❌ Создать | Панель менеджера |
 | `app/lead-catcher/proposal/[token]/page.tsx` | ❌ Создать | Публичная страница КП |
 | `app/lead-catcher/invoice/[token]/page.tsx` | ❌ Создать | Страница счёта |
