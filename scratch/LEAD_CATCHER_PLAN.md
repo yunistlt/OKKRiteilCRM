@@ -171,29 +171,36 @@
 ## Фаза 5 — Счета на оплату (Месяц 2-3)
 
 ### 5.1 База данных
-- [ ] Создать миграцию: таблица `lead_invoices`
-  - id, session_id, proposal_id, amount, items JSONB, status, payment_url, payment_system
-  - paid_at, token, invoice_number, pdf_url
-  - status: draft | sent | awaiting_payment | paid | cancelled | overdue
+- [x] Создать миграцию `migrations/20260506_lead_invoices.sql`
+  - [x] Таблица `lead_invoices`: invoice_number, items JSONB, total_amount, vat_pct, payer_*, status, token, pdf_url, due_date, paid_at, sent_at, viewed_at
+  - [x] Статусы: draft | sent | awaiting_payment | paid | cancelled | overdue
+  - [x] Последовательность `lead_invoice_seq` для автономеров ЗМК-YYYY-NNNN
 
 ### 5.2 Генерация счёта
-- [ ] Создать `app/api/lead-catcher/invoices/route.ts`
-  - `POST` → создать счёт из КП или вручную
-- [ ] Шаблон счёта в PDF (официальный формат: реквизиты, НДС, подпись, печать)
+- [x] Создать `app/api/lead-catcher/invoices/route.ts`
+  - [x] `POST` → создать счёт (номер ЗМК-YYYY-NNNN, PDF в Supabase Storage)
+  - [x] `GET ?session_id=` → список счётов сессии
+- [x] Добавить `generateInvoicePDF()` в `lib/pdf-generator.ts`
+  - [x] Официальный формат: реквизиты продавца (env INVOICE_SELLER_*), плательщик, таблица, НДС, подпись
+  - [x] Реквизиты читаются из env-переменных (fallback: заглушки)
 
-### 5.3 Платёжная интеграция
-- [ ] Выбрать платёжную систему: Тинькофф / ЮКасса / СБП
-- [ ] `POST /api/lead-catcher/invoices/[id]/pay` → создать платёжную ссылку
-- [ ] `POST /api/lead-catcher/invoices/webhook` → вебхук от платёжки
-  - Проверить подпись вебхука (!)
-  - UPDATE `lead_invoices.status = 'paid'`
-  - Уведомление менеджеру (email)
-  - Обновить статус в RetailCRM
+### 5.3 Управление счётом
+- [x] Создать `app/api/lead-catcher/invoices/[id]/route.ts`
+  - [x] `PATCH` → сменить статус (в т.ч. отметить оплаченным вручную)
+- [x] Создать `app/api/lead-catcher/invoices/[id]/send/route.ts`
+  - [x] `POST` → отправить email клиенту + комментарий в RetailCRM
+  - [x] Email-шаблон: сумма, срок, реквизиты для перевода
 
 ### 5.4 Публичная страница счёта
-- [ ] Создать `app/lead-catcher/invoice/[token]/page.tsx`
-  - Детали счёта, кнопка "Оплатить онлайн"
-  - Статус оплаты в реальном времени (polling)
+- [x] Создать `app/lead-catcher/invoice/[token]/page.tsx`
+  - [x] Плательщик, состав, реквизиты для банковского перевода
+  - [x] При открытии → UPDATE viewed_at
+  - [x] Кнопка "Скачать PDF"
+  - [x] Блок "Оплачен" при status=paid
+
+### 5.5 ~~Платёжная интеграция~~ (не реализуем)
+- Оплата только через банк — менеджер вручную отмечает `status=paid`
+- Онлайн-эквайринг не нужен
 
 ---
 
