@@ -186,7 +186,8 @@
             widgetOpen: 'okk_lc_widget_open',
             chatCache: 'okk_lc_chat_cache',
             hasInteracted: 'okk_lc_has_interacted',
-            exitIntentFired: 'okk_lc_exit_intent_fired'
+            exitIntentFired: 'okk_lc_exit_intent_fired',
+            exitIntentPath: 'okk_lc_exit_intent_path'
         },
         maxHistory: 20,
         interestTimerMs: 2000,
@@ -246,6 +247,14 @@
                 }
             },
             trackPageView: function() {
+                const currentPath = window.location.pathname;
+                const lastExitPath = localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentPath);
+                // Сбрасываем флаг exit-intent при переходе на другую страницу.
+                if (lastExitPath !== currentPath) {
+                    localStorage.removeItem(WIDGET_CONFIG.storageKeys.exitIntentFired);
+                    localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentPath, currentPath);
+                }
+
                 let history = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
                 history.push({ url: window.location.pathname, title: document.title });
                 localStorage.setItem(WIDGET_CONFIG.storageKeys.history, JSON.stringify(history.slice(-WIDGET_CONFIG.maxHistory)));
@@ -702,7 +711,20 @@
                 console.log('[OKK Widget] exitIntentFired already set, skipping');
                 return;
             }
-            const products = getStoredCart();
+            let products = getStoredCart();
+            // Fallback: если трекинг не успел, добавим текущий товар прямо в момент exit intent.
+            if (products.length === 0) {
+                const h1 = document.querySelector('h1');
+                if (h1 && h1.innerText && h1.innerText.trim().length > 2) {
+                    const pageUrl = window.location.href;
+                    const ogImg = document.querySelector('meta[property="og:image"]');
+                    const bodyImg = document.querySelector('img[alt], img[src]');
+                    const img = ogImg ? ogImg.getAttribute('content') : (bodyImg ? bodyImg.src : '');
+                    products = [{ name: h1.innerText.trim(), url: pageUrl, img: img }];
+                    setStoredCart(products);
+                    console.log('[OKK Widget] fallback product captured for exit-intent:', products[0]);
+                }
+            }
             console.log('[OKK Widget] stored cart products:', products);
             if (products.length === 0) {
                 console.log('[OKK Widget] no products in cart, skipping');
@@ -733,23 +755,38 @@
             }
             
             let fired = false;
+            const fireOnce = function(reason) {
+                if (fired) return;
+                fired = true;
+                console.log('[OKK Widget] exit-intent fired by:', reason);
+                triggerExitIntent();
+            };
             
-            // Метод 1: mouseleave на document.documentElement (когда мышь выходит из окна браузера)
-            document.documentElement.addEventListener('mouseleave', function onMouseLeave() {
-                console.log('[OKK Widget] mouseleave on documentElement detected');
-                if (!fired) {
-                    fired = true;
-                    document.documentElement.removeEventListener('mouseleave', onMouseLeave);
-                    triggerExitIntent();
-                }
-            });
+            // Метод 1: mouseleave на html (когда мышь выходит из окна браузера).
+            document.documentElement.addEventListener('mouseleave', function() {
+                fireOnce('documentElement.mouseleave');
+            }, { passive: true });
             
-            // Метод 2: mouseout с проверкой clientY < 0 (резервный способ)
+            // Метод 2: mouseout с relatedTarget === null и clientY <= 0.
             document.addEventListener('mouseout', function(e) {
-                if (e.clientY < 0 && !fired) {
-                    console.log('[OKK Widget] mouseout detected with clientY < 0');
-                    fired = true;
-                    triggerExitIntent();
+                const leavesWindow = !e.relatedTarget && !e.toElement;
+                if (leavesWindow && e.clientY <= 0) {
+                    fireOnce('document.mouseout.top');
+                }
+            }, { passive: true });
+
+            // Метод 3: pointerout — часть браузеров лучше шлет pointer events.
+            document.addEventListener('pointerout', function(e) {
+                const leavesWindow = !e.relatedTarget && !e.toElement;
+                if (leavesWindow && e.clientY <= 0) {
+                    fireOnce('document.pointerout.top');
+                }
+            }, { passive: true });
+
+            // Метод 4: Escape — мгновенно.
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    fireOnce('escape');
                 }
             });
             
