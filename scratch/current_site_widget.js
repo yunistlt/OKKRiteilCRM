@@ -296,14 +296,6 @@
                 }
             },
             trackPageView: function() {
-                const currentPath = window.location.pathname;
-                const lastExitPath = localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentPath);
-                // Сбрасываем флаг exit-intent при переходе на другую страницу.
-                if (lastExitPath !== currentPath) {
-                    localStorage.removeItem(WIDGET_CONFIG.storageKeys.exitIntentFired);
-                    localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentPath, currentPath);
-                }
-
                 let history = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
                 history.push({ url: window.location.pathname, title: document.title });
                 localStorage.setItem(WIDGET_CONFIG.storageKeys.history, JSON.stringify(history.slice(-WIDGET_CONFIG.maxHistory)));

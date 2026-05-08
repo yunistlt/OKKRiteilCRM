@@ -143,8 +143,6 @@ async function initWidget() {
         },
         trackPageView: function() {
             var currentPath = window.location.pathname;
-            var lastExitPath = localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentPath);
-            if (lastExitPath !== currentPath) { localStorage.removeItem(WIDGET_CONFIG.storageKeys.exitIntentFired); localStorage.setItem(WIDGET_CONFIG.storageKeys.exitIntentPath, currentPath); }
             var hist = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.history) || '[]');
             hist.push({ url: window.location.pathname, title: document.title });
             localStorage.setItem(WIDGET_CONFIG.storageKeys.history, JSON.stringify(hist.slice(-WIDGET_CONFIG.maxHistory)));
