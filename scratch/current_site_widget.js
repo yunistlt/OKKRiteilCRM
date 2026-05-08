@@ -518,7 +518,7 @@
                 
                 // НЕ показываем data.reply если это тип 'init' и есть magicGreeting
                 if (data.reply && type !== 'init') {
-                    addMsg(data.reply, 'ai', false, true);
+                    addMsg(data.reply, 'ai', false, type !== 'calc_lead');
                 }
                 
                 const cacheStr = localStorage.getItem(WIDGET_CONFIG.storageKeys.chatCache);

@@ -172,7 +172,7 @@ export async function POST(req: Request) {
             const phaseLabel = specs?.phase ? `${specs.phase} В`  : '';
             const priceStr = price ? price.toLocaleString('ru-RU') + ' руб.' : '';
 
-            const greeting = `Отличный выбор! 🔥 Вы подобрали СНОЛЭКС ${tempLabel} / ${volLabel} (${phaseLabel}) — ориентировочная цена ${priceStr} с учётом НДС.\n\nЧтобы отправить вам точное КП на бланке завода с окончательной ценой и техпаспортом, напишите ваш email или телефон 📋`;
+            const greeting = `Отличный выбор! 🔥 Вы подобрали СНОЛЭКС ${tempLabel} / ${volLabel} (${phaseLabel}) — ориентировочная цена ${priceStr} с учётом НДС.\n\n🎁 Шаг 1: оставьте email — отправлю КП на фирменном бланке и закреплю за вами бесплатный монтаж.\n🎁 Шаг 2: после email оставьте телефон — подарю умную колонку Яндекс Станция Алиса Мини.`;
 
             await supabase.from('widget_messages').insert({
                 session_id: sessionId,
@@ -242,8 +242,9 @@ export async function POST(req: Request) {
 
         // Детекция контактов — ДО вызова OpenAI, чтобы не потерять данные при ошибке GPT
         const phoneMatch = message.match(/(\+7|8|7)?[\s\-]?\(?[489][0-9]{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}/);
+        let normalizedPhone: string | null = null;
         if (phoneMatch) {
-            const normalizedPhone = normalizePhone(phoneMatch[0]);
+            normalizedPhone = normalizePhone(phoneMatch[0]);
             if (normalizedPhone) {
                 await supabase
                     .from('widget_sessions')
@@ -260,6 +261,28 @@ export async function POST(req: Request) {
         const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
         if (emailMatch) {
             await supabase.from('widget_sessions').update({ has_contacts: true }).eq('id', sessionId);
+        }
+
+        // Жёсткий сценарий лид-капчера: сначала email (КП + монтаж), затем телефон (Алиса Мини)
+        if (emailMatch && !normalizedPhone) {
+            const email = emailMatch[0];
+            const emailReply = `✅ Email ${email} зафиксировала. Отправляю КП на фирменном бланке и закрепляю бесплатный монтаж.\n\n🎁 Следующий шаг: оставьте телефон, и я закреплю за вами подарок — Яндекс Станция Алиса Мини.`;
+            await supabase.from('widget_messages').insert({
+                session_id: sessionId,
+                role: 'assistant',
+                content: emailReply,
+            });
+            return NextResponse.json({ reply: emailReply }, { headers: CORS_HEADERS });
+        }
+
+        if (normalizedPhone) {
+            const phoneReply = `🔥 Отлично! Телефон ${normalizedPhone} зафиксировала. Подарок Яндекс Станция Алиса Мини закреплён за вами.\n\nМенеджер свяжется с вами в течение 15 минут для подтверждения КП и запуска.`;
+            await supabase.from('widget_messages').insert({
+                session_id: sessionId,
+                role: 'assistant',
+                content: phoneReply,
+            });
+            return NextResponse.json({ reply: phoneReply }, { headers: CORS_HEADERS });
         }
 
         const embeddingRes = await openai.embeddings.create({
