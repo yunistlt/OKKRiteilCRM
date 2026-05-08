@@ -60,7 +60,7 @@ export async function GET(req: Request) {
                 messages: [
                     { 
                         role: 'system', 
-                        content: `Ты — Семён, профессиональный бизнес-аналитик завода ЗМК. Твоя задача — проанализировать диалог и составить КРАТКОЕ, но ЕМКОЕ саммари для менеджера по продажам.
+                        content: `Ты — Семён, профессиональный бизнес-аналитик завода ЗМК. Твоя задача — проанализировать диалог и составить КРАТКОЕ, но ЕМКОЕ саммри для менеджера по продажам.
                         
                         В поле query_summary напиши:
                         1. Что именно ищет клиент (модели, размеры).
@@ -68,13 +68,19 @@ export async function GET(req: Request) {
                         3. Куда нужна доставка (город).
                         4. Были ли прикреплены файлы (ТЗ).
                         
+                        В поле gifts укажи подарки, которые зафиксировала Елена:
+                        - Если есть email: "free_installation" (бесплатный монтаж + КП на бланке)
+                        - Если есть телефон: "alice_speaker" (Яндекс Станция Алиса Мини)
+                        - Если оба контакта: массив ["free_installation", "alice_speaker"]
+                        
                         Верни строго JSON:
                         {
                             "name": "Имя клиента",
                             "phone": "Телефон (только цифры)",
                             "email": "Email",
                             "telegram": "Ник в Telegram",
-                            "query_summary": "Структурированная выжимка потребностей клиента"
+                            "query_summary": "Структурированная выжимка потребностей клиента",
+                            "gifts": ["free_installation"] или ["alice_speaker"] или ["free_installation", "alice_speaker"] или []
                         }`
                     },
                     { role: 'user', content: `Лог диалога:\n${chatLog}` }
@@ -92,6 +98,7 @@ export async function GET(req: Request) {
                         email: extractedData.email,
                         telegram: extractedData.telegram,
                         query_summary: extractedData.query_summary,
+                        gifts: Array.isArray(extractedData.gifts) ? extractedData.gifts : [],
                         domain: 'zmktlt.ru',
                         city: session.geo_city,
                         history: messages,

@@ -78,6 +78,7 @@ export async function createLeadInCrm(params: {
     email?: string;
     telegram?: string;
     query_summary: string;
+    gifts?: string[];
     domain?: string;
     utm?: any;
     items?: string[];
@@ -117,10 +118,21 @@ export async function createLeadInCrm(params: {
         historyLog = params.history.map(h => `${h.role === 'user' ? 'Клиент' : 'ИИ'}: ${h.content}`).join('\n');
     }
 
+    const giftsInfo = params.gifts && params.gifts.length > 0
+        ? params.gifts.map(g => {
+            if (g === 'free_installation') return '🎁 Бесплатный монтаж + КП на фирменном бланке';
+            if (g === 'alice_speaker') return '🎁 Яндекс Станция Алиса Мини';
+            return g;
+        }).join('\n')
+        : 'нет';
+
     const managerComment = `🔥 НОВЫЙ ЛИД ИЗ ИИ-ЧАТА
 
 📍 ГЕО: ${cityStr}
 📱 КОНТАКТЫ: ${telegramStr || params.phone || params.email || 'указаны в карточке'}
+
+🎁 ПОДАРКИ (зафиксировала Елена):
+${giftsInfo}
 
 📝 СУТЬ ЗАПРОСА (Анализ от Семёна):
 ${params.query_summary}
