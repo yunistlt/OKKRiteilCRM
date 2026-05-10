@@ -1,7 +1,7 @@
 import { SignJWT, decodeJwt, jwtVerify } from 'jose';
 import { cookies, headers } from 'next/headers';
 
-export type AppRole = 'admin' | 'okk' | 'rop' | 'manager';
+export type AppRole = 'admin' | 'okk' | 'rop' | 'manager' | 'demo';
 
 export type SessionUser = {
     id: string;
@@ -41,7 +41,7 @@ type RequestLike = {
 };
 
 function normalizeRole(rawRole: unknown): AppRole | null {
-    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager') {
+    if (rawRole === 'admin' || rawRole === 'okk' || rawRole === 'rop' || rawRole === 'manager' || rawRole === 'demo') {
         return rawRole;
     }
     return null;

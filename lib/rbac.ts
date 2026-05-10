@@ -1,6 +1,6 @@
 import type { AppSession, AppRole } from '@/lib/auth';
 
-export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager'];
+export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'demo'];
 
 export type RouteRule = {
     prefix: string;
@@ -38,8 +38,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/reactivation', label: 'Экран реактивации', description: 'Рабочий интерфейс реактивации.', category: 'Реактивация', allowed: ['admin', 'rop'] },
     { prefix: '/api/okk/consultant/logs', label: 'Логи консультанта ОКК', description: 'Аудит и trace-логи консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/okk/audit', label: 'Аудит ОКК', description: 'Экран разбора ответов консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
-    { prefix: '/okk', label: 'Контроль качества', description: 'Основной экран ОКК и оценки заказов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
-    { prefix: '/api/okk', label: 'API ОКК', description: 'Серверные методы экрана контроля качества.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/okk', label: 'Контроль качества', description: 'Основной экран ОКК и оценки заказов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
+    { prefix: '/api/okk', label: 'API ОКК', description: 'Серверные методы экрана контроля качества.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Дашборд юридического модуля и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
@@ -72,6 +72,7 @@ export function getDefaultPathForRole(role: AppRole | null | undefined): string 
     if (role === 'manager') return '/okk';
     if (role === 'rop') return '/reactivation';
     if (role === 'okk') return '/okk';
+    if (role === 'demo') return '/okk';
     return '/';
 }
 

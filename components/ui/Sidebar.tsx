@@ -99,10 +99,7 @@ export default function Sidebar() {
     const visibleGroups = groups
         .map((group) => ({
             ...group,
-            items: group.items.filter((item) => {
-                const isAllowedForDemo = user?.role === 'demo' ? item.allowed?.includes('demo') : true;
-                return isAllowedForDemo && canAccessPathWithRules(user?.role, item.href.split('?')[0], permissionRules);
-            }),
+            items: group.items.filter((item) => canAccessPathWithRules(user?.role, item.href.split('?')[0], permissionRules)),
         }))
         .filter((group) => group.items.length > 0);
 

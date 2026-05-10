@@ -76,9 +76,5 @@ export function useAuth() {
         throw new Error('useAuth must be used inside AuthProvider');
     }
 
-    if (context.user?.role !== 'admin' && context.user?.role === 'demo') {
-        throw new Error('Access to DEMO role configuration is restricted to admin users.');
-    }
-
     return context;
 }
