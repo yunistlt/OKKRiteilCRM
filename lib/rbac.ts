@@ -30,7 +30,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/ai', label: 'Настройка промпта', description: 'Управление промптами и AI-настройками.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/prompts', label: 'Промпты', description: 'Редактор системных промптов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/prompts', label: 'API промптов', description: 'Серверные методы управления промптами.', category: 'Система', allowed: ['admin'] },
-    { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/settings', label: 'Раздел настроек', description: 'Общий административный раздел.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings', label: 'API настроек', description: 'Серверные маршруты административных настроек.', category: 'Система', allowed: ['admin'] },
     { prefix: '/admin/reactivation', label: 'Админка реактивации', description: 'Управление реактивационными кампаниями.', category: 'Реактивация', allowed: ['admin', 'rop'] },
