@@ -392,16 +392,19 @@ export async function createAccessAccount(input: {
         }
 
         const role = normalizeRole(input.role);
+        const accountType = role === 'demo' ? 'profile' : input.accountType;
         const retailCrmManagerId = role === 'manager' ? normalizeManagerId(input.retail_crm_manager_id) : null;
 
-        if (input.accountType === 'profile') {
-            if (!input.email?.trim()) {
+        if (accountType === 'profile') {
+            const profileEmail = input.email?.trim() || (role === 'demo' ? `${username.toLowerCase()}@demo.local` : '');
+
+            if (!profileEmail) {
                 return { success: false, message: 'Для Supabase-аккаунта нужен email.', errorType: 'UNKNOWN' };
             }
 
             const admin = getSupabaseAdmin();
             const { data, error } = await admin.auth.admin.createUser({
-                email: input.email.trim(),
+                email: profileEmail,
                 password,
                 email_confirm: true,
                 user_metadata: {
@@ -418,7 +421,7 @@ export async function createAccessAccount(input: {
             if (error) throw error;
 
             const { error: profileError } = await updateAccountTableWithFallback('profiles', data.user.id, {
-                email: input.email.trim(),
+                email: profileEmail,
                 username,
                 first_name: input.first_name?.trim() || null,
                 last_name: input.last_name?.trim() || null,
