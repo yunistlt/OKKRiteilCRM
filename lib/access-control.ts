@@ -15,13 +15,14 @@ export type RoleCapabilityProfile = {
     canRunBulkOperations: boolean;
 };
 
-export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop'];
+export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'demo'];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
     manager: 'Менеджер ОП',
     okk: 'Контролёр ОКК',
     rop: 'РОП',
+    demo: 'ДЕМО',
 };
 
 export const DATA_SCOPE_LABELS: Record<AccessDataScope, string> = {
@@ -80,6 +81,17 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewSettings: false,
         canManageUsers: false,
         canRunBulkOperations: true,
+    },
+    {
+        role: 'demo',
+        dataScope: 'own',
+        editScope: 'own',
+        canViewAnalytics: false,
+        canViewAudit: false,
+        canViewReactivation: false,
+        canViewSettings: false,
+        canManageUsers: false,
+        canRunBulkOperations: false,
     },
 ];
 
