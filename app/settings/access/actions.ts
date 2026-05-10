@@ -76,6 +76,14 @@ function isMissingColumnError(error: any) {
     );
 }
 
+function isEnumRoleMismatchError(error: any) {
+    return Boolean(
+        error?.code === '22P02' ||
+        error?.message?.includes('invalid input value for enum') ||
+        error?.message?.includes('app_role')
+    );
+}
+
 function toAccessActionError(error: any): AccessActionResult {
     const message = typeof error?.message === 'string' ? error.message : '';
 
@@ -92,6 +100,14 @@ function toAccessActionError(error: any): AccessActionResult {
             success: false,
             errorType: 'SCHEMA_MISMATCH',
             message: 'Структура таблиц в production отличается от локальной. Нужна миграция или выравнивание схемы.',
+        };
+    }
+
+    if (isEnumRoleMismatchError(error)) {
+        return {
+            success: false,
+            errorType: 'SCHEMA_MISMATCH',
+            message: 'В production не обновлен справочник ролей. Примените свежие миграции RBAC (роль demo).',
         };
     }
 
