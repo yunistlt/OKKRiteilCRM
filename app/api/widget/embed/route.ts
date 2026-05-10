@@ -467,13 +467,30 @@ async function initWidget() {
             btn.disabled = true; btn.textContent = 'Отправляю...';
             fetch(WIDGET_CONFIG.wishlistEndpoint, {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ visitorId: tracking.ensureVisitorId(), email: email, products: getStoredCart(), _hp: hp.value })
-            }).then(function(r) { return r.json(); }).then(function() {
+                body: JSON.stringify({
+                    visitorId: tracking.ensureVisitorId(),
+                    visitorData: tracking.getPayload(),
+                    email: email,
+                    products: getStoredCart(),
+                    _hp: hp.value
+                })
+            }).then(function(r) {
+                return r.json().then(function(data) {
+                    if (!r.ok || (data && data.error)) {
+                        throw new Error((data && data.error) || 'Не удалось сохранить email');
+                    }
+                    return data;
+                });
+            }).then(function() {
                 wrap.remove();
                 addMsg('✅ Email ' + email + ' зафиксирован. КП на бланке и подарок с бесплатным монтажом отправляю.', 'ai', false, false);
                 addMsg('🎁 Бонус #2: оставьте телефон, и закреплю за вами умную колонку Яндекс Станция Алиса Мини.', 'ai', false, false);
                 addPhoneCapture();
-            }).catch(function() { btn.disabled = false; btn.textContent = 'Попробовать снова'; });
+            }).catch(function(err) {
+                btn.disabled = false;
+                btn.textContent = 'Попробовать снова';
+                addMsg('⚠️ Не удалось сохранить email: ' + (err && err.message ? err.message : 'попробуйте еще раз'), 'system', false, false);
+            });
         };
         inner.appendChild(title); inner.appendChild(hint); inner.appendChild(hp); inner.appendChild(inp); inner.appendChild(btn);
         wrap.appendChild(inner); messages.appendChild(wrap);
@@ -534,11 +551,16 @@ async function initWidget() {
             if (!phone || !/^(\\+7|8|7)?[\\s\\-]?\\(?[489][0-9]{2}\\)?[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}$/.test(phone.replace(/\\s/g, ''))) { phoneInp.style.borderColor = '#ef4444'; phoneInp.focus(); return; }
             submitBtn.disabled = true; submitBtn.textContent = 'Отправляю...';
             localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
-            apiCall('callback', { name: name, phone: phone, company: company || null }).then(function() {
+            apiCall('callback', { name: name, phone: phone, company: company || null }).then(function(resp) {
+                if (resp && resp.error) throw new Error(resp.error);
                 wrap.remove();
                 addMsg('✅ ' + name + ', контакт ' + phone + ' зафиксировала. Подарок Алиса Мини закреплён за вами.', 'ai', false, false);
                 addMsg('📞 Менеджер свяжется с вами в течение 15 минут для подтверждения КП и условий монтажа.', 'ai', false, false);
-            }).catch(function() { submitBtn.disabled = false; submitBtn.textContent = 'Попробовать снова'; });
+            }).catch(function(err) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Попробовать снова';
+                addMsg('⚠️ Не удалось сохранить телефон: ' + (err && err.message ? err.message : 'попробуйте еще раз'), 'system', false, false);
+            });
         };
         inner.appendChild(title); inner.appendChild(hint); inner.appendChild(nameInp); inner.appendChild(phoneInp); inner.appendChild(companyInp); inner.appendChild(submitBtn);
         wrap.appendChild(inner); messages.appendChild(wrap); messages.scrollTop = messages.scrollHeight;

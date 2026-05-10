@@ -96,7 +96,7 @@ export async function POST(req: Request) {
 
     try {
         const body = await req.json();
-        const { visitorId, email, products } = body;
+        const { visitorId, email, products, visitorData } = body;
 
         // Honeypot
         if (body._hp && String(body._hp).length > 0) {
@@ -106,12 +106,10 @@ export async function POST(req: Request) {
         if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return NextResponse.json({ error: 'Invalid email' }, { status: 400, headers: CORS_HEADERS });
         }
-        if (!Array.isArray(products) || products.length === 0) {
-            return NextResponse.json({ error: 'No products' }, { status: 400, headers: CORS_HEADERS });
-        }
         // Sanitize inputs
         const safeEmail = email.trim().toLowerCase().substring(0, 320);
-        const safeProducts: ProductItem[] = products.slice(0, 50).map((p: unknown) => {
+        const sourceProducts = Array.isArray(products) ? products : [];
+        const safeProducts: ProductItem[] = sourceProducts.slice(0, 50).map((p: unknown) => {
             if (typeof p === 'string') return { name: p.replace(/[<>]/g, '').substring(0, 200) };
             if (p && typeof p === 'object') {
                 const o = p as Record<string, unknown>;
@@ -125,15 +123,44 @@ export async function POST(req: Request) {
         }
         ).filter(Boolean);
 
-        // Fetch session id if available
+        // Fetch session id or create if doesn't exist.
         let sessionId: string | null = null;
         if (visitorId && typeof visitorId === 'string') {
-            const { data: session } = await supabase
+            // Try to find existing session
+            const { data: existingSession } = await supabase
                 .from('widget_sessions')
                 .select('id')
                 .eq('visitor_id', visitorId)
                 .maybeSingle();
-            sessionId = session?.id ?? null;
+            
+            if (existingSession) {
+                sessionId = existingSession.id;
+            } else {
+                // Create new session if form was submitted before any chat message.
+                const fallbackNickname = `Гость-${visitorId.substring(0, 8)}`;
+                const { data: newSession, error: createError } = await supabase
+                    .from('widget_sessions')
+                    .insert({
+                        visitor_id: visitorId,
+                        domain: visitorData?.domain || null,
+                        utm_source: visitorData?.utm?.source || null,
+                        utm_medium: visitorData?.utm?.medium || null,
+                        utm_campaign: visitorData?.utm?.campaign || null,
+                        utm_content: visitorData?.utm?.content || null,
+                        utm_term: visitorData?.utm?.term || null,
+                        referrer: visitorData?.referrer || null,
+                        landing_page: visitorData?.landingPage || null,
+                        user_agent: visitorData?.userAgent || null,
+                        interested_products: safeProducts.map(p => p.name).filter(Boolean),
+                        nickname: fallbackNickname,
+                    })
+                    .select('id')
+                    .single();
+
+                if (!createError && newSession) {
+                    sessionId = newSession.id;
+                }
+            }
         }
 
         // Save the request to DB
@@ -155,7 +182,10 @@ export async function POST(req: Request) {
                     content: `Мой email для связи: ${safeEmail}`,
                 }),
                 // Флаг для lead-catcher cron — обработать эту сессию
-                supabase.from('widget_sessions').update({ has_contacts: true }).eq('id', sessionId),
+                supabase.from('widget_sessions').update({
+                    has_contacts: true,
+                    updated_at: new Date().toISOString(),
+                }).eq('id', sessionId),
             ]);
         }
 

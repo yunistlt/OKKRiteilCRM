@@ -226,6 +226,39 @@ export async function POST(req: Request) {
             }, { headers: CORS_HEADERS });
         }
 
+        // Callback form submission from widget UI (name + phone + optional company)
+        if (type === 'callback') {
+            const { name, phone, company } = body as { name?: string; phone?: string; company?: string };
+            const normalized = phone ? normalizePhone(phone) : null;
+
+            if (!name || !normalized) {
+                return NextResponse.json({ error: 'Name and valid phone are required' }, { status: 400, headers: CORS_HEADERS });
+            }
+
+            await Promise.all([
+                supabase
+                    .from('widget_sessions')
+                    .update({
+                        has_contacts: true,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', sessionId),
+                supabase.from('widget_messages').insert({
+                    session_id: sessionId,
+                    role: 'user',
+                    content: `Контакт для связи: ${name}, телефон ${normalized}${company ? `, компания ${company}` : ''}`,
+                }),
+                supabase.from('widget_callback_requests').insert({
+                    session_id: sessionId,
+                    visitor_id: visitorId,
+                    phone: normalized,
+                    status: 'pending'
+                })
+            ]);
+
+            return NextResponse.json({ success: true, phone: normalized }, { headers: CORS_HEADERS });
+        }
+
         if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400, headers: CORS_HEADERS });
         
         await supabase.from('widget_messages').insert({

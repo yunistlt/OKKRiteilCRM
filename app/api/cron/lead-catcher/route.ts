@@ -106,8 +106,9 @@ export async function GET(req: Request) {
                     });
 
                     const orderNumber = crmResult.order?.number || crmResult.id?.toString();
-
-                    const updatePayload: any = {
+                    // Compatibility: different environments may have either crm_order_id or crm_order_number,
+                    // and some may not yet have contact_* columns.
+                    const primaryPayload: any = {
                         is_lead_created: true,
                         crm_order_id: parseInt(orderNumber) || null,
                         contact_phone: extractedData.phone,
@@ -115,14 +116,24 @@ export async function GET(req: Request) {
                         contact_name: extractedData.name || session.nickname || null,
                     };
 
-                    const { error: updateError } = await supabase
+                    let { error: updateError } = await supabase
                         .from('widget_sessions')
-                        .update(updatePayload)
+                        .update(primaryPayload)
                         .eq('id', session.id);
 
                     if (updateError) {
-                        throw updateError;
+                        const fallbackPayload: any = {
+                            is_lead_created: true,
+                            crm_order_number: orderNumber,
+                        };
+                        const fallbackResult = await supabase
+                            .from('widget_sessions')
+                            .update(fallbackPayload)
+                            .eq('id', session.id);
+                        updateError = fallbackResult.error;
                     }
+
+                    if (updateError) throw updateError;
 
                     await supabase.from('widget_messages').insert([
                         {
