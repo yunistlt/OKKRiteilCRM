@@ -36,3 +36,11 @@ test_*.js
 
 # vercel
 .vercel
+
+# local diagnostics and temporary artifacts
+check_schema.py
+telphin_call_id
+timeweb-audit-quiz/
+timeweb-audit-quiz.zip
+scratch/check_email*.ts
+scratch/query_*.ts
