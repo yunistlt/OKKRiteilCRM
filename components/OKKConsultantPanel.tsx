@@ -97,13 +97,12 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const [threadId, setThreadId] = useState<string | null>(null);
     const [activeThreadIds, setActiveThreadIds] = useState<Record<string, string | null>>({});
     const [availableThreads, setAvailableThreads] = useState<Record<string, ThreadSummary[]>>({});
-    const [queuedAction, setQueuedAction] = useState<ConsultantAskEventDetail | null>(null);
     const [threads, setThreads] = useState<Record<string, ChatMessage[]>>({});
     const [desktopWidth, setDesktopWidth] = useState<number | null>(null);
     const messagesEndRef = useRef<HTMLDivElement | null>(null);
     const resizeActiveRef = useRef(false);
 
-    const threadKey = `${section.key}:${selectedOrder ? `order-${selectedOrder.order_id}` : 'global'}`;
+    const threadKey = `${section.key}:global`;
     const currentContextThreadId = activeThreadIds[threadKey] || null;
     const messages = threads[threadKey] || [];
     const branchOptions = availableThreads[threadKey] || [];
@@ -165,7 +164,6 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             try {
                 const params = new URLSearchParams();
                 params.set('sectionKey', section.key);
-                if (selectedOrder?.order_id) params.set('orderId', String(selectedOrder.order_id));
                 if (currentContextThreadId) params.set('threadId', currentContextThreadId);
 
                 const res = await fetch(`/api/okk/consultant/history?${params.toString()}`);
@@ -195,7 +193,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         return () => {
             aborted = true;
         };
-    }, [currentContextThreadId, section.key, selectedOrder?.order_id, threadKey]);
+    }, [currentContextThreadId, section.key, threadKey]);
 
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -216,7 +214,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'reset',
-                        orderId: selectedOrder?.order_id ?? null,
+                        orderId: null,
                         threadId,
                         sectionKey: section.key,
                     }),
@@ -245,16 +243,14 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     const createBranch = () => {
         const run = async () => {
             try {
-                const titleBase = selectedOrder
-                    ? `Чат по заказу #${selectedOrder.order_id}`
-                    : 'Общий чат';
+                const titleBase = 'Общий чат';
 
                 const res = await fetch('/api/okk/consultant/history', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         action: 'create_branch',
-                        orderId: selectedOrder?.order_id ?? null,
+                        orderId: null,
                         title: titleBase,
                         sectionKey: section.key,
                     }),
@@ -306,7 +302,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: question,
-                    orderId: selectedOrder?.order_id ?? null,
+                    orderId: null,
                     threadId,
                     history,
                     sectionKey: section.key,
@@ -338,15 +334,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
         } finally {
             setLoading(false);
         }
-    }, [loading, pushMessage, section.key, selectedOrder?.order_id, selectedOrder?.sectionData, threadId, threadKey, threads]);
-
-    useEffect(() => {
-        if (!queuedAction) return;
-        const selectedOrderId = selectedOrder?.order_id ?? null;
-        if (queuedAction.orderId !== selectedOrderId || loading) return;
-        void ask(queuedAction.prompt);
-        setQueuedAction(null);
-    }, [ask, loading, queuedAction, selectedOrder?.order_id]);
+    }, [loading, pushMessage, section.key, selectedOrder?.sectionData, threadId, threadKey, threads]);
 
     useEffect(() => {
         const handleQuickAsk = (event: Event) => {
@@ -354,17 +342,12 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             const detail = customEvent.detail;
             if (!detail?.prompt) return;
 
-            if ((detail.orderId ?? null) !== (selectedOrder?.order_id ?? null)) {
-                setQueuedAction(detail);
-                return;
-            }
-
             void ask(detail.prompt);
         };
 
         window.addEventListener('okk-consultant-ask', handleQuickAsk);
         return () => window.removeEventListener('okk-consultant-ask', handleQuickAsk);
-    }, [ask, selectedOrder?.order_id]);
+    }, [ask]);
 
     const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
         if (window.innerWidth < 768) return;
