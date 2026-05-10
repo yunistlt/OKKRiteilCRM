@@ -392,7 +392,7 @@ export async function createAccessAccount(input: {
         }
 
         const role = normalizeRole(input.role);
-        const accountType = role === 'demo' ? 'profile' : input.accountType;
+        const accountType = input.accountType;
         const retailCrmManagerId = role === 'manager' ? normalizeManagerId(input.retail_crm_manager_id) : null;
 
         if (accountType === 'profile') {

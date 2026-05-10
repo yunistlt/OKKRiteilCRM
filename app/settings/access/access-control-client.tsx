@@ -384,16 +384,17 @@ CREATE TABLE IF NOT EXISTS public.access_role_capabilities (
                         <thead className="sticky top-0 z-10 bg-white">
                             <tr>
                                 <th className="border-b border-gray-200 px-4 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-400">Раздел</th>
-                                <th className="border-b border-gray-200 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">Админ</th>
-                                <th className="border-b border-gray-200 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">РОП</th>
-                                <th className="border-b border-gray-200 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">ОКК</th>
-                                <th className="border-b border-gray-200 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">Мен. ОП</th>
+                                {ROLE_DISPLAY_ORDER.map((role) => (
+                                    <th key={role} className="border-b border-gray-200 px-3 py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">
+                                        {ROLE_LABELS[role]}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         {Object.entries(groupedRules).map(([category, rules]) => (
                             <tbody key={category}>
                                 <tr>
-                                    <td colSpan={5} className="bg-gray-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-gray-500 border-b border-t border-gray-200 first:border-t-0">
+                                    <td colSpan={ROLE_DISPLAY_ORDER.length + 1} className="bg-gray-50 px-4 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-gray-500 border-b border-t border-gray-200 first:border-t-0">
                                         {category}
                                     </td>
                                 </tr>
