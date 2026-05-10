@@ -123,10 +123,45 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
         });
     };
 
+    const getRelatedApiPrefixes = (prefix: string): string[] => {
+        if (prefix === '/okk') return ['/api/okk', '/api/okk/consultant/logs'];
+        if (prefix === '/okk/lead-catcher') return ['/api/lead-catcher'];
+        if (prefix === '/analytics') return ['/api/analysis'];
+        if (prefix === '/messenger') return ['/api/messenger'];
+        if (prefix === '/reactivation') return ['/api/reactivation'];
+        if (prefix === '/legal') return ['/api/legal'];
+        if (prefix === '/settings/managers') return ['/api/managers', '/api/sync/managers'];
+        if (prefix === '/settings/statuses') return ['/api/statuses', '/api/dict/statuses'];
+        if (prefix === '/settings/status') return ['/api/settings/system-status'];
+        if (prefix === '/settings/rules') return ['/api/rules'];
+        if (prefix === '/settings/ai-tools') return ['/api/settings/ai-tools'];
+        if (prefix === '/settings/ai') return ['/api/settings/prompts'];
+        if (prefix === '/settings/ai/training-examples') return ['/api/settings/training-examples'];
+        if (prefix === '/settings/access') return ['/api/settings/access'];
+        if (prefix === '/settings') return ['/api/settings'];
+        return [];
+    };
+
     const handleRouteRoleToggle = (prefix: string, role: AppRole) => {
-        setRouteRules((current) => current.map((rule) => rule.prefix === prefix
-            ? { ...rule, allowed: rule.allowed.includes(role) ? rule.allowed.filter((item) => item !== role) : [...rule.allowed, role] }
-            : rule));
+        const related = getRelatedApiPrefixes(prefix);
+        setRouteRules((current) => {
+            const ruleToToggle = current.find((r) => r.prefix === prefix);
+            if (!ruleToToggle) return current;
+            
+            const willHaveRole = !ruleToToggle.allowed.includes(role);
+            
+            return current.map((rule) => {
+                if (rule.prefix === prefix || related.includes(rule.prefix)) {
+                    const hasRole = rule.allowed.includes(role);
+                    if (willHaveRole && !hasRole) {
+                        return { ...rule, allowed: [...rule.allowed, role] };
+                    } else if (!willHaveRole && hasRole) {
+                        return { ...rule, allowed: rule.allowed.filter((item) => item !== role) };
+                    }
+                }
+                return rule;
+            });
+        });
     };
 
     const handleRoleCapabilityField = <K extends keyof RoleCapabilityProfile>(role: AppRole, field: K, value: RoleCapabilityProfile[K]) => {
