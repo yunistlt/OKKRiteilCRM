@@ -18,6 +18,9 @@ const DEFAULTS = {
     exit_intent_enabled: true,
     email_capture_enabled: true,
     quick_buttons_enabled: true,
+    hide_on_mobile: false,
+    position_x_percent: 95,
+    position_y_percent: 95,
 };
 
 export async function GET() {
@@ -54,8 +57,10 @@ window.__OKK_LEAD_CATCHER_BOOTSTRAPPED__ = true;
 
 // ── Inject HTML ──────────────────────────────────────────────────────────────
 (function injectHTML() {
+    if (${cfg.hide_on_mobile} && window.innerWidth < 768) return;
+
     var style = document.createElement('style');
-    style.textContent = ${JSON.stringify(buildCSS(primaryColor, cfg.position_bottom, cfg.position_right, previewBottom))};
+    style.textContent = ${JSON.stringify(buildCSS(cfg))};
     document.head.appendChild(style);
 
     var div = document.createElement('div');
@@ -692,9 +697,28 @@ function buildHTML(agentName: string, agentTitle: string, avatarUrl: string, pri
 <div id="okk-lead-catcher-preview"></div>`;
 }
 
-function buildCSS(primaryColor: string, bottom: number, right: number, previewBottom: number): string {
+function buildCSS(cfg: any): string {
+    let positionCSS = `bottom:${cfg.position_bottom}px;right:${cfg.position_right}px;`;
+    let previewPosCSS = `bottom:${cfg.position_bottom + 80}px;right:${cfg.position_right}px;`;
+    
+    if (cfg.position_x_percent != null && cfg.position_y_percent != null) {
+        const x = cfg.position_x_percent;
+        const y = cfg.position_y_percent;
+        
+        // Convert slider 0-100% to actual bottom/right/top/left logic
+        // This keeps the widget expanding inward rather than off-screen
+        const xRule = x > 50 ? `right:${100 - x}%;` : `left:${x}%;`;
+        const yRule = y > 50 ? `bottom:${100 - y}%;` : `top:${y}%;`;
+        
+        positionCSS = `${xRule}${yRule}`;
+        
+        // Offset preview slightly above the widget
+        const previewYRule = y > 50 ? `bottom:calc(${100 - y}% + 80px);` : `top:calc(${y}% + 80px);`;
+        previewPosCSS = `${xRule}${previewYRule}`;
+    }
+
     return `
-#okk-lead-catcher-widget{position:fixed;bottom:${bottom}px;right:${right}px;width:360px;height:550px;background:#fff;border-radius:24px;box-shadow:0 10px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;font-family:-apple-system,system-ui,sans-serif;z-index:2147483647;overflow:hidden;transition:all .4s cubic-bezier(.175,.885,.32,1.275);border:1px solid rgba(0,0,0,.05);}
+#okk-lead-catcher-widget{position:fixed;${positionCSS}width:360px;height:550px;background:#fff;border-radius:24px;box-shadow:0 10px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;font-family:-apple-system,system-ui,sans-serif;z-index:2147483647;overflow:hidden;transition:all .4s cubic-bezier(.175,.885,.32,1.275);border:1px solid rgba(0,0,0,.05);${cfg.hide_on_mobile ? '@media(max-width:600px){display:none!important;}' : ''}}
 #okk-lead-catcher-widget.minimized{height:70px;}
 #okk-lead-catcher-header{background:#fff;color:#333;padding:18px 24px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;font-weight:600;user-select:none;}
 .okk-agent-info{display:flex;align-items:center;gap:12px;}
@@ -703,20 +727,20 @@ function buildCSS(primaryColor: string, bottom: number, right: number, previewBo
 .okk-msg{max-width:85%;padding:12px 16px;border-radius:18px;font-size:14px;line-height:1.5;position:relative;animation:okkFadeIn .3s ease-out;white-space:pre-wrap;word-wrap:break-word;}
 @keyframes okkFadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .okk-msg.ai{background:#fff;color:#1f2937;align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,.02);border:1px solid #f3f4f6;}
-.okk-msg.user{background:${primaryColor};color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
+.okk-msg.user{background:${cfg.primary_color};color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
 .okk-msg.system{background:transparent;color:#9ca3af;font-size:11px;text-align:center;align-self:center;width:100%;}
 #okk-lead-catcher-input-area{padding:16px;background:#fff;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:10px;}
 #okk-lead-catcher-input{flex:1;border:1px solid #e5e7eb;border-radius:20px;padding:10px 16px;outline:none;font-size:14px;}
-#okk-lead-catcher-send,#okk-lead-catcher-file-btn{background:none;border:none;color:${primaryColor};cursor:pointer;display:flex;align-items:center;}
+#okk-lead-catcher-send,#okk-lead-catcher-file-btn{background:none;border:none;color:${cfg.primary_color};cursor:pointer;display:flex;align-items:center;}
 .okk-quick-btns{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none;align-self:flex-start;max-width:100%;animation:okkFadeIn .3s ease-out;}
 .okk-quick-btns::-webkit-scrollbar{display:none;}
 .okk-quick-btn{flex-shrink:0;background:#f0fdf4;color:#059669;border:1px solid #a7f3d0;border-radius:20px;padding:7px 14px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s;}
 .okk-quick-btn:hover{background:#d1fae5;border-color:#6ee7b7;}
 .okk-typing-dots{display:flex;gap:4px;padding:4px 0;}
-.okk-dot{width:6px;height:6px;background:${primaryColor};border-radius:50%;animation:okkDotPulse 1.4s infinite ease-in-out;}
+.okk-dot{width:6px;height:6px;background:${cfg.primary_color};border-radius:50%;animation:okkDotPulse 1.4s infinite ease-in-out;}
 .okk-dot:nth-child(2){animation-delay:.2s;}
 .okk-dot:nth-child(3){animation-delay:.4s;}
 @keyframes okkDotPulse{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}
-#okk-lead-catcher-preview{position:fixed;bottom:${previewBottom}px;right:${right}px;background:#fff;padding:12px 18px;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.1);max-width:280px;font-size:13px;color:#333;display:none;z-index:2147483646;animation:okkFadeIn .3s ease-out;border-bottom-right-radius:4px;}
+#okk-lead-catcher-preview{position:fixed;${previewPosCSS}background:#fff;padding:12px 18px;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.1);max-width:280px;font-size:13px;color:#333;display:none;z-index:2147483646;animation:okkFadeIn .3s ease-out;border-bottom-right-radius:4px;${cfg.hide_on_mobile ? '@media(max-width:600px){display:none!important;}' : ''}}
 `.trim();
 }

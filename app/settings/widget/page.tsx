@@ -17,6 +17,9 @@ const DEFAULTS = {
     exit_intent_enabled: true,
     email_capture_enabled: true,
     quick_buttons_enabled: true,
+    hide_on_mobile: false,
+    position_x_percent: 95,
+    position_y_percent: 95,
 };
 
 type Config = typeof DEFAULTS;
@@ -149,25 +152,59 @@ export default function WidgetSettingsPage() {
                             />
                         </div>
                     </Field>
-                    <div className="grid grid-cols-2 gap-4">
-                        <Field label="Отступ снизу (px)">
-                            <input
-                                type="number"
-                                className="input"
-                                value={cfg.position_bottom}
-                                onChange={e => set('position_bottom', Number(e.target.value))}
-                                min={0}
-                            />
-                        </Field>
-                        <Field label="Отступ справа (px)">
-                            <input
-                                type="number"
-                                className="input"
-                                value={cfg.position_right}
-                                onChange={e => set('position_right', Number(e.target.value))}
-                                min={0}
-                            />
-                        </Field>
+                    <div className="mt-6">
+                        <label className="mb-2 block text-sm font-medium text-gray-700">Расположение на экране</label>
+                        <p className="text-xs text-gray-500 mb-6">Настройте положение виджета, передвигая ползунки (в процентах от краев экрана).</p>
+                        
+                        <div className="flex gap-6 items-start max-w-xl">
+                            {/* Vertical slider */}
+                            <div className="flex flex-col items-center justify-between h-[300px]">
+                                <span className="text-[10px] font-bold text-gray-400 mb-2">0% (Верх)</span>
+                                <input 
+                                    type="range" 
+                                    min="0" max="100" 
+                                    value={cfg.position_y_percent}
+                                    onChange={e => set('position_y_percent', Number(e.target.value))}
+                                    className="w-[250px] transform -rotate-90 origin-center accent-emerald-500 cursor-pointer"
+                                    style={{ margin: '125px 0' }}
+                                />
+                                <span className="text-[10px] font-bold text-gray-400 mt-2">100% (Низ)</span>
+                            </div>
+                            
+                            <div className="flex-1 flex flex-col">
+                                {/* Horizontal slider */}
+                                <div className="flex items-center justify-between mb-4">
+                                    <span className="text-[10px] font-bold text-gray-400 mr-2">0% (Лево)</span>
+                                    <input 
+                                        type="range" 
+                                        min="0" max="100" 
+                                        value={cfg.position_x_percent}
+                                        onChange={e => set('position_x_percent', Number(e.target.value))}
+                                        className="flex-1 accent-emerald-500 cursor-pointer"
+                                    />
+                                    <span className="text-[10px] font-bold text-gray-400 ml-2">100% (Право)</span>
+                                </div>
+                                
+                                {/* Preview Box */}
+                                <div className="relative w-full h-[300px] bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-inner" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
+                                    {/* Simulated Widget Button */}
+                                    <div 
+                                        className="absolute w-10 h-10 rounded-full shadow-lg border-2 border-white flex items-center justify-center transition-all duration-75"
+                                        style={{ 
+                                            left: `calc(${cfg.position_x_percent}% - 20px)`, 
+                                            top: `calc(${cfg.position_y_percent}% - 20px)`,
+                                            backgroundColor: cfg.primary_color
+                                        }}
+                                    >
+                                        <div className="w-5 h-5 bg-white rounded-full opacity-30 animate-pulse"></div>
+                                    </div>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-40">
+                                        <svg viewBox="0 0 24 24" width="48" height="48" fill="#9ca3af" className="mb-2"><path d="M19,2H5A3,3 0 0,0 2,5V19A3,3 0 0,0 5,22H19A3,3 0 0,0 22,19V5A3,3 0 0,0 19,2M19,19H5V5H19V19M11,17V15H13V17H11M11,13V7H13V13H11Z"/></svg>
+                                        <span className="text-xl font-black uppercase tracking-widest text-gray-400">Сайт</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </Section>
 
@@ -215,6 +252,12 @@ export default function WidgetSettingsPage() {
 
                 {/* Функции */}
                 <Section title="Функции">
+                    <Toggle
+                        label="Скрывать на мобильных"
+                        description="Не загружать и не показывать виджет на экранах телефонов (ширина < 768px)"
+                        value={cfg.hide_on_mobile}
+                        onChange={v => set('hide_on_mobile', v)}
+                    />
                     <Toggle
                         label="Exit-intent (показ при уходе)"
                         description="Виджет открывается когда посетитель двигает мышь к закрытию вкладки"
