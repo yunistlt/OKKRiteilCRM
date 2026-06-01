@@ -21,6 +21,8 @@ const DEFAULTS = {
     hide_on_mobile: false,
     position_x_percent: 95,
     position_y_percent: 95,
+    widget_bg_color: '#ffffff',
+    widget_bg_opacity: 100,
 };
 
 export async function GET() {
@@ -698,6 +700,21 @@ function buildHTML(agentName: string, agentTitle: string, avatarUrl: string, pri
 }
 
 function buildCSS(cfg: any): string {
+    const hexToRgba = (hex: string, alphaPercent: number) => {
+        const defaultRgba = `rgba(255, 255, 255, ${alphaPercent / 100})`;
+        if (!hex) return defaultRgba;
+        const cleanHex = hex.replace('#', '');
+        if (cleanHex.length !== 3 && cleanHex.length !== 6) return defaultRgba;
+        
+        const r = parseInt(cleanHex.length === 3 ? cleanHex[0]+cleanHex[0] : cleanHex.slice(0, 2), 16);
+        const g = parseInt(cleanHex.length === 3 ? cleanHex[1]+cleanHex[1] : cleanHex.slice(2, 4), 16);
+        const b = parseInt(cleanHex.length === 3 ? cleanHex[2]+cleanHex[2] : cleanHex.slice(4, 6), 16);
+        
+        return isNaN(r) ? defaultRgba : `rgba(${r}, ${g}, ${b}, ${alphaPercent / 100})`;
+    };
+
+    const widgetBg = hexToRgba(cfg.widget_bg_color || '#ffffff', cfg.widget_bg_opacity ?? 100);
+
     let positionCSS = `bottom:${cfg.position_bottom}px;right:${cfg.position_right}px;`;
     let previewPosCSS = `bottom:${cfg.position_bottom + 80}px;right:${cfg.position_right}px;`;
     
@@ -705,32 +722,29 @@ function buildCSS(cfg: any): string {
         const x = cfg.position_x_percent;
         const y = cfg.position_y_percent;
         
-        // Convert slider 0-100% to actual bottom/right/top/left logic
-        // This keeps the widget expanding inward rather than off-screen
         const xRule = x > 50 ? `right:${100 - x}%;` : `left:${x}%;`;
         const yRule = y > 50 ? `bottom:${100 - y}%;` : `top:${y}%;`;
         
         positionCSS = `${xRule}${yRule}`;
         
-        // Offset preview slightly above the widget
         const previewYRule = y > 50 ? `bottom:calc(${100 - y}% + 80px);` : `top:calc(${y}% + 80px);`;
         previewPosCSS = `${xRule}${previewYRule}`;
     }
 
     return `
-#okk-lead-catcher-widget{position:fixed;${positionCSS}width:360px;height:550px;background:#fff;border-radius:24px;box-shadow:0 10px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;font-family:-apple-system,system-ui,sans-serif;z-index:2147483647;overflow:hidden;transition:all .4s cubic-bezier(.175,.885,.32,1.275);border:1px solid rgba(0,0,0,.05);${cfg.hide_on_mobile ? '@media(max-width:600px){display:none!important;}' : ''}}
+#okk-lead-catcher-widget{position:fixed;${positionCSS}width:360px;height:550px;background:${widgetBg};border-radius:24px;box-shadow:0 10px 50px rgba(0,0,0,.15);display:flex;flex-direction:column;font-family:-apple-system,system-ui,sans-serif;z-index:2147483647;overflow:hidden;transition:all .4s cubic-bezier(.175,.885,.32,1.275);border:1px solid rgba(0,0,0,.05);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);${cfg.hide_on_mobile ? '@media(max-width:600px){display:none!important;}' : ''}}
 #okk-lead-catcher-widget.minimized{height:70px;}
-#okk-lead-catcher-header{background:#fff;color:#333;padding:18px 24px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0f0f0;font-weight:600;user-select:none;}
+#okk-lead-catcher-header{background:transparent;color:#333;padding:18px 24px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(0,0,0,.05);font-weight:600;user-select:none;}
 .okk-agent-info{display:flex;align-items:center;gap:12px;}
 .okk-agent-avatar{width:32px;height:32px;border-radius:50%;object-fit:cover;}
-#okk-lead-catcher-messages{flex:1;padding:20px;overflow-y:auto;background:#f9fafb;display:flex;flex-direction:column;gap:12px;}
+#okk-lead-catcher-messages{flex:1;padding:20px;overflow-y:auto;background:rgba(249, 250, 251, ${cfg.widget_bg_opacity !== undefined ? cfg.widget_bg_opacity/100 : 1});display:flex;flex-direction:column;gap:12px;}
 .okk-msg{max-width:85%;padding:12px 16px;border-radius:18px;font-size:14px;line-height:1.5;position:relative;animation:okkFadeIn .3s ease-out;white-space:pre-wrap;word-wrap:break-word;}
 @keyframes okkFadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .okk-msg.ai{background:#fff;color:#1f2937;align-self:flex-start;border-bottom-left-radius:4px;box-shadow:0 2px 4px rgba(0,0,0,.02);border:1px solid #f3f4f6;}
 .okk-msg.user{background:${cfg.primary_color};color:#fff;align-self:flex-end;border-bottom-right-radius:4px;}
 .okk-msg.system{background:transparent;color:#9ca3af;font-size:11px;text-align:center;align-self:center;width:100%;}
-#okk-lead-catcher-input-area{padding:16px;background:#fff;border-top:1px solid #f3f4f6;display:flex;align-items:center;gap:10px;}
-#okk-lead-catcher-input{flex:1;border:1px solid #e5e7eb;border-radius:20px;padding:10px 16px;outline:none;font-size:14px;}
+#okk-lead-catcher-input-area{padding:16px;background:transparent;border-top:1px solid rgba(0,0,0,.05);display:flex;align-items:center;gap:10px;}
+#okk-lead-catcher-input{flex:1;border:1px solid #e5e7eb;border-radius:20px;padding:10px 16px;outline:none;font-size:14px;background:rgba(255,255,255,0.9);}
 #okk-lead-catcher-send,#okk-lead-catcher-file-btn{background:none;border:none;color:${cfg.primary_color};cursor:pointer;display:flex;align-items:center;}
 .okk-quick-btns{display:flex;gap:8px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none;align-self:flex-start;max-width:100%;animation:okkFadeIn .3s ease-out;}
 .okk-quick-btns::-webkit-scrollbar{display:none;}

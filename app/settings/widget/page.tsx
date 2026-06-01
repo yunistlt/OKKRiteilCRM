@@ -20,6 +20,8 @@ const DEFAULTS = {
     hide_on_mobile: false,
     position_x_percent: 95,
     position_y_percent: 95,
+    widget_bg_color: '#ffffff',
+    widget_bg_opacity: 100,
 };
 
 type Config = typeof DEFAULTS;
@@ -136,19 +138,49 @@ export default function WidgetSettingsPage() {
 
                 {/* Внешний вид */}
                 <Section title="Внешний вид">
-                    <Field label="Основной цвет">
-                        <div className="flex items-center gap-3">
-                            <input
-                                type="color"
-                                value={cfg.primary_color}
-                                onChange={e => set('primary_color', e.target.value)}
-                                className="w-10 h-10 rounded cursor-pointer border border-gray-200"
-                            />
-                            <input
-                                className="input w-32"
-                                value={cfg.primary_color}
-                                onChange={e => set('primary_color', e.target.value)}
-                                placeholder="#10b981"
+                    <div className="grid grid-cols-2 gap-6">
+                        <Field label="Основной цвет">
+                            <div className="flex items-center gap-3">
+                                <input
+                                    type="color"
+                                    value={cfg.primary_color}
+                                    onChange={e => set('primary_color', e.target.value)}
+                                    className="w-10 h-10 rounded cursor-pointer border border-gray-200"
+                                />
+                                <input
+                                    className="input w-32"
+                                    value={cfg.primary_color}
+                                    onChange={e => set('primary_color', e.target.value)}
+                                    placeholder="#10b981"
+                                />
+                            </div>
+                        </Field>
+                        <Field label="Цвет плашки (фона)">
+                            <div className="flex items-center gap-3">
+                                <input
+                                    type="color"
+                                    value={cfg.widget_bg_color ?? '#ffffff'}
+                                    onChange={e => set('widget_bg_color', e.target.value)}
+                                    className="w-10 h-10 rounded cursor-pointer border border-gray-200"
+                                />
+                                <input
+                                    className="input w-32"
+                                    value={cfg.widget_bg_color ?? '#ffffff'}
+                                    onChange={e => set('widget_bg_color', e.target.value)}
+                                    placeholder="#ffffff"
+                                />
+                            </div>
+                        </Field>
+                    </div>
+
+                    <Field label={`Непрозрачность плашки: ${cfg.widget_bg_opacity ?? 100}%`}>
+                        <div className="flex items-center gap-4 mt-2 mb-4">
+                            <input 
+                                type="range" 
+                                min="10" max="100" step="5"
+                                value={cfg.widget_bg_opacity ?? 100}
+                                onChange={e => set('widget_bg_opacity', Number(e.target.value))}
+                                className="flex-1 accent-emerald-500 cursor-pointer"
                             />
                         </div>
                     </Field>
@@ -189,14 +221,15 @@ export default function WidgetSettingsPage() {
                                 <div className="relative w-full h-[300px] bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-inner" style={{ backgroundImage: 'radial-gradient(#e5e7eb 1px, transparent 1px)', backgroundSize: '16px 16px' }}>
                                     {/* Simulated Widget Button */}
                                     <div 
-                                        className="absolute w-10 h-10 rounded-full shadow-lg border-2 border-white flex items-center justify-center transition-all duration-75"
+                                        className="absolute w-10 h-10 rounded-full shadow-lg border border-gray-200 flex items-center justify-center transition-all duration-75"
                                         style={{ 
                                             left: `calc(${cfg.position_x_percent}% - 20px)`, 
                                             top: `calc(${cfg.position_y_percent}% - 20px)`,
-                                            backgroundColor: cfg.primary_color
+                                            backgroundColor: cfg.widget_bg_color ?? '#ffffff',
+                                            opacity: (cfg.widget_bg_opacity ?? 100) / 100,
                                         }}
                                     >
-                                        <div className="w-5 h-5 bg-white rounded-full opacity-30 animate-pulse"></div>
+                                        <div className="w-5 h-5 rounded-full opacity-80 animate-pulse" style={{ backgroundColor: cfg.primary_color }}></div>
                                     </div>
                                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-40">
                                         <svg viewBox="0 0 24 24" width="48" height="48" fill="#9ca3af" className="mb-2"><path d="M19,2H5A3,3 0 0,0 2,5V19A3,3 0 0,0 5,22H19A3,3 0 0,0 22,19V5A3,3 0 0,0 19,2M19,19H5V5H19V19M11,17V15H13V17H11M11,13V7H13V13H11Z"/></svg>
