@@ -200,10 +200,19 @@ export default function LeadCatcherPage() {
             {/* Lead List Sidebar */}
             <div className="w-96 border-r bg-white flex flex-col shadow-lg z-20">
                 <div className="p-6 border-b bg-gray-900 text-white">
-                    <h1 className="text-xl font-black flex items-center gap-2">
-                        <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span> 
-                        Ловец Лидов
-                    </h1>
+                    <div className="flex justify-between items-center">
+                        <h1 className="text-xl font-black flex items-center gap-2">
+                            <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span> 
+                            Ловец Лидов
+                        </h1>
+                        <a 
+                            href="/settings/widget" 
+                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors text-gray-300 hover:text-white"
+                            title="Настройки виджета"
+                        >
+                            <span>⚙️</span> Настройки
+                        </a>
+                    </div>
                     <div className="mt-4">
                         <input 
                             type="text" 
