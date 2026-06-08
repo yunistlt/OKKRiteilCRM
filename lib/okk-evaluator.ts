@@ -836,11 +836,25 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 
     const diffMs = now.getTime() - statusChangedAt.getTime();
     const daysInStatus = diffMs / (1000 * 60 * 60 * 24);
-    const deal_in_status_lt_5_days = daysInStatus < 5;
 
+    // Норма дней в статусе — из справочника statuses (на каждый статус своя),
+    // редактируется в админке. Никакого хардкода. Если норма не задана — не судим.
+    const statusCode = order?.status || (order?.raw_payload as any)?.status?.code || (order?.raw_payload as any)?.status;
+    let normDays: number | null = null;
+    if (statusCode) {
+        const { data: st } = await supabase
+            .from('statuses')
+            .select('norm_days')
+            .eq('code', statusCode)
+            .maybeSingle();
+        normDays = st?.norm_days ?? null;
+    }
+
+    const deal_in_status_lt_5_days = normDays != null ? daysInStatus < normDays : true;
+    const normLabel = normDays != null ? `норма до ${normDays} дн.` : 'норма для статуса не задана';
     const deal_in_status_reason = deal_in_status_lt_5_days
-        ? `Игорь: Сделка в статусе ${Math.round(daysInStatus)} дн. (норма до 5)`
-        : `Игорь: Сделка зависла в статусе на ${Math.round(daysInStatus)} дн.`;
+        ? `Игорь: Сделка в статусе ${Math.round(daysInStatus)} дн. (${normLabel})`
+        : `Игорь: Сделка зависла в статусе на ${Math.round(daysInStatus)} дн. (${normLabel})`;
 
     return {
         lead_in_work_lt_1_day,

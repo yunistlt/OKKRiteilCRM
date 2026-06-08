@@ -14,6 +14,7 @@ export interface StatusItem {
     ordering: number;
     group_name: string;
     ai_description?: string;
+    norm_days?: number | null;
 }
 
 interface StatusListProps {
@@ -55,6 +56,14 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         ));
     }
 
+    function handleNormChange(code: string, value: string) {
+        setHasChanges(true);
+        const norm = value === '' ? null : Math.max(0, Math.round(Number(value)));
+        setStatuses(prev => prev.map(s =>
+            s.code === code ? { ...s, norm_days: Number.isFinite(norm as number) ? norm : null } : s
+        ));
+    }
+
     async function handleSave() {
         if (isSaving) return;
         setIsSaving(true);
@@ -66,7 +75,8 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                 is_working: s.is_working,
                 is_transcribable: s.is_transcribable,
                 is_ai_target: s.is_ai_target,
-                ai_description: s.ai_description
+                ai_description: s.ai_description,
+                norm_days: s.norm_days ?? null
             }));
 
             const result = await saveSettingsBatch(payload);
@@ -248,19 +258,30 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                         </div>
                                     </div>
 
-                                    {/* Description Input */}
-                                    <div className="w-full">
+                                    {/* Description Input + норма дней в статусе */}
+                                    <div className="w-full flex items-start gap-2">
                                         <textarea
                                             value={status.ai_description || ''}
                                             onChange={(e) => handleDescriptionChange(status.code, e.target.value)}
                                             placeholder="Описание для ИИ..."
-                                            className="w-full text-[11px] leading-relaxed p-2 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none min-h-[38px] overflow-hidden"
+                                            className="flex-1 text-[11px] leading-relaxed p-2 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all resize-none min-h-[38px] overflow-hidden"
                                             rows={1}
                                             onInput={(e) => {
                                                 e.currentTarget.style.height = 'auto';
                                                 e.currentTarget.style.height = e.currentTarget.scrollHeight + 'px';
                                             }}
                                         />
+                                        <div className="shrink-0 flex flex-col items-center" title="Норма дней нахождения в статусе (для ОКК-скоринга)">
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={status.norm_days ?? ''}
+                                                onChange={(e) => handleNormChange(status.code, e.target.value)}
+                                                placeholder="—"
+                                                className="w-16 text-[11px] text-center p-2 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none"
+                                            />
+                                            <span className="text-[9px] text-gray-400 mt-0.5">норма, дн.</span>
+                                        </div>
                                     </div>
                                 </div>
                             ))}

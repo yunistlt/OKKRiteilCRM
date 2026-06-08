@@ -3,7 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 
-export async function saveSettingsBatch(settings: { code: string; is_working: boolean; is_transcribable: boolean; is_ai_target: boolean; ai_description?: string }[]) {
+export async function saveSettingsBatch(settings: { code: string; is_working: boolean; is_transcribable: boolean; is_ai_target: boolean; ai_description?: string; norm_days?: number | null }[]) {
     console.log(`[Server Action] Processing batch of ${settings.length} items`);
 
     try {
@@ -50,10 +50,11 @@ export async function saveSettingsBatch(settings: { code: string; is_working: bo
         // Operation C: Update Descriptions (in `statuses` table)
         // We do this individually or batch if possible. Since it's 'statuses' table, upsert matches on code.
         const descriptionsToUpdate = settings
-            .filter(s => s.ai_description !== undefined) // Only those we touched or loaded
+            .filter(s => s.ai_description !== undefined || s.norm_days !== undefined) // Only those we touched or loaded
             .map(s => ({
                 code: s.code,
-                ai_description: s.ai_description
+                ai_description: s.ai_description,
+                norm_days: s.norm_days ?? null
             }));
 
         if (descriptionsToUpdate.length > 0) {
@@ -74,7 +75,7 @@ export async function saveSettingsBatch(settings: { code: string; is_working: bo
             for (const item of descriptionsToUpdate) {
                 await supabase
                     .from('statuses')
-                    .update({ ai_description: item.ai_description })
+                    .update({ ai_description: item.ai_description, norm_days: item.norm_days })
                     .eq('code', item.code);
             }
             results.push('Updated Descriptions');

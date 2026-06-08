@@ -64,6 +64,14 @@ export default function Sidebar() {
             ]
         },
         {
+            title: 'Зарплата',
+            items: [
+                { name: 'Зарплата ОП', href: '/salary', icon: '💰', allowed: ['admin', 'rop'] },
+                { name: 'Моя зарплата', href: '/salary/my', icon: '🧾', allowed: ['admin', 'rop', 'manager'] },
+                { name: 'Настройки мотивации', href: '/salary/settings', icon: '⚙️', allowed: ['admin', 'rop'] },
+            ]
+        },
+        {
             title: 'Связь',
             items: [
                 { name: 'Ловец Лидов', href: '/okk/lead-catcher', icon: '🎯', agent: 'elena' },

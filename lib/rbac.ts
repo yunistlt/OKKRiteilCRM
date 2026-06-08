@@ -48,6 +48,10 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы legal helpdesk и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/messenger', label: 'Мессенджер', description: 'Рабочий раздел внутренних диалогов.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/messenger', label: 'API мессенджера', description: 'Серверные методы мессенджера.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/salary/my', label: 'Моя зарплата', description: 'Просмотр собственной зарплаты и разбивки менеджером.', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
+    { prefix: '/api/salary/my', label: 'API моей зарплаты', description: 'Чтение собственной зарплаты менеджером.', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
+    { prefix: '/salary', label: 'Зарплата', description: 'Расчёт ЗП менеджеров, настройки мотивации, закрытие периода.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/api/salary', label: 'API зарплаты', description: 'Серверные методы расчёта ЗП и конфигурации мотивации.', category: 'Зарплата', allowed: ['admin', 'rop'] },
     { prefix: '/', label: 'Центр управления', description: 'Главная страница и дашборд офиса.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/admin', label: 'Раздел admin', description: 'Прочие административные страницы.', category: 'Система', allowed: ['admin'] },
 ];
