@@ -389,6 +389,24 @@ export async function fetchRetailCrmHistoryPage(params: {
   };
 }
 
+// Пагинация истории по sinceId (инкрементный id записи) — рекомендованный RetailCRM
+// способ для больших объёмов: индексировано, не таймаутит на больших окнах,
+// в отличие от filter[startDate]+page. Возвращает записи с id > sinceId по возрастанию.
+export async function fetchRetailCrmHistoryBySinceId(params: {
+  sinceId: number;
+  limit?: 20 | 50 | 100;
+}) {
+  const searchParams = new URLSearchParams();
+  searchParams.set('limit', String(params.limit ?? 100));
+  searchParams.set('filter[sinceId]', String(params.sinceId));
+
+  const data = await fetchRetailCrm('orders/history', searchParams);
+  return {
+    history: data.history || [],
+    pagination: data.pagination || null,
+  };
+}
+
 export async function upsertRetailCrmOrders(orders: any[]) {
   if (!orders.length) {
     return [];

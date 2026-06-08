@@ -42,17 +42,25 @@ export default function SalaryDashboard() {
 
     const fetchData = useCallback(async () => {
         setLoading(true);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20000); // не висеть вечно
         try {
-            const res = await fetch(`/api/salary?period=${period}`);
-            const json = await res.json();
-            if (json.error) throw new Error(json.error);
+            const res = await fetch(`/api/salary?period=${period}`, { signal: controller.signal });
+            const json = await res.json().catch(() => ({ error: `Сервер вернул ${res.status}` }));
+            if (!res.ok || json.error) throw new Error(json.error || `Ошибка ${res.status}`);
             setData(json);
         } catch (e: any) {
-            toast({ title: 'Ошибка загрузки', description: e.message, variant: 'destructive' });
+            setData({ period: { year, month, status: 'error' }, rows: [], total: 0 });
+            toast({
+                title: 'Ошибка загрузки',
+                description: e.name === 'AbortError' ? 'Сервер не ответил за 20 с (возможно, идёт деплой). Обновите страницу.' : e.message,
+                variant: 'destructive',
+            });
         } finally {
+            clearTimeout(timer);
             setLoading(false);
         }
-    }, [period, toast]);
+    }, [period, year, month, toast]);
 
     useEffect(() => {
         fetchData();
@@ -145,8 +153,12 @@ export default function SalaryDashboard() {
             {loading ? (
                 <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : rows.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-                    Расчёта за этот период нет. Нажмите «Пересчитать».
+                <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+                    {data?.period?.status === 'open'
+                        ? 'Период рассчитан, но засчитанных заявок нет — за месяц ни один заказ не дошёл до статуса «Передано в производство» (проверьте, что синхронизация истории RetailCRM актуальна).'
+                        : data?.period?.status === 'error'
+                            ? 'Не удалось загрузить данные. Обновите страницу или повторите позже.'
+                            : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
             ) : (
                 <div className="overflow-x-auto rounded-lg border">

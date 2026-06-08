@@ -8,7 +8,7 @@ import {
   isSystemJobsPipelineRuntimeEnabled,
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
-import { fetchRetailCrmHistoryPage } from '@/lib/retailcrm-orders';
+import { fetchRetailCrmHistoryBySinceId } from '@/lib/retailcrm-orders';
 import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
@@ -62,49 +62,45 @@ export async function GET(req: NextRequest) {
     try {
       const payload = (job.payload || {}) as { force?: boolean };
       const startTime = Date.now();
-      const maxTimeMs = 45000;
-      const maxPagesPerRun = 2;
-      let startDate = '2025-01-01 00:00:00';
+      const maxTimeMs = 60000;
+      const maxPagesPerRun = 12;
+      const PAGE_LIMIT = 100;
 
+      // Курсор по sinceId (инкрементный id записи истории). Устойчив к большим
+      // бэклогам — RetailCRM отдаёт записи id>sinceId по индексу, без таймаута.
+      let sinceId = 0;
       if (!payload.force) {
-        const { data: state } = await supabase
+        const { data: idState } = await supabase
           .from('sync_state')
           .select('value')
-          .eq('key', 'retailcrm_history_sync')
-          .single();
+          .eq('key', 'retailcrm_history_sync_id')
+          .maybeSingle();
 
-        if (state?.value) {
-          const buffered = new Date(state.value);
-          buffered.setMinutes(buffered.getMinutes() - 5);
-          startDate = buffered.toISOString().slice(0, 19).replace('T', ' ');
+        if (idState?.value) {
+          sinceId = parseInt(idState.value, 10) || 0;
         } else {
-          const { data: lastEntry } = await supabase
+          // Первый запуск на новом курсоре — продолжаем с максимального уже известного id
+          const { data: lastRow } = await supabase
             .from('order_history_log')
-            .select('occurred_at')
-            .order('occurred_at', { ascending: false })
+            .select('retailcrm_history_id')
+            .order('retailcrm_history_id', { ascending: false })
             .limit(1)
-            .single();
-
-          if (lastEntry?.occurred_at) {
-            const buffered = new Date(lastEntry.occurred_at);
-            buffered.setMinutes(buffered.getMinutes() - 5);
-            startDate = buffered.toISOString().slice(0, 19).replace('T', ' ');
-          }
+            .maybeSingle();
+          sinceId = lastRow?.retailcrm_history_id || 0;
         }
       }
 
-      let page = 1;
       let hasMore = true;
       let pagesProcessed = 0;
       let rowsUpserted = 0;
       let jobsQueued = 0;
       let maxOccurredAt: Date | null = null;
+      let maxHistoryId = sinceId;
 
       while (hasMore && pagesProcessed < maxPagesPerRun && Date.now() - startTime < maxTimeMs) {
-        const { history, pagination } = await fetchRetailCrmHistoryPage({
-          page,
-          limit: 50,
-          startDate,
+        const { history } = await fetchRetailCrmHistoryBySinceId({
+          sinceId: maxHistoryId,
+          limit: PAGE_LIMIT,
         });
 
         if (!history.length) {
@@ -116,6 +112,10 @@ export async function GET(req: NextRequest) {
         const lastHistoryIdByOrder = new Map<number, number>();
 
         for (const item of history) {
+          // Двигаем курсор по ВСЕМ записям (в т.ч. без order.id), чтобы не перечитывать их
+          if (typeof item.id === 'number' && item.id > maxHistoryId) {
+            maxHistoryId = item.id;
+          }
           if (!item.order?.id) {
             continue;
           }
@@ -167,12 +167,17 @@ export async function GET(req: NextRequest) {
         }
 
         pagesProcessed += 1;
-        if (pagination && pagination.currentPage < pagination.totalPageCount) {
-          page += 1;
-        } else {
+        // Меньше лимита → больше записей нет
+        if (history.length < PAGE_LIMIT) {
           hasMore = false;
         }
       }
+
+      // Сохраняем sinceId-курсор (основной) и occurred_at (для метрики лага)
+      await supabase.from('sync_state').upsert(
+        { key: 'retailcrm_history_sync_id', value: String(maxHistoryId), updated_at: new Date().toISOString() },
+        { onConflict: 'key' },
+      );
 
       await recordRetailCrmSyncSuccess({
         cursorKey: 'retailcrm_history_sync',
@@ -186,7 +191,8 @@ export async function GET(req: NextRequest) {
         rows_upserted: rowsUpserted,
         jobs_queued: jobsQueued,
         pages_processed: pagesProcessed,
-        start_date: startDate,
+        since_id: sinceId,
+        last_history_id: maxHistoryId,
         last_cursor_stored: maxOccurredAt?.toISOString() || null,
       });
 
@@ -202,7 +208,8 @@ export async function GET(req: NextRequest) {
         rows_upserted: rowsUpserted,
         jobs_queued: jobsQueued,
         pages_processed: pagesProcessed,
-        start_date: startDate,
+        since_id: sinceId,
+        last_history_id: maxHistoryId,
         last_cursor_stored: maxOccurredAt?.toISOString() || null,
       });
     } catch (error: any) {
