@@ -385,7 +385,24 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 if (successfulCall) {
                     condMatch = false; // Valid, not a violation
                 } else if (failedCall && comment) {
-                    condMatch = false; // Valid (comment for failed attempt), not a violation
+                    // Перенос при недозвоне допустим ТОЛЬКО при ОСМЫСЛЕННОМ комментарии о причине.
+                    // Просто наличие комментария недостаточно — оцениваем содержание через AI.
+                    const reschedulePrompt = cond.params?.reschedule_prompt || cond.params?.prompt ||
+                        'Нарушение, ЕСЛИ комментарий менеджера НЕ содержит осмысленной причины переноса даты следующего контакта. ' +
+                        'Формальная отписка, пустой/шаблонный текст, отсутствие конкретики = НАРУШЕНИЕ. ' +
+                        'Осмысленная причина (клиент попросил перезвонить позже/в конкретную дату, ждём ответ или документы, согласование на стороне клиента, описан план дальнейших действий) = НЕ нарушение.';
+                    const res = await analyzeText(String(comment.content || ''), reschedulePrompt, 'Комментарий менеджера к переносу даты следующего контакта');
+                    if (res.is_violation) {
+                        condMatch = true; // VIOLATION — комментарий неосмысленный
+                        semanticResult = {
+                            is_violation: true,
+                            reasoning: res.reasoning || 'Необоснованный перенос: комментарий не содержит осмысленной причины.',
+                            evidence: res.evidence ?? null,
+                            confidence: res.confidence ?? 0.5,
+                        };
+                    } else {
+                        condMatch = false; // Valid — есть осмысленная причина
+                    }
                 } else {
                     condMatch = true; // VIOLATION
                     const reason = !failedCall ? 'Нет зафиксированных попыток контакта (звонка) перед переносом.' : 'При недозвоне отсутствует комментарий с причиной переноса даты.';
