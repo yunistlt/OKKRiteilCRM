@@ -1,6 +1,12 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
 import { collectPeriodMetrics, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
+import { compose } from '@/lib/salary/blocks/compose';
+import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
+import { getPlansForPeriod, resolveManagerComp, type PeriodPlans } from '@/lib/salary/schemes';
+import type { BlockComputeContext, BlockContribution, BlockInstance } from '@/lib/salary/blocks/types';
+
+export { pickTier }; // обратная совместимость со старыми импортами
 
 /** Краткая карточка засчитанного заказа для отчёта по менеджеру (номер кликабелен в UI). */
 export interface CountedOrderBrief {
@@ -13,10 +19,10 @@ export interface CountedOrderBrief {
 }
 
 // ============================================================================
-// Движок расчёта ЗП. Берёт сырые метрики + конфиг-тиры, считает по формуле:
-//   ЗП = Оклад + [(Премия_за_заявки × К_качества) + Конв_бонус + Скидка_бонус] × К_команды + Дежурства
-// Порядок: К_качества множит ТОЛЬКО премию за заявки; К_команды — всю переменную
-// часть; оклад и дежурства не режутся. Все ставки/тиры — из конфига (ноль хардкода).
+// Движок расчёта ЗП. Теперь ЗП = сумма вкладов назначенных менеджеру БЛОКОВ
+// (см. lib/salary/blocks). Под пресетом «Продавец» это тождественно прежней
+// формуле: Оклад + [(Премия×К_кач) + Конв + Скидка] × К_команды + Дежурства.
+// Реестр ОП = менеджеры с назначенной схемой (salary_manager_comp). Числа — в БД.
 // ============================================================================
 
 export interface SalaryBreakdown {
@@ -36,6 +42,8 @@ export interface SalaryBreakdown {
     variablePart: number;
     countedOrderIds: number[];
     countedOrders: CountedOrderBrief[]; // детализация по каждому засчитанному заказу
+    schemeCode?: string; // назначенная схема (роль)
+    blockContributions?: BlockContribution[]; // вклад каждого блока (для отчёта/экспорта)
 }
 
 export interface SalaryResult {
@@ -60,18 +68,7 @@ export interface PeriodSalary {
     results: SalaryResult[];
 }
 
-type Tier = { min: number };
-
-/** Тир по значению: берём тир с наибольшим min, который <= value. */
-export function pickTier<T extends Tier>(value: number, tiers: T[]): T | null {
-    const sorted = [...tiers].sort((a, b) => b.min - a.min);
-    for (const t of sorted) {
-        if (value >= t.min) return t;
-    }
-    return null;
-}
-
-/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада. Не хардкод-число, а календарь. */
+/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада. */
 export function businessDaysInMonth(year: number, month: number): number {
     let count = 0;
     const daysInMonth = new Date(year, month, 0).getDate();
@@ -82,57 +79,59 @@ export function businessDaysInMonth(year: number, month: number): number {
     return count;
 }
 
-function passesDiscount(value: number | null, cfg: SalaryConfig['discount_bonus']): boolean {
-    if (value == null) return false;
-    return cfg.comparator === 'lte' ? value <= cfg.threshold : value >= cfg.threshold;
+/** Пустые метрики для менеджера из реестра без активности (оператор → только оклад). */
+function zeroMetrics(managerId: number): ManagerMetrics {
+    return {
+        managerId,
+        countedOrders: [],
+        countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        discountMetricValue: null,
+        qualityAvgScore: null,
+        conversion: { numerator: 0, denominator: 0, pct: 0, eligible: false },
+        dutyShifts: 0,
+        workedDays: null,
+        marginTotal: 0,
+    };
 }
 
-/** Расчёт по одному менеджеру (чистая функция). kTeam передаётся снаружи (общий по отделу). */
+/**
+ * Расчёт по одному менеджеру: компонуем его блоки, маппим вклады обратно в
+ * legacy-колонки salary_calc (для совместимости дашборда/экспорта) и кладём
+ * детальный вклад каждого блока в breakdown.blockContributions.
+ */
 export function computeManagerSalary(
     m: ManagerMetrics,
-    config: SalaryConfig,
-    kTeam: number,
-    businessDays: number,
+    blockInstances: BlockInstance[],
+    ctx: BlockComputeContext,
+    schemeCode?: string,
 ): SalaryResult {
-    // Премия за заявки
-    const rates = config.rate_zayavka;
-    const premiaZayavki =
-        m.countsByType.new * rates.new +
-        m.countsByType.permanent * rates.permanent +
-        m.countsByType.pech_vto * rates.pech_vto;
+    const composed = compose(blockInstances, m, ctx);
+    const byCode = new Map(composed.contributions.map((c) => [c.code, c]));
 
-    // К_качества (множит только премию). Нет оценок → нейтральный 1.0 (не штрафуем за отсутствие данных).
-    const kQuality = m.qualityAvgScore == null ? 1 : pickTier(m.qualityAvgScore, config.k_quality_tiers)?.k ?? 1;
+    const kQuality = byCode.get('k_quality')?.multiplier ?? 1;
+    const kTeam = byCode.get('k_team')?.multiplier ?? 1;
+    const premia = byCode.get('premia_zayavki')?.amount ?? 0;
+    const convBonus = byCode.get('conv_bonus')?.amount ?? 0;
+    const discountBonus = byCode.get('discount_bonus')?.amount ?? 0;
 
-    // Конв-бонус (только при допуске по минимуму заявок)
-    const convBonus = m.conversion.eligible ? pickTier(m.conversion.pct, config.conv_bonus_tiers)?.bonus ?? 0 : 0;
+    // Параметры для совместимых полей breakdown (ставки/метрика скидки) — из назначенных блоков.
+    const premiaInst = blockInstances.find((b) => b.code === 'premia_zayavki');
+    const rates = (premiaInst?.params?.rates as SalaryConfig['rate_zayavka']) ?? { new: 0, permanent: 0, pech_vto: 0 };
+    const discountInst = blockInstances.find((b) => b.code === 'discount_bonus');
+    const discountMetric = (discountInst?.params?.metric as string) ?? '';
 
-    // Бонус за скидочную дисциплину
-    const discountPassed = passesDiscount(m.discountMetricValue, config.discount_bonus);
-    const discountBonus = discountPassed ? config.discount_bonus.bonus : 0;
-
-    // Оклад с пропорцией по отработанным дням (полный, если табель не вёлся)
-    const okladProration = m.workedDays == null || businessDays <= 0 ? 1 : Math.min(1, m.workedDays / businessDays);
-    const oklad = config.oklad * okladProration;
-
-    // Дежурства (не режутся К_команды)
-    const dutyPay = m.dutyShifts * config.duty_rate;
-
-    // Переменная часть × К_команды
-    const variablePart = (premiaZayavki * kQuality + convBonus + discountBonus) * kTeam;
-
-    const total = oklad + variablePart + dutyPay;
+    const okladProration = m.workedDays == null || ctx.businessDays <= 0 ? 1 : Math.min(1, m.workedDays / ctx.businessDays);
 
     return {
         managerId: m.managerId,
-        oklad: round2(oklad),
-        premiaZayavki: round2(premiaZayavki),
+        oklad: round2(composed.base),
+        premiaZayavki: round2(premia),
         kQuality,
         convBonus: round2(convBonus),
         discountBonus: round2(discountBonus),
-        dutyPay: round2(dutyPay),
+        dutyPay: round2(composed.duty),
         kTeam,
-        total: round2(total),
+        total: round2(composed.total),
         marginInfo: round2(m.marginTotal),
         breakdown: {
             counts: m.countsByType,
@@ -142,13 +141,13 @@ export function computeManagerSalary(
             conversionEligible: m.conversion.eligible,
             conversionNumerator: m.conversion.numerator,
             conversionDenominator: m.conversion.denominator,
-            discountMetric: config.discount_bonus.metric,
+            discountMetric,
             discountValue: m.discountMetricValue == null ? null : round2(m.discountMetricValue),
-            discountPassed,
+            discountPassed: discountBonus > 0,
             teamRevenueNoVat: round2(m.countedOrders.reduce((s, o) => s + o.revenueNoVat, 0)),
             workedDays: m.workedDays,
             okladProration: round2(okladProration),
-            variablePart: round2(variablePart),
+            variablePart: composed.variablePart,
             countedOrderIds: m.countedOrders.map((o) => o.orderId),
             countedOrders: m.countedOrders.map((o) => ({
                 id: o.orderId,
@@ -158,29 +157,51 @@ export function computeManagerSalary(
                 discountPct: round2(o.discountPct),
                 enteredAt: o.enteredAt,
             })),
+            schemeCode,
+            blockContributions: composed.contributions,
         },
     };
 }
 
-/** Расчёт по всему периоду (чистая функция над метриками). */
-export function computePeriodSalary(pm: PeriodMetrics, config: SalaryConfig): PeriodSalary {
-    const kTeam = pickTier(pm.teamRevenueNoVat, config.k_team_tiers)?.k ?? 1;
+/** Расчёт периода: только менеджеры из реестра (с назначенной схемой). */
+export function computePeriodSalary(
+    pm: PeriodMetrics,
+    compMap: Map<number, { schemeCode: string; blocks: BlockInstance[] }>,
+    plans: PeriodPlans,
+    config: SalaryConfig,
+): PeriodSalary {
     const businessDays = businessDaysInMonth(pm.year, pm.month);
-    const results = pm.managers.map((m) => computeManagerSalary(m, config, kTeam, businessDays));
-    return { year: pm.year, month: pm.month, teamRevenueNoVat: pm.teamRevenueNoVat, kTeam, results };
-}
+    const teamRevenueNoVat = pm.teamRevenueNoVat;
+    const kTeam = pickTier(teamRevenueNoVat, config.k_team_tiers)?.k ?? 1;
 
-function round2(n: number): number {
-    return Math.round(n * 100) / 100;
+    const metricsById = new Map(pm.managers.map((m) => [m.managerId, m]));
+    const results: SalaryResult[] = [];
+    for (const [managerId, comp] of Array.from(compMap)) {
+        const m = metricsById.get(managerId) ?? zeroMetrics(managerId);
+        const ctx: BlockComputeContext = {
+            year: pm.year,
+            month: pm.month,
+            businessDays,
+            teamRevenueNoVat,
+            personalPlanTarget: plans.personal.get(managerId) ?? null,
+            departmentPlanTarget: plans.department,
+        };
+        results.push(computeManagerSalary(m, comp.blocks, ctx, comp.schemeCode));
+    }
+    results.sort((a, b) => a.managerId - b.managerId);
+    return { year: pm.year, month: pm.month, teamRevenueNoVat, kTeam, results };
 }
 
 // ── Оркестратор + персистентность ───────────────────────────────────────────
 
-/** Считает период из боевых данных (метрики → формула). Без записи в БД. */
+/** Считает период из боевых данных (метрики → схемы/планы → блоки). Без записи. */
 export async function calculatePeriod(year: number, month: number): Promise<PeriodSalary> {
     const config = await getConfigForPeriod(year, month);
     const metrics = await collectPeriodMetrics(year, month, config);
-    return computePeriodSalary(metrics, config);
+    const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
+    const compMap = await resolveManagerComp(asOf);
+    const plans = await getPlansForPeriod(year, month);
+    return computePeriodSalary(metrics, compMap, plans, config);
 }
 
 /** Get-or-create открытого периода. Бросает, если период закрыт. */
@@ -232,6 +253,13 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
         const { error } = await supabase.from('salary_calc').upsert(rows, { onConflict: 'period_id,manager_id' });
         if (error) throw error;
     }
+
+    // Удаляем устаревшие строки (менеджеры, выбывшие из реестра) — только для открытого периода.
+    const keepIds = rows.map((r) => r.manager_id);
+    let del = supabase.from('salary_calc').delete().eq('period_id', periodId);
+    if (keepIds.length) del = del.not('manager_id', 'in', `(${keepIds.join(',')})`);
+    const { error: delErr } = await del;
+    if (delErr) throw delErr;
 
     await supabase.from('salary_audit_log').insert({
         entity: 'calc',
