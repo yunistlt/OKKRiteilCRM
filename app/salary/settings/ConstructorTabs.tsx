@@ -52,10 +52,10 @@ function summarize(params: any): string {
 // ── Редактор параметров блока (поля вместо сырого JSON) ──────────────────────
 const inputCls = 'h-7 border px-2 text-xs';
 
-function ScalarField({ pkey, value, onChange }: { pkey: string; value: any; onChange: (v: any) => void }) {
+function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean }) {
     if (pkey === 'comparator' && typeof value === 'string') {
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
                 {Object.entries(COMPARATORS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
@@ -64,37 +64,38 @@ function ScalarField({ pkey, value, onChange }: { pkey: string; value: any; onCh
         return <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-primary" />;
     }
     if (typeof value === 'number') {
-        return <input type="number" value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className={`${inputCls} w-28 text-right`} />;
+        return <input type="number" value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className={`${inputCls} ${full ? 'w-full' : 'w-28'} text-right`} />;
     }
     return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} w-full`} />;
 }
 
-// Таблица для массива объектов вида {min,k} / {min,bonus} (пороги).
+// Таблица для массива объектов вида {min,k} / {min,bonus} (пороги). По GOLD_UI_TABLES.
 function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => void }) {
-    const keys = Array.from(new Set(value.flatMap((r) => Object.keys(r ?? {}))));
+    // «От» (порог) всегда первой колонкой — читается как «От N → коэффициент/бонус».
+    const keys = Array.from(new Set(value.flatMap((r) => Object.keys(r ?? {})))).sort((a, b) => (a === 'min' ? -1 : b === 'min' ? 1 : 0));
     const setCell = (i: number, k: string, v: any) => onChange(value.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
     const addRow = () => onChange([...value, keys.reduce((a, k) => ({ ...a, [k]: 0 }), {})]);
     const delRow = (i: number) => onChange(value.filter((_, j) => j !== i));
     return (
         <div className="border">
             <table className="w-full text-xs">
-                <thead className="bg-muted/50 text-left text-muted-foreground">
-                    <tr>{keys.map((k) => <th key={k} className="px-2 py-1 font-medium">{labelFor(k)}</th>)}<th className="w-8" /></tr>
+                <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>{keys.map((k) => <th key={k} className="px-3 py-1.5 text-right font-medium">{labelFor(k)}</th>)}<th className="w-9" /></tr>
                 </thead>
                 <tbody>
                     {value.map((row, i) => (
-                        <tr key={i} className="border-t">
+                        <tr key={i} className="border-t odd:bg-white even:bg-muted/20 hover:bg-accent">
                             {keys.map((k) => (
-                                <td key={k} className="px-1 py-0.5">
-                                    <ScalarField pkey={k} value={row?.[k]} onChange={(v) => setCell(i, k, v)} />
+                                <td key={k} className="px-3 py-1.5">
+                                    <ScalarField pkey={k} value={row?.[k]} full onChange={(v) => setCell(i, k, v)} />
                                 </td>
                             ))}
-                            <td className="px-1 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
+                            <td className="px-2 py-1.5 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> Добавить порог</button>
+            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> Добавить порог</button>
         </div>
     );
 }
