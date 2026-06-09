@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, SlidersHorizontal, Download, Lock, X } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
@@ -130,10 +130,7 @@ export default function SalaryDashboard() {
                         <CalendarClock className="mr-2 h-4 w-4" /> Дежурства
                     </Button>
                     <Link href="/salary/settings">
-                        <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки</Button>
-                    </Link>
-                    <Link href="/salary/settings/models">
-                        <Button variant="outline" size="sm"><SlidersHorizontal className="mr-2 h-4 w-4" /> Модели</Button>
+                        <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки мотивации</Button>
                     </Link>
                     {rows.length > 0 && (
                         <a href={`/api/salary/export?period=${period}`}>
