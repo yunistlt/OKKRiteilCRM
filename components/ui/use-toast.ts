@@ -1,20 +1,17 @@
 
 // Simplified version of use-toast
-import { useState } from "react"
+import { useCallback } from "react"
 
 export function useToast() {
-    const [toasts, setToasts] = useState<any[]>([])
-
-    const toast = ({ title, description, variant }: any) => {
-        // For now, just simplistic implementation or console log to unblock
+    // ВАЖНО: ссылка на toast должна быть стабильной между рендерами.
+    // Иначе любой useCallback/useEffect с toast в зависимостях пересоздаётся
+    // на каждый рендер и зацикливает запросы (экран «моргает»). useCallback с
+    // пустыми зависимостями даёт постоянную идентичность — функция не замыкает
+    // ничего из области рендера.
+    const toast = useCallback(({ title, description }: any) => {
+        // Простейшая реализация: лог в консоль (полноценный Toaster-провайдер не подключён).
         console.log(`[TOAST] ${title}: ${description}`)
-        // In a real app, we'd add to state and render a Toaster component
-        // But to fix the build quickly without adding a provider context layout:
-        if (typeof window !== 'undefined') {
-            // Maybe a simple alert if it's an error?
-            // if (variant === 'destructive') alert(`${title}\n${description}`);
-        }
-    }
+    }, [])
 
     return { toast }
 }
