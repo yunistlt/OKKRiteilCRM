@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, X } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, SlidersHorizontal, Download, Lock, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
@@ -131,6 +131,9 @@ export default function SalaryDashboard() {
                     </Button>
                     <Link href="/salary/settings">
                         <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки</Button>
+                    </Link>
+                    <Link href="/salary/settings/models">
+                        <Button variant="outline" size="sm"><SlidersHorizontal className="mr-2 h-4 w-4" /> Модели</Button>
                     </Link>
                     {rows.length > 0 && (
                         <a href={`/api/salary/export?period=${period}`}>
@@ -278,17 +281,39 @@ function ManagerReportModal({
 
                 {/* Тело (скролл) */}
                 <div className="space-y-4 overflow-y-auto p-4 text-sm">
-                    {/* Формула расчёта */}
+                    {/* Как сложилась сумма — по блокам назначенной схемы (фолбэк на legacy-поля) */}
                     <div className="rounded-lg border bg-muted/20 p-3 text-xs">
-                        <div className="mb-2 font-semibold">Как сложилась сумма</div>
-                        <div className="grid gap-1 md:grid-cols-2">
-                            <div>Оклад ({Math.round((b.okladProration ?? 1) * 100)}%): <b>{rub(r.oklad)}</b></div>
-                            <div>Премия за заявки: {rub(r.premia_zayavki)} × К_кач {r.k_quality}</div>
-                            <div>Конв-бонус: {rub(r.conv_bonus)}</div>
-                            <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
-                            <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
-                            <div>Дежурства: {rub(r.duty_pay)}</div>
+                        <div className="mb-2 flex items-center gap-2 font-semibold">
+                            Как сложилась сумма
+                            {b.schemeCode && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">схема: {b.schemeCode}</span>}
                         </div>
+                        {Array.isArray(b.blockContributions) && b.blockContributions.length > 0 ? (
+                            <div className="space-y-1">
+                                {b.blockContributions.map((c: any, i: number) => (
+                                    <div key={i} className="flex items-baseline justify-between gap-3 border-b border-dashed py-0.5 last:border-0">
+                                        <div>
+                                            <span className="font-medium">{c.name}</span>
+                                            <span className="ml-2 text-muted-foreground">{c.explain}</span>
+                                            {c.dataFill && c.dataFill.pct < 1 && (
+                                                <span className="ml-2 rounded bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
+                                            )}
+                                        </div>
+                                        <div className="whitespace-nowrap font-medium">
+                                            {c.kind === 'multiplier' ? `×${c.multiplier}` : rub(c.amount)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="grid gap-1 md:grid-cols-2">
+                                <div>Оклад ({Math.round((b.okladProration ?? 1) * 100)}%): <b>{rub(r.oklad)}</b></div>
+                                <div>Премия за заявки: {rub(r.premia_zayavki)} × К_кач {r.k_quality}</div>
+                                <div>Конв-бонус: {rub(r.conv_bonus)}</div>
+                                <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
+                                <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
+                                <div>Дежурства: {rub(r.duty_pay)}</div>
+                            </div>
+                        )}
                         <div className="mt-2 border-t pt-2 font-semibold">Итого: {rub(r.total)}</div>
                     </div>
 

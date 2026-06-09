@@ -44,9 +44,9 @@ export async function GET(req: Request) {
 
         // Структура листа — повторяет дашборд (для сверки с гугл-таблицей)
         const header = [
-            'Менеджер', 'Оклад', 'Премия за заявки', 'К_качества', 'Конв-бонус',
+            'Менеджер', 'Схема', 'Оклад', 'Премия за заявки', 'К_качества', 'Конв-бонус',
             'Скидка-бонус', 'К_команды', 'Дежурства', 'Итого к выплате',
-            'Новых', 'Постоянных', 'Печь/ВТО', 'Конверсия %', 'Скоринг ОКК', 'Скидка %', 'Маржа',
+            'Новых', 'Постоянных', 'Печь/ВТО', 'Конверсия %', 'Скоринг ОКК', 'Скидка %', 'Маржа', 'Состав (блоки)',
         ];
         const aoa: any[][] = [
             [`Расчёт ЗП ОП — ${MONTHS[month - 1]} ${year} (${periodRow.status === 'closed' ? 'закрыт' : 'открыт'})`],
@@ -57,16 +57,21 @@ export async function GET(req: Request) {
         for (const r of rows.sort((a, b) => a.manager_id - b.manager_id)) {
             const b = r.breakdown || {};
             fot += Number(r.total) || 0;
+            const composition = Array.isArray(b.blockContributions)
+                ? b.blockContributions.map((c: any) => `${c.name}: ${c.kind === 'multiplier' ? '×' + c.multiplier : Math.round(c.amount) + ' ₽'}`).join('; ')
+                : '';
             aoa.push([
                 namesById.get(r.manager_id) || `#${r.manager_id}`,
+                b.schemeCode ?? '',
                 Number(r.oklad), Number(r.premia_zayavki), Number(r.k_quality), Number(r.conv_bonus),
                 Number(r.discount_bonus), Number(r.k_team), Number(r.duty_pay), Number(r.total),
                 b.counts?.new ?? 0, b.counts?.permanent ?? 0, b.counts?.pech_vto ?? 0,
                 b.conversionPct ?? 0, b.qualityScore != null ? Math.round(b.qualityScore) : '', b.discountValue ?? '', Number(r.margin_info) || 0,
+                composition,
             ]);
         }
         aoa.push([]);
-        aoa.push(['ФОТ отдела', '', '', '', '', '', '', '', fot]);
+        aoa.push(['ФОТ отдела', '', '', '', '', '', '', '', '', fot]);
 
         const ws = XLSX.utils.aoa_to_sheet(aoa);
         ws['!cols'] = header.map((h, i) => ({ wch: i === 0 ? 22 : 14 }));

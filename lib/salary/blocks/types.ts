@@ -11,7 +11,12 @@ import type { ManagerMetrics } from '@/lib/salary/metrics';
 export type BlockKind = 'base' | 'premia' | 'variable' | 'multiplier' | 'penalty';
 
 // Аддитивный «ящик», в который попадает вклад блока (для kind != 'multiplier').
-export type CompositionGroup = 'base' | 'premia' | 'variable' | 'duty';
+//  base    — оклад (raw, без множителей)
+//  premia  — премия за заявки (множится К_качества, затем К_команды)
+//  variable— конв/скидка и пр. (множится К_команды)
+//  flat    — разовые/SPIFF/план-бонусы (raw, не множатся)
+//  duty    — дежурства (raw)
+export type CompositionGroup = 'base' | 'premia' | 'variable' | 'flat' | 'duty';
 
 // Что множит блок-множитель.
 //  premia          — только премию (К_качества)

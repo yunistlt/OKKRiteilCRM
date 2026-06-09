@@ -36,6 +36,7 @@ export interface CountedOrder extends OrderFinance {
     clientId: number | null;
     type: OrderType;
     enteredAt: string;
+    createdAt: string; // дата обращения (создания заказа) — для блока «продажа в день обращения»
     totalsumm: number; // сумма заказа (raw_payload/orders.totalsumm), для отчёта по менеджеру
 }
 
@@ -45,6 +46,9 @@ export interface ManagerMetrics {
     countsByType: Record<OrderType, number>;
     discountMetricValue: number | null; // значение метрики скидочной дисциплины
     qualityAvgScore: number | null; // AVG(total_score) 0–100, null если нет оценок
+    qualityScriptPct: number | null; // AVG(script_score_pct), null если нет оценок
+    fastContactShare: number | null; // доля заказов «в работе < 1 дня», %, null если нет оценок
+    fieldsFilledShare: number | null; // доля заказов с полученным ТЗ, %, null если нет оценок
     conversion: { numerator: number; denominator: number; pct: number; eligible: boolean };
     dutyShifts: number;
     workedDays: number | null; // отработанные дни (для пропорции оклада); null = полный месяц
@@ -118,12 +122,18 @@ export function buildPeriodMetrics(input: {
     clientDeals: Map<number, number>;
     incomingByManager: Map<number, number>;
     qualityByManager: Map<number, number>;
+    scriptByManager?: Map<number, number>;
+    fastContactByManager?: Map<number, number>;
+    fieldsByManager?: Map<number, number>;
     dutyByManager: Map<number, number>;
     workedDaysByManager?: Map<number, number>;
     config: SalaryConfig;
 }): PeriodMetrics {
     const { year, month, rows, clientDeals, incomingByManager, qualityByManager, dutyByManager, config } = input;
     const workedDaysByManager = input.workedDaysByManager ?? new Map<number, number>();
+    const scriptByManager = input.scriptByManager ?? new Map<number, number>();
+    const fastContactByManager = input.fastContactByManager ?? new Map<number, number>();
+    const fieldsByManager = input.fieldsByManager ?? new Map<number, number>();
 
     const byManager = new Map<number, CountedOrder[]>();
     let teamRevenueNoVat = 0;
@@ -141,6 +151,7 @@ export function buildPeriodMetrics(input: {
             clientId,
             type,
             enteredAt: row.entered_at,
+            createdAt: row.created_at,
             totalsumm: Number(row.totalsumm ?? 0) || 0,
             ...fin,
         };
@@ -199,6 +210,9 @@ export function buildPeriodMetrics(input: {
             countsByType,
             discountMetricValue,
             qualityAvgScore: qualityByManager.get(managerId) ?? null,
+            qualityScriptPct: scriptByManager.get(managerId) ?? null,
+            fastContactShare: fastContactByManager.get(managerId) ?? null,
+            fieldsFilledShare: fieldsByManager.get(managerId) ?? null,
             conversion,
             dutyShifts: dutyByManager.get(managerId) ?? 0,
             workedDays: workedDaysByManager.has(managerId) ? workedDaysByManager.get(managerId)! : null,
@@ -264,23 +278,40 @@ export async function collectPeriodMetrics(
         if (r.manager_id != null) incomingByManager.set(r.manager_id, Number(r.incoming));
     }
 
-    // 4. Качество: AVG(total_score) по менеджеру за период
+    // 4. Качество ОКК по менеджеру за период: AVG(total_score), AVG(script_score_pct),
+    //    доля «в работе < 1 дня», доля с полученным ТЗ.
     const qualityByManager = new Map<number, number>();
+    const scriptByManager = new Map<number, number>();
+    const fastContactByManager = new Map<number, number>();
+    const fieldsByManager = new Map<number, number>();
     const { data: scoreData, error: scoreErr } = await supabase
         .from('okk_order_scores')
-        .select('manager_id,total_score')
+        .select('manager_id,total_score,script_score_pct,lead_in_work_lt_1_day,tz_received')
         .gte('eval_date', start)
         .lt('eval_date', end);
     if (scoreErr) throw scoreErr;
-    const scoreAgg = new Map<number, { sum: number; n: number }>();
-    for (const s of (scoreData as { manager_id: number; total_score: number }[]) ?? []) {
-        if (s.manager_id == null || s.total_score == null) continue;
-        const a = scoreAgg.get(s.manager_id) ?? { sum: 0, n: 0 };
-        a.sum += Number(s.total_score);
-        a.n += 1;
-        scoreAgg.set(s.manager_id, a);
+    type Agg = { sumScore: number; nScore: number; sumScript: number; nScript: number; fast: number; nFast: number; fields: number; nFields: number };
+    const scoreAgg = new Map<number, Agg>();
+    const getAgg = (mid: number) => {
+        const a = scoreAgg.get(mid) ?? { sumScore: 0, nScore: 0, sumScript: 0, nScript: 0, fast: 0, nFast: 0, fields: 0, nFields: 0 };
+        scoreAgg.set(mid, a);
+        return a;
+    };
+    for (const s of (scoreData as any[]) ?? []) {
+        if (s.manager_id == null) continue;
+        const mid = Number(s.manager_id);
+        const a = getAgg(mid);
+        if (s.total_score != null) { a.sumScore += Number(s.total_score); a.nScore += 1; }
+        if (s.script_score_pct != null) { a.sumScript += Number(s.script_score_pct); a.nScript += 1; }
+        if (s.lead_in_work_lt_1_day != null) { a.fast += s.lead_in_work_lt_1_day ? 1 : 0; a.nFast += 1; }
+        if (s.tz_received != null) { a.fields += s.tz_received ? 1 : 0; a.nFields += 1; }
     }
-    for (const [mid, a] of Array.from(scoreAgg)) qualityByManager.set(mid, a.sum / a.n);
+    for (const [mid, a] of Array.from(scoreAgg)) {
+        if (a.nScore > 0) qualityByManager.set(mid, a.sumScore / a.nScore);
+        if (a.nScript > 0) scriptByManager.set(mid, a.sumScript / a.nScript);
+        if (a.nFast > 0) fastContactByManager.set(mid, (a.fast / a.nFast) * 100);
+        if (a.nFields > 0) fieldsByManager.set(mid, (a.fields / a.nFields) * 100);
+    }
 
     // 5. Дежурства и табель (отработанные дни) за период
     const dutyByManager = new Map<number, number>();
@@ -308,6 +339,9 @@ export async function collectPeriodMetrics(
         clientDeals,
         incomingByManager,
         qualityByManager,
+        scriptByManager,
+        fastContactByManager,
+        fieldsByManager,
         dutyByManager,
         workedDaysByManager,
         config,

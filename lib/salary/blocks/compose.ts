@@ -22,6 +22,7 @@ export interface ComposeResult {
     premia: number;
     premiaAfter: number;
     variable: number;
+    flat: number;
     duty: number;
     penalty: number;
     mPremia: number;
@@ -59,6 +60,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
     const base = sumAdditive('base');
     const premia = sumAdditive('premia');
     const variable = sumAdditive('variable');
+    const flat = sumAdditive('flat');
     const duty = sumAdditive('duty');
     const penalty = contributions.filter((c) => c.kind === 'penalty').reduce((s, c) => s + (c.amount || 0), 0);
 
@@ -67,7 +69,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
 
     const premiaAfter = premia * mPremia;
     const variablePart = (premiaAfter + variable) * mTeam;
-    const total = base + variablePart + duty + penalty;
+    const total = base + variablePart + flat + duty + penalty;
 
     return {
         total: round2(total),
@@ -75,6 +77,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
         premia: round2(premia),
         premiaAfter: round2(premiaAfter),
         variable: round2(variable),
+        flat: round2(flat),
         duty: round2(duty),
         penalty: round2(penalty),
         mPremia,
