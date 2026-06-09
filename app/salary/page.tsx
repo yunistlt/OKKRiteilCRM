@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronDown, ChevronRight, CalendarClock, Settings, Download, Lock } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
+import OrderDetailsModal from '@/components/OrderDetailsModal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -33,7 +34,8 @@ export default function SalaryDashboard() {
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
-    const [expanded, setExpanded] = useState<number | null>(null);
+    const [reportManager, setReportManager] = useState<CalcRow | null>(null);
+    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [dutyOpen, setDutyOpen] = useState(false);
     const { toast } = useToast();
 
@@ -179,7 +181,7 @@ export default function SalaryDashboard() {
                         </thead>
                         <tbody>
                             {rows.map((r) => (
-                                <RowGroup key={r.manager_id} r={r} expanded={expanded === r.manager_id} onToggle={() => setExpanded(expanded === r.manager_id ? null : r.manager_id)} />
+                                <RowGroup key={r.manager_id} r={r} onOpen={() => setReportManager(r)} />
                             ))}
                         </tbody>
                         <tfoot className="border-t bg-muted/30 font-semibold">
@@ -193,55 +195,142 @@ export default function SalaryDashboard() {
             )}
 
             {dutyOpen && <DutyModal period={period} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setDutyOpen(false)} />}
+
+            {reportManager && (
+                <ManagerReportModal
+                    r={reportManager}
+                    monthLabel={`${MONTHS[month - 1]} ${year}`}
+                    onClose={() => setReportManager(null)}
+                    onOpenOrder={(id) => setSelectedOrderId(id)}
+                />
+            )}
+
+            {selectedOrderId != null && (
+                <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />
+            )}
         </div>
     );
 }
 
-function RowGroup({ r, expanded, onToggle }: { r: CalcRow; expanded: boolean; onToggle: () => void }) {
-    const b = r.breakdown || {};
+function RowGroup({ r, onOpen }: { r: CalcRow; onOpen: () => void }) {
     return (
-        <>
-            <tr className="cursor-pointer border-t hover:bg-muted/30" onClick={onToggle}>
-                <td className="p-3">{expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}</td>
-                <td className="p-3 font-medium">{r.manager_name}</td>
-                <td className="p-3 text-right">{rub(r.oklad)}</td>
-                <td className="p-3 text-right">{rub(r.premia_zayavki)}</td>
-                <td className="p-3 text-right">×{r.k_quality}</td>
-                <td className="p-3 text-right">{rub(r.conv_bonus)}</td>
-                <td className="p-3 text-right">{rub(r.discount_bonus)}</td>
-                <td className="p-3 text-right">×{r.k_team}</td>
-                <td className="p-3 text-right">{rub(r.duty_pay)}</td>
-                <td className="p-3 text-right font-semibold">{rub(r.total)}</td>
-            </tr>
-            {expanded && (
-                <tr className="border-t bg-muted/20">
-                    <td></td>
-                    <td colSpan={9} className="p-4">
-                        <div className="grid gap-3 md:grid-cols-3 text-xs">
-                            <div>
-                                <div className="mb-1 font-semibold">Засчитанные заявки</div>
-                                <div>Новых: {b.counts?.new ?? 0} × {rub(b.rates?.new ?? 0)}</div>
-                                <div>Постоянных: {b.counts?.permanent ?? 0} × {rub(b.rates?.permanent ?? 0)}</div>
-                                <div>Печь/ВТО: {b.counts?.pech_vto ?? 0} × {rub(b.rates?.pech_vto ?? 0)}</div>
-                                <div className="mt-1 text-muted-foreground">Заказы: {(b.countedOrderIds ?? []).join(', ') || '—'}</div>
-                            </div>
-                            <div>
-                                <div className="mb-1 font-semibold">Качество и конверсия</div>
-                                <div>Скоринг ОКК (avg): {b.qualityScore != null ? Math.round(b.qualityScore) : '—'} → К_кач ×{r.k_quality}</div>
-                                <div>Конверсия: {b.conversionNumerator}/{b.conversionDenominator} = {b.conversionPct}% {b.conversionEligible ? '' : '(нет допуска)'}</div>
-                                <div>Конв-бонус: {rub(r.conv_bonus)}</div>
-                            </div>
-                            <div>
-                                <div className="mb-1 font-semibold">Скидка и маржа</div>
-                                <div>Метрика «{b.discountMetric}»: {b.discountValue != null ? b.discountValue + '%' : '—'}</div>
-                                <div>Бонус: {b.discountPassed ? rub(r.discount_bonus) : '0 (порог не пройден)'}</div>
-                                <div>Маржа (аналитика): {rub(r.margin_info)}</div>
-                                <div className="mt-1 text-muted-foreground">Оклад: {Math.round((b.okladProration ?? 1) * 100)}% · переменная часть {rub(b.variablePart ?? 0)}</div>
-                            </div>
+        <tr className="cursor-pointer border-t hover:bg-muted/30" onClick={onOpen} title="Открыть подробный отчёт">
+            <td className="p-3 text-muted-foreground"><ChevronRight className="h-4 w-4" /></td>
+            <td className="p-3 font-medium">{r.manager_name}</td>
+            <td className="p-3 text-right">{rub(r.oklad)}</td>
+            <td className="p-3 text-right">{rub(r.premia_zayavki)}</td>
+            <td className="p-3 text-right">×{r.k_quality}</td>
+            <td className="p-3 text-right">{rub(r.conv_bonus)}</td>
+            <td className="p-3 text-right">{rub(r.discount_bonus)}</td>
+            <td className="p-3 text-right">×{r.k_team}</td>
+            <td className="p-3 text-right">{rub(r.duty_pay)}</td>
+            <td className="p-3 text-right font-semibold">{rub(r.total)}</td>
+        </tr>
+    );
+}
+
+// Подробный отчёт по менеджеру в модалке. Номера заказов кликабельны и открывают
+// карточку заказа в ОКК (OrderDetailsModal) — чтобы менеджер и РОП могли проверить
+// каждую засчитанную заявку, на которой построен расчёт ЗП.
+function ManagerReportModal({
+    r,
+    monthLabel,
+    onClose,
+    onOpenOrder,
+}: {
+    r: CalcRow;
+    monthLabel: string;
+    onClose: () => void;
+    onOpenOrder: (orderId: number) => void;
+}) {
+    const b = r.breakdown || {};
+    const orderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
+    const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0) + (b.counts?.pech_vto ?? 0);
+
+    return (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                {/* Шапка */}
+                <div className="flex items-center justify-between border-b p-4">
+                    <div>
+                        <div className="text-lg font-semibold text-gray-900">{r.manager_name}</div>
+                        <div className="text-xs text-muted-foreground">Отчёт по зарплате · {monthLabel}</div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="text-right">
+                            <div className="text-xs text-muted-foreground">Итого к выплате</div>
+                            <div className="text-xl font-semibold text-gray-900">{rub(r.total)}</div>
                         </div>
-                    </td>
-                </tr>
-            )}
-        </>
+                        <button onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Закрыть">
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Тело (скролл) */}
+                <div className="space-y-4 overflow-y-auto p-4 text-sm">
+                    {/* Формула расчёта */}
+                    <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+                        <div className="mb-2 font-semibold">Как сложилась сумма</div>
+                        <div className="grid gap-1 md:grid-cols-2">
+                            <div>Оклад ({Math.round((b.okladProration ?? 1) * 100)}%): <b>{rub(r.oklad)}</b></div>
+                            <div>Премия за заявки: {rub(r.premia_zayavki)} × К_кач {r.k_quality}</div>
+                            <div>Конв-бонус: {rub(r.conv_bonus)}</div>
+                            <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
+                            <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
+                            <div>Дежурства: {rub(r.duty_pay)}</div>
+                        </div>
+                        <div className="mt-2 border-t pt-2 font-semibold">Итого: {rub(r.total)}</div>
+                    </div>
+
+                    {/* Три блока детализации */}
+                    <div className="grid gap-3 text-xs md:grid-cols-3">
+                        <div>
+                            <div className="mb-1 font-semibold">Засчитанные заявки</div>
+                            <div>Новых: {b.counts?.new ?? 0} × {rub(b.rates?.new ?? 0)}</div>
+                            <div>Постоянных: {b.counts?.permanent ?? 0} × {rub(b.rates?.permanent ?? 0)}</div>
+                            <div>Печь/ВТО: {b.counts?.pech_vto ?? 0} × {rub(b.rates?.pech_vto ?? 0)}</div>
+                            <div className="mt-1 text-muted-foreground">Всего заказов: {totalCounted}</div>
+                        </div>
+                        <div>
+                            <div className="mb-1 font-semibold">Качество и конверсия</div>
+                            <div>Скоринг ОКК (avg): {b.qualityScore != null ? Math.round(b.qualityScore) : '—'} → К_кач ×{r.k_quality}</div>
+                            <div>Конверсия: {b.conversionNumerator}/{b.conversionDenominator} = {b.conversionPct}% {b.conversionEligible ? '' : '(нет допуска)'}</div>
+                            <div>Конв-бонус: {rub(r.conv_bonus)}</div>
+                        </div>
+                        <div>
+                            <div className="mb-1 font-semibold">Скидка и маржа</div>
+                            <div>Метрика «{b.discountMetric}»: {b.discountValue != null ? b.discountValue + '%' : '—'}</div>
+                            <div>Бонус: {b.discountPassed ? rub(r.discount_bonus) : '0 (порог не пройден)'}</div>
+                            <div>Маржа (аналитика): {rub(r.margin_info)}</div>
+                        </div>
+                    </div>
+
+                    {/* Засчитанные заказы — кликабельные номера */}
+                    <div>
+                        <div className="mb-2 font-semibold">Засчитанные заказы ({orderIds.length})</div>
+                        {orderIds.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {orderIds.map((oid) => (
+                                    <button
+                                        key={oid}
+                                        onClick={() => onOpenOrder(oid)}
+                                        className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                                        title="Открыть карточку заказа в ОКК"
+                                    >
+                                        Заказ #{oid}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-xs text-muted-foreground">—</div>
+                        )}
+                        <div className="mt-2 text-[11px] text-muted-foreground">
+                            Нажмите на номер, чтобы открыть карточку заказа в ОКК и проверить данные.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 }

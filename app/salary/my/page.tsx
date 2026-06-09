@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import OrderDetailsModal from '@/components/OrderDetailsModal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -15,6 +16,7 @@ export default function MySalaryPage() {
     const [row, setRow] = useState<any>(null);
     const [status, setStatus] = useState<string>('');
     const [loading, setLoading] = useState(true);
+    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const { toast } = useToast();
 
     const load = useCallback(async () => {
@@ -80,8 +82,33 @@ export default function MySalaryPage() {
                                 </tr>
                             </tbody>
                         </table>
+
+                        {Array.isArray(b.countedOrderIds) && b.countedOrderIds.length > 0 && (
+                            <div className="mt-4 border-t pt-3">
+                                <div className="mb-2 text-sm font-semibold">Засчитанные заказы ({b.countedOrderIds.length})</div>
+                                <div className="flex flex-wrap gap-2">
+                                    {b.countedOrderIds.map((oid: number) => (
+                                        <button
+                                            key={oid}
+                                            onClick={() => setSelectedOrderId(oid)}
+                                            className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
+                                            title="Открыть карточку заказа в ОКК"
+                                        >
+                                            Заказ #{oid}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="mt-2 text-[11px] text-muted-foreground">
+                                    Нажмите на номер, чтобы открыть карточку заказа и проверить данные расчёта.
+                                </div>
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
+            )}
+
+            {selectedOrderId != null && (
+                <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />
             )}
         </div>
     );
