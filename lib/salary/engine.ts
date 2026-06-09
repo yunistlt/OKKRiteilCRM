@@ -1,6 +1,16 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
-import { collectPeriodMetrics, type ManagerMetrics, type PeriodMetrics } from '@/lib/salary/metrics';
+import { collectPeriodMetrics, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
+
+/** Краткая карточка засчитанного заказа для отчёта по менеджеру (номер кликабелен в UI). */
+export interface CountedOrderBrief {
+    id: number;
+    type: OrderType;
+    sum: number; // сумма заказа
+    revenueNoVat: number; // выручка без НДС (идёт в К_команды)
+    discountPct: number; // % скидки по заказу
+    enteredAt: string; // дата передачи в производство
+}
 
 // ============================================================================
 // Движок расчёта ЗП. Берёт сырые метрики + конфиг-тиры, считает по формуле:
@@ -25,6 +35,7 @@ export interface SalaryBreakdown {
     okladProration: number;
     variablePart: number;
     countedOrderIds: number[];
+    countedOrders: CountedOrderBrief[]; // детализация по каждому засчитанному заказу
 }
 
 export interface SalaryResult {
@@ -139,6 +150,14 @@ export function computeManagerSalary(
             okladProration: round2(okladProration),
             variablePart: round2(variablePart),
             countedOrderIds: m.countedOrders.map((o) => o.orderId),
+            countedOrders: m.countedOrders.map((o) => ({
+                id: o.orderId,
+                type: o.type,
+                sum: round2(o.totalsumm),
+                revenueNoVat: round2(o.revenueNoVat),
+                discountPct: round2(o.discountPct),
+                enteredAt: o.enteredAt,
+            })),
         },
     };
 }

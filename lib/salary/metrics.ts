@@ -36,6 +36,7 @@ export interface CountedOrder extends OrderFinance {
     clientId: number | null;
     type: OrderType;
     enteredAt: string;
+    totalsumm: number; // сумма заказа (raw_payload/orders.totalsumm), для отчёта по менеджеру
 }
 
 export interface ManagerMetrics {
@@ -140,6 +141,7 @@ export function buildPeriodMetrics(input: {
             clientId,
             type,
             enteredAt: row.entered_at,
+            totalsumm: Number(row.totalsumm ?? 0) || 0,
             ...fin,
         };
         teamRevenueNoVat += fin.revenueNoVat;

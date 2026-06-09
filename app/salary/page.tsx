@@ -10,6 +10,12 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
+const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь/ВТО' };
+const fmtDate = (s?: string) => {
+    if (!s) return '—';
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU');
+};
 
 interface CalcRow {
     manager_id: number;
@@ -244,7 +250,10 @@ function ManagerReportModal({
     onOpenOrder: (orderId: number) => void;
 }) {
     const b = r.breakdown || {};
+    const details: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
     const orderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
+    // Фолбэк для старых расчётов без детализации: показываем хотя бы номера.
+    const orderRows: any[] = details.length > 0 ? details : orderIds.map((id) => ({ id }));
     const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0) + (b.counts?.pech_vto ?? 0);
 
     return (
@@ -306,27 +315,47 @@ function ManagerReportModal({
                         </div>
                     </div>
 
-                    {/* Засчитанные заказы — кликабельные номера */}
+                    {/* Засчитанные заказы — кликабельные номера + детали */}
                     <div>
-                        <div className="mb-2 font-semibold">Засчитанные заказы ({orderIds.length})</div>
-                        {orderIds.length > 0 ? (
-                            <div className="flex flex-wrap gap-2">
-                                {orderIds.map((oid) => (
-                                    <button
-                                        key={oid}
-                                        onClick={() => onOpenOrder(oid)}
-                                        className="rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100"
-                                        title="Открыть карточку заказа в ОКК"
-                                    >
-                                        Заказ #{oid}
-                                    </button>
-                                ))}
+                        <div className="mb-2 font-semibold">Засчитанные заказы ({orderRows.length})</div>
+                        {orderRows.length > 0 ? (
+                            <div className="overflow-x-auto rounded-md border">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-muted/40 text-left text-muted-foreground">
+                                        <tr>
+                                            <th className="px-2 py-1.5">№ заказа</th>
+                                            <th className="px-2 py-1.5">Тип</th>
+                                            <th className="px-2 py-1.5 text-right">Сумма</th>
+                                            <th className="px-2 py-1.5 text-right">Скидка</th>
+                                            <th className="px-2 py-1.5">Передан в произв.</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {orderRows.map((o) => (
+                                            <tr key={o.id} className="border-t">
+                                                <td className="px-2 py-1.5">
+                                                    <button
+                                                        onClick={() => onOpenOrder(o.id)}
+                                                        className="font-medium text-blue-700 hover:underline"
+                                                        title="Открыть карточку заказа в ОКК"
+                                                    >
+                                                        Заказ #{o.id}
+                                                    </button>
+                                                </td>
+                                                <td className="px-2 py-1.5">{ORDER_TYPE_LABEL[o.type] ?? '—'}</td>
+                                                <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
+                                                <td className="px-2 py-1.5 text-right">{o.discountPct != null ? o.discountPct + '%' : '—'}</td>
+                                                <td className="px-2 py-1.5">{fmtDate(o.enteredAt)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         ) : (
                             <div className="text-xs text-muted-foreground">—</div>
                         )}
                         <div className="mt-2 text-[11px] text-muted-foreground">
-                            Нажмите на номер, чтобы открыть карточку заказа в ОКК и проверить данные.
+                            Нажмите на номер заказа, чтобы открыть карточку в ОКК и проверить данные.
                         </div>
                     </div>
                 </div>

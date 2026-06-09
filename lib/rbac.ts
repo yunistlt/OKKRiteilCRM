@@ -42,6 +42,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/lead-catcher', label: 'API Ловца Лидов', description: 'Серверные API Ловца Лидов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/okk', label: 'Контроль качества', description: 'Основной экран ОКК и оценки заказов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/api/okk', label: 'API ОКК', description: 'Серверные методы экрана контроля качества.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
+    { prefix: '/api/orders', label: 'API карточки заказа', description: 'Чтение карточки заказа и её анализ (используется в ОКК и отчётах ЗП).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Дашборд юридического модуля и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
