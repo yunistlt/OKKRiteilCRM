@@ -74,47 +74,56 @@ export function SchemesTab() {
 
     return (
         <div className="grid gap-3 md:grid-cols-[220px_1fr]">
-            <div className="space-y-1.5">
-                <div className="text-xs font-semibold">Палитра блоков</div>
-                <div className="text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
-                {catalog.map((b) => (
-                    <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })} title={b.methodology}
-                        className={`border px-2 py-1.5 text-xs ${b.available ? 'cursor-grab bg-white hover:border-primary' : 'cursor-not-allowed bg-muted text-muted-foreground'}`}>
-                        <div className="font-medium leading-tight">{b.name}</div>
-                        <div className="text-[10px] text-muted-foreground">{b.group}{b.available ? '' : ' · нет данных'}</div>
-                    </div>
-                ))}
+            <div>
+                <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
+                <div className="mb-1.5 text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
+                <div className="divide-y border">
+                    {catalog.map((b) => (
+                        <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })} title={b.methodology}
+                            className={`px-2 py-1.5 text-xs ${b.available ? 'cursor-grab bg-white hover:bg-accent' : 'cursor-not-allowed bg-muted text-muted-foreground'}`}>
+                            <div className="font-medium leading-tight">{b.name}</div>
+                            <div className="text-[10px] text-muted-foreground">{b.group}{b.available ? '' : ' · нет данных'}</div>
+                        </div>
+                    ))}
+                </div>
             </div>
             <div className="space-y-3">
                 <div className="flex justify-end"><Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-3.5 w-3.5" /> Новая схема</Button></div>
                 {schemes.map((s, si) => (
-                    <div key={s.code} className="border p-3" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <div key={s.code} className="border" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
+                        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
                             <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} className="h-8 border px-2 text-sm font-semibold" />
                             <span className="text-[10px] text-muted-foreground">{s.code}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
                             <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
                         </div>
-                        {s.blocks.length === 0 && <div className="border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>}
-                        <div className="space-y-1.5">
-                            {s.blocks.map((b, bi) => {
-                                const meta = byCode(b.block_code);
-                                return (
-                                    <div key={b.block_code} draggable onDragStart={(e) => { e.stopPropagation(); setDrag({ schemeIdx: si, blockIdx: bi }); }}
-                                        onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.stopPropagation(); if (drag && drag.schemeIdx === si && drag.blockIdx != null) reorder(si, drag.blockIdx, bi); setDrag(null); }}
-                                        className="border bg-muted/20 p-2">
-                                        <div className="flex items-center gap-2">
-                                            <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground" />
-                                            <span className="text-xs font-medium">{meta?.name ?? b.block_code}</span>
-                                            <button onClick={() => removeBlock(si, bi)} className="ml-auto text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                        {s.blocks.length === 0 ? (
+                            <div className="m-2 border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>
+                        ) : (
+                            <div className="divide-y">
+                                {s.blocks.map((b, bi) => {
+                                    const meta = byCode(b.block_code);
+                                    return (
+                                        <div key={b.block_code} draggable onDragStart={(e) => { e.stopPropagation(); setDrag({ schemeIdx: si, blockIdx: bi }); }}
+                                            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.stopPropagation(); if (drag && drag.schemeIdx === si && drag.blockIdx != null) reorder(si, drag.blockIdx, bi); setDrag(null); }}
+                                            className="px-2 py-2 hover:bg-muted/30">
+                                            <div className="flex items-start gap-2">
+                                                <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-semibold">{meta?.name ?? b.block_code}</span>
+                                                        <button onClick={() => removeBlock(si, bi)} className="ml-auto text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                                                    </div>
+                                                    {meta && <div className="text-[10px] leading-snug text-muted-foreground">{meta.methodology}</div>}
+                                                    <textarea value={b.paramsText} onChange={(e) => setParams(si, bi, e.target.value)} rows={1} className="mt-1 w-full border p-1 font-mono text-[10px]" spellCheck={false} />
+                                                </div>
+                                            </div>
                                         </div>
-                                        {meta && <div className="text-[10px] text-muted-foreground">{meta.methodology}</div>}
-                                        <textarea value={b.paramsText} onChange={(e) => setParams(si, bi, e.target.value)} rows={1} className="mt-1 w-full border p-1 font-mono text-[10px]" spellCheck={false} />
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>

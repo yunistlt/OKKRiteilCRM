@@ -48,7 +48,10 @@ export default function Header() {
         if (pathname.startsWith('/settings/ai')) return 'Настройка Промпта';
         if (pathname.startsWith('/settings')) return 'Настройки';
         if (pathname.startsWith('/admin')) return 'Администрирование';
-        return 'Dashboard';
+        if (pathname.startsWith('/salary/settings')) return 'Настройки мотивации';
+        if (pathname.startsWith('/salary/my')) return 'Моя зарплата';
+        if (pathname.startsWith('/salary')) return 'Зарплата и мотивация';
+        return 'Центр Управления';
     };
 
     useEffect(() => {
@@ -67,29 +70,22 @@ export default function Header() {
     }, [pathname, unreadCount]);
 
     return (
-        <header className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white/80 backdrop-blur-md border-b border-gray-100 sticky top-0 z-50`}>
-            <div className="px-8 flex justify-between items-center h-16">
-                
-                <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-black text-gray-900 tracking-tight">
-                        {getPageTitle()}
-                    </h1>
-                </div>
+        <header className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white border-b border-border sticky top-0 z-50`}>
+            <div className="px-6 flex justify-between items-center h-14">
 
-                <div className="flex items-center gap-6">
-                    {/* Meta Info / Notifications */}
-                    <div className="flex items-center gap-4 pl-6 border-l border-gray-100">
-                        {/* Notifications / Messenger Quick Link */}
-                        <Link href="/messenger" className="relative p-2 text-gray-400 hover:text-blue-600 transition-all hover:scale-110">
-                            <span className="text-xl">💬</span>
-                            {unreadCount > 0 && (
-                                <span className="absolute top-1 right-1 bg-red-500 text-white text-[9px] font-black px-1 rounded-full min-w-[14px] h-3.5 flex items-center justify-center border-2 border-white animate-pulse">
-                                    {unreadCount > 9 ? '9+' : unreadCount}
-                                </span>
-                            )}
-                        </Link>
-                    </div>
-                </div>
+                <h1 className="text-base font-bold uppercase tracking-tight text-foreground">
+                    {getPageTitle()}
+                </h1>
+
+                {/* Быстрая ссылка на мессенджер */}
+                <Link href="/messenger" className="relative flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground">
+                    <span className="text-lg">💬</span>
+                    {unreadCount > 0 && (
+                        <span className="absolute top-0.5 right-0.5 flex h-4 min-w-[16px] items-center justify-center bg-red-600 px-1 text-[9px] font-bold text-white">
+                            {unreadCount > 9 ? '9+' : unreadCount}
+                        </span>
+                    )}
+                </Link>
             </div>
         </header>
     );
