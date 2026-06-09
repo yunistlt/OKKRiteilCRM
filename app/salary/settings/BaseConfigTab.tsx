@@ -71,7 +71,7 @@ export default function BaseConfigTab() {
             <p className="text-xs text-muted-foreground">Базовые параметры для сбора данных (статус закрытия, исключения, НДС) и значения по умолчанию. Меняются с указанной даты.</p>
             <div className="grid gap-2 md:grid-cols-2">
                 {keys.map((key) => (
-                    <div key={key} className="rounded-lg border p-3">
+                    <div key={key} className="border p-3">
                         <div className="mb-2 flex items-baseline gap-2">
                             <span className="text-sm font-semibold">{KEY_LABELS[key] || key}</span>
                             <span className="font-mono text-[10px] text-muted-foreground">{key}</span>
@@ -115,14 +115,14 @@ function KeyEditor({ configKey, value, onChange }: { configKey: string; value: a
             <div className="grid grid-cols-2 gap-2">
                 <div>
                     <label className="text-[11px] text-muted-foreground">Метрика</label>
-                    <select className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs" value={value.metric || ''} onChange={(e) => onChange({ ...value, metric: e.target.value })}>
+                    <select className="h-8 w-full border border-input bg-background px-2 text-xs" value={value.metric || ''} onChange={(e) => onChange({ ...value, metric: e.target.value })}>
                         <option value="avg_order_discount_pct">Средневзв. % скидки</option>
                         <option value="share_orders_no_discount">Доля без скидки, %</option>
                     </select>
                 </div>
                 <div>
                     <label className="text-[11px] text-muted-foreground">Условие</label>
-                    <select className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs" value={value.comparator} onChange={(e) => onChange({ ...value, comparator: e.target.value })}>
+                    <select className="h-8 w-full border border-input bg-background px-2 text-xs" value={value.comparator} onChange={(e) => onChange({ ...value, comparator: e.target.value })}>
                         <option value="lte">≤ порога</option>
                         <option value="gte">≥ порога</option>
                     </select>
@@ -151,7 +151,7 @@ function KeyEditor({ configKey, value, onChange }: { configKey: string; value: a
             </div>
         );
     }
-    return <pre className="rounded bg-muted p-2 text-xs">{JSON.stringify(value, null, 2)}</pre>;
+    return <pre className="bg-muted p-2 text-xs">{JSON.stringify(value, null, 2)}</pre>;
 }
 
 function TierEditor({ rows, valueField, onChange }: { rows: any[]; valueField: 'k' | 'bonus'; onChange: (v: any[]) => void }) {

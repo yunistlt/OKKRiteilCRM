@@ -45,14 +45,14 @@ export default function MySalaryPage() {
     const b = row?.breakdown || {};
 
     return (
-        <div className="mx-auto max-w-2xl space-y-4 p-4">
+        <div className="mx-auto max-w-3xl space-y-3 p-3">
             <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-semibold">Моя зарплата</h1>
                 <div className="ml-auto flex gap-2">
-                    <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
                     </select>
-                    <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
                     </select>
                 </div>
@@ -61,7 +61,7 @@ export default function MySalaryPage() {
             {loading ? (
                 <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : !row ? (
-                <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+                <div className="border border-dashed p-12 text-center text-muted-foreground">
                     За {MONTHS[month - 1]} {year} расчёта пока нет.
                 </div>
             ) : (
@@ -97,7 +97,7 @@ export default function MySalaryPage() {
                             return (
                                 <div className="mt-4 border-t pt-3">
                                     <div className="mb-2 text-sm font-semibold">Засчитанные заказы ({orderRows.length})</div>
-                                    <div className="overflow-x-auto rounded-md border">
+                                    <div className="overflow-x-auto border">
                                         <table className="w-full text-xs">
                                             <thead className="bg-muted/40 text-left text-muted-foreground">
                                                 <tr>

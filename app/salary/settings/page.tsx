@@ -17,7 +17,7 @@ const TABS = [
 export default function SalarySettingsPage() {
     const [tab, setTab] = useState<(typeof TABS)[number][0]>('schemes');
     return (
-        <div className="mx-auto max-w-5xl space-y-3 p-4">
+        <div className="w-full space-y-3 p-3">
             <div className="flex items-center gap-3">
                 <Link href="/salary"><Button variant="outline" size="sm" className="h-8"><ArrowLeft className="mr-1 h-4 w-4" /> К зарплате</Button></Link>
                 <h1 className="text-xl font-semibold">Настройки мотивации</h1>

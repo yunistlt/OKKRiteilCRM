@@ -116,14 +116,14 @@ export default function SalaryDashboard() {
     const rows = data?.rows ?? [];
 
     return (
-        <div className="mx-auto max-w-6xl space-y-4 p-4">
+        <div className="w-full space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold">Зарплата ОП</h1>
                 <div className="ml-auto flex items-center gap-2">
-                    <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
                     </select>
-                    <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
                     </select>
                     <Button variant="outline" size="sm" onClick={() => setDutyOpen(true)}>
@@ -152,7 +152,7 @@ export default function SalaryDashboard() {
 
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <span>Период: {MONTHS[month - 1]} {year}</span>
-                <span className={`rounded px-2 py-0.5 text-xs ${closed ? 'bg-gray-200 text-gray-700' : data?.period?.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                <span className={`px-2 py-0.5 text-xs ${closed ? 'bg-gray-200 text-gray-700' : data?.period?.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                     {closed ? 'закрыт' : data?.period?.status === 'open' ? 'открыт' : 'не рассчитан'}
                 </span>
                 {rows.length > 0 && <span className="ml-auto font-medium text-foreground">ФОТ отдела: {rub(data!.total)}</span>}
@@ -161,7 +161,7 @@ export default function SalaryDashboard() {
             {loading ? (
                 <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : rows.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-12 text-center text-sm text-muted-foreground">
+                <div className="border border-dashed p-12 text-center text-sm text-muted-foreground">
                     {data?.period?.status === 'open'
                         ? 'Период рассчитан, но засчитанных заявок нет — за месяц ни один заказ не дошёл до статуса «Передано в производство» (проверьте, что синхронизация истории RetailCRM актуальна).'
                         : data?.period?.status === 'error'
@@ -169,7 +169,7 @@ export default function SalaryDashboard() {
                             : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
             ) : (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                             <tr>
@@ -257,8 +257,8 @@ function ManagerReportModal({
     const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0) + (b.counts?.pech_vto ?? 0);
 
     return (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm" onClick={onClose}>
-            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden border border-border bg-white" onClick={(e) => e.stopPropagation()}>
                 {/* Шапка */}
                 <div className="flex items-center justify-between border-b p-4">
                     <div>
@@ -270,7 +270,7 @@ function ManagerReportModal({
                             <div className="text-xs text-muted-foreground">Итого к выплате</div>
                             <div className="text-xl font-semibold text-gray-900">{rub(r.total)}</div>
                         </div>
-                        <button onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Закрыть">
+                        <button onClick={onClose} className="p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Закрыть">
                             <X className="h-5 w-5" />
                         </button>
                     </div>
@@ -279,10 +279,10 @@ function ManagerReportModal({
                 {/* Тело (скролл) */}
                 <div className="space-y-4 overflow-y-auto p-4 text-sm">
                     {/* Как сложилась сумма — по блокам назначенной схемы (фолбэк на legacy-поля) */}
-                    <div className="rounded-lg border bg-muted/20 p-3 text-xs">
+                    <div className="border bg-muted/20 p-3 text-xs">
                         <div className="mb-2 flex items-center gap-2 font-semibold">
                             Как сложилась сумма
-                            {b.schemeCode && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">схема: {b.schemeCode}</span>}
+                            {b.schemeCode && <span className="bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">схема: {b.schemeCode}</span>}
                         </div>
                         {Array.isArray(b.blockContributions) && b.blockContributions.length > 0 ? (
                             <div className="space-y-1">
@@ -292,7 +292,7 @@ function ManagerReportModal({
                                             <span className="font-medium">{c.name}</span>
                                             <span className="ml-2 text-muted-foreground">{c.explain}</span>
                                             {c.dataFill && c.dataFill.pct < 1 && (
-                                                <span className="ml-2 rounded bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
+                                                <span className="ml-2 bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
                                             )}
                                         </div>
                                         <div className="whitespace-nowrap font-medium">
@@ -341,7 +341,7 @@ function ManagerReportModal({
                     <div>
                         <div className="mb-2 font-semibold">Засчитанные заказы ({orderRows.length})</div>
                         {orderRows.length > 0 ? (
-                            <div className="overflow-x-auto rounded-md border">
+                            <div className="overflow-x-auto border">
                                 <table className="w-full text-xs">
                                     <thead className="bg-muted/40 text-left text-muted-foreground">
                                         <tr>

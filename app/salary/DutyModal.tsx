@@ -83,20 +83,20 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
     const nameById = (id: number) => managers.find((m) => m.id === id)?.name || `#${id}`;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-            <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-background p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+            <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
                 <div className="mb-4 flex items-center">
                     <h2 className="text-lg font-semibold">Дежурства и табель — {monthLabel}</h2>
                     <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
                 </div>
 
-                <div className="mb-4 grid grid-cols-2 gap-2 rounded-lg border p-3 md:grid-cols-5">
-                    <select value={mgr} onChange={(e) => setMgr(e.target.value === '' ? '' : Number(e.target.value))} className="col-span-2 h-9 rounded-md border border-input bg-background px-2 text-sm md:col-span-1">
+                <div className="mb-4 grid grid-cols-2 gap-2 border p-3 md:grid-cols-5">
+                    <select value={mgr} onChange={(e) => setMgr(e.target.value === '' ? '' : Number(e.target.value))} className="col-span-2 h-9 border border-input bg-background px-2 text-sm md:col-span-1">
                         <option value="">Менеджер…</option>
                         {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9" />
-                    <select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                    <select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 border border-input bg-background px-2 text-sm">
                         <option value="duty">Дежурство</option>
                         <option value="worked_day">Отработанный день</option>
                     </select>

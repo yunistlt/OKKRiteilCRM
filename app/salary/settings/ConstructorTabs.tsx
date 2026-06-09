@@ -79,7 +79,7 @@ export function SchemesTab() {
                 <div className="text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
                 {catalog.map((b) => (
                     <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })} title={b.methodology}
-                        className={`rounded border px-2 py-1.5 text-xs ${b.available ? 'cursor-grab bg-white hover:border-primary' : 'cursor-not-allowed bg-muted text-muted-foreground'}`}>
+                        className={`border px-2 py-1.5 text-xs ${b.available ? 'cursor-grab bg-white hover:border-primary' : 'cursor-not-allowed bg-muted text-muted-foreground'}`}>
                         <div className="font-medium leading-tight">{b.name}</div>
                         <div className="text-[10px] text-muted-foreground">{b.group}{b.available ? '' : ' · нет данных'}</div>
                     </div>
@@ -88,29 +88,29 @@ export function SchemesTab() {
             <div className="space-y-3">
                 <div className="flex justify-end"><Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-3.5 w-3.5" /> Новая схема</Button></div>
                 {schemes.map((s, si) => (
-                    <div key={s.code} className="rounded-lg border p-3" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
+                    <div key={s.code} className="border p-3" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
                         <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} className="h-8 rounded border px-2 text-sm font-semibold" />
+                            <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} className="h-8 border px-2 text-sm font-semibold" />
                             <span className="text-[10px] text-muted-foreground">{s.code}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
-                            <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 rounded border px-2 text-xs" />
+                            <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
                             <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
                         </div>
-                        {s.blocks.length === 0 && <div className="rounded border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>}
+                        {s.blocks.length === 0 && <div className="border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>}
                         <div className="space-y-1.5">
                             {s.blocks.map((b, bi) => {
                                 const meta = byCode(b.block_code);
                                 return (
                                     <div key={b.block_code} draggable onDragStart={(e) => { e.stopPropagation(); setDrag({ schemeIdx: si, blockIdx: bi }); }}
                                         onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.stopPropagation(); if (drag && drag.schemeIdx === si && drag.blockIdx != null) reorder(si, drag.blockIdx, bi); setDrag(null); }}
-                                        className="rounded border bg-muted/20 p-2">
+                                        className="border bg-muted/20 p-2">
                                         <div className="flex items-center gap-2">
                                             <GripVertical className="h-3.5 w-3.5 cursor-grab text-muted-foreground" />
                                             <span className="text-xs font-medium">{meta?.name ?? b.block_code}</span>
                                             <button onClick={() => removeBlock(si, bi)} className="ml-auto text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                                         </div>
                                         {meta && <div className="text-[10px] text-muted-foreground">{meta.methodology}</div>}
-                                        <textarea value={b.paramsText} onChange={(e) => setParams(si, bi, e.target.value)} rows={1} className="mt-1 w-full rounded border p-1 font-mono text-[10px]" spellCheck={false} />
+                                        <textarea value={b.paramsText} onChange={(e) => setParams(si, bi, e.target.value)} rows={1} className="mt-1 w-full border p-1 font-mono text-[10px]" spellCheck={false} />
                                     </div>
                                 );
                             })}
@@ -154,10 +154,10 @@ export function RosterTab() {
         <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs">
                 <span className="text-muted-foreground">Назначения с</span>
-                <input type="date" value={eff} onChange={(e) => setEff(e.target.value)} className="h-8 rounded border px-2" />
+                <input type="date" value={eff} onChange={(e) => setEff(e.target.value)} className="h-8 border px-2" />
                 <span className="text-muted-foreground">Только менеджеры со схемой попадают в расчёт ЗП.</span>
             </div>
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="overflow-x-auto border">
                 <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">ID</th><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Активен</th><th className="px-2 py-1.5">Схема</th></tr></thead>
                     <tbody>
@@ -167,7 +167,7 @@ export function RosterTab() {
                                 <td className="px-2 py-1">{m.name}</td>
                                 <td className="px-2 py-1">{m.active ? '✓' : '—'}</td>
                                 <td className="px-2 py-1">
-                                    <select defaultValue={assignment(m.id)} onChange={(e) => act(m.id, e.target.value)} className="h-8 rounded border px-2 text-sm">
+                                    <select defaultValue={assignment(m.id)} onChange={(e) => act(m.id, e.target.value)} className="h-8 border px-2 text-sm">
                                         <option value="">— не в реестре —</option>
                                         {schemeCodes.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
                                     </select>
@@ -212,24 +212,24 @@ export function PlansTab() {
     return (
         <div className="space-y-2">
             <div className="flex items-center gap-2 text-xs">
-                <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-8 rounded border px-2">{MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}</select>
-                <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8 rounded border px-2">{[year - 1, year, year + 1].map((yy) => <option key={yy} value={yy}>{yy}</option>)}</select>
+                <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-8 border px-2">{MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}</select>
+                <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="h-8 border px-2">{[year - 1, year, year + 1].map((yy) => <option key={yy} value={yy}>{yy}</option>)}</select>
                 <span className="text-muted-foreground">План в выручке без НДС, ₽. Личные и общий независимы.</span>
             </div>
             {loading || !data ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : (
-                <div className="overflow-x-auto rounded-lg border">
+                <div className="overflow-x-auto border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">Кто</th><th className="px-2 py-1.5">План, ₽</th><th className="px-2 py-1.5"></th></tr></thead>
                         <tbody>
                             <tr className="border-t bg-muted/20">
                                 <td className="px-2 py-1 font-semibold">Общий план отдела</td>
-                                <td className="px-2 py-1"><input value={edits['dept'] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, dept: e.target.value }))} className="h-8 w-40 rounded border px-2 text-right" placeholder="—" /></td>
+                                <td className="px-2 py-1"><input value={edits['dept'] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, dept: e.target.value }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
                                 <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(null)}>Сохранить</Button></td>
                             </tr>
                             {(data.managers ?? []).filter((m: any) => m.active).map((m: any) => (
                                 <tr key={m.id} className="border-t">
                                     <td className="px-2 py-1">{m.name} <span className="text-[11px] text-muted-foreground">#{m.id}</span></td>
-                                    <td className="px-2 py-1"><input value={edits[String(m.id)] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, [m.id]: e.target.value }))} className="h-8 w-40 rounded border px-2 text-right" placeholder="—" /></td>
+                                    <td className="px-2 py-1"><input value={edits[String(m.id)] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, [m.id]: e.target.value }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
                                     <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(m.id)}>Сохранить</Button></td>
                                 </tr>
                             ))}

@@ -63,7 +63,7 @@ const InfoField = ({ label, value, required }: InfoFieldProps) => (
             {label}
             {required && <span className="text-red-500">*</span>}
         </div>
-        <div className="px-3 py-2 rounded-lg border text-sm bg-gray-50 border-gray-200 text-gray-900">
+        <div className="px-3 py-2 border text-sm bg-gray-50 border-gray-200 text-gray-900">
             {value ?? <span className="text-gray-400">Не указано</span>}
         </div>
     </div>
@@ -402,10 +402,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         return (
             <div className="space-y-12">
                 <section id="order-common" className="space-y-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
-                            <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+                            <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1">
                                 {orderStatusCode ? statusLabels[orderStatusCode] || orderStatusCode : 'Статус не задан'}
                             </span>
                         </div>
@@ -421,7 +421,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Контроль</h3>
                         <div className="grid md:grid-cols-3 gap-4">
                             <InfoField label="Категория товара" required value={productCategory || '—'} />
@@ -441,7 +441,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-customer" className="space-y-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Клиент</h3>
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
@@ -457,7 +457,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Должность" value={customFields.dolzhnost || payload.position || '—'} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
@@ -474,7 +474,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-list">
-                    <div className="bg-white border border-gray-200 rounded-xl p-0 overflow-hidden shadow-sm">
+                    <div className="bg-white border border-gray-200 p-0 overflow-hidden">
                         <div className="p-6 border-b">
                             <h3 className="text-lg font-semibold text-gray-900">Состав заказа</h3>
                         </div>
@@ -537,9 +537,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-delivery" className="space-y-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <div className="flex items-center gap-3 mb-4">
-                            <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold rounded-full">Склад</span>
+                            <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold">Склад</span>
                             <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
                         </div>
                         <div className="grid md:grid-cols-2 gap-4">
@@ -552,7 +552,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Тип доставки" value={delivery.code || delivery.type || 'Не указан'} />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
@@ -570,37 +570,37 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
 
                     <div className="grid lg:grid-cols-2 gap-6">
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="bg-white border border-gray-200 p-6">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии клиента</h4>
-                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
+                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
                                 {clientComment || 'Комментариев нет.'}
                             </div>
                         </div>
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="bg-white border border-gray-200 p-6">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии оператора</h4>
-                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
+                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
                                 {operatorComment || 'Комментариев нет.'}
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <p className="text-xs uppercase text-gray-400">Коммуникации</p>
                                 <h4 className="text-lg font-semibold text-gray-900">Письма и сообщения</h4>
                             </div>
-                            <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                            <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors">
                                 + Новое письмо
                             </button>
                         </div>
                         {data.emails && data.emails.length > 0 ? (
                             <div className="space-y-3">
                                 {data.emails.map((email) => (
-                                    <div key={email.id || email.date} className="border border-gray-200 rounded-lg p-4 bg-white shadow-sm">
+                                    <div key={email.id || email.date} className="border border-gray-200 p-4 bg-white">
                                         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                                             <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
-                                            <span className="px-2 py-0.5 bg-gray-100 rounded-full uppercase font-semibold">{email.type}</span>
+                                            <span className="px-2 py-0.5 bg-gray-100 uppercase font-semibold">{email.type}</span>
                                         </div>
                                         <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
                                     </div>
@@ -613,7 +613,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-payment" className="space-y-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Оплата</h3>
                         <div className="grid md:grid-cols-3 gap-4">
                             <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
@@ -629,11 +629,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
 
                     {paymentsSummary.length > 0 && (
-                        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                        <div className="bg-white border border-gray-200 p-6">
                             <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Оплаты в CRM</h4>
                             <div className="space-y-3">
                                 {paymentsSummary.map((payment: any) => (
-                                    <div key={payment.id || payment.type} className="border border-gray-100 rounded-lg p-4 flex flex-col gap-1 bg-gray-50">
+                                    <div key={payment.id || payment.type} className="border border-gray-100 p-4 flex flex-col gap-1 bg-gray-50">
                                         <div className="flex items-center justify-between text-sm font-semibold text-gray-900">
                                             <span>{payment.type || 'Оплата'}</span>
                                             <span>{formatCurrency(payment.amount)}</span>
@@ -648,7 +648,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </section>
 
                 <section id="order-custom-fields" className="space-y-6">
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Roistat" value={roistat || '—'} />
@@ -666,9 +666,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                    <div className="bg-white border border-gray-200 p-6">
                         <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
-                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-4 min-h-[120px]">
+                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
                             {operatorComment || 'Комментариев нет.'}
                         </div>
                     </div>
@@ -712,7 +712,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const isInitialLoading = !qualityFetched && (qualityCallsLoading || qualityScoreLoading);
 
         return (
-            <section className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+            <section className="bg-white border border-gray-200 overflow-hidden">
                 <div className="px-6 py-5 border-b bg-white flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                         <p className="text-xs uppercase text-gray-400">ОКК · Контроль качества</p>
@@ -722,7 +722,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <span className="flex items-center gap-2">
                                 Статус:
                                 <span
-                                    className="px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    className="px-2 py-0.5 text-xs font-semibold"
                                     style={{ backgroundColor: qualityScore?.status_color || '#E0E7FF', color: '#111827' }}
                                 >
                                     {qualityScore?.status_label || data.order?.status || '—'}
@@ -735,7 +735,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <button
                             onClick={handleQualityRefresh}
                             disabled={qualityCallsLoading || qualityScoreLoading}
-                            className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            className="px-4 py-2 border border-gray-200 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                         >
                             ↻ Обновить
                         </button>
@@ -748,7 +748,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                 {isInitialLoading ? (
                     <div className="flex items-center justify-center py-16 bg-slate-50">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                        <div className="animate-spin h-12 w-12 border-b-2 border-blue-600"></div>
                     </div>
                 ) : (
                     <div className="flex flex-col min-h-[560px] bg-slate-50/60">
@@ -779,14 +779,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h4>
                                 </div>
                                 {qualityCalls.some((call) => call.is_fallback) && (
-                                    <div className="m-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-xs text-yellow-800">
+                                    <div className="m-3 p-3 bg-yellow-50 border border-yellow-200 text-xs text-yellow-800">
                                         <strong className="block mb-1">Звонки ещё обрабатываются</strong>
                                         Семён подтягивает записи, детальный анализ появится чуть позже.
                                     </div>
                                 )}
                                 {qualityCallsLoading && qualityCalls.length === 0 ? (
                                     <div className="flex-1 flex items-center justify-center py-12">
-                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                        <div className="animate-spin h-6 w-6 border-b-2 border-blue-600"></div>
                                     </div>
                                 ) : qualityCalls.length === 0 ? (
                                     <div className="p-8 text-center text-gray-400 text-xs italic">Звонки не найдены</div>
@@ -801,10 +801,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                         setQualityMobileTab('transcript');
                                                     }
                                                 }}
-                                                className={`w-full text-left p-3 md:p-4 hover:bg-white transition-colors border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 shadow-sm' : 'border-transparent'}`}
+                                                className={`w-full text-left p-3 md:p-4 hover:bg-white transition-colors border-l-4 ${selectedCallIndex === idx ? 'bg-white border-blue-600 ' : 'border-transparent'}`}
                                             >
                                                 <div className="flex justify-between items-start mb-1">
-                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 uppercase ${call.direction === 'outgoing' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
                                                         {call.direction === 'outgoing' ? 'Исходящий' : 'Входящий'}
                                                     </span>
                                                     <span className="text-[10px] text-gray-400 font-mono">{call.duration_sec}s</span>
@@ -814,7 +814,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                     <span className="text-[10px] text-gray-500 font-normal">{new Date(call.started_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
                                                 </div>
                                                 {call.match_explanation?.includes('[Внимание: звонил другой менеджер]') && (
-                                                    <div className="mt-1 text-[9px] font-black text-red-600 bg-red-50 rounded px-1.5 py-0.5 inline-block">⚠️ Другой менеджер</div>
+                                                    <div className="mt-1 text-[9px] font-black text-red-600 bg-red-50 px-1.5 py-0.5 inline-block">⚠️ Другой менеджер</div>
                                                 )}
                                                 {call.transcript && (
                                                     <div className="mt-2 text-[10px] text-blue-500 flex items-center gap-1">
@@ -856,7 +856,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                             href={activeCall.raw_payload?.storage_url || activeCall.recording_url}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="hidden md:flex p-1.5 px-3 text-xs font-bold border border-gray-200 rounded-xl text-gray-500 hover:text-blue-600 hover:border-blue-200"
+                                                            className="hidden md:flex p-1.5 px-3 text-xs font-bold border border-gray-200 text-gray-500 hover:text-blue-600 hover:border-blue-200"
                                                         >
                                                             Скачать
                                                         </a>
@@ -898,14 +898,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                                 const clientLine = line.startsWith('Клиент:');
                                                                 if (managerLine) {
                                                                     return (
-                                                                        <div key={i} className="bg-white rounded-lg border border-blue-100 px-3 py-2">
+                                                                        <div key={i} className="bg-white border border-blue-100 px-3 py-2">
                                                                             <span className="text-blue-700 font-bold">Менеджер:</span> {line.replace('Менеджер:', '').trim()}
                                                                         </div>
                                                                     );
                                                                 }
                                                                 if (clientLine) {
                                                                     return (
-                                                                        <div key={i} className="bg-white rounded-lg border border-orange-100 px-3 py-2">
+                                                                        <div key={i} className="bg-white border border-orange-100 px-3 py-2">
                                                                             <span className="text-orange-600 font-bold">Клиент:</span> {line.replace('Клиент:', '').trim()}
                                                                         </div>
                                                                     );
@@ -922,7 +922,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                                 <button
                                                                     onClick={handleTranscribeCall}
                                                                     disabled={transcribing}
-                                                                    className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 disabled:opacity-50 border border-blue-100"
+                                                                    className="px-4 py-2 bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 disabled:opacity-50 border border-blue-100"
                                                                 >
                                                                     {transcribing ? 'Обработка...' : 'Запустить транскрибацию'}
                                                                 </button>
@@ -948,7 +948,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                             <h6 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 flex items-center gap-1">
                                                                 <span>📋</span> Общее резюме
                                                             </h6>
-                                                            <div className="text-xs text-gray-800 bg-white p-3 rounded-xl border border-gray-100 shadow-sm leading-relaxed">
+                                                            <div className="text-xs text-gray-800 bg-white p-3 border border-gray-100 leading-relaxed">
                                                                 {qualityScore.evaluator_comment}
                                                             </div>
                                                         </div>
@@ -965,7 +965,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                             </h6>
                                                             <div className="space-y-2">
                                                                 {scoreBreakdownEntries.filter(([key]) => isVisibleBreakdownKey(key)).map(([key, info]) => (
-                                                                    <div key={key} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                                                                    <div key={key} className="bg-white p-3 border border-gray-100">
                                                                         <div className="flex items-center gap-1.5 mb-1.5">
                                                                             <span className={info?.result ? 'text-green-500' : 'text-red-500'}>
                                                                                 {info?.result ? '✅' : '❌'}
@@ -1001,8 +1001,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+            <div className="bg-white w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
                 <header className="border-b bg-white px-6 py-5">
                     <div className="flex items-start justify-between gap-6">
                         <div>
@@ -1020,7 +1020,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">Проверка контрагента...</div>
                             ) : counterpartyScore ? (
                                 <div className="mt-2 flex items-center gap-2">
-                                    <span className={`inline-block w-3 h-3 rounded-full ${
+                                    <span className={`inline-block w-3 h-3 ${
                                         counterpartyScore.risk_score === 'red' ? 'bg-red-500' :
                                         counterpartyScore.risk_score === 'yellow' ? 'bg-yellow-400' :
                                         'bg-green-500'
@@ -1037,7 +1037,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <div className="text-right">
                                 <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-0.5">Deal Score</p>
                                 {qualityScoreLoading ? (
-                                    <div className="h-9 w-16 bg-gray-100 animate-pulse rounded ml-auto"></div>
+                                    <div className="h-9 w-16 bg-gray-100 animate-pulse ml-auto"></div>
                                 ) : (
                                     <>
                                         <p className="text-3xl font-black text-blue-600 leading-none">
@@ -1052,23 +1052,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         <div className="flex gap-2 shrink-0">
-                            <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Печать</button>
-                            <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Действия</button>
-                            <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
-                            <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">Файлы</button>
-                            <button className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50">История</button>
-                            <button onClick={onClose} className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-500 hover:bg-gray-50">✕</button>
+                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Печать</button>
+                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Действия</button>
+                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
+                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Файлы</button>
+                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">История</button>
+                            <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-4 text-xs font-semibold">
                         {headerBadges.length > 0 ? (
                             headerBadges.map(badge => (
-                                <span key={badge.label} className={`px-3 py-1 rounded-full ${badge.className}`}>
+                                <span key={badge.label} className={`px-3 py-1 ${badge.className}`}>
                                     {badge.label}
                                 </span>
                             ))
                         ) : (
-                            <span className="px-3 py-1 bg-gray-100 rounded-full text-gray-500">Статусы не найдены</span>
+                            <span className="px-3 py-1 bg-gray-100 text-gray-500">Статусы не найдены</span>
                         )}
                     </div>
                 </header>
@@ -1090,22 +1090,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 <main className="flex-1 overflow-y-auto bg-slate-50 px-6 py-6">
                     {loading ? (
                         <div className="flex justify-center py-20">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+                            <div className="animate-spin h-10 w-10 border-b-2 border-blue-600"></div>
                         </div>
                     ) : error ? (
-                        <div className="p-4 bg-red-50 text-red-600 rounded-lg">Ошибка загрузки: {error}</div>
+                        <div className="p-4 bg-red-50 text-red-600">Ошибка загрузки: {error}</div>
                     ) : (
                         data && (
                             <div className="space-y-8">
                                 {viewTab === 'card' ? (
                                     <>
-                                        <div className="bg-white border border-gray-200 rounded-full px-4 py-2 flex flex-wrap gap-2 text-sm shadow-sm">
+                                        <div className="bg-white border border-gray-200 px-4 py-2 flex flex-wrap gap-2 text-sm">
                                             {sectionNavItems.map((item) => (
                                                 <button
                                                     key={item.id}
                                                     type="button"
                                                     onClick={() => handleSectionNavClick(item.id)}
-                                                    className="px-3 py-1 rounded-full text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                                                    className="px-3 py-1 text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                                                 >
                                                     {item.label}
                                                 </button>
@@ -1123,10 +1123,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                 <footer className="border-t bg-white px-6 py-4 flex items-center justify-between">
                     <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold shadow-sm hover:bg-green-700">Сохранить</button>
-                        <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-200">Сохранить и выйти</button>
+                        <button className="px-4 py-2 bg-green-600 text-white text-sm font-semibold hover:bg-green-700">Сохранить</button>
+                        <button className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200">Сохранить и выйти</button>
                     </div>
-                    <button onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Закрыть</button>
+                    <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Закрыть</button>
                 </footer>
             </div>
         </div>
