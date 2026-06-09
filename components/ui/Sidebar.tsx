@@ -111,9 +111,12 @@ export default function Sidebar() {
         }))
         .filter((group) => group.items.length > 0);
 
+    // Все пути пунктов меню — чтобы подсвечивать только самый специфичный (longest-prefix)
+    const allTargetPaths = groups.flatMap((g) => g.items.map((i) => i.href.split('?')[0]));
+
     const isActive = (href: string) => {
         const [targetPath, targetQuery] = href.split('?');
-        
+
         // Basic path segment matching
         let pathMatches = false;
         if (targetPath === '/') {
@@ -121,8 +124,17 @@ export default function Sidebar() {
         } else {
             pathMatches = pathname === targetPath || pathname.startsWith(targetPath + '/');
         }
-        
+
         if (!pathMatches) return false;
+
+        // Не подсвечивать родителя, если совпал более специфичный пункт
+        // (напр. на /salary/settings активны должны быть только «Настройки мотивации», не «Зарплата ОП»).
+        if (pathname !== targetPath) {
+            const hasMoreSpecific = allTargetPaths.some(
+                (p) => p !== targetPath && p.length > targetPath.length && (pathname === p || pathname.startsWith(p + '/')),
+            );
+            if (hasMoreSpecific) return false;
+        }
 
         // If the item has a query string, it must match exactly
         if (targetQuery) {
