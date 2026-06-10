@@ -35,6 +35,7 @@ export interface CountedOrder extends OrderFinance {
     managerId: number | null;
     clientId: number | null;
     type: OrderType;
+    category: string | null; // категория товара заказа (orders.customFields.typ_castomer), для блоков «по категориям»
     enteredAt: string;
     createdAt: string; // дата обращения (создания заказа) — для блока «продажа в день обращения»
     totalsumm: number; // сумма заказа (raw_payload/orders.totalsumm), для отчёта по менеджеру
@@ -44,6 +45,8 @@ export interface ManagerMetrics {
     managerId: number;
     countedOrders: CountedOrder[];
     countsByType: Record<OrderType, number>;
+    countsByCategory: Record<string, number>; // кол-во засчитанных заявок по категории товара (typ_castomer)
+    revenueByCategory: Record<string, number>; // выручка без НДС по категории товара
     discountMetricValue: number | null; // значение метрики скидочной дисциплины
     qualityAvgScore: number | null; // AVG(total_score) 0–100, null если нет оценок
     qualityScriptPct: number | null; // AVG(script_score_pct), null если нет оценок
@@ -145,11 +148,13 @@ export function buildPeriodMetrics(input: {
         const clientId = row.client_id == null ? null : Number(row.client_id);
         const fin = computeOrderFinance(row.items, config.nds_normalization.rules);
         const type = classifyOrderType(row.typ_castomer, clientId, clientDeals, config);
+        const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
         const order: CountedOrder = {
             orderId: Number(row.order_id),
             managerId,
             clientId,
             type,
+            category,
             enteredAt: row.entered_at,
             createdAt: row.created_at,
             totalsumm: Number(row.totalsumm ?? 0) || 0,
@@ -173,12 +178,18 @@ export function buildPeriodMetrics(input: {
         if (!managerId || managerId <= 0) continue; // отсекаем фантом (заказы без менеджера, manager_id=0/null)
         const orders = byManager.get(managerId) ?? [];
         const countsByType: Record<OrderType, number> = { new: 0, permanent: 0, pech_vto: 0 };
+        const countsByCategory: Record<string, number> = {};
+        const revenueByCategory: Record<string, number> = {};
         let sumDiscount = 0;
         let sumGoods = 0;
         let noDiscountCount = 0;
         let marginTotal = 0;
         for (const o of orders) {
             countsByType[o.type] += 1;
+            if (o.category) {
+                countsByCategory[o.category] = (countsByCategory[o.category] ?? 0) + 1;
+                revenueByCategory[o.category] = (revenueByCategory[o.category] ?? 0) + o.revenueNoVat;
+            }
             sumDiscount += o.discountAmount;
             sumGoods += o.goodsBase;
             marginTotal += o.margin;
@@ -208,6 +219,8 @@ export function buildPeriodMetrics(input: {
             managerId,
             countedOrders: orders,
             countsByType,
+            countsByCategory,
+            revenueByCategory,
             discountMetricValue,
             qualityAvgScore: qualityByManager.get(managerId) ?? null,
             qualityScriptPct: scriptByManager.get(managerId) ?? null,

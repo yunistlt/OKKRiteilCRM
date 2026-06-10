@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Code2 } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Code2, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -31,13 +31,37 @@ function tintFor(code: string) {
 // ── RU-лейблы технических ключей параметров ──
 const PARAM_LABELS: Record<string, string> = {
     oklad: 'Оклад, ₽', prorate: 'Пропорция по отработанным дням',
-    rates: 'Ставки по типам заявок', new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь / ВТО',
+    rates: 'Ставки по типам клиента', new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь / ВТО',
     tiers: 'Пороги', min: 'От', k: 'Коэффициент ×', bonus: 'Бонус, ₽',
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
     rate: 'Ставка за смену, ₽',
+    rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
 };
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
+// Режимы начисления премии за категорию товара (блок premia_categorii).
+const CATEGORY_MODES: Record<string, string> = { sum: 'Сумма, ₽', pct: '% от продажи' };
+
+// Категории товара (typ_castomer) из словаря RetailCRM — для выпадающего списка.
+type CategoryOption = { code: string; name: string };
+const CategoriesContext = createContext<CategoryOption[]>([]);
+
+// ── Всплывающая подсказка с методологией расчёта блока (CSS hover, без зависимостей) ──
+// align управляет горизонтальной привязкой панели, чтобы не обрезалась у краёв.
+function MethodologyTip({ text, align = 'left' }: { text?: string; align?: 'left' | 'right' }) {
+    if (!text) return null;
+    return (
+        <span className="group/tip relative inline-flex shrink-0">
+            <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground hover:text-foreground" aria-label="Методология расчёта" />
+            <span
+                role="tooltip"
+                className={`pointer-events-none absolute top-5 z-50 hidden w-72 border bg-white p-2 text-[11px] font-normal leading-snug text-foreground group-hover/tip:block ${align === 'right' ? 'right-0' : 'left-0'}`}
+            >
+                {text}
+            </span>
+        </span>
+    );
+}
 
 // Короткая сводка параметров для свёрнутого блока.
 function summarize(params: any): string {
@@ -53,10 +77,28 @@ function summarize(params: any): string {
 const inputCls = 'h-7 border px-2 text-xs';
 
 function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean }) {
+    const categories = useContext(CategoriesContext);
     if (pkey === 'comparator' && typeof value === 'string') {
         return (
             <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
                 {Object.entries(COMPARATORS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+        );
+    }
+    if (pkey === 'mode' && typeof value === 'string') {
+        return (
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+                {Object.entries(CATEGORY_MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+        );
+    }
+    if (pkey === 'category') {
+        const known = categories.some((c) => c.code === value);
+        return (
+            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+                <option value="">— выберите категорию —</option>
+                {!known && value ? <option value={String(value)}>{String(value)} (нет в словаре)</option> : null}
+                {categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
             </select>
         );
     }
@@ -74,7 +116,18 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
     // «От» (порог) всегда первой колонкой — читается как «От N → коэффициент/бонус».
     const keys = Array.from(new Set(value.flatMap((r) => Object.keys(r ?? {})))).sort((a, b) => (a === 'min' ? -1 : b === 'min' ? 1 : 0));
     const setCell = (i: number, k: string, v: any) => onChange(value.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
-    const addRow = () => onChange([...value, keys.reduce((a, k) => ({ ...a, [k]: 0 }), {})]);
+    // Новая строка с типобезопасными дефолтами по образцу существующих строк.
+    const addRow = () => {
+        const sample = value[0] ?? {};
+        const blank = keys.reduce((a, k) => {
+            let v: any = 0;
+            if (k === 'mode') v = 'sum';
+            else if (k === 'coef') v = 1;
+            else if (typeof sample[k] === 'string') v = '';
+            return { ...a, [k]: v };
+        }, {} as Record<string, any>);
+        onChange([...value, blank]);
+    };
     const delRow = (i: number) => onChange(value.filter((_, j) => j !== i));
     return (
         <div className="border">
@@ -95,7 +148,7 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
                     ))}
                 </tbody>
             </table>
-            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> Добавить порог</button>
+            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
         </div>
     );
 }
@@ -136,6 +189,7 @@ export function SchemesTab() {
     const { toast } = useToast();
     const [catalog, setCatalog] = useState<Catalog>([]);
     const [schemes, setSchemes] = useState<EditScheme[]>([]);
+    const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [loading, setLoading] = useState(true);
     const [drag, setDrag] = useState<{ fromPalette?: string; schemeIdx?: number; blockIdx?: number } | null>(null);
     const [saving, setSaving] = useState<string | null>(null);
@@ -145,12 +199,14 @@ export function SchemesTab() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [bRes, sRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes')]);
+            const [bRes, sRes, cRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes'), fetch('/api/salary/categories')]);
             const bJson = await bRes.json();
             const sJson = await sRes.json();
+            const cJson = await cRes.json().catch(() => ({ categories: [] }));
             if (bJson.error) throw new Error(bJson.error);
             if (sJson.error) throw new Error(sJson.error);
             setCatalog(bJson.blocks ?? []);
+            setCategories(cJson.categories ?? []);
             setSchemes((sJson.schemes ?? []).map((s: any) => ({
                 code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10),
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
@@ -205,6 +261,7 @@ export function SchemesTab() {
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
     return (
+      <CategoriesContext.Provider value={categories}>
         <div className="grid gap-3 md:grid-cols-[220px_1fr]">
             <div>
                 <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
@@ -213,10 +270,13 @@ export function SchemesTab() {
                     {catalog.map((b) => {
                         const tint = tintFor(b.code);
                         return (
-                            <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })} title={b.methodology}
+                            <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })}
                                 style={b.available ? { backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` } : undefined}
                                 className={`px-2 py-1.5 text-xs ${b.available ? 'cursor-grab hover:brightness-95' : 'cursor-not-allowed border-l-[3px] border-transparent bg-muted text-muted-foreground'}`}>
-                                <div className="font-medium leading-tight">{b.name}</div>
+                                <div className="flex items-center gap-1 leading-tight">
+                                    <span className="font-medium">{b.name}</span>
+                                    <MethodologyTip text={b.methodology} />
+                                </div>
                                 <div className="text-[10px] text-muted-foreground">{b.group}{b.available ? '' : ' · нет данных'}</div>
                             </div>
                         );
@@ -252,6 +312,7 @@ export function SchemesTab() {
                                                 <button onClick={() => toggleOpen(key)} className="flex min-w-0 flex-1 items-center gap-1.5 text-left">
                                                     {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                                                     <span className="shrink-0 text-xs font-semibold">{meta?.name ?? b.block_code}</span>
+                                                    <span onClick={(e) => e.stopPropagation()}><MethodologyTip text={meta?.methodology} /></span>
                                                     {!isOpen && <span className="truncate text-[10px] text-muted-foreground">{summarize(b.params)}</span>}
                                                 </button>
                                                 <button onClick={() => toggleRaw(si, bi, b)} title="Сырой JSON" className={`shrink-0 ${b.raw ? 'text-primary' : 'text-muted-foreground'} hover:text-foreground`}><Code2 className="h-3.5 w-3.5" /></button>
@@ -274,6 +335,7 @@ export function SchemesTab() {
                 ))}
             </div>
         </div>
+      </CategoriesContext.Provider>
     );
 }
 

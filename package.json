@@ -7,6 +7,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "retailcrm:sync-dictionaries": "tsx scripts/sync_retailcrm_dictionaries.ts",
     "messenger:api-smoke": "tsx scripts/messenger_api_smoke.ts",
     "legal:consultant-seed-kb": "tsx scripts/seed_legal_consultant_kb.ts",
     "legal:regression": "tsx scripts/legal_regression.ts",

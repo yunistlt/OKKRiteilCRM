@@ -32,23 +32,100 @@ const oklad: BonusBlock<{ oklad: number; prorate?: boolean }> = {
     },
 };
 
-// Премия за заявку по типу.
-const premiaZayavki: BonusBlock<{ rates: { new: number; permanent: number; pech_vto: number } }> = {
+// Премия за заявку по типу клиента (новый / постоянный). Категории товара — в
+// отдельных блоках premia_categorii / coef_categorii (заявки печь/ВТО и прочих
+// категорий исключаются из new/permanent ещё на этапе classifyOrderType).
+const premiaZayavki: BonusBlock<{ rates: { new: number; permanent: number } }> = {
     code: 'premia_zayavki',
     name: 'Премия за заявки',
-    methodology: 'За каждую засчитанную заявку начисляется ставка по её типу (новый / постоянный / печь-ВТО). Премия = Σ количество × ставка.',
+    methodology: 'За каждую засчитанную заявку начисляется ставка по типу клиента (новый / постоянный). Премия = Σ количество × ставка. Категории товара (печь/ВТО и др.) — в блоке «Премия за категории товаров».',
     kind: 'premia',
     group: 'premia',
     requiredMetrics: ['counted_orders', 'order_type'],
-    paramSchema: z.object({ rates: z.object({ new: z.number().nonnegative(), permanent: z.number().nonnegative(), pech_vto: z.number().nonnegative() }) }),
+    // Zod по умолчанию отбрасывает лишние ключи → старые схемы с rates.pech_vto читаются без ошибки.
+    paramSchema: z.object({ rates: z.object({ new: z.number().nonnegative(), permanent: z.number().nonnegative() }) }),
     compute(m, p) {
         const c = m.countsByType;
-        const amount = c.new * p.rates.new + c.permanent * p.rates.permanent + c.pech_vto * p.rates.pech_vto;
-        const total = c.new + c.permanent + c.pech_vto;
+        const amount = c.new * p.rates.new + c.permanent * p.rates.permanent;
+        const total = c.new + c.permanent;
         return {
             amount: round2(amount),
-            explain: `Новых ${c.new}×${rub(p.rates.new)} + Постоянных ${c.permanent}×${rub(p.rates.permanent)} + Печь/ВТО ${c.pech_vto}×${rub(p.rates.pech_vto)} = ${rub(amount)}`,
+            explain: `Новых ${c.new}×${rub(p.rates.new)} + Постоянных ${c.permanent}×${rub(p.rates.permanent)} = ${rub(amount)}`,
             dataFill: fullFill(total),
+        };
+    },
+};
+
+// Премия за категории товаров (аддитивная): фикс. сумма за заявку или % от выручки.
+// Категория заявки = orders.customFields.typ_castomer (одно значение на заказ).
+// group: 'premia' → как печь/ВТО раньше, умножается на К_качества и К_команды.
+const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct'; value: number }[] }> = {
+    code: 'premia_categorii',
+    name: 'Премия за категории товаров',
+    methodology: 'За заявки заданных категорий товара начисляется доплата: «Сумма» — фикс. ₽ за заявку (Σ кол-во × ставка); «% от продажи» — процент от выручки без НДС по заявкам категории.',
+    kind: 'premia',
+    group: 'premia',
+    requiredMetrics: ['counted_orders', 'category_counts', 'category_revenue'],
+    // category допускает пустую строку — шаблонная строка в конструкторе до выбора категории; в расчёте пропускается.
+    paramSchema: z.object({
+        rows: z.array(z.object({ category: z.string(), mode: z.enum(['sum', 'pct']), value: z.number().nonnegative() })),
+    }),
+    compute(m, p) {
+        let amount = 0;
+        const parts: string[] = [];
+        for (const r of p.rows) {
+            if (r.mode === 'sum') {
+                const cnt = m.countsByCategory[r.category] ?? 0;
+                if (cnt > 0) {
+                    amount += cnt * r.value;
+                    parts.push(`${r.category}: ${cnt}×${rub(r.value)}`);
+                }
+            } else {
+                const rev = m.revenueByCategory[r.category] ?? 0;
+                if (rev > 0) {
+                    const a = (rev * r.value) / 100;
+                    amount += a;
+                    parts.push(`${r.category}: ${round2(r.value)}% от ${rub(rev)} = ${rub(a)}`);
+                }
+            }
+        }
+        return {
+            amount: round2(amount),
+            explain: parts.length ? `${parts.join(' + ')} = ${rub(amount)}` : 'Нет заявок по заданным категориям',
+            dataFill: fullFill(p.rows.length),
+        };
+    },
+};
+
+// Коэффициент за категории товаров (множитель всей переменной части).
+// Если у менеджера есть засчитанные заявки заданной категории — переменная скобка
+// умножается на коэффициент. Несколько категорий перемножаются (как К_команды).
+const coefCategorii: BonusBlock<{ rows: { category: string; coef: number }[] }> = {
+    code: 'coef_categorii',
+    name: 'Коэффициент за категории товаров',
+    methodology: 'Если у менеджера есть засчитанные заявки заданной категории — вся переменная часть умножается на коэффициент. Несколько категорий перемножаются. Нет таких заявок → ×1.',
+    kind: 'multiplier',
+    group: 'variable',
+    multiplierScope: 'variableBracket',
+    requiredMetrics: ['counted_orders', 'category_counts'],
+    paramSchema: z.object({
+        rows: z.array(z.object({ category: z.string(), coef: z.number().nonnegative() })),
+    }),
+    compute(m, p) {
+        let mult = 1;
+        const parts: string[] = [];
+        for (const r of p.rows) {
+            const cnt = m.countsByCategory[r.category] ?? 0;
+            if (cnt > 0) {
+                mult *= r.coef;
+                parts.push(`${r.category} (${cnt} шт.) ×${r.coef}`);
+            }
+        }
+        return {
+            multiplier: mult,
+            amount: 0,
+            explain: parts.length ? parts.join(', ') : 'Нет заявок по заданным категориям → ×1',
+            dataFill: fullFill(p.rows.length),
         };
     },
 };
@@ -150,4 +227,4 @@ const duty: BonusBlock<{ rate: number }> = {
     },
 };
 
-export const CORE_BLOCKS: BonusBlock[] = [oklad, premiaZayavki, kQuality, convBonus, discountBonus, kTeam, duty];
+export const CORE_BLOCKS: BonusBlock[] = [oklad, premiaZayavki, premiaCategorii, coefCategorii, kQuality, convBonus, discountBonus, kTeam, duty];

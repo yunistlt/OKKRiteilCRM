@@ -24,9 +24,12 @@ const CFG = {
     k_team_tiers: [{ min: 20000000, k: 1.3 }, { min: 16000000, k: 1.15 }, { min: 12000000, k: 1.0 }, { min: 0, k: 0.5 }],
 };
 
+// После рефактора печь/ВТО — отдельный блок «Премия за категории» (режим «Сумма»),
+// читающий countsByCategory. Слаг категории печи в тесте — 'pech'.
 const SELLER_BLOCKS: BlockInstance[] = [
     { code: 'oklad', params: { oklad: CFG.oklad } },
-    { code: 'premia_zayavki', params: { rates: CFG.rate_zayavka } },
+    { code: 'premia_zayavki', params: { rates: { new: CFG.rate_zayavka.new, permanent: CFG.rate_zayavka.permanent } } },
+    { code: 'premia_categorii', params: { rows: [{ category: 'pech', mode: 'sum', value: CFG.rate_zayavka.pech_vto }] } },
     { code: 'k_quality', params: { tiers: CFG.k_quality_tiers } },
     { code: 'conv_bonus', params: { tiers: CFG.conv_bonus_tiers, minZayavki: CFG.conv_min_zayavki } },
     { code: 'discount_bonus', params: CFG.discount_bonus },
@@ -34,10 +37,14 @@ const SELLER_BLOCKS: BlockInstance[] = [
     { code: 'duty', params: { rate: CFG.duty_rate } },
 ];
 
-// Прежняя формула — эталон.
+// Прежняя формула — эталон ИТОГА. Печь даёт ту же премию (group premia), что и раньше,
+// поэтому total совпадает; изменилась лишь раскладка по колонкам:
+//   premiaZayavki (legacy) = клиентская премия (new/permanent), без печи.
 function oldFormula(m: ManagerMetrics, businessDays: number, teamRev: number) {
     const r = CFG.rate_zayavka;
-    const premia = m.countsByType.new * r.new + m.countsByType.permanent * r.permanent + m.countsByType.pech_vto * r.pech_vto;
+    const premiaClient = m.countsByType.new * r.new + m.countsByType.permanent * r.permanent;
+    const premiaCategory = m.countsByType.pech_vto * r.pech_vto;
+    const premia = premiaClient + premiaCategory;
     const kQuality = m.qualityAvgScore == null ? 1 : pickTier(m.qualityAvgScore, CFG.k_quality_tiers)?.k ?? 1;
     const convBonus = m.conversion.eligible ? pickTier(m.conversion.pct, CFG.conv_bonus_tiers)?.bonus ?? 0 : 0;
     const dv = m.discountMetricValue;
@@ -48,7 +55,7 @@ function oldFormula(m: ManagerMetrics, businessDays: number, teamRev: number) {
     const dutyPay = m.dutyShifts * CFG.duty_rate;
     const kTeam = pickTier(teamRev, CFG.k_team_tiers)?.k ?? 1;
     const variablePart = (premia * kQuality + convBonus + discountBonus) * kTeam;
-    return { oklad: round2(oklad), premiaZayavki: round2(premia), kQuality, convBonus: round2(convBonus), discountBonus: round2(discountBonus), dutyPay: round2(dutyPay), kTeam, total: round2(oklad + variablePart + dutyPay) };
+    return { oklad: round2(oklad), premiaZayavki: round2(premiaClient), kQuality, convBonus: round2(convBonus), discountBonus: round2(discountBonus), dutyPay: round2(dutyPay), kTeam, total: round2(oklad + variablePart + dutyPay) };
 }
 
 function mkMetrics(p: Partial<ManagerMetrics>): ManagerMetrics {
@@ -56,6 +63,8 @@ function mkMetrics(p: Partial<ManagerMetrics>): ManagerMetrics {
         managerId: 1,
         countedOrders: [],
         countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        countsByCategory: {},
+        revenueByCategory: {},
         discountMetricValue: null,
         qualityAvgScore: null,
         qualityScriptPct: null,
@@ -72,19 +81,19 @@ function mkMetrics(p: Partial<ManagerMetrics>): ManagerMetrics {
 const CASES: { name: string; m: ManagerMetrics; businessDays: number; teamRev: number }[] = [
     {
         name: 'продавец с премией, качеством, конверсией, скидкой',
-        m: mkMetrics({ countsByType: { new: 11, permanent: 1, pech_vto: 2 }, qualityAvgScore: 78, conversion: { numerator: 14, denominator: 30, pct: 46.7, eligible: true }, discountMetricValue: 4.2, dutyShifts: 3 }),
+        m: mkMetrics({ countsByType: { new: 11, permanent: 1, pech_vto: 2 }, countsByCategory: { pech: 2 }, qualityAvgScore: 78, conversion: { numerator: 14, denominator: 30, pct: 46.7, eligible: true }, discountMetricValue: 4.2, dutyShifts: 3 }),
         businessDays: 20,
         teamRev: 8843365,
     },
     {
         name: 'нет оценок ОКК → К_кач 1, нет допуска по конверсии',
-        m: mkMetrics({ countsByType: { new: 4, permanent: 0, pech_vto: 8 }, qualityAvgScore: null, conversion: { numerator: 4, denominator: 8, pct: 50, eligible: false }, discountMetricValue: 10.3 }),
+        m: mkMetrics({ countsByType: { new: 4, permanent: 0, pech_vto: 8 }, countsByCategory: { pech: 8 }, qualityAvgScore: null, conversion: { numerator: 4, denominator: 8, pct: 50, eligible: false }, discountMetricValue: 10.3 }),
         businessDays: 20,
         teamRev: 8843365,
     },
     {
         name: 'оклад с пропорцией по дням + высокая выручка отдела',
-        m: mkMetrics({ countsByType: { new: 7, permanent: 0, pech_vto: 9 }, qualityAvgScore: 92, conversion: { numerator: 16, denominator: 35, pct: 45.7, eligible: true }, discountMetricValue: 4.96, workedDays: 15 }),
+        m: mkMetrics({ countsByType: { new: 7, permanent: 0, pech_vto: 9 }, countsByCategory: { pech: 9 }, qualityAvgScore: 92, conversion: { numerator: 16, denominator: 35, pct: 45.7, eligible: true }, discountMetricValue: 4.96, workedDays: 15 }),
         businessDays: 21,
         teamRev: 17000000,
     },
@@ -112,6 +121,59 @@ describe('блочный движок ≡ прежняя формула (пре�
             expect(got.total).toBe(exp.total);
         });
     }
+
+    const baseCtx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 0, personalPlanTarget: null, departmentPlanTarget: null };
+    const findContrib = (got: ReturnType<typeof computeManagerSalary>, code: string) => got.breakdown.blockContributions!.find((c) => c.code === code);
+
+    it('premia_categorii «Сумма»: Σ кол-во × ставка', () => {
+        const m = mkMetrics({ countsByCategory: { 'mufelnye-pechi': 3 } });
+        const got = computeManagerSalary(m, [{ code: 'premia_categorii', params: { rows: [{ category: 'mufelnye-pechi', mode: 'sum', value: 3000 }] } }], baseCtx, 'test');
+        expect(findContrib(got, 'premia_categorii')!.amount).toBe(9000);
+        expect(got.total).toBe(9000);
+    });
+
+    it('premia_categorii «% от продажи»: % от выручки категории', () => {
+        const m = mkMetrics({ countsByCategory: { lux: 2 }, revenueByCategory: { lux: 200000 } });
+        const got = computeManagerSalary(m, [{ code: 'premia_categorii', params: { rows: [{ category: 'lux', mode: 'pct', value: 5 }] } }], baseCtx, 'test');
+        expect(findContrib(got, 'premia_categorii')!.amount).toBe(10000);
+        expect(got.total).toBe(10000);
+    });
+
+    it('premia_categorii: пустая/незаданная категория не начисляет', () => {
+        const m = mkMetrics({ countsByCategory: { foo: 5 } });
+        const got = computeManagerSalary(m, [{ code: 'premia_categorii', params: { rows: [{ category: '', mode: 'sum', value: 3000 }] } }], baseCtx, 'test');
+        expect(findContrib(got, 'premia_categorii')!.amount).toBe(0);
+        expect(got.total).toBe(0);
+    });
+
+    it('coef_categorii: множитель всей переменной части (есть заявки категории)', () => {
+        const m = mkMetrics({ countsByType: { new: 5, permanent: 0, pech_vto: 0 }, countsByCategory: { vip: 5 } });
+        const blocks: BlockInstance[] = [
+            { code: 'premia_zayavki', params: { rates: { new: 1000, permanent: 0 } } },
+            { code: 'coef_categorii', params: { rows: [{ category: 'vip', coef: 1.5 }] } },
+        ];
+        const got = computeManagerSalary(m, blocks, baseCtx, 'test');
+        // премия 5×1000=5000, ×коэф 1.5 (переменная скобка) = 7500
+        expect(got.total).toBe(7500);
+    });
+
+    it('coef_categorii: нет заявок категории → ×1', () => {
+        const m = mkMetrics({ countsByType: { new: 5, permanent: 0, pech_vto: 0 }, countsByCategory: {} });
+        const blocks: BlockInstance[] = [
+            { code: 'premia_zayavki', params: { rates: { new: 1000, permanent: 0 } } },
+            { code: 'coef_categorii', params: { rows: [{ category: 'vip', coef: 1.5 }] } },
+        ];
+        const got = computeManagerSalary(m, blocks, baseCtx, 'test');
+        expect(got.total).toBe(5000);
+    });
+
+    it('старая схема с rates.pech_vto читается без ошибки (ключ отбрасывается)', () => {
+        const m = mkMetrics({ countsByType: { new: 3, permanent: 0, pech_vto: 4 } });
+        const got = computeManagerSalary(m, [{ code: 'premia_zayavki', params: { rates: { new: 1000, permanent: 0, pech_vto: 3000 } } }], baseCtx, 'test');
+        // premia_zayavki больше НЕ платит печь → только new: 3×1000 = 3000
+        expect(got.premiaZayavki).toBe(3000);
+        expect(got.total).toBe(3000);
+    });
 
     it('оператор: только оклад 15 000, без переменной части', () => {
         const ctx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 8843365, personalPlanTarget: null, departmentPlanTarget: null };
