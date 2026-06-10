@@ -1,6 +1,6 @@
 import postgres from 'postgres';
 import dotenv from 'dotenv';
-import { fetchRetailcrmCatalog, isRetailcrmConfigured } from '@/lib/retailcrm-dictionaries-sync';
+import { fetchRetailcrmCatalog, isRetailcrmConfigured } from '@/lib/retailcrm/dictionaries-sync';
 
 // Полный синк каталога RetailCRM локально (без supabase-service): тянет все
 // справочники и поля через библиотеку, пишет напрямую в БД через postgres-js.
