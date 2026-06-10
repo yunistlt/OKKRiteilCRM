@@ -61,6 +61,7 @@ Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>
 - **Lead Catcher ("Елена")** — `app/api/lead-catcher/*`, `app/lead-catcher`, embeddable widget (`/api/widget`).
 - **Reactivation ("Виктория")** — `lib/reactivation*.ts`, `app/reactivation`, `app/admin/reactivation`.
 - **Corporate Messenger** — `lib/messenger/`, `app/messenger`. Has web-push and a separate release runbook.
+- **Salary ОП ("Зарплата")** — `lib/salary/`, `app/salary`, `app/api/salary/*`. Composable bonus-block engine (per-manager schemes/roles), effective-dated, zero-hardcode. **Read `docs/salary/OVERVIEW.md` (as-built canonical guide) before changing anything.** UI follows `golds/`.
 
 ### Conventions
 - TypeScript strict mode is on (`noUnusedLocals`, `noUnusedParameters`). Import alias `@/*` maps to repo root.
