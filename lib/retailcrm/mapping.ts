@@ -27,14 +27,8 @@ const ORDER_METHODS: Record<string, string> = {
     'sposob-oformleniia-kh-z': 'Способ оформления ХЗ',
 };
 
-const PRODUCT_CATEGORIES: Record<string, string> = {
-    'mufelnye-pechi': 'Муфельные печи',
-    'sush_shso': 'Сушильные шкафы',
-    'sush_shs': 'Сушильные шкафы (ШС)',
-    'sh_pe': 'Шкафы пекарские',
-    'pechi-dlya-piccy': 'Печи для пиццы',
-    'oborudovanie-dlya-obshchepita': 'Оборудование для общепита',
-};
+// Категории товара НЕ хардкодим — берём только из синканутого справочника RetailCRM
+// (retailcrm_dictionaries / kategoriya_klienta), см. resolveRetailCRMLabel ниже (DB-first).
 
 const CLIENT_CATEGORIES: Record<string, string> = {
     'trebuetsya-utochnit': 'Требуется уточнить',
@@ -101,7 +95,6 @@ export async function resolveRetailCRMLabel(
     let mapping: Record<string, string> = {};
     switch (field) {
         case 'orderMethod': mapping = ORDER_METHODS; break;
-        case 'productCategory': mapping = PRODUCT_CATEGORIES; break;
         case 'clientCategory': mapping = CLIENT_CATEGORIES; break;
     }
 

@@ -132,6 +132,6 @@ INSERT INTO public.salary_config (key, value, effective_from, note, created_by) 
     ('closing_status', '{"code":"send-assembling"}'::jsonb, '2026-07-01', 'Статус «Передано в производство» — заказ входит в базу ФОТ', 'system'),
     ('permanent_client_threshold', '2'::jsonb, '2026-07-01', 'Более 2 оплаченных за всё время = постоянный (DECISIONS #14)', 'system'),
     ('source_exclusions', '["avito","call-center","baza"]'::jsonb, '2026-07-01', 'Источники, не считаемые входящими с сайта §5', 'system'),
-    ('category_pech_vto_map', '["mufelnye-pechi","pechi-dlya-piccy","sush_shso","sush_shs","sh_pe","oborudovanie-dlya-obshchepita"]'::jsonb, '2026-07-01', 'Категории каталога → печь/ВТО §5; уточнить состав', 'system'),
+    ('category_pech_vto_map', '["mufelnye-pechi","sush_shso"]'::jsonb, '2026-07-01', 'Категории товара, заменяющие тип клиента (премия по категории). Только реальные коды из справочника RetailCRM kategoriya_klienta; состав настраивается бизнесом.', 'system'),
     ('nds_normalization', '{"rules":[{"vat_pct":0,"divisor":1.0},{"vat_pct":5,"divisor":1.05},{"vat_pct":20,"divisor":1.20}]}'::jsonb, '2026-07-01', 'Приведение к «без НДС»: 5%→/1.05, 20%→/1.20, 0%/none→как есть §5', 'system')
 ON CONFLICT (key, effective_from) DO NOTHING;

@@ -50,12 +50,12 @@ ON CONFLICT (code, effective_from) DO NOTHING;
 INSERT INTO public.salary_scheme_block (scheme_id, block_code, sort_order, params)
 SELECT s.id, v.block_code, v.sort_order, v.params::jsonb
 FROM public.salary_scheme s
--- Печь/ВТО — это категории товара, оплачиваются блоком premia_categorii (режим
--- «Сумма», 3000 ₽), а не типом клиента. Слаги = category_pech_vto_map из конфига.
+-- Премия за категории товара (режим «Сумма»). Категории — только реальные коды из
+-- справочника RetailCRM (kategoriya_klienta); состав настраивается бизнесом в конструкторе.
 JOIN (VALUES
     ('oklad',            1, '{"oklad":35000}'),
     ('premia_zayavki',   2, '{"rates":{"new":2000,"permanent":1000}}'),
-    ('premia_categorii', 3, '{"rows":[{"category":"mufelnye-pechi","mode":"sum","value":3000},{"category":"pechi-dlya-piccy","mode":"sum","value":3000},{"category":"sush_shso","mode":"sum","value":3000},{"category":"sush_shs","mode":"sum","value":3000},{"category":"sh_pe","mode":"sum","value":3000},{"category":"oborudovanie-dlya-obshchepita","mode":"sum","value":3000}]}'),
+    ('premia_categorii', 3, '{"rows":[{"category":"mufelnye-pechi","mode":"sum","value":3000},{"category":"sush_shso","mode":"sum","value":3000}]}'),
     ('k_quality',        4, '{"tiers":[{"min":90,"k":1.2},{"min":75,"k":1.1},{"min":60,"k":1.0},{"min":40,"k":0.9},{"min":0,"k":0.8}]}'),
     ('conv_bonus',       5, '{"tiers":[{"min":45,"bonus":9000},{"min":35,"bonus":6000},{"min":25,"bonus":3000},{"min":0,"bonus":0}],"minZayavki":10}'),
     ('discount_bonus',   6, '{"metric":"avg_order_discount_pct","comparator":"lte","threshold":5,"bonus":5000}'),
