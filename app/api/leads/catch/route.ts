@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { logError } from '@/lib/error-monitor';
 

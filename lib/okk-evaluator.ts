@@ -405,7 +405,7 @@ function getManagerShortName(raw: any): string {
 // Заполняет: Общая информация, Заполнение полей, Оценка разговоров
 // ═══════════════════════════════════════════════════════
 export async function syncOrderFromRetailCRM(orderId: number) {
-    const { fetchRetailCrmOrder, upsertRetailCrmOrders } = await import('./retailcrm-orders');
+    const { fetchRetailCrmOrder, upsertRetailCrmOrders } = await import('./retailcrm/orders');
 
     try {
         const order = await fetchRetailCrmOrder(orderId);

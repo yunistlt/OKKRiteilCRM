@@ -21,7 +21,7 @@ vi.mock('@/utils/supabase', () => ({
     supabase: { from: mockFrom },
 }));
 
-vi.mock('@/lib/retailcrm-leads', () => ({
+vi.mock('@/lib/retailcrm/leads', () => ({
     createLeadInCrm: vi.fn().mockResolvedValue({ id: 999 }),
 }));
 

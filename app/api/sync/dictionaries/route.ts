@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
-import { isRetailcrmConfigured, syncRetailcrmCatalog } from '@/lib/retailcrm-dictionaries-sync';
+import { isRetailcrmConfigured, syncRetailcrmCatalog } from '@/lib/retailcrm/dictionaries-sync';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;

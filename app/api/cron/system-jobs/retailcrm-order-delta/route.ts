@@ -19,8 +19,8 @@ import {
   getRetailCrmOrderVersion,
   isRetailCrmCatchUpMode,
   shouldRunRetailCrmSlowPath,
-} from '@/lib/retailcrm-orders';
-import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
+} from '@/lib/retailcrm/orders';
+import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm/sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 

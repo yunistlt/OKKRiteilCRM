@@ -7,7 +7,7 @@ import {
     getRetailCrmOrderCursor,
     isRetailCrmCatchUpMode,
     upsertRetailCrmOrders,
-} from '@/lib/retailcrm-orders';
+} from '@/lib/retailcrm/orders';
 import { enqueueOrderRefreshJob, isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 

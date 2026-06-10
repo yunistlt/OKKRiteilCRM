@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { analyzeOrderWithAI } from '@/lib/prioritization';
 import { supabase } from '@/utils/supabase';
-import { resolveRetailCRMLabel } from '@/lib/retailcrm-mapping';
+import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
 export const dynamic = 'force-dynamic';
 

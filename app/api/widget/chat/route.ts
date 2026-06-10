@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '@/utils/openai';
-import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/phone-utils';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
