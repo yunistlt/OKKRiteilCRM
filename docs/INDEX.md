@@ -16,7 +16,7 @@
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
 | **Реактивация (Виктория)** | 🟢 Реализована | [docs/reactivation/](reactivation/) | Team Reactivation |
-| **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/OVERVIEW.md](salary/OVERVIEW.md) ← начни отсюда | Team Sales |
+| **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |
 | **Real-time pipeline** | 🟡 В исполнении | [docs/realtime-pipeline/](realtime-pipeline/) | Team Infrastructure |
 | **Транскрибация** | 🟢 ✅ Закрыто | [docs/transcription/](transcription/) | Team Infrastructure |
