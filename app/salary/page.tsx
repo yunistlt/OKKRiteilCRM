@@ -320,7 +320,7 @@ function ManagerReportModal({
                             <div className="mb-1 font-semibold">Засчитанные заявки</div>
                             <div>Новых: {b.counts?.new ?? 0} × {rub(b.rates?.new ?? 0)}</div>
                             <div>Постоянных: {b.counts?.permanent ?? 0} × {rub(b.rates?.permanent ?? 0)}</div>
-                            <div>Печь/ВТО: {b.counts?.pech_vto ?? 0} × {rub(b.rates?.pech_vto ?? 0)}</div>
+                            <div className="text-muted-foreground">Печь/ВТО (категория): {b.counts?.pech_vto ?? 0} шт. — премия в блоке «по категориям»</div>
                             <div className="mt-1 text-muted-foreground">Всего заказов: {totalCounted}</div>
                         </div>
                         <div>

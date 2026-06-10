@@ -77,7 +77,18 @@ export default function MySalaryPage() {
                         <table className="w-full text-sm">
                             <tbody>
                                 <Line label="Оклад" value={rub(row.oklad)} sub={b.okladProration != null && b.okladProration < 1 ? `${Math.round(b.okladProration * 100)}% месяца` : undefined} />
-                                <Line label={`Премия за заявки (${(b.counts?.new ?? 0) + (b.counts?.permanent ?? 0) + (b.counts?.pech_vto ?? 0)} шт.)`} value={rub(row.premia_zayavki)} sub={`× К_качества ${row.k_quality}`} />
+                                <Line label={`Премия за заявки (${(b.counts?.new ?? 0) + (b.counts?.permanent ?? 0)} шт.)`} value={rub(row.premia_zayavki)} sub={`× К_качества ${row.k_quality}`} />
+                                {(() => {
+                                    const contribs: any[] = Array.isArray(b.blockContributions) ? b.blockContributions : [];
+                                    const cat = contribs.find((c) => c.code === 'premia_categorii');
+                                    const coef = contribs.find((c) => c.code === 'coef_categorii');
+                                    return (
+                                        <>
+                                            {cat && cat.amount ? <Line label="Премия за категории товаров" value={rub(cat.amount)} sub={`× К_качества ${row.k_quality}`} /> : null}
+                                            {coef && coef.multiplier != null && coef.multiplier !== 1 ? <Line label="Коэффициент за категории" value={`× ${coef.multiplier}`} sub="множитель переменной части" /> : null}
+                                        </>
+                                    );
+                                })()}
                                 <Line label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`} />
                                 <Line label="Бонус за скидочную дисциплину" value={rub(row.discount_bonus)} sub={b.discountValue != null ? `скидка ${b.discountValue}%` : undefined} />
                                 <Line label="Дежурства" value={rub(row.duty_pay)} />

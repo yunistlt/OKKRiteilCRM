@@ -20,7 +20,9 @@ export function getBlock(code: string): BonusBlock | undefined {
 // Дефолтные параметры для префилла при добавлении блока в схему (UI-конструктор).
 export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     oklad: { oklad: 35000 },
-    premia_zayavki: { rates: { new: 2000, permanent: 1000, pech_vto: 3000 } },
+    premia_zayavki: { rates: { new: 2000, permanent: 1000 } },
+    premia_categorii: { rows: [{ category: '', mode: 'sum', value: 0 }] },
+    coef_categorii: { rows: [{ category: '', coef: 1 }] },
     k_quality: { tiers: [{ min: 90, k: 1.2 }, { min: 75, k: 1.1 }, { min: 60, k: 1.0 }, { min: 40, k: 0.9 }, { min: 0, k: 0.8 }] },
     conv_bonus: { tiers: [{ min: 45, bonus: 9000 }, { min: 35, bonus: 6000 }, { min: 25, bonus: 3000 }, { min: 0, bonus: 0 }], minZayavki: 10 },
     discount_bonus: { metric: 'avg_order_discount_pct', comparator: 'lte', threshold: 5, bonus: 5000 },

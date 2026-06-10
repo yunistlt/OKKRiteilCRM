@@ -85,6 +85,8 @@ function zeroMetrics(managerId: number): ManagerMetrics {
         managerId,
         countedOrders: [],
         countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        countsByCategory: {},
+        revenueByCategory: {},
         discountMetricValue: null,
         qualityAvgScore: null,
         qualityScriptPct: null,
