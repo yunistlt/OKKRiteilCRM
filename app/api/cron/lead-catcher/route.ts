@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { createLeadInCrm } from '@/lib/retailcrm-leads';
+import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import OpenAI from 'openai';
 

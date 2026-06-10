@@ -7,7 +7,7 @@ import {
   getAdaptiveSystemJobRetry,
   isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
-import { refreshRetailCrmOrderContext } from '@/lib/retailcrm-order-context';
+import { refreshRetailCrmOrderContext } from '@/lib/retailcrm/order-context';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';

@@ -8,8 +8,8 @@ import {
   isSystemJobsPipelineRuntimeEnabled,
   safeEnqueueSystemJob,
 } from '@/lib/system-jobs';
-import { fetchRetailCrmHistoryBySinceId } from '@/lib/retailcrm-orders';
-import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm-sync-state';
+import { fetchRetailCrmHistoryBySinceId } from '@/lib/retailcrm/orders';
+import { recordRetailCrmSyncFailure, recordRetailCrmSyncSuccess } from '@/lib/retailcrm/sync-state';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 

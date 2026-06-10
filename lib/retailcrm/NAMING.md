@@ -10,7 +10,7 @@
 | `RETAILCRM_API_KEY` | API-ключ | `RETAILCRM_KEY` |
 | `RETAILCRM_SITE` | код магазина (для site-scoped запросов) | — |
 
-Читаются в `getCrmConfig()` (`lib/retailcrm-leads.ts`). На проде заданы в Vercel;
+Читаются в `getCrmConfig()` (`lib/retailcrm/leads.ts`). На проде заданы в Vercel;
 в локальном `.env.local` отсутствуют.
 
 ## Таблицы БД
@@ -18,7 +18,7 @@
 ### `retailcrm_dictionaries` — значения справочников/перечислений
 `entity_type`, `dictionary_code`, `item_code`, `item_name`, `updated_at`
 — PK `(entity_type, dictionary_code, item_code)`.
-- `entity_type='customField'` — значения пользовательских справочников (конвенция проекта; так читает `lib/retailcrm-mapping.ts`).
+- `entity_type='customField'` — значения пользовательских справочников (конвенция проекта; так читает `lib/retailcrm/mapping.ts`).
 - `entity_type='orderMethod' | 'status'` — системные перечисления (`dictionary_code` = null).
 
 ### `retailcrm_custom_fields` — определения пользовательских полей

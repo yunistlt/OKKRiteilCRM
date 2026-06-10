@@ -55,7 +55,7 @@ pagination: { limit, totalCount, currentPage, totalPageCount }
 Связь: поле заказа со `type=dictionary` имеет `dictionary=<код словаря>`; его значение в заказе
 (`orders.raw_payload.customFields.<code>`) равно `code` одного из `elements` этого словаря.
 
-## Прочие используемые методы (в `lib/retailcrm-orders.ts`)
+## Прочие используемые методы (в `lib/retailcrm/orders.ts`)
 
 - `GET /api/v5/orders` — `filter[createdAtFrom]`, `filter[startDate]`, `filter[sinceId]`, `limit`, `page`. Ответ: `orders[]`, `pagination`.
 - `GET /api/v5/customers` — `filter[name]` (поиск по телефону/имени).

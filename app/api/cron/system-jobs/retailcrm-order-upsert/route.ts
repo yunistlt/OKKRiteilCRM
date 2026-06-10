@@ -11,7 +11,7 @@ import {
   fetchRetailCrmOrder,
   getRetailCrmOrderVersion,
   upsertRetailCrmOrders,
-} from '@/lib/retailcrm-orders';
+} from '@/lib/retailcrm/orders';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 
 export const dynamic = 'force-dynamic';

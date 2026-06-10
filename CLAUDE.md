@@ -55,7 +55,7 @@ Each agent is a specialized module that reads from one table and writes to one t
 Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>` + `docs/<feature>`):
 - **OKK Consultant ("Семён")** — `lib/okk-consultant*.ts`, `lib/okk-evaluator.ts`. Most safety-critical; has a strict quality gate and golden fixtures. Chats are global and isolated from order context.
 - **Rules & quality** — `lib/rule-engine*.ts`, `lib/quality-control.ts`, `lib/violations.ts`, `lib/prioritization.ts`, `lib/semantic.ts`.
-- **RetailCRM sync** — `lib/retailcrm-*.ts`, `lib/sync/`. **API v5 constraint:** `limit` param MUST be exactly `20`, `50`, or `100` — other values give 400. **Единый справочник интеграции (эндпоинты, имена env-ключей/полей/таблиц, коды справочников RetailCRM) — `lib/retailcrm/` (`README.md` / `API.md` / `NAMING.md`); сверяйся с ним, а не ищи заново.**
+- **RetailCRM sync** — `lib/retailcrm/`, `lib/sync/`. **API v5 constraint:** `limit` param MUST be exactly `20`, `50`, or `100` — other values give 400. **Единый справочник интеграции (эндпоинты, имена env-ключей/полей/таблиц, коды справочников RetailCRM) — `lib/retailcrm/` (`README.md` / `API.md` / `NAMING.md`); сверяйся с ним, а не ищи заново.**
 - **Telphin calls & transcription** — `lib/telphin*.ts`, `lib/call-matching.ts`, `lib/transcribe.ts` / `lib/transcription.ts`.
 - **Legal AI** — `lib/legal-*.ts` (consultant, contract analysis, OCR, antivirus, counterparty check).
 - **Lead Catcher ("Елена")** — `app/api/lead-catcher/*`, `app/lead-catcher`, embeddable widget (`/api/widget`).

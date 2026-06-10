@@ -57,7 +57,7 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
     //    GET /api/v5/custom-fields/dictionaries (НЕ /custom-dictionaries).
     const dicts = await fetchAllPages(base, `/api/v5/custom-fields/dictionaries?apiKey=${key}`, 'customDictionaries');
     // entity_type='customField' — конвенция проекта для значений справочников
-    // (см. lib/retailcrm-mapping.ts); upsert ложится поверх ранее синканных строк.
+    // (см. lib/retailcrm/mapping.ts); upsert ложится поверх ранее синканных строк.
     const dictRows: DictRow[] = [];
     for (const d of dicts) {
         for (const el of d.elements ?? []) {

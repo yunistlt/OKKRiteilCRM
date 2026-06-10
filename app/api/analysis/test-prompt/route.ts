@@ -4,7 +4,7 @@ import { analyzeOrderWithAI } from '@/lib/prioritization';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
-import { resolveRetailCRMLabel } from '@/lib/retailcrm-mapping';
+import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
 export const dynamic = 'force-dynamic';
 
