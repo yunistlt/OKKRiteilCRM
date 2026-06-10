@@ -11,7 +11,8 @@ import { supabase } from '@/utils/supabase';
 
 const RETAILCRM_URL = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
 const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY || process.env.RETAILCRM_KEY;
-const ENTITIES = ['order', 'customer', 'customer_corporate'] as const;
+// Все сущности custom-fields в RetailCRM v5 (filter[entity]).
+const ENTITIES = ['order', 'customer', 'customer_corporate', 'company', 'loyalty_account'] as const;
 
 export interface DictRow { entity_type: string; dictionary_code: string; item_code: string; item_name: string }
 export interface FieldRow {
@@ -52,8 +53,9 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
     const base = RETAILCRM_URL!.replace(/\/+$/, '');
     const key = encodeURIComponent(RETAILCRM_KEY!);
 
-    // 1. Все справочники со всеми значениями
-    const dicts = await fetchAllPages(base, `/api/v5/custom-dictionaries?apiKey=${key}`, 'customDictionaries');
+    // 1. Все справочники со всеми значениями. Путь по докам RetailCRM v5:
+    //    GET /api/v5/custom-fields/dictionaries (НЕ /custom-dictionaries).
+    const dicts = await fetchAllPages(base, `/api/v5/custom-fields/dictionaries?apiKey=${key}`, 'customDictionaries');
     // entity_type='customField' — конвенция проекта для значений справочников
     // (см. lib/retailcrm-mapping.ts); upsert ложится поверх ранее синканных строк.
     const dictRows: DictRow[] = [];
