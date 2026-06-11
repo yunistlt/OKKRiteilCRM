@@ -15,8 +15,8 @@ export interface ManagerComp {
 }
 
 /** Карта managerId → назначенная схема с блоками, действующая на дату asOf.
- *  Роль определяется ГРУППАМИ менеджера в RetailCRM через salary_role_map
- *  (см. lib/salary/roles.ts): авто при 1 кандидате, выбор пользователя при 2+. */
+ *  Роль = ГРУППА менеджера в RetailCRM напрямую (код схемы = код группы,
+ *  см. lib/salary/roles.ts): авто при 1 кандидате, выбор пользователя при 2+. */
 export async function resolveManagerComp(asOf: string): Promise<Map<number, ManagerComp>> {
     // 1. Реестр ЗП = отмеченные участники (salary_participant) И имеющие роль из групп RetailCRM
     const { data: partRows, error: partErr } = await supabase.from('salary_participant').select('manager_id');
