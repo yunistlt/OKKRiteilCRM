@@ -68,7 +68,8 @@
 
 ## Печь/ВТО (зарплатный модуль)
 
-`salary_config.category_pech_vto_map` — список `item_code` категорий, считающихся «печь/ВТО»
-(исключаются из new/permanent, оплачиваются блоком `premia_categorii`):
-`mufelnye-pechi`, `pechi-dlya-piccy`, `sush_shso`, `sush_shs`, `sh_pe`, `oborudovanie-dlya-obshchepita`.
+`salary_config.category_pech_vto_map` — список `item_code` категорий, заменяющих тип клиента
+(исключаются из new/permanent, оплачиваются блоком `premia_categorii`). Только **реальные**
+коды из справочника `kategoriya_klienta`; состав настраивается бизнесом. Текущий состав:
+`mufelnye-pechi` (Муфельные печи), `sush_shso` (Сушильные типа ШСО).
 См. также `docs/salary/category-premium-block.md`.

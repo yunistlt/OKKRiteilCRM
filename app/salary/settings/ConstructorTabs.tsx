@@ -34,13 +34,19 @@ const PARAM_LABELS: Record<string, string> = {
     rates: 'Ставки по типам клиента', new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь / ВТО',
     tiers: 'Пороги', min: 'От', k: 'Коэффициент ×', bonus: 'Бонус, ₽',
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
-    rate: 'Ставка за смену, ₽',
+    rate: 'Ставка, ₽',
+    thresholdPct: 'Порог, %', perPercent: 'Ставка за 1% сверх плана, ₽',
     rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
 };
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
 // Режимы начисления премии за категорию товара (блок premia_categorii).
 const CATEGORY_MODES: Record<string, string> = { sum: 'Сумма, ₽', pct: '% от продажи' };
+// Метрики скидочной дисциплины (блок discount_bonus) — человеческие названия кодов.
+const DISCOUNT_METRICS: Record<string, string> = {
+    avg_order_discount_pct: 'Средневзвешенный % скидки',
+    share_orders_no_discount: 'Доля заказов без скидки, %',
+};
 
 // Категории товара (typ_castomer) из словаря RetailCRM — для выпадающего списка.
 type CategoryOption = { code: string; name: string };
@@ -89,6 +95,15 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
         return (
             <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
                 {Object.entries(CATEGORY_MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+        );
+    }
+    if (pkey === 'metric' && typeof value === 'string') {
+        const known = value in DISCOUNT_METRICS;
+        return (
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+                {!known && value ? <option value={value}>{value}</option> : null}
+                {Object.entries(DISCOUNT_METRICS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
     }

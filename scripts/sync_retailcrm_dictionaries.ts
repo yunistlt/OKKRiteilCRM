@@ -20,8 +20,8 @@ async function main() {
     const sql = postgres(dbUrl, { ssl: 'require' });
     try {
         console.log('Тяну каталог RetailCRM…');
-        const { dictionaryCount, dictRows, fieldRows } = await fetchRetailcrmCatalog();
-        console.log(`Получено: справочников=${dictionaryCount}, значений=${dictRows.length}, полей=${fieldRows.length}`);
+        const { dictionaryCount, dictRows, fieldRows, refRows } = await fetchRetailcrmCatalog();
+        console.log(`Получено: справочников=${dictionaryCount}, значений=${dictRows.length}, полей=${fieldRows.length}, reference=${refRows.length}`);
 
         for (const r of dictRows) {
             await sql`
@@ -37,6 +37,18 @@ async function main() {
                 ON CONFLICT (entity, code)
                 DO UPDATE SET name=EXCLUDED.name, type=EXCLUDED.type, dictionary=EXCLUDED.dictionary, ordering=EXCLUDED.ordering,
                               in_filter=EXCLUDED.in_filter, in_list=EXCLUDED.in_list, display_area=EXCLUDED.display_area, raw=EXCLUDED.raw, updated_at=now()`;
+        }
+        // reference-справочники: полная замена по entity_type (dictionary_code = NULL).
+        const refEntities = Array.from(new Set(refRows.map((r) => r.entity_type)));
+        for (const et of refEntities) {
+            await sql.begin(async (tx) => {
+                await tx`DELETE FROM public.retailcrm_dictionaries WHERE entity_type = ${et}`;
+                const rows = refRows.filter((r) => r.entity_type === et);
+                for (const r of rows) {
+                    await tx`INSERT INTO public.retailcrm_dictionaries (entity_type, dictionary_code, item_code, item_name, updated_at)
+                             VALUES (${r.entity_type}, NULL, ${r.item_code}, ${r.item_name}, now())`;
+                }
+            });
         }
         console.log('Синк завершён.');
     } catch (e: any) {
