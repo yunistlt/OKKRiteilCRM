@@ -47,7 +47,7 @@ import {
 } from '@/lib/okk-consultant-ai';
 import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { audiencesForRole, formatProjectKnowledgeContext, searchProjectKnowledge } from '@/lib/project-knowledge';
-import { executeSalaryTool, SALARY_TOOLS, type SalaryToolContext } from '@/lib/salary/consultant-tools';
+import { buildConsultantTools, executeConsultantTool, type ConsultantToolContext } from '@/lib/consultant-tools';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 
@@ -341,10 +341,10 @@ async function buildGlobalKnowledgeAnswer(
     }
 
     const hits = await searchProjectKnowledge(question, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
-    const hasSalaryTools = retailCrmManagerId != null;
+    const hasUserData = retailCrmManagerId != null;
 
-    // Nothing to ground an answer on: no docs and no personal salary tools.
-    if (hits.length === 0 && !hasSalaryTools) {
+    // Nothing to ground an answer on: no docs and no personal data tools.
+    if (hits.length === 0 && !hasUserData) {
         return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
     }
 
@@ -361,40 +361,40 @@ async function buildGlobalKnowledgeAnswer(
         history_context: summarizeHistoryForPrompt(history),
     });
 
+    const now = new Date();
+    const toolCtx: ConsultantToolContext = { retailCrmManagerId, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
+    const tools = buildConsultantTools(toolCtx);
+
     let systemContent = `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`;
-    let toolCtx: SalaryToolContext | null = null;
-    if (hasSalaryTools) {
-        const now = new Date();
-        toolCtx = { retailCrmManagerId, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
-        systemContent += '\n\nУ тебя есть инструменты расчёта зарплаты текущего пользователя (get_my_salary, orders_to_reach). На любые вопросы про числа зарплаты, премию, «сколько заявок до цели» — ВЫЗЫВАЙ инструмент и опирайся только на его результат: не считай в уме и не выдумывай числа. Если инструмент вернул available:false — честно скажи, что данных нет.';
-    }
+    systemContent += '\n\nДля ЛЮБЫХ числовых вопросов (зарплата, рейтинг ОКК, «что если», сравнения сценариев) ВЫЗЫВАЙ инструменты и опирайся только на их результат — не считай в уме и не выдумывай числа. simulate_salary — для зарплатных «что если»; get_my_rating/how_to_improve_my_rating — для рейтинга; calc — для произвольной арифметики. Если инструмент вернул available:false — честно скажи, что данных нет.';
 
     const messages: any[] = [
         { role: 'system', content: systemContent },
         { role: 'user', content: userPrompt },
     ];
     const usedTools: Array<{ name: string }> = [];
+    const maxTokens = Math.max(mainPrompt.maxTokens, 600);
 
-    // Tool-calling loop (bounded). Salary tools are read-only and bound to the session user.
-    for (let iteration = 0; iteration < 4; iteration += 1) {
+    // Tool-calling loop (bounded). Tools are read-only and bound to the session user.
+    for (let iteration = 0; iteration < 5; iteration += 1) {
         const completion = await openai.chat.completions.create({
             model: mainPrompt.model,
             temperature: mainPrompt.temperature,
-            max_tokens: mainPrompt.maxTokens,
+            max_tokens: maxTokens,
             messages,
-            ...(toolCtx ? { tools: SALARY_TOOLS } : {}),
+            tools,
         });
 
         const choice = completion.choices[0]?.message;
         if (!choice) break;
 
-        if (toolCtx && choice.tool_calls?.length) {
+        if (choice.tool_calls?.length) {
             messages.push(choice);
             for (const call of choice.tool_calls) {
                 if (call.type !== 'function') continue;
                 let args: any = {};
                 try { args = JSON.parse(call.function.arguments || '{}'); } catch { args = {}; }
-                const result = await executeSalaryTool(call.function.name, args, toolCtx);
+                const result = await executeConsultantTool(call.function.name, args, toolCtx);
                 usedTools.push({ name: call.function.name });
                 messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
             }
