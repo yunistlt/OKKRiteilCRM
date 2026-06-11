@@ -215,6 +215,7 @@ export function SchemesTab() {
     const { toast } = useToast();
     const [catalog, setCatalog] = useState<Catalog>([]);
     const [schemes, setSchemes] = useState<EditScheme[]>([]);
+    const [archived, setArchived] = useState<{ code: string; name: string; archivedAt: string }[]>([]);
     const [categories, setCategories] = useState<CategoryOption[]>([]);
     const [groups, setGroups] = useState<{ code: string; name: string }[]>([]); // группы RetailCRM (роли)
     const [loading, setLoading] = useState(true);
@@ -236,6 +237,7 @@ export function SchemesTab() {
             setCatalog(bJson.blocks ?? []);
             setCategories(cJson.categories ?? []);
             setGroups(gJson.groups ?? []);
+            setArchived(sJson.archived ?? []);
             setSchemes((sJson.schemes ?? []).map((s: any) => ({
                 code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10),
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
@@ -275,7 +277,33 @@ export function SchemesTab() {
         const grp = groups.find((g) => g.code === code);
         setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), blocks: [] }]);
     };
-    const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code));
+    const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code) && !archived.some((a) => a.code === g.code));
+
+    // Удалить роль целиком. Если по ней уже считалась ЗП — бэкенд заархивирует (с возможностью восстановления).
+    const removeScheme = async (si: number) => {
+        const s = schemes[si];
+        if (!confirm(`Удалить роль «${s.name}»?\n\nЕсли по этой роли уже рассчитывалась зарплата за прошлые месяцы — она будет заархивирована (история сохранится, роль можно восстановить из архива).`)) return;
+        setSaving(s.code);
+        try {
+            const res = await fetch(`/api/salary/schemes?code=${encodeURIComponent(s.code)}`, { method: 'DELETE' });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || 'Ошибка');
+            if (j.action === 'archived') toast({ title: 'Роль заархивирована', description: 'По роли уже считалась зарплата — она перенесена в архив. Восстановить можно ниже.' });
+            else toast({ title: 'Роль удалена', description: j.removedAssignments ? `Снято назначений: ${j.removedAssignments}` : s.name });
+            load();
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSaving(null); }
+    };
+    const restoreSchemeUi = async (code: string, name: string) => {
+        setSaving(code);
+        try {
+            const res = await fetch('/api/salary/schemes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'restore_scheme', schemeCode: code }) });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || 'Ошибка');
+            toast({ title: 'Роль восстановлена', description: name }); load();
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSaving(null); }
+    };
 
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
@@ -322,6 +350,7 @@ export function SchemesTab() {
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
                             <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
+                            <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => removeScheme(si)} disabled={saving === s.code} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
                         </div>
                         {s.blocks.length === 0 ? (
                             <div className="m-2 border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>
@@ -359,6 +388,20 @@ export function SchemesTab() {
                         )}
                     </div>
                 ))}
+                {archived.length > 0 && (
+                    <div className="border border-dashed">
+                        <div className="border-b bg-muted/30 px-2 py-1.5 text-xs font-semibold uppercase tracking-tight text-muted-foreground">Архив ролей</div>
+                        <div className="divide-y">
+                            {archived.map((a) => (
+                                <div key={a.code} className="flex items-center gap-2 px-2 py-1.5">
+                                    <span className="text-sm text-muted-foreground">{a.name}</span>
+                                    <span className="text-[10px] text-muted-foreground">в архиве с {String(a.archivedAt).slice(0, 10)}</span>
+                                    <Button size="sm" variant="outline" className="ml-auto h-7" onClick={() => restoreSchemeUi(a.code, a.name)} disabled={saving === a.code}>{saving === a.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}Восстановить</Button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
       </CategoriesContext.Provider>
