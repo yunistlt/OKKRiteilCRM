@@ -147,6 +147,11 @@ total = base
   из `metrics-catalog`; если данных в каталоге нет — сперва добавить метрику и её сбор в `metrics.ts`),
   зарегистрировать в `registry.ts` (+ `DEFAULT_BLOCK_PARAMS`). Числа — только в params, не в коде.
 - **Новая схема / правка:** UI «Схемы» (или `PUT /api/salary/schemes`). Версия с `effective_from`.
+- **Удалить роль:** кнопка-корзина в шапке роли (или `DELETE /api/salary/schemes?code=…`). Если по роли уже
+  считалась ЗП (есть `salary_calc` с `breakdown->>'schemeCode' = code`) — роль не удаляется, а **архивируется**
+  (`salary_scheme.archived_at`): прячется из активного конструктора, история и пересчёт прошлых периодов
+  сохраняются. Иначе — полное удаление (версии + блоки каскадом + назначения). Восстановление из «Архива ролей»
+  (`POST /api/salary/schemes {action:'restore_scheme', schemeCode}`).
 - **В/из реестра:** UI «Реестр ОП» (или `POST /api/salary/schemes` assign/unassign).
 - **План:** UI «Планы» (или `PUT /api/salary/plans`).
 - **Пересчёт месяца:** кнопка «Пересчитать» (или `POST /api/salary/recalc`). Закрытый период не пересчитывается.

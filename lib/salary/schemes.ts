@@ -86,6 +86,7 @@ export async function listSchemes(asOf: string): Promise<SchemeView[]> {
     const { data: schemeRows, error } = await supabase
         .from('salary_scheme')
         .select('id,code,name,effective_from')
+        .is('archived_at', null)
         .lte('effective_from', asOf)
         .order('effective_from', { ascending: false });
     if (error) throw error;
@@ -146,6 +147,86 @@ export async function saveScheme(params: {
         if (bErr) throw bErr;
     }
     await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'save', actor, old_value: null, new_value: { name, effectiveFrom, blocks } });
+}
+
+/** Архивные роли (схемы) — последняя версия каждого архивированного code. */
+export async function listArchivedSchemes(): Promise<{ code: string; name: string; archivedAt: string }[]> {
+    const { data, error } = await supabase
+        .from('salary_scheme')
+        .select('code,name,effective_from,archived_at')
+        .not('archived_at', 'is', null)
+        .order('effective_from', { ascending: false });
+    if (error) throw error;
+    const latest = new Map<string, { name: string; archivedAt: string }>();
+    for (const s of (data as any[]) ?? []) {
+        if (!latest.has(s.code)) latest.set(s.code, { name: s.name, archivedAt: String(s.archived_at) });
+    }
+    return Array.from(latest).map(([code, v]) => ({ code, name: v.name, archivedAt: v.archivedAt }));
+}
+
+/**
+ * Использовалась ли роль в уже посчитанной зарплате (есть строка salary_calc,
+ * в breakdown которой записан этот schemeCode). Если да — роль нельзя удалять,
+ * только архивировать (чтобы не сломать историю и пересчёт прошлых периодов).
+ */
+export async function isSchemeUsedInCalc(code: string): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('salary_calc')
+        .select('id')
+        .eq('breakdown->>schemeCode', code)
+        .limit(1);
+    if (error) throw error;
+    return (((data as any[]) ?? []).length) > 0;
+}
+
+/** Архивирует роль (все версии code): прячет из активного конструктора, история сохраняется. */
+export async function archiveScheme(params: { code: string; actor: string | null }): Promise<void> {
+    const { code, actor } = params;
+    const { error } = await supabase
+        .from('salary_scheme')
+        .update({ archived_at: new Date().toISOString(), archived_by: actor })
+        .eq('code', code);
+    if (error) throw error;
+    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'archive', actor, old_value: null, new_value: null });
+}
+
+/** Восстанавливает роль из архива (все версии code). */
+export async function restoreScheme(params: { code: string; actor: string | null }): Promise<void> {
+    const { code, actor } = params;
+    const { error } = await supabase
+        .from('salary_scheme')
+        .update({ archived_at: null, archived_by: null })
+        .eq('code', code);
+    if (error) throw error;
+    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'restore', actor, old_value: null, new_value: null });
+}
+
+/**
+ * Удаляет роль ИЛИ архивирует её, если по ней уже считалась зарплата за прошлые
+ * периоды. При полном удалении сносит все версии (`salary_scheme`), блоки
+ * (`salary_scheme_block`, каскад) и назначения (`salary_manager_comp`).
+ * Возвращает что именно произошло и сколько назначений снято (при удалении).
+ */
+export async function deleteOrArchiveScheme(params: { code: string; actor: string | null }): Promise<{ action: 'deleted' | 'archived'; removedAssignments: number }> {
+    const { code, actor } = params;
+    if (await isSchemeUsedInCalc(code)) {
+        await archiveScheme({ code, actor });
+        return { action: 'archived', removedAssignments: 0 };
+    }
+    const { data: assigns } = await supabase.from('salary_manager_comp').select('manager_id').eq('scheme_code', code);
+    const removedAssignments = ((assigns as any[]) ?? []).length;
+    if (removedAssignments) {
+        const { error: aErr } = await supabase.from('salary_manager_comp').delete().eq('scheme_code', code);
+        if (aErr) throw aErr;
+    }
+    // Блоки удалятся каскадом (FK ON DELETE CASCADE), но снимем явно для совместимости.
+    const { data: rows } = await supabase.from('salary_scheme').select('id').eq('code', code);
+    const ids = ((rows as any[]) ?? []).map((r) => Number(r.id));
+    if (ids.length) await supabase.from('salary_scheme_block').delete().in('scheme_id', ids);
+    const { error: sErr } = await supabase.from('salary_scheme').delete().eq('code', code);
+    if (sErr) throw sErr;
+    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'delete', actor, old_value: { removedAssignments }, new_value: null });
+    return { action: 'deleted', removedAssignments };
 }
 
 /** Назначает менеджеру схему с указанной даты (effective-dated). */
