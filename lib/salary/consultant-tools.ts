@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
 
 // Read-only salary tools for the "Семён" consultant (OpenAI function calling).
 // Source of truth: the persisted `salary_calc` row — the SAME data the "Моя зарплата" page
@@ -54,7 +55,35 @@ async function loadManagerSalary(managerId: number, year: number, month: number)
     return (data as SalaryCalcRow) || null;
 }
 
-function buildFacts(row: SalaryCalcRow, year: number, month: number) {
+function buildConvLever(row: SalaryCalcRow, breakdown: any, totalZayavki: number, config: SalaryConfig | null) {
+    if (!config) return null;
+
+    const tiers = [...(config.conv_bonus_tiers || [])]
+        .map((t) => ({ minPct: num(t.min), bonus: num(t.bonus) }))
+        .sort((a, b) => a.minPct - b.minPct);
+    if (!tiers.length) return null;
+
+    const currentPct = num(breakdown.conversionPct);
+    const currentConvBonus = num(row.conv_bonus);
+    const minZayavki = num(config.conv_min_zayavki);
+    const eligibleByVolume = totalZayavki >= minZayavki;
+    // Ближайший порог, который даёт больше текущего бонуса.
+    const nextTier = tiers.find((t) => t.minPct > currentPct && t.bonus > currentConvBonus) || null;
+
+    return {
+        currentConversionPct: currentPct,
+        currentConvBonus: r2(currentConvBonus),
+        minZayavkiForBonus: minZayavki,
+        eligibleByVolume,
+        tiers,
+        nextTier: nextTier
+            ? { minPct: nextTier.minPct, bonus: r2(nextTier.bonus), deltaConversionPct: r2(nextTier.minPct - currentPct), deltaBonus: r2(nextTier.bonus - currentConvBonus) }
+            : null,
+        note: 'Конв-бонус — отдельный рычаг (пороговый, не множится на K_команды). Чтобы его получить, нужно поднять конверсию до порога и закрыть минимум заявок.',
+    };
+}
+
+function buildFacts(row: SalaryCalcRow, year: number, month: number, config: SalaryConfig | null) {
     const breakdown = row.breakdown || {};
     const rates = breakdown.rates || {};
     const counts = breakdown.counts || {};
@@ -62,6 +91,7 @@ function buildFacts(row: SalaryCalcRow, year: number, month: number) {
     const kTeam = mult(row.k_team);
     const rateNew = num(rates.new);
     const rateOld = num(rates.permanent);
+    const totalZayavki = num(counts.new) + num(counts.permanent);
 
     return {
         period: { year, month },
@@ -81,6 +111,9 @@ function buildFacts(row: SalaryCalcRow, year: number, month: number) {
         // Предельная прибавка к итогу за ОДНУ дополнительную заявку данного типа.
         marginalNew: r2(rateNew * kQuality * kTeam),
         marginalOld: r2(rateOld * kQuality * kTeam),
+        // Рычаг конверсии (конв-бонус по порогам) — отдельный способ поднять итог.
+        convLever: buildConvLever(row, breakdown, totalZayavki, config),
+        levers: `Переменная часть умножается на K_качества=${kQuality} и K_команды=${kTeam}. Рост этих коэффициентов и конверсии увеличивает выплату сильнее, чем просто число заявок.`,
         note: 'marginalNew/Old — прибавка к итогу за одну новую/постоянную заявку (ставка×K_качества×K_команды). Конв-бонус и премия за категории считаются отдельно по порогам.',
     };
 }
@@ -96,6 +129,29 @@ function ordersToReach(facts: ReturnType<typeof buildFacts>, target: number) {
     const ordersNewOnly = facts.marginalNew > 0 ? Math.ceil(missing / facts.marginalNew) : null;
     const ordersOldOnly = facts.marginalOld > 0 ? Math.ceil(missing / facts.marginalOld) : null;
 
+    // Смешанные комбинации: любая пара (new, old), где new·marginalNew + old·marginalOld ≥ missing.
+    const combinations: Array<{ new: number; old: number }> = [];
+    if (facts.marginalNew > 0 && facts.marginalOld > 0) {
+        for (const share of [0.25, 0.5, 0.75]) {
+            const fromNew = missing * share;
+            const fromOld = missing - fromNew;
+            combinations.push({ new: Math.ceil(fromNew / facts.marginalNew), old: Math.ceil(fromOld / facts.marginalOld) });
+        }
+    }
+
+    // Подсказка по рычагу конверсии (конв-бонус): на сколько он сокращает разрыв.
+    const lever = facts.convLever;
+    const convOpportunity = lever?.nextTier
+        ? {
+            raiseConversionToPct: lever.nextTier.minPct,
+            addsBonus: lever.nextTier.deltaBonus,
+            requiresMinZayavki: lever.eligibleByVolume ? null : lever.minZayavkiForBonus,
+            hint: lever.eligibleByVolume
+                ? `Подняв конверсию до ${lever.nextTier.minPct}% (сейчас ${facts.conversionPct}%), получишь +${lever.nextTier.deltaBonus} ₽ конв-бонуса — это уменьшит число нужных заявок.`
+                : `Конв-бонус начисляется только при ≥${lever.minZayavkiForBonus} заявках (сейчас меньше). Набрав минимум заявок и подняв конверсию до ${lever.nextTier.minPct}%, получишь +${lever.nextTier.deltaBonus} ₽.`,
+        }
+        : null;
+
     return {
         available: true,
         target: r2(target),
@@ -105,8 +161,11 @@ function ordersToReach(facts: ReturnType<typeof buildFacts>, target: number) {
         marginalOld: facts.marginalOld,
         ordersNewOnly,
         ordersOldOnly,
+        equation: `${facts.marginalNew}·(новые) + ${facts.marginalOld}·(старые) ≥ ${missing}`,
+        combinationsExamples: combinations,
         currentConversionPct: facts.conversionPct,
-        note: 'Линейная оценка по премии за заявку. Дополнительно поднять итог можно ростом конверсии (конв-бонус по порогам) и премией за категории — они здесь не учтены.',
+        convOpportunity,
+        note: 'ordersNewOnly/OldOnly — крайние варианты (только новые / только старые). combinationsExamples — примеры смешанных комбинаций. Конв-бонус и премия за категории — отдельные рычаги.',
     };
 }
 
@@ -157,7 +216,15 @@ export async function executeSalaryTool(name: string, args: any, ctx: SalaryTool
         return { available: false, reason: `Нет сохранённого расчёта зарплаты за ${month}.${year}.`, period: { year, month } };
     }
 
-    const facts = buildFacts(row, year, month);
+    // Конфиг мотивации (пороги конв-бонуса и т.п.). Может бросить при неполном конфиге — тогда без рычага.
+    let config: SalaryConfig | null = null;
+    try {
+        config = await getConfigForPeriod(year, month);
+    } catch {
+        config = null;
+    }
+
+    const facts = buildFacts(row, year, month, config);
 
     if (name === 'get_my_salary') {
         return facts.total != null ? { available: true, ...facts } : { available: false, reason: 'Расчёт пуст.' };
