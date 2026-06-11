@@ -1,9 +1,10 @@
 import { supabase } from '@/utils/supabase';
 
 // ============================================================================
-// Роль (схема ЗП) менеджера = ГРУППЫ пользователя в RetailCRM (managers.raw_data.groups)
-// через маппинг salary_role_map (группа → схема). Закон: роль из СРМ, не вручную.
-//   0 кандидатов → не в реестре; 1 → авто; 2+ → выбор пользователя (из этих ролей).
+// Роль (схема ЗП) менеджера = ГРУППА пользователя в RetailCRM напрямую:
+// код схемы (salary_scheme.code) = код группы RetailCRM (managers.raw_data.groups[].code).
+// Группа считается ролью, только если для неё заведена схема. Закон: роли из СРМ.
+//   0 групп-схем → не в реестре; 1 → авто; 2+ → выбор пользователя (из этих ролей).
 // Выбор для 2+ хранится в salary_manager_comp (используется только при конфликте).
 // ============================================================================
 
@@ -11,24 +12,25 @@ export interface ManagerRole {
     managerId: number;
     name: string;
     active: boolean;
-    groups: { code: string; name: string }[]; // группы из RetailCRM (для отображения)
-    candidates: string[]; // коды схем-кандидатов из групп через маппинг
-    resolved: string | null; // итоговая схема: авто (1 кандидат) или выбор пользователя (2+), иначе null
+    groups: { code: string; name: string }[]; // все группы менеджера из RetailCRM
+    candidates: string[]; // коды схем-кандидатов = группы, для которых заведена схема
+    resolved: string | null; // итог: авто (1) или выбор пользователя (2+), иначе null
     needsChoice: boolean; // 2+ кандидата и валидный выбор ещё не сделан
 }
 
-/** Маппинг код-группы RetailCRM → код схемы ЗП. */
-export async function getRoleMap(): Promise<Map<string, string>> {
-    const { data, error } = await supabase.from('salary_role_map').select('retailcrm_group_code,scheme_code');
+/** Коды схем (ролей), действующих на дату — это и есть допустимые коды групп-ролей. */
+async function getSchemeCodes(asOf: string): Promise<Set<string>> {
+    const { data, error } = await supabase
+        .from('salary_scheme')
+        .select('code,effective_from')
+        .lte('effective_from', asOf);
     if (error) throw error;
-    const m = new Map<string, string>();
-    for (const r of (data as any[]) ?? []) m.set(r.retailcrm_group_code, r.scheme_code);
-    return m;
+    return new Set(((data as any[]) ?? []).map((r) => String(r.code)));
 }
 
-/** Роли всех менеджеров на дату asOf (кандидаты из групп + итоговая схема). */
+/** Роли всех менеджеров на дату asOf (кандидаты = группы, для которых есть схема). */
 export async function resolveManagerRoles(asOf: string): Promise<ManagerRole[]> {
-    const roleMap = await getRoleMap();
+    const schemeCodes = await getSchemeCodes(asOf);
 
     const { data: mgrs, error: mErr } = await supabase
         .from('managers')
@@ -51,9 +53,8 @@ export async function resolveManagerRoles(asOf: string): Promise<ManagerRole[]> 
     for (const m of (mgrs as any[]) ?? []) {
         const rawGroups: any[] = Array.isArray(m.raw_data?.groups) ? m.raw_data.groups : [];
         const groups = rawGroups.map((g) => ({ code: String(g.code), name: g.name ?? String(g.code) }));
-        const candidates = Array.from(
-            new Set(groups.map((g) => roleMap.get(g.code)).filter((x): x is string => !!x)),
-        );
+        // кандидат-роль = группа, для которой заведена схема (код схемы = код группы)
+        const candidates = Array.from(new Set(groups.map((g) => g.code).filter((c) => schemeCodes.has(c))));
         let resolved: string | null = null;
         let needsChoice = false;
         if (candidates.length === 1) {
@@ -90,28 +91,13 @@ export async function setManagerRoleChoice(params: {
     if (error) throw error;
 }
 
-/** Обновляет маппинг группа→схема (полная замена набора строк). */
-export async function saveRoleMap(rows: { groupCode: string; schemeCode: string }[], actor: string | null): Promise<void> {
-    const clean = rows.filter((r) => r.groupCode && r.schemeCode);
-    const { error: delErr } = await supabase.from('salary_role_map').delete().neq('retailcrm_group_code', '');
-    if (delErr) throw delErr;
-    if (clean.length) {
-        const { error } = await supabase
-            .from('salary_role_map')
-            .insert(clean.map((r) => ({ retailcrm_group_code: r.groupCode, scheme_code: r.schemeCode, created_by: actor })));
-        if (error) throw error;
-    }
-}
-
-/** Все группы пользователей RetailCRM (для дропдауна маппинга) — из managers.raw_data.groups. */
+/** Справочник групп пользователей RetailCRM (для выбора роли при создании схемы). */
 export async function listRetailcrmGroups(): Promise<{ code: string; name: string }[]> {
-    const { data, error } = await supabase.from('managers').select('raw_data');
+    const { data, error } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code,item_name')
+        .eq('entity_type', 'userGroup')
+        .order('item_name', { ascending: true });
     if (error) throw error;
-    const map = new Map<string, string>();
-    for (const m of (data as any[]) ?? []) {
-        for (const g of (Array.isArray(m.raw_data?.groups) ? m.raw_data.groups : [])) {
-            if (g?.code) map.set(String(g.code), g.name ?? String(g.code));
-        }
-    }
-    return Array.from(map.entries()).map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    return ((data as any[]) ?? []).map((r) => ({ code: r.item_code, name: r.item_name }));
 }

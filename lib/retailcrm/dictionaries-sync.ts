@@ -120,6 +120,17 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
         }
     }
 
+    // 4. Группы пользователей (роли) — пагинируемый метод; пишем как reference (entity_type=userGroup).
+    try {
+        const groups = await fetchAllPages(base, `/api/v5/user-groups?apiKey=${key}`, 'groups');
+        for (const g of groups as any[]) {
+            if (g?.code == null) continue;
+            refRows.push({ entity_type: 'userGroup', item_code: String(g.code), item_name: g.name ?? String(g.code) });
+        }
+    } catch {
+        // метод недоступен — пропускаем
+    }
+
     return { dictionaryCount: dicts.length, dictRows, fieldRows, refRows };
 }
 

@@ -205,6 +205,7 @@ export function SchemesTab() {
     const [catalog, setCatalog] = useState<Catalog>([]);
     const [schemes, setSchemes] = useState<EditScheme[]>([]);
     const [categories, setCategories] = useState<CategoryOption[]>([]);
+    const [groups, setGroups] = useState<{ code: string; name: string }[]>([]); // группы RetailCRM (роли)
     const [loading, setLoading] = useState(true);
     const [drag, setDrag] = useState<{ fromPalette?: string; schemeIdx?: number; blockIdx?: number } | null>(null);
     const [saving, setSaving] = useState<string | null>(null);
@@ -214,14 +215,16 @@ export function SchemesTab() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [bRes, sRes, cRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes'), fetch('/api/salary/categories')]);
+            const [bRes, sRes, cRes, gRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes'), fetch('/api/salary/categories'), fetch('/api/salary/groups')]);
             const bJson = await bRes.json();
             const sJson = await sRes.json();
             const cJson = await cRes.json().catch(() => ({ categories: [] }));
+            const gJson = await gRes.json().catch(() => ({ groups: [] }));
             if (bJson.error) throw new Error(bJson.error);
             if (sJson.error) throw new Error(sJson.error);
             setCatalog(bJson.blocks ?? []);
             setCategories(cJson.categories ?? []);
+            setGroups(gJson.groups ?? []);
             setSchemes((sJson.schemes ?? []).map((s: any) => ({
                 code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10),
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
@@ -266,12 +269,14 @@ export function SchemesTab() {
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setSaving(null); }
     };
-    const addScheme = () => {
-        const code = prompt('Код новой схемы (латиницей):')?.trim();
+    // Роль = группа RetailCRM. Новую схему создаём выбором группы из справочника (не вручную).
+    const addSchemeFromGroup = (code: string) => {
         if (!code) return;
-        if (schemes.some((s) => s.code === code)) { toast({ title: 'Такая схема уже есть', variant: 'destructive' }); return; }
-        setSchemes((p) => [...p, { code, name: code, effectiveFrom: new Date().toISOString().slice(0, 10), blocks: [] }]);
+        if (schemes.some((s) => s.code === code)) { toast({ title: 'Схема для этой роли уже есть', variant: 'destructive' }); return; }
+        const grp = groups.find((g) => g.code === code);
+        setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), blocks: [] }]);
     };
+    const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code));
 
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
@@ -299,11 +304,22 @@ export function SchemesTab() {
                 </div>
             </div>
             <div className="space-y-3">
-                <div className="flex justify-end"><Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-3.5 w-3.5" /> Новая схема</Button></div>
+                <div className="flex items-center justify-end gap-2">
+                    <span className="text-[11px] text-muted-foreground">Роль (группа RetailCRM):</span>
+                    <select
+                        value=""
+                        onChange={(e) => { addSchemeFromGroup(e.target.value); e.currentTarget.value = ''; }}
+                        className="h-8 border px-2 text-sm"
+                        disabled={availableGroups.length === 0}
+                    >
+                        <option value="">{availableGroups.length ? '+ Добавить роль из справочника…' : 'все роли уже добавлены'}</option>
+                        {availableGroups.map((g) => <option key={g.code} value={g.code}>{g.name}</option>)}
+                    </select>
+                </div>
                 {schemes.map((s, si) => (
                     <div key={s.code} className="border" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
-                            <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} className="h-8 border px-2 text-sm font-semibold" />
+                            <span className="text-sm font-semibold px-1" title="Название роли из RetailCRM">{s.name}</span>
                             <span className="text-[10px] text-muted-foreground">{s.code}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
