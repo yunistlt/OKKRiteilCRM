@@ -140,7 +140,34 @@ export type GlossaryTerm = {
 
 export type ConsultantFormulaKey = 'deal_score_pct' | 'script_score_pct' | 'script_score' | 'total_score';
 
-export type ConsultantSectionKey = 'quality-dashboard' | 'efficiency' | 'ai-tools' | 'rules' | 'audit' | 'system-status';
+export type ConsultantSectionKey =
+    | 'quality-dashboard'
+    | 'efficiency'
+    | 'ai-tools'
+    | 'rules'
+    | 'audit'
+    | 'system-status'
+    | 'salary'
+    | 'messenger'
+    | 'reactivation'
+    | 'lead-catcher'
+    | 'legal'
+    | 'settings';
+
+// Sections that analyze concrete orders / OKK methodology. The "выберите заказ" and
+// "консультант по методологии ОКК" guards only apply here; other sections go to RAG.
+const ORDER_ANALYSIS_SECTION_KEYS: ConsultantSectionKey[] = [
+    'quality-dashboard',
+    'efficiency',
+    'ai-tools',
+    'rules',
+    'audit',
+    'system-status',
+];
+
+export function isOrderAnalysisSection(sectionKey?: string | null): boolean {
+    return ORDER_ANALYSIS_SECTION_KEYS.includes((sectionKey || '') as ConsultantSectionKey);
+}
 
 export type ConsultantReplyKind =
     | 'meta'
@@ -200,6 +227,9 @@ export type ConsultantSectionConfig = {
     topics: ConsultantSectionTopic[];
     entities?: ConsultantSectionEntity[];
     modes?: ConsultantSectionMode[];
+    // Lightweight (docs-RAG-only) sections set this to false so they are NOT materialized
+    // into okk_consultant_knowledge (keeps the OKK seed/catalog drift checks intact).
+    materializeToKb?: boolean;
 };
 
 type PenaltyJournalEntry = {
@@ -1303,6 +1333,78 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
                 ].join('\n'),
             },
         ],
+    },
+    // --- Lightweight sections (docs-RAG-only). No heavy entities/modes/topics; not seeded
+    // into okk_consultant_knowledge (materializeToKb: false). They give the widget a correct
+    // title per page and pass a subsystem hint; substantive answers come from project_knowledge. ---
+    {
+        key: 'salary',
+        title: 'Зарплата ОП',
+        shortTitle: 'Зарплата',
+        aliases: ['зарплата', 'зп', 'оклад', 'премия', 'мотивация', 'выплата', 'бонус', 'дежурство'],
+        summary: 'Раздел зарплаты ОП: как из оклада, премий, бонусов и коэффициентов складывается итоговая выплата менеджера.',
+        overview: {
+            purpose: 'Раздел зарплаты показывает, как формируется выплата менеджера: оклад, переменная часть, коэффициенты и из чего они считаются.',
+            workflowTitle: 'Как с ним обычно работают:',
+            workflow: [
+                'Смотрят месяц и итоговую сумму к выплате с разбивкой по блокам.',
+                'Разбирают, какие заказы и категории засчитаны и как на сумму влияют коэффициенты качества и команды.',
+                'Задают вопрос Семёну, чтобы понять методологию: какие рычаги влияют на заработок и как его увеличить.',
+            ],
+        },
+        pathPrefixes: ['/salary'],
+        topics: [],
+        materializeToKb: false,
+    },
+    {
+        key: 'messenger',
+        title: 'Мессенджер',
+        shortTitle: 'Мессенджер',
+        aliases: ['мессенджер', 'чат', 'переписка', 'сообщения', 'push', 'уведомления'],
+        summary: 'Корпоративный мессенджер: каналы, сообщения, web-push уведомления.',
+        pathPrefixes: ['/messenger'],
+        topics: [],
+        materializeToKb: false,
+    },
+    {
+        key: 'reactivation',
+        title: 'Реактивация',
+        shortTitle: 'Реактивация',
+        aliases: ['реактивация', 'виктория', 'возврат клиентов', 'реанимация', 'пиксель', 'webhook'],
+        summary: 'Реактивация ("Виктория"): возврат «спящих» клиентов через триггеры, пиксель и сценарии.',
+        pathPrefixes: ['/reactivation', '/admin/reactivation'],
+        topics: [],
+        materializeToKb: false,
+    },
+    {
+        key: 'lead-catcher',
+        title: 'Ловец лидов',
+        shortTitle: 'Ловец лидов',
+        aliases: ['ловец лидов', 'елена', 'лиды', 'виджет', 'lead catcher'],
+        summary: 'Ловец лидов ("Елена"): захват заявок и встраиваемый виджет.',
+        pathPrefixes: ['/lead-catcher'],
+        topics: [],
+        materializeToKb: false,
+    },
+    {
+        key: 'legal',
+        title: 'Юридические агенты',
+        shortTitle: 'Юристы',
+        aliases: ['юрист', 'юридический', 'договор', 'контракт', 'контрагент', 'лев', 'дарья', 'борис', 'григорий'],
+        summary: 'Юридические ИИ-агенты: консультации, анализ договоров, проверка контрагентов, OCR и антивирус.',
+        pathPrefixes: ['/legal'],
+        topics: [],
+        materializeToKb: false,
+    },
+    {
+        key: 'settings',
+        title: 'Настройки',
+        shortTitle: 'Настройки',
+        aliases: ['настройки', 'параметры', 'конфигурация', 'роли', 'доступы', 'менеджеры'],
+        summary: 'Раздел настроек системы: параметры, роли, участники и конфигурация модулей.',
+        pathPrefixes: ['/settings'],
+        topics: [],
+        materializeToKb: false,
     },
 ];
 

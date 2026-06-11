@@ -2,6 +2,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "node scripts/maybe_seed_project_kb.js",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
@@ -12,6 +13,7 @@
     "legal:consultant-seed-kb": "tsx scripts/seed_legal_consultant_kb.ts",
     "legal:regression": "tsx scripts/legal_regression.ts",
     "okk:consultant-seed-kb": "tsx scripts/seed_okk_consultant_kb.ts",
+    "kb:project-seed": "tsx scripts/seed_project_knowledge_kb.ts",
     "db:apply-okk-consultant-schema": "tsx scripts/apply_okk_consultant_schema.ts",
     "verify:raw-tables": "tsx scripts/verify_raw_tables.ts",
     "okk:evaluate-all": "tsx scripts/evaluate_all.ts",

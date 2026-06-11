@@ -70,6 +70,9 @@ export function buildConsultantKnowledgeSeedRows(): ConsultantKnowledgeSeedRow[]
     }
 
     for (const section of catalog.sections) {
+        // Lightweight docs-RAG-only sections are not materialized into okk_consultant_knowledge.
+        if (section.materializeToKb === false) continue;
+
         rows.push({
             slug: `section:${section.key}`,
             type: 'section_overview',

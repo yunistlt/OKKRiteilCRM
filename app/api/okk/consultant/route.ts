@@ -31,6 +31,7 @@ import {
     isConsultantMetaQuestion,
     isFormulaQuestion,
     isGlossaryQuestion,
+    isOrderAnalysisSection,
     OKK_CONSULTANT_QUICK_QUESTIONS,
     OrderEvidence,
     sanitizeConsultantContextForRole,
@@ -45,6 +46,7 @@ import {
     renderConsultantTemplate,
 } from '@/lib/okk-consultant-ai';
 import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
+import { audiencesForRole, formatProjectKnowledgeContext, searchProjectKnowledge } from '@/lib/project-knowledge';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 
@@ -57,6 +59,11 @@ const MAX_HISTORY_TEXT_LENGTH = 600;
 const REFERENCE_CACHE_TTL_MS = 1000 * 60 * 60;
 const THREAD_TTL_DAYS = 30;
 const MAX_FALLBACK_KNOWLEDGE_HITS = 4;
+const MAX_GLOBAL_KNOWLEDGE_HITS = 5;
+// text-embedding-3-small scores for question-vs-doc-prose cluster ~0.35-0.55 even when
+// genuinely relevant (unlike the okk catalog KB, whose content mirrors question phrasing).
+// Keep this low; the prompt instructs the model to ignore irrelevant context and say so.
+const GLOBAL_KNOWLEDGE_THRESHOLD = 0.33;
 
 const referenceAnswerCache = new Map<string, { reply: string; cachedAt: number }>();
 
@@ -321,6 +328,60 @@ async function buildFallbackAnswer(
     };
 }
 
+async function buildGlobalKnowledgeAnswer(
+    question: string,
+    sectionKey: string,
+    history: NormalizedHistoryItem[],
+    userRole: string,
+): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }> }> {
+    if (!process.env.OPENAI_API_KEY) {
+        return { reply: null, promptKey: null, knowledgeHits: [] };
+    }
+
+    const hits = await searchProjectKnowledge(question, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
+    if (hits.length === 0) {
+        return { reply: null, promptKey: null, knowledgeHits: [] };
+    }
+
+    const openai = getOpenAIClient();
+    const section = getConsultantSectionConfig(sectionKey);
+    const [mainPrompt, stylePrompt] = await Promise.all([
+        getConsultantPromptConfig('okk_consultant_global_chat'),
+        getConsultantPromptConfig('okk_consultant_style_guardrail'),
+    ]);
+    const userPrompt = renderConsultantTemplate(mainPrompt.userPromptTemplate, {
+        question,
+        section_title: section.title,
+        knowledge_context: formatProjectKnowledgeContext(hits),
+        history_context: summarizeHistoryForPrompt(history),
+    });
+    const completion = await openai.chat.completions.create({
+        model: mainPrompt.model,
+        temperature: mainPrompt.temperature,
+        max_tokens: mainPrompt.maxTokens,
+        messages: [
+            {
+                role: 'system',
+                content: `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`,
+            },
+            {
+                role: 'user',
+                content: userPrompt,
+            },
+        ],
+    });
+
+    return {
+        reply: completion.choices[0]?.message?.content || null,
+        promptKey: mainPrompt.key,
+        knowledgeHits: hits.map((item) => ({
+            slug: item.slug,
+            subsystem: item.subsystem,
+            similarity: item.similarity,
+        })),
+    };
+}
+
 function normalizeHistory(history: unknown): NormalizedHistoryItem[] {
     if (!Array.isArray(history)) return [];
 
@@ -498,7 +559,7 @@ export async function POST(req: Request) {
             });
         }
 
-        if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && needsOrderContext(message, criterionKey)) {
+        if (!orderId && !glossaryTerm && !sectionReply && !referenceQuestion && isOrderAnalysisSection(effectiveSectionKey) && needsOrderContext(message, criterionKey)) {
             if (effectiveSectionKey === 'quality-dashboard') {
                 return buildSuccessResponse({
                     reply: 'Семён работает здесь как консультант по методологии ОКК. Он может объяснить общую логику расчёта, смысл критериев, полей, нарушений и источников данных, но не разбирает конкретную сделку.',
@@ -566,10 +627,37 @@ export async function POST(req: Request) {
                 });
             }
 
+            // Project-wide RAG: answer methodology questions across all sections from the docs KB.
+            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole);
+            if (globalKnowledge.reply) {
+                return buildSuccessResponse({
+                    reply: globalKnowledge.reply,
+                    suggestions: isOrderAnalysisSection(effectiveSectionKey) ? OKK_CONSULTANT_QUICK_QUESTIONS.global : [],
+                    replyKind: 'fallback',
+                    sectionKey: effectiveSectionKey,
+                    answerSource: 'ai_generated',
+                    answerMetadata: {
+                        fallbackPromptKey: globalKnowledge.promptKey,
+                        fallbackKnowledgeHits: globalKnowledge.knowledgeHits,
+                        knowledgeBase: 'project',
+                    },
+                });
+            }
+
+            // No docs hit. For OKK keep the deterministic rating explanation; elsewhere say so honestly.
+            if (isOrderAnalysisSection(effectiveSectionKey)) {
+                return buildSuccessResponse({
+                    reply: getCachedReferenceAnswer('general:rating', () => buildGeneralRatingExplanation()),
+                    suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
+                    replyKind: 'score',
+                    sectionKey: effectiveSectionKey,
+                });
+            }
+
             return buildSuccessResponse({
-                reply: getCachedReferenceAnswer('general:rating', () => buildGeneralRatingExplanation()),
-                suggestions: OKK_CONSULTANT_QUICK_QUESTIONS.global,
-                replyKind: 'score',
+                reply: 'Я пока не нашёл ответ на этот вопрос в базе знаний проекта. Попробуйте переформулировать или уточнить, о каком разделе речь.',
+                suggestions: [],
+                replyKind: 'section',
                 sectionKey: effectiveSectionKey,
             });
         }
