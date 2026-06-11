@@ -2,6 +2,52 @@
 
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
+import { resolveManagerRoles, setManagerRoleChoice } from '@/lib/salary/roles';
+
+// ── Реестр ЗП: участие (пофамильно) + роль из групп RetailCRM ────────────────
+
+/** Для каждого менеджера: участвует ли в ЗП + роль (кандидаты из групп, итог). */
+export async function getSalaryRoster() {
+    const asOf = new Date().toISOString().slice(0, 10);
+    const roles = await resolveManagerRoles(asOf);
+    const { data: parts } = await supabase.from('salary_participant').select('manager_id');
+    const partSet = new Set((parts || []).map((r: any) => Number(r.manager_id)));
+    const { data: schemes } = await supabase.from('salary_scheme').select('code,name');
+    const nameByCode = new Map((schemes || []).map((s: any) => [s.code, s.name]));
+    return roles.map((r) => ({
+        managerId: r.managerId,
+        inSalary: partSet.has(r.managerId),
+        candidates: r.candidates.map((c) => ({ code: c, name: (nameByCode.get(c) as string) || c })),
+        resolved: r.resolved,
+        resolvedName: r.resolved ? ((nameByCode.get(r.resolved) as string) || r.resolved) : null,
+        needsChoice: r.needsChoice,
+    }));
+}
+
+/** Сохраняет участников ЗП (полная замена) + выбор роли для конфликтных. */
+export async function saveSalaryRoster(participantIds: number[], choices: { managerId: number; schemeCode: string }[]) {
+    try {
+        const { error: delErr } = await supabase.from('salary_participant').delete().neq('manager_id', 0);
+        if (delErr) {
+            const missing = delErr.code === '42P01' || (delErr.message || '').includes('does not exist') || (delErr.message || '').includes('schema cache');
+            if (missing) return { success: false, errorType: 'TABLE_MISSING' };
+            throw delErr;
+        }
+        if (participantIds.length > 0) {
+            const { error } = await supabase.from('salary_participant').insert(participantIds.map((id) => ({ manager_id: id, created_by: 'ui' })));
+            if (error) throw error;
+        }
+        const asOf = new Date().toISOString().slice(0, 10);
+        for (const c of choices) {
+            if (c.schemeCode) await setManagerRoleChoice({ managerId: c.managerId, schemeCode: c.schemeCode, effectiveFrom: asOf, actor: 'ui' });
+        }
+        revalidatePath('/settings/managers');
+        revalidatePath('/salary');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
 
 function sanitizeLoginCandidate(value: string | null | undefined) {
     return (value || '')
