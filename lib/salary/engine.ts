@@ -174,6 +174,7 @@ export function computePeriodSalary(
     compMap: Map<number, { schemeCode: string; blocks: BlockInstance[] }>,
     plans: PeriodPlans,
     config: SalaryConfig,
+    categoryNames: Record<string, string> = {},
 ): PeriodSalary {
     const businessDays = businessDaysInMonth(pm.year, pm.month);
     const teamRevenueNoVat = pm.teamRevenueNoVat;
@@ -190,6 +191,7 @@ export function computePeriodSalary(
             teamRevenueNoVat,
             personalPlanTarget: plans.personal.get(managerId) ?? null,
             departmentPlanTarget: plans.department,
+            categoryNames,
         };
         results.push(computeManagerSalary(m, comp.blocks, ctx, comp.schemeCode));
     }
@@ -206,7 +208,27 @@ export async function calculatePeriod(year: number, month: number): Promise<Peri
     const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
     const compMap = await resolveManagerComp(asOf);
     const plans = await getPlansForPeriod(year, month);
-    return computePeriodSalary(metrics, compMap, plans, config);
+    const categoryNames = await loadCategoryNames();
+    return computePeriodSalary(metrics, compMap, plans, config, categoryNames);
+}
+
+/** Человеческие имена категорий товара из справочника RetailCRM (для explain в расчёте). */
+async function loadCategoryNames(): Promise<Record<string, string>> {
+    const { data: fieldRow } = await supabase
+        .from('retailcrm_custom_fields')
+        .select('dictionary')
+        .eq('entity', 'order')
+        .eq('code', 'typ_castomer')
+        .maybeSingle();
+    const dictCode = (fieldRow?.dictionary as string) || 'kategoriya_klienta';
+    const { data } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code,item_name')
+        .eq('entity_type', 'customField')
+        .eq('dictionary_code', dictCode);
+    const map: Record<string, string> = {};
+    for (const r of (data as any[]) ?? []) map[r.item_code] = r.item_name;
+    return map;
 }
 
 /** Get-or-create открытого периода. Бросает, если период закрыт. */

@@ -74,7 +74,6 @@ export default function BaseConfigTab() {
                     <div key={key} className="border p-3">
                         <div className="mb-2 flex items-baseline gap-2">
                             <span className="text-sm font-semibold">{KEY_LABELS[key] || key}</span>
-                            <span className="font-mono text-[10px] text-muted-foreground">{key}</span>
                         </div>
                         <KeyEditor configKey={key} value={config[key]} onChange={(v) => setValue(key, v)} />
                         <div className="mt-2 flex items-center gap-2 border-t pt-2">
