@@ -55,6 +55,27 @@ pagination: { limit, totalCount, currentPage, totalPageCount }
 Связь: поле заказа со `type=dictionary` имеет `dictionary=<код словаря>`; его значение в заказе
 (`orders.raw_payload.customFields.<code>`) равно `code` одного из `elements` этого словаря.
 
+## GET /api/v5/reference/<name> — системные справочники
+
+Возвращают **объект-мапу** (ключ = code), БЕЗ пагинации и limit. `Object.values(data[key])`
+даёт элементы с полями `code`, `name`, `active`, `ordering`, …
+
+| Путь | Ключ в ответе | entity_type в БД |
+|------|---------------|------------------|
+| `order-methods` | `orderMethods` | `orderMethod` |
+| `order-types` | `orderTypes` | `orderType` |
+| `payment-types` | `paymentTypes` | `paymentType` |
+| `delivery-types` | `deliveryTypes` | `deliveryType` |
+| `statuses` | `statuses` | `status` |
+| `status-groups` | `statusGroups` | `statusGroup` |
+| `sites` | `sites` | `site` |
+| `stores` | `stores` | `store` |
+| `product-statuses` | `productStatuses` | `productStatus` |
+
+Пишутся в `retailcrm_dictionaries` с `dictionary_code = NULL`. Внимание: в Postgres
+`NULL != NULL`, поэтому уникальный ключ их не дедуплицирует — синк делает полную
+замену (DELETE по `entity_type` + INSERT), а не upsert. Тянет `syncRetailcrmCatalog()`.
+
 ## Прочие используемые методы (в `lib/retailcrm/orders.ts`)
 
 - `GET /api/v5/orders` — `filter[createdAtFrom]`, `filter[startDate]`, `filter[sinceId]`, `limit`, `page`. Ответ: `orders[]`, `pagination`.
