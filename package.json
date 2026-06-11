@@ -2,7 +2,6 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/maybe_seed_project_kb.js",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
