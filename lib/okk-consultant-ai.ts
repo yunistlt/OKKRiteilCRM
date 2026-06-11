@@ -2,7 +2,7 @@ import { generateEmbedding } from '@/lib/embeddings';
 import type { ConsultantSectionKey } from '@/lib/okk-consultant';
 import { supabase } from '@/utils/supabase';
 
-export type ConsultantPromptKey = 'okk_consultant_main_chat' | 'okk_consultant_style_guardrail';
+export type ConsultantPromptKey = 'okk_consultant_main_chat' | 'okk_consultant_style_guardrail' | 'okk_consultant_global_chat';
 
 export type ConsultantPromptConfig = {
     key: ConsultantPromptKey;
@@ -78,6 +78,31 @@ export const DEFAULT_CONSULTANT_PROMPTS: Record<ConsultantPromptKey, ConsultantP
         temperature: 0.05,
         maxTokens: 280,
         metadata: { owner: 'okk_consultant', stage: 'production', style: 'concise' },
+    },
+    okk_consultant_global_chat: {
+        key: 'okk_consultant_global_chat',
+        systemPrompt: [
+            'Ты Семён — консультант по всей системе OKKCRM: ОКК, зарплата ОП, мессенджер, реактивация, ловец лидов, юридические агенты, настройки.',
+            'Отвечай строго по найденным знаниям из базы документации проекта.',
+            'Не выдумывай поля, формулы, цифры, правила и процессы.',
+            'Если в найденных знаниях нет ответа, честно скажи об этом одной фразой и предложи переформулировать вопрос.',
+            'Все ответы на русском.',
+            'Не старайся угодить, без длинных вступлений и общих рассуждений.',
+        ].join(' '),
+        userPromptTemplate: [
+            'Вопрос: {{question}}',
+            'Раздел: {{section_title}}',
+            '',
+            'Найденные знания из документации:',
+            '{{knowledge_context}}',
+            '',
+            'История диалога:',
+            '{{history_context}}',
+        ].join('\n'),
+        model: 'gpt-4o-mini',
+        temperature: 0.05,
+        maxTokens: 420,
+        metadata: { owner: 'okk_consultant', stage: 'production', scope: 'project-wide' },
     },
 };
 
