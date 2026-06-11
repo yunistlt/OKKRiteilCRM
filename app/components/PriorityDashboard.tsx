@@ -10,6 +10,7 @@ import {
     ExternalLink, PhoneCall, ChevronDown, Check, Save, X
 } from 'lucide-react';
 import { getPresets, savePreset, deletePreset, type Preset } from '@/app/actions/presets';
+import { NumberInput } from '@/components/ui/NumberInput';
 
 interface PriorityOrder {
     id: number;
@@ -386,27 +387,23 @@ export const PriorityDashboard = () => {
                             <div className="space-y-1.5 md:space-y-2">
                                 <label className="text-xs font-semibold uppercase text-gray-500">Сумма заказа, ₽</label>
                                 <div className="flex gap-2">
-                                    <input
-                                        type="number"
-                                        min="0"
+                                    <NumberInput
                                         placeholder="0"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                        value={filters.sumMin}
-                                        onChange={(e) => {
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-right shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        value={filters.sumMin === '' ? null : Number(filters.sumMin)}
+                                        onChange={(v) => {
                                             setActivePresetId(null);
-                                            setFilters({ ...filters, sumMin: e.target.value });
+                                            setFilters({ ...filters, sumMin: v == null ? '' : String(v) });
                                         }}
                                     />
                                     <span className="text-gray-400 py-2">–</span>
-                                    <input
-                                        type="number"
-                                        min="0"
+                                    <NumberInput
                                         placeholder="∞"
-                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                                        value={filters.sumMax}
-                                        onChange={(e) => {
+                                        className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-right shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                        value={filters.sumMax === '' ? null : Number(filters.sumMax)}
+                                        onChange={(v) => {
                                             setActivePresetId(null);
-                                            setFilters({ ...filters, sumMax: e.target.value });
+                                            setFilters({ ...filters, sumMax: v == null ? '' : String(v) });
                                         }}
                                     />
                                 </div>
@@ -575,7 +572,7 @@ export const PriorityDashboard = () => {
                                                 <span>{order.managerName || `ID ${order.managerId}` || 'Не назначен'}</span>
                                             </div>
                                             <div className="text-sm font-medium">
-                                                {order.totalSumm?.toLocaleString()} ₽
+                                                {order.totalSumm?.toLocaleString('ru-RU')} ₽
                                             </div>
                                         </div>
 

@@ -3,6 +3,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_VICTORIA_PROMPT } from '@/lib/reactivation';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import { NumberInput } from '@/components/ui/NumberInput';
+
+// Денежный инпут с разделителями разрядов в тёмной теме страницы.
+const moneyInputCls = 'w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-right text-white placeholder-zinc-600 focus:outline-none focus:border-indigo-500 transition-colors';
+function MoneyInput({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+    return (
+        <NumberInput
+            value={value === '' ? null : Number(value)}
+            onChange={(v) => onChange(v == null ? '' : String(v))}
+            placeholder={placeholder}
+            className={moneyInputCls}
+        />
+    );
+}
 
 // ─────────────────────────────────────────────
 // Types
@@ -199,7 +213,7 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                         </div>
                                         <div>
                                             <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Ср. чек</p>
-                                            <p className="text-lg font-bold text-emerald-400">{(details?.client?.average_check || 0).toLocaleString()} ₽</p>
+                                            <p className="text-lg font-bold text-emerald-400">{(details?.client?.average_check || 0).toLocaleString('ru-RU')} ₽</p>
                                         </div>
                                         <div>
                                             <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Частота</p>
@@ -211,7 +225,7 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                         </div>
                                         <div className="col-span-2 pt-1 border-t border-zinc-800/50">
                                             <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Общий LTV</p>
-                                            <p className="text-lg font-bold text-white">{(details?.client?.total_summ || 0).toLocaleString()} ₽</p>
+                                            <p className="text-lg font-bold text-white">{(details?.client?.total_summ || 0).toLocaleString('ru-RU')} ₽</p>
                                         </div>
                                     </div>
                                 </div>
@@ -232,7 +246,7 @@ function LogModal({ log, onClose }: { log: OutreachLog; onClose: () => void }) {
                                                         {new Date(o.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                     </span>
                                                 </div>
-                                                <span className="text-zinc-400 text-[10px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
+                                                <span className="text-zinc-400 text-[10px]">{(o.totalsumm || 0).toLocaleString('ru-RU')} ₽</span>
                                             </a>
                                         ))}
                                         {(!details?.orders || details.orders.length === 0) && <p className="text-xs text-zinc-600 italic">Заказы не найдены</p>}
@@ -379,7 +393,7 @@ function TestModal({ steps, email, reasoning, details, onClose }: {
                                             </div>
                                             <div>
                                                 <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Ср. чек</p>
-                                                <p className="text-lg font-bold text-emerald-400">{(details.client.average_check || 0).toLocaleString()} ₽</p>
+                                                <p className="text-lg font-bold text-emerald-400">{(details.client.average_check || 0).toLocaleString('ru-RU')} ₽</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Частота</p>
@@ -391,7 +405,7 @@ function TestModal({ steps, email, reasoning, details, onClose }: {
                                             </div>
                                             <div className="col-span-2 pt-1 border-t border-zinc-800/50">
                                                 <p className="text-[10px] text-zinc-500 mb-0.5 uppercase">Общий LTV</p>
-                                                <p className="text-lg font-bold text-white">{(details.client.total_summ || 0).toLocaleString()} ₽</p>
+                                                <p className="text-lg font-bold text-white">{(details.client.total_summ || 0).toLocaleString('ru-RU')} ₽</p>
                                             </div>
                                         </div>
                                     </div>
@@ -412,7 +426,7 @@ function TestModal({ steps, email, reasoning, details, onClose }: {
                                                             {new Date(o.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                         </span>
                                                     </div>
-                                                    <span className="text-indigo-400 text-[10px]">{(o.totalsumm || 0).toLocaleString()} ₽</span>
+                                                    <span className="text-indigo-400 text-[10px]">{(o.totalsumm || 0).toLocaleString('ru-RU')} ₽</span>
                                                 </a>
                                             ))}
                                             {details.orders.length === 0 && <p className="text-xs text-zinc-600 italic">Заказы не найдены</p>}
@@ -761,16 +775,16 @@ export default function ReactivationPage() {
                                         <div className="grid grid-cols-2 gap-3">
                                             <div>
                                                 <Label>Мин. средний чек ₽</Label>
-                                                <Input type="number" value={minAvgCheck} onChange={e => setMinAvgCheck(e.target.value)} placeholder="0" min="0" />
+                                                <MoneyInput value={minAvgCheck} onChange={setMinAvgCheck} placeholder="0" />
                                             </div>
                                             <div>
                                                 <Label>Макс. средний чек ₽</Label>
-                                                <Input type="number" value={maxAvgCheck} onChange={e => setMaxAvgCheck(e.target.value)} placeholder="∞" min="0" />
+                                                <MoneyInput value={maxAvgCheck} onChange={setMaxAvgCheck} placeholder="∞" />
                                             </div>
                                         </div>
                                         <div>
                                             <Label>Мин. LTV (общая сумма) ₽</Label>
-                                            <Input type="number" value={minLtv} onChange={e => setMinLtv(e.target.value)} placeholder="0" min="0" />
+                                            <MoneyInput value={minLtv} onChange={setMinLtv} placeholder="0" />
                                         </div>
 
                                         <label className="flex items-center gap-2 cursor-pointer select-none">

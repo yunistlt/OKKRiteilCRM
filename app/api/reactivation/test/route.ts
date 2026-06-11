@@ -112,7 +112,7 @@ export async function POST(request: Request) {
 <b>Компания:</b> ${companyName} (ID: ${customerId})
 <b>Контакт:</b> ${contactName}
 <b>Заказов в БД:</b> ${orders.length}
-<b>LTV:</b> ${calculatedLtv.toLocaleString()} ₽
+<b>LTV:</b> ${calculatedLtv.toLocaleString('ru-RU')} ₽
 <b>Email:</b> ${testEmail}
 
 <b>ОБОСНОВАНИЕ:</b>

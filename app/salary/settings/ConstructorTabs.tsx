@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Button } from '@/components/ui/button';
+import { NumberInput } from '@/components/ui/NumberInput';
+import { formatNumberRu } from '@/lib/format';
 import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -84,7 +86,7 @@ function summarize(params: any): string {
     return Object.entries(params).map(([k, v]) => {
         if (Array.isArray(v)) return `${labelFor(k)}: ${v.length}`;
         if (v && typeof v === 'object') return labelFor(k);
-        return `${labelFor(k)} ${v}`;
+        return `${labelFor(k)} ${typeof v === 'number' ? formatNumberRu(v) : v}`;
     }).join(' · ');
 }
 
@@ -130,7 +132,7 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
         return <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-primary" />;
     }
     if (typeof value === 'number') {
-        return <input type="number" value={Number.isFinite(value) ? value : ''} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className={`${inputCls} ${full ? 'w-full' : 'w-28'} text-right`} />;
+        return <NumberInput value={Number.isFinite(value) ? value : 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${inputCls} ${full ? 'w-full' : 'w-28'} text-right`} />;
     }
     return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} w-full`} />;
 }
@@ -453,13 +455,13 @@ export function PlansTab() {
                         <tbody>
                             <tr className="border-t bg-muted/20">
                                 <td className="px-2 py-1 font-semibold">Общий план отдела</td>
-                                <td className="px-2 py-1"><input value={edits['dept'] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, dept: e.target.value }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
+                                <td className="px-2 py-1"><NumberInput value={edits['dept'] == null || edits['dept'] === '' ? null : Number(edits['dept'])} onChange={(v) => setEdits((p) => ({ ...p, dept: v == null ? '' : String(v) }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
                                 <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(null)}>Сохранить</Button></td>
                             </tr>
                             {(data.managers ?? []).filter((m: any) => m.active).map((m: any) => (
                                 <tr key={m.id} className="border-t">
                                     <td className="px-2 py-1">{m.name} <span className="text-[11px] text-muted-foreground">#{m.id}</span></td>
-                                    <td className="px-2 py-1"><input value={edits[String(m.id)] ?? ''} onChange={(e) => setEdits((p) => ({ ...p, [m.id]: e.target.value }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
+                                    <td className="px-2 py-1"><NumberInput value={edits[String(m.id)] == null || edits[String(m.id)] === '' ? null : Number(edits[String(m.id)])} onChange={(v) => setEdits((p) => ({ ...p, [m.id]: v == null ? '' : String(v) }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
                                     <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(m.id)}>Сохранить</Button></td>
                                 </tr>
                             ))}
