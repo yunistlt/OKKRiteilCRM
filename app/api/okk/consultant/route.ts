@@ -47,6 +47,7 @@ import {
 } from '@/lib/okk-consultant-ai';
 import { isMissingConsultantPersistenceError } from '@/lib/okk-consultant-persistence';
 import { audiencesForRole, formatProjectKnowledgeContext, searchProjectKnowledge } from '@/lib/project-knowledge';
+import { executeSalaryTool, SALARY_TOOLS, type SalaryToolContext } from '@/lib/salary/consultant-tools';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 
@@ -333,14 +334,18 @@ async function buildGlobalKnowledgeAnswer(
     sectionKey: string,
     history: NormalizedHistoryItem[],
     userRole: string,
-): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }> }> {
+    retailCrmManagerId: number | null,
+): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }>; toolCalls: Array<{ name: string }> }> {
     if (!process.env.OPENAI_API_KEY) {
-        return { reply: null, promptKey: null, knowledgeHits: [] };
+        return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
     }
 
     const hits = await searchProjectKnowledge(question, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
-    if (hits.length === 0) {
-        return { reply: null, promptKey: null, knowledgeHits: [] };
+    const hasSalaryTools = retailCrmManagerId != null;
+
+    // Nothing to ground an answer on: no docs and no personal salary tools.
+    if (hits.length === 0 && !hasSalaryTools) {
+        return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
     }
 
     const openai = getOpenAIClient();
@@ -355,30 +360,60 @@ async function buildGlobalKnowledgeAnswer(
         knowledge_context: formatProjectKnowledgeContext(hits),
         history_context: summarizeHistoryForPrompt(history),
     });
-    const completion = await openai.chat.completions.create({
-        model: mainPrompt.model,
-        temperature: mainPrompt.temperature,
-        max_tokens: mainPrompt.maxTokens,
-        messages: [
-            {
-                role: 'system',
-                content: `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`,
-            },
-            {
-                role: 'user',
-                content: userPrompt,
-            },
-        ],
-    });
+
+    let systemContent = `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`;
+    let toolCtx: SalaryToolContext | null = null;
+    if (hasSalaryTools) {
+        const now = new Date();
+        toolCtx = { retailCrmManagerId, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
+        systemContent += '\n\nУ тебя есть инструменты расчёта зарплаты текущего пользователя (get_my_salary, orders_to_reach). На любые вопросы про числа зарплаты, премию, «сколько заявок до цели» — ВЫЗЫВАЙ инструмент и опирайся только на его результат: не считай в уме и не выдумывай числа. Если инструмент вернул available:false — честно скажи, что данных нет.';
+    }
+
+    const messages: any[] = [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: userPrompt },
+    ];
+    const usedTools: Array<{ name: string }> = [];
+
+    // Tool-calling loop (bounded). Salary tools are read-only and bound to the session user.
+    for (let iteration = 0; iteration < 4; iteration += 1) {
+        const completion = await openai.chat.completions.create({
+            model: mainPrompt.model,
+            temperature: mainPrompt.temperature,
+            max_tokens: mainPrompt.maxTokens,
+            messages,
+            ...(toolCtx ? { tools: SALARY_TOOLS } : {}),
+        });
+
+        const choice = completion.choices[0]?.message;
+        if (!choice) break;
+
+        if (toolCtx && choice.tool_calls?.length) {
+            messages.push(choice);
+            for (const call of choice.tool_calls) {
+                if (call.type !== 'function') continue;
+                let args: any = {};
+                try { args = JSON.parse(call.function.arguments || '{}'); } catch { args = {}; }
+                const result = await executeSalaryTool(call.function.name, args, toolCtx);
+                usedTools.push({ name: call.function.name });
+                messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+            }
+            continue;
+        }
+
+        return {
+            reply: choice.content || null,
+            promptKey: mainPrompt.key,
+            knowledgeHits: hits.map((item) => ({ slug: item.slug, subsystem: item.subsystem, similarity: item.similarity })),
+            toolCalls: usedTools,
+        };
+    }
 
     return {
-        reply: completion.choices[0]?.message?.content || null,
+        reply: null,
         promptKey: mainPrompt.key,
-        knowledgeHits: hits.map((item) => ({
-            slug: item.slug,
-            subsystem: item.subsystem,
-            similarity: item.similarity,
-        })),
+        knowledgeHits: hits.map((item) => ({ slug: item.slug, subsystem: item.subsystem, similarity: item.similarity })),
+        toolCalls: usedTools,
     };
 }
 
@@ -627,8 +662,9 @@ export async function POST(req: Request) {
                 });
             }
 
-            // Project-wide RAG: answer methodology questions across all sections from the docs KB.
-            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole);
+            // Project-wide RAG + salary tools: answer methodology questions and personal salary
+            // calculations across all sections. Salary tools are bound to the session user.
+            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId);
             if (globalKnowledge.reply) {
                 return buildSuccessResponse({
                     reply: globalKnowledge.reply,
@@ -639,6 +675,7 @@ export async function POST(req: Request) {
                     answerMetadata: {
                         fallbackPromptKey: globalKnowledge.promptKey,
                         fallbackKnowledgeHits: globalKnowledge.knowledgeHits,
+                        toolCalls: globalKnowledge.toolCalls,
                         knowledgeBase: 'project',
                     },
                 });
