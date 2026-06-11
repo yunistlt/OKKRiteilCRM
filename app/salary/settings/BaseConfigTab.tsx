@@ -3,8 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/NumberInput';
 import { Loader2, Save, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+
+// База стилей текстового инпута (как у <Input>), чтобы NumberInput выглядел идентично.
+const numCls = 'flex h-10 w-full rounded-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
 const KEY_LABELS: Record<string, string> = {
     oklad: 'Оклад (₽/мес)',
@@ -107,7 +111,7 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
     if (configKey === 'source_exclusions') {
         return <MultiSelectByName options={dicts.orderMethods} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="источники не выбраны" />;
     }
-    if (typeof value === 'number') return <Input type="number" value={value} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 w-40 text-sm" />;
+    if (typeof value === 'number') return <NumberInput value={value} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${numCls} h-8 w-40 text-sm text-right`} />;
     if (Array.isArray(value) && value.length && typeof value[0] === 'object' && 'min' in value[0]) {
         const valueField = 'k' in value[0] ? 'k' : 'bonus';
         return <TierEditor rows={value} valueField={valueField as 'k' | 'bonus'} onChange={onChange} />;
@@ -119,7 +123,7 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
                 {(['new', 'permanent', 'pech_vto'] as const).map((f) => (
                     <div key={f}>
                         <label className="text-[11px] text-muted-foreground">{f === 'new' ? 'Новый' : f === 'permanent' ? 'Постоянный' : 'Печь/ВТО'}</label>
-                        <Input type="number" value={value[f]} onChange={(e) => onChange({ ...value, [f]: Number(e.target.value) })} className="h-8 text-sm" />
+                        <NumberInput value={value[f]} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, [f]: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} />
                     </div>
                 ))}
             </div>
@@ -142,8 +146,8 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
                         <option value="gte">≥ порога</option>
                     </select>
                 </div>
-                <div><label className="text-[11px] text-muted-foreground">Порог</label><Input type="number" value={value.threshold} onChange={(e) => onChange({ ...value, threshold: Number(e.target.value) })} className="h-8 text-sm" /></div>
-                <div><label className="text-[11px] text-muted-foreground">Бонус (₽)</label><Input type="number" value={value.bonus} onChange={(e) => onChange({ ...value, bonus: Number(e.target.value) })} className="h-8 text-sm" /></div>
+                <div><label className="text-[11px] text-muted-foreground">Порог</label><NumberInput value={value.threshold} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, threshold: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} /></div>
+                <div><label className="text-[11px] text-muted-foreground">Бонус (₽)</label><NumberInput value={value.bonus} emptyValue={0} onChange={(v) => onChange({ ...value, bonus: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} /></div>
             </div>
         );
     }
@@ -155,9 +159,9 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
                 {rules.map((r: any, i: number) => (
                     <div key={i} className="flex items-center gap-1.5">
                         <span className="text-[11px] text-muted-foreground">НДС%</span>
-                        <Input type="number" value={r.vat_pct} onChange={(e) => update(i, 'vat_pct', Number(e.target.value))} className="h-8 w-20 text-sm" />
+                        <NumberInput value={r.vat_pct} emptyValue={0} onChange={(v) => update(i, 'vat_pct', v ?? 0)} className={`${numCls} h-8 w-20 text-sm text-right`} />
                         <span className="text-[11px] text-muted-foreground">÷</span>
-                        <Input type="number" step="0.01" value={r.divisor} onChange={(e) => update(i, 'divisor', Number(e.target.value))} className="h-8 w-20 text-sm" />
+                        <NumberInput value={r.divisor} emptyValue={0} maxFractionDigits={2} onChange={(v) => update(i, 'divisor', v ?? 0)} className={`${numCls} h-8 w-20 text-sm text-right`} />
                         <button onClick={() => onChange({ rules: rules.filter((_: any, idx: number) => idx !== i) })} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                     </div>
                 ))}
@@ -175,8 +179,8 @@ function TierEditor({ rows, valueField, onChange }: { rows: any[]; valueField: '
             <div className="flex gap-1.5 text-[11px] text-muted-foreground"><span className="w-24">от (min)</span><span className="w-24">{valueField === 'k' ? 'коэфф.' : 'бонус ₽'}</span></div>
             {rows.map((r, i) => (
                 <div key={i} className="flex items-center gap-1.5">
-                    <Input type="number" value={r.min} onChange={(e) => update(i, 'min', Number(e.target.value))} className="h-8 w-24 text-sm" />
-                    <Input type="number" step={valueField === 'k' ? '0.01' : '1'} value={r[valueField]} onChange={(e) => update(i, valueField, Number(e.target.value))} className="h-8 w-24 text-sm" />
+                    <NumberInput value={r.min} emptyValue={0} onChange={(v) => update(i, 'min', v ?? 0)} className={`${numCls} h-8 w-24 text-sm text-right`} />
+                    <NumberInput value={r[valueField]} emptyValue={0} maxFractionDigits={valueField === 'k' ? 2 : 0} onChange={(v) => update(i, valueField, v ?? 0)} className={`${numCls} h-8 w-24 text-sm text-right`} />
                     <button onClick={() => onChange(rows.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
                 </div>
             ))}
