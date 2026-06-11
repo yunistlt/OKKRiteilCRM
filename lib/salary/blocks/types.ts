@@ -36,6 +36,7 @@ export interface BlockComputeContext {
     teamRevenueNoVat: number;
     personalPlanTarget: number | null;
     departmentPlanTarget: number | null;
+    categoryNames?: Record<string, string>; // код категории RetailCRM → человеческое имя (для explain)
 }
 
 export interface BlockResult {

@@ -70,7 +70,8 @@ const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct
     paramSchema: z.object({
         rows: z.array(z.object({ category: z.string(), mode: z.enum(['sum', 'pct']), value: z.number().nonnegative() })),
     }),
-    compute(m, p) {
+    compute(m, p, ctx) {
+        const catName = (code: string) => ctx.categoryNames?.[code] ?? code;
         let amount = 0;
         const parts: string[] = [];
         for (const r of p.rows) {
@@ -78,14 +79,14 @@ const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct
                 const cnt = m.countsByCategory[r.category] ?? 0;
                 if (cnt > 0) {
                     amount += cnt * r.value;
-                    parts.push(`${r.category}: ${cnt}×${rub(r.value)}`);
+                    parts.push(`${catName(r.category)}: ${cnt}×${rub(r.value)}`);
                 }
             } else {
                 const rev = m.revenueByCategory[r.category] ?? 0;
                 if (rev > 0) {
                     const a = (rev * r.value) / 100;
                     amount += a;
-                    parts.push(`${r.category}: ${round2(r.value)}% от ${rub(rev)} = ${rub(a)}`);
+                    parts.push(`${catName(r.category)}: ${round2(r.value)}% от ${rub(rev)} = ${rub(a)}`);
                 }
             }
         }
@@ -111,14 +112,15 @@ const coefCategorii: BonusBlock<{ rows: { category: string; coef: number }[] }> 
     paramSchema: z.object({
         rows: z.array(z.object({ category: z.string(), coef: z.number().nonnegative() })),
     }),
-    compute(m, p) {
+    compute(m, p, ctx) {
+        const catName = (code: string) => ctx.categoryNames?.[code] ?? code;
         let mult = 1;
         const parts: string[] = [];
         for (const r of p.rows) {
             const cnt = m.countsByCategory[r.category] ?? 0;
             if (cnt > 0) {
                 mult *= r.coef;
-                parts.push(`${r.category} (${cnt} шт.) ×${r.coef}`);
+                parts.push(`${catName(r.category)} (${cnt} шт.) ×${r.coef}`);
             }
         }
         return {
