@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Code2, Info } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -255,20 +255,8 @@ export function SchemesTab() {
     const setField = (si: number, patch: Partial<EditScheme>) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, ...patch } : s)));
     const patchBlock = (si: number, bi: number, patch: Partial<SchemeBlock>) =>
         setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.map((b, j) => (j === bi ? { ...b, ...patch } : b)) } : s)));
-    // Переключение режима «поля ↔ сырой JSON» с сохранением значения.
-    const toggleRaw = (si: number, bi: number, b: SchemeBlock) => {
-        if (b.raw) {
-            try { patchBlock(si, bi, { params: JSON.parse(b.rawText || '{}'), raw: false }); }
-            catch { toast({ title: 'Ошибка', description: 'Проверьте JSON', variant: 'destructive' }); }
-        } else {
-            patchBlock(si, bi, { raw: true, rawText: JSON.stringify(b.params, null, 2) });
-        }
-    };
-
     const save = async (s: EditScheme) => {
-        let blocks;
-        try { blocks = s.blocks.map((b) => ({ block_code: b.block_code, params: b.raw ? JSON.parse(b.rawText || '{}') : b.params, enabled: b.enabled })); }
-        catch { toast({ title: 'Ошибка', description: 'Проверьте JSON параметров', variant: 'destructive' }); return; }
+        const blocks = s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }));
         setSaving(s.code);
         try {
             const res = await fetch('/api/salary/schemes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, blocks }) });
@@ -354,15 +342,12 @@ export function SchemesTab() {
                                                     <span onClick={(e) => e.stopPropagation()}><MethodologyTip text={meta?.methodology} /></span>
                                                     {!isOpen && <span className="truncate text-[10px] text-muted-foreground">{summarize(b.params)}</span>}
                                                 </button>
-                                                <button onClick={() => toggleRaw(si, bi, b)} title="Сырой JSON" className={`shrink-0 ${b.raw ? 'text-primary' : 'text-muted-foreground'} hover:text-foreground`}><Code2 className="h-3.5 w-3.5" /></button>
                                                 <button onClick={() => removeBlock(si, bi)} className="shrink-0 text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                                             </div>
                                             {isOpen && (
                                                 <div className="space-y-1.5 px-2 pb-2 pl-7">
                                                     {meta && <div className="text-[10px] leading-snug text-muted-foreground">{meta.methodology}</div>}
-                                                    {b.raw
-                                                        ? <textarea value={b.rawText} onChange={(e) => patchBlock(si, bi, { rawText: e.target.value })} rows={5} className="w-full border bg-white p-1 font-mono text-[10px]" spellCheck={false} />
-                                                        : <div className="border bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>}
+                                                    <div className="border bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>
                                                 </div>
                                             )}
                                         </div>
