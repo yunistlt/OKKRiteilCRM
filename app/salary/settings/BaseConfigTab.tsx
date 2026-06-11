@@ -23,10 +23,14 @@ const KEY_LABELS: Record<string, string> = {
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+type Opt = { code: string; name: string };
+type Dicts = { statuses: Opt[]; orderMethods: Opt[]; categories: Opt[] };
+
 export default function BaseConfigTab() {
     const [config, setConfig] = useState<Record<string, any>>({});
     const [effDates, setEffDates] = useState<Record<string, string>>({});
     const [keys, setKeys] = useState<string[]>([]);
+    const [dicts, setDicts] = useState<Dicts>({ statuses: [], orderMethods: [], categories: [] });
     const [loading, setLoading] = useState(true);
     const [savingKey, setSavingKey] = useState<string | null>(null);
     const { toast } = useToast();
@@ -41,6 +45,8 @@ export default function BaseConfigTab() {
             const dates: Record<string, string> = {};
             for (const k of data.keys) dates[k] = todayStr();
             setEffDates(dates);
+            const dRes = await fetch('/api/salary/dictionaries').then((r) => r.json()).catch(() => null);
+            if (dRes && !dRes.error) setDicts({ statuses: dRes.statuses ?? [], orderMethods: dRes.orderMethods ?? [], categories: dRes.categories ?? [] });
         } catch (e: any) {
             toast({ title: 'Ошибка загрузки конфига', description: e.message, variant: 'destructive' });
         } finally {
@@ -75,7 +81,7 @@ export default function BaseConfigTab() {
                         <div className="mb-2 flex items-baseline gap-2">
                             <span className="text-sm font-semibold">{KEY_LABELS[key] || key}</span>
                         </div>
-                        <KeyEditor configKey={key} value={config[key]} onChange={(v) => setValue(key, v)} />
+                        <KeyEditor configKey={key} value={config[key]} onChange={(v) => setValue(key, v)} dicts={dicts} />
                         <div className="mt-2 flex items-center gap-2 border-t pt-2">
                             <label className="text-[11px] text-muted-foreground">с</label>
                             <Input type="date" value={effDates[key] || todayStr()} onChange={(e) => setEffDates((d) => ({ ...d, [key]: e.target.value }))} className="h-8 w-36 text-xs" />
@@ -90,7 +96,17 @@ export default function BaseConfigTab() {
     );
 }
 
-function KeyEditor({ configKey, value, onChange }: { configKey: string; value: any; onChange: (v: any) => void }) {
+function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; value: any; onChange: (v: any) => void; dicts: Dicts }) {
+    // Поля-справочники — выбор по именам из RetailCRM, не коды (закон).
+    if (configKey === 'closing_status') {
+        return <SelectByName options={dicts.statuses} value={value?.code || ''} onChange={(code) => onChange({ ...value, code })} placeholder="— выберите статус —" />;
+    }
+    if (configKey === 'category_pech_vto_map') {
+        return <MultiSelectByName options={dicts.categories} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="категории не выбраны" />;
+    }
+    if (configKey === 'source_exclusions') {
+        return <MultiSelectByName options={dicts.orderMethods} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="источники не выбраны" />;
+    }
     if (typeof value === 'number') return <Input type="number" value={value} onChange={(e) => onChange(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 w-40 text-sm" />;
     if (Array.isArray(value) && value.length && typeof value[0] === 'object' && 'min' in value[0]) {
         const valueField = 'k' in value[0] ? 'k' : 'bonus';
@@ -131,7 +147,6 @@ function KeyEditor({ configKey, value, onChange }: { configKey: string; value: a
             </div>
         );
     }
-    if (configKey === 'closing_status') return <Input value={value.code || ''} onChange={(e) => onChange({ ...value, code: e.target.value })} className="h-8 font-mono text-sm" />;
     if (configKey === 'nds_normalization') {
         const rules = value.rules || [];
         const update = (i: number, field: 'vat_pct' | 'divisor', v: number) => onChange({ rules: rules.map((r: any, idx: number) => (idx === i ? { ...r, [field]: v } : r)) });
@@ -180,6 +195,42 @@ function StringListEditor({ items, onChange }: { items: string[]; onChange: (v: 
                 </div>
             ))}
             <Button variant="outline" size="sm" className="h-7" onClick={() => onChange([...items, ''])}><Plus className="mr-1 h-3.5 w-3.5" /> Значение</Button>
+        </div>
+    );
+}
+
+// Выбор одного значения по имени из справочника RetailCRM (значение хранится кодом).
+function SelectByName({ options, value, onChange, placeholder }: { options: { code: string; name: string }[]; value: string; onChange: (code: string) => void; placeholder?: string }) {
+    const known = options.some((o) => o.code === value);
+    return (
+        <select value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-full border border-input bg-background px-2 text-sm">
+            <option value="">{placeholder || '— выберите —'}</option>
+            {!known && value ? <option value={value}>{value} (нет в справочнике)</option> : null}
+            {options.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+        </select>
+    );
+}
+
+// Выбор нескольких значений по именам из справочника RetailCRM (хранятся кодами).
+function MultiSelectByName({ options, selected, onChange, empty }: { options: { code: string; name: string }[]; selected: string[]; onChange: (v: string[]) => void; empty?: string }) {
+    const toggle = (code: string) => onChange(selected.includes(code) ? selected.filter((c) => c !== code) : [...selected, code]);
+    const nameByCode = new Map(options.map((o) => [o.code, o.name]));
+    const orphans = selected.filter((c) => !nameByCode.has(c)); // коды, которых уже нет в справочнике
+    return (
+        <div className="space-y-1">
+            <div className="max-h-44 space-y-0.5 overflow-y-auto border p-1.5">
+                {options.length === 0 ? <div className="text-[11px] text-muted-foreground">Справочник пуст — выполните синк RetailCRM.</div> : null}
+                {options.map((o) => (
+                    <label key={o.code} className="flex cursor-pointer items-center gap-2 text-xs">
+                        <input type="checkbox" checked={selected.includes(o.code)} onChange={() => toggle(o.code)} className="h-3.5 w-3.5 accent-primary" />
+                        <span>{o.name}</span>
+                    </label>
+                ))}
+            </div>
+            {orphans.length > 0 && (
+                <div className="text-[10px] text-amber-600">Нет в справочнике (снимутся при сохранении): {orphans.join(', ')}</div>
+            )}
+            <div className="text-[10px] text-muted-foreground">{selected.length ? `Выбрано: ${selected.length}` : (empty || 'ничего не выбрано')}</div>
         </div>
     );
 }
