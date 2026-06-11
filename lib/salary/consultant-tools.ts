@@ -1,5 +1,9 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
+import { businessDaysInMonth, computeManagerSalary } from '@/lib/salary/engine';
+import { collectPeriodMetrics, type ManagerMetrics } from '@/lib/salary/metrics';
+import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
+import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
 
 // Read-only salary tools for the "Семён" consultant (OpenAI function calling).
 // Source of truth: the persisted `salary_calc` row — the SAME data the "Моя зарплата" page
@@ -169,6 +173,123 @@ function ordersToReach(facts: ReturnType<typeof buildFacts>, target: number) {
     };
 }
 
+// ── What-if симулятор: пересчёт настоящим движком под гипотетические вводные ──
+
+function zeroMetrics(managerId: number): ManagerMetrics {
+    return {
+        managerId,
+        countedOrders: [],
+        countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        countsByCategory: {},
+        revenueByCategory: {},
+        discountMetricValue: null,
+        qualityAvgScore: null,
+        qualityScriptPct: null,
+        fastContactShare: null,
+        fieldsFilledShare: null,
+        conversion: { numerator: 0, denominator: 0, pct: 0, eligible: false },
+        dutyShifts: 0,
+        workedDays: null,
+        marginTotal: 0,
+    };
+}
+
+async function loadCategoryNames(): Promise<Record<string, string>> {
+    const { data: fieldRow } = await supabase
+        .from('retailcrm_custom_fields')
+        .select('dictionary')
+        .eq('entity', 'order')
+        .eq('code', 'typ_castomer')
+        .maybeSingle();
+    const dictCode = (fieldRow?.dictionary as string) || 'kategoriya_klienta';
+    const { data } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code,item_name')
+        .eq('entity_type', 'customField')
+        .eq('dictionary_code', dictCode);
+    const map: Record<string, string> = {};
+    for (const r of (data as any[]) ?? []) map[r.item_code] = r.item_name;
+    return map;
+}
+
+type SalaryBase = { m: ManagerMetrics; blocks: BlockInstance[]; ctx: BlockComputeContext; schemeCode: string };
+
+/** Собирает реальную базу для what-if одного менеджера (read-only). null — менеджера нет в реестре ЗП. */
+async function loadSalaryBase(managerId: number, year: number, month: number): Promise<SalaryBase | null> {
+    const config = await getConfigForPeriod(year, month);
+    const metrics = await collectPeriodMetrics(year, month, config);
+    const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
+    const compMap = await resolveManagerComp(asOf);
+    const comp = compMap.get(managerId);
+    if (!comp) return null;
+    const plans = await getPlansForPeriod(year, month);
+    const categoryNames = await loadCategoryNames();
+
+    const m = metrics.managers.find((x) => x.managerId === managerId) ?? zeroMetrics(managerId);
+    const ctx: BlockComputeContext = {
+        year,
+        month,
+        businessDays: businessDaysInMonth(year, month),
+        teamRevenueNoVat: metrics.teamRevenueNoVat,
+        personalPlanTarget: plans.personal.get(managerId) ?? null,
+        departmentPlanTarget: plans.department,
+        categoryNames,
+    };
+    return { m, blocks: comp.blocks, ctx, schemeCode: comp.schemeCode };
+}
+
+type SalaryOverrides = {
+    addNew?: number;
+    addPermanent?: number;
+    addPechVto?: number;
+    setConversionPct?: number;
+    addDutyShifts?: number;
+    setQualityScore?: number;
+    setTeamRevenueNoVat?: number;
+};
+
+/** Чистый пересчёт под overrides: клон метрик + computeManagerSalary. Без I/O и сайд-эффектов. */
+function simulateSalary(base: SalaryBase, overrides: SalaryOverrides) {
+    const baseline = computeManagerSalary(base.m, base.blocks, base.ctx, base.schemeCode);
+
+    const m: ManagerMetrics = structuredClone(base.m);
+    const applied: Record<string, number> = {};
+    if (overrides.addNew) { m.countsByType.new += overrides.addNew; applied.addNew = overrides.addNew; }
+    if (overrides.addPermanent) { m.countsByType.permanent += overrides.addPermanent; applied.addPermanent = overrides.addPermanent; }
+    if (overrides.addPechVto) { m.countsByType.pech_vto += overrides.addPechVto; applied.addPechVto = overrides.addPechVto; }
+    if (overrides.setConversionPct != null) { m.conversion.pct = overrides.setConversionPct; applied.setConversionPct = overrides.setConversionPct; }
+    if (overrides.addDutyShifts) { m.dutyShifts += overrides.addDutyShifts; applied.addDutyShifts = overrides.addDutyShifts; }
+    if (overrides.setQualityScore != null) { m.qualityAvgScore = overrides.setQualityScore; applied.setQualityScore = overrides.setQualityScore; }
+
+    let ctx = base.ctx;
+    if (overrides.setTeamRevenueNoVat != null) {
+        ctx = { ...base.ctx, teamRevenueNoVat: overrides.setTeamRevenueNoVat };
+        applied.setTeamRevenueNoVat = overrides.setTeamRevenueNoVat;
+    }
+
+    const hypo = computeManagerSalary(m, base.blocks, ctx, base.schemeCode);
+    return {
+        available: true,
+        appliedOverrides: applied,
+        baselineTotal: r2(baseline.total),
+        hypotheticalTotal: r2(hypo.total),
+        delta: r2(hypo.total - baseline.total),
+        hypothetical: {
+            total: r2(hypo.total),
+            oklad: r2(hypo.oklad),
+            premiaZayavki: r2(hypo.premiaZayavki),
+            convBonus: r2(hypo.convBonus),
+            discountBonus: r2(hypo.discountBonus),
+            dutyPay: r2(hypo.dutyPay),
+            kQuality: hypo.kQuality,
+            kTeam: hypo.kTeam,
+            counts: hypo.breakdown.counts,
+            conversionPct: hypo.breakdown.conversionPct,
+        },
+        note: 'Пересчёт настоящим движком ЗП. K_команды зависит от выручки всего отдела (setTeamRevenueNoVat — изолированный what-if).',
+    };
+}
+
 export const SALARY_TOOLS = [
     {
         type: 'function' as const,
@@ -197,6 +318,27 @@ export const SALARY_TOOLS = [
                     month: { type: 'integer' },
                 },
                 required: ['target_total'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'simulate_salary',
+            description: 'Пересчитывает зарплату текущего пользователя под гипотетическими вводными настоящим движком (корректно учитывает пороги конв-бонуса, тиры K_качества/K_команды). Используй для ЛЮБЫХ «что если»: «если закрою N новых», «при конверсии X%», «если K_команды станет Y», сравнения сценариев. Возвращает гипотетический итог и дельту к текущему.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    addNew: { type: 'integer', description: 'Добавить N новых заявок.' },
+                    addPermanent: { type: 'integer', description: 'Добавить N постоянных заявок.' },
+                    addPechVto: { type: 'integer', description: 'Добавить N заявок Печь/ВТО.' },
+                    setConversionPct: { type: 'number', description: 'Установить конверсию в процентах.' },
+                    addDutyShifts: { type: 'integer', description: 'Добавить N дежурств.' },
+                    setQualityScore: { type: 'number', description: 'Установить средний балл качества (0-100, влияет на K_качества).' },
+                    setTeamRevenueNoVat: { type: 'number', description: 'Установить выручку отдела без НДС (влияет на K_команды; общекомандный показатель).' },
+                    year: { type: 'integer' },
+                    month: { type: 'integer' },
+                },
             },
         },
     },
@@ -231,6 +373,25 @@ export async function executeSalaryTool(name: string, args: any, ctx: SalaryTool
     }
     if (name === 'orders_to_reach') {
         return ordersToReach(facts, num(args?.target_total));
+    }
+    if (name === 'simulate_salary') {
+        try {
+            const base = await loadSalaryBase(ctx.retailCrmManagerId, year, month);
+            if (!base) {
+                return { available: false, reason: 'Менеджер не найден в реестре зарплаты — симуляция недоступна.' };
+            }
+            return simulateSalary(base, {
+                addNew: Number(args?.addNew) || undefined,
+                addPermanent: Number(args?.addPermanent) || undefined,
+                addPechVto: Number(args?.addPechVto) || undefined,
+                setConversionPct: args?.setConversionPct != null ? Number(args.setConversionPct) : undefined,
+                addDutyShifts: Number(args?.addDutyShifts) || undefined,
+                setQualityScore: args?.setQualityScore != null ? Number(args.setQualityScore) : undefined,
+                setTeamRevenueNoVat: args?.setTeamRevenueNoVat != null ? Number(args.setTeamRevenueNoVat) : undefined,
+            });
+        } catch (e: any) {
+            return { available: false, reason: `Не удалось пересчитать: ${e?.message || 'ошибка'}.` };
+        }
     }
     return { available: false, reason: `Неизвестный инструмент: ${name}` };
 }
