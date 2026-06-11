@@ -47,6 +47,15 @@ const DISCOUNT_METRICS: Record<string, string> = {
     avg_order_discount_pct: 'Средневзвешенный % скидки',
     share_orders_no_discount: 'Доля заказов без скидки, %',
 };
+// Группа блока (роль в формуле) — человеческие названия вместо кодов.
+const GROUP_LABELS: Record<string, string> = {
+    base: 'Базовая часть',
+    premia: 'Премия',
+    variable: 'Переменная часть',
+    flat: 'Разовая доплата',
+    duty: 'Дежурства',
+};
+const groupLabel = (g: string) => GROUP_LABELS[g] ?? g;
 
 // Категории товара (typ_castomer) из словаря RetailCRM — для выпадающего списка.
 type CategoryOption = { code: string; name: string };
@@ -297,7 +306,7 @@ export function SchemesTab() {
                                     <span className="font-medium">{b.name}</span>
                                     <MethodologyTip text={b.methodology} />
                                 </div>
-                                <div className="text-[10px] text-muted-foreground">{b.group}{b.available ? '' : ' · нет данных'}</div>
+                                <div className="text-[10px] text-muted-foreground">{groupLabel(b.group)}{b.available ? '' : ' · нет данных'}</div>
                             </div>
                         );
                     })}
@@ -319,8 +328,7 @@ export function SchemesTab() {
                 {schemes.map((s, si) => (
                     <div key={s.code} className="border" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
-                            <span className="text-sm font-semibold px-1" title="Название роли из RetailCRM">{s.name}</span>
-                            <span className="text-[10px] text-muted-foreground">{s.code}</span>
+                            <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
                             <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
