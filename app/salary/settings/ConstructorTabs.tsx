@@ -359,7 +359,6 @@ export function RosterTab() {
     const { toast } = useToast();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [eff, setEff] = useState(new Date().toISOString().slice(0, 10));
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -369,41 +368,31 @@ export function RosterTab() {
     }, [toast]);
     useEffect(() => { load(); }, [load]);
 
-    const assignment = (id: number) => data?.assignments?.find((a: any) => a.managerId === id)?.schemeCode ?? '';
-    const act = async (managerId: number, schemeCode: string) => {
-        try {
-            const body = schemeCode ? { action: 'assign', managerId, schemeCode, effectiveFrom: eff } : { action: 'unassign', managerId, effectiveFrom: eff };
-            const res = await fetch('/api/salary/schemes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-            const j = await res.json(); if (!res.ok) throw new Error(j.error || 'Ошибка');
-            toast({ title: 'Сохранено' }); load();
-        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
-    };
-
     if (loading || !data) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
-    const schemeCodes: { code: string; name: string }[] = (data.schemes ?? []).map((s: any) => ({ code: s.code, name: s.name }));
+    const nameByCode = new Map<string, string>((data.schemes ?? []).map((s: any) => [s.code, s.name]));
+    const assignmentName = (id: number) => {
+        const code = data?.assignments?.find((a: any) => a.managerId === id)?.schemeCode;
+        return code ? (nameByCode.get(code) ?? code) : null;
+    };
+    const inRoster = (m: any) => assignmentName(m.id) != null;
 
     return (
         <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Назначения с</span>
-                <input type="date" value={eff} onChange={(e) => setEff(e.target.value)} className="h-8 border px-2" />
-                <span className="text-muted-foreground">Только менеджеры со схемой попадают в расчёт ЗП.</span>
+            <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+                Роль (схема) определяется <b>группами пользователя в RetailCRM</b> автоматически; при нескольких подходящих ролях её выбирают там же.
+                Кто участвует в расчёте ЗП — отмечается пофамильно в <a href="/settings/managers" className="text-primary underline">Настройки → Менеджеры</a>.
+                Здесь — только просмотр итогового реестра.
             </div>
             <div className="overflow-x-auto border">
                 <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">ID</th><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Активен</th><th className="px-2 py-1.5">Схема</th></tr></thead>
+                    <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">ID</th><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Активен</th><th className="px-2 py-1.5">Роль (из RetailCRM)</th></tr></thead>
                     <tbody>
                         {(data.managers ?? []).map((m: any) => (
-                            <tr key={m.id} className="border-t">
+                            <tr key={m.id} className={`border-t ${inRoster(m) ? '' : 'opacity-50'}`}>
                                 <td className="px-2 py-1 text-muted-foreground">{m.id}</td>
                                 <td className="px-2 py-1">{m.name}</td>
                                 <td className="px-2 py-1">{m.active ? '✓' : '—'}</td>
-                                <td className="px-2 py-1">
-                                    <select defaultValue={assignment(m.id)} onChange={(e) => act(m.id, e.target.value)} className="h-8 border px-2 text-sm">
-                                        <option value="">— не в реестре —</option>
-                                        {schemeCodes.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
-                                    </select>
-                                </td>
+                                <td className="px-2 py-1">{assignmentName(m.id) ?? <span className="text-muted-foreground">— не в реестре ЗП —</span>}</td>
                             </tr>
                         ))}
                     </tbody>

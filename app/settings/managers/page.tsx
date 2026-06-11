@@ -1,12 +1,17 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { saveManagerSettings } from './actions';
+import { saveManagerSettings, getSalaryRoster, saveSalaryRoster } from './actions';
 import Link from 'next/link';
+
+type RosterInfo = { inSalary: boolean; candidates: { code: string; name: string }[]; resolvedName: string | null; needsChoice: boolean };
 
 export default function ManagerSettingsPage() {
     const [managers, setManagers] = useState<any[]>([]);
     const [controlledIds, setControlledIds] = useState<Set<number>>(new Set());
+    const [salaryIds, setSalaryIds] = useState<Set<number>>(new Set());
+    const [roster, setRoster] = useState<Record<number, RosterInfo>>({});
+    const [roleChoice, setRoleChoice] = useState<Record<number, string>>({}); // managerId → выбранная схема (для 2+ ролей)
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
@@ -26,6 +31,20 @@ export default function ManagerSettingsPage() {
 
                 setManagers(mData || []);
                 setControlledIds(new Set((sData || []).map((s: any) => s.id)));
+
+                // 3. Реестр ЗП (участие + роль из групп RetailCRM)
+                const rosterRows = await getSalaryRoster();
+                const rMap: Record<number, RosterInfo> = {};
+                const sIds = new Set<number>();
+                const choices: Record<number, string> = {};
+                for (const r of rosterRows) {
+                    rMap[r.managerId] = { inSalary: r.inSalary, candidates: r.candidates, resolvedName: r.resolvedName, needsChoice: r.needsChoice };
+                    if (r.inSalary) sIds.add(r.managerId);
+                    if (r.resolved) choices[r.managerId] = r.resolved;
+                }
+                setRoster(rMap);
+                setSalaryIds(sIds);
+                setRoleChoice(choices);
             } catch (e) {
                 console.error(e);
             } finally {
@@ -49,10 +68,27 @@ export default function ManagerSettingsPage() {
         setControlledIds(next);
     };
 
+    const toggleSalary = (id: number) => {
+        setSalaryIds((prev) => {
+            const n = new Set(prev);
+            n.has(id) ? n.delete(id) : n.add(id);
+            return n;
+        });
+    };
+
     const handleSave = async () => {
         setSaving(true);
         setSaveMessage('');
         try {
+            // Реестр ЗП: участники + выбор роли для конфликтных (2+ кандидата)
+            const choices = Array.from(salaryIds)
+                .filter((id) => (roster[id]?.candidates.length ?? 0) > 1 && roleChoice[id])
+                .map((id) => ({ managerId: id, schemeCode: roleChoice[id] }));
+            const salaryRes = await saveSalaryRoster(Array.from(salaryIds), choices);
+            if (!salaryRes.success && salaryRes.errorType !== 'TABLE_MISSING') {
+                alert('Ошибка сохранения реестра ЗП: ' + (salaryRes.error || 'неизвестная'));
+            }
+
             const result = await saveManagerSettings(Array.from(controlledIds));
             if (result.success) {
                 const created = Array.isArray(result.createdAccounts) ? result.createdAccounts : [];
@@ -88,7 +124,7 @@ export default function ManagerSettingsPage() {
             <div className="flex flex-col gap-4 mb-6">
                 {/* Mobile-first text */}
                 <p className="text-sm text-gray-500 font-medium">
-                    Выберите сотрудников для анализа нарушений
+                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную).
                 </p>
                 <button
                     onClick={handleSave}
@@ -176,6 +212,22 @@ NOTIFY pgrst, 'reload config';`}
                                         </div>
                                     </div>
                                 </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    <button type="button" onClick={() => toggleSalary(m.id)} title="Участвует в ЗП" className="flex items-center gap-1">
+                                        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">ЗП</span>
+                                        <div className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${salaryIds.has(m.id) ? 'bg-emerald-600' : 'bg-gray-200'}`}>
+                                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${salaryIds.has(m.id) ? 'translate-x-4' : 'translate-x-0'}`} />
+                                        </div>
+                                    </button>
+                                    {salaryIds.has(m.id) && (roster[m.id]?.candidates.length ?? 0) > 1 ? (
+                                        <select value={roleChoice[m.id] ?? ''} onChange={(e) => setRoleChoice((prev) => ({ ...prev, [m.id]: e.target.value }))} className="border border-gray-300 rounded px-1 py-0.5 text-[10px]">
+                                            <option value="">— роль —</option>
+                                            {(roster[m.id]?.candidates ?? []).map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                        </select>
+                                    ) : salaryIds.has(m.id) && roster[m.id]?.resolvedName ? (
+                                        <span className="text-[9px] text-gray-500">{roster[m.id]?.resolvedName}</span>
+                                    ) : null}
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -190,6 +242,7 @@ NOTIFY pgrst, 'reload config';`}
                                     <th className="p-4 md:p-6">ФИО Менеджера</th>
                                     <th className="p-4 md:p-6">RetailCRM</th>
                                     <th className="p-4 md:p-6">Доступ в ОКК</th>
+                                    <th className="p-4 md:p-6">В ЗП / Роль</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -225,6 +278,36 @@ NOTIFY pgrst, 'reload config';`}
                                                     Нет доступа
                                                 </span>
                                             )}
+                                        </td>
+                                        <td className="p-4 md:p-6" onClick={(e) => e.stopPropagation()}>
+                                            {(() => {
+                                                const info = roster[m.id];
+                                                const cands = info?.candidates ?? [];
+                                                const inSal = salaryIds.has(m.id);
+                                                return (
+                                                    <div className="flex items-center gap-3">
+                                                        <button type="button" onClick={() => toggleSalary(m.id)} title="Участвует в расчёте ЗП">
+                                                            <div className={`w-10 h-5 md:w-12 md:h-6 rounded-full p-1 transition-all duration-300 ${inSal ? 'bg-emerald-600' : 'bg-gray-200'}`}>
+                                                                <div className={`w-3 h-3 md:w-4 md:h-4 bg-white rounded-full transition-all duration-300 ${inSal ? 'translate-x-5 md:translate-x-6' : 'translate-x-0'}`}></div>
+                                                            </div>
+                                                        </button>
+                                                        {!inSal ? null : cands.length === 0 ? (
+                                                            <span className="text-[10px] text-amber-600 font-medium">нет роли из групп RetailCRM</span>
+                                                        ) : cands.length === 1 ? (
+                                                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-[10px] font-bold">{info?.resolvedName || cands[0].name}</span>
+                                                        ) : (
+                                                            <select
+                                                                value={roleChoice[m.id] ?? ''}
+                                                                onChange={(e) => setRoleChoice((prev) => ({ ...prev, [m.id]: e.target.value }))}
+                                                                className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                                                            >
+                                                                <option value="">— выберите роль —</option>
+                                                                {cands.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+                                                            </select>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                         </td>
                                     </tr>
                                 ))}

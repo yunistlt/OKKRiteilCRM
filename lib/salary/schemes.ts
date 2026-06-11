@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import type { BlockInstance } from '@/lib/salary/blocks/types';
+import { resolveManagerRoles } from '@/lib/salary/roles';
 
 // ============================================================================
 // Резолв схем оплаты и планов «на период». Схема — пресет блоков; менеджеру
@@ -13,19 +14,18 @@ export interface ManagerComp {
     blocks: BlockInstance[];
 }
 
-/** Карта managerId → назначенная схема с блоками, действующая на дату asOf. */
+/** Карта managerId → назначенная схема с блоками, действующая на дату asOf.
+ *  Роль определяется ГРУППАМИ менеджера в RetailCRM через salary_role_map
+ *  (см. lib/salary/roles.ts): авто при 1 кандидате, выбор пользователя при 2+. */
 export async function resolveManagerComp(asOf: string): Promise<Map<number, ManagerComp>> {
-    // 1. Последнее назначение схемы по каждому менеджеру
-    const { data: compRows, error: compErr } = await supabase
-        .from('salary_manager_comp')
-        .select('manager_id,scheme_code,effective_from')
-        .lte('effective_from', asOf)
-        .order('effective_from', { ascending: false });
-    if (compErr) throw compErr;
+    // 1. Реестр ЗП = отмеченные участники (salary_participant) И имеющие роль из групп RetailCRM
+    const { data: partRows, error: partErr } = await supabase.from('salary_participant').select('manager_id');
+    if (partErr) throw partErr;
+    const participants = new Set<number>(((partRows as any[]) ?? []).map((r) => Number(r.manager_id)));
+    const roles = await resolveManagerRoles(asOf);
     const schemeByManager = new Map<number, string>();
-    for (const r of (compRows as any[]) ?? []) {
-        const mid = Number(r.manager_id);
-        if (!schemeByManager.has(mid)) schemeByManager.set(mid, r.scheme_code);
+    for (const r of roles) {
+        if (r.active && r.resolved && participants.has(r.managerId)) schemeByManager.set(r.managerId, r.resolved);
     }
     if (schemeByManager.size === 0) return new Map();
 
