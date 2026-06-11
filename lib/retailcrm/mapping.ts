@@ -1,43 +1,10 @@
 import { supabase } from '@/utils/supabase';
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Маппинг и нормализация данных из RetailCRM.
 
-const ORDER_METHODS: Record<string, string> = {
-    'shopping-cart': 'Через корзину',
-    'app': 'На электронную почту',
-    'carrotquest': 'CarrotQuest',
-    'phone': 'По телефону',
-    'live-chat': 'Онлайн-консультант (EnvyBox)',
-    'vkontakte': 'ВКонтакте',
-    'instagram': 'Instagram',
-    'whatsapp': 'WhatsApp',
-    'avito': 'Авито',
-    'one-click': 'В один клик',
-    'marquiz': 'MarQuiz',
-    'price-decrease-request': 'Запрос каталога с сайта',
-    'wantresult': 'Wantresult',
-    'reanimatsiia-vozvrat-bazy': 'Реанимация / возврат базы',
-    'postojany': 'Постоянный клиент',
-    'baza': 'Наша база',
-    'obzvon': 'Холод обзвон',
-    'missed-call': 'Заказ обратного звонка',
-    'pulstsen': 'ПульсЦен',
-    'call-center': 'Колл-центр',
-    'diler': 'Дилер',
-    'avtoobzvon': 'Автообзвон',
-    'sposob-oformleniia-kh-z': 'Способ оформления ХЗ',
-};
-
-// Категории товара НЕ хардкодим — берём только из синканутого справочника RetailCRM
-// (retailcrm_dictionaries / kategoriya_klienta), см. resolveRetailCRMLabel ниже (DB-first).
-
-const CLIENT_CATEGORIES: Record<string, string> = {
-    'trebuetsya-utochnit': 'Требуется уточнить',
-    'vtorichnyi-klient': 'Вторичный клиент',
-    'novyi-klient': 'Новый клиент',
-    'partnerskii': 'Партнерский',
-    'goszakupki': 'Госзакупки',
-    'yang_scool': 'Янг Скул (Юр.лицо)',
-};
+// ЗАКОН: никаких захардкоженных названий. Все человекочитаемые имена справочников
+// (способы заказа, категории товара/клиента, статусы и т.п.) берём ТОЛЬКО из
+// синканутого каталога RetailCRM — retailcrm_dictionaries (см. resolveRetailCRMLabel,
+// DB-first). Полный синк: lib/retailcrm/dictionaries-sync.ts.
 
 export async function resolveRetailCRMLabel(
     field: 'orderMethod' | 'productCategory' | 'clientCategory' | 'status' | 'top3Price' | 'top3Timing' | 'top3Specs',
@@ -91,16 +58,8 @@ export async function resolveRetailCRMLabel(
         // Probably table missing, proceed to static fallback
     }
 
-    // 2. Try Static Mapping Fallback
-    let mapping: Record<string, string> = {};
-    switch (field) {
-        case 'orderMethod': mapping = ORDER_METHODS; break;
-        case 'clientCategory': mapping = CLIENT_CATEGORIES; break;
-    }
-
-    if (mapping[code]) return mapping[code];
-
-    // 3. Humanizer fallback
+    // 2. Последний резерв: гуманизация кода (если кода нет в синканутых справочниках CRM —
+    //    напр. устаревший/удалённый код). Имена не выдумываем.
     return code
         .replace(/-/g, ' ')
         .replace(/_/g, ' ')
