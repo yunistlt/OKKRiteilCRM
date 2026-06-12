@@ -8,6 +8,12 @@ import * as XLSX from 'xlsx';
 export const dynamic = 'force-dynamic';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный' };
+const fmtDateRu = (s?: string) => {
+    if (!s) return '';
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('ru-RU');
+};
 
 // GET /api/salary/export?period=YYYY-MM — выгрузка расчёта в Excel
 export async function GET(req: Request) {
@@ -83,6 +89,31 @@ export async function GET(req: Request) {
         ws['!cols'] = header.map((h, i) => ({ wch: i === 0 ? 22 : 14 }));
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, `ЗП ${MONTHS[month - 1]} ${year}`);
+
+        // Лист «Заказы» — детализация засчитанных заказов с клиентом и числом сделок
+        const orderHeader = ['Менеджер', '№ заказа', 'Клиент', 'Тип', 'Сделок клиента', 'Сумма', 'Скидка %', 'Передан в произв.'];
+        const ordersAoa: any[][] = [orderHeader];
+        for (const r of rows.sort((a, b) => a.manager_id - b.manager_id)) {
+            const b = r.breakdown || {};
+            const detail: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
+            for (const o of detail) {
+                ordersAoa.push([
+                    namesById.get(r.manager_id) || `#${r.manager_id}`,
+                    o.id,
+                    o.clientName || '',
+                    ORDER_TYPE_LABEL[o.type] ?? '',
+                    typeof o.deals === 'number' ? o.deals : '',
+                    Number(o.sum) || 0,
+                    o.discountPct ?? '',
+                    fmtDateRu(o.enteredAt),
+                ]);
+            }
+        }
+        if (ordersAoa.length > 1) {
+            const wsOrders = XLSX.utils.aoa_to_sheet(ordersAoa);
+            wsOrders['!cols'] = [{ wch: 22 }, { wch: 12 }, { wch: 40 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 16 }];
+            XLSX.utils.book_append_sheet(wb, wsOrders, 'Заказы');
+        }
         const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
         return new NextResponse(buf, {
