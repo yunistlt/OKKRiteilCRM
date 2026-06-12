@@ -146,6 +146,19 @@ export async function syncRetailcrmCatalog(): Promise<{ dictionaries: number; di
             .upsert(dictRows.slice(i, i + 500).map((r) => ({ ...r, updated_at: now })), { onConflict: 'entity_type,dictionary_code,item_code' });
         if (error) throw error;
     }
+    // Удаляем исчезнувшие/архивированные элементы справочников: всё, что НЕ просвежено
+    // этим синком (updated_at < now). Синк тянет ВСЕ словари за один проход, поэтому
+    // любой customField-элемент со старым updated_at — удалён в RetailCRM. Без этого
+    // upsert копит «мёртвые» категории, и они показываются в UI (напр. блоки ЗП).
+    // Защита: чистим только если синк реально вернул элементы (иначе сбой API стёр бы всё).
+    if (dictRows.length > 0) {
+        const { error: pruneErr } = await supabase
+            .from('retailcrm_dictionaries')
+            .delete()
+            .eq('entity_type', 'customField')
+            .lt('updated_at', now);
+        if (pruneErr) throw pruneErr;
+    }
     // Определения полей.
     for (let i = 0; i < fieldRows.length; i += 500) {
         const { error } = await supabase
