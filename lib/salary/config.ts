@@ -16,7 +16,6 @@ export const SALARY_CONFIG_SCHEMAS = {
     rate_zayavka: z.object({
         new: z.number().nonnegative(),
         permanent: z.number().nonnegative(),
-        pech_vto: z.number().nonnegative(),
     }),
     k_quality_tiers: z.array(tierK).min(1),
     conv_bonus_tiers: z.array(tierBonus).min(1),
@@ -32,7 +31,6 @@ export const SALARY_CONFIG_SCHEMAS = {
     closing_status: z.object({ code: z.string().min(1) }),
     permanent_client_threshold: z.number().int().nonnegative(),
     source_exclusions: z.array(z.string()),
-    category_pech_vto_map: z.array(z.string()),
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),

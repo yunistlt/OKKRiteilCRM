@@ -60,7 +60,9 @@ total = base
 | code | Название | kind/group | Метрики | Заметка |
 |---|---|---|---|---|
 | `oklad` | Оклад | base/base | worked_days | пропорция по отработанным дням |
-| `premia_zayavki` | Премия за заявки | premia/premia | counted_orders, order_type | ставки new/permanent/pech_vto |
+| `premia_zayavki` | Премия за заявки | premia/premia | counted_orders, order_type | ставки new/permanent |
+| `premia_categorii` | Премия за категории товара | premia/premia | category_counts, category_revenue | доплата по категории: сумма/% |
+| `coef_categorii` | Коэффициент за категории | multiplier/variableBracket | category_counts | множитель переменной части |
 | `k_quality` | К_качества | multiplier/premia | okk_total_score | множит премию; нет оценок → ×1 |
 | `conv_bonus` | Конв-бонус | variable/variable | conversion_incoming | gate по минимуму входящих |
 | `discount_bonus` | Скидочная дисциплина | variable/variable | discount_pct | bonus если метрика ≤/≥ порога |
@@ -98,7 +100,7 @@ total = base
 |---|---|
 | `salary_period` | период (год/месяц/статус open\|closed) |
 | `salary_calc` | строка расчёта по менеджеру: legacy-колонки (oklad/premia_zayavki/k_quality/conv_bonus/discount_bonus/duty_pay/k_team/total/margin_info) + `breakdown` (jsonb, free-form: детализация, `countedOrders[]`, `blockContributions[]`, `schemeCode`) |
-| `salary_config` | базовый конфиг (effective-dated): closing_status, source_exclusions, nds_normalization, category_pech_vto_map, permanent_client_threshold, дефолтные ставки |
+| `salary_config` | базовый конфиг (effective-dated): closing_status, source_exclusions, nds_normalization, permanent_client_threshold, дефолтные ставки |
 | `salary_scheme` / `salary_scheme_block` | схемы (роли) и их блоки с params |
 | `salary_manager_comp` | назначение схемы менеджеру (= реестр) |
 | `salary_plan` | планы по месяцам (отдел + менеджеры) |

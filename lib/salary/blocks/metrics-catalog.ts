@@ -16,7 +16,7 @@ export interface MetricDef {
 
 export const METRICS_CATALOG: Record<string, MetricDef> = {
     counted_orders: { code: 'counted_orders', label: 'Засчитанные заказы (передано в производство)', source: 'order_history_log + orders', availability: 'full' },
-    order_type: { code: 'order_type', label: 'Тип заявки (новый/постоянный/печь-ВТО)', source: 'orders.customFields.typ_castomer + история сделок клиента', availability: 'full' },
+    order_type: { code: 'order_type', label: 'Тип заявки (новый / постоянный)', source: 'история сделок клиента', availability: 'full' },
     category_counts: { code: 'category_counts', label: 'Кол-во заявок по категории товара', source: 'orders.customFields.typ_castomer', availability: 'full' },
     category_revenue: { code: 'category_revenue', label: 'Выручка по категории товара', source: 'orders.items + категория typ_castomer', availability: 'full' },
     order_total: { code: 'order_total', label: 'Сумма заказа', source: 'orders.totalsumm', availability: 'full' },

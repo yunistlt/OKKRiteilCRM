@@ -84,7 +84,7 @@ function zeroMetrics(managerId: number): ManagerMetrics {
     return {
         managerId,
         countedOrders: [],
-        countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        countsByType: { new: 0, permanent: 0 },
         countsByCategory: {},
         revenueByCategory: {},
         discountMetricValue: null,
@@ -121,7 +121,7 @@ export function computeManagerSalary(
 
     // Параметры для совместимых полей breakdown (ставки/метрика скидки) — из назначенных блоков.
     const premiaInst = blockInstances.find((b) => b.code === 'premia_zayavki');
-    const rates = (premiaInst?.params?.rates as SalaryConfig['rate_zayavka']) ?? { new: 0, permanent: 0, pech_vto: 0 };
+    const rates = (premiaInst?.params?.rates as SalaryConfig['rate_zayavka']) ?? { new: 0, permanent: 0 };
     const discountInst = blockInstances.find((b) => b.code === 'discount_bonus');
     const discountMetric = (discountInst?.params?.metric as string) ?? '';
 
