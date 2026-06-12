@@ -38,17 +38,16 @@ const oklad: BonusBlock<{ oklad: number; prorate?: boolean }> = {
     },
 };
 
-// Премия за заявку по типу клиента (новый / постоянный). Категории товара — в
-// отдельных блоках premia_categorii / coef_categorii (заявки печь/ВТО и прочих
-// категорий исключаются из new/permanent ещё на этапе classifyOrderType).
+// Премия за заявку по типу клиента (новый / постоянный). Премия за категории
+// товара — в отдельных блоках premia_categorii / coef_categorii (добавочно).
 const premiaZayavki: BonusBlock<{ rates: { new: number; permanent: number } }> = {
     code: 'premia_zayavki',
     name: 'Премия за заявки',
-    methodology: 'За каждую засчитанную заявку начисляется ставка по типу клиента (новый / постоянный). Премия = Σ количество × ставка. Категории товара (печь/ВТО и др.) — в блоке «Премия за категории товаров».',
+    methodology: 'За каждую засчитанную заявку начисляется ставка по типу клиента (новый / постоянный). Премия = Σ количество × ставка. Премия за категории товара — в отдельном блоке «Премия за категории товаров».',
     kind: 'premia',
     group: 'premia',
     requiredMetrics: ['counted_orders', 'order_type'],
-    // Zod по умолчанию отбрасывает лишние ключи → старые схемы с rates.pech_vto читаются без ошибки.
+    // Zod по умолчанию отбрасывает лишние ключи → старые схемы с доп. ставками читаются без ошибки.
     paramSchema: z.object({ rates: z.object({ new: z.number().nonnegative(), permanent: z.number().nonnegative() }) }),
     compute(m, p) {
         const c = m.countsByType;
@@ -64,7 +63,7 @@ const premiaZayavki: BonusBlock<{ rates: { new: number; permanent: number } }> =
 
 // Премия за категории товаров (аддитивная): фикс. сумма за заявку или % от выручки.
 // Категория заявки = orders.customFields.typ_castomer (одно значение на заказ).
-// group: 'premia' → как печь/ВТО раньше, умножается на К_качества и К_команды.
+// group: 'premia' → умножается на К_качества и К_команды (как премия за заявки).
 const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct'; value: number }[] }> = {
     code: 'premia_categorii',
     name: 'Премия за категории товаров',

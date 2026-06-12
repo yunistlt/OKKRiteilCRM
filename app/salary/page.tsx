@@ -10,7 +10,7 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
-const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь/ВТО' };
+const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный' };
 const DISCOUNT_METRIC_NAMES: Record<string, string> = { avg_order_discount_pct: 'Средневзвешенный % скидки', share_orders_no_discount: 'Доля заказов без скидки' };
 const metricName = (code?: string) => (code ? (DISCOUNT_METRIC_NAMES[code] ?? code) : '—');
 const fmtDate = (s?: string) => {
@@ -256,7 +256,7 @@ function ManagerReportModal({
     const orderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
     // Фолбэк для старых расчётов без детализации: показываем хотя бы номера.
     const orderRows: any[] = details.length > 0 ? details : orderIds.map((id) => ({ id }));
-    const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0) + (b.counts?.pech_vto ?? 0);
+    const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0);
 
     return (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
@@ -321,7 +321,6 @@ function ManagerReportModal({
                             <div className="mb-1 font-semibold">Засчитанные заявки</div>
                             <div>Новых: {b.counts?.new ?? 0} × {rub(b.rates?.new ?? 0)}</div>
                             <div>Постоянных: {b.counts?.permanent ?? 0} × {rub(b.rates?.permanent ?? 0)}</div>
-                            <div className="text-muted-foreground">Печь/ВТО (категория): {b.counts?.pech_vto ?? 0} шт. — премия в блоке «по категориям»</div>
                             <div className="mt-1 text-muted-foreground">Всего заказов: {totalCounted}</div>
                         </div>
                         <div>

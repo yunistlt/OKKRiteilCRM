@@ -46,7 +46,7 @@ export async function GET(req: Request) {
         const header = [
             'Менеджер', 'Схема', 'Оклад', 'Премия за заявки', 'К_качества', 'Конв-бонус',
             'Скидка-бонус', 'К_команды', 'Дежурства', 'Итого к выплате',
-            'Новых', 'Постоянных', 'Печь/ВТО', 'Конверсия %', 'Скоринг ОКК', 'Скидка %', 'Маржа', 'Состав (блоки)',
+            'Новых', 'Постоянных', 'Конверсия %', 'Скоринг ОКК', 'Скидка %', 'Маржа', 'Состав (блоки)',
         ];
         const aoa: any[][] = [
             [`Расчёт ЗП ОП — ${MONTHS[month - 1]} ${year} (${periodRow.status === 'closed' ? 'закрыт' : 'открыт'})`],
@@ -65,7 +65,7 @@ export async function GET(req: Request) {
                 b.schemeCode ?? '',
                 Number(r.oklad), Number(r.premia_zayavki), Number(r.k_quality), Number(r.conv_bonus),
                 Number(r.discount_bonus), Number(r.k_team), Number(r.duty_pay), Number(r.total),
-                b.counts?.new ?? 0, b.counts?.permanent ?? 0, b.counts?.pech_vto ?? 0,
+                b.counts?.new ?? 0, b.counts?.permanent ?? 0,
                 b.conversionPct ?? 0, b.qualityScore != null ? Math.round(b.qualityScore) : '', b.discountValue ?? '', Number(r.margin_info) || 0,
                 composition,
             ]);

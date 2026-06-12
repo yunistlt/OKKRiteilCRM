@@ -122,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_salary_audit_entity ON public.salary_audit_log (e
 -- ============================================================================
 INSERT INTO public.salary_config (key, value, effective_from, note, created_by) VALUES
     ('oklad', '35000'::jsonb, '2026-07-01', 'Старт §4 ТЗ', 'system'),
-    ('rate_zayavka', '{"new":2000,"permanent":1000,"pech_vto":3000}'::jsonb, '2026-07-01', 'Старт §4 ТЗ', 'system'),
+    ('rate_zayavka', '{"new":2000,"permanent":1000}'::jsonb, '2026-07-01', 'Старт §4 ТЗ', 'system'),
     ('k_quality_tiers', '[{"min":90,"k":1.2},{"min":75,"k":1.1},{"min":60,"k":1.0},{"min":40,"k":0.9},{"min":0,"k":0.8}]'::jsonb, '2026-07-01', 'Старт §4 ТЗ', 'system'),
     ('conv_bonus_tiers', '[{"min":45,"bonus":9000},{"min":35,"bonus":6000},{"min":25,"bonus":3000},{"min":0,"bonus":0}]'::jsonb, '2026-07-01', 'Старт §4 ТЗ', 'system'),
     ('conv_min_zayavki', '10'::jsonb, '2026-07-01', 'Защита от малого знаменателя §4', 'system'),
@@ -132,6 +132,5 @@ INSERT INTO public.salary_config (key, value, effective_from, note, created_by) 
     ('closing_status', '{"code":"send-assembling"}'::jsonb, '2026-07-01', 'Статус «Передано в производство» — заказ входит в базу ФОТ', 'system'),
     ('permanent_client_threshold', '2'::jsonb, '2026-07-01', 'Более 2 оплаченных за всё время = постоянный (DECISIONS #14)', 'system'),
     ('source_exclusions', '["avito","call-center","baza"]'::jsonb, '2026-07-01', 'Источники, не считаемые входящими с сайта §5', 'system'),
-    ('category_pech_vto_map', '["mufelnye-pechi","sush_shso"]'::jsonb, '2026-07-01', 'Категории товара, заменяющие тип клиента (премия по категории). Только реальные коды из справочника RetailCRM kategoriya_klienta; состав настраивается бизнесом.', 'system'),
     ('nds_normalization', '{"rules":[{"vat_pct":0,"divisor":1.0},{"vat_pct":5,"divisor":1.05},{"vat_pct":20,"divisor":1.20}]}'::jsonb, '2026-07-01', 'Приведение к «без НДС»: 5%→/1.05, 20%→/1.20, 0%/none→как есть §5', 'system')
 ON CONFLICT (key, effective_from) DO NOTHING;

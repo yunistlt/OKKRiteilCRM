@@ -108,7 +108,7 @@ function buildFacts(row: SalaryCalcRow, year: number, month: number, config: Sal
         kQuality,
         kTeam,
         conversionPct: num(breakdown.conversionPct),
-        counts: { new: num(counts.new), permanent: num(counts.permanent), pech_vto: num(counts.pech_vto) },
+        counts: { new: num(counts.new), permanent: num(counts.permanent) },
         countedOrders: Array.isArray(breakdown.countedOrders) ? breakdown.countedOrders.length : num((breakdown.countedOrderIds || []).length),
         rateNewOrder: rateNew,
         rateOldOrder: rateOld,
@@ -179,7 +179,7 @@ function zeroMetrics(managerId: number): ManagerMetrics {
     return {
         managerId,
         countedOrders: [],
-        countsByType: { new: 0, permanent: 0, pech_vto: 0 },
+        countsByType: { new: 0, permanent: 0 },
         countsByCategory: {},
         revenueByCategory: {},
         discountMetricValue: null,
@@ -241,7 +241,6 @@ async function loadSalaryBase(managerId: number, year: number, month: number): P
 type SalaryOverrides = {
     addNew?: number;
     addPermanent?: number;
-    addPechVto?: number;
     setConversionPct?: number;
     addDutyShifts?: number;
     setQualityScore?: number;
@@ -256,7 +255,6 @@ function simulateSalary(base: SalaryBase, overrides: SalaryOverrides) {
     const applied: Record<string, number> = {};
     if (overrides.addNew) { m.countsByType.new += overrides.addNew; applied.addNew = overrides.addNew; }
     if (overrides.addPermanent) { m.countsByType.permanent += overrides.addPermanent; applied.addPermanent = overrides.addPermanent; }
-    if (overrides.addPechVto) { m.countsByType.pech_vto += overrides.addPechVto; applied.addPechVto = overrides.addPechVto; }
     if (overrides.setConversionPct != null) { m.conversion.pct = overrides.setConversionPct; applied.setConversionPct = overrides.setConversionPct; }
     if (overrides.addDutyShifts) { m.dutyShifts += overrides.addDutyShifts; applied.addDutyShifts = overrides.addDutyShifts; }
     if (overrides.setQualityScore != null) { m.qualityAvgScore = overrides.setQualityScore; applied.setQualityScore = overrides.setQualityScore; }
@@ -331,7 +329,6 @@ export const SALARY_TOOLS = [
                 properties: {
                     addNew: { type: 'integer', description: 'Добавить N новых заявок.' },
                     addPermanent: { type: 'integer', description: 'Добавить N постоянных заявок.' },
-                    addPechVto: { type: 'integer', description: 'Добавить N заявок Печь/ВТО.' },
                     setConversionPct: { type: 'number', description: 'Установить конверсию в процентах.' },
                     addDutyShifts: { type: 'integer', description: 'Добавить N дежурств.' },
                     setQualityScore: { type: 'number', description: 'Установить средний балл качества (0-100, влияет на K_качества).' },
@@ -383,7 +380,6 @@ export async function executeSalaryTool(name: string, args: any, ctx: SalaryTool
             return simulateSalary(base, {
                 addNew: Number(args?.addNew) || undefined,
                 addPermanent: Number(args?.addPermanent) || undefined,
-                addPechVto: Number(args?.addPechVto) || undefined,
                 setConversionPct: args?.setConversionPct != null ? Number(args.setConversionPct) : undefined,
                 addDutyShifts: Number(args?.addDutyShifts) || undefined,
                 setQualityScore: args?.setQualityScore != null ? Number(args.setQualityScore) : undefined,

@@ -22,7 +22,6 @@ const KEY_LABELS: Record<string, string> = {
     closing_status: 'Статус «закрытия» (вход в базу ФОТ)',
     permanent_client_threshold: 'Порог «постоянного клиента»',
     source_exclusions: 'Источники-исключения',
-    category_pech_vto_map: 'Категории → печь/ВТО',
     nds_normalization: 'Нормализация НДС',
 };
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -105,9 +104,6 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
     if (configKey === 'closing_status') {
         return <SelectByName options={dicts.statuses} value={value?.code || ''} onChange={(code) => onChange({ ...value, code })} placeholder="— выберите статус —" />;
     }
-    if (configKey === 'category_pech_vto_map') {
-        return <MultiSelectByName options={dicts.categories} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="категории не выбраны" />;
-    }
     if (configKey === 'source_exclusions') {
         return <MultiSelectByName options={dicts.orderMethods} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="источники не выбраны" />;
     }
@@ -119,10 +115,10 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
     if (Array.isArray(value)) return <StringListEditor items={value as string[]} onChange={onChange} />;
     if (configKey === 'rate_zayavka') {
         return (
-            <div className="grid grid-cols-3 gap-2">
-                {(['new', 'permanent', 'pech_vto'] as const).map((f) => (
+            <div className="grid grid-cols-2 gap-2">
+                {(['new', 'permanent'] as const).map((f) => (
                     <div key={f}>
-                        <label className="text-[11px] text-muted-foreground">{f === 'new' ? 'Новый' : f === 'permanent' ? 'Постоянный' : 'Печь/ВТО'}</label>
+                        <label className="text-[11px] text-muted-foreground">{f === 'new' ? 'Новый' : 'Постоянный'}</label>
                         <NumberInput value={value[f]} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, [f]: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} />
                     </div>
                 ))}

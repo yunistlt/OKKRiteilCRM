@@ -66,10 +66,9 @@
   оба про **категорию товара**.
 - Отдельное поле заказа `kategoriya_klienta` существует, но в заказах **пустое** (0 значений).
 
-## Печь/ВТО (зарплатный модуль)
+## Категории товара в ЗП
 
-`salary_config.category_pech_vto_map` — список `item_code` категорий, заменяющих тип клиента
-(исключаются из new/permanent, оплачиваются блоком `premia_categorii`). Только **реальные**
-коды из справочника `kategoriya_klienta`; состав настраивается бизнесом. Текущий состав:
-`mufelnye-pechi` (Муфельные печи), `sush_shso` (Сушильные типа ШСО).
-См. также `docs/salary/category-premium-block.md`.
+Категория заказа = `customFields.typ_castomer` (справочник `kategoriya_klienta`, имена из CRM).
+Премия за категории — добавочный блок `premia_categorii` / `coef_categorii` в схеме мотивации
+(админ выбирает категории из справочника). Спецсписка «печь/ВТО» больше нет — категории обычные.
+См. `docs/salary/category-premium-block.md`.

@@ -33,7 +33,7 @@ function tintFor(code: string) {
 // ── RU-лейблы технических ключей параметров ──
 const PARAM_LABELS: Record<string, string> = {
     oklad: 'Оклад, ₽', prorate: 'Пропорция по отработанным дням',
-    rates: 'Ставки по типам клиента', new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь / ВТО',
+    rates: 'Ставки по типам клиента', new: 'Новый', permanent: 'Постоянный',
     tiers: 'Пороги', min: 'От', k: 'Коэффициент ×', bonus: 'Бонус, ₽',
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
     rate: 'Ставка, ₽',

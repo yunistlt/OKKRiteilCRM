@@ -8,7 +8,7 @@ import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
 // числа; перевод в деньги (тиры, формула) — в движке (lib/salary/engine.ts).
 // ============================================================================
 
-export type OrderType = 'new' | 'permanent' | 'pech_vto';
+export type OrderType = 'new' | 'permanent';
 
 export interface CountedOrderRow {
     order_id: number;
@@ -103,16 +103,13 @@ export function computeOrderFinance(
     return { goodsBase, discountAmount, discountPct, revenueNoVat, margin };
 }
 
-/** Классификация типа заявки для ставки премии. */
+/** Тип заявки по истории клиента: новый / постоянный. Категория товара — отдельно
+ *  (countsByCategory), премия за категории — добавочный блок premia_categorii. */
 export function classifyOrderType(
-    typCastomer: string | null,
     clientId: number | null,
     clientDeals: Map<number, number>,
     config: SalaryConfig,
 ): OrderType {
-    if (typCastomer && config.category_pech_vto_map.includes(typCastomer)) {
-        return 'pech_vto';
-    }
     const deals = clientId != null ? clientDeals.get(clientId) ?? 0 : 0;
     return deals > config.permanent_client_threshold ? 'permanent' : 'new';
 }
@@ -147,7 +144,7 @@ export function buildPeriodMetrics(input: {
         if (managerId == null || !Number.isFinite(managerId)) continue;
         const clientId = row.client_id == null ? null : Number(row.client_id);
         const fin = computeOrderFinance(row.items, config.nds_normalization.rules);
-        const type = classifyOrderType(row.typ_castomer, clientId, clientDeals, config);
+        const type = classifyOrderType(clientId, clientDeals, config);
         const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
         const order: CountedOrder = {
             orderId: Number(row.order_id),
@@ -177,7 +174,7 @@ export function buildPeriodMetrics(input: {
     for (const managerId of Array.from(managerIds)) {
         if (!managerId || managerId <= 0) continue; // отсекаем фантом (заказы без менеджера, manager_id=0/null)
         const orders = byManager.get(managerId) ?? [];
-        const countsByType: Record<OrderType, number> = { new: 0, permanent: 0, pech_vto: 0 };
+        const countsByType: Record<OrderType, number> = { new: 0, permanent: 0 };
         const countsByCategory: Record<string, number> = {};
         const revenueByCategory: Record<string, number> = {};
         let sumDiscount = 0;
