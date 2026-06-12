@@ -26,8 +26,9 @@
 | `salary_audit_log` | аудит: изменения конфига, пересчёты, закрытие периода, корректировки | `entity`, `action`, `actor`, `old_value jsonb`, `new_value jsonb`, `created_at` |
 
 **Ключи `salary_config`** (значение в скобках = форма JSONB):
-- `oklad` (скаляр), `rate_zayavka` (map `{new, permanent, pech_vto}`), `k_quality_tiers` (массив `{min, k}`), `conv_bonus_tiers` (массив `{min, bonus}`), `conv_min_zayavki` (скаляр), `discount_bonus` (`{metric, threshold, bonus}` — метрика выбирается, см. открытый вопрос), `duty_rate` (скаляр), `k_team_tiers` (массив `{min, k}`).
-- Определения-справочники: `closing_status` (код статуса «Передано в производство»), `permanent_client_threshold` (скаляр, >2), `source_exclusions` (список orderMethod), `category_pech_vto_map` (список кодов категорий), `nds_normalization` (правила приведения к «без НДС»: 5%→/1.05, 0%→как есть).
+- `oklad` (скаляр), `rate_zayavka` (map `{new, permanent}`), `k_quality_tiers` (массив `{min, k}`), `conv_bonus_tiers` (массив `{min, bonus}`), `conv_min_zayavki` (скаляр), `discount_bonus` (`{metric, threshold, bonus}` — метрика выбирается, см. открытый вопрос), `duty_rate` (скаляр), `k_team_tiers` (массив `{min, k}`).
+- Определения-справочники: `closing_status` (код статуса «Передано в производство»), `permanent_client_threshold` (скаляр, >2), `source_exclusions` (список orderMethod), `nds_normalization` (правила приведения к «без НДС»: 5%→/1.05, 0%→как есть).
+- Премия за категории товара — отдельные добавочные блоки `premia_categorii`/`coef_categorii` в схеме; категории выбираются из справочника RetailCRM (`kategoriya_klienta`).
 
 Разрешение конфига «на период»: берём последнюю версию каждого ключа, где `effective_from <= начало периода`. История прошлых месяцев не ломается при смене мотивации.
 
@@ -37,7 +38,7 @@
 
 Чистые функции «период → данные», из уже синхронизированных таблиц. Без записи в внешние системы.
 
-- **Засчитанные заявки**: заказы, у которых в `order_history_log` есть переход в `closing_status` внутри периода. Тип каждой: «новый/постоянный» по числу оплаченных заказов клиента за всё время (>2 = постоянный), «печь/ВТО» по `category_pech_vto_map`. Ставка из `rate_zayavka`.
+- **Засчитанные заявки**: заказы, у которых в `order_history_log` есть переход в `closing_status` внутри периода. Тип каждой: «новый/постоянный» по числу оплаченных заказов клиента за всё время (>2 = постоянный). Ставка из `rate_zayavka`. Категория товара заказа (`typ_castomer`) учитывается отдельно — для добавочной премии по категориям.
 - **Конверсия**: закрытые новые / входящие за период (входящие = заказы, созданные в периоде, источник не из `source_exclusions`). Допуск при `≥ conv_min_zayavki`.
 - **Скидочная дисциплина**: метрика из `discount_bonus.metric` по `raw_payload.items[].discount` / скидке заказа.
 - **К_качества**: `AVG(okk_order_scores.total_score)` по менеджеру за период → коэф по `k_quality_tiers`.
