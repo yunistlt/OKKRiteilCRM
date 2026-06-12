@@ -11,6 +11,21 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
 const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный' };
+const pluralRu = (n: number, one: string, few: string, many: string) => {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
+    return many;
+};
+// Тип заявки + (для постоянных) сколько закрытых сделок у клиента за всё время.
+const orderTypeLabel = (o: any) => {
+    const base = ORDER_TYPE_LABEL[o?.type] ?? '—';
+    if (o?.type === 'permanent' && typeof o?.deals === 'number' && o.deals > 0) {
+        return `${base} · ${o.deals} ${pluralRu(o.deals, 'сделка', 'сделки', 'сделок')}`;
+    }
+    return base;
+};
 const DISCOUNT_METRIC_NAMES: Record<string, string> = { avg_order_discount_pct: 'Средневзвешенный % скидки', share_orders_no_discount: 'Доля заказов без скидки' };
 const metricName = (code?: string) => (code ? (DISCOUNT_METRIC_NAMES[code] ?? code) : '—');
 const fmtDate = (s?: string) => {
@@ -346,6 +361,7 @@ function ManagerReportModal({
                                     <thead className="bg-muted/40 text-left text-muted-foreground">
                                         <tr>
                                             <th className="px-2 py-1.5">№ заказа</th>
+                                            <th className="px-2 py-1.5">Клиент</th>
                                             <th className="px-2 py-1.5">Тип</th>
                                             <th className="px-2 py-1.5 text-right">Сумма</th>
                                             <th className="px-2 py-1.5 text-right">Скидка</th>
@@ -364,7 +380,8 @@ function ManagerReportModal({
                                                         Заказ #{o.id}
                                                     </button>
                                                 </td>
-                                                <td className="px-2 py-1.5">{ORDER_TYPE_LABEL[o.type] ?? '—'}</td>
+                                                <td className="px-2 py-1.5">{o.clientName || '—'}</td>
+                                                <td className="px-2 py-1.5">{orderTypeLabel(o)}</td>
                                                 <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
                                                 <td className="px-2 py-1.5 text-right">{o.discountPct != null ? o.discountPct + '%' : '—'}</td>
                                                 <td className="px-2 py-1.5">{fmtDate(o.enteredAt)}</td>

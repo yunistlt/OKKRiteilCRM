@@ -14,6 +14,7 @@ export interface CountedOrderRow {
     order_id: number;
     manager_id: number | null;
     client_id: number | null;
+    client_name: string | null;
     entered_at: string;
     totalsumm: number | null;
     order_method: string | null;
@@ -34,6 +35,8 @@ export interface CountedOrder extends OrderFinance {
     orderId: number;
     managerId: number | null;
     clientId: number | null;
+    clientName: string | null; // имя клиента из CRM (компания/ФИО), для отчёта
+    deals: number; // сколько закрытых сделок у клиента за всё время (основа типа новый/постоянный)
     type: OrderType;
     category: string | null; // категория товара заказа (orders.customFields.typ_castomer), для блоков «по категориям»
     enteredAt: string;
@@ -144,12 +147,15 @@ export function buildPeriodMetrics(input: {
         if (managerId == null || !Number.isFinite(managerId)) continue;
         const clientId = row.client_id == null ? null : Number(row.client_id);
         const fin = computeOrderFinance(row.items, config.nds_normalization.rules);
+        const deals = clientId != null ? clientDeals.get(clientId) ?? 0 : 0;
         const type = classifyOrderType(clientId, clientDeals, config);
         const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
         const order: CountedOrder = {
             orderId: Number(row.order_id),
             managerId,
             clientId,
+            clientName: row.client_name ? String(row.client_name).trim() || null : null,
+            deals,
             type,
             category,
             enteredAt: row.entered_at,
