@@ -30,7 +30,7 @@ const planAttainment: BonusBlock<{ thresholdPct: number; bonus: number }> = {
         const fill: DataFill = { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 };
         return {
             amount: round2(passed ? p.bonus : 0),
-            explain: noPlan ? 'Личный план не задан → 0' : `Выполнение ${Math.round(att)}% от плана ${rub(target)} (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
+            explain: noPlan ? 'Личный план не задан → 0' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}% (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
             dataFill: fill,
         };
     },
@@ -47,13 +47,14 @@ const planAccelerator: BonusBlock<{ perPercent: number }> = {
     paramSchema: z.object({ perPercent: z.number().nonnegative() }),
     compute(m, p, ctx) {
         const target = ctx.personalPlanTarget;
+        const fact = managerRevenue(m);
         const noPlan = target == null || target <= 0;
-        const att = noPlan ? 0 : (managerRevenue(m) / target) * 100;
+        const att = noPlan ? 0 : (fact / target) * 100;
         const over = Math.max(0, att - 100);
         const amount = round2(over * p.perPercent);
         return {
             amount,
-            explain: noPlan ? 'Личный план не задан → 0' : `Перевыполнение ${round2(over)}% × ${rub(p.perPercent)} = ${rub(amount)}`,
+            explain: noPlan ? 'Личный план не задан → 0' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}%, перевыполнение ${round2(over)}% × ${rub(p.perPercent)} = ${rub(amount)}`,
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -71,13 +72,39 @@ const planGate: BonusBlock<{ thresholdPct: number }> = {
     paramSchema: z.object({ thresholdPct: z.number().nonnegative() }),
     compute(m, p, ctx) {
         const target = ctx.personalPlanTarget;
+        const fact = managerRevenue(m);
         const noPlan = target == null || target <= 0;
-        const att = noPlan ? 0 : (managerRevenue(m) / target) * 100;
+        const att = noPlan ? 0 : (fact / target) * 100;
         const mult = noPlan || att >= p.thresholdPct ? 1 : 0;
         return {
             multiplier: mult,
             amount: 0,
-            explain: noPlan ? 'План не задан → ×1' : `Выполнение ${Math.round(att)}% (порог ${p.thresholdPct}%) → ×${mult}`,
+            explain: noPlan ? 'План не задан → ×1' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}% (порог ${p.thresholdPct}%) → ×${mult}`,
+            dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
+        };
+    },
+};
+
+// ── План отдела: гейт (переменная часть только при выполнении плана отдела) ──
+const departmentPlanGate: BonusBlock<{ thresholdPct: number }> = {
+    code: 'department_plan_gate',
+    name: 'Гейт по плану отдела',
+    methodology: 'Множитель переменной части: 1, если выручка отдела (без НДС) достигает порога % от плана отдела, иначе 0. План отдела не задан → 1 (не режем).',
+    kind: 'multiplier',
+    group: 'variable',
+    multiplierScope: 'variableBracket',
+    requiredMetrics: ['plan_department', 'team_revenue'],
+    paramSchema: z.object({ thresholdPct: z.number().nonnegative() }),
+    compute(m, p, ctx) {
+        const target = ctx.departmentPlanTarget;
+        const fact = ctx.teamRevenueNoVat;
+        const noPlan = target == null || target <= 0;
+        const att = noPlan ? 0 : (fact / target) * 100;
+        const mult = noPlan || att >= p.thresholdPct ? 1 : 0;
+        return {
+            multiplier: mult,
+            amount: 0,
+            explain: noPlan ? 'План отдела не задан → ×1' : `Факт отдела ${rub(fact)} / план отдела ${rub(target!)} = ${Math.round(att)}% (порог ${p.thresholdPct}%) → ×${mult}`,
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -194,6 +221,7 @@ export const EXTRA_BLOCKS: BonusBlock[] = [
     planAttainment,
     planAccelerator,
     planGate,
+    departmentPlanGate,
     volumeBonus,
     sameDaySale,
     scriptBonus,

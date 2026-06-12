@@ -31,6 +31,7 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     plan_attainment: { thresholdPct: 100, bonus: 10000 },
     plan_accelerator: { perPercent: 500 },
     plan_gate: { thresholdPct: 80 },
+    department_plan_gate: { thresholdPct: 90 },
     volume_bonus: { threshold: 3000000, bonus: 10000 },
     same_day_sale: { rate: 500 },
     script_bonus: { thresholdPct: 80, bonus: 5000 },
