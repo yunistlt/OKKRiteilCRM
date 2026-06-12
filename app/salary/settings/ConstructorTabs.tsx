@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -465,23 +465,44 @@ export function PlansTab() {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [edits, setEdits] = useState<Record<string, string>>({});
+    const [baseline, setBaseline] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+    const [savedAt, setSavedAt] = useState(0);
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
             const res = await fetch(`/api/salary/plans?period=${year}-${month}`); const j = await res.json(); if (j.error) throw new Error(j.error);
-            setData(j); const e: Record<string, string> = {}; for (const p of j.plans ?? []) e[p.manager_id == null ? 'dept' : String(p.manager_id)] = String(p.target); setEdits(e);
+            setData(j); const e: Record<string, string> = {}; for (const p of j.plans ?? []) e[p.manager_id == null ? 'dept' : String(p.manager_id)] = String(p.target); setEdits(e); setBaseline(e);
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setLoading(false); }
     }, [year, month, toast]);
     useEffect(() => { load(); }, [load]);
 
-    const save = async (managerId: number | null) => {
-        const key = managerId == null ? 'dept' : String(managerId); const raw = edits[key];
+    const setEdit = (key: string, v: number | null) => { setEdits((p) => ({ ...p, [key]: v == null ? '' : String(v) })); setSavedAt(0); };
+
+    // строки, у которых значение отличается от сохранённого
+    const dirtyKeys = (() => {
+        const keys = Array.from(new Set([...Object.keys(edits), ...Object.keys(baseline)]));
+        return keys.filter((k) => (edits[k] ?? '') !== (baseline[k] ?? ''));
+    })();
+    const dirty = dirtyKeys.length > 0;
+
+    const saveAll = async () => {
+        if (!dirty || saving) return;
+        setSaving(true);
         try {
-            const res = await fetch('/api/salary/plans', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, month, managerId, target: raw === '' || raw == null ? null : Number(raw) }) });
-            const j = await res.json(); if (!res.ok) throw new Error(j.error || 'Ошибка'); toast({ title: 'План сохранён' });
+            for (const key of dirtyKeys) {
+                const managerId = key === 'dept' ? null : Number(key);
+                const raw = edits[key];
+                const res = await fetch('/api/salary/plans', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ year, month, managerId, target: raw === '' || raw == null ? null : Number(raw) }) });
+                const j = await res.json(); if (!res.ok) throw new Error(j.error || 'Ошибка');
+            }
+            setBaseline({ ...edits });
+            setSavedAt(Date.now());
+            toast({ title: `Сохранено: планов — ${dirtyKeys.length}` });
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSaving(false); }
     };
 
     return (
@@ -492,25 +513,36 @@ export function PlansTab() {
                 <span className="text-muted-foreground">План в выручке без НДС, ₽. Личные и общий независимы.</span>
             </div>
             {loading || !data ? <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div> : (
-                <div className="overflow-x-auto border">
-                    <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">Кто</th><th className="px-2 py-1.5">План, ₽</th><th className="px-2 py-1.5"></th></tr></thead>
-                        <tbody>
-                            <tr className="border-t bg-muted/20">
-                                <td className="px-2 py-1 font-semibold">Общий план отдела</td>
-                                <td className="px-2 py-1"><NumberInput value={edits['dept'] == null || edits['dept'] === '' ? null : Number(edits['dept'])} onChange={(v) => setEdits((p) => ({ ...p, dept: v == null ? '' : String(v) }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
-                                <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(null)}>Сохранить</Button></td>
-                            </tr>
-                            {(data.managers ?? []).filter((m: any) => m.active).map((m: any) => (
-                                <tr key={m.id} className="border-t">
-                                    <td className="px-2 py-1">{m.name} <span className="text-[11px] text-muted-foreground">#{m.id}</span></td>
-                                    <td className="px-2 py-1"><NumberInput value={edits[String(m.id)] == null || edits[String(m.id)] === '' ? null : Number(edits[String(m.id)])} onChange={(v) => setEdits((p) => ({ ...p, [m.id]: v == null ? '' : String(v) }))} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
-                                    <td className="px-2 py-1"><Button size="sm" variant="outline" className="h-8" onClick={() => save(m.id)}>Сохранить</Button></td>
+                <>
+                    <div className="overflow-x-auto border">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">Кто</th><th className="px-2 py-1.5">План, ₽</th></tr></thead>
+                            <tbody>
+                                <tr className={`border-t ${dirtyKeys.includes('dept') ? 'bg-amber-50' : 'bg-muted/20'}`}>
+                                    <td className="px-2 py-1 font-semibold">Общий план отдела {dirtyKeys.includes('dept') && <span className="ml-1 text-[11px] font-normal text-amber-600">• не сохранено</span>}</td>
+                                    <td className="px-2 py-1"><NumberInput value={edits['dept'] == null || edits['dept'] === '' ? null : Number(edits['dept'])} onChange={(v) => setEdit('dept', v)} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                                {(data.managers ?? []).filter((m: any) => m.active).map((m: any) => {
+                                    const k = String(m.id); const rowDirty = dirtyKeys.includes(k);
+                                    return (
+                                        <tr key={m.id} className={`border-t ${rowDirty ? 'bg-amber-50' : ''}`}>
+                                            <td className="px-2 py-1">{m.name} <span className="text-[11px] text-muted-foreground">#{m.id}</span>{rowDirty && <span className="ml-1 text-[11px] text-amber-600">• не сохранено</span>}</td>
+                                            <td className="px-2 py-1"><NumberInput value={edits[k] == null || edits[k] === '' ? null : Number(edits[k])} onChange={(v) => setEdit(k, v)} className="h-8 w-40 border px-2 text-right" placeholder="—" /></td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div className="flex items-center gap-3 pt-1">
+                        <Button size="sm" className="h-9" onClick={saveAll} disabled={!dirty || saving}>
+                            {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
+                            {saving ? 'Сохранение…' : dirty ? `Сохранить изменения (${dirtyKeys.length})` : 'Сохранить'}
+                        </Button>
+                        {!dirty && savedAt > 0 && <span className="flex items-center gap-1 text-xs text-green-600"><Check className="h-4 w-4" /> Все изменения сохранены</span>}
+                        {dirty && !saving && <span className="text-xs text-muted-foreground">Есть несохранённые изменения</span>}
+                    </div>
+                </>
             )}
         </div>
     );
