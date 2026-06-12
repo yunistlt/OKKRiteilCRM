@@ -535,7 +535,7 @@ export function PlansTab() {
                         </table>
                     </div>
                     <div className="flex items-center gap-3 pt-1">
-                        <Button size="sm" className="h-9" onClick={saveAll} disabled={!dirty || saving}>
+                        <Button size="sm" className="h-9 bg-slate-900 px-4 text-white hover:bg-slate-700 disabled:bg-slate-300 disabled:text-white" onClick={saveAll} disabled={!dirty || saving}>
                             {saving ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />}
                             {saving ? 'Сохранение…' : dirty ? `Сохранить изменения (${dirtyKeys.length})` : 'Сохранить'}
                         </Button>
