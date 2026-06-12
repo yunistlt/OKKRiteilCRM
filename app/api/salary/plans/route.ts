@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
-import { listPlans, savePlan } from '@/lib/salary/schemes';
+import { listPlans, savePlan, resolveManagerComp } from '@/lib/salary/schemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,11 +20,25 @@ export async function GET(req: Request) {
         if (!hasAnyRole(session, ['admin', 'rop'])) return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
         const p = parsePeriod(req);
         if (!p) return NextResponse.json({ error: 'period в формате YYYY-MM' }, { status: 400 });
-        const [plans, mgrs] = await Promise.all([
+        // Планы — только для реестра ОП (участники salary_participant с назначенной схемой),
+        // то есть тех же, по кому считается зарплата. Иначе показывались бы все менеджеры,
+        // включая системные аккаунты (Администратор и т.п.).
+        const asOf = `${p.year}-${String(p.month).padStart(2, '0')}-01`;
+        const [plans, comp] = await Promise.all([
             listPlans(p.year, p.month),
-            supabase.from('managers').select('id,first_name,last_name,active').order('id', { ascending: true }),
+            resolveManagerComp(asOf),
         ]);
-        const managers = ((mgrs.data as any[]) ?? []).map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: m.active }));
+        const rosterIds = Array.from(comp.keys());
+        let managers: { id: number; name: string; active: boolean }[] = [];
+        if (rosterIds.length) {
+            const { data: mgrs } = await supabase
+                .from('managers')
+                .select('id,first_name,last_name,active')
+                .in('id', rosterIds);
+            managers = ((mgrs as any[]) ?? [])
+                .map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: m.active }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        }
         return NextResponse.json({ period: p, plans, managers });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
