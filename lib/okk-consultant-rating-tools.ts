@@ -72,6 +72,48 @@ function avg(values: number[]): number | null {
     return r2(nums.reduce((s, v) => s + v, 0) / nums.length);
 }
 
+/** Сколько скрипт-критериев реально оценено в заказе (result !== null). 0 = скрипт не оценивался
+ *  (обычно нет разговора/транскрипции) — отличаем «нет данных» от «оценён и провален». */
+function scriptEvaluatedCount(breakdown: Record<string, any> | null): number {
+    if (!breakdown) return 0;
+    let n = 0;
+    for (const key of SCRIPT_SCORE_KEYS) {
+        const e = breakdown[key];
+        if (e && e.result !== null && e.result !== undefined) n += 1;
+    }
+    return n;
+}
+
+/** Диагноз: какой блок слабее (даёт наибольший рычаг) + покрытие данными по скрипту.
+ *  Чтобы Семён начинал совет с главного и был честен про «нет данных» vs «реально провалено». */
+function buildDiagnosis(rows: ScoreRow[]) {
+    const dealPct = avg(rows.map((r) => num(r.deal_score_pct)));
+    const scriptPct = avg(rows.map((r) => num(r.script_score_pct)));
+
+    let scriptNotEvaluated = 0;
+    for (const row of rows) {
+        if (scriptEvaluatedCount(row.score_breakdown) === 0) scriptNotEvaluated += 1;
+    }
+    const scriptEvaluated = rows.length - scriptNotEvaluated;
+
+    let weakestBlock: 'Скрипт' | 'Сделка' | null = null;
+    if (dealPct != null && scriptPct != null) weakestBlock = scriptPct <= dealPct ? 'Скрипт' : 'Сделка';
+
+    const coverageNote = scriptNotEvaluated > 0
+        ? `У ${scriptNotEvaluated} из ${rows.length} заказов скрипт не оценивался (нет разговора/транскрипции) — часть просадки скрипт-балла из-за отсутствия данных, а не качества. Совет «работай над скриптом» уместен только там, где разговор есть.`
+        : `По всем ${rows.length} заказам скрипт оценивался — низкий скрипт-балл отражает реальную работу по скрипту, а не отсутствие данных.`;
+
+    return {
+        weakestBlock,
+        dealScorePct: dealPct,
+        scriptScorePct: scriptPct,
+        coverage: { ordersTotal: rows.length, scriptEvaluated, scriptNotEvaluated, note: coverageNote },
+        note: weakestBlock
+            ? `Слабее всего блок «${weakestBlock}» (Сделка ${dealPct ?? 0}% против Скрипт ${scriptPct ?? 0}%) — начни с него, он даёт наибольший прирост рейтинга.`
+            : null,
+    };
+}
+
 async function getMyRating(managerId: number, year: number, month: number) {
     const rows = await loadScores(managerId, year, month);
     if (!rows.length) {
@@ -107,6 +149,7 @@ async function getMyRating(managerId: number, year: number, month: number) {
         avgTotalScore: avg(rows.map((r) => num(r.total_score))),
         avgDealScorePct: avg(rows.map((r) => num(r.deal_score_pct))),
         avgScriptScorePct: avg(rows.map((r) => num(r.script_score_pct))),
+        diagnosis: buildDiagnosis(rows),
         topFailedCriteria: topFailed,
         note: 'Рейтинг менеджера = средний total_score по заказам периода. Критерии равновесные.',
     };
@@ -165,9 +208,10 @@ async function howToImprove(managerId: number, year: number, month: number) {
         available: true,
         period: { year, month },
         orders: rows.length,
+        diagnosis: buildDiagnosis(rows),
         topFixes: ranked,
         penaltyLever: { totalPenaltyPoints: penaltyPoints, note: 'Штрафы напрямую вычитаются из total_score. Их устранение поднимает рейтинг отдельно от критериев.' },
-        note: 'estAvgRatingGain — оценка прироста СРЕДНЕГО рейтинга, если критерий исправить на всех заказах, где он провален (критерии равновесные).',
+        note: 'estAvgRatingGain — оценка прироста СРЕДНЕГО рейтинга, если критерий исправить на всех заказах, где он провален (критерии равновесные). Начинай совет с diagnosis.weakestBlock и учитывай diagnosis.coverage (нет данных vs реально провалено).',
     };
 }
 
@@ -176,7 +220,7 @@ export const RATING_TOOLS = [
         type: 'function' as const,
         function: {
             name: 'get_my_rating',
-            description: 'Рейтинг ОКК текущего пользователя за период: средний total_score, средние deal/script проценты, число заказов и самые часто проваленные критерии. Только свой рейтинг.',
+            description: 'Рейтинг ОКК текущего пользователя за период: средний total_score, средние deal/script проценты, число заказов, самые часто проваленные критерии и diagnosis (слабый блок + покрытие данными скрипта). Только свой рейтинг.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -190,7 +234,7 @@ export const RATING_TOOLS = [
         type: 'function' as const,
         function: {
             name: 'how_to_improve_my_rating',
-            description: 'Как поднять рейтинг ОКК: ранжированный список критериев с наибольшим приростом среднего рейтинга при исправлении, с рекомендациями, плюс рычаг штрафов. Используй для вопросов «как поднять рейтинг», «что исправить в первую очередь».',
+            description: 'Как поднять рейтинг ОКК: diagnosis (какой блок слабее + честное покрытие данными скрипта), ранжированный список критериев с наибольшим приростом среднего рейтинга при исправлении и рекомендациями, плюс рычаг штрафов. Используй для вопросов «как поднять рейтинг», «что исправить в первую очередь», «на что обратить внимание».',
             parameters: {
                 type: 'object',
                 properties: {
