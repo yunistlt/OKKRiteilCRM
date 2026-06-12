@@ -23,9 +23,9 @@ export type AgentProfile = {
 };
 
 export const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
-    production: 'production',
-    foundation: 'foundation',
-    planned: 'planned',
+    production: 'В работе',
+    foundation: 'Базовый',
+    planned: 'В планах',
 };
 
 export const AGENT_STATUS_STYLES: Record<AgentStatus, string> = {

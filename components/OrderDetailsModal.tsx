@@ -4,6 +4,7 @@ import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
+import { useStatusNames } from '@/components/useStatusNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 
 interface OrderDetailsModalProps {
@@ -69,16 +70,6 @@ const InfoField = ({ label, value, required }: InfoFieldProps) => (
     </div>
 );
 
-const statusLabels: Record<string, string> = {
-    'novyi-1': 'Новый',
-    work: 'В работе',
-    'otmenyon-klientom': 'Отменён клиентом',
-    'otmenyon-postavschikom': 'Отменён поставщиком',
-    'zayavka-kvalifitsirovana': 'Заявка квалифицирована',
-    'already-buyed': 'Сделка завершена',
-    finished: 'Завершён'
-};
-
 const pickValue = (...values: any[]) => {
     for (const value of values) {
         if (value === null || value === undefined) continue;
@@ -129,6 +120,7 @@ const toArray = (value: any) => {
 
 export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
 
+    const statusName = useStatusNames();
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -283,7 +275,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const headerCustomer = headerPayload?.customer ?? {};
     const headerCustomFields = (headerPayload?.customFields ?? {}) as Record<string, any>;
     const statusCode = data?.order?.status || headerPayload?.status || headerPayload?.status?.code;
-    const statusLabel = statusCode ? statusLabels[statusCode] || statusCode : null;
+    const statusLabel = statusCode ? statusName(statusCode) : null;
     const headerBadges = (
         [
             headerCustomer?.vip || headerContact?.vip
@@ -406,7 +398,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
                             <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1">
-                                {orderStatusCode ? statusLabels[orderStatusCode] || orderStatusCode : 'Статус не задан'}
+                                {orderStatusCode ? statusName(orderStatusCode) : 'Статус не задан'}
                             </span>
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">

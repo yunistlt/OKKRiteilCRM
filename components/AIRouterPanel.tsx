@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import type { PanelOrder } from './OKKConsultantPanel';
 import OrderDetailsModal from './OrderDetailsModal';
+import { useStatusNames } from '@/components/useStatusNames';
 
 interface RoutingResult {
     order_id: number;
@@ -37,6 +38,7 @@ interface RoutingSummary {
 }
 
 export default function AIRouterPanel({ onConsultantOrderChange }: { onConsultantOrderChange?: (order: PanelOrder | null) => void }) {
+    const statusName = useStatusNames();
     const [trainingMode, setTrainingMode] = useState(false);
     const [trainingState, setTrainingState] = useState<Record<string, { status: string; comment: string; loading: boolean; done: boolean }>>({});
     const [availableStatuses, setAvailableStatuses] = useState<{ code: string; name: string; group_name?: string; color?: string }[]>([]);
@@ -657,7 +659,7 @@ const COL_GROUPS = {
                                                     {!isHidden('to_status') && (
                                                         <td className="px-3 py-3">
                                                             <span className={`inline-block px-2 py-0.5 text-[9px] font-black rounded uppercase border tracking-wider ${getStatusBadge(result.to_status)}`}>
-                                                                {result.to_status_name || result.to_status}
+                                                                {result.to_status_name || statusName(result.to_status)}
                                                             </span>
                                                         </td>
                                                     )}

@@ -6,6 +6,7 @@ import MessageInput, { PendingMessageDraft } from './MessageInput';
 import ChatAvatar from './ChatAvatar';
 import ChatMembersModal from './ChatMembersModal';
 import { getInitials } from './chat-identity';
+import { useStatusNames } from '@/components/useStatusNames';
 import type {
     MessengerAttachment,
     MessengerChat,
@@ -36,6 +37,7 @@ type MessagesResponse = {
 
 export default function MessageView({ chatId, highlightedMessageId, currentUserId, chatName, chatAvatarUrl, participants, chatType, contextOrder, onBack, onMembersChanged, onLeftChat, onDeletedChat }: MessageViewProps) {
     const pageSize = 50;
+    const statusName = useStatusNames();
     const [messages, setMessages] = useState<MessengerMessage[]>([]);
     const [pendingMessages, setPendingMessages] = useState<MessengerMessage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -286,8 +288,8 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                             >
                                 <span>Заказ #{contextOrder.number || contextOrder.order_id}</span>
                                 {contextOrder.status && (
-                                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-cyan-900">
-                                        {contextOrder.status}
+                                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] tracking-wide text-cyan-900">
+                                        {statusName(contextOrder.status)}
                                     </span>
                                 )}
                             </a>

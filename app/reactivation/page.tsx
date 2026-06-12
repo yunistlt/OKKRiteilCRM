@@ -105,7 +105,7 @@ export default function ReactivationDashboard() {
                                                     ID {log.customer_id}
                                                 </span>
                                                 <span className="text-[9px] font-black uppercase tracking-widest bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md border border-blue-100">
-                                                    B2B Client
+                                                    B2B-клиент
                                                 </span>
                                             </div>
                                         </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getCallTranscript } from '@/app/actions/rules';
+import { useStatusNames } from '@/components/useStatusNames';
 
 function TranscriptSection({ callId }: { callId: string }) {
     const [transcript, setTranscript] = useState<string | null>(null);
@@ -62,6 +63,7 @@ interface ViolationRowProps {
 
 export default function ViolationRow({ violation: v }: ViolationRowProps) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const statusName = useStatusNames();
     const [status, setStatus] = useState(v.status || 'pending');
     const [comment, setComment] = useState(v.controller_comment || '');
     const [loading, setLoading] = useState(false);
@@ -138,8 +140,8 @@ export default function ViolationRow({ violation: v }: ViolationRowProps) {
                                 </a>
                             </div>
                             {v.orders?.status && (
-                                <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600 font-mono">
-                                    {v.orders.status}
+                                <span className="self-start inline-block px-2 py-0.5 text-[10px] bg-gray-100 border border-gray-200 rounded text-gray-600">
+                                    {statusName(v.orders.status)}
                                 </span>
                             )}
                         </div>

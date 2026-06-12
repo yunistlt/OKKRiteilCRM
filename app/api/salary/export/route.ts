@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { listSchemes } from '@/lib/salary/schemes';
 import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +34,11 @@ export async function GET(req: Request) {
         const { data: calcRows } = await supabase.from('salary_calc').select('*').eq('period_id', periodRow.id);
         const rows = (calcRows as any[]) ?? [];
 
+        // Имя схемы (= группа из RetailCRM), а не код роли — закон «только человеческий язык»
+        const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
+        const schemeNameByCode = new Map<string, string>();
+        for (const s of await listSchemes(asOf)) schemeNameByCode.set(s.code, s.name);
+
         const managerIds = Array.from(new Set(rows.map((r) => r.manager_id)));
         const namesById = new Map<number, string>();
         if (managerIds.length) {
@@ -62,7 +68,7 @@ export async function GET(req: Request) {
                 : '';
             aoa.push([
                 namesById.get(r.manager_id) || `#${r.manager_id}`,
-                b.schemeCode ?? '',
+                (b.schemeCode ? schemeNameByCode.get(b.schemeCode) : '') || b.schemeCode || '',
                 Number(r.oklad), Number(r.premia_zayavki), Number(r.k_quality), Number(r.conv_bonus),
                 Number(r.discount_bonus), Number(r.k_team), Number(r.duty_pay), Number(r.total),
                 b.counts?.new ?? 0, b.counts?.permanent ?? 0,
