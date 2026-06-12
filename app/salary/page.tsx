@@ -11,6 +11,8 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
 const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный', pech_vto: 'Печь/ВТО' };
+const DISCOUNT_METRIC_NAMES: Record<string, string> = { avg_order_discount_pct: 'Средневзвешенный % скидки', share_orders_no_discount: 'Доля заказов без скидки' };
+const metricName = (code?: string) => (code ? (DISCOUNT_METRIC_NAMES[code] ?? code) : '—');
 const fmtDate = (s?: string) => {
     if (!s) return '—';
     const d = new Date(s);
@@ -282,7 +284,6 @@ function ManagerReportModal({
                     <div className="border bg-muted/20 p-3 text-xs">
                         <div className="mb-2 flex items-center gap-2 font-semibold">
                             Как сложилась сумма
-                            {b.schemeCode && <span className="bg-primary/10 px-1.5 py-0.5 text-[10px] font-normal text-primary">схема: {b.schemeCode}</span>}
                         </div>
                         {Array.isArray(b.blockContributions) && b.blockContributions.length > 0 ? (
                             <div className="space-y-1">
@@ -331,7 +332,7 @@ function ManagerReportModal({
                         </div>
                         <div>
                             <div className="mb-1 font-semibold">Скидка и маржа</div>
-                            <div>Метрика «{b.discountMetric}»: {b.discountValue != null ? b.discountValue + '%' : '—'}</div>
+                            <div>Метрика «{metricName(b.discountMetric)}»: {b.discountValue != null ? b.discountValue + '%' : '—'}</div>
                             <div>Бонус: {b.discountPassed ? rub(r.discount_bonus) : '0 (порог не пройден)'}</div>
                             <div>Маржа (аналитика): {rub(r.margin_info)}</div>
                         </div>
