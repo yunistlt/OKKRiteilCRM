@@ -11,6 +11,12 @@ import { fullFill, type BonusBlock } from '@/lib/salary/blocks/types';
 const tierK = z.object({ min: z.number(), k: z.number() });
 const tierBonus = z.object({ min: z.number(), bonus: z.number() });
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
+// Человеческие имена метрик скидочной дисциплины (для explain — без кодов).
+const DISCOUNT_METRIC_NAMES: Record<string, string> = {
+    avg_order_discount_pct: 'Средневзвешенный % скидки',
+    share_orders_no_discount: 'Доля заказов без скидки',
+};
+const discountMetricName = (code: string) => DISCOUNT_METRIC_NAMES[code] ?? code;
 
 // Оклад (база). Пропорция по отработанным дням, если табель вёлся.
 const oklad: BonusBlock<{ oklad: number; prorate?: boolean }> = {
@@ -187,7 +193,7 @@ const discountBonus: BonusBlock<{ metric: string; comparator: 'lte' | 'gte'; thr
         const passed = v != null && (p.comparator === 'lte' ? v <= p.threshold : v >= p.threshold);
         return {
             amount: round2(passed ? p.bonus : 0),
-            explain: `Метрика «${p.metric}»: ${v != null ? round2(v) + '%' : '—'} ${p.comparator === 'lte' ? '≤' : '≥'} ${p.threshold} → ${passed ? rub(p.bonus) : '0 (порог не пройден)'}`,
+            explain: `${discountMetricName(p.metric)}: ${v != null ? round2(v) + '%' : '—'} ${p.comparator === 'lte' ? '≤' : '≥'} ${p.threshold} → ${passed ? rub(p.bonus) : '0 (порог не пройден)'}`,
             dataFill: { required: 1, present: v != null ? 1 : 0, pct: v != null ? 1 : 0 },
         };
     },
