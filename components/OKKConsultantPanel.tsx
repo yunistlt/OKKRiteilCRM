@@ -3,6 +3,7 @@
 import { FormEvent, PointerEvent as ReactPointerEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { getConsultantSectionByPath } from '@/lib/okk-consultant';
+import { useConsultantScreen } from '@/components/consultant/ConsultantScreenContext';
 
 const DESKTOP_WIDTH_STORAGE_KEY = 'okk_consultant_desktop_width';
 const DEFAULT_DESKTOP_WIDTH_RATIO = 0.15;
@@ -91,6 +92,7 @@ function getDefaultDesktopWidth(): number {
 export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: PanelOrder | null }) {
     const pathname = usePathname();
     const section = useMemo(() => getConsultantSectionByPath(pathname), [pathname]);
+    const { screenHint } = useConsultantScreen();
     const [input, setInput] = useState('');
     const [loading, setLoading] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -306,6 +308,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     threadId,
                     history,
                     sectionKey: section.key,
+                    contextHint: screenHint || null,
                     selectionContext: selectedOrder?.sectionData || null,
                 }),
             });

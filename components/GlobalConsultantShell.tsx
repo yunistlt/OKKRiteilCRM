@@ -3,6 +3,7 @@
 import { usePathname } from 'next/navigation';
 import OKKConsultantPanel from '@/components/OKKConsultantPanel';
 import { ConsultantSelectionProvider, useConsultantSelection } from '@/components/consultant/ConsultantSelectionContext';
+import { ConsultantScreenProvider } from '@/components/consultant/ConsultantScreenContext';
 
 function GlobalConsultantShellContent({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
@@ -25,8 +26,10 @@ function GlobalConsultantShellContent({ children }: { children: React.ReactNode 
 
 export default function GlobalConsultantShell({ children }: { children: React.ReactNode }) {
     return (
-        <ConsultantSelectionProvider>
-            <GlobalConsultantShellContent>{children}</GlobalConsultantShellContent>
-        </ConsultantSelectionProvider>
+        <ConsultantScreenProvider>
+            <ConsultantSelectionProvider>
+                <GlobalConsultantShellContent>{children}</GlobalConsultantShellContent>
+            </ConsultantSelectionProvider>
+        </ConsultantScreenProvider>
     );
 }
