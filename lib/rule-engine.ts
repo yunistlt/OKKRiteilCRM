@@ -181,8 +181,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
     // FETCH METRICS MANUALLY if needed
     let metricsMap = new Map();
+    // PERF: pre-fetch transcripts and activity for ALL candidate orders in one query each,
+    // instead of one round-trip per candidate inside the loop below (was N+1, see lines ~285/~346).
+    const transcriptMap = new Map<any, string>();
+    const activityMap = new Map<any, any[]>();
     if (rule.entity_type !== 'call') {
-        const orderIds = items.map((i: any) => i.retailcrm_order_id || i.id);
+        const orderIds = items.map((i: any) => i.retailcrm_order_id || i.id).filter(Boolean);
         const { data: metricsData } = await supabase
             .from('order_metrics')
             .select('retailcrm_order_id, current_status, manager_id, full_order_context')
@@ -190,6 +194,46 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
         if (metricsData) {
             metricsData.forEach((m: any) => metricsMap.set(m.retailcrm_order_id, m));
+        }
+
+        // Pre-fetch latest transcript per order (only for checklist rules — mirrors the in-loop query).
+        if (rule.checklist && rule.checklist.length > 0 && orderIds.length > 0) {
+            const { data: callRows } = await supabase
+                .from('call_order_matches')
+                .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(transcript)')
+                .in('retailcrm_order_id', orderIds)
+                .order('telphin_call_id', { ascending: false });
+            if (callRows) {
+                for (const row of callRows as any[]) {
+                    const oid = row.retailcrm_order_id;
+                    if (transcriptMap.has(oid)) continue; // keep highest telphin_call_id (first, due to ordering)
+                    const t = row?.raw_telphin_calls?.transcript;
+                    if (t) transcriptMap.set(oid, t);
+                }
+            }
+        }
+
+        // Pre-fetch post-event activity (only if some condition needs it — block 'no_new_comments').
+        const needsActivity = (logic.conditions || []).some((c: any) => c.block === 'no_new_comments');
+        if (needsActivity && orderIds.length > 0) {
+            // Bound the scan to events after the earliest candidate's occurredAt.
+            const earliest = items
+                .map((i: any) => i.raw_payload?._sync_metadata?.order_statusUpdatedAt || i.updated_at || i.occurred_at || i.created_at)
+                .filter(Boolean)
+                .sort()[0];
+            let activityQuery = supabase
+                .from('raw_order_events')
+                .select('retailcrm_order_id, event_id, event_type, raw_payload, occurred_at')
+                .in('retailcrm_order_id', orderIds);
+            if (earliest) activityQuery = activityQuery.gt('occurred_at', earliest);
+            const { data: events } = await activityQuery.order('occurred_at', { ascending: false });
+            if (events) {
+                for (const ev of events as any[]) {
+                    const arr = activityMap.get(ev.retailcrm_order_id) || [];
+                    arr.push(ev);
+                    activityMap.set(ev.retailcrm_order_id, arr);
+                }
+            }
         }
     }
 
@@ -281,16 +325,9 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             let transcript = item.transcript || '';
 
             // If it's an order/event based rule, find the transcript from associated calls
+            // (pre-fetched in batch above to avoid N+1).
             if (!transcript && (rule.entity_type === 'order' || rule.entity_type === 'event')) {
-                const { data: callData } = await supabase
-                    .from('call_order_matches')
-                    .select('raw_telphin_calls(transcript)')
-                    .eq('retailcrm_order_id', orderId)
-                    .order('telphin_call_id', { ascending: false })
-                    .limit(1)
-                    .single();
-
-                transcript = (callData as any)?.raw_telphin_calls?.transcript || '';
+                transcript = transcriptMap.get(orderId) || '';
             }
 
             if (!transcript || transcript.length < 50) {
@@ -343,12 +380,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         for (const cond of logic.conditions) {
             let condMatch = false;
             if (cond.block === 'no_new_comments') {
-                const { data: activity } = await supabase
-                    .from('raw_order_events')
-                    .select('event_id, event_type, raw_payload, occurred_at')
-                    .eq('retailcrm_order_id', context.orderId)
-                    .gt('occurred_at', context.occurredAt)
-                    .limit(10);
+                // Activity pre-fetched in batch above; filter in-memory by this candidate's occurredAt.
+                const occurredTs = new Date(context.occurredAt).getTime();
+                const activity = (activityMap.get(context.orderId) || [])
+                    .filter((ev: any) => new Date(ev.occurred_at).getTime() > occurredTs);
 
                 const hasRealActivity = (activity || []).some((ev: any) => {
                     const type = String(ev.event_type);

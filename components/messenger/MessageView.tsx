@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import MessageInput, { PendingMessageDraft } from './MessageInput';
 import ChatAvatar from './ChatAvatar';
@@ -187,12 +187,14 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
         return new Date(dateStr).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
     };
 
-    const renderedMessages = [...messages, ...pendingMessages].sort((left, right) => {
+    // PERF: ре-сортировка и группировка всех сообщений — в useMemo, иначе пересчёт
+    // на каждый ре-рендер (realtime-INSERT, скролл, смена состояния).
+    const renderedMessages = useMemo(() => [...messages, ...pendingMessages].sort((left, right) => {
         return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
-    });
+    }), [messages, pendingMessages]);
 
     // Group messages by date
-    const groupedMessages = renderedMessages.reduce((acc: { date: string; msgs: MessengerMessage[] }[], msg) => {
+    const groupedMessages = useMemo(() => renderedMessages.reduce((acc: { date: string; msgs: MessengerMessage[] }[], msg) => {
         const date = new Date(msg.created_at).toLocaleDateString('ru-RU', {
             day: 'numeric', month: 'long', year: 'numeric'
         });
@@ -203,7 +205,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
             acc.push({ date, msgs: [msg] });
         }
         return acc;
-    }, []);
+    }, []), [renderedMessages]);
 
     const handlePendingMessageCreated = (draft: PendingMessageDraft) => {
         setPendingMessages((prev) => ([

@@ -46,9 +46,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, status: 'idle', processed: 0 });
     }
 
-    const results: Array<Record<string, any>> = [];
-
-    for (const job of claimed) {
+    // PERF: claimed jobs are independent — process the batch concurrently instead of
+    // serially, so the claim window (lockSeconds) is used in parallel rather than summed.
+    const processJob = async (job: typeof claimed[number]): Promise<Record<string, any>> => {
       const payload = (job.payload || {}) as {
         telphin_call_id?: string;
         recording_url?: string;
@@ -59,8 +59,7 @@ export async function GET(req: NextRequest) {
 
       if (!callId || !recordingUrl) {
         await failSystemJob(job.id, 'Missing telphin_call_id or recording_url', 300);
-        results.push({ job_id: job.id, status: 'failed_validation' });
-        continue;
+        return { job_id: job.id, status: 'failed_validation' };
       }
 
       try {
@@ -72,13 +71,12 @@ export async function GET(req: NextRequest) {
             status: 'skipped',
             reason: preflight.skipReason,
           });
-          results.push({
+          return {
             job_id: job.id,
             telphin_call_id: callId,
             status: 'skipped',
             reason: preflight.skipReason,
-          });
-          continue;
+          };
         }
 
         // Phase 3: skip if already completed (idempotency guard at job level)
@@ -87,8 +85,7 @@ export async function GET(req: NextRequest) {
             telphin_call_id: callId,
             status: 'already_completed',
           });
-          results.push({ job_id: job.id, telphin_call_id: callId, status: 'already_completed' });
-          continue;
+          return { job_id: job.id, telphin_call_id: callId, status: 'already_completed' };
         }
 
         await transcribeCall(callId, recordingUrl);
@@ -153,12 +150,12 @@ export async function GET(req: NextRequest) {
           next_jobs: downstreamJobs,
         });
 
-        results.push({
+        return {
           job_id: job.id,
           telphin_call_id: callId,
           status: 'completed',
           order_id: matchOrderId,
-        });
+        };
       } catch (error: any) {
         const msg = error.message || 'Unknown transcription worker error';
 
@@ -171,7 +168,7 @@ export async function GET(req: NextRequest) {
 
         if (isTerminal) {
           await failSystemJob(job.id, msg, 0); // 0 delay + max_attempts exhausted = dead_letter on next fail_system_job call
-          results.push({ job_id: job.id, telphin_call_id: callId, status: 'terminal_error', error: msg });
+          return { job_id: job.id, telphin_call_id: callId, status: 'terminal_error', error: msg };
         } else {
           const retry = getAdaptiveSystemJobRetry({
             attempts: job.attempts || 0,
@@ -179,17 +176,19 @@ export async function GET(req: NextRequest) {
             profile: 'fast',
           });
           await failSystemJob(job.id, msg, retry.retryDelaySeconds);
-          results.push({
+          return {
             job_id: job.id,
             telphin_call_id: callId,
             status: 'failed',
             error: msg,
             retry_kind: retry.retryKind,
             retry_delay_seconds: retry.retryDelaySeconds,
-          });
+          };
         }
       }
-    }
+    };
+
+    const results = await Promise.all(claimed.map(processJob));
 
     await recordWorkerSuccess(WORKER_KEY, { processed: results.length });
 

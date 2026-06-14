@@ -88,15 +88,32 @@ export async function GET(request: NextRequest) {
 
         let matchesTotal = 0;
         let lastCallTime = cursor;
+        let processedCount = 0;
 
-        // 3. Process
-        for (const call of calls) {
-            const matches = await matchCallToOrders(call as RawCall);
-            if (matches.length > 0) {
-                await saveMatches(matches);
-                matchesTotal += matches.length;
-            }
-            lastCallTime = call.started_at; // Advance cursor to this call
+        // 3. Process in ordered chunks with bounded concurrency + a time budget.
+        // The cursor only advances past FULLY-completed chunks, so an early exit on the
+        // time budget is safe (re-run resumes from the last persisted chunk, not the batch start).
+        const startTime = Date.now();
+        const TIME_BUDGET_MS = 250_000; // leave margin under maxDuration=300s
+        const CONCURRENCY = 5;
+
+        let timedOut = false;
+        for (let i = 0; i < calls.length; i += CONCURRENCY) {
+            if (Date.now() - startTime > TIME_BUDGET_MS) { timedOut = true; break; }
+
+            const chunk = calls.slice(i, i + CONCURRENCY);
+            const results = await Promise.all(
+                chunk.map(async (call: any) => {
+                    const matches = await matchCallToOrders(call as RawCall);
+                    if (matches.length > 0) {
+                        await saveMatches(matches);
+                    }
+                    return matches.length;
+                })
+            );
+            matchesTotal += results.reduce((a, b) => a + b, 0);
+            processedCount += chunk.length;
+            lastCallTime = chunk[chunk.length - 1].started_at; // chunk fully done → advance cursor
         }
 
         // 4. Update Cursor
@@ -104,10 +121,11 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({
             success: true,
-            processed: calls.length,
+            processed: processedCount,
             matches_found: matchesTotal,
             next_cursor: lastCallTime,
-            progress: `${calls.length} calls processed. Cursor: ${lastCallTime}`
+            timed_out: timedOut,
+            progress: `${processedCount}/${calls.length} calls processed. Cursor: ${lastCallTime}${timedOut ? ' (time budget reached)' : ''}`
         });
 
     } catch (error: any) {

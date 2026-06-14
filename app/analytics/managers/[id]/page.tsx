@@ -111,7 +111,9 @@ export default function ManagerProfilePage() {
         return Array.from(statusMap.values());
     }, [calls]);
 
-    const filteredCalls = (calls || []).filter((c: any) => {
+    // PERF: фильтрация списка звонков — в useMemo, иначе пересчитывается на каждый
+    // keystroke в полях фильтра (и любой ре-рендер).
+    const filteredCalls = React.useMemo(() => (calls || []).filter((c: any) => {
         // 1. Basic Type Filter
         if (callFilter === 'real' && c.is_answering_machine !== false) return false;
         if (callFilter === 'am' && c.is_answering_machine !== true) return false;
@@ -147,7 +149,7 @@ export default function ManagerProfilePage() {
         }
 
         return true;
-    });
+    }), [calls, callFilter, filterDateStart, filterDateEnd, filterDurationMin, filterDurationMax, filterOrderNumber, filterStatuses]);
 
     return (
         <div className="min-h-full w-full bg-gray-50 px-4 py-6 font-sans uppercase-none md:px-6 md:py-8">
