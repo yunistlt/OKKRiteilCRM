@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { SchemesTab, RosterTab, PlansTab } from './ConstructorTabs';
 import BaseConfigTab from './BaseConfigTab';
 import GradesTab from './GradesTab';
+import { useConsultantScreenHint } from '@/components/consultant/ConsultantScreenContext';
 
 const TABS = [
     ['schemes', 'Схемы (роли)'],
@@ -18,6 +19,9 @@ const TABS = [
 
 export default function SalarySettingsPage() {
     const [tab, setTab] = useState<(typeof TABS)[number][0]>('schemes');
+    // Сообщаем Семёну активную вкладку, чтобы он искал ответ в нужной теме (грейды, схемы…).
+    const tabLabel = TABS.find(([k]) => k === tab)?.[1] ?? '';
+    useConsultantScreenHint(`Настройки мотивации → вкладка «${tabLabel}»`);
     return (
         <div className="w-full space-y-3 p-3">
             <div className="flex items-center gap-3 border-b">

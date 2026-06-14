@@ -335,12 +335,15 @@ async function buildGlobalKnowledgeAnswer(
     history: NormalizedHistoryItem[],
     userRole: string,
     retailCrmManagerId: number | null,
+    contextHint: string | null = null,
 ): Promise<{ reply: string | null; promptKey: string | null; knowledgeHits: Array<{ slug: string; subsystem: string | null; similarity: number }>; toolCalls: Array<{ name: string }> }> {
     if (!process.env.OPENAI_API_KEY) {
         return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
     }
 
-    const hits = await searchProjectKnowledge(question, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
+    // Экран пользователя подмешиваем в поисковый запрос — смещаем выдачу к теме активной вкладки.
+    const searchQuery = contextHint ? `${question}\n\n(Экран пользователя: ${contextHint})` : question;
+    const hits = await searchProjectKnowledge(searchQuery, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
     const hasUserData = retailCrmManagerId != null;
 
     // Nothing to ground an answer on: no docs and no personal data tools.
@@ -366,6 +369,9 @@ async function buildGlobalKnowledgeAnswer(
     const tools = buildConsultantTools(toolCtx);
 
     let systemContent = `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`;
+    if (contextHint) {
+        systemContent += `\n\nПользователь сейчас находится на экране: «${contextHint}». Если вопрос задан без явного указания раздела, считай, что он про этот экран, и ищи ответ в соответствующей теме.`;
+    }
     systemContent += '\n\nДля ЛЮБЫХ числовых вопросов (зарплата, рейтинг ОКК, «что если», сравнения сценариев) ВЫЗЫВАЙ инструменты и опирайся только на их результат — не считай в уме и не выдумывай числа. simulate_salary — для зарплатных «что если»; get_my_rating/how_to_improve_my_rating — для рейтинга; calc — для произвольной арифметики. Если инструмент вернул available:false — честно скажи, что данных нет.';
 
     const messages: any[] = [
@@ -548,6 +554,8 @@ export async function POST(req: Request) {
         const threadIdRaw = typeof body.threadId === 'string' ? body.threadId : null;
         const sectionKey = normalizeSectionKey(body.sectionKey);
         const selectionContext = body.selectionContext && typeof body.selectionContext === 'object' ? body.selectionContext : null;
+        // Человекочитаемая подсказка об активном экране/вкладке пользователя (см. ConsultantScreenContext).
+        const contextHint = typeof body.contextHint === 'string' && body.contextHint.trim() ? body.contextHint.trim().slice(0, 200) : null;
 
         if (!message) {
             return NextResponse.json({ error: 'Сообщение обязательно' }, { status: 400 });
@@ -664,7 +672,7 @@ export async function POST(req: Request) {
 
             // Project-wide RAG + salary tools: answer methodology questions and personal salary
             // calculations across all sections. Salary tools are bound to the session user.
-            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId);
+            const globalKnowledge = await buildGlobalKnowledgeAnswer(message, effectiveSectionKey, history, userRole, retailCrmManagerId, contextHint);
             if (globalKnowledge.reply) {
                 return buildSuccessResponse({
                     reply: globalKnowledge.reply,
