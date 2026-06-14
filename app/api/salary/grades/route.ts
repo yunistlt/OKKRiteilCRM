@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { listGradeLedger, recomputeGrades, resolveGradePolicy, resolveManagerGrades, saveGradePolicy, setManagerGrade } from '@/lib/salary/grades';
+import { resolveManagerComp } from '@/lib/salary/schemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +18,22 @@ export async function GET(req: Request) {
         const session = await getSession();
         if (!hasAnyRole(session, ['admin', 'rop'])) return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
         const asOf = asOfParam(req);
-        const [policy, ledger, current, mgrs] = await Promise.all([
+        // Грейды — только для реестра ОП (участники с назначенной схемой), как «Планы».
+        // Иначе в списке оказывались бы все менеджеры, включая системные/неактивные аккаунты.
+        const [policy, ledger, current, comp] = await Promise.all([
             resolveGradePolicy(asOf).catch(() => null),
             listGradeLedger(),
             resolveManagerGrades(asOf),
-            supabase.from('managers').select('id,first_name,last_name,active').order('id', { ascending: true }),
+            resolveManagerComp(asOf),
         ]);
-        const managers = ((mgrs.data as any[]) ?? []).map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: m.active }));
+        const rosterIds = Array.from(comp.keys());
+        let managers: { id: number; name: string; active: boolean }[] = [];
+        if (rosterIds.length) {
+            const { data: mgrs } = await supabase.from('managers').select('id,first_name,last_name,active').in('id', rosterIds);
+            managers = ((mgrs as any[]) ?? [])
+                .map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: m.active }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        }
         return NextResponse.json({ asOf, policy, ledger, current: Array.from(current.entries()).map(([managerId, level]) => ({ managerId, level })), managers });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });

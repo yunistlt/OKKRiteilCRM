@@ -102,8 +102,8 @@ export default function GradesTab() {
 
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
-    const managers = (data?.managers ?? []).filter((m: any) => m.active);
-    const inRegistry = (id: number) => currentLevel(id) != null || (data?.ledger ?? []).some((l: any) => l.managerId === id);
+    // data.managers — уже реестр ОП (только те, кому считается ЗП); фильтровать не нужно.
+    const managers = (data?.managers ?? []);
 
     return (
         <div className="space-y-4">
@@ -120,10 +120,13 @@ export default function GradesTab() {
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Грейд</th><th className="px-2 py-1.5">Ручная установка с {manualFrom.slice(0, 10)}</th></tr></thead>
                         <tbody>
+                            {managers.length === 0 && (
+                                <tr className="border-t"><td colSpan={3} className="px-2 py-3 text-center text-[11px] text-muted-foreground">В реестре ОП нет менеджеров. Назначьте схему в «Реестр ОП» / «Настройки → Менеджеры».</td></tr>
+                            )}
                             {managers.map((m: any) => {
                                 const lvl = currentLevel(m.id);
                                 return (
-                                    <tr key={m.id} className={`border-t ${inRegistry(m.id) ? '' : 'opacity-50'}`}>
+                                    <tr key={m.id} className="border-t">
                                         <td className="px-2 py-1">{m.name} <span className="text-[11px] text-muted-foreground">#{m.id}</span></td>
                                         <td className="px-2 py-1 font-semibold">{lvl == null ? <span className="font-normal text-muted-foreground">— не назначен —</span> : lvl}</td>
                                         <td className="px-2 py-1">
