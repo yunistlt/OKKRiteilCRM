@@ -894,12 +894,14 @@ function OKKContent() {
         }
     };
 
-    const safeScores = Array.isArray(scores) ? scores : [];
-    const filtered = [...safeScores].sort((a, b) => {
+    const safeScores = useMemo(() => Array.isArray(scores) ? scores : [], [scores]);
+    // PERF: пересортировываем только при изменении данных/параметров сортировки,
+    // а не на каждый ре-рендер (popover'ы, hover, переключение колонок).
+    const filtered = useMemo(() => [...safeScores].sort((a, b) => {
         const va = (a as any)[sortBy] ?? '';
         const vb = (b as any)[sortBy] ?? '';
         return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
-    });
+    }), [safeScores, sortBy, sortDir]);
 
     useEffect(() => {
         if (selectedOrderId) setConsultantOrderId(selectedOrderId);

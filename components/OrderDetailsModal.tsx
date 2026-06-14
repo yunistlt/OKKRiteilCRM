@@ -178,27 +178,33 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json);
-            // Проверка контрагента по ИНН
+            // Проверка контрагента по ИНН — в фоне, не блокирует показ карточки заказа.
             const inn = json?.order?.inn || json?.raw_payload?.inn || json?.order?.customer_inn;
             if (inn) {
-                setCounterpartyScoreLoading(true);
-                try {
-                    const resp = await fetch('/api/legal/counterparty/score', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ inn })
-                    });
-                    if (resp.ok) {
-                        const score = await resp.json();
-                        setCounterpartyScore(score);
-                    }
-                } catch {}
-                setCounterpartyScoreLoading(false);
+                void fetchCounterpartyScore(inn);
             }
         } catch (e: any) {
             setError(e.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const fetchCounterpartyScore = async (inn: string) => {
+        setCounterpartyScoreLoading(true);
+        try {
+            const resp = await fetch('/api/legal/counterparty/score', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ inn })
+            });
+            if (resp.ok) {
+                const score = await resp.json();
+                setCounterpartyScore(score);
+            }
+        } catch {}
+        finally {
+            setCounterpartyScoreLoading(false);
         }
     };
 

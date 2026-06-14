@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 
@@ -23,7 +23,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
     const [queuedAnalyses, setQueuedAnalyses] = useState<Record<number, { message: string; cachedAt?: string | null }>>({});
     const [agents, setAgents] = useState<Agent[]>([]);
-    const [currentTime, setCurrentTime] = useState(new Date());
 
     const searchParams = useSearchParams();
 
@@ -77,11 +76,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
         }
     };
 
-
-    useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        return () => clearInterval(timer);
-    }, []);
 
     useEffect(() => {
         const fetchAgents = () => {
@@ -150,6 +144,33 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
 
     const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
 
+    const safeOrders = useMemo(() => Array.isArray(orders) ? orders : [], [orders]);
+    const safeAgents = Array.isArray(agents) ? agents : [];
+
+    // PERF: считаем сводку одним проходом по заказам и только при изменении данных,
+    // а не 12+ раз .filter/.reduce на каждый ре-рендер.
+    const stats = useMemo(() => {
+        const acc = {
+            red: { count: 0, sum: 0 },
+            yellow: { count: 0, sum: 0 },
+            green: { count: 0, sum: 0 },
+            black: { count: 0, sum: 0 },
+        };
+        for (const o of safeOrders) {
+            const bucket = (acc as any)[o.level];
+            if (bucket) {
+                bucket.count += 1;
+                bucket.sum += o.totalSum;
+            }
+        }
+        return acc;
+    }, [safeOrders]);
+
+    const filteredOrders = useMemo(
+        () => activeTab ? safeOrders.filter(o => o.level === activeTab) : [],
+        [safeOrders, activeTab]
+    );
+
     if (loading) return (
         <div className={`mb-12 w-full ${view === 'team' ? '' : 'bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50'} animate-pulse`}>
             {view !== 'team' && <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>}
@@ -161,31 +182,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
         </div>
     );
 
-    const safeOrders = Array.isArray(orders) ? orders : [];
-    const safeAgents = Array.isArray(agents) ? agents : [];
-
     if (safeOrders.length === 0) return null;
-
-    const stats = {
-        red: {
-            count: safeOrders.filter(o => o.level === 'red').length,
-            sum: safeOrders.filter(o => o.level === 'red').reduce((a, b) => a + b.totalSum, 0)
-        },
-        yellow: {
-            count: safeOrders.filter(o => o.level === 'yellow').length,
-            sum: safeOrders.filter(o => o.level === 'yellow').reduce((a, b) => a + b.totalSum, 0)
-        },
-        green: {
-            count: safeOrders.filter(o => o.level === 'green').length,
-            sum: safeOrders.filter(o => o.level === 'green').reduce((a, b) => a + b.totalSum, 0)
-        },
-        black: {
-            count: safeOrders.filter(o => o.level === 'black').length,
-            sum: safeOrders.filter(o => o.level === 'black').reduce((a, b) => a + b.totalSum, 0)
-        }
-    };
-
-    const filteredOrders = activeTab ? safeOrders.filter(o => o.level === activeTab) : [];
 
     if (view === 'team') {
         return (
