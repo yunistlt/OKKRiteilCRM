@@ -776,18 +776,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 <div className="p-3 border-b bg-white/70 sticky top-0">
                                     <h4 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">История разговоров</h4>
                                 </div>
-                                {qualityCalls.some((call) => call.is_fallback) && (
-                                    <div className="m-3 p-3 bg-yellow-50 border border-yellow-200 text-xs text-yellow-800">
-                                        <strong className="block mb-1">Звонки ещё обрабатываются</strong>
-                                        Семён подтягивает записи, детальный анализ появится чуть позже.
-                                    </div>
-                                )}
                                 {qualityCallsLoading && qualityCalls.length === 0 ? (
                                     <div className="flex-1 flex items-center justify-center py-12">
                                         <div className="animate-spin h-6 w-6 border-b-2 border-blue-600"></div>
                                     </div>
                                 ) : qualityCalls.length === 0 ? (
-                                    <div className="p-8 text-center text-gray-400 text-xs italic">Звонки не найдены</div>
+                                    <div className="p-8 text-center text-gray-400 text-xs italic">Звонки ещё не привязаны к заказу</div>
                                 ) : (
                                     <div className="divide-y divide-gray-100">
                                         {qualityCalls.map((call, idx) => (
@@ -829,8 +823,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 {qualityCalls.length === 0 ? (
                                     <div className="flex-1 flex items-center justify-center text-gray-400 text-sm p-8 text-center">
                                         <div>
-                                            <div className="text-4xl mb-4">👆</div>
-                                            Добавьте звонки, чтобы появился разбор.
+                                            <div className="text-4xl mb-4">📞</div>
+                                            К заказу пока не привязаны звонки — разбор появится после их привязки.
                                         </div>
                                     </div>
                                 ) : activeCall ? (
