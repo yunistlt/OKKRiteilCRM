@@ -64,9 +64,9 @@ function createScriptEvaluationFallback(
     },
 ) {
     // Нет транскрипта/AI недоступен → нечего оценивать. Все пункты null (не учитываются), а не false (не штрафуем).
+    // options.reason — уже готовая конкретная формулировка причины «нет данных».
     const naReason = options?.reason
-        ? `Нет данных для анализа: ${options.reason}`
-        : 'Нет данных для анализа (нет звонков/транскрипции) — пункт не учитывается в балле';
+        || 'Нет данных для анализа: нет звонков или транскрипции — параметр не учитывается в балле.';
     const na = () => ({ result: null as boolean | null, reason: naReason });
     return {
         script_greeting: na(),
@@ -878,11 +878,28 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 // Заполняет: Установление контакта, Выявление потребностей,
 //            Работа с возражениями, В конце диалога, Ведение диалога
 // ═══════════════════════════════════════════════════════
-export async function evaluateScript(transcript: string, annaInsights: any = null) {
+export async function evaluateScript(
+    transcript: string,
+    annaInsights: any = null,
+    callsContext?: { attempts?: number; transcribed?: number; status?: string | null },
+) {
+    // Конкретная причина состояния «нет данных» — чтобы в UI было понятно, чего именно не хватает.
+    const attempts = callsContext?.attempts ?? 0;
+    const transcribed = callsContext?.transcribed ?? 0;
+    const status = callsContext?.status ?? null;
+    const noDataReason =
+        status === 'Нет звонков' || (!status && attempts === 0)
+            ? 'В заказе нет звонков — скрипт не оценивается (не учитывается в балле).'
+            : status === 'Попытки без ответа'
+                ? 'Были только попытки дозвона без разговора — оценивать нечего (не учитывается в балле).'
+                : transcribed === 0
+                    ? 'Звонки есть, но ещё не транскрибированы — оценка появится после транскрибации (пока не учитывается).'
+                    : 'Запись разговора слишком короткая для анализа (не учитывается в балле).';
     const empty = createScriptEvaluationFallback(transcript, annaInsights, {
         scriptScorePct: null,
-        evaluatorComment: 'Звонки не найдены или слишком короткие для анализа — оценка скрипта не учитывается.',
+        evaluatorComment: noDataReason,
         evaluationSkipped: true,
+        reason: noDataReason,
     });
 
     console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
@@ -1003,7 +1020,7 @@ ${transcript.substring(0, 15000)}`
     } catch (e) {
         console.error('[Максим/GPT] Script evaluation failed:', e);
         return createScriptEvaluationFallback(transcript, annaInsights, {
-            reason: formatAiError(e),
+            reason: `AI-анализ скрипта временно недоступен (${formatAiError(e)}) — параметр не учитывается, оценка появится после переоценки.`,
             degraded: true,
             scriptScorePct: null,
             evaluatorComment: 'AI-анализ скрипта временно недоступен. Сохранена базовая оценка без script score.',
@@ -1219,7 +1236,11 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     const annaInsights = annaAnalysis.insights;
 
     // Максим оценивает скрипт (используя данные от Анны)
-    const script = await evaluateScript(facts._transcript, annaInsights);
+    const script = await evaluateScript(facts._transcript, annaInsights, {
+        attempts: facts.calls_attempts_count,
+        transcribed: facts.calls_evaluated_count,
+        status: facts.calls_status,
+    });
     const aiPipelineMeta = {
         degraded: Boolean(annaAnalysis.meta.degraded || script._meta?.degraded),
         insight: annaAnalysis.meta,
