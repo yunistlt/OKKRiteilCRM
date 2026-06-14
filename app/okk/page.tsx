@@ -212,7 +212,7 @@ function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { 
                 <div className="font-bold text-gray-800 text-sm mb-2 leading-tight">{label}</div>
                 <div className="flex items-center gap-2 mb-3">
                     {info.result === null ? (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fef9c3', color: '#a16207' }}>⚠️ НЕТ ДАННЫХ (не учитывается)</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fef9c3', color: '#a16207' }}>⚠️ НЕТ ДАННЫХ — ещё не оценено (не учитывается)</span>
                     ) : info.result ? (
                         <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ ВЫПОЛНЕНО</span>
                     ) : (
@@ -229,16 +229,17 @@ function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { 
 }
 
 // ─── Значок ячейки ───────────────────────────────────────
-// Три состояния: ✅ выполнено / ❌ нарушено / жёлтая ✓ — нет данных (оценивали, но нечем — не учитывается в балле).
+// Три состояния: ✅ выполнено / ❌ нарушено / жёлтая ✓ — нет данных (аудит ещё не проведён или данные
+// не синхронизированы — параметр не учитывается в балле, пока не появятся данные).
 // Прочерк «—» — критерий к этой сделке вообще не относится (нет breakdown).
 function C({ v, hasBreakdown, onClick }: { v: boolean | null, hasBreakdown?: boolean, onClick?: (e: React.MouseEvent) => void }) {
-    // null/undefined: если оценивали (есть breakdown) — жёлтая галочка «нет данных», иначе прочерк
+    // null/undefined: если есть breakdown — жёлтая «нет данных / ещё не оценено», иначе прочерк
     if (v === null || v === undefined) {
         if (!hasBreakdown) return <span className="text-gray-300 select-none">—</span>;
         return (
             <span
                 onClick={onClick}
-                title="Нет данных — параметр не учитывается в балле"
+                title="Нет данных: аудит ещё не проведён или данные не синхронизированы — не учитывается в балле"
                 className={`select-none cursor-pointer hover:scale-150 transition-transform inline-block ${onClick ? 'active:opacity-50' : ''}`}
             >
                 <span style={{ color: '#eab308' }}>✓</span>

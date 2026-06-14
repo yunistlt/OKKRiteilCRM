@@ -28,8 +28,8 @@ export interface ChecklistSection {
 export interface QCItemResult {
     description: string;
     weight: number;
-    score: number; // Actual points awarded (0 or weight); для not_applicable не входит в расчёт
-    status: 'pass' | 'fail' | 'partial' | 'not_applicable';
+    score: number; // Actual points awarded (0 or weight)
+    status: 'pass' | 'fail' | 'partial';
     reasoning: string;
 }
 
@@ -104,7 +104,7 @@ INSTRUCTIONS:
 - Analyze the entire transcript.
 - For EACH item in the checklist, determine if the manager met the criteria.
 - Assign the full weight if met, 0 if missed. Partial scores are allowed ONLY if explicitly stated, otherwise binary.
-- IMPORTANT — "not_applicable": если по пункту физически нет данных для оценки ИЛИ ситуация для проявления навыка не возникла (например, оценивать работу с возражениями, когда возражений не было), пометь его status="not_applicable" и score=null. Такой пункт НЕ учитывается в расчёте (исключается из знаменателя) и НЕ штрафует менеджера. НЕ ставь "fail" при отсутствии данных.
+- Если навык не проявлен или ситуация не возникла — это "fail" (правило не выполнено). Вариант "нет данных" тут недоступен: транскрипт уже передан, ты обязан вынести вердикт pass/fail.
 - Provide a brief reasoning (in Russian) for each decision, citing specific quotes if possible.
 - Calculate the total score.
 
@@ -118,8 +118,8 @@ OUTPUT JSON FORMAT:
         {
           "description": "Criteria description",
           "weight": 10,
-          "score": 10, // Actual score awarded; null если not_applicable
-          "status": "pass", // "pass" | "fail" | "not_applicable"
+          "score": 10, // Actual score awarded
+          "status": "pass", // "pass" or "fail"
           "reasoning": "Reasoning in Russian"
         }
       ]
@@ -130,7 +130,6 @@ OUTPUT JSON FORMAT:
 CRITICAL:
 - Be objective.
 - If the transcript creates ambiguity, give the benefit of the doubt to the manager unless the criteria is "Explicitly ask X".
-- При нехватке данных используй status="not_applicable" (не "fail").
 - Output strict JSON.
 `;
 
@@ -168,12 +167,6 @@ CRITICAL:
             const items: QCItemResult[] = [];
 
             for (const item of (section.items || [])) {
-                // Пункты "not_applicable" / score=null исключаются из расчёта (не входят в знаменатель)
-                const notApplicable = item.status === 'not_applicable' || item.score === null || item.score === undefined;
-                if (notApplicable) {
-                    items.push({ ...item, status: 'not_applicable', score: 0 });
-                    continue;
-                }
                 sectionScore += item.score;
                 sectionMax += item.weight;
                 items.push(item);
@@ -243,7 +236,7 @@ INSTRUCTIONS:
 - **IMPORTANT**: Reference the \`customerOrdersCount\` field in the context. If the rule prompt specifies to audit only the first or second order, and \`customerOrdersCount\` is greater than that number, you should mark all criteria as passed/ignored and mention this in the summary.
 - For EACH item in the checklist, determine if the manager met the criteria across the entire stage.
 - Assign the full weight if met, 0 if missed.
-- IMPORTANT — "not_applicable": если по пункту нет данных для оценки ИЛИ ситуация не возникла, пометь status="not_applicable" и score=null. Такой пункт исключается из расчёта и НЕ штрафует менеджера. НЕ ставь "fail" при отсутствии данных.
+- Если навык не проявлен или ситуация не возникла — это "fail". Вариант "нет данных" недоступен: контекст взаимодействий уже передан, выноси вердикт pass/fail.
 - Provide a brief reasoning (in Russian) for each decision, mentioning which interaction provided the evidence.
 - Calculate the total score.
 
@@ -257,8 +250,8 @@ OUTPUT JSON FORMAT:
         {
           "description": "Criteria description",
           "weight": 10,
-          "score": 10, // null если not_applicable
-          "status": "pass", // "pass" | "fail" | "not_applicable"
+          "score": 10,
+          "status": "pass",
           "reasoning": "Reasoning in Russian"
         }
       ]
@@ -300,12 +293,6 @@ OUTPUT JSON FORMAT:
             const items: QCItemResult[] = [];
 
             for (const item of (section.items || [])) {
-                // Пункты "not_applicable" / score=null исключаются из расчёта (не входят в знаменатель)
-                const notApplicable = item.status === 'not_applicable' || item.score === null || item.score === undefined;
-                if (notApplicable) {
-                    items.push({ ...item, status: 'not_applicable', score: 0 });
-                    continue;
-                }
                 sectionScore += item.score;
                 sectionMax += item.weight;
                 items.push(item);

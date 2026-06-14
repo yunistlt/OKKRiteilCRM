@@ -32,7 +32,7 @@ Input:
 Output JSON (Strictly in Russian language):
 {
   "is_violation": boolean, // TRUE если правило нарушено, FALSE в противном случае.
-  "insufficient_data": boolean, // TRUE если данных физически недостаточно, чтобы судить о соблюдении правила (нет реплик/контекста/нужного поля). В этом случае is_violation ОБЯЗАТЕЛЬНО false.
+  "insufficient_data": boolean, // TRUE ТОЛЬКО если анализировать физически нечего: текст пустой/отсутствует, данные не синхронизированы. Это системное «нет данных», НЕ когда текст есть, но нарушения в нём нет.
   "evidence": string, // Цитата из текста, подтверждающая нарушение (на языке оригинала) или NULL если текста нет.
   "confidence": number, // от 0.0 до 1.0
   "reasoning": string // Краткое объяснение на РУССКОМ языке
@@ -40,7 +40,7 @@ Output JSON (Strictly in Russian language):
 
 CRITICAL: All reasoning, explanations and summary fields MUST BE IN RUSSIAN.
 Be strict. If the text is ambiguous, bias towards NO violation (innocent until proven guilty) unless the rule says "Ensure X happened".
-НЕ УГАДЫВАЙ при отсутствии данных: если в тексте нет информации, чтобы определить нарушение — ставь insufficient_data=true и is_violation=false. Такой случай НЕ штрафует менеджера (не учитывается), а не считается нарушением.
+Если текст есть, но нарушения в нём нет — это is_violation=false (НЕ insufficient_data). insufficient_data=true оставь только для случая, когда анализировать нечего (нет текста/данные не синхронизированы).
     `;
 
     try {
