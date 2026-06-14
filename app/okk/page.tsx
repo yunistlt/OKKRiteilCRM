@@ -212,7 +212,7 @@ function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { 
                 <div className="font-bold text-gray-800 text-sm mb-2 leading-tight">{label}</div>
                 <div className="flex items-center gap-2 mb-3">
                     {info.result === null ? (
-                        <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold">НЕ ПРОВЕРЯЛОСЬ</span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold" style={{ backgroundColor: '#fef9c3', color: '#a16207' }}>⚠️ НЕТ ДАННЫХ (не учитывается)</span>
                     ) : info.result ? (
                         <span className="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ ВЫПОЛНЕНО</span>
                     ) : (
@@ -229,8 +229,22 @@ function ExplainPopover({ label, info, onClose, pos }: { label: string, info: { 
 }
 
 // ─── Значок ячейки ───────────────────────────────────────
-function C({ v, onClick }: { v: boolean | null, onClick?: (e: React.MouseEvent) => void }) {
-    if (v === null || v === undefined) return <span className="text-gray-300 select-none">—</span>;
+// Три состояния: ✅ выполнено / ❌ нарушено / жёлтая ✓ — нет данных (оценивали, но нечем — не учитывается в балле).
+// Прочерк «—» — критерий к этой сделке вообще не относится (нет breakdown).
+function C({ v, hasBreakdown, onClick }: { v: boolean | null, hasBreakdown?: boolean, onClick?: (e: React.MouseEvent) => void }) {
+    // null/undefined: если оценивали (есть breakdown) — жёлтая галочка «нет данных», иначе прочерк
+    if (v === null || v === undefined) {
+        if (!hasBreakdown) return <span className="text-gray-300 select-none">—</span>;
+        return (
+            <span
+                onClick={onClick}
+                title="Нет данных — параметр не учитывается в балле"
+                className={`select-none cursor-pointer hover:scale-150 transition-transform inline-block ${onClick ? 'active:opacity-50' : ''}`}
+            >
+                <span style={{ color: '#eab308' }}>✓</span>
+            </span>
+        );
+    }
     return (
         <span
             onClick={onClick}
@@ -1030,7 +1044,7 @@ function OKKContent() {
                 </button>
             );
         } else if (col.type === 'bool') {
-            content = <C v={val} onClick={breakdown ? handleCellClick : undefined} />;
+            content = <C v={val} hasBreakdown={!!breakdown} onClick={breakdown ? handleCellClick : undefined} />;
         } else if (col.type === 'num') {
             content = <span className="text-[10px] text-gray-600">{val ?? '—'}</span>;
         } else {
@@ -1855,12 +1869,15 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                             .map(([key, data]) => (
                                                                 <div key={key} className="bg-white p-2.5 md:p-3 rounded-xl border border-gray-100 shadow-sm">
                                                                     <div className="flex items-center gap-1.5 mb-1.5">
-                                                                        <span className={data.result ? 'text-green-500' : 'text-red-500'}>
-                                                                            {data.result ? '✅' : '❌'}
+                                                                        <span style={data.result === null ? { color: '#eab308' } : undefined} className={data.result === null ? '' : data.result ? 'text-green-500' : 'text-red-500'}>
+                                                                            {data.result === null ? '✓' : data.result ? '✅' : '❌'}
                                                                         </span>
                                                                         <span className="text-[10px] font-bold text-gray-700">
                                                                             {formatQualityCriterionLabel(key)}
                                                                         </span>
+                                                                        {data.result === null && (
+                                                                            <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: '#fef9c3', color: '#a16207' }}>не учтено</span>
+                                                                        )}
                                                                     </div>
                                                                     <p className="text-[11px] text-gray-600 leading-normal italic">
                                                                         «{data.reason}»

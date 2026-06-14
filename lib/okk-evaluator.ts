@@ -63,26 +63,31 @@ function createScriptEvaluationFallback(
         evaluationSkipped?: boolean;
     },
 ) {
+    // Нет транскрипта/AI недоступен → нечего оценивать. Все пункты null (не учитываются), а не false (не штрафуем).
+    const naReason = options?.reason
+        ? `Нет данных для анализа: ${options.reason}`
+        : 'Нет данных для анализа (нет звонков/транскрипции) — пункт не учитывается в балле';
+    const na = () => ({ result: null as boolean | null, reason: naReason });
     return {
-        script_greeting: { result: false, reason: 'Нет данных для анализа (нет звонков/транскрипции)' },
-        script_call_purpose: { result: false, reason: 'Нет данных для анализа' },
-        script_company_info: { result: false, reason: 'Нет данных для анализа' },
-        script_lpr_identified: { result: false, reason: 'Нет данных для анализа' },
-        script_budget_confirmed: { result: false, reason: 'Нет данных для анализа' },
-        script_urgency_identified: { result: false, reason: 'Нет данных для анализа' },
-        script_deadlines: { result: false, reason: 'Нет данных для анализа' },
-        script_tz_confirmed: { result: false, reason: 'Нет данных для анализа' },
-        script_objection_general: { result: false, reason: 'Нет данных для анализа (возражения не отработаны)' },
-        script_objection_delays: { result: false, reason: 'Нет данных для анализа' },
-        script_offer_best_tech: { result: false, reason: 'Нет данных для анализа' },
-        script_offer_best_terms: { result: false, reason: 'Нет данных для анализа' },
-        script_offer_best_price: { result: false, reason: 'Нет данных для анализа' },
-        script_cross_sell: { result: false, reason: 'Нет данных для анализа' },
-        script_next_step_agreed: { result: false, reason: 'Нет данных для анализа' },
-        script_dialogue_management: { result: false, reason: 'Нет данных для анализа' },
-        script_confident_speech: { result: false, reason: 'Нет данных для анализа' },
-        script_score_pct: options?.scriptScorePct ?? 0,
-        evaluator_comment: options?.evaluatorComment || 'Звонки не найдены или слишком короткие для анализа. Оценка 0.',
+        script_greeting: na(),
+        script_call_purpose: na(),
+        script_company_info: na(),
+        script_lpr_identified: na(),
+        script_budget_confirmed: na(),
+        script_urgency_identified: na(),
+        script_deadlines: na(),
+        script_tz_confirmed: na(),
+        script_objection_general: na(),
+        script_objection_delays: na(),
+        script_offer_best_tech: na(),
+        script_offer_best_terms: na(),
+        script_offer_best_price: na(),
+        script_cross_sell: na(),
+        script_next_step_agreed: na(),
+        script_dialogue_management: na(),
+        script_confident_speech: na(),
+        script_score_pct: options?.scriptScorePct ?? null,
+        evaluator_comment: options?.evaluatorComment || 'Звонки не найдены или слишком короткие для анализа — оценка скрипта не учитывается.',
         _meta: {
             model: null,
             transcript_length: transcript?.length || 0,
@@ -875,8 +880,8 @@ export async function checkSLA(orderId: number, order: any, leadReceivedAt: stri
 // ═══════════════════════════════════════════════════════
 export async function evaluateScript(transcript: string, annaInsights: any = null) {
     const empty = createScriptEvaluationFallback(transcript, annaInsights, {
-        scriptScorePct: 0,
-        evaluatorComment: 'Звонки не найдены или слишком короткие для анализа. Оценка 0.',
+        scriptScorePct: null,
+        evaluatorComment: 'Звонки не найдены или слишком короткие для анализа — оценка скрипта не учитывается.',
         evaluationSkipped: true,
     });
 
@@ -901,18 +906,22 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 
 ОСНОВНЫЕ ПРАВИЛА:
 1. ХОЛИСТИЧЕСКИЙ АНАЛИЗ: Если действие произошло в любом из звонков истории — оно считается выполненным (true).
-2. СТРОГАЯ ОЦЕНКА (БЕЗ N/A): Вариант "null" (Не требовалось) ЗАПРЕЩЕН. Все критерии должны быть оценены как true (выполнено) или false (не выполнено).
-   - Если информации нет, ситуация не возникла или менеджер промолчал — ставь false.
-   - Пример: Если клиент не возражал, а пункт "Работа с возражениями" требует оценки — ставь false (так как навык не проявлен/не проверен), либо true, только если менеджер предвосхитил возражения. В данном случае, СЧИТАЙ ОТСУТСТВИЕ РАБОТЫ С ВОЗРАЖЕНИЯМИ КАК false.
-   - Любое сомнение трактуй как false (в пользу строгости).
+2. ТРИ ИСХОДА (true / false / null):
+   - true — навык проявлен (выполнено).
+   - false — навык НЕ проявлен, хотя ситуация этого требовала, или менеджер допустил ошибку (нарушено, снижает балл).
+   - null — НЕТ ДАННЫХ ДЛЯ ОЦЕНКИ: в истории звонков физически нет информации по этому пункту, ИЛИ ситуация для проявления навыка не возникла и проверить его невозможно. Такой пункт НЕ учитывается в балле (исключается из знаменателя), а не штрафует менеджера.
+   - ВАЖНО различать false и null: false — была возможность/необходимость, но менеджер не сделал. null — оценить нечего, потому что ситуация не наступила или данных нет.
+   - Пример (Работа с возражениями): клиент возражал, но менеджер не отработал → false. Клиент вообще не возражал и повода отрабатывать не было → null (не учитывается). Менеджер предвосхитил возражения → true.
+   - Пример (Cross-sell): была явная возможность допродажи, менеджер не предложил → false. По характеру заказа сопутствующих товаров нет и предлагать нечего → null.
+   - НЕ ставь false «на всякий случай» при отсутствии данных — это искажает балл. Если нет оснований ни для true, ни для false — ставь null.
 
 3. ИНТЕГРАЦИЯ С АННОЙ: Используй данные бизнес-аналитика Анны как "земную истину":
    - Если Анна нашла 'lpr' (имя или должность), значит менеджер выяснил ЛПР (true). Если Анна не нашла ЛПР и в диалоге нет попыток это выяснить — false.
    - Если Анна нашла 'budget' (сумму или готовность), значит бюджет затронут (true). Если в диалоге нет ни цифр, ни обсуждения денег — false.
    - Если Анна нашла 'urgency' или 'timeline', значит менеджер выяснил сроки (true).
 
-ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON. 
-Для каждого пункта верни объект: {"result": true/false, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
+ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON.
+Для каждого пункта верни объект: {"result": true | false | null, "reason": "ПОДРОБНОЕ обоснование с цитатой; для null обязательно объясни, почему оценить было нечем"}.
 
 КРИТЕРИИ И СПЕЦИФИКА КЛАССИФИКАЦИИ:
 - script_greeting: Приветствие и название компании. (Есть - true, Нет - false)
@@ -923,12 +932,12 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 - script_urgency_identified: Менеджер выяснил срочность покупки (нужно "вчера" или "к осени"). (Есть - true, Нет - false)
 - script_deadlines: Выяснены конкретные сроки готовности или поставки (не путать со срочностью). (Есть - true, Нет - false)
 - script_tz_confirmed: Параметры тех. задания (размеры, температура) подтверждены. (Есть - true, Нет - false)
-- script_objection_general: Работа с возражениями. Если были возражения и отработаны — true. Если возражений НЕ было или они не отработаны — false.
-- script_objection_delays: Выяснение причин задержек/сравнения. Если клиент тянет время — выяснил ли менеджер причину? (Да - true, Нет/Не спросил - false).
-- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Нет - false).
-- script_offer_best_terms: Аргументы по СРОКАМ. (Были - true, Нет - false).
-- script_offer_best_price: Обоснование ЦЕНЫ. (Было - true, Нет - false).
-- script_cross_sell: Предложение сопутствующих товаров. (Было - true, Нет - false).
+- script_objection_general: Работа с возражениями. Возражения были и отработаны — true. Были, но не отработаны — false. Возражений вообще не возникло (повода нет) — null.
+- script_objection_delays: Выяснение причин задержек/сравнения. Клиент тянул время и менеджер выяснил причину — true. Тянул, но менеджер не спросил — false. Ситуации с задержкой не было — null.
+- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Уместна, но не прозвучала - false, Неприменимо/нет данных - null).
+- script_offer_best_terms: Аргументы по СРОКАМ. (Были - true, Уместны, но нет - false, Неприменимо/нет данных - null).
+- script_offer_best_price: Обоснование ЦЕНЫ. (Было - true, Уместно, но нет - false, Цена не обсуждалась/нет данных - null).
+- script_cross_sell: Предложение сопутствующих товаров. (Было - true, Возможность была, но не предложил - false, Сопутствующих товаров нет/предлагать нечего - null).
 - script_next_step_agreed: Фиксация следующего шага с ДАТОЙ. (Есть дата след. касания - true, Нет - false).
 - script_dialogue_management: Менеджер держал инициативу. (Да - true, Нет/Плыл по течению - false).
 - script_confident_speech: Уверенная речь. (Да - true, Нет - false).
@@ -937,13 +946,11 @@ export async function evaluateScript(transcript: string, annaInsights: any = nul
 В "reason" всегда упоминай менеджера по имени (из контекста).
 
 РАСЧЕТ script_score_pct:
-- Рассчитывай % как (Кол-во true / Общее кол-во пунктов) * 100.
-- Все пункты должны быть либо true, либо false. 
-- (Кол-во true / Кол-во (true + false)) * 100.
-- Если все пункты null, верни 100.
+- Знаменатель — только применимые пункты: (Кол-во true) / (Кол-во true + Кол-во false) * 100.
+- Пункты с null НЕ входят ни в числитель, ни в знаменатель (не учитываются).
+- Итоговый процент пересчитывается системой детерминированно по полям result, поэтому твоя задача — корректно проставить true/false/null по каждому пункту.
 
 Также верни:
-- script_score_pct: число (0-100).
 - evaluator_comment: аналитическое резюме по всей сделке.`
                 },
                 {
@@ -960,30 +967,31 @@ ${transcript.substring(0, 15000)}`
         const rawContent = res.choices[0].message.content || '{}';
         console.log('[Максим/GPT] Raw AI response received:', rawContent);
         const parsed = JSON.parse(rawContent);
-        const getVal = (key: string) => ({
-            result: parsed[key]?.result ?? null,
-            reason: parsed[key]?.reason ?? null
-        });
+        // Нормализуем result строго к true | false | null (всё неоднозначное → null = нет данных, не учитывается)
+        const getVal = (key: string) => {
+            const raw = parsed[key]?.result;
+            const result = raw === true ? true : raw === false ? false : null;
+            return { result, reason: parsed[key]?.reason ?? null };
+        };
+
+        const SCRIPT_ITEM_KEYS = [
+            'script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified',
+            'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed',
+            'script_objection_general', 'script_objection_delays', 'script_offer_best_tech',
+            'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell',
+            'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech',
+        ];
+        const items: Record<string, { result: boolean | null; reason: string | null }> = {};
+        for (const key of SCRIPT_ITEM_KEYS) items[key] = getVal(key);
+
+        // Детерминированный расчёт: знаменатель — только применимые пункты (true|false), null исключаются
+        const applicable = SCRIPT_ITEM_KEYS.filter(k => items[k].result === true || items[k].result === false);
+        const passedCount = applicable.filter(k => items[k].result === true).length;
+        const script_score_pct = applicable.length > 0 ? Math.round((passedCount / applicable.length) * 100) : null;
 
         return {
-            script_greeting: getVal('script_greeting'),
-            script_call_purpose: getVal('script_call_purpose'),
-            script_company_info: getVal('script_company_info'),
-            script_lpr_identified: getVal('script_lpr_identified'),
-            script_budget_confirmed: getVal('script_budget_confirmed'),
-            script_urgency_identified: getVal('script_urgency_identified'),
-            script_deadlines: getVal('script_deadlines'),
-            script_tz_confirmed: getVal('script_tz_confirmed'),
-            script_objection_general: getVal('script_objection_general'),
-            script_objection_delays: getVal('script_objection_delays'),
-            script_offer_best_tech: getVal('script_offer_best_tech'),
-            script_offer_best_terms: getVal('script_offer_best_terms'),
-            script_offer_best_price: getVal('script_offer_best_price'),
-            script_cross_sell: getVal('script_cross_sell'),
-            script_next_step_agreed: getVal('script_next_step_agreed'),
-            script_dialogue_management: getVal('script_dialogue_management'),
-            script_confident_speech: getVal('script_confident_speech'),
-            script_score_pct: typeof parsed.script_score_pct === 'number' ? Math.round(Math.min(100, Math.max(0, parsed.script_score_pct))) : null,
+            ...items,
+            script_score_pct,
             evaluator_comment: parsed.evaluator_comment ?? null,
             _meta: {
                 model: 'gpt-4o-mini',

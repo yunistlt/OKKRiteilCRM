@@ -28,8 +28,8 @@ export interface ChecklistSection {
 export interface QCItemResult {
     description: string;
     weight: number;
-    score: number; // Actual points awarded (0 or weight)
-    status: 'pass' | 'fail' | 'partial';
+    score: number; // Actual points awarded (0 or weight); для not_applicable не входит в расчёт
+    status: 'pass' | 'fail' | 'partial' | 'not_applicable';
     reasoning: string;
 }
 
@@ -82,12 +82,13 @@ export async function getSystemPrompt(key: string, defaultPrompt: string): Promi
 
 export async function evaluateChecklist(transcript: string, checklist: ChecklistSection[]): Promise<QualityControlResult> {
     if (!transcript || transcript.length < 50) {
+        // Нет данных для оценки → не нарушение, не учитывается (maxScore=0 ⇒ % не считается)
         return {
             totalScore: 0,
-            maxScore: 100,
+            maxScore: 0,
             sections: [],
-            summary: "Transcript too short or empty.",
-            is_violation: true
+            summary: "Недостаточно данных для оценки (нет транскрипции) — не учитывается.",
+            is_violation: false
         };
     }
 
@@ -103,6 +104,7 @@ INSTRUCTIONS:
 - Analyze the entire transcript.
 - For EACH item in the checklist, determine if the manager met the criteria.
 - Assign the full weight if met, 0 if missed. Partial scores are allowed ONLY if explicitly stated, otherwise binary.
+- IMPORTANT — "not_applicable": если по пункту физически нет данных для оценки ИЛИ ситуация для проявления навыка не возникла (например, оценивать работу с возражениями, когда возражений не было), пометь его status="not_applicable" и score=null. Такой пункт НЕ учитывается в расчёте (исключается из знаменателя) и НЕ штрафует менеджера. НЕ ставь "fail" при отсутствии данных.
 - Provide a brief reasoning (in Russian) for each decision, citing specific quotes if possible.
 - Calculate the total score.
 
@@ -116,8 +118,8 @@ OUTPUT JSON FORMAT:
         {
           "description": "Criteria description",
           "weight": 10,
-          "score": 10, // Actual score awarded
-          "status": "pass", // "pass" or "fail"
+          "score": 10, // Actual score awarded; null если not_applicable
+          "status": "pass", // "pass" | "fail" | "not_applicable"
           "reasoning": "Reasoning in Russian"
         }
       ]
@@ -128,6 +130,7 @@ OUTPUT JSON FORMAT:
 CRITICAL:
 - Be objective.
 - If the transcript creates ambiguity, give the benefit of the doubt to the manager unless the criteria is "Explicitly ask X".
+- При нехватке данных используй status="not_applicable" (не "fail").
 - Output strict JSON.
 `;
 
@@ -165,6 +168,12 @@ CRITICAL:
             const items: QCItemResult[] = [];
 
             for (const item of (section.items || [])) {
+                // Пункты "not_applicable" / score=null исключаются из расчёта (не входят в знаменатель)
+                const notApplicable = item.status === 'not_applicable' || item.score === null || item.score === undefined;
+                if (notApplicable) {
+                    items.push({ ...item, status: 'not_applicable', score: 0 });
+                    continue;
+                }
                 sectionScore += item.score;
                 sectionMax += item.weight;
                 items.push(item);
@@ -194,12 +203,13 @@ CRITICAL:
 
     } catch (e) {
         console.error('QC Evaluation Error:', e);
+        // Деградация AI → не штрафуем (нет валидной оценки), maxScore=0 ⇒ не учитывается
         return {
             totalScore: 0,
-            maxScore: 100,
+            maxScore: 0,
             sections: [],
-            summary: "Error during AI evaluation.",
-            is_violation: true
+            summary: "Ошибка AI-оценки — результат не учитывается.",
+            is_violation: false
         };
     }
 }
@@ -233,6 +243,7 @@ INSTRUCTIONS:
 - **IMPORTANT**: Reference the \`customerOrdersCount\` field in the context. If the rule prompt specifies to audit only the first or second order, and \`customerOrdersCount\` is greater than that number, you should mark all criteria as passed/ignored and mention this in the summary.
 - For EACH item in the checklist, determine if the manager met the criteria across the entire stage.
 - Assign the full weight if met, 0 if missed.
+- IMPORTANT — "not_applicable": если по пункту нет данных для оценки ИЛИ ситуация не возникла, пометь status="not_applicable" и score=null. Такой пункт исключается из расчёта и НЕ штрафует менеджера. НЕ ставь "fail" при отсутствии данных.
 - Provide a brief reasoning (in Russian) for each decision, mentioning which interaction provided the evidence.
 - Calculate the total score.
 
@@ -246,8 +257,8 @@ OUTPUT JSON FORMAT:
         {
           "description": "Criteria description",
           "weight": 10,
-          "score": 10,
-          "status": "pass",
+          "score": 10, // null если not_applicable
+          "status": "pass", // "pass" | "fail" | "not_applicable"
           "reasoning": "Reasoning in Russian"
         }
       ]
@@ -289,6 +300,12 @@ OUTPUT JSON FORMAT:
             const items: QCItemResult[] = [];
 
             for (const item of (section.items || [])) {
+                // Пункты "not_applicable" / score=null исключаются из расчёта (не входят в знаменатель)
+                const notApplicable = item.status === 'not_applicable' || item.score === null || item.score === undefined;
+                if (notApplicable) {
+                    items.push({ ...item, status: 'not_applicable', score: 0 });
+                    continue;
+                }
                 sectionScore += item.score;
                 sectionMax += item.weight;
                 items.push(item);
@@ -317,12 +334,13 @@ OUTPUT JSON FORMAT:
 
     } catch (e) {
         console.error('Stage QC Evaluation Error:', e);
+        // Деградация AI → не штрафуем, maxScore=0 ⇒ не учитывается
         return {
             totalScore: 0,
-            maxScore: 100,
+            maxScore: 0,
             sections: [],
-            summary: "Error during Stage AI evaluation.",
-            is_violation: true
+            summary: "Ошибка AI-оценки этапа — результат не учитывается.",
+            is_violation: false
         };
     }
 }

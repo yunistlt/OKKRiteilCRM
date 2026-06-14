@@ -11,6 +11,8 @@ export interface SemanticResult {
     evidence: string | null;
     confidence: number;
     reasoning: string;
+    // true = данных недостаточно, чтобы судить о нарушении. Нарушение НЕ фиксируется (не штрафуем).
+    insufficient_data?: boolean;
 }
 
 export async function analyzeText(text: string, rulePrompt: string, contextDescription: string = 'Text Content'): Promise<SemanticResult> {
@@ -30,6 +32,7 @@ Input:
 Output JSON (Strictly in Russian language):
 {
   "is_violation": boolean, // TRUE если правило нарушено, FALSE в противном случае.
+  "insufficient_data": boolean, // TRUE если данных физически недостаточно, чтобы судить о соблюдении правила (нет реплик/контекста/нужного поля). В этом случае is_violation ОБЯЗАТЕЛЬНО false.
   "evidence": string, // Цитата из текста, подтверждающая нарушение (на языке оригинала) или NULL если текста нет.
   "confidence": number, // от 0.0 до 1.0
   "reasoning": string // Краткое объяснение на РУССКОМ языке
@@ -37,6 +40,7 @@ Output JSON (Strictly in Russian language):
 
 CRITICAL: All reasoning, explanations and summary fields MUST BE IN RUSSIAN.
 Be strict. If the text is ambiguous, bias towards NO violation (innocent until proven guilty) unless the rule says "Ensure X happened".
+НЕ УГАДЫВАЙ при отсутствии данных: если в тексте нет информации, чтобы определить нарушение — ставь insufficient_data=true и is_violation=false. Такой случай НЕ штрафует менеджера (не учитывается), а не считается нарушением.
     `;
 
     try {
@@ -55,11 +59,14 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
         if (!content) throw new Error('No content from LLM');
 
         const result = JSON.parse(content);
+        const insufficient_data = Boolean(result.insufficient_data);
         return {
-            is_violation: result.is_violation,
+            // При недостатке данных нарушение не фиксируем — параметр не учитывается, а не штрафуется.
+            is_violation: insufficient_data ? false : Boolean(result.is_violation),
             evidence: result.evidence,
             confidence: result.confidence,
-            reasoning: result.reasoning
+            reasoning: result.reasoning,
+            insufficient_data
         };
 
     } catch (e) {

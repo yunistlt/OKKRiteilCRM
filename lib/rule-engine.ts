@@ -302,17 +302,19 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
             if (rule.checklist && rule.checklist.length > 0) {
                 const qcResult = await evaluateStageChecklist(evidence, rule.checklist);
-                if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage QC Score: ${qcResult.totalScore}/100. Summary: ${qcResult.summary}`);
+                // % считаем по применимым пунктам (maxScore исключает not_applicable). Если применимых нет — оценивать нечего.
+                const qcPct = qcResult.maxScore > 0 ? Math.round((qcResult.totalScore / qcResult.maxScore) * 100) : null;
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Stage QC Score: ${qcPct ?? '—'}/100 (${qcResult.totalScore}/${qcResult.maxScore}). Summary: ${qcResult.summary}`);
 
-                if (qcResult.totalScore < 100) {
+                if (qcPct !== null && qcPct < 100) {
                     violations.push({
                         rule_code: rule.code,
                         order_id: context.orderId,
                         manager_id: context.managerId,
                         violation_time: context.occurredAt,
                         severity: rule.severity,
-                        points: rule.points || (100 - qcResult.totalScore),
-                        details: `${qcResult.summary} (Оценка: ${qcResult.totalScore}/100)`,
+                        points: rule.points || (100 - qcPct),
+                        details: `${qcResult.summary} (Оценка: ${qcPct}/100)`,
                         checklist_result: qcResult
                     });
                 }
@@ -338,28 +340,27 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Evaluating Checklist...`);
 
             const qcResult = await evaluateChecklist(transcript, rule.checklist);
-            if (trace) trace.push(`[RuleEngine] [${rule.code}] Checklist Score: ${qcResult.totalScore}/100. Summary: ${qcResult.summary}`);
+            // % по применимым пунктам (maxScore исключает not_applicable). Нет применимых → оценивать нечего, нарушение не пишем.
+            const qcPct = qcResult.maxScore > 0 ? Math.round((qcResult.totalScore / qcResult.maxScore) * 100) : null;
+            if (trace) trace.push(`[RuleEngine] [${rule.code}] Checklist Score: ${qcPct ?? '—'}/100 (${qcResult.totalScore}/${qcResult.maxScore}). Summary: ${qcResult.summary}`);
 
             // If score < 100, record deviation (or if specifically violated)
-            if (qcResult.totalScore < 100) {
+            if (qcPct !== null && qcPct < 100) {
                 violations.push({
                     rule_code: rule.code,
                     order_id: context.orderId,
                     manager_id: context.managerId,
                     violation_time: context.occurredAt,
                     severity: rule.severity,
-                    points: (100 - qcResult.totalScore), // Dynamic points based on loss? Or rule.points?
-                    // Let's use rule.points if defined, otherwise the mismatch.
-                    // Actually, maybe rule.points is "Points Per Rule".
-                    // Let's stick to rule.points for now if available.
+                    points: (100 - qcPct), // динамический штраф от потери качества (по применимым пунктам)
                     call_id: rule.entity_type === 'call' ? item.event_id : null,
-                    details: `${qcResult.summary} (Оценка: ${qcResult.totalScore}/100)`,
+                    details: `${qcResult.summary} (Оценка: ${qcPct}/100)`,
                     evidence_text: null, // No single quote, it's a full report
                     checklist_result: qcResult
                 });
-                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Checklist Score ${qcResult.totalScore}/100. Recorded violation.`);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Checklist Score ${qcPct}/100. Recorded violation.`);
             } else {
-                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: Perfect Score 100/100.`);
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: ${qcPct === null ? 'Нет применимых пунктов — пропуск.' : 'Perfect Score 100/100.'}`);
             }
             continue; // Skip standard logic
         }
