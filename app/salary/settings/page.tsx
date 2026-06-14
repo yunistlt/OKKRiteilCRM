@@ -6,11 +6,13 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { SchemesTab, RosterTab, PlansTab } from './ConstructorTabs';
 import BaseConfigTab from './BaseConfigTab';
+import GradesTab from './GradesTab';
 
 const TABS = [
     ['schemes', 'Схемы (роли)'],
     ['roster', 'Реестр ОП'],
     ['plans', 'Планы'],
+    ['grades', 'Грейды'],
     ['base', 'Базовые параметры'],
 ] as const;
 
@@ -29,6 +31,7 @@ export default function SalarySettingsPage() {
             {tab === 'schemes' && <SchemesTab />}
             {tab === 'roster' && <RosterTab />}
             {tab === 'plans' && <PlansTab />}
+            {tab === 'grades' && <GradesTab />}
             {tab === 'base' && <BaseConfigTab />}
         </div>
     );

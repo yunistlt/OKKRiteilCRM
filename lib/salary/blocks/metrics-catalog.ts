@@ -35,6 +35,7 @@ export const METRICS_CATALOG: Record<string, MetricDef> = {
     plan_department: { code: 'plan_department', label: 'Общий план отдела', source: 'salary_plan', availability: 'full' },
     order_created_date: { code: 'order_created_date', label: 'Дата обращения (создания заказа)', source: 'orders.created_at', availability: 'full' },
     order_cancel: { code: 'order_cancel', label: 'Отмена заказа', source: 'orders.customFields.prichiny_otmeny', availability: 'full' },
+    manager_grade: { code: 'manager_grade', label: 'Грейд менеджера', source: 'salary_grade (авто-ранг по истории)', availability: 'full' },
 };
 
 export function isMetricAvailable(code: string): boolean {

@@ -4,6 +4,7 @@ import { collectPeriodMetrics, type ManagerMetrics, type OrderType, type PeriodM
 import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
 import { getPlansForPeriod, resolveManagerComp, type PeriodPlans } from '@/lib/salary/schemes';
+import { resolveManagerGrades } from '@/lib/salary/grades';
 import type { BlockComputeContext, BlockContribution, BlockInstance } from '@/lib/salary/blocks/types';
 
 export { pickTier }; // обратная совместимость со старыми импортами
@@ -179,6 +180,7 @@ export function computePeriodSalary(
     plans: PeriodPlans,
     config: SalaryConfig,
     categoryNames: Record<string, string> = {},
+    gradeByManager: Map<number, number> = new Map(),
 ): PeriodSalary {
     const businessDays = businessDaysInMonth(pm.year, pm.month);
     const teamRevenueNoVat = pm.teamRevenueNoVat;
@@ -195,6 +197,7 @@ export function computePeriodSalary(
             teamRevenueNoVat,
             personalPlanTarget: plans.personal.get(managerId) ?? null,
             departmentPlanTarget: plans.department,
+            managerGrade: gradeByManager.get(managerId) ?? null,
             categoryNames,
         };
         results.push(computeManagerSalary(m, comp.blocks, ctx, comp.schemeCode));
@@ -213,7 +216,8 @@ export async function calculatePeriod(year: number, month: number): Promise<Peri
     const compMap = await resolveManagerComp(asOf);
     const plans = await getPlansForPeriod(year, month);
     const categoryNames = await loadCategoryNames();
-    return computePeriodSalary(metrics, compMap, plans, config, categoryNames);
+    const grades = await resolveManagerGrades(asOf);
+    return computePeriodSalary(metrics, compMap, plans, config, categoryNames, grades);
 }
 
 /** Человеческие имена категорий товара из справочника RetailCRM (для explain в расчёте). */

@@ -62,6 +62,10 @@
             "schedule": "30 3 * * *"
         },
         {
+            "path": "/api/cron/system-jobs/grade-eval",
+            "schedule": "0 5 * * *"
+        },
+        {
             "path": "/api/sync/managers",
             "schedule": "0 * * * *"
         },

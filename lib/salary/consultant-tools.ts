@@ -3,6 +3,7 @@ import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
 import { businessDaysInMonth, computeManagerSalary } from '@/lib/salary/engine';
 import { collectPeriodMetrics, type ManagerMetrics } from '@/lib/salary/metrics';
 import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
+import { resolveManagerGrades } from '@/lib/salary/grades';
 import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
 
 // Read-only salary tools for the "Семён" consultant (OpenAI function calling).
@@ -224,6 +225,7 @@ async function loadSalaryBase(managerId: number, year: number, month: number): P
     if (!comp) return null;
     const plans = await getPlansForPeriod(year, month);
     const categoryNames = await loadCategoryNames();
+    const grades = await resolveManagerGrades(asOf);
 
     const m = metrics.managers.find((x) => x.managerId === managerId) ?? zeroMetrics(managerId);
     const ctx: BlockComputeContext = {
@@ -233,6 +235,7 @@ async function loadSalaryBase(managerId: number, year: number, month: number): P
         teamRevenueNoVat: metrics.teamRevenueNoVat,
         personalPlanTarget: plans.personal.get(managerId) ?? null,
         departmentPlanTarget: plans.department,
+        managerGrade: grades.get(managerId) ?? null,
         categoryNames,
     };
     return { m, blocks: comp.blocks, ctx, schemeCode: comp.schemeCode };
