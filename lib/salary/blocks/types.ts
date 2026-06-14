@@ -36,6 +36,7 @@ export interface BlockComputeContext {
     teamRevenueNoVat: number;
     personalPlanTarget: number | null;
     departmentPlanTarget: number | null;
+    managerGrade: number | null; // текущий грейд менеджера на период (null = не назначен)
     categoryNames?: Record<string, string>; // код категории RetailCRM → человеческое имя (для explain)
 }
 

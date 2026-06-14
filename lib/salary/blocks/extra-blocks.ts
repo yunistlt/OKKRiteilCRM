@@ -217,7 +217,35 @@ const fieldsBonus: BonusBlock<{ thresholdPct: number; bonus: number }> = {
     },
 };
 
+// ── Грейд-коэффициент (множитель переменной части по рангу менеджера) ────────
+// Грейд — авто-повышающийся ранг (см. lib/salary/grades.ts): растёт за выполнение
+// показателей N месяцев подряд, откатывается за невыполнение, не ниже floor.
+// Блок только ПРИМЕНЯЕТ текущий грейд (ctx.managerGrade) как множитель из тиров;
+// сам пересчёт грейда — отдельная stateful-механика (cron + леджер salary_grade).
+const gradeMultiplier: BonusBlock<{ tiers: { level: number; k: number }[] }> = {
+    code: 'grade_multiplier',
+    name: 'Грейд-коэффициент',
+    methodology: 'Множитель всей переменной части по грейду менеджера. Грейд (ранг) повышается автоматически за выполнение показателей несколько месяцев подряд и откатывается за невыполнение. Грейд не назначен → ×1.',
+    kind: 'multiplier',
+    group: 'variable',
+    multiplierScope: 'variableBracket',
+    requiredMetrics: ['manager_grade'],
+    paramSchema: z.object({ tiers: z.array(z.object({ level: z.number().int(), k: z.number().nonnegative() })).min(1) }),
+    compute(_m, p, ctx) {
+        const level = ctx.managerGrade;
+        const tier = level == null ? undefined : p.tiers.find((t) => t.level === level);
+        const mult = tier?.k ?? 1;
+        return {
+            multiplier: mult,
+            amount: 0,
+            explain: level == null ? 'Грейд не назначен → ×1' : `Грейд ${level} → ×${mult}`,
+            dataFill: { required: 1, present: level == null ? 0 : 1, pct: level == null ? 0 : 1 },
+        };
+    },
+};
+
 export const EXTRA_BLOCKS: BonusBlock[] = [
+    gradeMultiplier,
     planAttainment,
     planAccelerator,
     planGate,

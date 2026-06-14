@@ -76,6 +76,7 @@ total = base
 | `script_bonus` | Соблюдение скрипта | variable/flat | okk_script_score | AVG(script_score_pct) ≥ порог |
 | `fast_contact_bonus` | Скорость первого контакта | variable/flat | okk_first_contact | доля «в работе <1 дня» ≥ порог |
 | `fields_bonus` | Заполнение ТЗ | variable/flat | okk_fields_filled | доля заполненных ≥ порог |
+| `grade_multiplier` | Грейд-коэффициент | **multiplier/variableBracket** | manager_grade | множит переменную часть по грейду менеджера; грейд не назначен → ×1 |
 
 > `group: flat` = разовые/план-бонусы НЕ множатся К_команды (raw). Это осознанный дефолт; при правках
 > модели держать в уме, где бонус должен/не должен умножаться.
@@ -95,6 +96,25 @@ total = base
 `salary_plan` (помесячно): `manager_id NULL` = общий план отдела, иначе личный. Метрика — `revenue_no_vat`.
 Личные и общий **независимы**. Редактируются в «Настройки мотивации → Планы».
 
+## 6a. Грейды (авто-повышающийся ранг-множитель)
+Грейд — **состояние** менеджера (ранг), а не функция одного месяца: `floor` низший (по умолч. 3,
+ниже не падаем) … `top` высший (1). Растёт за выполнение показателей N месяцев **подряд**, откатывается
+за невыполнение **подряд**. Это отдельная stateful-механика поверх блочного движка:
+- **Политика** — `salary_config['grade_policy']` (effective-dated, ноль хардкода): `floorLevel/topLevel`,
+  `lookbackMonths` (глубина), `promoteAfterMonths`/`demoteAfterMonths`, `cohort` (`scheme` — сравнение
+  внутри роли, или `register`), `criteria[]` (выполнение личного плана + топ-N отдела по конверсии/скорингу/
+  среднему чеку; `absolute` порог или `dept_rank`). См. `GRADE_POLICY_SCHEMA` в `lib/salary/grades.ts`.
+- **Состояние** — леджер `salary_grade` (effective-dated, как `salary_manager_comp`): текущий грейд на
+  период = последняя запись с `effective_from ≤ 1-е число месяца. `salary_grade_eval` — кэш помесячной
+  оценки «зачтён/нет» (прозрачность отчёта).
+- **Пересчёт** (`recomputeGrades`, чистая `decideGrade`/`evaluateMonth`): по **последнему закрытому**
+  месяцу M; грейд из месяцев до M включительно вступает в силу с **M+1** (закрытые периоды не мутируются,
+  циркулярности нет). Идемпотентно (UNIQUE `manager_id,effective_from`). Стрик кратен порогу → ±1 шаг.
+  Cron: `app/api/cron/system-jobs/grade-eval` (ежедневно, берёт последний закрытый период).
+- **Применение** — блок `grade_multiplier` (multiplier/variableBracket): читает `ctx.managerGrade`
+  (резолв `resolveManagerGrades(asOf)` в движке) → коэффициент из своих `tiers` (`level→k`). Опционален
+  в схеме; нет блока → грейд не влияет. Грейд множит **переменную часть** (как К_команды).
+
 ## 7. База данных (таблицы модуля)
 | Таблица | Назначение |
 |---|---|
@@ -105,6 +125,8 @@ total = base
 | `salary_manager_comp` | назначение схемы менеджеру (= реестр) |
 | `salary_plan` | планы по месяцам (отдел + менеджеры) |
 | `salary_duty` | дежурства/табель (kind: duty\|worked_day) |
+| `salary_grade` | леджер грейдов менеджеров (effective-dated; source auto\|manual\|seed) |
+| `salary_grade_eval` | кэш помесячной оценки грейда (qualified + детализация критериев) |
 | `salary_adjustment` | корректировки для закрытых периодов (таблица есть, UI пока нет) |
 | `salary_audit_log` | аудит изменений конфига/схем/планов/расчётов |
 
@@ -129,6 +151,7 @@ total = base
 | `GET /api/salary/blocks` | каталог блоков + доступность данных (для конструктора) |
 | `GET /api/salary/schemes` | схемы + менеджеры + назначения; `PUT` — сохранить версию схемы; `POST` — назначить/снять схему менеджеру |
 | `GET/PUT /api/salary/plans?period=` | планы месяца |
+| `GET /api/salary/grades` | политика + леджер + текущие грейды + менеджеры; `POST` — пересчёт `{throughYear,throughMonth}`; `PUT` — ручной грейд `{action:'set'}` или политика `{action:'policy'}` |
 | `GET /api/orders/[id]/details` | карточка заказа (RBAC `/api/orders`: admin/okk/rop/manager/demo) — открывается из отчёта |
 
 ## 9. UI (`app/salary/*`)
@@ -137,7 +160,8 @@ total = base
   мотивации, Excel, Пересчитать, Закрыть период.
 - **`/salary/my`** — менеджеру: своя ЗП + засчитанные заказы (кликабельны).
 - **`/salary/settings`** — «Настройки мотивации», вкладки: **Схемы** (drag-drop конструктор: палитра блоков →
-  карточка схемы, редактор параметров полями) · **Реестр ОП** (назначение схем) · **Планы** · **Базовые параметры**.
+  карточка схемы, редактор параметров полями) · **Реестр ОП** (назначение схем) · **Планы** ·
+  **Грейды** (текущие грейды, ручная установка, пересчёт по закрытому месяцу, редактор политики) · **Базовые параметры**.
 
 ## 10. Обратная совместимость
 Движок маппит вклады блоков обратно в legacy-колонки `salary_calc` (oklad/premia_zayavki/k_quality/...),
@@ -159,7 +183,8 @@ total = base
 - **Пересчёт месяца:** кнопка «Пересчитать» (или `POST /api/salary/recalc`). Закрытый период не пересчитывается.
 
 ## 12. Проверка
-- `npm run test` → `tests/salary-compose.test.ts` (тождество формуле под «Продавец») + общий набор.
+- `npm run test` → `tests/salary-compose.test.ts` (тождество формуле под «Продавец») +
+  `tests/salary-grades.test.ts` (стрик-логика грейдов + оценка месяца) + общий набор.
 - `npx tsc --noEmit` (или `npm run build`) — типы/сборка.
 - Пересчёт май/июнь raw-скриптом против БД и сверка состава/сумм.
 
@@ -176,6 +201,7 @@ total = base
 lib/salary/
   metrics.ts            сбор метрик из БД (+ агрегаты ОКК: скрипт/скорость/поля)
   schemes.ts            резолв схем/назначений/планов; save/list/assign
+  grades.ts             грейды: политика/оценка месяца (evaluateMonth)/стрик (decideGrade)/пересчёт/резолв
   engine.ts             computeManagerSalary/computePeriodSalary/calculatePeriod/recalcAndPersist
   config.ts             базовый конфиг (effective-dated, Zod)
   blocks/

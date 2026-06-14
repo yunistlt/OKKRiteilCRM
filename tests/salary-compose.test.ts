@@ -109,7 +109,7 @@ const CASES: { name: string; m: ManagerMetrics; businessDays: number; teamRev: n
 describe('блочный движок ≡ прежняя формула (пресет «Продавец»)', () => {
     for (const c of CASES) {
         it(c.name, () => {
-            const ctx: BlockComputeContext = { year: 2026, month: 5, businessDays: c.businessDays, teamRevenueNoVat: c.teamRev, personalPlanTarget: null, departmentPlanTarget: null };
+            const ctx: BlockComputeContext = { year: 2026, month: 5, businessDays: c.businessDays, teamRevenueNoVat: c.teamRev, personalPlanTarget: null, departmentPlanTarget: null, managerGrade: null };
             const got = computeManagerSalary(c.m, SELLER_BLOCKS, ctx, 'seller');
             const exp = oldFormula(c.m, c.businessDays, c.teamRev);
             expect(got.oklad).toBe(exp.oklad);
@@ -123,7 +123,7 @@ describe('блочный движок ≡ прежняя формула (пре�
         });
     }
 
-    const baseCtx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 0, personalPlanTarget: null, departmentPlanTarget: null };
+    const baseCtx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 0, personalPlanTarget: null, departmentPlanTarget: null, managerGrade: null };
     const findContrib = (got: ReturnType<typeof computeManagerSalary>, code: string) => got.breakdown.blockContributions!.find((c) => c.code === code);
 
     it('premia_categorii «Сумма»: Σ кол-во × ставка', () => {
@@ -177,7 +177,7 @@ describe('блочный движок ≡ прежняя формула (пре�
     });
 
     it('оператор: только оклад 15 000, без переменной части', () => {
-        const ctx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 8843365, personalPlanTarget: null, departmentPlanTarget: null };
+        const ctx: BlockComputeContext = { year: 2026, month: 5, businessDays: 20, teamRevenueNoVat: 8843365, personalPlanTarget: null, departmentPlanTarget: null, managerGrade: null };
         const m = mkMetrics({ countsByType: { new: 5, permanent: 0 }, qualityAvgScore: 80, conversion: { numerator: 5, denominator: 20, pct: 25, eligible: true } });
         const got = computeManagerSalary(m, [{ code: 'oklad', params: { oklad: 15000 } }], ctx, 'operator');
         expect(got.oklad).toBe(15000);
