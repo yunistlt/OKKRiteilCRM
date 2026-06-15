@@ -26,6 +26,17 @@
 `ordering`, `in_filter`, `in_list`, `display_area`, `raw` (jsonb), `updated_at`
 — PK `(entity, code)`. Заполняется полным синком.
 
+### `retailcrm_calls` — инвентарь звонков из RetailCRM (`lib/retailcrm/calls.ts`)
+`rc_call_id` (PK, id звонка в RC), `external_id` (uniq, `<extId>-<record_uuid>`), `record_uuid`
+(ключ стыковки с аудио `raw_telphin_calls`, см. `raw_payload.cdr[].record_uuid`), `call_type`,
+`call_date`, `ext_code` (добавочный), `manager_rc_id`, `manager_name`, `phone`, `phone_normalized`,
+`order_number` (= `orders.number`, м.б. NULL), `customer_rc_id`, `is_missed`, `duration_sec`,
+`result`, `raw_payload`, `ingested_at`, `updated_at`. Источник истины для связки звонок→заказ
+(надёжнее `lib/call-matching.ts`) и полноты. Курсор инкремента — `sync_state.retailcrm_calls_max_date`.
+**Стыковка с аудио:** `lower(retailcrm_calls.external_id) = ANY(raw_telphin_calls.record_uuids)`
+— `record_uuids` это «вторая наклейка» (массив всех `cdr[].record_uuid` плеч звонка, нижний регистр),
+а НЕ `telphin_call_id` (он = `call_uuid`). Заполняется ингестом Telphin + бэкафиллом миграции.
+
 ### Значения полей в заказе
 `orders.raw_payload -> 'customFields' ->> '<code>'` — значение кастом-поля заказа.
 
