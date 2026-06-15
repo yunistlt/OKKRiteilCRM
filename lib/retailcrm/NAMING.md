@@ -33,6 +33,9 @@
 `order_number` (= `orders.number`, м.б. NULL), `customer_rc_id`, `is_missed`, `duration_sec`,
 `result`, `raw_payload`, `ingested_at`, `updated_at`. Источник истины для связки звонок→заказ
 (надёжнее `lib/call-matching.ts`) и полноты. Курсор инкремента — `sync_state.retailcrm_calls_max_date`.
+**Стыковка с аудио:** `lower(retailcrm_calls.external_id) = ANY(raw_telphin_calls.record_uuids)`
+— `record_uuids` это «вторая наклейка» (массив всех `cdr[].record_uuid` плеч звонка, нижний регистр),
+а НЕ `telphin_call_id` (он = `call_uuid`). Заполняется ингестом Telphin + бэкафиллом миграции.
 
 ### Значения полей в заказе
 `orders.raw_payload -> 'customFields' ->> '<code>'` — значение кастом-поля заказа.

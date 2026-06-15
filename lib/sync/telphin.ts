@@ -248,8 +248,20 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
                     }
                 }
 
+                // «Вторая наклейка»: все record_uuid плеч звонка в формате RetailCRM externalId
+                // ("<extId>-<record_uuid>", нижний регистр) — для прямой стыковки с retailcrm_calls.
+                const recordUuids = Array.isArray(r.cdr)
+                    ? Array.from(new Set(
+                        r.cdr
+                            .map((c: any) => c.record_uuid)
+                            .filter(Boolean)
+                            .map((u: any) => String(u).toLowerCase())
+                    ))
+                    : [];
+
                 return {
                     telphin_call_id: record_uuid,
+                    record_uuids: recordUuids.length ? recordUuids : null,
                     direction: direction,
                     from_number: fromNumber || 'unknown',
                     to_number: toNumber || 'unknown',
