@@ -20,7 +20,9 @@ function getOpenAI() {
 // (если задан STT_TOKEN). Ответ: { text, segments }.
 const STT_URL = process.env.STT_URL;
 const STT_TOKEN = process.env.STT_TOKEN;
-const STT_TIMEOUT_MS = 240000; // расшифровка длинного аудио может быть долгой (роут живёт 300с)
+// Расшифровка длинного аудио на CPU может быть долгой. Оставляем запас от maxDuration роута (300с)
+// на пост-обработку (диаризация/AMD/запись в БД), чтобы функцию не убило после успешного STT.
+const STT_TIMEOUT_MS = 255000;
 
 export function isSelfHostedSttConfigured(): boolean {
     return !!STT_URL;

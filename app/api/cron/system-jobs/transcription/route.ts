@@ -15,7 +15,9 @@ import { supabase } from '@/utils/supabase';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.transcription';
-const MAX_TRANSCRIPTION_CONCURRENCY = 2;
+// STT-сервер последовательный (одна очередь, один звонок за раз) — шлём по одному,
+// иначе второй звонок ждёт в очереди сервера и легко упирается в таймаут клиента/функции.
+const MAX_TRANSCRIPTION_CONCURRENCY = 1;
 
 function ensureAuthorized(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
