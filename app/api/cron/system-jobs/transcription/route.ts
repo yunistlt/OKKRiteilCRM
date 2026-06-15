@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
   completeSystemJob,
-  enqueueCallSemanticRulesJob,
-  enqueueOrderRefreshJob,
   failSystemJob,
   getAdaptiveSystemJobRetry,
   isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
-import { getCallTranscriptionPreflight, markCallTranscriptionSkipped, transcribeCall } from '@/lib/transcribe';
-import { supabase } from '@/utils/supabase';
+import { getCallTranscriptionPreflight, isSelfHostedSttConfigured, markCallTranscriptionSkipped, submitCallTranscription, transcribeCall } from '@/lib/transcribe';
+import { enqueueTranscriptionDownstream } from '@/lib/transcription-downstream';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -90,74 +88,19 @@ export async function GET(req: NextRequest) {
           return { job_id: job.id, telphin_call_id: callId, status: 'already_completed' };
         }
 
-        await transcribeCall(callId, recordingUrl);
-        const transcriptCompletedAt = new Date().toISOString();
-
-        // Phase 4: downstream enqueue is best-effort — transcription completion must not depend on it
-        let downstreamJobs: string[] = [];
-        let matchOrderId: string | null = null;
-        try {
-          const { data: match } = await supabase
-            .from('call_order_matches')
-            .select('retailcrm_order_id')
-            .eq('telphin_call_id', callId)
-            .order('matched_at', { ascending: false })
-            .limit(1)
-            .single();
-
-          if (match?.retailcrm_order_id) {
-            matchOrderId = match.retailcrm_order_id;
-            await enqueueCallSemanticRulesJob({
-              callId,
-              source: 'call_transcription_worker',
-              payload: {
-                retailcrm_order_id: matchOrderId,
-                transcript_completed_at: transcriptCompletedAt,
-              },
-              priority: 20,
-              parentJobId: job.id,
-            });
-
-            await enqueueOrderRefreshJob({
-              jobType: 'order_score_refresh',
-              orderId: matchOrderId as string,
-              source: 'call_transcription_worker',
-              payload: {
-                telphin_call_id: callId,
-                transcript_completed_at: transcriptCompletedAt,
-              },
-              priority: 25,
-            });
-
-            await enqueueOrderRefreshJob({
-              jobType: 'order_insight_refresh',
-              orderId: matchOrderId as string,
-              source: 'call_transcription_worker',
-              payload: {
-                telphin_call_id: callId,
-                transcript_completed_at: transcriptCompletedAt,
-              },
-              priority: 35,
-              parentJobId: job.id,
-            });
-
-            downstreamJobs = ['call_semantic_rules', 'order_score_refresh', 'order_insight_refresh'];
-          }
-        } catch (downstreamErr: any) {
-          console.error(`[TranscriptionWorker] Downstream enqueue failed for ${callId}, ignoring:`, downstreamErr.message);
+        // Async-режим (свой STT-сервер): только отправляем звонок в очередь STT и сохраняем
+        // job_id — результат заберёт крон-поллер. Снимает лимит длины звонка (maxDuration 300с).
+        if (isSelfHostedSttConfigured()) {
+          const submit = await submitCallTranscription(callId, recordingUrl);
+          await completeSystemJob(job.id, { telphin_call_id: callId, status: submit.state, stt_job_id: submit.jobId });
+          return { job_id: job.id, telphin_call_id: callId, status: submit.state, stt_job_id: submit.jobId };
         }
 
-        await completeSystemJob(job.id, {
-          telphin_call_id: callId,
-          next_jobs: downstreamJobs,
-        });
-
-        return {
-          job_id: job.id,
-          telphin_call_id: callId,
-          status: 'completed',
-          order_id: matchOrderId,
-        };
+        // Синхронный режим (OpenAI Whisper): расшифровываем и сразу ставим downstream.
+        await transcribeCall(callId, recordingUrl);
+        const downstream = await enqueueTranscriptionDownstream(callId, 'call_transcription_worker', job.id);
+        await completeSystemJob(job.id, { telphin_call_id: callId, next_jobs: downstream.jobs });
+        return { job_id: job.id, telphin_call_id: callId, status: 'completed', order_id: downstream.orderId };
       } catch (error: any) {
         const msg = error.message || 'Unknown transcription worker error';
 

@@ -78,6 +78,76 @@ async function runSpeechToText(file: File): Promise<string> {
     return typeof result === 'string' ? result : (result?.text || '');
 }
 
+// ── Async-режим STT (снимает лимит длины звонка) ────────────────────────────────
+// Контракт сервера (см. docs/transcription): POST /v1/transcribe (multipart) → 202 { job_id };
+// GET /v1/transcribe/{job_id} → { status: queued|processing|done|error, text?, segments?, error? }.
+const STT_SUBMIT_TIMEOUT_MS = 120000; // upload файла (быстро)
+const STT_POLL_TIMEOUT_MS = 30000;    // лёгкий GET статуса
+const STT_STALE_MS = 2 * 60 * 60 * 1000; // если задача «зависла» дольше — пере-submit
+
+function sttHeaders(): Record<string, string> {
+    const h: Record<string, string> = {};
+    if (STT_TOKEN) h['X-Auth-Token'] = STT_TOKEN;
+    return h;
+}
+
+/** Ставит задачу в очередь STT, возвращает job_id. client_request_id = id звонка (идемпотентность). */
+async function submitToSttServer(file: File, clientRequestId: string): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STT_SUBMIT_TIMEOUT_MS);
+    try {
+        const form = new FormData();
+        form.append('file', file, 'audio.mp3');
+        form.append('language', 'ru');
+        form.append('client_request_id', clientRequestId);
+
+        const res = await fetch(`${STT_URL!.replace(/\/+$/, '')}/v1/transcribe`, {
+            method: 'POST',
+            body: form,
+            headers: sttHeaders(),
+            signal: controller.signal,
+        });
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`STT submit ${res.status}: ${text.substring(0, 200) || res.statusText}`);
+        }
+        const data = await res.json();
+        if (!data?.job_id) throw new Error('STT submit: ответ без job_id');
+        return String(data.job_id);
+    } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error(`STT submit timeout after ${STT_SUBMIT_TIMEOUT_MS}ms`);
+        throw e;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+type SttPollResult = { http: number; status?: string; text?: string; segments?: any[]; error?: string; detail?: string };
+
+/** Опрашивает статус задачи STT по job_id. */
+async function pollSttServer(jobId: string): Promise<SttPollResult> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STT_POLL_TIMEOUT_MS);
+    try {
+        const res = await fetch(`${STT_URL!.replace(/\/+$/, '')}/v1/transcribe/${encodeURIComponent(jobId)}`, {
+            headers: sttHeaders(),
+            signal: controller.signal,
+        });
+        if (res.status === 404) return { http: 404 };
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`STT poll ${res.status}: ${text.substring(0, 200) || res.statusText}`);
+        }
+        const data = await res.json();
+        return { http: 200, status: data?.status, text: data?.text, segments: data?.segments, error: data?.error, detail: data?.detail };
+    } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error(`STT poll timeout after ${STT_POLL_TIMEOUT_MS}ms`);
+        throw e;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
 /**
  * Production rule: if we have a recording, the call should go through transcription.
  * Only technical absence of media is a valid reason to skip before OpenAI.
@@ -224,12 +294,14 @@ type TranscriptionCallRow = {
     recording_url: string | null;
     duration_sec?: number | null;
     raw_payload?: Record<string, any> | null;
+    stt_job_id?: string | null;
+    stt_submitted_at?: string | null;
 };
 
 async function loadCallForTranscription(callId: string): Promise<TranscriptionCallRow | null> {
     const { data: byCallId } = await supabase
         .from('raw_telphin_calls')
-        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload, stt_job_id, stt_submitted_at')
         .eq('telphin_call_id', callId)
         .limit(1)
         .maybeSingle();
@@ -244,7 +316,7 @@ async function loadCallForTranscription(callId: string): Promise<TranscriptionCa
 
     const { data: byEventId } = await supabase
         .from('raw_telphin_calls')
-        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
+        .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload, stt_job_id, stt_submitted_at')
         .eq('event_id', parseInt(callId, 10))
         .limit(1)
         .maybeSingle();
@@ -264,7 +336,7 @@ async function claimCallForTranscription(callId: string): Promise<{ row: Transcr
             .eq(column, value)
             .or(allowedStates)
             .is('transcript', null)
-            .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload')
+            .select('telphin_call_id, event_id, transcription_status, transcript, recording_url, duration_sec, raw_payload, stt_job_id, stt_submitted_at')
             .limit(1);
 
         if (error) {
@@ -329,6 +401,170 @@ export async function markCallTranscriptionSkipped(callId: string, reason: strin
     }
 }
 
+/**
+ * Превращает сырой текст в готовую запись: диаризация ролей, AMD, запись в raw_telphin_calls
+ * (transcription_status='completed', сброс stt_job_id) и триггер инсайт-агента. Общий финальный
+ * шаг для синхронного пути (transcribeCall) и async-поллера (pollSubmittedTranscription).
+ */
+export async function finalizeTranscript(callId: string, rawTranscription: string): Promise<string> {
+    console.log(`[Transcribe] Diarizing ${callId}...`);
+    const transcription = await diarizeTranscript(rawTranscription);
+
+    let amd: any = null;
+    try {
+        amd = await analyzeAnsweringMachine(transcription);
+    } catch (e) {
+        console.error('[Transcribe] AMD failed, skipping classification:', e);
+    }
+
+    const payload: any = {
+        transcript: transcription,
+        transcription_status: 'completed',
+        stt_job_id: null,
+    };
+    if (amd) {
+        payload.is_answering_machine = amd.isAnsweringMachine;
+        payload.am_detection_result = { reason: amd.reason, processed_at: new Date().toISOString() };
+    }
+
+    const tryUpdate = async (col: string, val: any, p: any) => {
+        const { data, error } = await supabase.from('raw_telphin_calls').update(p).eq(col, val).select();
+        if (error && (error.code === '42703' || error.message?.includes('column'))) {
+            // Старая схема без новых колонок — повторяем без них
+            const { is_answering_machine, am_detection_result, stt_job_id, ...fallback } = p;
+            return supabase.from('raw_telphin_calls').update(fallback).eq(col, val).select();
+        }
+        return { data, error };
+    };
+
+    let { data, error } = await tryUpdate('telphin_call_id', callId, payload);
+    if ((!data || data.length === 0) && /^\d+$/.test(callId)) {
+        const secondAttempt = await tryUpdate('event_id', parseInt(callId, 10), payload);
+        data = secondAttempt.data;
+        error = secondAttempt.error;
+    }
+    if (error) throw error;
+    if (!data || data.length === 0) {
+        console.warn(`[Transcribe] Transcript generated but no matching row found for ${callId}`);
+    }
+
+    // Триггер инсайт-агента при наличии матча
+    try {
+        const { data: match } = await supabase
+            .from('call_order_matches')
+            .select('retailcrm_order_id')
+            .or(`telphin_call_id.eq.${callId}${/^\d+$/.test(callId) ? `,event_id.eq.${callId}` : ''}`)
+            .limit(1)
+            .single();
+        if (match?.retailcrm_order_id) {
+            const { runInsightAnalysis } = await import('./insight-agent');
+            runInsightAnalysis(match.retailcrm_order_id).catch(e =>
+                console.error('[InsightAgent] Post-transcribe trigger failed:', e));
+        }
+    } catch (e) { }
+
+    return transcription;
+}
+
+type SubmitState = 'submitted' | 'already_submitted' | 'already_completed';
+
+/**
+ * Async-путь, шаг 1: ставит звонок в очередь STT и сохраняет stt_job_id (status='submitted').
+ * НЕ ждёт результат — его заберёт крон-поллер. Идемпотентно по client_request_id на стороне STT.
+ */
+export async function submitCallTranscription(callId: string, recordingUrl: string): Promise<{ jobId: string | null; state: SubmitState }> {
+    let claimedForProcessing = false;
+    try {
+        const { row, claimed } = await claimCallForTranscription(callId);
+        claimedForProcessing = claimed;
+
+        if (!claimed) {
+            if (row.transcription_status === 'completed' && row.transcript) {
+                return { jobId: null, state: 'already_completed' };
+            }
+            if (row.transcription_status === 'submitted' && row.stt_job_id) {
+                return { jobId: row.stt_job_id, state: 'already_submitted' };
+            }
+            if (row.transcription_status === 'skipped') throw new Error(`Call ${callId} is marked as skipped`);
+            if (row.transcription_status === 'processing') throw new Error(`Call ${callId} is already being transcribed`);
+        }
+
+        const sourceRecordingUrl = row.recording_url || recordingUrl;
+        if (!sourceRecordingUrl) throw new Error(`Call ${callId} has no recording URL`);
+
+        const internalUrl = await syncRecordingToStorage(callId, sourceRecordingUrl);
+        const file = await downloadAudio(internalUrl || sourceRecordingUrl);
+
+        const jobId = await submitToSttServer(file, callId);
+
+        await supabase.from('raw_telphin_calls')
+            .update({ stt_job_id: jobId, stt_submitted_at: new Date().toISOString(), transcription_status: 'submitted' })
+            .eq('telphin_call_id', callId);
+
+        return { jobId, state: 'submitted' };
+    } catch (e: any) {
+        if (claimedForProcessing) {
+            await supabase.from('raw_telphin_calls').update({ transcription_status: 'failed' }).eq('telphin_call_id', callId);
+        }
+        throw e;
+    }
+}
+
+async function resetForResubmit(callId: string) {
+    await supabase.from('raw_telphin_calls')
+        .update({ transcription_status: 'pending', stt_job_id: null, stt_submitted_at: null })
+        .eq('telphin_call_id', callId);
+    // Возвращаем джобу транскрибации в очередь, чтобы submit-воркер пере-отправил аудио.
+    await supabase.from('system_jobs')
+        .update({ status: 'queued', available_at: new Date().toISOString(), last_error: '' })
+        .eq('idempotency_key', `call_transcription:${callId}`)
+        .eq('job_type', 'call_transcription');
+}
+
+export type PollState = 'done' | 'pending' | 'error' | 'resubmit' | 'poll_error';
+
+/**
+ * Async-путь, шаг 2: опрашивает STT по сохранённому job_id и финализирует при готовности.
+ * Вызывается крон-поллером для строк transcription_status='submitted'.
+ */
+export async function pollSubmittedTranscription(row: { telphin_call_id: string; stt_job_id: string; stt_submitted_at?: string | null }): Promise<PollState> {
+    const callId = row.telphin_call_id;
+
+    let res: SttPollResult;
+    try {
+        res = await pollSttServer(row.stt_job_id);
+    } catch (e: any) {
+        console.error(`[TranscribePoll] poll failed for ${callId}:`, e?.message);
+        return 'poll_error';
+    }
+
+    if (res.http === 404) {
+        await resetForResubmit(callId);
+        return 'resubmit';
+    }
+
+    if (res.status === 'done') {
+        await finalizeTranscript(callId, res.text || '');
+        return 'done';
+    }
+
+    if (res.status === 'error') {
+        await supabase.from('raw_telphin_calls').update({
+            transcription_status: 'failed',
+            stt_job_id: null,
+            am_detection_result: { reason: `STT error: ${[res.error, res.detail].filter(Boolean).join(' ')}`.trim(), processed_at: new Date().toISOString() },
+        }).eq('telphin_call_id', callId);
+        return 'error';
+    }
+
+    // queued/processing — проверяем «зависание»
+    if (row.stt_submitted_at && Date.now() - new Date(row.stt_submitted_at).getTime() > STT_STALE_MS) {
+        await resetForResubmit(callId);
+        return 'resubmit';
+    }
+    return 'pending';
+}
+
 export async function transcribeCall(callId: string, recordingUrl: string) {
     let claimedForProcessing = false;
 
@@ -369,83 +605,8 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         // 2. Transcribe (свой STT-сервер если задан STT_URL, иначе OpenAI Whisper)
         const rawTranscription = await runSpeechToText(file);
 
-        // 2.5 Diarization pass (New step)
-        console.log(`[Transcribe] Diarizing ${callId}...`);
-        const transcription = await diarizeTranscript(rawTranscription);
-
-        // 3. AMD Classification (only if transcription succeeded)
-        let amd: any = null;
-        try {
-            amd = await analyzeAnsweringMachine(transcription);
-        } catch (e) {
-            console.error('[Transcribe] AMD failed, skipping classification:', e);
-        }
-
-        // 4. Update DB Robustly
-        const payload: any = {
-            transcript: transcription,
-            transcription_status: 'completed'
-        };
-
-        if (amd) {
-            payload.is_answering_machine = amd.isAnsweringMachine;
-            payload.am_detection_result = {
-                reason: amd.reason,
-                processed_at: new Date().toISOString()
-            };
-        }
-
-        const tryUpdate = async (col: string, val: any, p: any) => {
-            const { data, error } = await supabase
-                .from('raw_telphin_calls')
-                .update(p)
-                .eq(col, val)
-                .select();
-
-            if (error && (error.code === '42703' || error.message?.includes('column'))) {
-                // Retry without AMD columns
-                const { is_answering_machine, am_detection_result, ...fallback } = p;
-                return supabase.from('raw_telphin_calls').update(fallback).eq(col, val).select();
-            }
-            return { data, error };
-        };
-
-        // Attempt 1: by UUID (most common for manual)
-        let { data, error } = await tryUpdate('telphin_call_id', callId, payload);
-
-        // Attempt 2: by numeric event_id if 1st failed and callId is numeric
-        if ((!data || data.length === 0) && /^\d+$/.test(callId)) {
-            const numericId = parseInt(callId);
-            const secondAttempt = await tryUpdate('event_id', numericId, payload);
-            data = secondAttempt.data;
-            error = secondAttempt.error;
-        }
-
-        if (error) throw error;
-        if (!data || data.length === 0) {
-            console.warn(`[Transcribe] Transcript generated but no matching row found for ${callId}`);
-        } else {
-            console.log(`[Transcribe] Successfully updated DB for ${callId}`);
-        }
-
-        // 5. Trigger Insight Agent if Match exists
-        try {
-            const { data: match } = await supabase
-                .from('call_order_matches')
-                .select('retailcrm_order_id')
-                .or(`telphin_call_id.eq.${callId}${/^\d+$/.test(callId) ? `,event_id.eq.${callId}` : ''}`)
-                .limit(1)
-                .single();
-
-            if (match?.retailcrm_order_id) {
-                const { runInsightAnalysis } = await import('./insight-agent');
-                runInsightAnalysis(match.retailcrm_order_id).catch(e =>
-                    console.error('[InsightAgent] Post-transcribe trigger failed:', e)
-                );
-            }
-        } catch (e) { }
-
-        return transcription;
+        // 3. Диаризация + AMD + запись в БД + триггер инсайта (общий финальный шаг)
+        return await finalizeTranscript(callId, rawTranscription);
 
     } catch (e: any) {
         console.error(`[Transcribe] Failed for ${callId}:`, e.message);
