@@ -82,6 +82,16 @@ pagination: { limit, totalCount, currentPage, totalPageCount }
 - `GET /api/v5/customers` — `filter[name]` (поиск по телефону/имени).
 - `POST /api/v5/orders/create` — body `order=<JSON>`.
 
+## Телефония — получение звонков (в `lib/retailcrm/calls.ts`)
+
+- `GET /api/v5/telephony/calls` — **курсорная** пагинация (`limit` 100, `cursor`), порядок новые→старые.
+  Ответ: `calls[]`, `pagination.nextCursor`. Каждый звонок: `id`, `externalId` (= `<extId>-<record_uuid>`
+  Телфина), `type` (in/out), `date` (локальное МСК), `code` (добавочный), `manager{id,firstName,lastName,code}`,
+  `phone`, `result`, `duration`, `isMissed`, `externalPhone`, **`orderNumber`** (= `orders.number`, может быть NULL),
+  `customer{id,...}`. **Записи (recordUrl) НЕТ** — аудио только из Telphin, стыковка по `record_uuid`.
+  Это единственный read-метод телефонии; `telephony/{setting,call/event,calls/upload,manager}` — write/lookup.
+- `GET /api/v5/telephony/manager?phone=...&details=1` — по номеру вернуть клиента/ответственного менеджера.
+
 ## Права API-ключа
 
 Для чтения полей/справочников нужен доступ к методам `custom-fields` (право
