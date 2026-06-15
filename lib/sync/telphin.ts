@@ -45,6 +45,7 @@ interface TelphinSyncOptions {
     hours?: number;
     modePrefix: string;
     unboundedCursor?: boolean;
+    slidingWindow?: boolean;
 }
 
 function getDefaultTelphinFallbackMinutes() {
@@ -164,7 +165,16 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
 
         let start = new Date(Date.now() - maxLookbackMs);
 
-        if (!options.forceResync) {
+        if (options.forceResync) {
+            const forceHours = options.hours || Math.max(1, Math.ceil(options.defaultLookbackMinutes / 60));
+            console.log(`[TelphinSync:${options.source}] Forced resync requested. Looking back ${forceHours} hours.`);
+            start = new Date(Date.now() - forceHours * 60 * 60 * 1000);
+        } else if (options.slidingWindow) {
+            // Sliding reconciliation window: always re-scan a trailing window so calls that appear in
+            // Telphin's call_history late (or were skipped by a forward-only cursor) are still captured.
+            // Upserts are idempotent (onConflict telphin_call_id), so re-fetching the window is safe.
+            console.log(`[TelphinSync:${options.source}] Sliding window sync from`, start.toISOString());
+        } else {
             const { data: state } = await supabase
                 .from('sync_state')
                 .select('value')
@@ -174,22 +184,21 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
             if (state?.value) {
                 const storedDate = new Date(state.value);
                 if (storedDate < now) {
+                    // Re-scan a small overlap behind the cursor to catch calls that became queryable in
+                    // Telphin's history slightly after their slot was first synced.
+                    const overlapMs = 5 * 60 * 1000;
                     // For backfill/recovery: always honour the stored cursor even if it's older than maxLookbackMs.
                     // For regular fallback: bound to maxLookbackMs so we don't accidentally query months of data.
                     const useUnboundedCursor = storedDate.getTime() < now.getTime() - maxLookbackMs;
                     const boundedStart = useUnboundedCursor && options.unboundedCursor
                         ? storedDate
-                        : new Date(Math.max(storedDate.getTime(), now.getTime() - maxLookbackMs));
+                        : new Date(Math.max(storedDate.getTime() - overlapMs, now.getTime() - maxLookbackMs));
                     start = boundedStart;
                     console.log(`[TelphinSync:${options.source}] Incremental sync from state:`, start.toISOString());
                 } else {
                     console.warn(`[TelphinSync:${options.source}] Stored cursor is in the future, falling back to default window.`, state.value);
                 }
             }
-        } else {
-            const forceHours = options.hours || Math.max(1, Math.ceil(options.defaultLookbackMinutes / 60));
-            console.log(`[TelphinSync:${options.source}] Forced resync requested. Looking back ${forceHours} hours.`);
-            start = new Date(Date.now() - forceHours * 60 * 60 * 1000);
         }
 
         const userRes = await fetchTelphin('https://apiproxy.telphin.ru/api/ver1.0/user', {
@@ -203,34 +212,14 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
         const clientId = userData.client_id;
         if (!clientId) throw new Error('Could not resolve Telphin Client ID');
 
-        const params = new URLSearchParams({
-            start_datetime: formatTelphinDate(start),
-            end_datetime: formatTelphinDate(now),
-            order: 'asc',
-            count: String(options.fetchCount)
-        });
+        // Drain the whole window in a single run by paginating forward. A single fetch capped at
+        // `fetchCount` used to silently leave the rest of a busy window for "next time", and the
+        // forward-only cursor meant skipped/late calls were never re-fetched. Re-fetching is safe:
+        // the upsert is idempotent on telphin_call_id.
+        const PAGE_SAFETY_LIMIT = 200;              // hard cap on pages per run (backstop vs runaway loop)
+        const RUN_DEADLINE = Date.now() + 250_000;  // wall-clock budget (route maxDuration is 300s)
 
-        const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/call_history/?${params.toString()}`;
-        console.log(`[TelphinSync:${options.source}] Fetching ${url}`);
-
-        const res = await fetchTelphin(url, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!res.ok) {
-            const text = await res.text();
-            throw new Error(`Telphin API Error ${res.status}: ${text.substring(0, 200) || res.statusText}`);
-        }
-
-        const data = await res.json();
-        const calls = data.call_history || (Array.isArray(data) ? data : []);
-        console.log(`[TelphinSync:${options.source}] Fetched ${calls.length} calls.`);
-
-        let totalSynced = 0;
-        let nextCursor = start.toISOString();
-        const fetchedCount = calls.length;
-
-        if (calls.length > 0) {
+        const processBatch = async (calls: any[]): Promise<number> => {
             const rawCalls = calls.map((r: any) => {
                 const record_uuid = r.call_uuid || r.record_uuid || `rec_${Math.random()}`;
                 const rawFlow = r.flow || r.direction;
@@ -282,8 +271,6 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
                 throw rawError;
             }
 
-            totalSynced = rawCalls.length;
-
             for (const rawCall of rawCalls) {
                 await safeEnqueueSystemJob({
                     jobType: 'call_match',
@@ -308,16 +295,77 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
                     });
                 }
             }
-            
+
             // После того как все звонки сохранены в raw_telphin_calls, проверяем, нет ли среди них наших колбэков
             await processCallbackMatches(rawCalls.map((c: any) => c.telphin_call_id));
+
+            return rawCalls.length;
+        };
+
+        let totalSynced = 0;
+        let windowStart = start;
+        let nextCursor = start.toISOString();
+        let pages = 0;
+        let exhausted = false;
+
+        while (pages < PAGE_SAFETY_LIMIT && Date.now() < RUN_DEADLINE) {
+            pages++;
+
+            const params = new URLSearchParams({
+                start_datetime: formatTelphinDate(windowStart),
+                end_datetime: formatTelphinDate(now),
+                order: 'asc',
+                count: String(options.fetchCount)
+            });
+
+            const url = `https://apiproxy.telphin.ru/api/ver1.0/client/${clientId}/call_history/?${params.toString()}`;
+            console.log(`[TelphinSync:${options.source}] Fetching page ${pages}: ${url}`);
+
+            const res = await fetchTelphin(url, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`Telphin API Error ${res.status}: ${text.substring(0, 200) || res.statusText}`);
+            }
+
+            const data = await res.json();
+            const calls = data.call_history || (Array.isArray(data) ? data : []);
+            console.log(`[TelphinSync:${options.source}] Page ${pages}: fetched ${calls.length} calls.`);
+
+            if (calls.length === 0) {
+                if (pages === 1) nextCursor = now.toISOString();
+                exhausted = true;
+                break;
+            }
+
+            totalSynced += await processBatch(calls);
 
             const lastCall = calls[calls.length - 1];
             const lastTimeRaw = lastCall.start_time_gmt || lastCall.init_time_gmt || lastCall.bridged_time_gmt;
             const lastDate = new Date(lastTimeRaw + (lastTimeRaw.includes('Z') ? '' : 'Z'));
             nextCursor = lastDate.toISOString();
-        } else {
-            nextCursor = now.toISOString();
+
+            // Caught up: a short page means the window is drained.
+            if (calls.length < options.fetchCount) {
+                exhausted = true;
+                break;
+            }
+
+            // Advance the window. Guarantee forward progress even if the whole page shares the
+            // boundary second (otherwise we'd re-fetch the same page forever).
+            let advanced = lastDate;
+            if (advanced.getTime() <= windowStart.getTime()) {
+                advanced = new Date(windowStart.getTime() + 1000);
+            }
+            windowStart = advanced;
+
+            // Persist intermediate progress for resumable (forward-cursor) modes so a mid-run timeout
+            // doesn't lose ground. Sliding-window mode ignores the cursor for its start, so skip it there.
+            if (!options.slidingWindow) {
+                await recordTelphinSyncSuccess(nextCursor, options);
+            }
         }
 
         await recordTelphinSyncSuccess(nextCursor, options);
@@ -326,9 +374,9 @@ async function runTelphinCallHistorySync(options: TelphinSyncOptions): Promise<S
             success: true,
             total_synced: totalSynced,
             new_cursor: nextCursor,
-            mode: fetchedCount === options.fetchCount
-                ? `${options.modePrefix}_partial`
-                : `${options.modePrefix}_caught_up`
+            mode: exhausted
+                ? `${options.modePrefix}_caught_up`
+                : `${options.modePrefix}_partial`
         };
 
     } catch (error: any) {
@@ -363,6 +411,9 @@ export async function runTelphinBacklogRecovery(forceResync: boolean = false, ho
         hours,
         modePrefix: forceResync ? 'backfill_forced_resync' : 'backfill',
         unboundedCursor: true,
+        // Re-scan the trailing window every run so late-arriving / previously-skipped calls are
+        // captured (forward-only cursor used to walk past them and never return). Idempotent upsert.
+        slidingWindow: true,
     });
 }
 
