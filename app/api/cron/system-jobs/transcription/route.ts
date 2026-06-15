@@ -7,7 +7,7 @@ import {
   isSystemJobsPipelineRuntimeEnabled,
 } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
-import { getCallTranscriptionPreflight, isSelfHostedSttConfigured, markCallTranscriptionSkipped, submitCallTranscription, transcribeCall } from '@/lib/transcribe';
+import { getCallTranscriptionPreflight, isSelfHostedSttConfigured, isSttPullMode, markCallTranscriptionSkipped, submitCallTranscription, transcribeCall } from '@/lib/transcribe';
 import { enqueueTranscriptionDownstream } from '@/lib/transcription-downstream';
 
 export const dynamic = 'force-dynamic';
@@ -86,6 +86,13 @@ export async function GET(req: NextRequest) {
             status: 'already_completed',
           });
           return { job_id: job.id, telphin_call_id: callId, status: 'already_completed' };
+        }
+
+        // Pull-режим: внешний STT-воркер (в РФ) сам забирает звонки через /api/stt/claim —
+        // здесь только закрываем джобу, ничего не пушим (геоблок не пускает Vercel в Россию).
+        if (isSttPullMode()) {
+          await completeSystemJob(job.id, { telphin_call_id: callId, status: 'deferred_to_external_stt' });
+          return { job_id: job.id, telphin_call_id: callId, status: 'deferred_to_external_stt' };
         }
 
         // Async-режим (свой STT-сервер): только отправляем звонок в очередь STT и сохраняем

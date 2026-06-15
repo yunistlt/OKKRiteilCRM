@@ -28,6 +28,12 @@ export function isSelfHostedSttConfigured(): boolean {
     return !!STT_URL;
 }
 
+// «Перевёрнутый» режим: STT-сервер сам забирает звонки через /api/stt/claim (геоблок не пускает
+// Vercel в РФ). В этом режиме воркер транскрибации ничего не пушит — только закрывает джобу.
+export function isSttPullMode(): boolean {
+    return process.env.STT_PULL_MODE === '1' || process.env.STT_PULL_MODE === 'true';
+}
+
 async function transcribeViaSttServer(file: File): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
