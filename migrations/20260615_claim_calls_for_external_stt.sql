@@ -23,6 +23,16 @@ BEGIN
               OR (c.transcription_status = 'submitted'
                   AND (c.stt_submitted_at IS NULL OR c.stt_submitted_at < now() - interval '30 minutes'))
           )
+          -- Только звонки, чей заказ в статусе, помеченном для транскрибации (status_settings.is_transcribable).
+          -- Настраивается в UI «Настройка ОКК» → колонка ТРАНСКРИБАЦИЯ. Читается живьём.
+          AND EXISTS (
+              SELECT 1
+              FROM call_order_matches m
+              JOIN orders o ON o.id::text = m.retailcrm_order_id::text
+              JOIN status_settings ss ON ss.code = o.status
+              WHERE m.telphin_call_id = c.telphin_call_id
+                AND ss.is_transcribable = true
+          )
         ORDER BY c.started_at DESC
         LIMIT GREATEST(p_limit, 1)
         FOR UPDATE SKIP LOCKED
