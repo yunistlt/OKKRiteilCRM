@@ -15,6 +15,67 @@ function getOpenAI() {
     return _openai;
 }
 
+// Свой self-hosted STT-сервер (whisper) — бесплатная альтернатива OpenAI Whisper.
+// Контракт: POST {STT_URL}/transcribe, multipart (file + language), заголовок X-Auth-Token
+// (если задан STT_TOKEN). Ответ: { text, segments }.
+const STT_URL = process.env.STT_URL;
+const STT_TOKEN = process.env.STT_TOKEN;
+const STT_TIMEOUT_MS = 240000; // расшифровка длинного аудио может быть долгой (роут живёт 300с)
+
+export function isSelfHostedSttConfigured(): boolean {
+    return !!STT_URL;
+}
+
+async function transcribeViaSttServer(file: File): Promise<string> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), STT_TIMEOUT_MS);
+    try {
+        const form = new FormData();
+        form.append('file', file, 'audio.mp3');
+        form.append('language', 'ru');
+
+        const headers: Record<string, string> = {};
+        if (STT_TOKEN) headers['X-Auth-Token'] = STT_TOKEN;
+
+        const res = await fetch(`${STT_URL!.replace(/\/+$/, '')}/transcribe`, {
+            method: 'POST',
+            body: form,
+            headers,
+            signal: controller.signal,
+        });
+
+        if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`STT server ${res.status}: ${text.substring(0, 200) || res.statusText}`);
+        }
+
+        const data = await res.json();
+        return typeof data?.text === 'string' ? data.text : '';
+    } catch (e: any) {
+        if (e?.name === 'AbortError') throw new Error(`STT server timeout after ${STT_TIMEOUT_MS}ms`);
+        throw e;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+/**
+ * Речь → текст. Предпочитаем свой STT-сервер (бесплатно); если STT_URL не задан — OpenAI Whisper.
+ */
+async function runSpeechToText(file: File): Promise<string> {
+    if (isSelfHostedSttConfigured()) {
+        return await transcribeViaSttServer(file);
+    }
+    const openai = getOpenAI();
+    const result: any = await openai.audio.transcriptions.create({
+        file: file,
+        model: 'whisper-1',
+        language: 'ru',
+        response_format: 'text',
+    });
+    return typeof result === 'string' ? result : (result?.text || '');
+}
+
 /**
  * Production rule: if we have a recording, the call should go through transcription.
  * Only technical absence of media is a valid reason to skip before OpenAI.
@@ -303,14 +364,8 @@ export async function transcribeCall(callId: string, recordingUrl: string) {
         // 1. Download (from internal or external)
         const file = await downloadAudio(sourceUrl);
 
-        // 2. Transcribe (Whisper)
-        const openai = getOpenAI();
-        const rawTranscription = await openai.audio.transcriptions.create({
-            file: file,
-            model: "whisper-1",
-            language: "ru",
-            response_format: "text"
-        });
+        // 2. Transcribe (свой STT-сервер если задан STT_URL, иначе OpenAI Whisper)
+        const rawTranscription = await runSpeechToText(file);
 
         // 2.5 Diarization pass (New step)
         console.log(`[Transcribe] Diarizing ${callId}...`);
