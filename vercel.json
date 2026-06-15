@@ -38,6 +38,10 @@
             "schedule": "*/1 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/transcription-poll",
+            "schedule": "*/1 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/call-semantic-rules",
             "schedule": "*/1 * * * *"
         },
