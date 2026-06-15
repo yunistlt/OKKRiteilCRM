@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { ingestRetailcrmCalls, isRetailcrmCallsConfigured } from '@/lib/retailcrm/calls';
+import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -32,7 +33,21 @@ export async function GET(request: Request) {
         if (!result.success) {
             return NextResponse.json({ error: result.error, ...result }, { status: 500 });
         }
-        return NextResponse.json(result);
+
+        // После ингеста — авторитетная пересвязка звонок→заказ из RetailCRM в call_order_matches
+        // (наполняет RC-привязки, убирает конфликтующие эвристические догадки). Best-effort:
+        // сбой реконсиляции не должен валить успешный ингест.
+        let reconcile: any = null;
+        try {
+            const { data, error } = await supabase.rpc('reconcile_retailcrm_call_matches');
+            if (error) throw error;
+            reconcile = Array.isArray(data) ? data[0] : data;
+        } catch (e: any) {
+            console.error('[RetailcrmCallsSync] reconcile failed:', e?.message);
+            reconcile = { error: e?.message || 'reconcile failed' };
+        }
+
+        return NextResponse.json({ ...result, reconcile });
     } catch (error: any) {
         const isUnauthorized = error.message === 'Unauthorized';
         return NextResponse.json({ error: error.message }, { status: isUnauthorized ? 401 : 500 });
