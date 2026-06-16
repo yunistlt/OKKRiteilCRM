@@ -40,6 +40,7 @@ export type AccessInvitation = {
     used_count: number;
     last_used_at: string | null;
     created_at: string | null;
+    created_by: string | null;
 };
 
 function normalizeInvitation(record: any): AccessInvitation {
@@ -55,6 +56,7 @@ function normalizeInvitation(record: any): AccessInvitation {
         used_count: typeof record.used_count === 'number' ? record.used_count : 0,
         last_used_at: typeof record.last_used_at === 'string' ? record.last_used_at : null,
         created_at: typeof record.created_at === 'string' ? record.created_at : null,
+        created_by: typeof record.created_by === 'string' ? record.created_by : null,
     };
 }
 
@@ -287,7 +289,7 @@ export async function loadAccessControlData(): Promise<{
         loadManagersTable(),
         supabase.from('access_route_rules').select('prefix, label, description, category, allowed_roles'),
         supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_reactivation, can_view_salary, can_view_settings, can_manage_users, can_run_bulk_operations'),
-        supabase.from('access_invitations').select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at').order('created_at', { ascending: false }),
+        supabase.from('access_invitations').select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at, created_by').order('created_at', { ascending: false }),
     ]);
 
     if (rulesResult.error && !isMissingTableError(rulesResult.error)) throw rulesResult.error;
@@ -582,6 +584,7 @@ export async function createAccessInvitation(input: {
     first_name?: string | null;
     last_name?: string | null;
     note?: string | null;
+    created_by?: string | null;
 }): Promise<AccessActionResult & { invitation?: AccessInvitation }> {
     try {
         const role = normalizeRole(input.role);
@@ -596,8 +599,9 @@ export async function createAccessInvitation(input: {
                 first_name: input.first_name?.trim() || null,
                 last_name: input.last_name?.trim() || null,
                 note: input.note?.trim() || null,
+                created_by: input.created_by?.trim() || null,
             })
-            .select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at')
+            .select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at, created_by')
             .single();
 
         if (error) throw error;

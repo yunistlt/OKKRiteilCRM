@@ -35,13 +35,6 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
     const [showSqlGuide, setShowSqlGuide] = useState(!routeRulesTableReady || !roleCapabilitiesTableReady || !invitationsTableReady);
     const [invitations, setInvitations] = useState(initialInvitations);
     const [copiedToken, setCopiedToken] = useState('');
-    const [newInvite, setNewInvite] = useState({
-        role: 'manager' as AppRole,
-        retail_crm_manager_id: '',
-        first_name: '',
-        last_name: '',
-        note: '',
-    });
     const [newAccount, setNewAccount] = useState({
         accountType: 'legacy' as 'profile' | 'legacy',
         email: '',
@@ -220,15 +213,20 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
         return `${origin}/invite/${token}`;
     };
 
-    const handleCreateInvitation = () => {
+    const accountKey = (account: AccessAccount) => `${account.source}:${account.id}`;
+
+    const invitationsForAccount = (account: AccessAccount) =>
+        invitations.filter((item) => !item.revoked && item.created_by === accountKey(account));
+
+    const handleCreateInvitationForAccount = (account: AccessAccount) => {
         setMessage('');
         startTransition(async () => {
             const result = await createAccessInvitation({
-                role: newInvite.role,
-                retail_crm_manager_id: newInvite.retail_crm_manager_id ? Number(newInvite.retail_crm_manager_id) : null,
-                first_name: newInvite.first_name,
-                last_name: newInvite.last_name,
-                note: newInvite.note,
+                role: account.role,
+                retail_crm_manager_id: account.retail_crm_manager_id,
+                first_name: account.first_name,
+                last_name: account.last_name,
+                created_by: accountKey(account),
             });
 
             if (!result.success || !result.invitation) {
@@ -238,8 +236,8 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
             }
 
             setInvitations((current) => [result.invitation!, ...current]);
-            setNewInvite({ role: 'manager', retail_crm_manager_id: '', first_name: '', last_name: '', note: '' });
             setMessage(result.message || 'Ссылка-приглашение создана.');
+            void handleCopyInviteLink(result.invitation!.token);
         });
     };
 
@@ -396,7 +394,10 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                         <h3 className="text-sm font-black text-gray-900">{account.username || account.email || 'Без имени'}</h3>
                                         <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 ring-1 ring-gray-200">{ACCOUNT_SOURCE_LABELS[account.source]}</span>
                                     </div>
-                                    <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => handleCreateInvitationForAccount(account)} disabled={isPending} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-black text-gray-700 disabled:opacity-50">Ссылка-приглашение</button>
+                                        <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
@@ -434,6 +435,19 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                         </select>
                                     </div>
                                 </div>
+
+                                {invitationsForAccount(account).length > 0 && (
+                                    <div className="mt-3 space-y-2 border-t border-gray-200 pt-3">
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">Ссылки-приглашения с правами «{ROLE_LABELS[account.role]}»</div>
+                                        {invitationsForAccount(account).map((invitation) => (
+                                            <div key={invitation.id} className="flex items-center gap-2">
+                                                <input readOnly value={buildInviteLink(invitation.token)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600" onFocus={(event) => event.target.select()} />
+                                                <button onClick={() => handleCopyInviteLink(invitation.token)} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white">{copiedToken === invitation.token ? 'Скопировано' : 'Копировать'}</button>
+                                                <button onClick={() => handleRevokeInvitation(invitation.id)} disabled={isPending} className="shrink-0 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-black text-red-600 disabled:opacity-50">Отозвать</button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -481,69 +495,6 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                             </div>
                             <button onClick={handleCreateAccount} disabled={isPending} className="rounded-2xl bg-gray-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать аккаунт</button>
                         </div>
-                    </div>
-                </div>
-            </section>
-
-            <section className="rounded-3xl border border-gray-100 bg-white p-5 shadow-xl shadow-gray-100 space-y-4">
-                <div>
-                    <h2 className="text-lg font-black text-gray-900 mb-1">Ссылки-приглашения</h2>
-                    <p className="text-sm text-gray-500">Создайте ссылку с нужной ролью — получатель задаст логин и пароль, и аккаунт сразу получит все права этой роли. Ссылка работает многократно, пока вы её не отзовёте.</p>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-4">
-                    <div className="rounded-2xl border border-gray-100 bg-gray-50/70 p-4 space-y-2.5">
-                        <h3 className="text-sm font-black text-gray-900">Новая ссылка</h3>
-                        <div className="grid grid-cols-2 gap-2.5">
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Роль</label>
-                                <select value={newInvite.role} onChange={(event) => setNewInvite((current) => ({ ...current, role: event.target.value as AppRole }))} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm">
-                                    {APP_ROLES.map((role) => <option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Менеджер RetailCRM</label>
-                                <select value={newInvite.retail_crm_manager_id} onChange={(event) => setNewInvite((current) => ({ ...current, retail_crm_manager_id: event.target.value }))} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" disabled={newInvite.role !== 'manager'}>
-                                    <option value="">Без привязки</option>
-                                    {initialManagers.map((manager) => <option key={manager.id} value={manager.id}>{manager.label}{manager.active ? '' : ' (не активен)'}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2.5">
-                            <input value={newInvite.first_name} onChange={(event) => setNewInvite((current) => ({ ...current, first_name: event.target.value }))} placeholder="Имя (необязательно)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
-                            <input value={newInvite.last_name} onChange={(event) => setNewInvite((current) => ({ ...current, last_name: event.target.value }))} placeholder="Фамилия (необязательно)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
-                        </div>
-                        <input value={newInvite.note} onChange={(event) => setNewInvite((current) => ({ ...current, note: event.target.value }))} placeholder="Заметка (например, кому ссылка)" className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
-                        <button onClick={handleCreateInvitation} disabled={isPending} className="w-full rounded-2xl bg-gray-900 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50">Создать ссылку</button>
-                    </div>
-
-                    <div className="space-y-2.5">
-                        {invitations.length === 0 && <p className="text-sm text-gray-400">Пока нет созданных ссылок-приглашений.</p>}
-                        {invitations.map((invitation) => {
-                            const label = [invitation.first_name, invitation.last_name].filter(Boolean).join(' ').trim();
-                            return (
-                                <div key={invitation.id} className={`rounded-2xl border p-3.5 ${invitation.revoked ? 'border-gray-100 bg-gray-50/40 opacity-60' : 'border-gray-100 bg-gray-50/70'}`}>
-                                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-600 ring-1 ring-gray-200">{ROLE_LABELS[invitation.role]}</span>
-                                            {label && <span className="text-sm font-black text-gray-900">{label}</span>}
-                                            {invitation.revoked && <span className="text-[10px] font-bold uppercase tracking-wider text-red-500">отозвана</span>}
-                                        </div>
-                                        {!invitation.revoked && (
-                                            <button onClick={() => handleRevokeInvitation(invitation.id)} disabled={isPending} className="rounded-xl border border-red-200 bg-white px-3 py-1.5 text-xs font-black text-red-600 disabled:opacity-50">Отозвать</button>
-                                        )}
-                                    </div>
-                                    {invitation.note && <p className="mb-2 text-xs text-gray-500">{invitation.note}</p>}
-                                    {!invitation.revoked && (
-                                        <div className="flex items-center gap-2">
-                                            <input readOnly value={buildInviteLink(invitation.token)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600" onFocus={(event) => event.target.select()} />
-                                            <button onClick={() => handleCopyInviteLink(invitation.token)} className="shrink-0 rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white">{copiedToken === invitation.token ? 'Скопировано' : 'Копировать'}</button>
-                                        </div>
-                                    )}
-                                    <div className="mt-1.5 text-[10px] text-gray-400">Использована раз: {invitation.used_count}</div>
-                                </div>
-                            );
-                        })}
                     </div>
                 </div>
             </section>
