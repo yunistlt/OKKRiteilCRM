@@ -220,6 +220,7 @@ export function SchemesTab() {
     const [groups, setGroups] = useState<{ code: string; name: string }[]>([]); // группы RetailCRM (роли)
     const [loading, setLoading] = useState(true);
     const [drag, setDrag] = useState<{ fromPalette?: string; schemeIdx?: number; blockIdx?: number } | null>(null);
+    const [overScheme, setOverScheme] = useState<number | null>(null); // роль под курсором при перетаскивании
     const [saving, setSaving] = useState<string | null>(null);
     const [open, setOpen] = useState<Set<string>>(new Set());
     const toggleOpen = (key: string) => setOpen((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -318,6 +319,7 @@ export function SchemesTab() {
                         const tint = tintFor(b.code);
                         return (
                             <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })}
+                                onDragEnd={() => { setDrag(null); setOverScheme(null); }}
                                 style={b.available ? { backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` } : undefined}
                                 className={`px-2 py-1.5 text-xs ${b.available ? 'cursor-grab hover:brightness-95' : 'cursor-not-allowed border-l-[3px] border-transparent bg-muted text-muted-foreground'}`}>
                                 <div className="flex items-center gap-1 leading-tight">
@@ -343,8 +345,20 @@ export function SchemesTab() {
                         {availableGroups.map((g) => <option key={g.code} value={g.code}>{g.name}</option>)}
                     </select>
                 </div>
-                {schemes.map((s, si) => (
-                    <div key={s.code} className="border" onDragOver={(e) => e.preventDefault()} onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); }}>
+                {schemes.map((s, si) => {
+                  const paletteDrag = !!drag?.fromPalette;          // тащим блок из палитры
+                  const dup = paletteDrag && s.blocks.some((b) => b.block_code === drag!.fromPalette); // блок уже есть в роли
+                  const over = overScheme === si;
+                  return (
+                    <div key={s.code}
+                        onDragOver={(e) => { e.preventDefault(); if (paletteDrag) setOverScheme(si); }}
+                        onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); setOverScheme(null); }}
+                        className={`border transition-[box-shadow,background-color] ${paletteDrag ? (dup ? 'ring-1 ring-amber-300' : over ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'ring-1 ring-blue-300') : ''}`}>
+                        {paletteDrag && (
+                            <div className={`px-2 py-1 text-center text-[10px] font-medium ${dup ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                                {dup ? 'Блок уже добавлен в эту роль' : over ? '↓ Отпустите, чтобы добавить в эту роль' : 'Можно перетащить сюда'}
+                            </div>
+                        )}
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
                             <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
@@ -363,7 +377,14 @@ export function SchemesTab() {
                                     const isOpen = open.has(key);
                                     return (
                                         <div key={b.block_code} draggable onDragStart={(e) => { e.stopPropagation(); setDrag({ schemeIdx: si, blockIdx: bi }); }}
-                                            onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.stopPropagation(); if (drag && drag.schemeIdx === si && drag.blockIdx != null) reorder(si, drag.blockIdx, bi); setDrag(null); }}
+                                            onDragEnd={() => { setDrag(null); setOverScheme(null); }}
+                                            onDragOver={(e) => { e.preventDefault(); if (drag?.fromPalette) setOverScheme(si); }}
+                                            onDrop={(e) => {
+                                                e.stopPropagation();
+                                                if (drag?.fromPalette) addBlock(si, drag.fromPalette); // drop из палитры на карточку — добавляем в роль, а не глотаем
+                                                else if (drag && drag.schemeIdx === si && drag.blockIdx != null) reorder(si, drag.blockIdx, bi);
+                                                setDrag(null); setOverScheme(null);
+                                            }}
                                             style={{ backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` }}>
                                             <div className="flex items-center gap-1.5 px-2 py-1.5">
                                                 <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground" />
@@ -387,7 +408,8 @@ export function SchemesTab() {
                             </div>
                         )}
                     </div>
-                ))}
+                  );
+                })}
                 {archived.length > 0 && (
                     <div className="border border-dashed">
                         <div className="border-b bg-muted/30 px-2 py-1.5 text-xs font-semibold uppercase tracking-tight text-muted-foreground">Архив ролей</div>
