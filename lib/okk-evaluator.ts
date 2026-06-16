@@ -17,6 +17,43 @@ import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 let _openai: OpenAI | null = null;
 const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide]));
 
+// ── Реестр скрипт-критериев (okk_criteria, eval_method='ai_script') ──
+// Дефолт — фолбэк, если реестр пуст/недоступен (полностью повторяет прежний хардкод).
+type ScriptCriterion = { key: string; label: string; ai_prompt: string | null; scoring_basket: string | null };
+const DEFAULT_SCRIPT_CRITERIA: ScriptCriterion[] = [
+    { key: 'script_greeting', label: 'Приветствие', ai_prompt: 'Приветствие и название компании. (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_call_purpose', label: 'Цель звонка', ai_prompt: 'Озвучена причина звонка (привязка к заказу/этапу). (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_company_info', label: 'Сфера клиента', ai_prompt: 'Выявлена сфера деятельности клиента и чем занимается организация. (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_lpr_identified', label: 'ЛПР', ai_prompt: 'Выявлено Лицо, Принимающее Решение (кто ещё участвует в выборе?). (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_budget_confirmed', label: 'Бюджет', ai_prompt: 'Обсуждён финансовый вопрос или наличие бюджета. (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_urgency_identified', label: 'Срочность', ai_prompt: 'Менеджер выяснил срочность покупки (нужно «вчера» или «к осени»). (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_deadlines', label: 'Сроки', ai_prompt: 'Выяснены конкретные сроки готовности или поставки (не путать со срочностью). (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_tz_confirmed', label: 'ТЗ подтверждено', ai_prompt: 'Параметры тех. задания (размеры, температура) подтверждены. (Есть - true, Нет - false)', scoring_basket: 'script' },
+    { key: 'script_objection_general', label: 'Возражения', ai_prompt: 'Работа с возражениями. Если были возражения и отработаны — true. Если возражений НЕ было или они не отработаны — false.', scoring_basket: 'script' },
+    { key: 'script_objection_delays', label: 'Задержки/конкуренты', ai_prompt: 'Выяснение причин задержек/сравнения. Если клиент тянет время — выяснил ли менеджер причину? (Да - true, Нет/Не спросил - false).', scoring_basket: 'script' },
+    { key: 'script_offer_best_tech', label: 'Аргументы: тех', ai_prompt: 'Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_offer_best_terms', label: 'Аргументы: сроки', ai_prompt: 'Аргументы по СРОКАМ. (Были - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_offer_best_price', label: 'Аргументы: цена', ai_prompt: 'Обоснование ЦЕНЫ. (Было - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_cross_sell', label: 'Кросс-продажа', ai_prompt: 'Предложение сопутствующих товаров. (Было - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_next_step_agreed', label: 'Следующий шаг', ai_prompt: 'Фиксация следующего шага с ДАТОЙ. (Есть дата след. касания - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_dialogue_management', label: 'Инициатива', ai_prompt: 'Менеджер держал инициативу. (Да - true, Нет/Плыл по течению - false).', scoring_basket: 'script' },
+    { key: 'script_confident_speech', label: 'Уверенная речь', ai_prompt: 'Уверенная речь. (Да - true, Нет - false).', scoring_basket: 'script' },
+];
+
+/** Активные критерии из реестра okk_criteria (для динамической оценки). Пусто → фолбэк на дефолты. */
+async function getActiveCriteria(): Promise<any[]> {
+    const { data, error } = await supabase
+        .from('okk_criteria')
+        .select('key, label, ai_prompt, eval_method, scoring_basket, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+    if (error) {
+        console.warn('[ОКК] Реестр okk_criteria недоступен, использую дефолты:', error.message);
+        return [];
+    }
+    return data || [];
+}
+
 const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
     tz_received: ['orders.raw_payload.customerComment', 'orders.raw_payload.managerComment', 'orders.raw_payload.customFields'],
     field_buyer_filled: ['orders.raw_payload.company', 'orders.raw_payload.contact', 'orders.raw_payload.customer'],
@@ -62,30 +99,18 @@ function createScriptEvaluationFallback(
         evaluatorComment?: string;
         evaluationSkipped?: boolean;
     },
+    keys?: string[],
 ) {
     // Нет транскрипта/AI недоступен → нечего оценивать. Все пункты null (не учитываются), а не false (не штрафуем).
     // options.reason — уже готовая конкретная формулировка причины «нет данных».
     const naReason = options?.reason
         || 'Нет данных для анализа: нет звонков или транскрипции — параметр не учитывается в балле.';
     const na = () => ({ result: null as boolean | null, reason: naReason });
+    const list = (keys && keys.length) ? keys : DEFAULT_SCRIPT_CRITERIA.map((c) => c.key);
+    const items: Record<string, { result: boolean | null; reason: string }> = {};
+    for (const k of list) items[k] = na();
     return {
-        script_greeting: na(),
-        script_call_purpose: na(),
-        script_company_info: na(),
-        script_lpr_identified: na(),
-        script_budget_confirmed: na(),
-        script_urgency_identified: na(),
-        script_deadlines: na(),
-        script_tz_confirmed: na(),
-        script_objection_general: na(),
-        script_objection_delays: na(),
-        script_offer_best_tech: na(),
-        script_offer_best_terms: na(),
-        script_offer_best_price: na(),
-        script_cross_sell: na(),
-        script_next_step_agreed: na(),
-        script_dialogue_management: na(),
-        script_confident_speech: na(),
+        ...items,
         script_score_pct: options?.scriptScorePct ?? null,
         evaluator_comment: options?.evaluatorComment || 'Звонки не найдены или слишком короткие для анализа — оценка скрипта не учитывается.',
         _meta: {
@@ -882,7 +907,18 @@ export async function evaluateScript(
     transcript: string,
     annaInsights: any = null,
     callsContext?: { attempts?: number; transcribed?: number; status?: string | null },
+    scriptCriteria?: ScriptCriterion[],
 ) {
+    // Состав скрипт-критериев и их инструкции — из реестра okk_criteria (фолбэк на дефолты).
+    const list = (scriptCriteria && scriptCriteria.length) ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA;
+    const keys = list.map((c) => c.key);
+    // В балл скрипта идут только критерии с корзиной 'script' (если ни у кого не задана — все).
+    const scoredKeys = (() => {
+        const s = list.filter((c) => (c.scoring_basket ?? 'script') === 'script').map((c) => c.key);
+        return s.length ? s : keys;
+    })();
+    const criteriaText = list.map((c) => `- ${c.key}: ${c.ai_prompt || c.label}`).join('\n');
+
     // Конкретная причина состояния «нет данных» — чтобы в UI было понятно, чего именно не хватает.
     const attempts = callsContext?.attempts ?? 0;
     const transcribed = callsContext?.transcribed ?? 0;
@@ -900,7 +936,7 @@ export async function evaluateScript(
         evaluatorComment: noDataReason,
         evaluationSkipped: true,
         reason: noDataReason,
-    });
+    }, keys);
 
     console.log(`[Максим/GPT] Evaluation started. Transcript length: ${transcript?.length || 0}`);
     if (!transcript || transcript.length < 50) {
@@ -938,23 +974,7 @@ export async function evaluateScript(
 Для каждого пункта верни объект: {"result": true | false, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
 
 КРИТЕРИИ И СПЕЦИФИКА КЛАССИФИКАЦИИ:
-- script_greeting: Приветствие и название компании. (Есть - true, Нет - false)
-- script_call_purpose: Озвучена причина звонка (привязка к заказу/этапу). (Есть - true, Нет - false)
-- script_company_info: Выявлена сфера деятельности клиента и чем занимается организация. (Есть - true, Нет - false)
-- script_lpr_identified: Выявлено Лицо, Принимающее Решение (кто еще участвует в выборе?). (Есть - true, Нет - false)
-- script_budget_confirmed: Обсужден финансовый вопрос или наличие бюджета. (Есть - true, Нет - false)
-- script_urgency_identified: Менеджер выяснил срочность покупки (нужно "вчера" или "к осени"). (Есть - true, Нет - false)
-- script_deadlines: Выяснены конкретные сроки готовности или поставки (не путать со срочностью). (Есть - true, Нет - false)
-- script_tz_confirmed: Параметры тех. задания (размеры, температура) подтверждены. (Есть - true, Нет - false)
-- script_objection_general: Работа с возражениями. Если были возражения и отработаны — true. Если возражений НЕ было или они не отработаны — false.
-- script_objection_delays: Выяснение причин задержек/сравнения. Если клиент тянет время — выяснил ли менеджер причину? (Да - true, Нет/Не спросил - false).
-- script_offer_best_tech: Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Нет - false).
-- script_offer_best_terms: Аргументы по СРОКАМ. (Были - true, Нет - false).
-- script_offer_best_price: Обоснование ЦЕНЫ. (Было - true, Нет - false).
-- script_cross_sell: Предложение сопутствующих товаров. (Было - true, Нет - false).
-- script_next_step_agreed: Фиксация следующего шага с ДАТОЙ. (Есть дата след. касания - true, Нет - false).
-- script_dialogue_management: Менеджер держал инициативу. (Да - true, Нет/Плыл по течению - false).
-- script_confident_speech: Уверенная речь. (Да - true, Нет - false).
+${criteriaText}
 
 ПЕРСОНАЛИЗАЦИЯ:
 В "reason" всегда упоминай менеджера по имени (из контекста).
@@ -987,18 +1007,11 @@ ${transcript.substring(0, 15000)}`
             return { result, reason: parsed[key]?.reason ?? null };
         };
 
-        const SCRIPT_ITEM_KEYS = [
-            'script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified',
-            'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed',
-            'script_objection_general', 'script_objection_delays', 'script_offer_best_tech',
-            'script_offer_best_terms', 'script_offer_best_price', 'script_cross_sell',
-            'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech',
-        ];
         const items: Record<string, { result: boolean | null; reason: string | null }> = {};
-        for (const key of SCRIPT_ITEM_KEYS) items[key] = getVal(key);
+        for (const key of keys) items[key] = getVal(key);
 
-        // Детерминированный расчёт: знаменатель — только применимые пункты (true|false), null исключаются
-        const applicable = SCRIPT_ITEM_KEYS.filter(k => items[k].result === true || items[k].result === false);
+        // Детерминированный расчёт: знаменатель — только применимые пункты (true|false) из корзины скрипта; null исключаются
+        const applicable = scoredKeys.filter(k => items[k]?.result === true || items[k]?.result === false);
         const passedCount = applicable.filter(k => items[k].result === true).length;
         const script_score_pct = applicable.length > 0 ? Math.round((passedCount / applicable.length) * 100) : null;
 
@@ -1024,14 +1037,14 @@ ${transcript.substring(0, 15000)}`
             degraded: true,
             scriptScorePct: null,
             evaluatorComment: 'AI-анализ скрипта временно недоступен. Сохранена базовая оценка без script score.',
-        }) as any;
+        }, keys) as any;
     }
 }
 
 // ═══════════════════════════════════════════════════════
 // Расчёт итогового % (X, Y, AR, AS)
 // ═══════════════════════════════════════════════════════
-function calcScores(data: Record<string, any>, totalPenalty: number = 0, penaltyJournal: any[] = []) {
+function calcScores(data: Record<string, any>, totalPenalty: number = 0, penaltyJournal: any[] = [], scriptKeys: string[] = DEFAULT_SCRIPT_CRITERIA.map((c) => c.key)) {
     // Оценка заполнения сделки (col Y: % правил заполнения/ведения)
     const dealChecks = [
         { key: 'tz_received', val: data.tz_received },
@@ -1109,15 +1122,7 @@ function calcScores(data: Record<string, any>, totalPenalty: number = 0, penalty
         calculation_steps: ['Ищем дату последней смены статуса.', 'Если с последней смены прошло меньше 5 дней, критерий выполнен.'],
     });
 
-    // Скрипт (Максим)
-    const scriptKeys = [
-        'script_greeting', 'script_call_purpose', 'script_company_info',
-        'script_lpr_identified', 'script_budget_confirmed', 'script_urgency_identified',
-        'script_deadlines', 'script_tz_confirmed', 'script_objection_general',
-        'script_objection_delays', 'script_offer_best_tech', 'script_offer_best_terms',
-        'script_offer_best_price', 'script_cross_sell', 'script_next_step_agreed',
-        'script_dialogue_management', 'script_confident_speech'
-    ];
+    // Скрипт (Максим) — состав ключей из реестра (параметр scriptKeys)
     scriptKeys.forEach(k => {
         if (data[k] && typeof data[k] === 'object') {
             score_breakdown[k] = createBreakdownEntry(k, data[k].result ?? null, data[k].reason ?? null, data, {
@@ -1235,12 +1240,19 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     const annaAnalysis = await runInsightAnalysisSafely(orderId);
     const annaInsights = annaAnalysis.insights;
 
-    // Максим оценивает скрипт (используя данные от Анны)
-    const script = await evaluateScript(facts._transcript, annaInsights, {
+    // Состав и промпты скрипт-критериев — из реестра okk_criteria (фолбэк на дефолты внутри evaluateScript)
+    const activeCriteria = await getActiveCriteria();
+    const scriptCriteria: ScriptCriterion[] = activeCriteria
+        .filter((c: any) => c.eval_method === 'ai_script')
+        .map((c: any) => ({ key: c.key, label: c.label, ai_prompt: c.ai_prompt, scoring_basket: c.scoring_basket }));
+    const scriptKeys = (scriptCriteria.length ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA).map((c) => c.key);
+
+    // Максим оценивает скрипт (используя данные от Анны и реестр критериев)
+    const script: any = await evaluateScript(facts._transcript, annaInsights, {
         attempts: facts.calls_attempts_count,
         transcribed: facts.calls_evaluated_count,
         status: facts.calls_status,
-    });
+    }, scriptCriteria);
     const aiPipelineMeta = {
         degraded: Boolean(annaAnalysis.meta.degraded || script._meta?.degraded),
         insight: annaAnalysis.meta,
@@ -1263,7 +1275,7 @@ export async function evaluateOrder(orderId: number): Promise<void> {
 
     // Максим считает итог
     const allData = { ...facts, ...sla, ...script };
-    const scores = calcScores({ ...allData, _script_meta: script._meta || null, _ai_pipeline_meta: aiPipelineMeta }, totalPenalty, typedViolations);
+    const scores = calcScores({ ...allData, _script_meta: script._meta || null, _ai_pipeline_meta: aiPipelineMeta }, totalPenalty, typedViolations, scriptKeys);
 
     const record = {
         order_id: orderId,
