@@ -215,37 +215,49 @@ export default function SalaryDashboard() {
                             ? 'Не удалось загрузить данные. Обновите страницу или повторите позже.'
                             : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
-            ) : (
+            ) : (() => {
+                // Колонки таблицы — динамически из блоков назначенных схем (никакого хардкода).
+                // Союз блоков по всем менеджерам в порядке появления; фолбэк на legacy для старых расчётов.
+                const columns = buildBlockColumns(rows);
+                const useBlocks = columns.length > 0;
+                return (
                 <div className="overflow-x-auto border">
                     <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
                             <tr>
                                 <th className="p-3"></th>
                                 <th className="p-3">Менеджер</th>
-                                <th className="p-3 text-right">Оклад</th>
-                                <th className="p-3 text-right">Премия</th>
-                                <th className="p-3 text-right">К_кач</th>
-                                <th className="p-3 text-right">Конв</th>
-                                <th className="p-3 text-right">Скидка</th>
-                                <th className="p-3 text-right">К_ком</th>
-                                <th className="p-3 text-right">Деж</th>
+                                {useBlocks ? (
+                                    columns.map((c) => <th key={c.code} className="whitespace-nowrap p-3 text-right">{c.name}</th>)
+                                ) : (
+                                    <>
+                                        <th className="p-3 text-right">Оклад</th>
+                                        <th className="p-3 text-right">Премия</th>
+                                        <th className="p-3 text-right">К_кач</th>
+                                        <th className="p-3 text-right">Конв</th>
+                                        <th className="p-3 text-right">Скидка</th>
+                                        <th className="p-3 text-right">К_ком</th>
+                                        <th className="p-3 text-right">Деж</th>
+                                    </>
+                                )}
                                 <th className="p-3 text-right font-semibold">Итого</th>
                             </tr>
                         </thead>
                         <tbody>
                             {rows.map((r) => (
-                                <RowGroup key={r.manager_id} r={r} onOpen={() => setReportManager(r)} />
+                                <RowGroup key={r.manager_id} r={r} columns={useBlocks ? columns : null} onOpen={() => setReportManager(r)} />
                             ))}
                         </tbody>
                         <tfoot className="border-t bg-muted/30 font-semibold">
                             <tr>
-                                <td className="p-3" colSpan={9}>ФОТ отдела {rows.length > 0 && `(К_команды ${rows[0].k_team})`}</td>
+                                <td className="p-3" colSpan={(useBlocks ? columns.length : 7) + 2}>ФОТ отдела</td>
                                 <td className="p-3 text-right">{rub(data!.total)}</td>
                             </tr>
                         </tfoot>
                     </table>
                 </div>
-            )}
+                );
+            })()}
 
             {dutyOpen && <DutyModal period={period} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setDutyOpen(false)} />}
 
@@ -265,18 +277,50 @@ export default function SalaryDashboard() {
     );
 }
 
-function RowGroup({ r, onOpen }: { r: CalcRow; onOpen: () => void }) {
+type BlockColumn = { code: string; name: string; kind: string };
+
+// Союз блоков по всем менеджерам в порядке появления (порядок схемы первого, затем добор остальных).
+function buildBlockColumns(rows: CalcRow[]): BlockColumn[] {
+    const seen = new Map<string, BlockColumn>();
+    for (const r of rows) {
+        const cons = Array.isArray(r.breakdown?.blockContributions) ? r.breakdown.blockContributions : [];
+        for (const c of cons) {
+            if (c?.code && !seen.has(c.code)) seen.set(c.code, { code: c.code, name: c.name ?? c.code, kind: c.kind });
+        }
+    }
+    return Array.from(seen.values());
+}
+
+// Значение ячейки блока: множитель → ×k, иначе сумма; нет блока в схеме менеджера → «—».
+function blockCell(r: CalcRow, col: BlockColumn): string {
+    const cons = Array.isArray(r.breakdown?.blockContributions) ? r.breakdown.blockContributions : [];
+    const c = cons.find((x: any) => x.code === col.code);
+    if (!c) return '—';
+    if (c.kind === 'multiplier') return `×${c.multiplier ?? 1}`;
+    return rub(c.amount ?? 0);
+}
+
+function RowGroup({ r, columns, onOpen }: { r: CalcRow; columns: BlockColumn[] | null; onOpen: () => void }) {
     return (
         <tr className="cursor-pointer border-t hover:bg-muted/30" onClick={onOpen} title="Открыть подробный отчёт">
             <td className="p-3 text-muted-foreground"><ChevronRight className="h-4 w-4" /></td>
             <td className="p-3 font-medium">{r.manager_name}</td>
-            <td className="p-3 text-right">{rub(r.oklad)}</td>
-            <td className="p-3 text-right">{rub(r.premia_zayavki)}</td>
-            <td className="p-3 text-right">×{r.k_quality}</td>
-            <td className="p-3 text-right">{rub(r.conv_bonus)}</td>
-            <td className="p-3 text-right">{rub(r.discount_bonus)}</td>
-            <td className="p-3 text-right">×{r.k_team}</td>
-            <td className="p-3 text-right">{rub(r.duty_pay)}</td>
+            {columns ? (
+                columns.map((col) => {
+                    const empty = blockCell(r, col) === '—';
+                    return <td key={col.code} className={`whitespace-nowrap p-3 text-right ${empty ? 'text-muted-foreground/50' : ''}`}>{blockCell(r, col)}</td>;
+                })
+            ) : (
+                <>
+                    <td className="p-3 text-right">{rub(r.oklad)}</td>
+                    <td className="p-3 text-right">{rub(r.premia_zayavki)}</td>
+                    <td className="p-3 text-right">×{r.k_quality}</td>
+                    <td className="p-3 text-right">{rub(r.conv_bonus)}</td>
+                    <td className="p-3 text-right">{rub(r.discount_bonus)}</td>
+                    <td className="p-3 text-right">×{r.k_team}</td>
+                    <td className="p-3 text-right">{rub(r.duty_pay)}</td>
+                </>
+            )}
             <td className="p-3 text-right font-semibold">{rub(r.total)}</td>
         </tr>
     );
