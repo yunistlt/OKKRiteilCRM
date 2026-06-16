@@ -3,7 +3,7 @@ import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
 import { collectPeriodMetrics, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
 import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
-import { getPlansForPeriod, resolveManagerComp, type PeriodPlans } from '@/lib/salary/schemes';
+import { getPlansForPeriod, listSchemes, resolveManagerComp, type PeriodPlans } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
 import type { BlockComputeContext, BlockContribution, BlockInstance } from '@/lib/salary/blocks/types';
 
@@ -250,7 +250,7 @@ async function ensureOpenPeriod(year: number, month: number): Promise<number> {
 
     if (existing) {
         if (existing.status === 'closed') {
-            throw new Error(`Период ${year}-${month} закрыт. Правки — только через корректировки.`);
+            throw new Error(`Период ${year}-${month} закрыт. Чтобы пересчитать — сначала переоткройте период (доступно администратору).`);
         }
         return existing.id;
     }
@@ -306,4 +306,100 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
     });
 
     return calc;
+}
+
+// ── Симуляция «что если» (песочница тарифов) ─────────────────────────────────
+// Считает период с подменёнными правилами (черновик тарифа/назначений/планов) и
+// возвращает результат + фактический снимок salary_calc для сравнения. НИЧЕГО НЕ
+// ПИШЕТ в БД — безопасно для закрытого периода (метрики периода от тарифа не зависят).
+
+export interface SimulateOverrides {
+    /** Черновики тарифов: блоки по коду схемы (заменяют действующую версию на период). */
+    schemes?: { code: string; blocks: BlockInstance[] }[];
+    /** Переназначение ролей: managerId → код схемы (только для менеджеров реестра). */
+    assignments?: { managerId: number; schemeCode: string }[];
+    /** Подмена планов периода. */
+    plans?: { personal?: { managerId: number; target: number | null }[]; department?: number | null };
+}
+
+export interface SimulationResult {
+    year: number;
+    month: number;
+    /** Симулированный расчёт по черновику. */
+    simulated: PeriodSalary;
+    /** Фактический снимок периода (salary_calc): managerId → итог. Пусто, если период не считался. */
+    actual: { managerId: number; total: number }[];
+    actualTotal: number;
+    simulatedTotal: number;
+    /** Статус реального периода (open|closed|none) — для пометки в UI. */
+    periodStatus: 'open' | 'closed' | 'none';
+}
+
+/** Чистый расчёт периода под черновиком правил. Без записи. */
+export async function simulatePeriod(year: number, month: number, ov: SimulateOverrides): Promise<SimulationResult> {
+    const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
+    const config = await getConfigForPeriod(year, month);
+    const metrics = await collectPeriodMetrics(year, month, config);
+    const baseComp = await resolveManagerComp(asOf);
+    const categoryNames = await loadCategoryNames();
+    const grades = await resolveManagerGrades(asOf);
+
+    // Блоки по коду схемы: реальные версии на дату + поверх — черновики из запроса.
+    const realSchemes = await listSchemes(asOf);
+    const blocksByCode = new Map<string, BlockInstance[]>();
+    for (const s of realSchemes) {
+        blocksByCode.set(s.code, s.blocks.filter((b) => b.enabled !== false).map((b) => ({ code: b.block_code, params: b.params ?? {} })));
+    }
+    for (const s of ov.schemes ?? []) {
+        blocksByCode.set(s.code, s.blocks);
+    }
+
+    // Переназначения ролей (только для менеджеров, уже состоящих в реестре периода).
+    const schemeByManager = new Map<number, string>();
+    for (const [managerId, comp] of Array.from(baseComp)) schemeByManager.set(managerId, comp.schemeCode);
+    for (const a of ov.assignments ?? []) {
+        if (schemeByManager.has(a.managerId)) schemeByManager.set(a.managerId, a.schemeCode);
+    }
+
+    // Эффективная карта расчёта: код роли → её блоки (черновик или реальная версия, fallback — базовые).
+    const compMap = new Map<number, { schemeCode: string; blocks: BlockInstance[] }>();
+    for (const [managerId, schemeCode] of Array.from(schemeByManager)) {
+        const blocks = blocksByCode.get(schemeCode) ?? baseComp.get(managerId)?.blocks ?? [];
+        compMap.set(managerId, { schemeCode, blocks });
+    }
+
+    // Планы периода + подмены.
+    const plans = await getPlansForPeriod(year, month);
+    if (ov.plans) {
+        if (ov.plans.department !== undefined) plans.department = ov.plans.department;
+        for (const p of ov.plans.personal ?? []) {
+            if (p.target == null) plans.personal.delete(p.managerId);
+            else plans.personal.set(p.managerId, p.target);
+        }
+    }
+
+    const simulated = computePeriodSalary(metrics, compMap, plans, config, categoryNames, grades);
+
+    // Фактический снимок для сравнения.
+    const { data: periodRow } = await supabase
+        .from('salary_period')
+        .select('id,status')
+        .eq('year', year)
+        .eq('month', month)
+        .maybeSingle();
+    const actual: { managerId: number; total: number }[] = [];
+    if (periodRow?.id) {
+        const { data: calcRows } = await supabase.from('salary_calc').select('manager_id,total').eq('period_id', periodRow.id);
+        for (const r of (calcRows as any[]) ?? []) actual.push({ managerId: Number(r.manager_id), total: Number(r.total) });
+    }
+
+    return {
+        year,
+        month,
+        simulated,
+        actual,
+        actualTotal: round2(actual.reduce((s, r) => s + r.total, 0)),
+        simulatedTotal: round2(simulated.results.reduce((s, r) => s + r.total, 0)),
+        periodStatus: (periodRow?.status as 'open' | 'closed') ?? 'none',
+    };
 }

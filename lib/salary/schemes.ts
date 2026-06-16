@@ -124,15 +124,20 @@ export async function listAssignments(asOf: string): Promise<{ managerId: number
 
 // ── Запись (из «Настроек мотивации») ─────────────────────────────────────────
 
-/** Сохраняет версию схемы (code, effective_from) и её блоки. Перезаписывает блоки версии. */
+/** Сохраняет версию схемы (code, effective_from) и её блоки. Перезаписывает блоки версии.
+ *  prevEffectiveFrom — дата версии, которую редактировали. Если дата изменилась, версия
+ *  ПЕРЕНОСИТСЯ на новую дату (старая строка удаляется), а не создаётся дубль — иначе более
+ *  поздняя версия «перебивала» бы новую и в конструкторе (показ последней ≤ сегодня), и в
+ *  пересчёте (resolveManagerComp берёт последнюю ≤ начала периода). */
 export async function saveScheme(params: {
     code: string;
     name: string;
     effectiveFrom: string;
+    prevEffectiveFrom?: string | null;
     blocks: { block_code: string; params: any; enabled?: boolean }[];
     actor: string | null;
 }): Promise<void> {
-    const { code, name, effectiveFrom, blocks, actor } = params;
+    const { code, name, effectiveFrom, prevEffectiveFrom, blocks, actor } = params;
     const { data: upserted, error } = await supabase
         .from('salary_scheme')
         .upsert({ code, name, effective_from: effectiveFrom, created_by: actor }, { onConflict: 'code,effective_from' })
@@ -146,7 +151,22 @@ export async function saveScheme(params: {
         const { error: bErr } = await supabase.from('salary_scheme_block').insert(rows);
         if (bErr) throw bErr;
     }
-    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'save', actor, old_value: null, new_value: { name, effectiveFrom, blocks } });
+    // Перенос даты: удаляем исходную версию этой же схемы, если дата сменилась.
+    if (prevEffectiveFrom && prevEffectiveFrom !== effectiveFrom) {
+        const { data: oldRows } = await supabase
+            .from('salary_scheme')
+            .select('id')
+            .eq('code', code)
+            .eq('effective_from', prevEffectiveFrom)
+            .is('archived_at', null);
+        for (const old of (oldRows as any[]) ?? []) {
+            const oldId = Number(old.id);
+            if (oldId === schemeId) continue;
+            await supabase.from('salary_scheme_block').delete().eq('scheme_id', oldId);
+            await supabase.from('salary_scheme').delete().eq('id', oldId);
+        }
+    }
+    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'save', actor, old_value: prevEffectiveFrom ? { effectiveFrom: prevEffectiveFrom } : null, new_value: { name, effectiveFrom, blocks } });
 }
 
 /** Архивные роли (схемы) — последняя версия каждого архивированного code. */

@@ -4,14 +4,16 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
 type Catalog = { code: string; name: string; methodology: string; kind: string; group: string; requiredMetrics: string[]; defaultParams: any; available: boolean }[];
 type SchemeBlock = { block_code: string; params: any; raw: boolean; rawText: string; enabled: boolean };
-type EditScheme = { code: string; name: string; effectiveFrom: string; blocks: SchemeBlock[] };
+// prevEffectiveFrom — дата версии «как загружена». Если при сохранении дата изменилась,
+// бэкенд переносит ту же версию на новую дату (а не плодит дубль). '' = новая, ещё не сохранённая схема.
+type EditScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; blocks: SchemeBlock[] };
 
 // ── Цвета блоков (нежные: белый + тон). Один код → один цвет в палитре и в роли ──
 const BLOCK_TINTS = [
@@ -224,6 +226,18 @@ export function SchemesTab() {
     const [saving, setSaving] = useState<string | null>(null);
     const [open, setOpen] = useState<Set<string>>(new Set());
     const toggleOpen = (key: string) => setOpen((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    // Симуляция «что если» (песочница тарифов) — считает черновики на периоде, НЕ сохраняет.
+    const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
+    const [assignments, setAssignments] = useState<{ managerId: number; schemeCode: string }[]>([]); // реестр: кто в какой роли
+    const nowSim = new Date();
+    const [simYear, setSimYear] = useState(nowSim.getFullYear());
+    const [simMonth, setSimMonth] = useState(nowSim.getMonth() + 1);
+    const [simulating, setSimulating] = useState(false);
+    const [simResult, setSimResult] = useState<any | null>(null);
+    const [showOverrides, setShowOverrides] = useState(false); // раскрыта ли панель подмен ролей/планов
+    const [simAssign, setSimAssign] = useState<Record<number, string>>({}); // managerId → код роли (подмена)
+    const [simPlanPersonal, setSimPlanPersonal] = useState<Record<number, number | null>>({}); // managerId → личный план
+    const [simDept, setSimDept] = useState<number | null>(null); // план отдела (подмена)
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -239,8 +253,10 @@ export function SchemesTab() {
             setCategories(cJson.categories ?? []);
             setGroups(gJson.groups ?? []);
             setArchived(sJson.archived ?? []);
+            setManagers(sJson.managers ?? []);
+            setAssignments(sJson.assignments ?? []);
             setSchemes((sJson.schemes ?? []).map((s: any) => ({
-                code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10),
+                code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10), prevEffectiveFrom: String(s.effectiveFrom).slice(0, 10),
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
             })));
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
@@ -264,7 +280,7 @@ export function SchemesTab() {
         const blocks = s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }));
         setSaving(s.code);
         try {
-            const res = await fetch('/api/salary/schemes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, blocks }) });
+            const res = await fetch('/api/salary/schemes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, blocks }) });
             const j = await res.json();
             if (!res.ok) throw new Error(j.error || 'Ошибка');
             toast({ title: 'Схема сохранена', description: s.name }); load();
@@ -276,7 +292,7 @@ export function SchemesTab() {
         if (!code) return;
         if (schemes.some((s) => s.code === code)) { toast({ title: 'Схема для этой роли уже есть', variant: 'destructive' }); return; }
         const grp = groups.find((g) => g.code === code);
-        setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), blocks: [] }]);
+        setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [] }]);
     };
     const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code) && !archived.some((a) => a.code === g.code));
 
@@ -295,6 +311,40 @@ export function SchemesTab() {
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setSaving(null); }
     };
+    // Симуляция: берём ТЕКУЩИЕ (в т.ч. несохранённые) черновики всех тарифов и считаем на периоде. Без записи.
+    const runSimulation = async () => {
+        setSimulating(true);
+        setSimResult(null);
+        try {
+            const payloadSchemes = schemes.map((s) => ({
+                code: s.code,
+                blocks: s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled })),
+            }));
+            const body: any = { year: simYear, month: simMonth, schemes: payloadSchemes };
+            // Подмена ролей: только реально изменённые относительно реестра.
+            const assignOverrides = assignments
+                .filter((a) => simAssign[a.managerId] && simAssign[a.managerId] !== a.schemeCode)
+                .map((a) => ({ managerId: a.managerId, schemeCode: simAssign[a.managerId] }));
+            if (assignOverrides.length) body.assignments = assignOverrides;
+            // Подмена планов: личные (только заполненные) + план отдела.
+            const personalOverrides = Object.entries(simPlanPersonal)
+                .filter(([, v]) => v != null)
+                .map(([id, v]) => ({ managerId: Number(id), target: v as number }));
+            const plans: any = {};
+            if (personalOverrides.length) plans.personal = personalOverrides;
+            if (simDept != null) plans.department = simDept;
+            if (Object.keys(plans).length) body.plans = plans;
+            const res = await fetch('/api/salary/simulate', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || 'Ошибка симуляции');
+            setSimResult(j);
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSimulating(false); }
+    };
+
     const restoreSchemeUi = async (code: string, name: string) => {
         setSaving(code);
         try {
@@ -333,6 +383,118 @@ export function SchemesTab() {
                 </div>
             </div>
             <div className="space-y-3">
+                {/* Песочница тарифов: примерить ТЕКУЩИЕ (несохранённые) черновики на любой период, в т.ч. закрытый. Ничего не пишет. */}
+                <div className="border border-violet-300 bg-violet-50/40">
+                    <div className="flex flex-wrap items-center gap-2 border-b border-violet-200 bg-violet-100/60 px-2 py-1.5">
+                        <FlaskConical className="h-4 w-4 text-violet-700" />
+                        <span className="text-sm font-semibold text-violet-900">Симуляция «что если»</span>
+                        <span className="bg-violet-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-tight text-violet-800">не сохраняется</span>
+                        <label className="ml-auto text-[11px] text-muted-foreground">период</label>
+                        <select value={simMonth} onChange={(e) => { setSimMonth(Number(e.target.value)); setSimResult(null); }} className="h-8 border px-2 text-xs">
+                            {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
+                        </select>
+                        <select value={simYear} onChange={(e) => { setSimYear(Number(e.target.value)); setSimResult(null); }} className="h-8 border px-2 text-xs">
+                            {[simYear - 1, simYear, simYear + 1].map((y) => <option key={y} value={y}>{y}</option>)}
+                        </select>
+                        <Button size="sm" className="h-8 bg-violet-700 hover:bg-violet-800" onClick={runSimulation} disabled={simulating}>
+                            {simulating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="mr-1 h-3.5 w-3.5" />} Посчитать
+                        </Button>
+                    </div>
+                    <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                        Считает зарплату на выбранном периоде по <b>текущим черновикам тарифов</b> в этом конструкторе (несохранённые правки учитываются) и сравнивает с фактом. Расчёт нигде не сохраняется — закрытый период не меняется.
+                    </div>
+                    {/* Необязательные подмены: роли менеджеров и планы периода. */}
+                    <div className="border-t border-violet-200">
+                        <button onClick={() => setShowOverrides((v) => !v)} className="flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[11px] font-medium text-violet-800 hover:bg-violet-100/40">
+                            {showOverrides ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            Подмены ролей и планов (необязательно)
+                            {(Object.values(simAssign).some(Boolean) || Object.values(simPlanPersonal).some((v) => v != null) || simDept != null) && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+                        </button>
+                        {showOverrides && (
+                            <div className="space-y-2 px-2 pb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[11px] text-muted-foreground">План отдела (выручка без НДС):</span>
+                                    <NumberInput value={simDept} onChange={setSimDept} placeholder="как в периоде" className="h-7 w-40 border px-2 text-xs text-right" />
+                                </div>
+                                {assignments.length === 0 ? (
+                                    <div className="text-[11px] text-muted-foreground">В реестре нет менеджеров с назначенной ролью.</div>
+                                ) : (
+                                    <table className="w-full text-xs">
+                                        <thead className="text-left text-[10px] uppercase text-muted-foreground">
+                                            <tr><th className="p-1">Менеджер</th><th className="p-1">Роль (подмена)</th><th className="p-1 text-right">Личный план</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y">
+                                            {assignments.map((a) => {
+                                                const opts = schemes.some((s) => s.code === a.schemeCode) ? schemes : [...schemes, { code: a.schemeCode, name: a.schemeCode } as any];
+                                                return (
+                                                    <tr key={a.managerId}>
+                                                        <td className="p-1">{managers.find((m) => m.id === a.managerId)?.name ?? `#${a.managerId}`}</td>
+                                                        <td className="p-1">
+                                                            <select value={simAssign[a.managerId] ?? a.schemeCode} onChange={(e) => setSimAssign((p) => ({ ...p, [a.managerId]: e.target.value }))} className="h-7 border px-1 text-xs">
+                                                                {opts.map((s) => <option key={s.code} value={s.code}>{s.name}</option>)}
+                                                            </select>
+                                                        </td>
+                                                        <td className="p-1 text-right">
+                                                            <NumberInput value={simPlanPersonal[a.managerId] ?? null} onChange={(v) => setSimPlanPersonal((p) => ({ ...p, [a.managerId]: v }))} placeholder="как в периоде" className="h-7 w-36 border px-2 text-xs text-right" />
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                )}
+                                <div className="text-[10px] text-muted-foreground">Пустое поле плана = как в периоде. Роль по умолчанию = текущая из реестра.</div>
+                            </div>
+                        )}
+                    </div>
+                    {simResult && (() => {
+                        const sim = new Map<number, number>((simResult.simulated?.results ?? []).map((r: any) => [Number(r.managerId), Number(r.total)]));
+                        const act = new Map<number, number>((simResult.actual ?? []).map((r: any) => [Number(r.managerId), Number(r.total)]));
+                        const ids = Array.from(new Set([...Array.from(sim.keys()), ...Array.from(act.keys())])).sort((a, b) => a - b);
+                        const rub = (n: number | null | undefined) => n == null ? '—' : Math.round(Number(n)).toLocaleString('ru-RU') + ' ₽';
+                        const nameOf = (id: number) => managers.find((m) => m.id === id)?.name ?? `#${id}`;
+                        const statusLabel = simResult.periodStatus === 'closed' ? 'закрыт' : simResult.periodStatus === 'open' ? 'открыт' : 'не рассчитан';
+                        return (
+                            <div className="border-t border-violet-200">
+                                <div className="px-2 py-1 text-[11px] text-violet-900">
+                                    Период {MONTHS[simResult.month - 1]} {simResult.year} · статус: <b>{statusLabel}</b>
+                                    {simResult.periodStatus === 'none' && ' (факта нет — сравнивать не с чем)'}
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-violet-100/50 text-left text-[10px] uppercase text-violet-800">
+                                            <tr><th className="p-1.5">Менеджер</th><th className="p-1.5 text-right">Факт</th><th className="p-1.5 text-right">Симуляция</th><th className="p-1.5 text-right">Δ</th></tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-violet-100">
+                                            {ids.map((id) => {
+                                                const a = act.get(id); const s = sim.get(id);
+                                                const d = (s ?? 0) - (a ?? 0);
+                                                return (
+                                                    <tr key={id}>
+                                                        <td className="p-1.5">{nameOf(id)}</td>
+                                                        <td className="p-1.5 text-right tabular-nums">{rub(a)}</td>
+                                                        <td className="p-1.5 text-right tabular-nums">{rub(s)}</td>
+                                                        <td className={`p-1.5 text-right tabular-nums font-medium ${d > 0 ? 'text-emerald-700' : d < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>{d === 0 ? '—' : (d > 0 ? '+' : '') + Math.round(d).toLocaleString('ru-RU') + ' ₽'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        <tfoot className="border-t-2 border-violet-300 bg-violet-100/40 font-semibold text-violet-900">
+                                            <tr>
+                                                <td className="p-1.5">ФОТ отдела</td>
+                                                <td className="p-1.5 text-right tabular-nums">{rub(simResult.actualTotal)}</td>
+                                                <td className="p-1.5 text-right tabular-nums">{rub(simResult.simulatedTotal)}</td>
+                                                <td className={`p-1.5 text-right tabular-nums ${simResult.simulatedTotal - simResult.actualTotal > 0 ? 'text-emerald-700' : simResult.simulatedTotal - simResult.actualTotal < 0 ? 'text-red-600' : ''}`}>
+                                                    {(() => { const d = simResult.simulatedTotal - simResult.actualTotal; return d === 0 ? '—' : (d > 0 ? '+' : '') + Math.round(d).toLocaleString('ru-RU') + ' ₽'; })()}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </div>
                 <div className="flex items-center justify-end gap-2">
                     <span className="text-[11px] text-muted-foreground">Роль (группа RetailCRM):</span>
                     <select

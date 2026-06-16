@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, X } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
@@ -57,10 +58,13 @@ export default function SalaryDashboard() {
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
+    const [reopening, setReopening] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [dutyOpen, setDutyOpen] = useState(false);
     const { toast } = useToast();
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
 
     const period = `${year}-${month}`;
     const closed = data?.period?.status === 'closed';
@@ -111,7 +115,7 @@ export default function SalaryDashboard() {
     };
 
     const closePeriod = async () => {
-        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}? После закрытия расчёт неизменяем, правки — только корректировками.`)) return;
+        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}?\n\nПосле закрытия расчёт замораживается: пересчёт по нему недоступен. Изменить закрытый период можно только переоткрыв его (доступно администратору).`)) return;
         setClosing(true);
         try {
             const res = await fetch('/api/salary/close', {
@@ -127,6 +131,26 @@ export default function SalaryDashboard() {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
         } finally {
             setClosing(false);
+        }
+    };
+
+    const reopenPeriod = async () => {
+        if (!confirm(`Переоткрыть период ${MONTHS[month - 1]} ${year}?\n\nПериод снова станет открытым и доступным для пересчёта. Текущие суммы не изменятся, пока вы не нажмёте «Пересчитать» — тогда они будут пересчитаны по действующим на тот период правилам (в т.ч. изменённым задним числом). Действие фиксируется в журнале.`)) return;
+        setReopening(true);
+        try {
+            const res = await fetch('/api/salary/reopen', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, month }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Ошибка переоткрытия');
+            toast({ title: 'Период переоткрыт', description: `${MONTHS[month - 1]} ${year}` });
+            fetchData();
+        } catch (e: any) {
+            toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
+        } finally {
+            setReopening(false);
         }
     };
 
@@ -162,6 +186,12 @@ export default function SalaryDashboard() {
                         <Button variant="destructive" size="sm" onClick={closePeriod} disabled={closing}>
                             {closing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
                             Закрыть период
+                        </Button>
+                    )}
+                    {closed && isAdmin && (
+                        <Button variant="outline" size="sm" onClick={reopenPeriod} disabled={reopening}>
+                            {reopening ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LockOpen className="mr-2 h-4 w-4" />}
+                            Переоткрыть
                         </Button>
                     )}
                 </div>

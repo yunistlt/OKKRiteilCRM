@@ -41,6 +41,7 @@ export async function PUT(req: Request) {
             code: String(body.code),
             name: String(body.name),
             effectiveFrom: String(body.effectiveFrom),
+            prevEffectiveFrom: body.prevEffectiveFrom ? String(body.prevEffectiveFrom) : null,
             blocks: Array.isArray(body.blocks) ? body.blocks : [],
             actor: session?.user?.email ?? null,
         });
