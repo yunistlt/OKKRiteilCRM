@@ -266,16 +266,16 @@ function Pct({ n }: { n: number | null }) {
 type ColDef = { key: string; label: string; type: 'bool' | 'text' | 'num'; tip: TooltipInfo };
 type Group = { label: string; color: string; cellBg: string; cols: ColDef[] };
 
-// Ключи, которые входят в расчёт deal_score_pct на бэкенде
-const DEAL_CHECK_KEYS = [
+// Ключи, которые входят в расчёт deal_score_pct на бэкенде (ДЕФОЛТ — фолбэк, если реестр okk_criteria пуст)
+const DEFAULT_DEAL_CHECK_KEYS = [
     'tz_received', 'field_buyer_filled', 'field_product_category', 'field_contact_data',
     'relevant_number_found', 'field_expected_amount', 'field_purchase_form', 'field_sphere_correct',
     'mandatory_comments', 'email_sent_no_answer', 'lead_in_work_lt_1_day', 'next_contact_not_overdue',
     'deal_in_status_lt_5_days',
 ];
 
-// Ключи скрипт-колонок для расчёта script_score_pct
-const SCRIPT_CHECK_KEYS = [
+// Ключи скрипт-колонок для расчёта script_score_pct (ДЕФОЛТ — фолбэк, если реестр okk_criteria пуст)
+const DEFAULT_SCRIPT_CHECK_KEYS = [
     'script_greeting', 'script_call_purpose', 'script_company_info', 'script_lpr_identified',
     'script_budget_confirmed', 'script_urgency_identified', 'script_deadlines', 'script_tz_confirmed',
     'script_objection_general', 'script_objection_delays', 'script_offer_best_tech',
@@ -283,7 +283,7 @@ const SCRIPT_CHECK_KEYS = [
     'script_next_step_agreed', 'script_dialogue_management', 'script_confident_speech',
 ];
 
-const COL_GROUPS: Group[] = [
+const DEFAULT_COL_GROUPS: Group[] = [
     {
         label: 'Статус и время ожидания лида',
         color: 'bg-sky-50 text-sky-700',
@@ -517,6 +517,38 @@ const SCORE_COLS: Array<{ key: string; label: string; tip: TooltipInfo }> = [
     },
 ];
 
+// ─── Реестр критериев из БД (okk_criteria) → структуры колонок ──
+type CriteriaRow = {
+    key: string; label: string; category: string; group_color: string | null; cell_bg: string | null;
+    type: 'bool' | 'text' | 'num'; agent: string | null; agent_emoji: string | null;
+    eval_method: string; scoring_basket: 'deal' | 'script' | null; how_tip: string | null; data_tip: string | null;
+    sort_order: number; is_active: boolean;
+};
+
+// Превращает строки реестра в группы колонок (как DEFAULT_COL_GROUPS) + корзины ключей балла.
+function buildCriteriaView(rows: CriteriaRow[]): { groups: Group[]; dealKeys: string[]; scriptKeys: string[] } {
+    const ordered = [...rows].sort((a, b) => a.sort_order - b.sort_order);
+    const groups: Group[] = [];
+    const byCat = new Map<string, Group>();
+    for (const r of ordered) {
+        let g = byCat.get(r.category);
+        if (!g) {
+            g = { label: r.category, color: r.group_color || 'bg-gray-50 text-gray-700', cellBg: r.cell_bg || 'bg-gray-50/40', cols: [] };
+            byCat.set(r.category, g);
+            groups.push(g);
+        }
+        g.cols.push({
+            key: r.key,
+            label: r.label,
+            type: (r.type as 'bool' | 'text' | 'num') || 'bool',
+            tip: { agent: r.agent || '', agentEmoji: r.agent_emoji || '', how: r.how_tip || '', data: r.data_tip || '' },
+        });
+    }
+    const dealKeys = ordered.filter(r => r.scoring_basket === 'deal').map(r => r.key);
+    const scriptKeys = ordered.filter(r => r.scoring_basket === 'script').map(r => r.key);
+    return { groups, dealKeys, scriptKeys };
+}
+
 // ─── Панель настройки колонок ──────────────────────────────
 const LOCALSTORAGE_KEY = 'okk_hidden_columns';
 
@@ -539,8 +571,8 @@ function saveHiddenColumns(hidden: Set<string>) {
 }
 
 /** Пересчитывает deal_score_pct с учётом скрытых колонок */
-function recalcDealScorePct(order: OrderScore, hiddenCols: Set<string>): number | null {
-    const activeKeys = DEAL_CHECK_KEYS.filter(k => !hiddenCols.has(k));
+function recalcDealScorePct(order: OrderScore, hiddenCols: Set<string>, dealKeys: string[]): number | null {
+    const activeKeys = dealKeys.filter(k => !hiddenCols.has(k));
     if (activeKeys.length === 0) return null;
     const checks = activeKeys
         .map(k => (order as any)[k] ?? order.score_breakdown?.[k]?.result ?? null)
@@ -551,8 +583,8 @@ function recalcDealScorePct(order: OrderScore, hiddenCols: Set<string>): number 
 }
 
 /** Пересчитывает script_score_pct с учётом скрытых колонок */
-function recalcScriptScorePct(order: OrderScore, hiddenCols: Set<string>): number | null {
-    const activeKeys = SCRIPT_CHECK_KEYS.filter(k => !hiddenCols.has(k));
+function recalcScriptScorePct(order: OrderScore, hiddenCols: Set<string>, scriptKeys: string[]): number | null {
+    const activeKeys = scriptKeys.filter(k => !hiddenCols.has(k));
     if (activeKeys.length === 0) return null;
     const checks = activeKeys
         .map(k => {
@@ -566,10 +598,13 @@ function recalcScriptScorePct(order: OrderScore, hiddenCols: Set<string>): numbe
     return Math.round((passed / checks.length) * 100);
 }
 
-function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
+function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose, colGroups, dealKeys, scriptKeys }: {
     hiddenColumns: Set<string>;
     onToggle: (key: string) => void;
     onClose: () => void;
+    colGroups: Group[];
+    dealKeys: string[];
+    scriptKeys: string[];
 }) {
     const panelRef = useRef<HTMLDivElement>(null);
 
@@ -583,7 +618,7 @@ function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
         return () => document.removeEventListener('mousedown', handleClick);
     }, [onClose]);
 
-    const allCols = COL_GROUPS.flatMap(g => g.cols);
+    const allCols = colGroups.flatMap(g => g.cols);
     const totalVisible = allCols.filter(c => !hiddenColumns.has(c.key)).length;
 
     return (
@@ -596,7 +631,7 @@ function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
                 <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full bg-white text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors shadow-sm border border-gray-100">✕</button>
             </div>
             <div className="overflow-y-auto max-h-[calc(70vh-120px)] p-2">
-                {COL_GROUPS.map(group => {
+                {colGroups.map(group => {
                     const groupVisible = group.cols.filter(c => !hiddenColumns.has(c.key)).length;
                     const allChecked = groupVisible === group.cols.length;
                     const noneChecked = groupVisible === 0;
@@ -626,8 +661,8 @@ function ColumnSettingsPanel({ hiddenColumns, onToggle, onClose }: {
                             <div className="ml-4 pl-3 border-l-2 border-gray-100 space-y-0.5 mt-0.5 mb-1">
                                 {group.cols.map(col => {
                                     const visible = !hiddenColumns.has(col.key);
-                                    const isDealKey = DEAL_CHECK_KEYS.includes(col.key);
-                                    const isScriptKey = SCRIPT_CHECK_KEYS.includes(col.key);
+                                    const isDealKey = dealKeys.includes(col.key);
+                                    const isScriptKey = scriptKeys.includes(col.key);
                                     return (
                                         <button
                                             key={col.key}
@@ -720,6 +755,27 @@ function OKKContent() {
     const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(() => loadHiddenColumns());
     const [columnSettingsOpen, setColumnSettingsOpen] = useState(false);
 
+    // Колонки и корзины балла — из реестра okk_criteria, с фолбэком на дефолты в коде.
+    const [colGroups, setColGroups] = useState<Group[]>(DEFAULT_COL_GROUPS);
+    const [dealKeys, setDealKeys] = useState<string[]>(DEFAULT_DEAL_CHECK_KEYS);
+    const [scriptKeys, setScriptKeys] = useState<string[]>(DEFAULT_SCRIPT_CHECK_KEYS);
+
+    useEffect(() => {
+        fetch('/api/okk/criteria')
+            .then(res => res.json())
+            .then((rows) => {
+                if (Array.isArray(rows) && rows.length > 0) {
+                    const view = buildCriteriaView(rows as CriteriaRow[]);
+                    if (view.groups.length > 0) {
+                        setColGroups(view.groups);
+                        setDealKeys(view.dealKeys.length ? view.dealKeys : DEFAULT_DEAL_CHECK_KEYS);
+                        setScriptKeys(view.scriptKeys.length ? view.scriptKeys : DEFAULT_SCRIPT_CHECK_KEYS);
+                    }
+                }
+            })
+            .catch(console.error);
+    }, []);
+
     const hasHiddenColumns = hiddenColumns.size > 0;
 
     const toggleColumnVisibility = useCallback((key: string) => {
@@ -734,11 +790,11 @@ function OKKContent() {
 
     // Отфильтрованные группы колонок (только видимые)
     const visibleColGroups = useMemo(() => {
-        return COL_GROUPS.map(g => ({
+        return colGroups.map(g => ({
             ...g,
             cols: g.cols.filter(c => !hiddenColumns.has(c.key))
         })).filter(g => g.cols.length > 0);
-    }, [hiddenColumns]);
+    }, [colGroups, hiddenColumns]);
 
     // Fetch active managers for dropdown
     useEffect(() => {
@@ -1197,6 +1253,9 @@ function OKKContent() {
                             hiddenColumns={hiddenColumns}
                             onToggle={toggleColumnVisibility}
                             onClose={() => setColumnSettingsOpen(false)}
+                            colGroups={colGroups}
+                            dealKeys={dealKeys}
+                            scriptKeys={scriptKeys}
                         />
                     )}
                 </div>
@@ -1284,13 +1343,13 @@ function OKKContent() {
                                             )}
                                         </td>
                                         {(() => {
-                                            const adjDeal = hasHiddenColumns ? recalcDealScorePct(s, hiddenColumns) : s.deal_score_pct;
-                                            const adjScript = hasHiddenColumns ? recalcScriptScorePct(s, hiddenColumns) : s.script_score_pct;
+                                            const adjDeal = hasHiddenColumns ? recalcDealScorePct(s, hiddenColumns, dealKeys) : s.deal_score_pct;
+                                            const adjScript = hasHiddenColumns ? recalcScriptScorePct(s, hiddenColumns, scriptKeys) : s.script_score_pct;
                                             const adjDealScore = hasHiddenColumns
-                                                ? (adjDeal !== null ? Math.round((adjDeal / 100) * DEAL_CHECK_KEYS.filter(k => !hiddenColumns.has(k)).length) : null)
+                                                ? (adjDeal !== null ? Math.round((adjDeal / 100) * dealKeys.filter(k => !hiddenColumns.has(k)).length) : null)
                                                 : s.deal_score;
                                             const adjScriptScore = hasHiddenColumns
-                                                ? (adjScript !== null ? Math.round((adjScript / 100) * SCRIPT_CHECK_KEYS.filter(k => !hiddenColumns.has(k)).length) : null)
+                                                ? (adjScript !== null ? Math.round((adjScript / 100) * scriptKeys.filter(k => !hiddenColumns.has(k)).length) : null)
                                                 : s.script_score;
                                             return (
                                                 <>
