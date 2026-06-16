@@ -491,6 +491,25 @@ export async function createAccessAccount(input: {
     }
 }
 
+function getProtectedUsernames(): string[] {
+    return (process.env.PROTECTED_ACCOUNT_USERNAMES || 'admin')
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+}
+
+async function countDistinctAdmins(): Promise<number> {
+    const [usersResult, profilesResult] = await Promise.all([
+        supabase.from('users').select('id').eq('role', 'admin'),
+        supabase.from('profiles').select('id').eq('role', 'admin'),
+    ]);
+
+    const ids = new Set<string>();
+    for (const row of (usersResult.data || []) as any[]) ids.add(String(row.id));
+    for (const row of (profilesResult.data || []) as any[]) ids.add(String(row.id));
+    return ids.size;
+}
+
 export async function deleteAccessAccount(input: {
     id: string;
     source: 'profile' | 'legacy';
@@ -499,6 +518,21 @@ export async function deleteAccessAccount(input: {
         const session = await getSession();
         if (session?.user?.id && session.user.id === input.id) {
             return { success: false, message: 'Нельзя удалить собственный аккаунт.', errorType: 'UNKNOWN' };
+        }
+
+        // Берём роль и логин аккаунта из БД, чтобы не доверять клиенту.
+        const table = input.source === 'profile' ? 'profiles' : 'users';
+        const targetResult = await supabase.from(table).select('username, role').eq('id', input.id).maybeSingle();
+        const target = targetResult.error ? null : targetResult.data;
+        const targetUsername = typeof target?.username === 'string' ? target.username.toLowerCase() : '';
+        const targetRole = normalizeRole(target?.role);
+
+        if (targetUsername && getProtectedUsernames().includes(targetUsername)) {
+            return { success: false, message: 'Этот аккаунт защищён от удаления.', errorType: 'UNKNOWN' };
+        }
+
+        if (targetRole === 'admin' && (await countDistinctAdmins()) <= 1) {
+            return { success: false, message: 'Нельзя удалить последнего администратора.', errorType: 'UNKNOWN' };
         }
 
         if (input.source === 'profile') {

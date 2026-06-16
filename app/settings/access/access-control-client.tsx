@@ -413,7 +413,9 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => handleCreateInvitationForAccount(account)} disabled={isPending} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-black text-gray-700 disabled:opacity-50">Ссылка-приглашение</button>
                                         <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
-                                        <button onClick={() => handleDeleteAccount(account)} disabled={isPending} className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50">Удалить</button>
+                                        {(account.username || '').toLowerCase() !== 'admin' && (
+                                            <button onClick={() => handleDeleteAccount(account)} disabled={isPending} className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50">Удалить</button>
+                                        )}
                                     </div>
                                 </div>
 
