@@ -38,6 +38,22 @@ interface RuleExecutionContext {
 }
 
 /**
+ * Карта managerId → коды групп RetailCRM (для ролевого таргетинга правил).
+ * Роль менеджера = его группы в CRM (managers.raw_data.groups[].code).
+ */
+async function fetchManagerGroupCodes(ids: any[]): Promise<Map<number, string[]>> {
+    const map = new Map<number, string[]>();
+    const uniq = Array.from(new Set(ids.filter((x) => x != null).map((x) => Number(x))));
+    if (uniq.length === 0) return map;
+    const { data } = await supabase.from('managers').select('id, raw_data').in('id', uniq);
+    for (const m of (data as any[]) || []) {
+        const groups: any[] = Array.isArray(m.raw_data?.groups) ? m.raw_data.groups : [];
+        map.set(Number(m.id), groups.map((g) => String(g.code)));
+    }
+    return map;
+}
+
+/**
  * Execute all active rules against a time range.
  */
 export async function runRuleEngine(startDate: string, endDate: string, targetRuleId?: string, dryRun = false, adHocRule?: any, trace?: string[], targetOrderId?: number | string, executionContext?: RuleExecutionContext) {
@@ -471,15 +487,29 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         }
     }
 
-    if (violations.length > 0) {
+    // Ролевой таргетинг: если у правила заданы target_roles — фиксируем нарушения
+    // только для менеджеров из выбранных групп RetailCRM. Пусто → правило для всех ролей.
+    let finalViolations = violations;
+    const targetRoles: string[] = Array.isArray(rule.target_roles) ? rule.target_roles.map(String) : [];
+    if (targetRoles.length > 0 && violations.length > 0) {
+        const roleMap = await fetchManagerGroupCodes(violations.map((v) => v.manager_id));
+        finalViolations = violations.filter((v) => {
+            if (v.manager_id == null) return false; // без менеджера роль не подтвердить
+            const groups = roleMap.get(Number(v.manager_id)) || [];
+            return groups.some((g) => targetRoles.includes(g));
+        });
+        if (trace) trace.push(`[RuleEngine] [${rule.code}] Ролевой фильтр (${targetRoles.join(', ')}): ${violations.length} → ${finalViolations.length}`);
+    }
+
+    if (finalViolations.length > 0) {
         if (!dryRun) {
-            // Fix: remove call_id from onConflict definition if it's not unique enough, 
+            // Fix: remove call_id from onConflict definition if it's not unique enough,
             // or just rely on rule_code, order_id, violation_time.
             // Using a simple insert for testing, or standard unique constraint.
             // We'll use a standard insert as Upsert requires exact unique constraints on those columns in Supabase.
             const { error: insError } = await supabase
                 .from('okk_violations')
-                .insert(violations);
+                .insert(finalViolations);
 
             if (insError) {
                 if (insError.code === '23505') {
@@ -499,7 +529,7 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 }
             }
         }
-        return dryRun ? violations : violations.length;
+        return dryRun ? finalViolations : finalViolations.length;
     }
 
     return dryRun ? [] : 0;

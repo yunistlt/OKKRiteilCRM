@@ -2,7 +2,7 @@
 'use client'
 
 import { useState, useEffect } from 'react';
-import { createRule } from '@/app/actions/rules';
+import { createRule, listRoleGroups } from '@/app/actions/rules';
 import RuleBlockEditor, { RuleLogic } from './rule-block-editor';
 
 export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { initialPrompt?: string, trigger?: React.ReactNode, initialRule?: any }) {
@@ -25,6 +25,10 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
     const [points, setPoints] = useState(initialRule?.points || 10);
     const [notifyTelegram, setNotifyTelegram] = useState(initialRule?.notify_telegram || false);
     const [stageStatus, setStageStatus] = useState<string>(initialRule?.parameters?.stage_status || 'any');
+    const [targetRoles, setTargetRoles] = useState<string[]>(initialRule?.target_roles || []);
+    const [category, setCategory] = useState<string>(initialRule?.category || '');
+    const [code, setCode] = useState<string>(initialRule?.code || '');
+    const [roleGroups, setRoleGroups] = useState<{ code: string; name: string }[]>([]);
 
     // Sync state when modal opens
     useEffect(() => {
@@ -41,6 +45,9 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setPoints(initialRule.points || 10);
             setNotifyTelegram(initialRule.notify_telegram || false);
             setStageStatus(initialRule.parameters?.stage_status || 'any');
+            setTargetRoles(initialRule.target_roles || []);
+            setCategory(initialRule.category || '');
+            setCode(initialRule.code || '');
         } else if (isOpen && !initialRule) {
             setPrompt(initialPrompt || '');
             setLogic({
@@ -54,6 +61,9 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             setPoints(10);
             setNotifyTelegram(false);
             setStageStatus('any');
+            setTargetRoles([]);
+            setCategory('');
+            setCode('');
         }
     }, [isOpen, initialRule, initialPrompt]);
 
@@ -90,6 +100,9 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
             const controlledIds = new Set((sData || []).map((s: any) => s.id));
             setAllManagers((mData || []).filter((m: any) => controlledIds.has(m.id)));
             setStatuses(stData || []);
+
+            const groups = await listRoleGroups();
+            setRoleGroups(groups || []);
         } catch (e) {
             console.error('Failed to fetch data:', e);
         }
@@ -179,8 +192,10 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
     const handleSave = async () => {
         setIsLoading(true);
         try {
+            // Immutable: при редактировании всегда создаётся новая версия с новым кодом.
+            const finalCode = initialRule ? ('rule_' + Date.now()) : (code.trim() || 'rule_' + Date.now());
             await createRule({
-                code: 'rule_' + Date.now(),
+                code: finalCode,
                 name,
                 description: explanation,
                 entity_type: entityType,
@@ -189,6 +204,8 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                 severity,
                 points,
                 notify_telegram: notifyTelegram,
+                target_roles: targetRoles,
+                category: category.trim() || null,
                 is_active: true
             });
 
@@ -320,6 +337,59 @@ export default function NewRuleModal({ initialPrompt, trigger, initialRule }: { 
                                 <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Штраф</label>
                                 <input type="number" value={points} onChange={e => setPoints(parseInt(e.target.value) || 0)} className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-bold outline-none" />
                             </div>
+                        </div>
+
+                        {/* Технический код */}
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Технический код</label>
+                            <input
+                                value={code}
+                                onChange={e => setCode(e.target.value)}
+                                disabled={!!initialRule}
+                                placeholder="напр. klimat_upsell (пусто → авто)"
+                                className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-mono outline-none focus:border-indigo-500 transition-all disabled:bg-gray-50 disabled:text-gray-400"
+                            />
+                            {initialRule && (
+                                <p className="text-[10px] text-gray-400 mt-1 pl-1 italic">При сохранении создаётся новая версия (Immutable), код назначается автоматически.</p>
+                            )}
+                        </div>
+
+                        {/* Категория */}
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Категория</label>
+                            <input
+                                value={category}
+                                onChange={e => setCategory(e.target.value)}
+                                placeholder="напр. В конце диалога"
+                                className="w-full border-2 border-gray-100 rounded-xl p-3 text-sm font-medium outline-none focus:border-indigo-500 transition-all"
+                            />
+                        </div>
+
+                        {/* Какие роли оценивает правило */}
+                        <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Какие роли оценивает правило</label>
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                                {roleGroups.length === 0 && (
+                                    <p className="text-[10px] text-gray-400 italic">Роли (группы RetailCRM) не загружены.</p>
+                                )}
+                                {roleGroups.map((g) => {
+                                    const checked = targetRoles.includes(g.code);
+                                    return (
+                                        <label key={g.code} className="flex items-center gap-2 p-2 border-2 border-gray-100 rounded-xl cursor-pointer hover:border-indigo-200 transition-all select-none">
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => setTargetRoles(prev => checked ? prev.filter(c => c !== g.code) : [...prev, g.code])}
+                                                className="accent-indigo-600 w-4 h-4"
+                                            />
+                                            <span className="text-xs font-bold text-gray-700">{g.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[10px] text-gray-400 mt-1.5 pl-1 italic">
+                                {targetRoles.length === 0 ? 'Ничего не выбрано → правило общее (для всех ролей).' : `Выбрано ролей: ${targetRoles.length}.`}
+                            </p>
                         </div>
                     </div>
 

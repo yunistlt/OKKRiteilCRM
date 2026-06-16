@@ -29,6 +29,18 @@ export async function getRules() {
     return data;
 }
 
+/** Справочник ролей = группы пользователей RetailCRM (имена строго из CRM). */
+export async function listRoleGroups() {
+    await ensureAdminAccess();
+    const { listRetailcrmGroups } = await import('@/lib/salary/roles');
+    try {
+        return await listRetailcrmGroups();
+    } catch (e) {
+        console.error('Error fetching role groups:', e);
+        return [];
+    }
+}
+
 export async function getRuleStats() {
     await ensureAdminAccess();
 

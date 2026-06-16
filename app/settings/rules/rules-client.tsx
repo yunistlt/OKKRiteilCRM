@@ -5,13 +5,26 @@ import RuleCard from './rule-card';
 import NewRuleModal from './new-rule-modal';
 import Link from 'next/link';
 
-export default function RulesClient({ rules, stats }: { rules: any[], stats: Record<string, number> }) {
+export default function RulesClient({ rules, stats, roleNames = {} }: { rules: any[], stats: Record<string, number>, roleNames?: Record<string, string> }) {
     const [activeTab, setActiveTab] = useState<'active' | 'archived'>('active');
 
     const activeRules = rules.filter(r => r.is_active);
     const archivedRules = rules.filter(r => !r.is_active);
 
     const displayedRules = activeTab === 'active' ? activeRules : archivedRules;
+
+    // Группировка по категориям (как колонки «В конце диалога» в эталоне). Без категории → в конец.
+    const NO_CATEGORY = 'Без категории';
+    const groupedRules = displayedRules.reduce((acc: Record<string, any[]>, rule: any) => {
+        const cat = (rule.category && String(rule.category).trim()) || NO_CATEGORY;
+        (acc[cat] = acc[cat] || []).push(rule);
+        return acc;
+    }, {});
+    const categoryOrder = Object.keys(groupedRules).sort((a, b) => {
+        if (a === NO_CATEGORY) return 1;
+        if (b === NO_CATEGORY) return -1;
+        return a.localeCompare(b, 'ru');
+    });
 
     return (
         <div className="w-full px-4 py-6 md:px-6 md:py-8">
@@ -48,18 +61,26 @@ export default function RulesClient({ rules, stats }: { rules: any[], stats: Rec
                 </button>
             </div>
 
-            <div className="space-y-4 md:space-y-6">
+            <div className="space-y-8">
                 {displayedRules.length === 0 && (
                     <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-lg dashed border border-gray-200">
                         {activeTab === 'active' ? 'Нет активных правил' : 'Архив пуст'}
                     </div>
                 )}
-                {displayedRules.map((rule: any) => (
-                    <RuleCard
-                        key={rule.code}
-                        rule={rule}
-                        violationCount={stats[rule.code] || 0}
-                    />
+                {categoryOrder.map((cat) => (
+                    <div key={cat}>
+                        <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-3 px-1">{cat}</h2>
+                        <div className="space-y-4 md:space-y-6">
+                            {groupedRules[cat].map((rule: any) => (
+                                <RuleCard
+                                    key={rule.code}
+                                    rule={rule}
+                                    violationCount={stats[rule.code] || 0}
+                                    roleNames={roleNames}
+                                />
+                            ))}
+                        </div>
+                    </div>
                 ))}
             </div>
 

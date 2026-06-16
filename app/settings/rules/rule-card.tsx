@@ -7,7 +7,8 @@ import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
 import NewRuleModal from './new-rule-modal';
 
-export default function RuleCard({ rule, violationCount }: { rule: any, violationCount: number }) {
+export default function RuleCard({ rule, violationCount, roleNames = {} }: { rule: any, violationCount: number, roleNames?: Record<string, string> }) {
+    const targetRoles: string[] = Array.isArray(rule.target_roles) ? rule.target_roles : [];
     const [isLoading, setIsLoading] = useState(false);
     const [params, setParams] = useState(rule.parameters);
     const [auditStatus, setAuditStatus] = useState(rule.parameters?.audit_status || 'idle');
@@ -195,6 +196,14 @@ export default function RuleCard({ rule, violationCount }: { rule: any, violatio
                         {rule.description}
                     </p>
                     <div className="flex flex-wrap gap-2">
+                        <span
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 ${targetRoles.length > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-gray-50 text-gray-400 border-gray-100'}`}
+                            title={targetRoles.length > 0 ? 'Правило оценивает только выбранные роли' : 'Правило применяется ко всем ролям'}
+                        >
+                            🏷️ {targetRoles.length > 0
+                                ? targetRoles.map((c) => roleNames[c] || c).join(', ')
+                                : 'Все роли'}
+                        </span>
                         {params.manager_ids?.length > 0 && (
                             <span className="bg-blue-50 text-blue-700 text-[10px] px-2 py-0.5 rounded font-bold border border-blue-100 flex items-center gap-1">
                                 👤 {params.manager_ids.length} Менедж.
