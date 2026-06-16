@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import FotSimulatorModal from './FotSimulatorModal';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -238,6 +239,7 @@ export function SchemesTab() {
     const [simAssign, setSimAssign] = useState<Record<number, string>>({}); // managerId → код роли (подмена)
     const [simPlanPersonal, setSimPlanPersonal] = useState<Record<number, number | null>>({}); // managerId → личный план
     const [simDept, setSimDept] = useState<number | null>(null); // план отдела (подмена)
+    const [simSchemeIdx, setSimSchemeIdx] = useState<number | null>(null); // открыт симулятор ФОТ для роли (индекс)
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -525,6 +527,15 @@ export function SchemesTab() {
                             <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
+                            {(() => {
+                                const assigned = assignments.filter((a) => a.schemeCode === s.code).length;
+                                return (
+                                    <Button size="sm" variant="outline" className="h-8 border-violet-300 text-violet-700 hover:bg-violet-50" onClick={() => setSimSchemeIdx(si)} disabled={assigned === 0}
+                                        title={assigned === 0 ? 'Нет менеджеров в этой роли (назначьте в «Реестр ОП»)' : 'Симулятор ФОТ: ползунки → мгновенный пересчёт'}>
+                                        <SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Симулятор ФОТ
+                                    </Button>
+                                );
+                            })()}
                             <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
                             <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => removeScheme(si)} disabled={saving === s.code} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
                         </div>
@@ -588,6 +599,17 @@ export function SchemesTab() {
                 )}
             </div>
         </div>
+        {simSchemeIdx != null && schemes[simSchemeIdx] && (
+            <FotSimulatorModal
+                schemeCode={schemes[simSchemeIdx].code}
+                schemeName={schemes[simSchemeIdx].name}
+                blocks={schemes[simSchemeIdx].blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }))}
+                managerIds={assignments.filter((a) => a.schemeCode === schemes[simSchemeIdx!].code).map((a) => a.managerId)}
+                initialYear={simYear}
+                initialMonth={simMonth}
+                onClose={() => setSimSchemeIdx(null)}
+            />
+        )}
       </CategoriesContext.Provider>
     );
 }
