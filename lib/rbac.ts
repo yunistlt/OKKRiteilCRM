@@ -38,6 +38,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/reactivation', label: 'Экран реактивации', description: 'Рабочий интерфейс реактивации.', category: 'Реактивация', allowed: ['admin', 'rop'] },
     { prefix: '/api/okk/consultant/logs', label: 'Логи консультанта ОКК', description: 'Аудит и trace-логи консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/okk/audit', label: 'Аудит ОКК', description: 'Экран разбора ответов консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
+    { prefix: '/okk/criteria', label: 'Критерии качества', description: 'Управление критериями «Контроля качества» (добавление/редактирование/удаление).', category: 'ОКК', allowed: ['admin'] },
     { prefix: '/okk/lead-catcher', label: 'Ловец Лидов', description: 'Рабочий экран Ловца Лидов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/api/lead-catcher', label: 'API Ловца Лидов', description: 'Серверные API Ловца Лидов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/okk', label: 'Контроль качества', description: 'Основной экран ОКК и оценки заказов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },

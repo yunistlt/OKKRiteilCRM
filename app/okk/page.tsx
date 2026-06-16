@@ -1260,6 +1260,17 @@ function OKKContent() {
                     )}
                 </div>
 
+                {/* Управление критериями (только админ) */}
+                {user?.role === 'admin' && (
+                    <Link
+                        href="/okk/criteria"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold transition-all bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                        title="Добавить/редактировать критерии качества"
+                    >
+                        ⚙️ Критерии
+                    </Link>
+                )}
+
                 {/* Pagination (Compact inline) */}
                 {pagination.totalPages > 1 && (
                     <div className="flex items-center bg-gray-50 rounded p-0.5 border border-gray-100 shrink-0">
