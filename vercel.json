@@ -62,6 +62,10 @@
             "schedule": "*/5 * * * *"
         },
         {
+            "path": "/api/cron/stt-watchdog",
+            "schedule": "*/5 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/rule-engine",
             "schedule": "*/5 * * * *"
         },
