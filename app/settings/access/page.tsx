@@ -17,6 +17,8 @@ export default async function AccessControlPage() {
                 routeRulesTableReady={data.routeRulesTableReady}
                 initialRoleCapabilities={data.roleCapabilities}
                 roleCapabilitiesTableReady={data.roleCapabilitiesTableReady}
+                initialInvitations={data.invitations}
+                invitationsTableReady={data.invitationsTableReady}
             />
         );
     } catch (error: any) {
@@ -30,6 +32,8 @@ export default async function AccessControlPage() {
                 routeRulesTableReady={false}
                 initialRoleCapabilities={DEFAULT_ROLE_CAPABILITIES}
                 roleCapabilitiesTableReady={false}
+                initialInvitations={[]}
+                invitationsTableReady={false}
             />
         );
     }

@@ -1,5 +1,6 @@
 'use server';
 
+import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { AppRole } from '@/lib/auth';
 import { APP_ROLES, DEFAULT_ROUTE_RULES, normalizeAllowedRoles, RouteRule } from '@/lib/rbac';
@@ -26,6 +27,36 @@ export type AccessManagerOption = {
     label: string;
     active: boolean;
 };
+
+export type AccessInvitation = {
+    id: string;
+    token: string;
+    role: AppRole;
+    retail_crm_manager_id: number | null;
+    first_name: string | null;
+    last_name: string | null;
+    note: string | null;
+    revoked: boolean;
+    used_count: number;
+    last_used_at: string | null;
+    created_at: string | null;
+};
+
+function normalizeInvitation(record: any): AccessInvitation {
+    return {
+        id: String(record.id),
+        token: String(record.token),
+        role: normalizeRole(record.role),
+        retail_crm_manager_id: normalizeManagerId(record.retail_crm_manager_id),
+        first_name: typeof record.first_name === 'string' ? record.first_name : null,
+        last_name: typeof record.last_name === 'string' ? record.last_name : null,
+        note: typeof record.note === 'string' ? record.note : null,
+        revoked: Boolean(record.revoked),
+        used_count: typeof record.used_count === 'number' ? record.used_count : 0,
+        last_used_at: typeof record.last_used_at === 'string' ? record.last_used_at : null,
+        created_at: typeof record.created_at === 'string' ? record.created_at : null,
+    };
+}
 
 type AccessActionResult = {
     success: boolean;
@@ -247,17 +278,21 @@ export async function loadAccessControlData(): Promise<{
     routeRulesTableReady: boolean;
     roleCapabilities: RoleCapabilityProfile[];
     roleCapabilitiesTableReady: boolean;
+    invitations: AccessInvitation[];
+    invitationsTableReady: boolean;
 }> {
-    const [profilesRows, usersRows, managersRows, rulesResult, roleCapabilitiesResult] = await Promise.all([
+    const [profilesRows, usersRows, managersRows, rulesResult, roleCapabilitiesResult, invitationsResult] = await Promise.all([
         loadAccountsTable('profiles'),
         loadAccountsTable('users'),
         loadManagersTable(),
         supabase.from('access_route_rules').select('prefix, label, description, category, allowed_roles'),
-        supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_reactivation, can_view_settings, can_manage_users, can_run_bulk_operations'),
+        supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_reactivation, can_view_salary, can_view_settings, can_manage_users, can_run_bulk_operations'),
+        supabase.from('access_invitations').select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at').order('created_at', { ascending: false }),
     ]);
 
     if (rulesResult.error && !isMissingTableError(rulesResult.error)) throw rulesResult.error;
     if (roleCapabilitiesResult.error && !isMissingTableError(roleCapabilitiesResult.error)) throw roleCapabilitiesResult.error;
+    if (invitationsResult.error && !isMissingTableError(invitationsResult.error)) throw invitationsResult.error;
 
     const profiles: AccessAccount[] = profilesRows.map((item: any) => normalizeAccount(item, 'profile'));
     const legacyAccounts = usersRows
@@ -287,6 +322,7 @@ export async function loadAccessControlData(): Promise<{
                 canViewAnalytics: item.can_view_analytics,
                 canViewAudit: item.can_view_audit,
                 canViewReactivation: item.can_view_reactivation,
+                canViewSalary: item.can_view_salary,
                 canViewSettings: item.can_view_settings,
                 canManageUsers: item.can_manage_users,
                 canRunBulkOperations: item.can_run_bulk_operations,
@@ -310,6 +346,8 @@ export async function loadAccessControlData(): Promise<{
         routeRulesTableReady: !Boolean(rulesResult.error),
         roleCapabilities: DEFAULT_ROLE_CAPABILITIES.map((item) => roleCapabilityMap.get(item.role) || item),
         roleCapabilitiesTableReady: !Boolean(roleCapabilitiesResult.error),
+        invitations: ((invitationsResult.data || []) as any[]).map(normalizeInvitation),
+        invitationsTableReady: !Boolean(invitationsResult.error),
     };
 }
 
@@ -511,6 +549,7 @@ export async function saveRoleCapabilities(roleCapabilities: RoleCapabilityProfi
                 can_view_analytics: normalized.canViewAnalytics,
                 can_view_audit: normalized.canViewAudit,
                 can_view_reactivation: normalized.canViewReactivation,
+                can_view_salary: normalized.canViewSalary,
                 can_view_settings: normalized.canViewSettings,
                 can_manage_users: normalized.canManageUsers,
                 can_run_bulk_operations: normalized.canRunBulkOperations,
@@ -528,6 +567,59 @@ export async function saveRoleCapabilities(roleCapabilities: RoleCapabilityProfi
 
         revalidatePath('/settings/access');
         return { success: true, message: 'Бизнес-права ролей сохранены.' };
+    } catch (error: any) {
+        return toAccessActionError(error);
+    }
+}
+
+function generateInvitationToken(): string {
+    return randomBytes(24).toString('base64url');
+}
+
+export async function createAccessInvitation(input: {
+    role: AppRole;
+    retail_crm_manager_id?: number | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    note?: string | null;
+}): Promise<AccessActionResult & { invitation?: AccessInvitation }> {
+    try {
+        const role = normalizeRole(input.role);
+        const retailCrmManagerId = role === 'manager' ? normalizeManagerId(input.retail_crm_manager_id) : null;
+
+        const { data, error } = await supabase
+            .from('access_invitations')
+            .insert({
+                token: generateInvitationToken(),
+                role,
+                retail_crm_manager_id: retailCrmManagerId,
+                first_name: input.first_name?.trim() || null,
+                last_name: input.last_name?.trim() || null,
+                note: input.note?.trim() || null,
+            })
+            .select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at')
+            .single();
+
+        if (error) throw error;
+
+        revalidatePath('/settings/access');
+        return { success: true, message: 'Ссылка-приглашение создана.', invitation: normalizeInvitation(data) };
+    } catch (error: any) {
+        return toAccessActionError(error);
+    }
+}
+
+export async function revokeAccessInvitation(id: string): Promise<AccessActionResult> {
+    try {
+        const { error } = await supabase
+            .from('access_invitations')
+            .update({ revoked: true })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        revalidatePath('/settings/access');
+        return { success: true, message: 'Ссылка-приглашение отозвана.' };
     } catch (error: any) {
         return toAccessActionError(error);
     }

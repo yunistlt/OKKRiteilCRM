@@ -27,7 +27,7 @@ export async function getEffectiveRoleCapabilities(): Promise<RoleCapabilityProf
     try {
         const { url, key } = getSupabaseRestConfig();
         const response = await fetch(
-            `${url}/rest/v1/access_role_capabilities?select=role,data_scope,edit_scope,can_view_analytics,can_view_audit,can_view_reactivation,can_view_settings,can_manage_users,can_run_bulk_operations&order=role.asc`,
+            `${url}/rest/v1/access_role_capabilities?select=role,data_scope,edit_scope,can_view_analytics,can_view_audit,can_view_reactivation,can_view_salary,can_view_settings,can_manage_users,can_run_bulk_operations&order=role.asc`,
             {
                 headers: {
                     apikey: key,
@@ -65,6 +65,7 @@ export async function getEffectiveRoleCapabilities(): Promise<RoleCapabilityProf
                     canViewAnalytics: item.can_view_analytics,
                     canViewAudit: item.can_view_audit,
                     canViewReactivation: item.can_view_reactivation,
+                    canViewSalary: item.can_view_salary,
                     canViewSettings: item.can_view_settings,
                     canManageUsers: item.can_manage_users,
                     canRunBulkOperations: item.can_run_bulk_operations,

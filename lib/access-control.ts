@@ -10,6 +10,7 @@ export type RoleCapabilityProfile = {
     canViewAnalytics: boolean;
     canViewAudit: boolean;
     canViewReactivation: boolean;
+    canViewSalary: boolean;
     canViewSettings: boolean;
     canManageUsers: boolean;
     canRunBulkOperations: boolean;
@@ -45,6 +46,7 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewAnalytics: true,
         canViewAudit: true,
         canViewReactivation: true,
+        canViewSalary: true,
         canViewSettings: true,
         canManageUsers: true,
         canRunBulkOperations: true,
@@ -56,6 +58,7 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewAnalytics: false,
         canViewAudit: false,
         canViewReactivation: false,
+        canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
         canRunBulkOperations: false,
@@ -67,6 +70,7 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewAnalytics: true,
         canViewAudit: true,
         canViewReactivation: false,
+        canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
         canRunBulkOperations: false,
@@ -78,6 +82,7 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewAnalytics: true,
         canViewAudit: true,
         canViewReactivation: true,
+        canViewSalary: true,
         canViewSettings: false,
         canManageUsers: false,
         canRunBulkOperations: true,
@@ -89,6 +94,7 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         canViewAnalytics: false,
         canViewAudit: false,
         canViewReactivation: false,
+        canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
         canRunBulkOperations: false,
@@ -113,6 +119,7 @@ export function normalizeRoleCapabilityProfile(input: Partial<RoleCapabilityProf
         canViewAnalytics: typeof input.canViewAnalytics === 'boolean' ? input.canViewAnalytics : fallback.canViewAnalytics,
         canViewAudit: typeof input.canViewAudit === 'boolean' ? input.canViewAudit : fallback.canViewAudit,
         canViewReactivation: typeof input.canViewReactivation === 'boolean' ? input.canViewReactivation : fallback.canViewReactivation,
+        canViewSalary: typeof input.canViewSalary === 'boolean' ? input.canViewSalary : fallback.canViewSalary,
         canViewSettings: typeof input.canViewSettings === 'boolean' ? input.canViewSettings : fallback.canViewSettings,
         canManageUsers: typeof input.canManageUsers === 'boolean' ? input.canManageUsers : fallback.canManageUsers,
         canRunBulkOperations: typeof input.canRunBulkOperations === 'boolean' ? input.canRunBulkOperations : fallback.canRunBulkOperations,
