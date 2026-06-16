@@ -415,7 +415,14 @@ export async function markCallTranscriptionSkipped(callId: string, reason: strin
 export async function finalizeTranscript(callId: string, rawTranscription: string): Promise<string> {
     console.log(`[Transcribe] Diarizing ${callId}...`);
     const transcription = await diarizeTranscript(rawTranscription);
+    return await writeFinalTranscript(callId, transcription);
+}
 
+/**
+ * Записывает УЖЕ размеченный транскрипт: AMD, запись в raw_telphin_calls (completed, сброс
+ * stt_job_id), триггер инсайта. Общий для текстовой диаризации и детерминированного стерео-пути.
+ */
+export async function writeFinalTranscript(callId: string, transcription: string): Promise<string> {
     let amd: any = null;
     try {
         amd = await analyzeAnsweringMachine(transcription);
@@ -470,6 +477,97 @@ export async function finalizeTranscript(callId: string, rawTranscription: strin
     } catch (e) { }
 
     return transcription;
+}
+
+// ── Детерминированные роли по стерео-каналам ───────────────────────────────────
+export type ChannelSegment = { start: number; end?: number; text: string; channel: number };
+
+function textsNearlyIdentical(a: string, b: string): boolean {
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
+    const A = norm(a), B = norm(b);
+    if (!A || !B) return false;
+    if (A === B) return true;
+    const wordsA = A.split(' ');
+    const wordsB = B.split(' ');
+    const setB = new Set(wordsB);
+    const union = new Set(wordsA);
+    wordsB.forEach(w => union.add(w));
+    let inter = 0;
+    wordsA.forEach(w => { if (setB.has(w)) inter++; });
+    return union.size > 0 && inter / union.size > 0.9;
+}
+
+/** Бинарно определяет, какой канал — сотрудник компании (оператор). Каналы уже разделены, решение надёжное. */
+async function determineOperatorChannel(text0: string, text1: string): Promise<0 | 1> {
+    try {
+        const openai = getOpenAI();
+        const resp = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Дано два канала записи телефонного разговора. Один канал — СОТРУДНИК компании (оператор/менеджер: представляется компанией, ведёт по скрипту, выставляет счёт/КП, отвечает по заказу). Другой — внешний АБОНЕНТ (клиент). Определи, какой канал — сотрудник компании. Ответ строго JSON: {"operator": 0} или {"operator": 1}.',
+                },
+                { role: 'user', content: `Канал 0: ${text0.slice(0, 1500)}\n\nКанал 1: ${text1.slice(0, 1500)}` },
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0,
+        });
+        const r = JSON.parse(resp.choices[0].message.content || '{}');
+        return r.operator === 1 ? 1 : 0;
+    } catch (e) {
+        console.error('[Channels] operator detect failed, default 0:', e);
+        return 0;
+    }
+}
+
+/**
+ * Строит размеченный транскрипт из сегментов двух каналов (роли по каналу, детерминированно).
+ * Возвращает null, если каналы непригодны (пусто/один канал/псевдо-стерео) — тогда нужен моно-fallback.
+ */
+export async function buildTranscriptFromChannels(segments: ChannelSegment[]): Promise<string | null> {
+    const segs = (segments || []).filter(s =>
+        s && typeof s.text === 'string' && s.text.trim() && typeof s.start === 'number' && (s.channel === 0 || s.channel === 1));
+    if (segs.length < 2) return null;
+
+    const t0 = segs.filter(s => s.channel === 0).sort((a, b) => a.start - b.start).map(s => s.text.trim()).join(' ').trim();
+    const t1 = segs.filter(s => s.channel === 1).sort((a, b) => a.start - b.start).map(s => s.text.trim()).join(' ').trim();
+    if (!t0 || !t1) return null;                 // один канал пуст → не 2-сторонний
+    if (textsNearlyIdentical(t0, t1)) return null; // псевдо-стерео (дубль моно) → моно-fallback
+
+    const operatorChannel = await determineOperatorChannel(t0, t1);
+
+    const ordered = segs.slice().sort((a, b) => a.start - b.start);
+    const lines: string[] = [];
+    let curRole = ''; let buf: string[] = [];
+    for (const s of ordered) {
+        const role = s.channel === operatorChannel ? 'Менеджер' : 'Клиент';
+        const text = s.text.trim();
+        if (!text) continue;
+        if (role === curRole) buf.push(text);
+        else { if (buf.length) lines.push(`${curRole}: ${buf.join(' ')}`); curRole = role; buf = [text]; }
+    }
+    if (buf.length) lines.push(`${curRole}: ${buf.join(' ')}`);
+    return lines.join('\n');
+}
+
+/**
+ * Финализация стерео-результата: детерминированные роли по каналам → AMD/запись. При непригодных
+ * каналах откатывается на обычную текстовую диаризацию (моно-fallback).
+ */
+export async function finalizeTranscriptFromChannels(callId: string, segments: ChannelSegment[]): Promise<string> {
+    const diarized = await buildTranscriptFromChannels(segments);
+    if (diarized != null) {
+        return await writeFinalTranscript(callId, diarized);
+    }
+    const plain = (segments || [])
+        .filter(s => s && typeof s.text === 'string')
+        .slice()
+        .sort((a, b) => (a.start || 0) - (b.start || 0))
+        .map(s => s.text.trim())
+        .filter(Boolean)
+        .join(' ');
+    return await finalizeTranscript(callId, plain);
 }
 
 type SubmitState = 'submitted' | 'already_submitted' | 'already_completed';
