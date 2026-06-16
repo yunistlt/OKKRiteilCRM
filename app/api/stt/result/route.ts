@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { finalizeTranscript } from '@/lib/transcribe';
+import { finalizeTranscript, finalizeTranscriptFromChannels } from '@/lib/transcribe';
 import { enqueueTranscriptionDownstream } from '@/lib/transcription-downstream';
 
 export const dynamic = 'force-dynamic';
@@ -37,9 +37,15 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true, call_id: callId, state: 'failed' });
     }
 
-    const text = typeof body?.text === 'string' ? body.text : '';
     try {
-        await finalizeTranscript(callId, text);
+        // Стерео: сегменты с номером канала → детерминированные роли (без угадывания).
+        // Иначе моно: сырой текст → текстовая диаризация (gpt-4o-mini).
+        const segments = body?.segments;
+        if (Number(body?.channels) === 2 && Array.isArray(segments) && segments.some((s: any) => s?.channel === 0 || s?.channel === 1)) {
+            await finalizeTranscriptFromChannels(callId, segments);
+        } else {
+            await finalizeTranscript(callId, typeof body?.text === 'string' ? body.text : '');
+        }
         const downstream = await enqueueTranscriptionDownstream(callId, 'external_stt');
         return NextResponse.json({ ok: true, call_id: callId, state: 'completed', order_id: downstream.orderId });
     } catch (e: any) {
