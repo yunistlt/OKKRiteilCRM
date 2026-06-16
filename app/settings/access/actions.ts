@@ -2,7 +2,7 @@
 
 import { randomBytes } from 'crypto';
 import { revalidatePath } from 'next/cache';
-import { AppRole } from '@/lib/auth';
+import { AppRole, getSession } from '@/lib/auth';
 import { APP_ROLES, DEFAULT_ROUTE_RULES, normalizeAllowedRoles, RouteRule } from '@/lib/rbac';
 import { DEFAULT_ROLE_CAPABILITIES, normalizeRoleCapabilityProfile, RoleCapabilityProfile } from '@/lib/access-control';
 import { clearRouteRulesCache } from '@/lib/rbac-server';
@@ -486,6 +486,38 @@ export async function createAccessAccount(input: {
 
         revalidatePath('/settings/access');
         return { success: true, message: 'Новый аккаунт создан.' };
+    } catch (error: any) {
+        return toAccessActionError(error);
+    }
+}
+
+export async function deleteAccessAccount(input: {
+    id: string;
+    source: 'profile' | 'legacy';
+}): Promise<AccessActionResult> {
+    try {
+        const session = await getSession();
+        if (session?.user?.id && session.user.id === input.id) {
+            return { success: false, message: 'Нельзя удалить собственный аккаунт.', errorType: 'UNKNOWN' };
+        }
+
+        if (input.source === 'profile') {
+            const admin = getSupabaseAdmin();
+            const { error: authError } = await admin.auth.admin.deleteUser(input.id);
+            // Профиль завязан на auth.users через ON DELETE CASCADE — удаление auth-юзера снесёт и строку profiles.
+            if (authError && !/not.?found/i.test(authError.message || '')) throw authError;
+
+            // Подчищаем строку профиля на случай, если каскад не сработал.
+            const { error } = await supabase.from('profiles').delete().eq('id', input.id);
+            if (error && !isMissingTableError(error)) throw error;
+        } else {
+            const { error } = await supabase.from('users').delete().eq('id', input.id);
+            if (error) throw error;
+        }
+
+        revalidatePath('/settings/access');
+        revalidatePath('/');
+        return { success: true, message: 'Аккаунт удалён.' };
     } catch (error: any) {
         return toAccessActionError(error);
     }

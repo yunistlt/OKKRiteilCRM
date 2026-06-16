@@ -6,7 +6,7 @@ import type { AppRole } from '@/lib/auth';
 import type { RouteRule } from '@/lib/rbac';
 import { APP_ROLES } from '@/lib/rbac';
 import { DATA_SCOPE_LABELS, DEFAULT_ROLE_CAPABILITIES, EDIT_SCOPE_LABELS, ROLE_DISPLAY_ORDER, ROLE_LABELS, RoleCapabilityProfile } from '@/lib/access-control';
-import { AccessAccount, AccessInvitation, AccessManagerOption, createAccessAccount, createAccessInvitation, revokeAccessInvitation, saveRoleCapabilities, saveRoutePermissions, updateAccessAccount } from './actions';
+import { AccessAccount, AccessInvitation, AccessManagerOption, createAccessAccount, createAccessInvitation, deleteAccessAccount, revokeAccessInvitation, saveRoleCapabilities, saveRoutePermissions, updateAccessAccount } from './actions';
 
 const ACCOUNT_SOURCE_LABELS = {
     profile: 'Основной аккаунт',
@@ -104,6 +104,22 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
                     : item
             )));
             setMessage(result.message || `Права аккаунта ${account.username || account.email || account.id} сохранены.`);
+            router.refresh();
+        });
+    };
+
+    const handleDeleteAccount = (account: AccessAccount) => {
+        const label = account.username || account.email || 'аккаунт';
+        if (!window.confirm(`Удалить аккаунт «${label}»? Это действие необратимо.`)) return;
+        setMessage('');
+        startTransition(async () => {
+            const result = await deleteAccessAccount({ id: account.id, source: account.source });
+            if (!result.success) {
+                setMessage(result.message || 'Не удалось удалить аккаунт.');
+                return;
+            }
+            setAccounts((current) => current.filter((item) => !(item.id === account.id && item.source === account.source)));
+            setMessage(result.message || `Аккаунт ${label} удалён.`);
             router.refresh();
         });
     };
@@ -397,6 +413,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => handleCreateInvitationForAccount(account)} disabled={isPending} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-black text-gray-700 disabled:opacity-50">Ссылка-приглашение</button>
                                         <button onClick={() => handleSaveAccount(account)} disabled={isPending} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50">Сохранить</button>
+                                        <button onClick={() => handleDeleteAccount(account)} disabled={isPending} className="rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-black text-red-600 disabled:opacity-50">Удалить</button>
                                     </div>
                                 </div>
 
