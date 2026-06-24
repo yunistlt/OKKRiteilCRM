@@ -12,9 +12,24 @@ export default function PwaBootstrap() {
             return;
         }
 
-        navigator.serviceWorker.register('/messenger-sw.js', { scope: '/' }).catch((error) => {
-            console.error('[PWA] Service worker registration failed:', error);
+        // Один раз перезагружаем страницу, когда новый воркер берёт управление,
+        // чтобы клиент с протухшим кешем сразу получил свежие стили/скрипты.
+        let reloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloaded) return;
+            reloaded = true;
+            window.location.reload();
         });
+
+        navigator.serviceWorker
+            .register('/messenger-sw.js', { scope: '/' })
+            .then((registration) => {
+                // Принудительно проверяем обновление воркера при каждой загрузке.
+                registration.update().catch(() => undefined);
+            })
+            .catch((error) => {
+                console.error('[PWA] Service worker registration failed:', error);
+            });
     }, []);
 
     return null;

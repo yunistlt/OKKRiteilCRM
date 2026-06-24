@@ -1,4 +1,9 @@
-const CACHE_NAME = 'okk-messenger-pwa-v1';
+// v2: воркер больше НЕ кеширует код приложения (/_next/**, JS, CSS, HTML).
+// Раньше эти ресурсы кешировались cache-first и навсегда (CACHE_NAME не менялся),
+// поэтому после деплоя браузер отдавал протухшие чанки и страница открывалась
+// без стилей/скриптов («белый» нестилизованный экран, вечное колёсико).
+// Теперь кешируем только иконки/манифест и только network-first (с откатом в офлайне).
+const CACHE_NAME = 'okk-messenger-pwa-v2';
 const STATIC_ASSETS = [
   '/manifest.webmanifest',
   '/favicon-v2.png',
@@ -13,13 +18,14 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys
-        .filter((key) => key !== CACHE_NAME)
-        .map((key) => caches.delete(key))
-    ))
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -30,29 +36,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  const isStaticAsset =
-    url.pathname.startsWith('/_next/static/') ||
+  // Код приложения отдаём как есть, без воркера — иначе деплои ломают страницу.
+  const isCacheable =
     url.pathname.startsWith('/images/') ||
     STATIC_ASSETS.includes(url.pathname);
 
-  if (!isStaticAsset) {
+  if (!isCacheable) {
     return;
   }
 
+  // network-first: всегда тянем свежую версию, кеш — только офлайн-резерв.
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
-          }
-          return response;
-        })
-        .catch(() => cached);
-
-      return cached || networkFetch;
-    })
+    fetch(request)
+      .then((response) => {
+        if (response && response.ok) {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
+        }
+        return response;
+      })
+      .catch(() => caches.match(request))
   );
 });
 
