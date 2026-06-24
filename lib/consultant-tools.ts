@@ -1,13 +1,16 @@
 import { SALARY_TOOLS, executeSalaryTool, type SalaryToolContext } from '@/lib/salary/consultant-tools';
 import { RATING_TOOLS, executeRatingTool } from '@/lib/okk-consultant-rating-tools';
+import { ORDERS_TOOLS, executeOrdersTool } from '@/lib/okk-consultant-orders-tools';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
 // - calc: safe arithmetic (no eval) so the LLM never does mental math
+// - orders tools: orders_aggregate (количество/сумма/средний чек заказов по статусу и периоду)
 // - salary tools: get_my_salary / orders_to_reach / simulate_salary (any salary what-if)
 // - rating tools: get_my_rating / how_to_improve_my_rating
-// Salary/rating tools are bound to the session user; calc is always available.
+// calc и orders_aggregate доступны всегда (orders сам ограничивает область по роли);
+// salary/rating tools привязаны к менеджеру сессии.
 
-export type ConsultantToolContext = SalaryToolContext;
+export type ConsultantToolContext = SalaryToolContext & { userRole?: string };
 
 // ── Safe arithmetic evaluator (recursive descent, no eval/Function) ──────────
 
@@ -137,10 +140,11 @@ const CALC_TOOL = {
 
 const SALARY_NAMES = new Set(SALARY_TOOLS.map((t) => t.function.name));
 const RATING_NAMES = new Set(RATING_TOOLS.map((t) => t.function.name));
+const ORDERS_NAMES = new Set(ORDERS_TOOLS.map((t) => t.function.name));
 
-/** Набор инструментов для tool-loop. calc — всегда; зарплата/рейтинг — при наличии менеджера. */
+/** Набор инструментов для tool-loop. calc и orders_aggregate — всегда; зарплата/рейтинг — при наличии менеджера. */
 export function buildConsultantTools(ctx: ConsultantToolContext) {
-    const tools: any[] = [CALC_TOOL];
+    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS];
     if (ctx.retailCrmManagerId != null) {
         tools.push(...SALARY_TOOLS, ...RATING_TOOLS);
     }
@@ -149,6 +153,7 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
 
 export async function executeConsultantTool(name: string, args: any, ctx: ConsultantToolContext): Promise<any> {
     if (name === 'calc') return executeCalc(args);
+    if (ORDERS_NAMES.has(name)) return executeOrdersTool(name, args, ctx);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);
     return { available: false, reason: `Неизвестный инструмент: ${name}` };

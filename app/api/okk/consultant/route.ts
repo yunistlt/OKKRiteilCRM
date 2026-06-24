@@ -344,12 +344,10 @@ async function buildGlobalKnowledgeAnswer(
     // Экран пользователя подмешиваем в поисковый запрос — смещаем выдачу к теме активной вкладки.
     const searchQuery = contextHint ? `${question}\n\n(Экран пользователя: ${contextHint})` : question;
     const hits = await searchProjectKnowledge(searchQuery, audiencesForRole(userRole), MAX_GLOBAL_KNOWLEDGE_HITS, GLOBAL_KNOWLEDGE_THRESHOLD);
-    const hasUserData = retailCrmManagerId != null;
 
-    // Nothing to ground an answer on: no docs and no personal data tools.
-    if (hits.length === 0 && !hasUserData) {
-        return { reply: null, promptKey: null, knowledgeHits: [], toolCalls: [] };
-    }
+    // Раньше тут был ранний выход при отсутствии знаний и менеджера. Теперь у консультанта
+    // всегда есть инструмент данных (orders_aggregate), поэтому tool-loop запускаем и без hits —
+    // иначе вопросы вида «средний чек по заявкам» некому было бы посчитать.
 
     const openai = getOpenAIClient();
     const section = getConsultantSectionConfig(sectionKey);
@@ -365,14 +363,14 @@ async function buildGlobalKnowledgeAnswer(
     });
 
     const now = new Date();
-    const toolCtx: ConsultantToolContext = { retailCrmManagerId, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
+    const toolCtx: ConsultantToolContext = { retailCrmManagerId, userRole, defaultYear: now.getFullYear(), defaultMonth: now.getMonth() + 1 };
     const tools = buildConsultantTools(toolCtx);
 
     let systemContent = `${mainPrompt.systemPrompt}\n\n${stylePrompt.systemPrompt}\n\nТекущий раздел: ${section.title}.`;
     if (contextHint) {
         systemContent += `\n\nПользователь сейчас находится на экране: «${contextHint}». Если вопрос задан без явного указания раздела, считай, что он про этот экран, и ищи ответ в соответствующей теме.`;
     }
-    systemContent += '\n\nДля ЛЮБЫХ числовых вопросов (зарплата, рейтинг ОКК, «что если», сравнения сценариев) ВЫЗЫВАЙ инструменты и опирайся только на их результат — не считай в уме и не выдумывай числа. simulate_salary — для зарплатных «что если»; get_my_rating/how_to_improve_my_rating — для рейтинга; calc — для произвольной арифметики. Если инструмент вернул available:false — честно скажи, что данных нет.';
+    systemContent += '\n\nДля ЛЮБЫХ числовых вопросов (зарплата, рейтинг ОКК, метрики по заказам, «что если», сравнения сценариев) ВЫЗЫВАЙ инструменты и опирайся только на их результат — не считай в уме и не выдумывай числа. orders_aggregate — для метрик по заказам/заявкам (средний чек, количество, сумма): для «успешных / переданных в производство / завершённых за период» вызывай с date_basis="production" (считается по дате перехода в производство), для метрик по дате создания/текущему статусу — date_basis="created"; simulate_salary — для зарплатных «что если»; get_my_rating/how_to_improve_my_rating — для рейтинга; calc — для произвольной арифметики. Озвучивай, какие фильтры (статусы/период) были применены. Если инструмент вернул available:false — честно скажи, что данных нет.';
 
     const messages: any[] = [
         { role: 'system', content: systemContent },
