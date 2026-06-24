@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '@/utils/supabase';
-import { login, setSupabaseSession, verifyPassword } from '@/lib/auth';
+import { login, setSupabaseSession, verifyPassword, clearSupabaseCookies } from '@/lib/auth';
 import { enrichManagerLinkedIdentity } from '@/lib/manager-identity';
 
 export const dynamic = 'force-dynamic';
@@ -130,6 +130,11 @@ export async function POST(req: Request) {
         if (!textMatches) {
             return NextResponse.json({ error: 'Неверный логин или пароль' }, { status: 401 });
         }
+
+        // Чистим возможный Supabase-токен от прошлого входа: getSession читает его
+        // раньше легаси-куки, и без очистки личность подменяется (пустой
+        // retail_crm_manager_id → пустые заказы ОКК и зарплата).
+        clearSupabaseCookies();
 
         await login({
             id: user.id,

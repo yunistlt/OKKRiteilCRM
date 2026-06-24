@@ -305,11 +305,27 @@ export async function setSupabaseSession(session: {
     });
 }
 
+// Удаляет все Supabase-токены (включая SSR-куки вида `*-auth-token`).
+// Нужно при входе под локальным (легаси) аккаунтом: иначе старый Supabase-токен
+// от предыдущего входа имеет приоритет в getSession и подменяет личность.
+export function clearSupabaseCookies() {
+    const cookieStore = getCookieStore();
+    const expired = { expires: new Date(0), httpOnly: true, path: '/' as const };
+
+    cookieStore.set(SUPABASE_ACCESS_COOKIE, '', expired);
+    cookieStore.set(SUPABASE_REFRESH_COOKIE, '', expired);
+
+    for (const cookie of cookieStore.getAll()) {
+        if (cookie.name.includes('-auth-token')) {
+            cookieStore.set(cookie.name, '', expired);
+        }
+    }
+}
+
 export async function logout() {
     const cookieStore = getCookieStore();
     cookieStore.set(LEGACY_COOKIE, '', { expires: new Date(0), httpOnly: true, path: '/' });
-    cookieStore.set(SUPABASE_ACCESS_COOKIE, '', { expires: new Date(0), httpOnly: true, path: '/' });
-    cookieStore.set(SUPABASE_REFRESH_COOKIE, '', { expires: new Date(0), httpOnly: true, path: '/' });
+    clearSupabaseCookies();
 }
 
 export async function getSession(request?: RequestLike): Promise<AppSession | null> {
