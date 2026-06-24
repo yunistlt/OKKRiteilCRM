@@ -43,7 +43,7 @@ export default function MySalaryPage() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/salary?period=${year}-${month}`);
+            const res = await fetch(`/api/salary/my?period=${year}-${month}`);
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setRow(json.rows?.[0] ?? null);
