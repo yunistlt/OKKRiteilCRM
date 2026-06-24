@@ -426,7 +426,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                     </div>
                                     <div className="md:col-span-3">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Email</label>
-                                        <input value={account.email || ''} onChange={(event) => handleAccountField(account.id, account.source, 'email', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" disabled={account.source === 'legacy'} />
+                                        <input value={account.email || ''} onChange={(event) => handleAccountField(account.id, account.source, 'email', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Роль</label>

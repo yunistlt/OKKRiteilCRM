@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getDefaultPathForRole } from '@/lib/rbac';
 
 export default function LoginPage() {
@@ -69,6 +70,9 @@ export default function LoginPage() {
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest">
                                 Пароль
                             </label>
+                            <Link href="/forgot-password" className="text-xs font-bold text-blue-600 hover:text-blue-700">
+                                Забыли пароль?
+                            </Link>
                         </div>
                         <input
                             type="password"

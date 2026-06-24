@@ -17,6 +17,8 @@ export async function middleware(request: NextRequest) {
 
     const isPublicRoute =
         pathname === '/login' ||
+        pathname === '/forgot-password' ||
+        pathname === '/reset-password' ||
         pathname.startsWith('/invite') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/cron') || 
