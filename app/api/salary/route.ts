@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
+import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,11 +68,18 @@ export async function GET(req: Request) {
         const rows = (calcRows ?? []).map((r: any) => ({ ...r, manager_name: namesById.get(r.manager_id) || `#${r.manager_id}` }));
         const total = rows.reduce((s: number, r: any) => s + Number(r.total || 0), 0);
 
+        // Детализация показателей заказами — отдаём вместе с отчётом (без ленивых дозапросов).
+        // teamOrders — весь отдел (из сохранённых расчётов); incoming — по тем менеджерам, что в ответе.
+        const team = await buildTeamOrders(periodRow.id);
+        const incomingManagerIds = (rows as any[]).map((r) => Number(r.manager_id));
+        const incomingByManager = await buildIncomingByManager(year, month, incomingManagerIds);
+
         return NextResponse.json({
             period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
             rows,
             total,
             isManagerOnly,
+            details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incomingByManager },
         });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
