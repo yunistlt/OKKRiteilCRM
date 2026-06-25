@@ -109,13 +109,17 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
                 ) : (
                     <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr] overflow-hidden">
                         {/* Левая колонка: ползунки */}
-                        <div className="overflow-y-auto border-r p-3">
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-tight text-muted-foreground">Сценарий</div>
-                            <Slider label="Выручка отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.6, 30_000_000)} step={250_000} value={teamRevenue} onChange={setTeamRevenue} />
-                            <Slider label="План отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.2, 24_000_000)} step={250_000} value={deptPlan} onChange={setDeptPlan} />
-                            <div className="mb-3 mt-1 flex gap-3 text-[11px] text-muted-foreground">
-                                <span>Выполнение: <b className={attainment >= 90 ? 'text-emerald-700' : 'text-red-600'}>{Math.round(attainment)}%</b></span>
-                                <span>ФОТ/выручка: <b>{costPct.toFixed(2)}%</b></span>
+                        <div className="overflow-y-auto bg-muted/20 p-2 border-r">
+                            <div className="mb-2 border bg-white">
+                                <div className="border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">Сценарий</div>
+                                <div className="p-2">
+                                    <Slider label="Выручка отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.6, 30_000_000)} step={250_000} value={teamRevenue} onChange={setTeamRevenue} />
+                                    <Slider label="План отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.2, 24_000_000)} step={250_000} value={deptPlan} onChange={setDeptPlan} />
+                                    <div className="mt-1 flex gap-3 text-[11px] text-muted-foreground">
+                                        <span>Выполнение: <b className={attainment >= 90 ? 'text-emerald-700' : 'text-red-600'}>{Math.round(attainment)}%</b></span>
+                                        <span>ФОТ/выручка: <b>{costPct.toFixed(2)}%</b></span>
+                                    </div>
+                                </div>
                             </div>
 
                             {blocks.filter((b) => b.enabled !== false).map((b) => {
@@ -123,12 +127,14 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
                                 const controls = controlsForBlock(b.block_code, b.params ?? {});
                                 if (!controls.length) return null;
                                 return (
-                                    <div key={b.block_code} className="mb-2 border-t pt-2">
-                                        <div className="mb-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
-                                        {controls.map((c, ci) => (
-                                            <Slider key={ci} label={c.label} unit={c.range.unit} min={c.range.min} max={c.range.max} step={c.range.step} value={c.value}
-                                                onChange={(v) => setControl(realIdx, c.path, v)} />
-                                        ))}
+                                    <div key={b.block_code} className="mb-2 border bg-white">
+                                        <div className="border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
+                                        <div className="p-2">
+                                            {controls.map((c, ci) => (
+                                                <Slider key={ci} label={c.label} unit={c.range.unit} min={c.range.min} max={c.range.max} step={c.range.step} value={c.value}
+                                                    onChange={(v) => setControl(realIdx, c.path, v)} />
+                                            ))}
+                                        </div>
                                     </div>
                                 );
                             })}
