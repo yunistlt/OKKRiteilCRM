@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod } from '@/lib/salary/config';
+import { evaluateDuplicate, extractReferencedNumber, goodsCostBeforeDiscount } from '@/lib/salary/tender-duplicates';
 
 // ============================================================================
 // Детализация расчётной ведомости заказами — отдаётся ВМЕСТЕ с отчётом
@@ -17,6 +18,10 @@ export interface IncomingOrderBrief {
     source: string | null; // имя источника заявки (orderMethod) из справочника RetailCRM
     createdAt: string;
     sum: number;
+    // Дубль на тендер: excluded — правомочный дубль, исключён из знаменателя
+    // конверсии; dupNote — причина (русская) для пометки в ведомости.
+    excluded?: boolean;
+    dupNote?: string | null;
 }
 
 export interface TeamOrderBrief {
@@ -102,11 +107,12 @@ export async function buildIncomingByManager(
 ): Promise<Record<number, IncomingOrderBrief[]>> {
     const config = await getConfigForPeriod(year, month);
     const exclusions: string[] = config.source_exclusions ?? [];
+    const rule = config.tender_duplicate_rule;
     const { start, end } = monthBounds(year, month);
 
     let q = supabase
         .from('orders')
-        .select('order_id,manager_id,totalsumm,created_at,raw_payload')
+        .select('order_id,manager_id,totalsumm,created_at,raw_payload,status')
         .gte('created_at', start)
         .lt('created_at', end)
         .range(0, 9999); // снимаем дефолтный лимит 1000 строк
@@ -122,18 +128,64 @@ export async function buildIncomingByManager(
     const methodName = new Map<string, string>();
     for (const r of (methodRows as any[]) ?? []) methodName.set(r.item_code, r.item_name);
 
+    // Человеческие имена статусов-эталонов («Тендер» / «Ожидание выхода тендера»)
+    // для текста причины (имена из CRM).
+    const { data: refStatusRows } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code,item_name')
+        .eq('entity_type', 'status')
+        .in('item_code', rule.reference_statuses);
+    const refNameByCode = new Map<string, string>();
+    for (const r of (refStatusRows as any[]) ?? []) refNameByCode.set(r.item_code, r.item_name);
+    const referenceStatusLabel = rule.reference_statuses
+        .map((code) => refNameByCode.get(code) || code)
+        .join(' / ');
+
+    // Эталоны дублей: собираем номера из комментариев и грузим одним запросом.
+    const refNumbers = new Set<string>();
+    for (const o of (data as any[]) ?? []) {
+        if (String(o.status ?? '') !== rule.duplicate_status) continue;
+        const num = extractReferencedNumber(o.raw_payload?.managerComment);
+        if (num) refNumbers.add(num);
+    }
+    const refByNumber = new Map<string, { status: string; goodsCost: number }>();
+    if (refNumbers.size) {
+        const { data: refs } = await supabase
+            .from('orders')
+            .select('number,status,raw_payload')
+            .in('number', Array.from(refNumbers));
+        for (const r of (refs as any[]) ?? []) {
+            refByNumber.set(String(r.number), {
+                status: String(r.status ?? ''),
+                goodsCost: goodsCostBeforeDiscount(r.raw_payload),
+            });
+        }
+    }
+
     const byManager: Record<number, IncomingOrderBrief[]> = {};
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
         if (exclusions.includes(om)) continue; // как в salary_incoming_counts
         const mid = Number(o.manager_id);
         if (!mid) continue;
+        const num = extractReferencedNumber(o.raw_payload?.managerComment);
+        const verdict = evaluateDuplicate(
+            {
+                status: String(o.status ?? ''),
+                goodsCost: goodsCostBeforeDiscount(o.raw_payload),
+                managerComment: o.raw_payload?.managerComment ?? null,
+            },
+            num ? refByNumber.get(num) ?? null : null,
+            { rule, referenceStatusLabel },
+        );
         (byManager[mid] ??= []).push({
             id: Number(o.order_id),
             clientName: clientNameFromPayload(o.raw_payload),
             source: om ? methodName.get(om) || om : null,
             createdAt: o.created_at,
             sum: Number(o.totalsumm ?? 0) || 0,
+            excluded: verdict.excluded,
+            dupNote: verdict.reason,
         });
     }
     for (const mid of Object.keys(byManager)) {
