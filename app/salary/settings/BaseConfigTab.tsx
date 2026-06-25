@@ -11,19 +11,22 @@ import { useToast } from '@/components/ui/use-toast';
 const numCls = 'flex h-10 w-full rounded-none border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
 const KEY_LABELS: Record<string, string> = {
-    oklad: 'Оклад (₽/мес)',
-    rate_zayavka: 'Ставка за закрытую заявку (₽)',
-    k_quality_tiers: 'К_качества — тиры по скорингу',
-    conv_bonus_tiers: 'Конв-бонус — тиры по конверсии',
-    conv_min_zayavki: 'Минимум заявок для допуска к конв-бонусу',
-    discount_bonus: 'Бонус за скидочную дисциплину',
-    duty_rate: 'Ставка дежурства (₽/смена)',
-    k_team_tiers: 'К_команды — тиры по выручке отдела',
     closing_status: 'Статус «закрытия» (вход в базу ФОТ)',
     permanent_client_threshold: 'Порог «постоянного клиента»',
     source_exclusions: 'Источники-исключения',
+    tender_duplicate_rule: 'Дубль на тендер (вне знаменателя конверсии)',
     nds_normalization: 'Нормализация НДС',
 };
+
+// Эти параметры редактируются ТОЛЬКО в блоках ролей (вкладка «Схемы (роли)») —
+// именно блоки роли считают ЗП. Здесь они были «значениями по умолчанию» старой
+// версии модуля и в расчёте фактически не участвуют, поэтому из базовых параметров
+// убраны, чтобы одно значение не правилось в двух местах. В базовых параметрах
+// остаются только сквозные настройки сбора данных/классификации, которых в ролях нет.
+const ROLE_BLOCK_KEYS = new Set<string>([
+    'oklad', 'rate_zayavka', 'k_quality_tiers', 'conv_bonus_tiers',
+    'conv_min_zayavki', 'discount_bonus', 'duty_rate', 'k_team_tiers',
+]);
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 type Opt = { code: string; name: string };
@@ -77,9 +80,9 @@ export default function BaseConfigTab() {
 
     return (
         <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Базовые параметры для сбора данных (статус закрытия, исключения, НДС) и значения по умолчанию. Меняются с указанной даты.</p>
+            <p className="text-xs text-muted-foreground">Сквозные настройки сбора данных и классификации (статус закрытия, исключения, постоянный клиент, дубль на тендер, НДС). Оклад, ставки и тиры задаются в блоках ролей — вкладка «Схемы (роли)» выше. Меняются с указанной даты.</p>
             <div className="grid gap-2 md:grid-cols-2">
-                {keys.map((key) => (
+                {keys.filter((key) => !ROLE_BLOCK_KEYS.has(key)).map((key) => (
                     <div key={key} className="border p-3">
                         <div className="mb-2 flex items-baseline gap-2">
                             <span className="text-sm font-semibold">{KEY_LABELS[key] || key}</span>
@@ -107,46 +110,23 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
     if (configKey === 'source_exclusions') {
         return <MultiSelectByName options={dicts.orderMethods} selected={Array.isArray(value) ? value : []} onChange={onChange} empty="источники не выбраны" />;
     }
+    // Дубль на тендер: статус-дубль + эталонные статусы (всё по именам из RetailCRM, не кодами).
+    if (configKey === 'tender_duplicate_rule') {
+        const ref: string[] = Array.isArray(value?.reference_statuses) ? value.reference_statuses : [];
+        return (
+            <div className="space-y-2">
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Статус дубля (на тендер)</label>
+                    <SelectByName options={dicts.statuses} value={value?.duplicate_status || ''} onChange={(code) => onChange({ ...value, duplicate_status: code })} placeholder="— выберите статус —" />
+                </div>
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Эталонные статусы (тендер / ожидание выхода)</label>
+                    <MultiSelectByName options={dicts.statuses} selected={ref} onChange={(v) => onChange({ ...value, reference_statuses: v })} empty="статусы не выбраны" />
+                </div>
+            </div>
+        );
+    }
     if (typeof value === 'number') return <NumberInput value={value} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${numCls} h-8 w-40 text-sm text-right`} />;
-    if (Array.isArray(value) && value.length && typeof value[0] === 'object' && 'min' in value[0]) {
-        const valueField = 'k' in value[0] ? 'k' : 'bonus';
-        return <TierEditor rows={value} valueField={valueField as 'k' | 'bonus'} onChange={onChange} />;
-    }
-    if (Array.isArray(value)) return <StringListEditor items={value as string[]} onChange={onChange} />;
-    if (configKey === 'rate_zayavka') {
-        return (
-            <div className="grid grid-cols-2 gap-2">
-                {(['new', 'permanent'] as const).map((f) => (
-                    <div key={f}>
-                        <label className="text-[11px] text-muted-foreground">{f === 'new' ? 'Новый' : 'Постоянный'}</label>
-                        <NumberInput value={value[f]} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, [f]: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} />
-                    </div>
-                ))}
-            </div>
-        );
-    }
-    if (configKey === 'discount_bonus') {
-        return (
-            <div className="grid grid-cols-2 gap-2">
-                <div>
-                    <label className="text-[11px] text-muted-foreground">Метрика</label>
-                    <select className="h-8 w-full border border-input bg-background px-2 text-xs" value={value.metric || ''} onChange={(e) => onChange({ ...value, metric: e.target.value })}>
-                        <option value="avg_order_discount_pct">Средневзв. % скидки</option>
-                        <option value="share_orders_no_discount">Доля без скидки, %</option>
-                    </select>
-                </div>
-                <div>
-                    <label className="text-[11px] text-muted-foreground">Условие</label>
-                    <select className="h-8 w-full border border-input bg-background px-2 text-xs" value={value.comparator} onChange={(e) => onChange({ ...value, comparator: e.target.value })}>
-                        <option value="lte">≤ порога</option>
-                        <option value="gte">≥ порога</option>
-                    </select>
-                </div>
-                <div><label className="text-[11px] text-muted-foreground">Порог</label><NumberInput value={value.threshold} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, threshold: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} /></div>
-                <div><label className="text-[11px] text-muted-foreground">Бонус (₽)</label><NumberInput value={value.bonus} emptyValue={0} onChange={(v) => onChange({ ...value, bonus: v ?? 0 })} className={`${numCls} h-8 text-sm text-right`} /></div>
-            </div>
-        );
-    }
     if (configKey === 'nds_normalization') {
         const rules = value.rules || [];
         const update = (i: number, field: 'vat_pct' | 'divisor', v: number) => onChange({ rules: rules.map((r: any, idx: number) => (idx === i ? { ...r, [field]: v } : r)) });
@@ -166,37 +146,6 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
         );
     }
     return <pre className="bg-muted p-2 text-xs">{JSON.stringify(value, null, 2)}</pre>;
-}
-
-function TierEditor({ rows, valueField, onChange }: { rows: any[]; valueField: 'k' | 'bonus'; onChange: (v: any[]) => void }) {
-    const update = (i: number, field: string, v: number) => onChange(rows.map((r, idx) => (idx === i ? { ...r, [field]: v } : r)));
-    return (
-        <div className="space-y-1.5">
-            <div className="flex gap-1.5 text-[11px] text-muted-foreground"><span className="w-24">от (min)</span><span className="w-24">{valueField === 'k' ? 'коэфф.' : 'бонус ₽'}</span></div>
-            {rows.map((r, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                    <NumberInput value={r.min} emptyValue={0} onChange={(v) => update(i, 'min', v ?? 0)} className={`${numCls} h-8 w-24 text-sm text-right`} />
-                    <NumberInput value={r[valueField]} emptyValue={0} maxFractionDigits={valueField === 'k' ? 2 : 0} onChange={(v) => update(i, valueField, v ?? 0)} className={`${numCls} h-8 w-24 text-sm text-right`} />
-                    <button onClick={() => onChange(rows.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                </div>
-            ))}
-            <Button variant="outline" size="sm" className="h-7" onClick={() => onChange([...rows, { min: 0, [valueField]: 0 }])}><Plus className="mr-1 h-3.5 w-3.5" /> Тир</Button>
-        </div>
-    );
-}
-
-function StringListEditor({ items, onChange }: { items: string[]; onChange: (v: string[]) => void }) {
-    return (
-        <div className="space-y-1.5">
-            {items.map((it, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                    <Input value={it} onChange={(e) => onChange(items.map((x, idx) => (idx === i ? e.target.value : x)))} className="h-8 font-mono text-xs" />
-                    <button onClick={() => onChange(items.filter((_, idx) => idx !== i))} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                </div>
-            ))}
-            <Button variant="outline" size="sm" className="h-7" onClick={() => onChange([...items, ''])}><Plus className="mr-1 h-3.5 w-3.5" /> Значение</Button>
-        </div>
-    );
 }
 
 // Выбор одного значения по имени из справочника RetailCRM (значение хранится кодом).

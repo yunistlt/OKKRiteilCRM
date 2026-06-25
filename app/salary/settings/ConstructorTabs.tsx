@@ -84,13 +84,22 @@ function MethodologyTip({ text, align = 'left' }: { text?: string; align?: 'left
     );
 }
 
+// Человеческое значение кодового параметра (метрика/сравнение/режим) — в UI не показываем слаги (закон).
+function valueLabel(key: string, value: string): string {
+    if (key === 'metric') return DISCOUNT_METRICS[value] ?? value;
+    if (key === 'comparator') return COMPARATORS[value] ?? value;
+    if (key === 'mode') return CATEGORY_MODES[value] ?? value;
+    return value;
+}
+
 // Короткая сводка параметров для свёрнутого блока.
 function summarize(params: any): string {
     if (params == null || typeof params !== 'object') return '';
     return Object.entries(params).map(([k, v]) => {
         if (Array.isArray(v)) return `${labelFor(k)}: ${v.length}`;
         if (v && typeof v === 'object') return labelFor(k);
-        return `${labelFor(k)} ${typeof v === 'number' ? formatNumberRu(v) : v}`;
+        if (typeof v === 'number') return `${labelFor(k)} ${formatNumberRu(v)}`;
+        return `${labelFor(k)} ${valueLabel(k, String(v))}`;
     }).join(' · ');
 }
 
@@ -392,7 +401,7 @@ export function SchemesTab() {
                     <button onClick={() => setShowBase((v) => !v)} className="flex w-full items-center gap-1.5 border-b bg-muted/40 px-2 py-1.5 text-left">
                         {showBase ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                         <span className="text-sm font-semibold">Базовые параметры</span>
-                        <span className="text-[11px] text-muted-foreground">общие значения по умолчанию (статус закрытия, исключения, НДС, ставки/тиры)</span>
+                        <span className="text-[11px] text-muted-foreground">сквозные настройки сбора данных (статус закрытия, исключения, постоянный клиент, дубль на тендер, НДС)</span>
                     </button>
                     {showBase && <div className="p-2"><BaseConfigTab /></div>}
                 </div>
