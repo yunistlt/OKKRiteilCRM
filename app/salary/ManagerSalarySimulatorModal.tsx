@@ -94,6 +94,7 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
     const [teamRevenue, setTeamRevenue] = useState(0);
     const [personalPlan, setPersonalPlan] = useState(0);
     const [deptPlan, setDeptPlan] = useState(0);
+    const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
     // дефолты для кнопки «Сброс»
     const [defaults, setDefaults] = useState<{ inputs: SimManagerInputs; blocks: SchemeBlockLite[]; teamRevenue: number; personalPlan: number; deptPlan: number } | null>(null);
 
@@ -110,6 +111,7 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
             const pPlan = j.personalPlan || 0;
             const dPlan = j.deptPlan || 0;
             setBase(b); setBusinessDays(j.businessDays ?? 21); setBaseTeamRev(tRev); setSchemeCode(j.schemeCode ?? '');
+            setCategoryNames(j.categoryNames ?? {});
             setInputs(inp); setBlocks(blk); setTeamRevenue(tRev); setPersonalPlan(pPlan); setDeptPlan(dPlan);
             setDefaults({ inputs: inp, blocks: blk.map((x) => ({ ...x, params: structuredClone(x.params) })), teamRevenue: tRev, personalPlan: pPlan, deptPlan: dPlan });
         } catch (e: any) { setError(e.message); }
@@ -120,7 +122,7 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
     const blockCodes = useMemo(() => blocks.map((b) => b.block_code), [blocks]);
     const enabledBlocks: BlockInstance[] = useMemo(() => blocks.map((b) => ({ code: b.block_code, params: b.params ?? {} })), [blocks]);
 
-    const scenario = useMemo(() => ({ teamRevenue, personalPlan, deptPlan, businessDays, year, month }), [teamRevenue, personalPlan, deptPlan, businessDays, year, month]);
+    const scenario = useMemo(() => ({ teamRevenue, personalPlan, deptPlan, businessDays, year, month, categoryNames }), [teamRevenue, personalPlan, deptPlan, businessDays, year, month, categoryNames]);
 
     const result = useMemo(() => {
         if (!base || !inputs) return null;
@@ -233,7 +235,7 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
                                 const realIdx = blocks.indexOf(b);
                                 const ins = inputsByOwner.get(b.block_code) ?? [];
                                 const ctx = contextFor(b.block_code);
-                                const controls = controlsForBlock(b.block_code, b.params ?? {});
+                                const controls = controlsForBlock(b.block_code, b.params ?? {}, categoryNames);
                                 if (!ins.length && !ctx.length && !controls.length) return null;
                                 const hasParams = ctx.length > 0 || controls.length > 0;
                                 const tint = tintFor(b.block_code);

@@ -36,6 +36,7 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
     const [blocks, setBlocks] = useState<SchemeBlockLite[]>(() => initialBlocks.map((b) => ({ ...b, params: structuredClone(b.params ?? {}) })));
     const [teamRevenue, setTeamRevenue] = useState(0);
     const [deptPlan, setDeptPlan] = useState(0);
+    const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
 
     const load = useCallback(async () => {
         setLoading(true); setError(null);
@@ -48,6 +49,7 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
             setBusinessDays(j.businessDays ?? 21);
             setTeamRevenue(j.baseTeamRev || 12_000_000);
             setDeptPlan(j.deptPlan || j.baseTeamRev || 12_000_000);
+            setCategoryNames(j.categoryNames ?? {});
         } catch (e: any) { setError(e.message); }
         finally { setLoading(false); }
     }, [year, month, managerIds]);
@@ -60,8 +62,8 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
 
     const result = useMemo(() => {
         if (!bases.length) return { perManager: [], total: 0 };
-        return computeScenarioFot(enabledBlocks, bases, { teamRevenue, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev });
-    }, [enabledBlocks, bases, teamRevenue, deptPlan, businessDays, year, month, baseTeamRev]);
+        return computeScenarioFot(enabledBlocks, bases, { teamRevenue, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames });
+    }, [enabledBlocks, bases, teamRevenue, deptPlan, businessDays, year, month, baseTeamRev, categoryNames]);
 
     // Кривая ФОТ по выручке (для графика) — пересчитывается при любой правке.
     const curve = useMemo(() => {
@@ -70,11 +72,11 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
         const pts: { rev: number; total: number }[] = [];
         for (let i = 0; i <= 28; i++) {
             const rev = (maxR / 28) * i;
-            const r = computeScenarioFot(enabledBlocks, bases, { teamRevenue: rev, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev });
+            const r = computeScenarioFot(enabledBlocks, bases, { teamRevenue: rev, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames });
             pts.push({ rev, total: r.total });
         }
         return pts;
-    }, [enabledBlocks, bases, deptPlan, businessDays, year, month, baseTeamRev]);
+    }, [enabledBlocks, bases, deptPlan, businessDays, year, month, baseTeamRev, categoryNames]);
 
     const setControl = (blockIdx: number, path: (string | number)[], value: number) =>
         setBlocks((prev) => prev.map((b, i) => (i === blockIdx ? { ...b, params: setAtPath(b.params, path, value) } : b)));
@@ -124,7 +126,7 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
 
                             {blocks.filter((b) => b.enabled !== false).map((b) => {
                                 const realIdx = blocks.indexOf(b);
-                                const controls = controlsForBlock(b.block_code, b.params ?? {});
+                                const controls = controlsForBlock(b.block_code, b.params ?? {}, categoryNames);
                                 if (!controls.length) return null;
                                 const tint = tintFor(b.block_code);
                                 return (

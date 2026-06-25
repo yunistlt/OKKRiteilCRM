@@ -103,6 +103,7 @@ export interface SimScenario {
     year: number;
     month: number;
     baseTeamRevenue: number; // выручка baseline (для фактора масштаба)
+    categoryNames?: Record<string, string>; // код категории → человеческое имя (для explain)
 }
 
 export interface SimManagerResult { id: number; name: string; total: number; personalRev: number; attainmentPct: number; kTeam: number; gatePass: boolean }
@@ -195,6 +196,7 @@ export interface SimManagerScenario {
     businessDays: number;
     year: number;
     month: number;
+    categoryNames?: Record<string, string>; // код категории → человеческое имя (для explain)
 }
 
 export interface SimManagerScenarioResult {
@@ -222,7 +224,7 @@ export function computeManagerScenario(
         personalPlanTarget: sc.personalPlan > 0 ? sc.personalPlan - 0.01 : null,
         departmentPlanTarget: sc.deptPlan > 0 ? sc.deptPlan : null,
         managerGrade: inputs.grade,
-        categoryNames: {},
+        categoryNames: sc.categoryNames ?? {},
     };
     const composed = compose(blocks, m, ctx);
     const kTeamC = composed.contributions.find((c) => c.code === 'k_team');
@@ -253,7 +255,7 @@ export function computeScenarioFot(blocks: BlockInstance[], bases: SimManagerBas
             personalPlanTarget: planTarget > 0 ? planTarget - 0.01 : null,
             departmentPlanTarget: sc.deptPlan > 0 ? sc.deptPlan : null,
             managerGrade: b.grade,
-            categoryNames: {},
+            categoryNames: sc.categoryNames ?? {},
         };
         const composed = compose(blocks, m, ctx);
         const kTeamC = composed.contributions.find((c) => c.code === 'k_team');

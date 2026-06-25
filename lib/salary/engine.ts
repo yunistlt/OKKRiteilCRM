@@ -221,7 +221,7 @@ export async function calculatePeriod(year: number, month: number): Promise<Peri
 }
 
 /** Человеческие имена категорий товара из справочника RetailCRM (для explain в расчёте). */
-async function loadCategoryNames(): Promise<Record<string, string>> {
+export async function loadCategoryNames(): Promise<Record<string, string>> {
     const { data: fieldRow } = await supabase
         .from('retailcrm_custom_fields')
         .select('dictionary')

@@ -4,7 +4,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod } from '@/lib/salary/config';
 import { collectPeriodMetrics } from '@/lib/salary/metrics';
-import { businessDaysInMonth } from '@/lib/salary/engine';
+import { businessDaysInMonth, loadCategoryNames } from '@/lib/salary/engine';
 import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
 import { toSimBase, type SimManagerBase } from '@/lib/salary/sim-shared';
@@ -47,6 +47,7 @@ export async function GET(req: Request) {
         const plans = await getPlansForPeriod(year, month);
         const grades = await resolveManagerGrades(asOf);
         const comp = await resolveManagerComp(asOf);
+        const categoryNames = await loadCategoryNames();
         const businessDays = businessDaysInMonth(year, month);
         const baseTeamRev = metrics.teamRevenueNoVat;
 
@@ -75,6 +76,7 @@ export async function GET(req: Request) {
             baseTeamRev: Math.round(baseTeamRev),
             deptPlan: plans.department ?? null,
             personalPlan: plans.personal.get(id) ?? null,
+            categoryNames,
         });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 400 });

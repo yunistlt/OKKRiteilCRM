@@ -50,7 +50,8 @@ export function rangeFor(blockCode: string, key: string, rowMode?: string): Rang
 }
 
 // Человеческая подпись ползунка с контекстом тира.
-export function ctrlLabel(blockCode: string, key: string, item?: any): string {
+// categoryNames — код категории RetailCRM → человеческое имя (для строк «по категориям»).
+export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNames?: Record<string, string>): string {
     if (key === 'oklad') return 'Оклад';
     if (key === 'new') return 'Ставка за новую заявку';
     if (key === 'permanent') return 'Ставка за постоянного';
@@ -65,14 +66,18 @@ export function ctrlLabel(blockCode: string, key: string, item?: any): string {
         if (item?.level != null) return `× для грейда ${item.level}`;
         return 'Коэффициент';
     }
-    if (key === 'coef') return 'Коэффициент категории';
-    if (key === 'value') return item?.mode === 'pct' ? '% от продажи' : 'Доплата за заявку';
+    const catName = (code?: string) => (code ? (categoryNames?.[code] ?? code) : '');
+    if (key === 'coef') return item?.category != null ? `${catName(item.category)} · коэффициент` : 'Коэффициент категории';
+    if (key === 'value') {
+        const what = item?.mode === 'pct' ? '% от продажи' : 'доплата за заявку';
+        return item?.category != null ? `${catName(item.category)} · ${what}` : (item?.mode === 'pct' ? '% от продажи' : 'Доплата за заявку');
+    }
     if (key === 'min') return blockCode === 'k_team' ? 'Порог выручки' : 'Порог конверсии';
     return key;
 }
 
 // Развернуть параметры блока в плоский список ползунков с путём к значению.
-export function controlsForBlock(blockCode: string, params: any): Control[] {
+export function controlsForBlock(blockCode: string, params: any, categoryNames?: Record<string, string>): Control[] {
     const out: Control[] = [];
     const walk = (val: any, path: (string | number)[], rowMode?: string) => {
         if (val == null) return;
@@ -96,7 +101,7 @@ export function controlsForBlock(blockCode: string, params: any): Control[] {
         const key = String(c.path[c.path.length - 1]);
         let item: any = params;
         for (let i = 0; i < c.path.length - 1; i++) item = item?.[c.path[i] as any];
-        c.label = ctrlLabel(blockCode, key, item);
+        c.label = ctrlLabel(blockCode, key, item, categoryNames);
     }
     return out;
 }
