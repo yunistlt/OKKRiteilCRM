@@ -43,8 +43,8 @@ type InputDesc = {
     fmt: (v: number) => string;
 };
 
-const VOLUME_BLOCKS = ['premia_zayavki', 'premia_categorii', 'coef_categorii', 'conv_bonus', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'same_day_sale', 'k_team'];
-const REVENUE_BLOCKS = ['premia_categorii', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'k_team'];
+const VOLUME_BLOCKS = ['premia_zayavki', 'premia_categorii', 'coef_categorii', 'conv_bonus', 'plan_attainment', 'plan_accelerator', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'same_day_sale', 'k_team'];
+const REVENUE_BLOCKS = ['premia_categorii', 'plan_attainment', 'plan_accelerator', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'k_team'];
 
 const rubFmt = (v: number) => formatNumberRu(Math.round(v)) + ' ₽';
 const pctFmt = (v: number) => v + '%';
@@ -77,8 +77,8 @@ const INPUT_OWNER: Record<InputKey, string> = {
     discountMetricValue: 'discount_bonus', dutyShifts: 'duty', grade: 'grade_multiplier',
 };
 
-const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_gate', 'plan_coef'];
-const DEPT_PLAN_BLOCKS = ['department_plan_gate', 'dept_plan_coef'];
+const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_coef'];
+const DEPT_PLAN_BLOCKS = ['dept_plan_coef'];
 
 export default function ManagerSalarySimulatorModal({ managerId, managerName, canEditParams, initialYear, initialMonth, onClose }: Props) {
     const [year, setYear] = useState(initialYear);

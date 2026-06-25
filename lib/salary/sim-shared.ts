@@ -228,7 +228,7 @@ export function computeManagerScenario(
     };
     const composed = compose(blocks, m, ctx);
     const kTeamC = composed.contributions.find((c) => c.code === 'k_team');
-    const gateC = composed.contributions.find((c) => c.code === 'plan_gate');
+    const gateC = composed.contributions.find((c) => c.code === 'plan_coef');
     return {
         total: Math.round(composed.total),
         contributions: composed.contributions,
@@ -259,7 +259,7 @@ export function computeScenarioFot(blocks: BlockInstance[], bases: SimManagerBas
         };
         const composed = compose(blocks, m, ctx);
         const kTeamC = composed.contributions.find((c) => c.code === 'k_team');
-        const gateC = composed.contributions.find((c) => c.code === 'plan_gate');
+        const gateC = composed.contributions.find((c) => c.code === 'plan_coef');
         perManager.push({
             id: b.id, name: b.name, total: composed.total, personalRev,
             attainmentPct: planTarget > 0 ? (personalRev / planTarget) * 100 : 0,

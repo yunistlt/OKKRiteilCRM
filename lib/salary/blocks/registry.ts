@@ -31,8 +31,6 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     grade_multiplier: { tiers: [{ level: 1, k: 1.25 }, { level: 2, k: 1.1 }, { level: 3, k: 1.0 }] },
     plan_attainment: { thresholdPct: 100, bonus: 10000 },
     plan_accelerator: { perPercent: 500 },
-    plan_gate: { thresholdPct: 80 },
-    department_plan_gate: { thresholdPct: 90 },
     plan_coef: { tiers: [{ min: 120, k: 1.2 }, { min: 100, k: 1.1 }, { min: 90, k: 1.0 }, { min: 0, k: 0.8 }] },
     dept_plan_coef: { tiers: [{ min: 110, k: 1.15 }, { min: 100, k: 1.0 }, { min: 0, k: 0.9 }] },
     volume_bonus: { threshold: 3000000, bonus: 10000 },
@@ -53,7 +51,6 @@ export function listBlocks() {
         multiplierScope: b.multiplierScope,
         requiredMetrics: b.requiredMetrics,
         defaultParams: DEFAULT_BLOCK_PARAMS[b.code] ?? {},
-        deprecated: b.deprecated ?? false, // скрытые из палитры (но считаемые) блоки
         // блок доступен в конструкторе, только если ВСЕ его метрики есть в БД
         available: b.requiredMetrics.every(isMetricAvailable),
     }));
