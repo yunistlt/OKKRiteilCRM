@@ -6,6 +6,25 @@
 // ============================================================================
 import { formatNumberRu } from '@/lib/format';
 
+// ── Цвета блоков (нежные: белый + тон). Один код → один цвет в палитре, роли и симуляторах ──
+// Тот же хеш, что и в конструкторе настроек (app/salary/settings/ConstructorTabs.tsx),
+// чтобы блок везде был окрашен одинаково.
+export const BLOCK_TINTS = [
+    { bg: '#f3f6ff', bar: '#3b82f6' }, // синий
+    { bg: '#f1faf3', bar: '#16a34a' }, // зелёный
+    { bg: '#fff6f1', bar: '#ea580c' }, // оранжевый
+    { bg: '#faf2fb', bar: '#a21caf' }, // пурпурный
+    { bg: '#eefafd', bar: '#0891b2' }, // циан
+    { bg: '#fdf9ee', bar: '#ca8a04' }, // янтарный
+    { bg: '#f4f3fb', bar: '#7c3aed' }, // фиолетовый
+    { bg: '#fdf1f3', bar: '#e11d48' }, // розовый
+];
+export function tintFor(code: string) {
+    let h = 0;
+    for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) >>> 0;
+    return BLOCK_TINTS[h % BLOCK_TINTS.length];
+}
+
 export type Range = { min: number; max: number; step: number; unit: '₽' | '%' | '×' | 'шт' };
 export type Control = { path: (string | number)[]; label: string; range: Range; value: number };
 

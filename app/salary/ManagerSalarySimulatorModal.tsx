@@ -16,7 +16,7 @@ import {
     computeManagerScenario, inputsFromBase,
     type SimManagerBase, type SimManagerInputs,
 } from '@/lib/salary/sim-shared';
-import { BLOCK_NAMES, controlsForBlock, setAtPath } from '@/lib/salary/sim-controls';
+import { BLOCK_NAMES, controlsForBlock, setAtPath, tintFor } from '@/lib/salary/sim-controls';
 import type { BlockInstance } from '@/lib/salary/blocks/types';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -236,9 +236,10 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
                                 const controls = controlsForBlock(b.block_code, b.params ?? {});
                                 if (!ins.length && !ctx.length && !controls.length) return null;
                                 const hasParams = ctx.length > 0 || controls.length > 0;
+                                const tint = tintFor(b.block_code);
                                 return (
-                                    <div key={b.block_code} className="mb-2 border bg-white">
-                                        <div className="flex items-center gap-1.5 border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">
+                                    <div key={b.block_code} className="mb-2 border" style={{ backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` }}>
+                                        <div className="flex items-center gap-1.5 border-b px-2 py-1 text-[11px] font-semibold">
                                             {BLOCK_NAMES[b.block_code] ?? b.block_code}
                                         </div>
                                         <div className="p-2">

@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { X, Loader2, RotateCcw, FlaskConical } from 'lucide-react';
 import { formatNumberRu } from '@/lib/format';
 import { computeScenarioFot, type SimManagerBase } from '@/lib/salary/sim-shared';
-import { BLOCK_NAMES, controlsForBlock, setAtPath } from '@/lib/salary/sim-controls';
+import { BLOCK_NAMES, controlsForBlock, setAtPath, tintFor } from '@/lib/salary/sim-controls';
 import type { BlockInstance } from '@/lib/salary/blocks/types';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -126,9 +126,10 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
                                 const realIdx = blocks.indexOf(b);
                                 const controls = controlsForBlock(b.block_code, b.params ?? {});
                                 if (!controls.length) return null;
+                                const tint = tintFor(b.block_code);
                                 return (
-                                    <div key={b.block_code} className="mb-2 border bg-white">
-                                        <div className="border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
+                                    <div key={b.block_code} className="mb-2 border" style={{ backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` }}>
+                                        <div className="border-b px-2 py-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
                                         <div className="p-2">
                                             {controls.map((c, ci) => (
                                                 <Slider key={ci} label={c.label} unit={c.range.unit} min={c.range.min} max={c.range.max} step={c.range.step} value={c.value}

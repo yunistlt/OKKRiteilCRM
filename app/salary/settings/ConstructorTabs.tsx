@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, createContext, useContext } from 'rea
 import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
+import { tintFor } from '@/lib/salary/sim-controls';
 import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FotSimulatorModal from './FotSimulatorModal';
@@ -16,23 +17,6 @@ type SchemeBlock = { block_code: string; params: any; raw: boolean; rawText: str
 // prevEffectiveFrom — дата версии «как загружена». Если при сохранении дата изменилась,
 // бэкенд переносит ту же версию на новую дату (а не плодит дубль). '' = новая, ещё не сохранённая схема.
 type EditScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; blocks: SchemeBlock[] };
-
-// ── Цвета блоков (нежные: белый + тон). Один код → один цвет в палитре и в роли ──
-const BLOCK_TINTS = [
-    { bg: '#f3f6ff', bar: '#3b82f6' }, // синий
-    { bg: '#f1faf3', bar: '#16a34a' }, // зелёный
-    { bg: '#fff6f1', bar: '#ea580c' }, // оранжевый
-    { bg: '#faf2fb', bar: '#a21caf' }, // пурпурный
-    { bg: '#eefafd', bar: '#0891b2' }, // циан
-    { bg: '#fdf9ee', bar: '#ca8a04' }, // янтарный
-    { bg: '#f4f3fb', bar: '#7c3aed' }, // фиолетовый
-    { bg: '#fdf1f3', bar: '#e11d48' }, // розовый
-];
-function tintFor(code: string) {
-    let h = 0;
-    for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) >>> 0;
-    return BLOCK_TINTS[h % BLOCK_TINTS.length];
-}
 
 // ── RU-лейблы технических ключей параметров ──
 const PARAM_LABELS: Record<string, string> = {
