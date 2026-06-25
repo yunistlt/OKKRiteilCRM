@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, ChevronRight, ChevronDown } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
-import { CountedOrdersSplit, MetricDrilldownPanel, type DrilldownMetric } from '@/components/salary/salary-drilldowns';
+import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -18,7 +18,7 @@ export default function MySalaryPage() {
     const [status, setStatus] = useState<string>('');
     const [loading, setLoading] = useState(true);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
-    const [expanded, setExpanded] = useState<string | null>(null);
+    const [details, setDetails] = useState<any>(null);
     const { toast } = useToast();
 
     const load = useCallback(async () => {
@@ -29,6 +29,7 @@ export default function MySalaryPage() {
             if (json.error) throw new Error(json.error);
             setRow(json.rows?.[0] ?? null);
             setStatus(json.period?.status ?? 'none');
+            setDetails(json.details ?? null);
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
         } finally {
@@ -39,9 +40,11 @@ export default function MySalaryPage() {
     useEffect(() => { load(); }, [load]);
 
     const b = row?.breakdown || {};
-    const period = `${year}-${month}`;
-    const managerId = row?.manager_id;
     const countedOrders: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
+    const countedOrderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
+    const incoming: any[] = Array.isArray(details?.incoming) ? details.incoming : [];
+    const teamOrders: any[] = Array.isArray(details?.teamOrders) ? details.teamOrders : [];
+    const teamRevenueNoVat: number = details?.teamRevenueNoVat ?? 0;
 
     return (
         <div className="mx-auto max-w-3xl space-y-3 p-3">
@@ -88,20 +91,10 @@ export default function MySalaryPage() {
                                         </>
                                     );
                                 })()}
-                                <MetricLine
-                                    label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`}
-                                    metric="conversion" period={period} managerId={managerId} localOrders={countedOrders}
-                                    expanded={expanded === 'conv_bonus'} onToggle={() => setExpanded(expanded === 'conv_bonus' ? null : 'conv_bonus')}
-                                    onOpenOrder={setSelectedOrderId}
-                                />
+                                <Line label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`} />
                                 <Line label="Бонус за скидочную дисциплину" value={rub(row.discount_bonus)} sub={b.discountValue != null ? `скидка ${b.discountValue}%` : undefined} />
                                 <Line label="Дежурства" value={rub(row.duty_pay)} />
-                                <MetricLine
-                                    label="К_команды (множитель переменной части)" value={`× ${row.k_team}`}
-                                    metric="team" period={period} managerId={managerId} localOrders={countedOrders}
-                                    expanded={expanded === 'k_team'} onToggle={() => setExpanded(expanded === 'k_team' ? null : 'k_team')}
-                                    onOpenOrder={setSelectedOrderId}
-                                />
+                                <Line label="К_команды (множитель переменной части)" value={`× ${row.k_team}`} />
                                 <tr className="border-t-2 font-semibold">
                                     <td className="py-2">Итого к выплате</td>
                                     <td className="py-2 text-right text-lg">{rub(row.total)}</td>
@@ -109,20 +102,31 @@ export default function MySalaryPage() {
                             </tbody>
                         </table>
 
-                        {(() => {
-                            const ids: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
-                            if (countedOrders.length === 0 && ids.length === 0) return null;
+                        {(countedOrders.length > 0 || countedOrderIds.length > 0) && (() => {
                             const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0);
                             return (
                                 <div className="mt-4 border-t pt-3">
-                                    <div className="mb-2 text-sm font-semibold">Засчитанные заказы ({totalCounted || countedOrders.length || ids.length})</div>
-                                    <CountedOrdersSplit orders={countedOrders} fallbackIds={ids} onOpenOrder={setSelectedOrderId} />
-                                    <div className="mt-2 text-[11px] text-muted-foreground">
-                                        Нажмите на номер заказа, чтобы открыть карточку в ОКК и проверить данные расчёта.
-                                    </div>
+                                    <div className="mb-2 text-sm font-semibold">Засчитанные заказы ({totalCounted || countedOrders.length || countedOrderIds.length})</div>
+                                    <CountedOrdersSplit orders={countedOrders} fallbackIds={countedOrderIds} onOpenOrder={setSelectedOrderId} />
                                 </div>
                             );
                         })()}
+
+                        {/* Конв-бонус: поступившие заявки месяца + отметка «продан» */}
+                        <div className="mt-4 border-t pt-3">
+                            <div className="mb-2 text-sm font-semibold">Конв-бонус — поступившие заявки</div>
+                            <ConversionOrdersTable orders={incoming} countedIds={countedOrderIds} numerator={b.conversionNumerator ?? countedOrderIds.length} onOpenOrder={setSelectedOrderId} />
+                        </div>
+
+                        {/* К_команды: все засчитанные заказы отдела */}
+                        <div className="mt-4 border-t pt-3">
+                            <div className="mb-2 text-sm font-semibold">К_команды — заказы отдела</div>
+                            <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} onOpenOrder={setSelectedOrderId} />
+                        </div>
+
+                        <div className="mt-2 text-[11px] text-muted-foreground">
+                            Нажмите на номер заказа, чтобы открыть карточку в ОКК и проверить данные расчёта.
+                        </div>
                     </CardContent>
                 </Card>
             )}
@@ -143,43 +147,5 @@ function Line({ label, value, sub }: { label: string; value: string; sub?: strin
             </td>
             <td className="py-2 text-right">{value}</td>
         </tr>
-    );
-}
-
-// Строка показателя с раскрытием заказов, на которых он построен (конверсия, К_команды).
-function MetricLine({
-    label, value, sub, metric, period, managerId, localOrders, expanded, onToggle, onOpenOrder,
-}: {
-    label: string;
-    value: string;
-    sub?: string;
-    metric: DrilldownMetric;
-    period: string;
-    managerId: number;
-    localOrders: any[];
-    expanded: boolean;
-    onToggle: () => void;
-    onOpenOrder: (id: number) => void;
-}) {
-    return (
-        <>
-            <tr className="cursor-pointer border-t hover:bg-muted/40" onClick={onToggle} title="Показать заказы, на которых построен показатель">
-                <td className="py-2">
-                    <span className="inline-flex items-baseline gap-1">
-                        {expanded ? <ChevronDown className="h-3.5 w-3.5 self-center text-blue-600" /> : <ChevronRight className="h-3.5 w-3.5 self-center text-blue-600" />}
-                        <span className="font-medium text-blue-700">{label}</span>
-                        {sub && <span className="ml-2 text-xs text-muted-foreground">{sub}</span>}
-                    </span>
-                </td>
-                <td className="py-2 text-right">{value}</td>
-            </tr>
-            {expanded && (
-                <tr>
-                    <td colSpan={2} className="pb-2">
-                        <MetricDrilldownPanel period={period} managerId={managerId} metric={metric} localOrders={localOrders} onOpenOrder={onOpenOrder} />
-                    </td>
-                </tr>
-            )}
-        </>
     );
 }
