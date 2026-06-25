@@ -2,38 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, ChevronDown, CalendarClock, Settings, Download, Lock, LockOpen, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import { CountedOrdersSplit, MetricDrilldownPanel, metricForBlockCode } from '@/components/salary/salary-drilldowns';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
-const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный' };
-const pluralRu = (n: number, one: string, few: string, many: string) => {
-    const m10 = n % 10;
-    const m100 = n % 100;
-    if (m10 === 1 && m100 !== 11) return one;
-    if (m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20)) return few;
-    return many;
-};
-// Тип заявки + (для постоянных) сколько закрытых сделок у клиента за всё время.
-const orderTypeLabel = (o: any) => {
-    const base = ORDER_TYPE_LABEL[o?.type] ?? '—';
-    if (o?.type === 'permanent' && typeof o?.deals === 'number' && o.deals > 0) {
-        return `${base} · ${o.deals} ${pluralRu(o.deals, 'сделка', 'сделки', 'сделок')}`;
-    }
-    return base;
-};
 const DISCOUNT_METRIC_NAMES: Record<string, string> = { avg_order_discount_pct: 'Средневзвешенный % скидки', share_orders_no_discount: 'Доля заказов без скидки' };
 const metricName = (code?: string) => (code ? (DISCOUNT_METRIC_NAMES[code] ?? code) : '—');
-const fmtDate = (s?: string) => {
-    if (!s) return '—';
-    const d = new Date(s);
-    return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU');
-};
 
 interface CalcRow {
     manager_id: number;
@@ -264,6 +244,7 @@ export default function SalaryDashboard() {
             {reportManager && (
                 <ManagerReportModal
                     r={reportManager}
+                    period={period}
                     monthLabel={`${MONTHS[month - 1]} ${year}`}
                     onClose={() => setReportManager(null)}
                     onOpenOrder={(id) => setSelectedOrderId(id)}
@@ -331,11 +312,13 @@ function RowGroup({ r, columns, onOpen }: { r: CalcRow; columns: BlockColumn[] |
 // каждую засчитанную заявку, на которой построен расчёт ЗП.
 function ManagerReportModal({
     r,
+    period,
     monthLabel,
     onClose,
     onOpenOrder,
 }: {
     r: CalcRow;
+    period: string;
     monthLabel: string;
     onClose: () => void;
     onOpenOrder: (orderId: number) => void;
@@ -343,9 +326,9 @@ function ManagerReportModal({
     const b = r.breakdown || {};
     const details: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
     const orderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
-    // Фолбэк для старых расчётов без детализации: показываем хотя бы номера.
-    const orderRows: any[] = details.length > 0 ? details : orderIds.map((id) => ({ id }));
     const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0);
+    // Какой показатель «Как сложилась сумма» сейчас раскрыт заказами (по коду блока).
+    const [expanded, setExpanded] = useState<string | null>(null);
 
     return (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
@@ -376,20 +359,46 @@ function ManagerReportModal({
                         </div>
                         {Array.isArray(b.blockContributions) && b.blockContributions.length > 0 ? (
                             <div className="space-y-1">
-                                {b.blockContributions.map((c: any, i: number) => (
-                                    <div key={i} className="flex items-baseline justify-between gap-3 border-b border-dashed py-0.5 last:border-0">
-                                        <div>
-                                            <span className="font-medium">{c.name}</span>
-                                            <span className="ml-2 text-muted-foreground">{c.explain}</span>
-                                            {c.dataFill && c.dataFill.pct < 1 && (
-                                                <span className="ml-2 bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
+                                {b.blockContributions.map((c: any, i: number) => {
+                                    const metric = metricForBlockCode(c.code);
+                                    const isOpen = expanded === c.code;
+                                    return (
+                                        <div key={i} className="border-b border-dashed py-0.5 last:border-0">
+                                            <div
+                                                className={`flex items-baseline justify-between gap-3 ${metric ? 'cursor-pointer hover:bg-muted/40' : ''}`}
+                                                onClick={metric ? () => setExpanded(isOpen ? null : c.code) : undefined}
+                                                title={metric ? 'Показать заказы, на которых построен показатель' : undefined}
+                                            >
+                                                <div className="flex items-baseline gap-1">
+                                                    {metric ? (
+                                                        isOpen ? <ChevronDown className="h-3 w-3 shrink-0 self-center text-blue-600" /> : <ChevronRight className="h-3 w-3 shrink-0 self-center text-blue-600" />
+                                                    ) : (
+                                                        <span className="w-3 shrink-0" />
+                                                    )}
+                                                    <span>
+                                                        <span className={`font-medium ${metric ? 'text-blue-700' : ''}`}>{c.name}</span>
+                                                        <span className="ml-2 text-muted-foreground">{c.explain}</span>
+                                                        {c.dataFill && c.dataFill.pct < 1 && (
+                                                            <span className="ml-2 bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <div className="whitespace-nowrap font-medium">
+                                                    {c.kind === 'multiplier' ? `×${c.multiplier}` : rub(c.amount)}
+                                                </div>
+                                            </div>
+                                            {metric && isOpen && (
+                                                <MetricDrilldownPanel
+                                                    period={period}
+                                                    managerId={r.manager_id}
+                                                    metric={metric}
+                                                    localOrders={details}
+                                                    onOpenOrder={onOpenOrder}
+                                                />
                                             )}
                                         </div>
-                                        <div className="whitespace-nowrap font-medium">
-                                            {c.kind === 'multiplier' ? `×${c.multiplier}` : rub(c.amount)}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         ) : (
                             <div className="grid gap-1 md:grid-cols-2">
@@ -426,47 +435,10 @@ function ManagerReportModal({
                         </div>
                     </div>
 
-                    {/* Засчитанные заказы — кликабельные номера + детали */}
+                    {/* Засчитанные заказы — две таблицы (Постоянные / Новые), номера кликабельны */}
                     <div>
-                        <div className="mb-2 font-semibold">Засчитанные заказы ({orderRows.length})</div>
-                        {orderRows.length > 0 ? (
-                            <div className="overflow-x-auto border">
-                                <table className="w-full text-xs">
-                                    <thead className="bg-muted/40 text-left text-muted-foreground">
-                                        <tr>
-                                            <th className="px-2 py-1.5">№ заказа</th>
-                                            <th className="px-2 py-1.5">Клиент</th>
-                                            <th className="px-2 py-1.5">Тип</th>
-                                            <th className="px-2 py-1.5 text-right">Сумма</th>
-                                            <th className="px-2 py-1.5 text-right">Скидка</th>
-                                            <th className="px-2 py-1.5">Передан в произв.</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {orderRows.map((o) => (
-                                            <tr key={o.id} className="border-t">
-                                                <td className="px-2 py-1.5">
-                                                    <button
-                                                        onClick={() => onOpenOrder(o.id)}
-                                                        className="font-medium text-blue-700 hover:underline"
-                                                        title="Открыть карточку заказа в ОКК"
-                                                    >
-                                                        Заказ #{o.id}
-                                                    </button>
-                                                </td>
-                                                <td className="px-2 py-1.5">{o.clientName || '—'}</td>
-                                                <td className="px-2 py-1.5">{orderTypeLabel(o)}</td>
-                                                <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
-                                                <td className="px-2 py-1.5 text-right">{o.discountPct != null ? o.discountPct + '%' : '—'}</td>
-                                                <td className="px-2 py-1.5">{fmtDate(o.enteredAt)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) : (
-                            <div className="text-xs text-muted-foreground">—</div>
-                        )}
+                        <div className="mb-2 font-semibold">Засчитанные заказы ({totalCounted})</div>
+                        <CountedOrdersSplit orders={details} fallbackIds={orderIds} onOpenOrder={onOpenOrder} />
                         <div className="mt-2 text-[11px] text-muted-foreground">
                             Нажмите на номер заказа, чтобы открыть карточку в ОКК и проверить данные.
                         </div>
