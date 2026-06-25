@@ -40,9 +40,10 @@ export function rangeFor(blockCode: string, key: string, rowMode?: string): Rang
         case 'threshold': return { min: 0, max: 50, step: 1, unit: '%' };
         case 'thresholdPct': return { min: 0, max: 100, step: 1, unit: '%' };
         case 'k': case 'coef': return { min: 0.5, max: 2, step: 0.05, unit: '×' };
-        case 'min': return blockCode === 'k_team'
-            ? { min: 0, max: 40_000_000, step: 500_000, unit: '₽' }
-            : { min: 0, max: 100, step: 1, unit: '%' }; // conv_bonus: порог конверсии
+        case 'min':
+            if (blockCode === 'k_team') return { min: 0, max: 40_000_000, step: 500_000, unit: '₽' };
+            if (blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') return { min: 0, max: 200, step: 5, unit: '%' }; // порог % выполнения плана
+            return { min: 0, max: 100, step: 1, unit: '%' }; // conv_bonus: порог конверсии
         case 'value': return rowMode === 'pct' ? { min: 0, max: 50, step: 0.5, unit: '%' } : { min: 0, max: 30000, step: 500, unit: '₽' };
         case 'level': case 'prorate': return null; // не ползунки
         default: return { min: 0, max: 100000, step: 1000, unit: '₽' };
@@ -63,6 +64,7 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
     if (key === 'bonus') return item && item.min != null ? `Бонус при ≥ ${item.min}%` : 'Бонус';
     if (key === 'k') {
         if (blockCode === 'k_team' && item?.min != null) return `× при выручке ≥ ${formatNumberRu(item.min)} ₽`;
+        if ((blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') && item?.min != null) return `× при выполнении ≥ ${item.min}%`;
         if (item?.level != null) return `× для грейда ${item.level}`;
         return 'Коэффициент';
     }
@@ -72,7 +74,11 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
         const what = item?.mode === 'pct' ? '% от продажи' : 'доплата за заявку';
         return item?.category != null ? `${catName(item.category)} · ${what}` : (item?.mode === 'pct' ? '% от продажи' : 'Доплата за заявку');
     }
-    if (key === 'min') return blockCode === 'k_team' ? 'Порог выручки' : 'Порог конверсии';
+    if (key === 'min') {
+        if (blockCode === 'k_team') return 'Порог выручки';
+        if (blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') return 'Порог выполнения, %';
+        return 'Порог конверсии';
+    }
     return key;
 }
 
@@ -118,8 +124,9 @@ export const BLOCK_NAMES: Record<string, string> = {
     oklad: 'Оклад', premia_zayavki: 'Премия за заявки', premia_categorii: 'Премия за категории',
     coef_categorii: 'Коэффициент за категории', k_quality: 'К_качества', conv_bonus: 'Конв-бонус',
     discount_bonus: 'Скидочная дисциплина', k_team: 'К_команды', duty: 'Дежурства',
-    plan_attainment: 'Выполнение плана', plan_accelerator: 'Ускоритель плана', plan_gate: 'Гейт по плану',
-    department_plan_gate: 'Гейт по плану отдела', volume_bonus: 'Бонус за объём', same_day_sale: 'Продажа в день обращения',
+    plan_attainment: 'Выполнение плана', plan_accelerator: 'Ускоритель плана', plan_gate: 'Гейт по личному плану',
+    department_plan_gate: 'Гейт по плану отдела', plan_coef: 'Коэффициент по личному плану', dept_plan_coef: 'Коэффициент по плану отдела',
+    volume_bonus: 'Бонус за объём', same_day_sale: 'Продажа в день обращения',
     script_bonus: 'Соблюдение скрипта', fast_contact_bonus: 'Скорость контакта', fields_bonus: 'Заполнение ТЗ',
     grade_multiplier: 'Грейд-коэффициент',
 };

@@ -43,8 +43,8 @@ type InputDesc = {
     fmt: (v: number) => string;
 };
 
-const VOLUME_BLOCKS = ['premia_zayavki', 'premia_categorii', 'coef_categorii', 'conv_bonus', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'volume_bonus', 'same_day_sale', 'k_team'];
-const REVENUE_BLOCKS = ['premia_categorii', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'volume_bonus', 'k_team'];
+const VOLUME_BLOCKS = ['premia_zayavki', 'premia_categorii', 'coef_categorii', 'conv_bonus', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'same_day_sale', 'k_team'];
+const REVENUE_BLOCKS = ['premia_categorii', 'plan_attainment', 'plan_accelerator', 'plan_gate', 'department_plan_gate', 'plan_coef', 'dept_plan_coef', 'volume_bonus', 'k_team'];
 
 const rubFmt = (v: number) => formatNumberRu(Math.round(v)) + ' ₽';
 const pctFmt = (v: number) => v + '%';
@@ -77,7 +77,8 @@ const INPUT_OWNER: Record<InputKey, string> = {
     discountMetricValue: 'discount_bonus', dutyShifts: 'duty', grade: 'grade_multiplier',
 };
 
-const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_gate'];
+const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_gate', 'plan_coef'];
+const DEPT_PLAN_BLOCKS = ['department_plan_gate', 'dept_plan_coef'];
 
 export default function ManagerSalarySimulatorModal({ managerId, managerName, canEditParams, initialYear, initialMonth, onClose }: Props) {
     const [year, setYear] = useState(initialYear);
@@ -165,12 +166,13 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
 
     // Контекст-ползунки (выручка отдела / планы), привязанные к блоку-«хозяину».
     const planOwner = PLAN_BLOCKS.find((c) => blockCodes.includes(c));
+    const deptOwner = DEPT_PLAN_BLOCKS.find((c) => blockCodes.includes(c));
     type Ctx = { label: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void };
     const contextFor = (code: string): Ctx[] => {
         const arr: Ctx[] = [];
         if (code === 'k_team') arr.push({ label: 'Выручка отдела (для К_команды)', min: 0, max: Math.max(baseTeamRev * 2.6, 30_000_000), step: 250_000, value: teamRevenue, onChange: setTeamRevenue });
         if (code === planOwner) arr.push({ label: 'Личный план', min: 0, max: Math.max(personalPlan * 2.6, 5_000_000), step: 100_000, value: personalPlan, onChange: setPersonalPlan });
-        if (code === 'department_plan_gate') arr.push({ label: 'План отдела', min: 0, max: Math.max(deptPlan * 2.2, 24_000_000), step: 250_000, value: deptPlan, onChange: setDeptPlan });
+        if (code === deptOwner) arr.push({ label: 'План отдела', min: 0, max: Math.max(deptPlan * 2.2, 24_000_000), step: 250_000, value: deptPlan, onChange: setDeptPlan });
         return arr;
     };
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { round2 } from '@/lib/salary/blocks/tiers';
+import { round2, pickTier } from '@/lib/salary/blocks/tiers';
 import { fullFill, type BonusBlock, type DataFill } from '@/lib/salary/blocks/types';
 import type { ManagerMetrics } from '@/lib/salary/metrics';
 
@@ -63,8 +63,8 @@ const planAccelerator: BonusBlock<{ perPercent: number }> = {
 // ── План: гейт (переменная часть только при выполнении) ─────────────────────
 const planGate: BonusBlock<{ thresholdPct: number }> = {
     code: 'plan_gate',
-    name: 'Гейт по плану',
-    methodology: 'Множитель переменной части: 1, если выполнение личного плана ≥ порога, иначе 0. План не задан → 1 (не режем).',
+    name: 'Гейт по личному плану',
+    methodology: 'Множитель переменной части: 1, если выполнение личного плана ≥ порога, иначе 0. Личный план не задан → 1 (не режем).',
     kind: 'multiplier',
     group: 'variable',
     multiplierScope: 'variableBracket',
@@ -105,6 +105,59 @@ const departmentPlanGate: BonusBlock<{ thresholdPct: number }> = {
             multiplier: mult,
             amount: 0,
             explain: noPlan ? 'План отдела не задан → ×1' : `Факт отдела ${rub(fact)} / план отдела ${rub(target!)} = ${Math.round(att)}% (порог ${p.thresholdPct}%) → ×${mult}`,
+            dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
+        };
+    },
+};
+
+// Тир коэффициента по проценту выполнения плана: { min: порог выполнения %, k: множитель }.
+const tierPctK = z.object({ min: z.number().nonnegative(), k: z.number().nonnegative() });
+
+// ── План: коэффициент по % выполнения ЛИЧНОГО плана (градуированный множитель) ──
+const planCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
+    code: 'plan_coef',
+    name: 'Коэффициент по личному плану',
+    methodology: 'Множитель переменной части по % выполнения личного плана: берётся тир с наибольшим порогом ≤ факт/план×100. Личный план не задан → ×1 (не режем).',
+    kind: 'multiplier',
+    group: 'variable',
+    multiplierScope: 'variableBracket',
+    requiredMetrics: ['plan_personal', 'revenue_no_vat'],
+    paramSchema: z.object({ tiers: z.array(tierPctK).min(1) }),
+    compute(m, p, ctx) {
+        const target = ctx.personalPlanTarget;
+        const fact = managerRevenue(m);
+        const noPlan = target == null || target <= 0;
+        const att = noPlan ? 0 : (fact / target) * 100;
+        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 1);
+        return {
+            multiplier: mult,
+            amount: 0,
+            explain: noPlan ? 'Личный план не задан → ×1' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}% → ×${mult}`,
+            dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
+        };
+    },
+};
+
+// ── План отдела: коэффициент по % выполнения ОБЩЕГО плана (градуированный множитель) ──
+const deptPlanCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
+    code: 'dept_plan_coef',
+    name: 'Коэффициент по плану отдела',
+    methodology: 'Множитель переменной части по % выполнения плана отдела: тир с наибольшим порогом ≤ выручка отдела/план отдела×100. План отдела не задан → ×1 (не режем).',
+    kind: 'multiplier',
+    group: 'variable',
+    multiplierScope: 'variableBracket',
+    requiredMetrics: ['plan_department', 'team_revenue'],
+    paramSchema: z.object({ tiers: z.array(tierPctK).min(1) }),
+    compute(m, p, ctx) {
+        const target = ctx.departmentPlanTarget;
+        const fact = ctx.teamRevenueNoVat;
+        const noPlan = target == null || target <= 0;
+        const att = noPlan ? 0 : (fact / target) * 100;
+        const mult = noPlan ? 1 : (pickTier(att, p.tiers)?.k ?? 1);
+        return {
+            multiplier: mult,
+            amount: 0,
+            explain: noPlan ? 'План отдела не задан → ×1' : `Факт отдела ${rub(fact)} / план отдела ${rub(target!)} = ${Math.round(att)}% → ×${mult}`,
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -250,6 +303,8 @@ export const EXTRA_BLOCKS: BonusBlock[] = [
     planAccelerator,
     planGate,
     departmentPlanGate,
+    planCoef,
+    deptPlanCoef,
     volumeBonus,
     sameDaySale,
     scriptBonus,

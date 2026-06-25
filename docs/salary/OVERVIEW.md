@@ -70,7 +70,9 @@ total = base
 | `duty` | Дежурства | base/duty | duty_shifts | смены × ставка, не режется |
 | `plan_attainment` | Выполнение личного плана | variable/**flat** | plan_personal, revenue_no_vat | факт/план ≥ порог → бонус |
 | `plan_accelerator` | Ускоритель за перевыполнение | variable/flat | plan_personal | за каждый % сверх 100% |
-| `plan_gate` | Гейт по плану | **multiplier/variableBracket** | plan_personal | <порога → ×0 переменной части |
+| `plan_gate` | Гейт по личному плану | **multiplier/variableBracket** | plan_personal | <порога → ×0 переменной части |
+| `plan_coef` | Коэффициент по личному плану | **multiplier/variableBracket** | plan_personal, revenue_no_vat | множитель переменной части по тирам % выполнения личного плана (pickTier по факт/план×100); план не задан → ×1 |
+| `dept_plan_coef` | Коэффициент по плану отдела | **multiplier/variableBracket** | plan_department, team_revenue | множитель переменной части по тирам % выполнения плана отдела; план не задан → ×1 |
 | `volume_bonus` | Бонус за объём выручки | variable/flat | revenue_no_vat | выручка ≥ порог → бонус |
 | `same_day_sale` | Продажа в день обращения | variable/flat | order_created_date | дата «передано в произв.» = дате создания → ×ставка |
 | `script_bonus` | Соблюдение скрипта | variable/flat | okk_script_score | AVG(script_score_pct) ≥ порог |

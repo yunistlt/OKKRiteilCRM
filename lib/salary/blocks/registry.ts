@@ -33,6 +33,8 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     plan_accelerator: { perPercent: 500 },
     plan_gate: { thresholdPct: 80 },
     department_plan_gate: { thresholdPct: 90 },
+    plan_coef: { tiers: [{ min: 120, k: 1.2 }, { min: 100, k: 1.1 }, { min: 90, k: 1.0 }, { min: 0, k: 0.8 }] },
+    dept_plan_coef: { tiers: [{ min: 110, k: 1.15 }, { min: 100, k: 1.0 }, { min: 0, k: 0.9 }] },
     volume_bonus: { threshold: 3000000, bonus: 10000 },
     same_day_sale: { rate: 500 },
     script_bonus: { thresholdPct: 80, bonus: 5000 },
