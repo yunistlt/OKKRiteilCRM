@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { SchemesTab, RosterTab, PlansTab } from './ConstructorTabs';
-import BaseConfigTab from './BaseConfigTab';
 import GradesTab from './GradesTab';
 import { useConsultantScreenHint } from '@/components/consultant/ConsultantScreenContext';
 
@@ -14,7 +13,6 @@ const TABS = [
     ['roster', 'Реестр ОП'],
     ['plans', 'Планы'],
     ['grades', 'Грейды'],
-    ['base', 'Базовые параметры'],
 ] as const;
 
 export default function SalarySettingsPage() {
@@ -36,7 +34,6 @@ export default function SalarySettingsPage() {
             {tab === 'roster' && <RosterTab />}
             {tab === 'plans' && <PlansTab />}
             {tab === 'grades' && <GradesTab />}
-            {tab === 'base' && <BaseConfigTab />}
         </div>
     );
 }

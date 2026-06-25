@@ -7,6 +7,7 @@ import { formatNumberRu } from '@/lib/format';
 import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FotSimulatorModal from './FotSimulatorModal';
+import BaseConfigTab from './BaseConfigTab';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
@@ -227,6 +228,7 @@ export function SchemesTab() {
     const [saving, setSaving] = useState<string | null>(null);
     const [open, setOpen] = useState<Set<string>>(new Set());
     const toggleOpen = (key: string) => setOpen((prev) => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+    const [showBase, setShowBase] = useState(false); // раскрыты ли базовые параметры (общие значения по умолчанию)
     // Симуляция «что если» (песочница тарифов) — считает черновики на периоде, НЕ сохраняет.
     const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
     const [assignments, setAssignments] = useState<{ managerId: number; schemeCode: string }[]>([]); // реестр: кто в какой роли
@@ -385,6 +387,15 @@ export function SchemesTab() {
                 </div>
             </div>
             <div className="space-y-3">
+                {/* Базовые параметры — общие значения по умолчанию (статус закрытия, исключения, НДС, дефолтные ставки/тиры). Раскрываются по клику, чтобы не загромождать конструктор ролей. */}
+                <div className="border">
+                    <button onClick={() => setShowBase((v) => !v)} className="flex w-full items-center gap-1.5 border-b bg-muted/40 px-2 py-1.5 text-left">
+                        {showBase ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                        <span className="text-sm font-semibold">Базовые параметры</span>
+                        <span className="text-[11px] text-muted-foreground">общие значения по умолчанию (статус закрытия, исключения, НДС, ставки/тиры)</span>
+                    </button>
+                    {showBase && <div className="p-2"><BaseConfigTab /></div>}
+                </div>
                 {/* Песочница тарифов: примерить ТЕКУЩИЕ (несохранённые) черновики на любой период, в т.ч. закрытый. Ничего не пишет. */}
                 <div className="border border-violet-300 bg-violet-50/40">
                     <div className="flex flex-wrap items-center gap-2 border-b border-violet-200 bg-violet-100/60 px-2 py-1.5">
