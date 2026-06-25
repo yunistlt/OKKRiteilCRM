@@ -66,6 +66,19 @@ const INPUT_DESCS: InputDesc[] = [
     { key: 'grade', label: 'Грейд', blocks: ['grade_multiplier'], min: 1, maxOf: () => 5, step: 1, fmt: (v) => 'грейд ' + Math.round(v) },
 ];
 
+// Показатель → блок-«хозяин»: рядом с показателем показываем тариф этого же блока
+// (визуальная группировка «показатель + его тариф» в одну карточку).
+const INPUT_OWNER: Record<InputKey, string> = {
+    ordersNew: 'premia_zayavki', ordersPermanent: 'premia_zayavki', avgCheck: 'premia_zayavki',
+    conversionPct: 'conv_bonus', incomingCount: 'conv_bonus',
+    sameDayShare: 'same_day_sale',
+    qualityAvgScore: 'k_quality', qualityScriptPct: 'script_bonus',
+    fastContactShare: 'fast_contact_bonus', fieldsFilledShare: 'fields_bonus',
+    discountMetricValue: 'discount_bonus', dutyShifts: 'duty', grade: 'grade_multiplier',
+};
+
+const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_gate'];
+
 export default function ManagerSalarySimulatorModal({ managerId, managerName, canEditParams, initialYear, initialMonth, onClose }: Props) {
     const [year, setYear] = useState(initialYear);
     const [month, setMonth] = useState(initialMonth);
@@ -141,13 +154,32 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
         setTeamRevenue(defaults.teamRevenue); setPersonalPlan(defaults.personalPlan); setDeptPlan(defaults.deptPlan);
     };
 
-    const has = (code: string) => blockCodes.includes(code);
     const hasAny = (codes: string[]) => codes.some((c) => blockCodes.includes(c));
     const curOrders = (inputs?.ordersNew ?? 0) + (inputs?.ordersPermanent ?? 0);
     const attainment = result?.attainmentPct ?? 0;
 
     // показатели, релевантные схеме (значение != null или блок-условие истинно)
     const shownInputs = INPUT_DESCS.filter((d) => hasAny(d.blocks) && (inputs ? inputs[d.key] != null : true));
+
+    // Контекст-ползунки (выручка отдела / планы), привязанные к блоку-«хозяину».
+    const planOwner = PLAN_BLOCKS.find((c) => blockCodes.includes(c));
+    type Ctx = { label: string; min: number; max: number; step: number; value: number; onChange: (v: number) => void };
+    const contextFor = (code: string): Ctx[] => {
+        const arr: Ctx[] = [];
+        if (code === 'k_team') arr.push({ label: 'Выручка отдела (для К_команды)', min: 0, max: Math.max(baseTeamRev * 2.6, 30_000_000), step: 250_000, value: teamRevenue, onChange: setTeamRevenue });
+        if (code === planOwner) arr.push({ label: 'Личный план', min: 0, max: Math.max(personalPlan * 2.6, 5_000_000), step: 100_000, value: personalPlan, onChange: setPersonalPlan });
+        if (code === 'department_plan_gate') arr.push({ label: 'План отдела', min: 0, max: Math.max(deptPlan * 2.2, 24_000_000), step: 250_000, value: deptPlan, onChange: setDeptPlan });
+        return arr;
+    };
+
+    // Группировка показателей по блоку-«хозяину»; «сироты» (хозяин не в схеме) — в общую карточку.
+    const inputsByOwner = new Map<string, InputDesc[]>();
+    const orphanInputs: InputDesc[] = [];
+    for (const d of shownInputs) {
+        const owner = INPUT_OWNER[d.key];
+        if (owner && blockCodes.includes(owner)) inputsByOwner.set(owner, [...(inputsByOwner.get(owner) ?? []), d]);
+        else orphanInputs.push(d);
+    }
 
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-3" onClick={onClose}>
@@ -175,48 +207,66 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
                     <div className="p-6 text-sm text-muted-foreground">Нет данных.</div>
                 ) : (
                     <div className="grid min-h-0 flex-1 grid-cols-[320px_1fr] overflow-hidden">
-                        {/* Левая колонка: показатели + параметры */}
-                        <div className="overflow-y-auto border-r p-3">
-                            {/* МОИ ПОКАЗАТЕЛИ — редактируются всегда */}
-                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-tight text-muted-foreground">Мои показатели</div>
-                            {shownInputs.length === 0 ? (
-                                <div className="mb-2 text-[11px] text-muted-foreground">Для назначенной схемы нет настраиваемых показателей.</div>
-                            ) : shownInputs.map((d) => (
-                                <Slider key={d.key} label={d.label} min={d.min} max={d.maxOf(base)} step={d.step}
-                                    value={Number(inputs[d.key] ?? 0)} fmt={d.fmt} onChange={(v) => setInput(d.key, v)} />
-                            ))}
-
-                            {/* ПАРАМЕТРЫ СХЕМЫ — только admin/rop; менеджеру read-only */}
-                            <div className="mb-1 mt-3 flex items-center gap-1.5 border-t pt-2 text-[11px] font-semibold uppercase tracking-tight text-muted-foreground">
-                                Параметры схемы {!canEditParams && <Lock className="h-3 w-3" />}
-                            </div>
+                        {/* Левая колонка: карточки «показатель + его тариф» по блокам схемы */}
+                        <div className="overflow-y-auto bg-muted/20 p-2 border-r">
                             {!canEditParams && (
-                                <div className="mb-2 bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-700">
-                                    Тарифы, ставки и пороги задаёт руководитель — здесь они только для справки.
+                                <div className="mb-2 flex items-center gap-1.5 bg-amber-50 px-2 py-1 text-[10px] leading-snug text-amber-700">
+                                    <Lock className="h-3 w-3 shrink-0" /> Тарифы, ставки и пороги задаёт руководитель — здесь они только для справки.
                                 </div>
                             )}
-                            {/* Контекст: выручка отдела (К_команды) / планы */}
-                            {has('k_team') && (
-                                <Slider label="Выручка отдела (для К_команды)" min={0} max={Math.max(baseTeamRev * 2.6, 30_000_000)} step={250_000} value={teamRevenue} fmt={rubFmt} disabled={!canEditParams} onChange={setTeamRevenue} />
+
+                            {/* Прочие показатели, чей блок-хозяин не в схеме */}
+                            {orphanInputs.length > 0 && (
+                                <div className="mb-2 border bg-white">
+                                    <div className="border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">Показатели</div>
+                                    <div className="p-2">
+                                        {orphanInputs.map((d) => (
+                                            <Slider key={d.key} label={d.label} min={d.min} max={d.maxOf(base)} step={d.step}
+                                                value={Number(inputs[d.key] ?? 0)} fmt={d.fmt} onChange={(v) => setInput(d.key, v)} />
+                                        ))}
+                                    </div>
+                                </div>
                             )}
-                            {hasAny(['plan_attainment', 'plan_accelerator', 'plan_gate']) && (
-                                <Slider label="Личный план" min={0} max={Math.max(personalPlan * 2.6, 5_000_000)} step={100_000} value={personalPlan} fmt={rubFmt} disabled={!canEditParams} onChange={setPersonalPlan} />
-                            )}
-                            {has('department_plan_gate') && (
-                                <Slider label="План отдела" min={0} max={Math.max(deptPlan * 2.2, 24_000_000)} step={250_000} value={deptPlan} fmt={rubFmt} disabled={!canEditParams} onChange={setDeptPlan} />
-                            )}
+
+                            {/* По одной карточке на блок схемы: сверху его показатели, ниже его тариф */}
                             {blocks.map((b) => {
                                 const realIdx = blocks.indexOf(b);
+                                const ins = inputsByOwner.get(b.block_code) ?? [];
+                                const ctx = contextFor(b.block_code);
                                 const controls = controlsForBlock(b.block_code, b.params ?? {});
-                                if (!controls.length) return null;
+                                if (!ins.length && !ctx.length && !controls.length) return null;
+                                const hasParams = ctx.length > 0 || controls.length > 0;
                                 return (
-                                    <div key={b.block_code} className="mb-2 border-t pt-2">
-                                        <div className="mb-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
-                                        {controls.map((c, ci) => (
-                                            <Slider key={ci} label={c.label} min={c.range.min} max={c.range.max} step={c.range.step}
-                                                value={c.value} fmt={fmtUnit(c.range.unit)} disabled={!canEditParams}
-                                                onChange={(v) => setParam(realIdx, c.path, v)} />
-                                        ))}
+                                    <div key={b.block_code} className="mb-2 border bg-white">
+                                        <div className="flex items-center gap-1.5 border-b bg-muted/40 px-2 py-1 text-[11px] font-semibold">
+                                            {BLOCK_NAMES[b.block_code] ?? b.block_code}
+                                        </div>
+                                        <div className="p-2">
+                                            {/* Показатели — редактируются всегда */}
+                                            {ins.map((d) => (
+                                                <Slider key={d.key} label={d.label} min={d.min} max={d.maxOf(base)} step={d.step}
+                                                    value={Number(inputs[d.key] ?? 0)} fmt={d.fmt} onChange={(v) => setInput(d.key, v)} />
+                                            ))}
+                                            {/* Тариф/параметры блока — admin/rop редактируют, менеджеру read-only */}
+                                            {hasParams && (
+                                                <div className={ins.length ? 'mt-2 border-t pt-2' : ''}>
+                                                    {ins.length > 0 && (
+                                                        <div className="mb-1 flex items-center gap-1 text-[10px] uppercase tracking-tight text-muted-foreground">
+                                                            Тариф {!canEditParams && <Lock className="h-2.5 w-2.5" />}
+                                                        </div>
+                                                    )}
+                                                    {ctx.map((c, ci) => (
+                                                        <Slider key={'ctx' + ci} label={c.label} min={c.min} max={c.max} step={c.step}
+                                                            value={c.value} fmt={rubFmt} disabled={!canEditParams} onChange={c.onChange} />
+                                                    ))}
+                                                    {controls.map((c, ci) => (
+                                                        <Slider key={'p' + ci} label={c.label} min={c.range.min} max={c.range.max} step={c.range.step}
+                                                            value={c.value} fmt={fmtUnit(c.range.unit)} disabled={!canEditParams}
+                                                            onChange={(v) => setParam(realIdx, c.path, v)} />
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}
