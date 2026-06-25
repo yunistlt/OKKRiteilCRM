@@ -31,6 +31,12 @@ export const SALARY_CONFIG_SCHEMAS = {
     closing_status: z.object({ code: z.string().min(1) }),
     permanent_client_threshold: z.number().int().nonnegative(),
     source_exclusions: z.array(z.string()),
+    // Дубль на тендер не учитывается в знаменателе конверсии при правомочной
+    // простановке статуса. См. lib/salary/tender-duplicates.ts.
+    tender_duplicate_rule: z.object({
+        duplicate_status: z.string().min(1),
+        reference_statuses: z.array(z.string().min(1)).min(1),
+    }),
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),

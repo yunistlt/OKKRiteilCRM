@@ -287,6 +287,8 @@ export async function collectPeriodMetrics(
         p_start: start,
         p_end: end,
         p_exclusions: config.source_exclusions,
+        p_dup_status: config.tender_duplicate_rule.duplicate_status,
+        p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
     });
     if (incErr) throw incErr;
     const incomingByManager = new Map<number, number>();

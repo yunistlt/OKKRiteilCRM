@@ -143,6 +143,9 @@ export function ConversionOrdersTable({
     const soldSet = new Set((countedIds ?? []).map(Number));
     const rows = (orders ?? []).map((o) => ({ ...o, sold: soldSet.has(Number(o.id)) }));
     const soldWithin = rows.filter((o) => o.sold).length;
+    // Правомочные дубли на тендер исключены из знаменателя конверсии.
+    const excludedCount = rows.filter((o) => o.excluded).length;
+    const denominator = rows.length - excludedCount; // что реально в знаменателе
 
     if (rows.length === 0) {
         return <div className="border border-dashed px-2 py-2 text-[11px] text-muted-foreground">Поступивших заявок за месяц нет.</div>;
@@ -151,8 +154,11 @@ export function ConversionOrdersTable({
     return (
         <div>
             <div className="mb-1.5 text-[11px] text-muted-foreground">
-                Поступило заявок: <b className="text-foreground">{rows.length}</b> · из них продано (передано в производство):{' '}
-                <b className="text-foreground">{soldWithin}</b>
+                В знаменателе конверсии: <b className="text-foreground">{denominator}</b>
+                {excludedCount > 0 && (
+                    <> · исключено дублей на тендер: <b className="text-foreground">{excludedCount}</b></>
+                )}{' '}
+                · из них продано (передано в производство): <b className="text-foreground">{soldWithin}</b>
             </div>
             <div className="overflow-x-auto border">
                 <table className="w-full text-xs">
@@ -164,21 +170,41 @@ export function ConversionOrdersTable({
                             <th className="px-2 py-1.5">Поступил</th>
                             <th className="px-2 py-1.5 text-right">Сумма</th>
                             <th className="px-2 py-1.5 text-center">Продан</th>
+                            <th className="px-2 py-1.5">Примечание</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {rows.map((o) => (
-                            <tr key={o.id} className={`border-t ${o.sold ? 'bg-green-50' : ''}`}>
-                                <td className="px-2 py-1.5"><OrderLink id={o.id} onOpenOrder={onOpenOrder} /></td>
-                                <td className="px-2 py-1.5">{o.clientName || '—'}</td>
-                                <td className="px-2 py-1.5">{o.source || '—'}</td>
-                                <td className="px-2 py-1.5">{fmtDate(o.createdAt)}</td>
-                                <td className="px-2 py-1.5 text-right">{rub(o.sum)}</td>
-                                <td className="px-2 py-1.5 text-center">
-                                    {o.sold ? <Check className="mx-auto h-3.5 w-3.5 text-green-600" /> : <span className="text-muted-foreground">—</span>}
-                                </td>
-                            </tr>
-                        ))}
+                        {rows.map((o) => {
+                            // Правомочный дубль — приглушаем (исключён); фиктивный — подсвечиваем красным.
+                            const rowCls = o.excluded
+                                ? 'bg-muted/30 text-muted-foreground'
+                                : o.dupNote
+                                  ? 'bg-red-50'
+                                  : o.sold
+                                    ? 'bg-green-50'
+                                    : '';
+                            return (
+                                <tr key={o.id} className={`border-t ${rowCls}`}>
+                                    <td className="px-2 py-1.5"><OrderLink id={o.id} onOpenOrder={onOpenOrder} /></td>
+                                    <td className="px-2 py-1.5">{o.clientName || '—'}</td>
+                                    <td className="px-2 py-1.5">{o.source || '—'}</td>
+                                    <td className="px-2 py-1.5">{fmtDate(o.createdAt)}</td>
+                                    <td className="px-2 py-1.5 text-right">{rub(o.sum)}</td>
+                                    <td className="px-2 py-1.5 text-center">
+                                        {o.sold ? <Check className="mx-auto h-3.5 w-3.5 text-green-600" /> : <span className="text-muted-foreground">—</span>}
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                        {o.dupNote ? (
+                                            <span className={o.excluded ? 'text-muted-foreground' : 'font-medium text-red-700'}>
+                                                {o.dupNote}
+                                            </span>
+                                        ) : (
+                                            <span className="text-muted-foreground">—</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
