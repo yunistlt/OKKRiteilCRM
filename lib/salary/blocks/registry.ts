@@ -53,6 +53,7 @@ export function listBlocks() {
         multiplierScope: b.multiplierScope,
         requiredMetrics: b.requiredMetrics,
         defaultParams: DEFAULT_BLOCK_PARAMS[b.code] ?? {},
+        deprecated: b.deprecated ?? false, // скрытые из палитры (но считаемые) блоки
         // блок доступен в конструкторе, только если ВСЕ его метрики есть в БД
         available: b.requiredMetrics.every(isMetricAvailable),
     }));

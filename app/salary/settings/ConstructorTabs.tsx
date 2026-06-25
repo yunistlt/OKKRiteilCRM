@@ -362,7 +362,7 @@ export function SchemesTab() {
                 <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
                 <div className="mb-1.5 text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
                 <div className="divide-y border">
-                    {catalog.map((b) => {
+                    {catalog.filter((b: any) => !b.deprecated).map((b) => {
                         const tint = tintFor(b.code);
                         return (
                             <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })}

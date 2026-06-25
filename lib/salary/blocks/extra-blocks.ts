@@ -64,11 +64,12 @@ const planAccelerator: BonusBlock<{ perPercent: number }> = {
 const planGate: BonusBlock<{ thresholdPct: number }> = {
     code: 'plan_gate',
     name: 'Гейт по личному плану',
-    methodology: 'Множитель переменной части: 1, если выполнение личного плана ≥ порога, иначе 0. Личный план не задан → 1 (не режем).',
+    methodology: 'Множитель переменной части: 1, если выполнение личного плана ≥ порога, иначе 0. Личный план не задан → 1 (не режем). Устарел: используйте «Коэффициент по личному плану» (отсечка = ступень 0 → ×0).',
     kind: 'multiplier',
     group: 'variable',
     multiplierScope: 'variableBracket',
     requiredMetrics: ['plan_personal', 'revenue_no_vat'],
+    deprecated: true, // заменён блоком plan_coef; скрыт из палитры, считается в старых схемах
     paramSchema: z.object({ thresholdPct: z.number().nonnegative() }),
     compute(m, p, ctx) {
         const target = ctx.personalPlanTarget;
@@ -89,11 +90,12 @@ const planGate: BonusBlock<{ thresholdPct: number }> = {
 const departmentPlanGate: BonusBlock<{ thresholdPct: number }> = {
     code: 'department_plan_gate',
     name: 'Гейт по плану отдела',
-    methodology: 'Множитель переменной части: 1, если выручка отдела (без НДС) достигает порога % от плана отдела, иначе 0. План отдела не задан → 1 (не режем).',
+    methodology: 'Множитель переменной части: 1, если выручка отдела (без НДС) достигает порога % от плана отдела, иначе 0. План отдела не задан → 1 (не режем). Устарел: используйте «Коэффициент по плану отдела» (отсечка = ступень 0 → ×0).',
     kind: 'multiplier',
     group: 'variable',
     multiplierScope: 'variableBracket',
     requiredMetrics: ['plan_department', 'team_revenue'],
+    deprecated: true, // заменён блоком dept_plan_coef; скрыт из палитры, считается в старых схемах
     paramSchema: z.object({ thresholdPct: z.number().nonnegative() }),
     compute(m, p, ctx) {
         const target = ctx.departmentPlanTarget;

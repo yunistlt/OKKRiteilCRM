@@ -56,6 +56,7 @@ export interface BonusBlock<P = any> {
     multiplierScope?: MultiplierScope; // обязателен для kind === 'multiplier'
     requiredMetrics: string[]; // коды из metrics-catalog (структурный гейт)
     paramSchema: z.ZodType<P>;
+    deprecated?: boolean; // блок скрыт из палитры конструктора (нельзя добавить в новые схемы), но считается в старых
     compute(m: ManagerMetrics, params: P, ctx: BlockComputeContext): BlockResult;
 }
 
