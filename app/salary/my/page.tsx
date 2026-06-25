@@ -2,9 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '@/components/auth/AuthProvider';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
+import ManagerSalarySimulatorModal from '../ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -19,7 +22,10 @@ export default function MySalaryPage() {
     const [loading, setLoading] = useState(true);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [details, setDetails] = useState<any>(null);
+    const [simOpen, setSimOpen] = useState(false);
     const { toast } = useToast();
+    const { user } = useAuth();
+    const canEditParams = user?.role === 'admin' || user?.role === 'rop';
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -50,7 +56,10 @@ export default function MySalaryPage() {
         <div className="mx-auto max-w-3xl space-y-3 p-3">
             <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-semibold">Моя зарплата</h1>
-                <div className="ml-auto flex gap-2">
+                <div className="ml-auto flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setSimOpen(true)} title="Покрутить свои показатели и увидеть, как меняется ЗП">
+                        <FlaskConical className="mr-2 h-4 w-4" /> Симулятор ЗП
+                    </Button>
                     <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
                     </select>
@@ -133,6 +142,17 @@ export default function MySalaryPage() {
 
             {selectedOrderId != null && (
                 <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />
+            )}
+
+            {simOpen && (
+                <ManagerSalarySimulatorModal
+                    managerId={row?.manager_id ?? user?.retail_crm_manager_id ?? 0}
+                    managerName={[user?.last_name, user?.first_name].filter(Boolean).join(' ') || 'Моя зарплата'}
+                    canEditParams={canEditParams}
+                    initialYear={year}
+                    initialMonth={month}
+                    onClose={() => setSimOpen(false)}
+                />
             )}
         </div>
     );

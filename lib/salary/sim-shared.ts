@@ -4,7 +4,7 @@
 // Сервер строит компактный срез метрик (SimManagerBase), клиент мгновенно
 // масштабирует объём и пересчитывает ФОТ тем же движком при движении ползунков.
 // ============================================================================
-import { compose } from '@/lib/salary/blocks/compose';
+import { compose, type ComposeResult } from '@/lib/salary/blocks/compose';
 import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
 import type { CountedOrder, ManagerMetrics, OrderType } from '@/lib/salary/metrics';
 
@@ -107,6 +107,135 @@ export interface SimScenario {
 
 export interface SimManagerResult { id: number; name: string; total: number; personalRev: number; attainmentPct: number; kTeam: number; gatePass: boolean }
 export interface SimResult { perManager: SimManagerResult[]; total: number }
+
+// ============================================================================
+// Персональный режим: симулятор ЗП одного менеджера. В отличие от командного
+// (масштаб всего отдела фактором выручки) — менеджер/руководитель прямо крутит
+// ПОКАЗАТЕЛИ одного человека (число заказов, чек, конверсию, качество…).
+// ============================================================================
+
+/** Редактируемые показатели одного менеджера (песочница). Дефолты — из baseline-среза. */
+export interface SimManagerInputs {
+    ordersNew: number; // число засчитанных новых заявок
+    ordersPermanent: number; // число засчитанных заявок постоянных клиентов
+    avgCheck: number; // средний чек (выручка без НДС на заказ)
+    conversionPct: number; // конверсия, %
+    incomingCount: number; // поступивших заявок (знаменатель конверсии / допуск конв-бонуса)
+    sameDayShare: number; // доля «в день обращения» (0..1)
+    qualityAvgScore: number | null; // средний скоринг ОКК (0..100)
+    qualityScriptPct: number | null; // соблюдение скрипта, %
+    fastContactShare: number | null; // доля «в работе < 1 дня», %
+    fieldsFilledShare: number | null; // доля заполненных ТЗ, %
+    discountMetricValue: number | null; // метрика скидочной дисциплины
+    dutyShifts: number; // смены дежурств
+    grade: number | null; // грейд
+}
+
+/** Дефолтные показатели из реального baseline-среза менеджера. */
+export function inputsFromBase(b: SimManagerBase): SimManagerInputs {
+    const orders = b.baseOrders;
+    return {
+        ordersNew: b.countsByType?.new ?? 0,
+        ordersPermanent: b.countsByType?.permanent ?? 0,
+        avgCheck: orders > 0 ? Math.round(b.baseRevenue / orders) : 0,
+        conversionPct: Math.round(b.conversionPct),
+        incomingCount: b.conversionDenominator,
+        sameDayShare: b.sameDayShare,
+        qualityAvgScore: b.qualityAvgScore,
+        qualityScriptPct: b.qualityScriptPct,
+        fastContactShare: b.fastContactShare,
+        fieldsFilledShare: b.fieldsFilledShare,
+        discountMetricValue: b.discountMetricValue,
+        dutyShifts: b.dutyShifts,
+        grade: b.grade,
+    };
+}
+
+/** Построить метрики менеджера из явно заданных показателей (для персонального симулятора). */
+export function buildMetricsFromInputs(b: SimManagerBase, inp: SimManagerInputs): ManagerMetrics {
+    const N = Math.max(0, Math.round(inp.ordersNew) + Math.round(inp.ordersPermanent));
+    const avg = Math.max(0, inp.avgCheck);
+    const totalRev = N * avg;
+    const sameDay2 = Math.round(Math.max(0, Math.min(1, inp.sameDayShare)) * N);
+    const orders: CountedOrder[] = Array.from({ length: N }, (_, i) => ({
+        orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
+        type: 'new' as OrderType, category: null,
+        enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
+        totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
+    }));
+    // Категории: сохраняем baseline-микс, масштабируем числом заказов; выручку нормируем к totalRev.
+    const ratio = b.baseOrders > 0 ? N / b.baseOrders : 0;
+    const baseCatRevTotal = Object.values(b.revenueByCategory ?? {}).reduce((a, v) => a + v, 0);
+    const revByCat: Record<string, number> = {};
+    for (const k of Object.keys(b.revenueByCategory ?? {})) {
+        revByCat[k] = baseCatRevTotal > 0 ? (b.revenueByCategory[k] / baseCatRevTotal) * totalRev : 0;
+    }
+    return {
+        managerId: b.id,
+        countedOrders: orders,
+        countsByType: { new: Math.max(0, Math.round(inp.ordersNew)), permanent: Math.max(0, Math.round(inp.ordersPermanent)) },
+        countsByCategory: scaleRec(b.countsByCategory ?? {}, ratio, true),
+        revenueByCategory: revByCat,
+        discountMetricValue: inp.discountMetricValue,
+        qualityAvgScore: inp.qualityAvgScore,
+        qualityScriptPct: inp.qualityScriptPct,
+        fastContactShare: inp.fastContactShare,
+        fieldsFilledShare: inp.fieldsFilledShare,
+        conversion: { numerator: N, denominator: Math.max(0, Math.round(inp.incomingCount)), pct: inp.conversionPct, eligible: Math.round(inp.incomingCount) >= 1 },
+        dutyShifts: Math.max(0, Math.round(inp.dutyShifts)),
+        workedDays: null,
+        marginTotal: 0,
+    };
+}
+
+export interface SimManagerScenario {
+    teamRevenue: number; // выручка отдела (₽) — контекст для К_команды
+    personalPlan: number; // личный план (₽)
+    deptPlan: number; // план отдела (₽) — контекст для гейта по плану отдела
+    businessDays: number;
+    year: number;
+    month: number;
+}
+
+export interface SimManagerScenarioResult {
+    total: number;
+    contributions: ComposeResult['contributions'];
+    personalRev: number;
+    attainmentPct: number;
+    kTeam: number;
+    gatePass: boolean;
+}
+
+/** Пересчитать ЗП одного менеджера при заданных блоках/показателях/сценарии (чистая, мгновенная). */
+export function computeManagerScenario(
+    blocks: BlockInstance[],
+    base: SimManagerBase,
+    inputs: SimManagerInputs,
+    sc: SimManagerScenario,
+): SimManagerScenarioResult {
+    const m = buildMetricsFromInputs(base, inputs);
+    const personalRev = m.countedOrders.reduce((a, o) => a + o.revenueNoVat, 0);
+    const ctx: BlockComputeContext = {
+        year: sc.year, month: sc.month, businessDays: sc.businessDays,
+        teamRevenueNoVat: sc.teamRevenue,
+        // -0.01 ₽ снимает float-неоднозначность «ровно на пороге» (att=порог должен проходить гейт)
+        personalPlanTarget: sc.personalPlan > 0 ? sc.personalPlan - 0.01 : null,
+        departmentPlanTarget: sc.deptPlan > 0 ? sc.deptPlan : null,
+        managerGrade: inputs.grade,
+        categoryNames: {},
+    };
+    const composed = compose(blocks, m, ctx);
+    const kTeamC = composed.contributions.find((c) => c.code === 'k_team');
+    const gateC = composed.contributions.find((c) => c.code === 'plan_gate');
+    return {
+        total: Math.round(composed.total),
+        contributions: composed.contributions,
+        personalRev,
+        attainmentPct: sc.personalPlan > 0 ? (personalRev / sc.personalPlan) * 100 : 0,
+        kTeam: kTeamC?.multiplier ?? 1,
+        gatePass: (gateC?.multiplier ?? 1) > 0,
+    };
+}
 
 /** Пересчитать ФОТ при заданных блоках и сценарии (чистая, мгновенная — для ползунков). */
 export function computeScenarioFot(blocks: BlockInstance[], bases: SimManagerBase[], sc: SimScenario): SimResult {

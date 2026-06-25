@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
+import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 
@@ -40,6 +41,7 @@ export default function SalaryDashboard() {
     const [closing, setClosing] = useState(false);
     const [reopening, setReopening] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
+    const [simManager, setSimManager] = useState<{ id: number; name: string } | null>(null);
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [dutyOpen, setDutyOpen] = useState(false);
     const { toast } = useToast();
@@ -225,7 +227,7 @@ export default function SalaryDashboard() {
                         </thead>
                         <tbody>
                             {rows.map((r) => (
-                                <RowGroup key={r.manager_id} r={r} columns={useBlocks ? columns : null} onOpen={() => setReportManager(r)} />
+                                <RowGroup key={r.manager_id} r={r} columns={useBlocks ? columns : null} onOpen={() => setReportManager(r)} onSim={() => setSimManager({ id: r.manager_id, name: r.manager_name })} />
                             ))}
                         </tbody>
                         <tfoot className="border-t bg-muted/30 font-semibold">
@@ -240,6 +242,17 @@ export default function SalaryDashboard() {
             })()}
 
             {dutyOpen && <DutyModal period={period} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setDutyOpen(false)} />}
+
+            {simManager && (
+                <ManagerSalarySimulatorModal
+                    managerId={simManager.id}
+                    managerName={simManager.name}
+                    canEditParams={true}
+                    initialYear={year}
+                    initialMonth={month}
+                    onClose={() => setSimManager(null)}
+                />
+            )}
 
             {reportManager && (
                 <ManagerReportModal
@@ -281,11 +294,22 @@ function blockCell(r: CalcRow, col: BlockColumn): string {
     return rub(c.amount ?? 0);
 }
 
-function RowGroup({ r, columns, onOpen }: { r: CalcRow; columns: BlockColumn[] | null; onOpen: () => void }) {
+function RowGroup({ r, columns, onOpen, onSim }: { r: CalcRow; columns: BlockColumn[] | null; onOpen: () => void; onSim: () => void }) {
     return (
         <tr className="cursor-pointer border-t hover:bg-muted/30" onClick={onOpen} title="Открыть подробный отчёт">
             <td className="p-3 text-muted-foreground"><ChevronRight className="h-4 w-4" /></td>
-            <td className="p-3 font-medium">{r.manager_name}</td>
+            <td className="p-3 font-medium">
+                <div className="flex items-center gap-2">
+                    <span>{r.manager_name}</span>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onSim(); }}
+                        title="Симулятор ЗП: покрутить показатели и параметры"
+                        className="inline-flex h-6 w-6 items-center justify-center border text-violet-700 hover:bg-violet-50"
+                    >
+                        <FlaskConical className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            </td>
             {columns ? (
                 columns.map((col) => {
                     const empty = blockCell(r, col) === '—';
