@@ -16,6 +16,16 @@ CREATE INDEX IF NOT EXISTS idx_orders_data_peredachi
 -- Индекс под фильтр по текущему статусу (cf/stat/client_deal).
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders (status);
 
+-- Триграммный GIN под LIKE '%"code":"<status>"%' по order_history_log.new_value.
+-- Критично для salary_client_deal_counts: там нет фильтра по дате (сделки клиента
+-- за всё время), поэтому без индекса LIKE сканирует все ~555k строк истории. Особенно
+-- важно под GENERIC PLAN (PostgREST переиспользует prepared statements): без индекса
+-- ~5.2с → с индексом ~1.2с, иначе расчёт упирается в statement_timeout=8s.
+-- ВНИМАНИЕ: сборка индекса на 555k строк ~23с с кратковременной блокировкой записи
+-- в order_history_log (выполнять в окно низкой активности синка).
+CREATE INDEX IF NOT EXISTS idx_order_history_new_value_trgm
+    ON public.order_history_log USING gin (new_value gin_trgm_ops);
+
 -- ── salary_counted_orders: cf теперь сначала режет по индексируемому текстовому
 --    диапазону даты (с буфером ±2 дня от границ периода, чтобы не потерять
 --    пограничные строки из-за таймзоны to_timestamp), затем ТОЧНО уточняет тем же
