@@ -13,16 +13,21 @@
 -- статусов берём из конфига (zero-hardcode), не зашиваем в SQL/код.
 -- ============================================================================
 
--- 1) Правило исключения дублей (effective с старта модуля ЗП).
+-- 1) Правило исключения дублей. effective_from = 2026-05-01 — старт модуля ЗП
+--    (как у остальных ключей), иначе конфиг не резолвится для май/июнь и расчёт
+--    падает («Конфиг ЗП не задан для ключей»).
 INSERT INTO public.salary_config (key, value, effective_from, note, created_by)
 VALUES (
     'tender_duplicate_rule',
     '{"duplicate_status":"dubl-na-tender","reference_statuses":["tender","ozhidanie-vykhoda-tendera"]}'::jsonb,
-    '2026-07-01',
+    '2026-05-01',
     'Дубль на тендер не учитывается в знаменателе конверсии при правомочной простановке: номер эталона в комментарии оператора, равные суммы, эталон в одном из статусов «тендерной» группы.',
     'system'
 )
 ON CONFLICT (key, effective_from) DO UPDATE SET value = EXCLUDED.value, note = EXCLUDED.note;
+
+-- Подчищаем ошибочную версию с 2026-07-01 (из первой редакции миграции).
+DELETE FROM public.salary_config WHERE key = 'tender_duplicate_rule' AND effective_from = '2026-07-01';
 
 -- 2) Знаменатель конверсии: входящие заявки периода минус ПРАВОМОЧНЫЕ дубли.
 --    Новые параметры p_dup_status / p_ref_statuses — НЕОБЯЗАТЕЛЬНЫЕ (DEFAULT NULL),
