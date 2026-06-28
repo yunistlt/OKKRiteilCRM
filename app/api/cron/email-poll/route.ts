@@ -15,7 +15,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, isImapConfigured } from '@/lib/email/imap';
 import { classifyNewRequest, isReplyThread, isNoReplySender, loadSecretaryPrompt } from '@/lib/email/classify';
-import { getManagerPool, getManagerNames, getLoadStatusCodes, getManagerLoad, resolveAssignment } from '@/lib/email/assign';
+import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment } from '@/lib/email/assign';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 
 export const dynamic = 'force-dynamic';
@@ -172,9 +172,9 @@ export async function GET(req: Request) {
         if (pending && pending.length > 0) {
             await setAgentStatus('working', `Разбираю почту: ${pending.length} писем`);
             const [prompt, pool] = await Promise.all([loadSecretaryPrompt(), getManagerPool()]);
-            const [names, loadCodes] = await Promise.all([getManagerNames(pool), getLoadStatusCodes()]);
-            const load = await getManagerLoad(pool, loadCodes);
-            const ctx = { pool, loadCodes, load, managerNames: names };
+            const [names, windowDays] = await Promise.all([getManagerNames(pool), getBalanceWindowDays()]);
+            const load = await getRecentAssignmentCounts(pool, windowDays);
+            const ctx = { pool, load, managerNames: names };
 
             for (const e of pending) {
                 let emailType: string, reasoning: string, confidence: number | null = null;
