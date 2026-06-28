@@ -10,6 +10,7 @@ import DutyModal from './DutyModal';
 import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
+import RecalcOverlay from '@/components/salary/RecalcOverlay';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -35,7 +36,7 @@ export default function SalaryDashboard() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any } | null>(null);
+    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean } | null>(null);
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -50,6 +51,8 @@ export default function SalaryDashboard() {
 
     const period = `${year}-${month}`;
     const closed = data?.period?.status === 'closed';
+    const canRecalc = user?.role === 'admin' || user?.role === 'rop';
+    const needsRecalc = !!data?.needsRecalc && !closed;
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -179,6 +182,10 @@ export default function SalaryDashboard() {
                 </div>
             </div>
 
+            <div className="relative space-y-3">
+            {needsRecalc && (
+                <RecalcOverlay canRecalc={canRecalc} recalculating={recalculating} onRecalc={recalc} />
+            )}
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
                 <span>Период: {MONTHS[month - 1]} {year}</span>
                 <span className={`px-2 py-0.5 text-xs ${closed ? 'bg-gray-200 text-gray-700' : data?.period?.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
@@ -240,6 +247,7 @@ export default function SalaryDashboard() {
                 </div>
                 );
             })()}
+            </div>
 
             {dutyOpen && <DutyModal period={period} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setDutyOpen(false)} />}
 

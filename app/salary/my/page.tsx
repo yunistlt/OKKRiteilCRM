@@ -9,6 +9,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import ManagerSalarySimulatorModal from '../ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
+import RecalcOverlay from '@/components/salary/RecalcOverlay';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -23,6 +24,8 @@ export default function MySalaryPage() {
     const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [details, setDetails] = useState<any>(null);
     const [simOpen, setSimOpen] = useState(false);
+    const [needsRecalc, setNeedsRecalc] = useState(false);
+    const [recalculating, setRecalculating] = useState(false);
     const { toast } = useToast();
     const { user } = useAuth();
     const canEditParams = user?.role === 'admin' || user?.role === 'rop';
@@ -36,6 +39,7 @@ export default function MySalaryPage() {
             setRow(json.rows?.[0] ?? null);
             setStatus(json.period?.status ?? 'none');
             setDetails(json.details ?? null);
+            setNeedsRecalc(!!json.needsRecalc);
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
         } finally {
@@ -44,6 +48,24 @@ export default function MySalaryPage() {
     }, [year, month, toast]);
 
     useEffect(() => { load(); }, [load]);
+
+    const recalc = useCallback(async () => {
+        setRecalculating(true);
+        try {
+            const res = await fetch('/api/salary/recalc', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, month }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Ошибка пересчёта');
+            await load();
+        } catch (e: any) {
+            toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
+        } finally {
+            setRecalculating(false);
+        }
+    }, [year, month, load, toast]);
 
     const b = row?.breakdown || {};
     const countedOrders: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
@@ -69,6 +91,10 @@ export default function MySalaryPage() {
                 </div>
             </div>
 
+            <div className="relative">
+            {needsRecalc && !loading && (
+                <RecalcOverlay canRecalc={canEditParams} recalculating={recalculating} onRecalc={recalc} />
+            )}
             {loading ? (
                 <div className="flex justify-center p-12"><Loader2 className="h-6 w-6 animate-spin" /></div>
             ) : !row ? (
@@ -139,6 +165,7 @@ export default function MySalaryPage() {
                     </CardContent>
                 </Card>
             )}
+            </div>
 
             {selectedOrderId != null && (
                 <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
+import { getRecalcState } from '@/lib/salary/recalc-state';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,11 +75,16 @@ export async function GET(req: Request) {
         const incomingManagerIds = (rows as any[]).map((r) => Number(r.manager_id));
         const incomingByManager = await buildIncomingByManager(year, month, incomingManagerIds);
 
+        // Устарел ли расчёт относительно изменений мотивации (нужен пересчёт).
+        const recalcState = await getRecalcState(periodRow.id, periodRow.status, year, month);
+
         return NextResponse.json({
             period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
             rows,
             total,
             isManagerOnly,
+            needsRecalc: recalcState.needsRecalc,
+            recalcChangedAt: recalcState.changedAt,
             details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incomingByManager },
         });
     } catch (e: any) {
