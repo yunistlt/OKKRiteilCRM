@@ -35,14 +35,17 @@ export default async function KaterinaPage() {
     // 4) последние разобранные письма
     const { data: recent } = await supabase
         .from('incoming_emails')
-        .select('id, from_email, from_name, subject, email_type, confidence, reasoning, assigned_manager_id, received_at')
-        .eq('status', 'classified')
+        .select('id, from_email, from_name, subject, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, received_at')
+        .in('status', ['classified', 'processed', 'error'])
         .order('received_at', { ascending: false })
         .limit(40);
 
+    const crmBase = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
+    const orderUrl = (id?: number | null) => (crmBase && id ? `${crmBase}/orders/${id}/edit` : null);
+
     // 5) сводка по типам за всё накопленное
     const { data: allClassified } = await supabase
-        .from('incoming_emails').select('email_type').eq('status', 'classified');
+        .from('incoming_emails').select('email_type').in('status', ['classified', 'processed', 'error']);
     const counts: Record<string, number> = {};
     for (const r of allClassified || []) counts[r.email_type] = (counts[r.email_type] || 0) + 1;
 
@@ -135,7 +138,17 @@ export default async function KaterinaPage() {
                     <ul className="mt-3 space-y-3 text-sm">
                         {(recent || []).filter((r: any) => r.email_type === 'new_request').slice(0, 12).map((r: any) => (
                             <li key={r.id} className="border-b border-slate-100 pb-2">
-                                <div className="font-bold text-slate-900">{names[Number(r.assigned_manager_id)] || '—'}</div>
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="font-bold text-slate-900">{names[Number(r.assigned_manager_id)] || '—'}</div>
+                                    {r.created_crm_order_id && orderUrl(r.created_crm_order_id) ? (
+                                        <a href={orderUrl(r.created_crm_order_id) as string} target="_blank" rel="noopener noreferrer"
+                                            className="shrink-0 border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-black text-sky-800 hover:bg-sky-100">
+                                            № {r.created_crm_order_number || r.created_crm_order_id} ↗
+                                        </a>
+                                    ) : (
+                                        <span className="shrink-0 text-[11px] text-slate-300">без заказа</span>
+                                    )}
+                                </div>
                                 <div className="truncate text-slate-600">{r.subject || '(без темы)'}</div>
                                 <div className="truncate text-xs text-slate-400">{r.from_email}</div>
                             </li>
@@ -158,6 +171,7 @@ export default async function KaterinaPage() {
                                 <th className="py-2 pr-4">От кого</th>
                                 <th className="py-2 pr-4">Тема</th>
                                 <th className="py-2 pr-4">Менеджер</th>
+                                <th className="py-2 pr-4">Заказ</th>
                                 <th className="py-2 pr-4">Вывод</th>
                             </tr>
                         </thead>
@@ -171,12 +185,20 @@ export default async function KaterinaPage() {
                                         <td className="py-2 pr-4 text-slate-700">{r.from_name || r.from_email}</td>
                                         <td className="py-2 pr-4 max-w-[260px] truncate text-slate-700">{r.subject}</td>
                                         <td className="py-2 pr-4 text-slate-700">{r.assigned_manager_id ? (names[Number(r.assigned_manager_id)] || r.assigned_manager_id) : '—'}</td>
+                                        <td className="py-2 pr-4 whitespace-nowrap">
+                                            {r.created_crm_order_id && orderUrl(r.created_crm_order_id) ? (
+                                                <a href={orderUrl(r.created_crm_order_id) as string} target="_blank" rel="noopener noreferrer"
+                                                    className="font-bold text-sky-700 hover:underline">№ {r.created_crm_order_number || r.created_crm_order_id} ↗</a>
+                                            ) : (
+                                                <span className="text-slate-300">—</span>
+                                            )}
+                                        </td>
                                         <td className="py-2 pr-4 max-w-[360px] text-xs text-slate-500">{r.reasoning}</td>
                                     </tr>
                                 );
                             })}
                             {(recent || []).length === 0 ? (
-                                <tr><td colSpan={6} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
+                                <tr><td colSpan={7} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
                             ) : null}
                         </tbody>
                     </table>

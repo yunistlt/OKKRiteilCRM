@@ -203,6 +203,7 @@ export async function GET(req: Request) {
 
                 // Создание заказа — только если режим включён и это новая заявка.
                 let createdOrderId: number | null = null;
+                let createdOrderNumber: string | null = null;
                 let finalStatus = 'classified';
                 let errorMessage: string | null = null;
                 if (createOrders && emailType === 'new_request') {
@@ -215,6 +216,7 @@ export async function GET(req: Request) {
                             managerId: assignedManagerId,
                         });
                         createdOrderId = order.id;
+                        createdOrderNumber = order.number;
                         finalStatus = 'processed';
                         reasoning = `${reasoning} | Заказ №${order.number} создан`;
                     } catch (err: any) {
@@ -230,6 +232,7 @@ export async function GET(req: Request) {
                     reasoning,
                     assigned_manager_id: assignedManagerId,
                     created_crm_order_id: createdOrderId,
+                    created_crm_order_number: createdOrderNumber,
                     classified_by: 'ai',
                     status: finalStatus,
                     error_message: errorMessage,
