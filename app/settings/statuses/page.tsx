@@ -30,17 +30,19 @@ export default async function StatusesPage() {
         settings.forEach((s: any) => settingsMap.set(s.code, {
             is_working: s.is_working,
             is_transcribable: s.is_transcribable,
-            is_ai_target: s.is_ai_target
+            is_ai_target: s.is_ai_target,
+            is_manager_load: s.is_manager_load
         }));
     }
 
     const mergedStatuses: StatusItem[] = (statuses || []).map((s: any) => {
-        const setting = settingsMap.get(s.code) || { is_working: false, is_transcribable: false, is_ai_target: false };
+        const setting = settingsMap.get(s.code) || { is_working: false, is_transcribable: false, is_ai_target: false, is_manager_load: false };
         return {
             ...s,
             is_working: !!setting.is_working,
             is_transcribable: !!setting.is_transcribable,
-            is_ai_target: !!setting.is_ai_target
+            is_ai_target: !!setting.is_ai_target,
+            is_manager_load: !!setting.is_manager_load
         };
     });
 

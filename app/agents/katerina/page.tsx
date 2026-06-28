@@ -108,7 +108,7 @@ export default async function KaterinaPage() {
                 {/* Блок 2: текущая загрузка */}
                 <section className="border border-slate-200 bg-white p-5">
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Текущая загрузка менеджеров</div>
-                    <div className="mt-2 text-xs text-slate-400">Заказов в рабочих статусах (без «Согласование отмены»)</div>
+                    <div className="mt-2 text-xs text-slate-400">Заказов в статусах с галочкой «учитывать в нагрузке менеджера» (Статусы Заказов)</div>
                     <div className="mt-4 space-y-4">
                         {pool.map((id) => {
                             const max = Math.max(1, ...pool.map((p) => load[p] || 0));

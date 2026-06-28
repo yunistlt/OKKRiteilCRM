@@ -22,14 +22,14 @@ function normEmail(e?: string | null): string {
     return (e || '').trim().toLowerCase();
 }
 
-/** Коды рабочих статусов для расчёта нагрузки (is_working минус исключения из конфига). */
+/**
+ * Коды статусов, учитываемых в нагрузке менеджера.
+ * Управляется галочкой «учитывать в нагрузке менеджера» на странице «Статусы Заказов»
+ * (status_settings.is_manager_load).
+ */
 export async function getLoadStatusCodes(): Promise<string[]> {
-    const [{ data: working }, { data: cfg }] = await Promise.all([
-        supabase.from('status_settings').select('code').eq('is_working', true),
-        supabase.from('email_intake_config').select('load_exclude_status_codes').maybeSingle(),
-    ]);
-    const exclude = new Set<string>((cfg?.load_exclude_status_codes as string[]) || ['soglasovanie-otmeny']);
-    return (working || []).map((r: any) => r.code).filter((c: string) => !exclude.has(c));
+    const { data } = await supabase.from('status_settings').select('code').eq('is_manager_load', true);
+    return (data || []).map((r: any) => r.code);
 }
 
 /** Пул менеджеров (id) из email_intake_pool. */

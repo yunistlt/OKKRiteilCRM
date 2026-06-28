@@ -11,6 +11,7 @@ export interface StatusItem {
     is_working: boolean;
     is_transcribable: boolean;
     is_ai_target: boolean;
+    is_manager_load: boolean;
     ordering: number;
     group_name: string;
     ai_description?: string;
@@ -49,6 +50,13 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         ));
     }
 
+    function handleManagerLoadToggle(code: string) {
+        setHasChanges(true);
+        setStatuses(prev => prev.map(s =>
+            s.code === code ? { ...s, is_manager_load: !s.is_manager_load } : s
+        ));
+    }
+
     function handleDescriptionChange(code: string, value: string) {
         setHasChanges(true);
         setStatuses(prev => prev.map(s =>
@@ -75,6 +83,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                 is_working: s.is_working,
                 is_transcribable: s.is_transcribable,
                 is_ai_target: s.is_ai_target,
+                is_manager_load: s.is_manager_load,
                 ai_description: s.ai_description,
                 norm_days: s.norm_days ?? null
             }));
@@ -105,6 +114,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
         analysis: "КОНТРОЛЬ ЗАВИСАНИЯ: Если галочка стоит, система следит за временем нахождения заказа в этом статусе. Если движения нет слишком долго — заказ подсветится красным.",
         transcription: "ПЕРЕВОД В ТЕКСТ: Автоматическое преобразование звонков в текст для этого статуса. Это топливо для ИИ-анализа разговоров.",
         routing: "РАЗРЕШЕННЫЕ ЦЕЛИ: Список статусов, в которые ИИ разрешено переводить заказы. Если галочка снята — ИИ никогда не выберет этот статус как цель.",
+        managerLoad: "НАГРУЗКА МЕНЕДЖЕРА: Если галочка стоит, заказы в этом статусе считаются как текущая загрузка менеджера. Катерина-секретарь использует это, когда распределяет новые заявки на самого свободного. Тендерные/отменённые статусы обычно снимают — по ним активной работы нет.",
         description: "ИНСТРУКЦИЯ ДЛЯ ИИ: Напишите, в каких случаях выбирать этот статус. Например: 'Клиент отказался из-за высокой цены'. ИИ будет использовать это описание для принятия решений.",
     };
 
@@ -182,6 +192,21 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
+                    <div className="group relative min-w-[110px] cursor-help text-center flex flex-col items-center">
+                        <img src="/images/agents/katerina.svg" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Нагрузка</span>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
+                            <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                                <img src="/images/agents/katerina.svg" alt="" className="w-8 h-8 rounded-lg" />
+                                <div>
+                                    <div className="font-black text-[10px] uppercase">Катерина</div>
+                                    <div className="text-[8px] text-gray-400 uppercase">Секретарь</div>
+                                </div>
+                            </div>
+                            {tooltips.managerLoad}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
+                        </div>
+                    </div>
                 </div>
                 <div className="group relative cursor-help flex flex-col items-end">
                     <img src="/images/agents/anna.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
@@ -209,7 +234,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                         <div className="divide-y divide-gray-50">
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    className={`p-4 grid grid-cols-1 sm:grid-cols-[250px_1fr_380px] gap-4 items-start transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target ? 'bg-blue-50/10' : 'bg-white'
+                                    className={`p-4 grid grid-cols-1 sm:grid-cols-[250px_1fr_380px] gap-4 items-start transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target || status.is_manager_load ? 'bg-blue-50/10' : 'bg-white'
                                         }`}
                                 >
                                     {/* Status Name */}
@@ -254,6 +279,17 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                         >
                                             <div className={`w-4 h-4 md:w-5 md:h-5 rounded border flex items-center justify-center transition-colors ${status.is_ai_target ? 'bg-green-600 border-green-600' : 'bg-white border-gray-300'}`}>
                                                 {status.is_ai_target && <span className="text-white text-[10px] font-bold">✓</span>}
+                                            </div>
+                                        </div>
+
+                                        {/* 4. Manager Load Toggle (Катерина) */}
+                                        <div
+                                            onClick={() => handleManagerLoadToggle(status.code)}
+                                            className="flex items-center gap-2 cursor-pointer select-none shrink-0"
+                                            title="Учитывать в нагрузке менеджера"
+                                        >
+                                            <div className={`w-4 h-4 md:w-5 md:h-5 rounded border flex items-center justify-center transition-colors ${status.is_manager_load ? 'bg-amber-500 border-amber-500' : 'bg-white border-gray-300'}`}>
+                                                {status.is_manager_load && <span className="text-white text-[10px] font-bold">✓</span>}
                                             </div>
                                         </div>
                                     </div>
