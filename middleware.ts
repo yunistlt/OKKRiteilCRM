@@ -27,9 +27,6 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
         pathname.startsWith('/api/telphin') ||
-        pathname.startsWith('/api/reactivation/webhook') ||
-        pathname.startsWith('/api/reactivation/pixel') ||
-        pathname.startsWith('/api/reactivation/track') ||
         pathname.startsWith('/api/widget');
     const isAuthRoute = pathname === '/login';
     const isProtectedRoute = !isPublicRoute;

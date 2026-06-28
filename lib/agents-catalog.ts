@@ -1,9 +1,8 @@
 import { ANNA_INSIGHT_PROMPT, DEFAULT_ROUTING_PROMPT } from '@/lib/prompts';
-import { DEFAULT_VICTORIA_PROMPT } from '@/lib/reactivation';
 import { DEFAULT_LEGAL_PROMPTS } from '@/lib/legal-consultant-ai';
 
 export type AgentStatus = 'production' | 'foundation' | 'planned';
-export type AgentDomain = 'ОКК' | 'Реактивация' | 'Legal' | 'Support' | 'Секретариат';
+export type AgentDomain = 'ОКК' | 'Legal' | 'Support' | 'Секретариат';
 
 export type AgentProfile = {
     id: string;
@@ -34,7 +33,7 @@ export const AGENT_STATUS_STYLES: Record<AgentStatus, string> = {
     planned: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
-export const AGENT_DOMAINS: AgentDomain[] = ['ОКК', 'Реактивация', 'Legal', 'Support', 'Секретариат'];
+export const AGENT_DOMAINS: AgentDomain[] = ['ОКК', 'Legal', 'Support', 'Секретариат'];
 
 /** Агенты с детальным экраном по клику на карточку (href = /agents/<id>). */
 export const AGENT_DETAIL_IDS = new Set<string>(['katerina']);
@@ -158,29 +157,6 @@ export const AGENT_PROFILES: AgentProfile[] = [
         routes: ['/okk','/okk/audit'],
     },
     {
-        id: 'victoria',
-        name: 'Виктория',
-        role: 'Спец. реактивации',
-        domain: 'Реактивация',
-        avatarSrc: '/images/agents/victoria.png',
-        status: 'production',
-        summary: 'Контур реактивации B2B: разведчик, писатель, аналитик и ответчик в одном агентном направлении.',
-        responsibilities: [
-            'Отбирает клиентов для реактивации.',
-            'Пишет персонализированные письма.',
-            'Классифицирует ответы клиентов и предлагает следующий шаг.',
-        ],
-        connections: [
-            'Получает технические знания от Елены.',
-            'Работает через CRM-кампании и триггеры отправки писем.',
-        ],
-        promptLabel: 'Default Prompt',
-        promptText: compactPrompt(DEFAULT_VICTORIA_PROMPT),
-        promptSourceLabel: 'Настройки кампании / DEFAULT_VICTORIA_PROMPT',
-        promptSourceHref: '/admin/reactivation',
-        routes: ['/reactivation','/admin/reactivation'],
-    },
-    {
         id: 'elena',
         name: 'Елена',
         role: 'Продуктолог',
@@ -194,7 +170,6 @@ export const AGENT_PROFILES: AgentProfile[] = [
             'Верифицирует спорные отмены по ассортименту.',
         ],
         connections: [
-            'Передает продуктовые сведения Виктории.',
             'Отдает сигналы Максиму для возврата ложных отмен в работу.',
         ],
         promptLabel: 'Research Prompt',

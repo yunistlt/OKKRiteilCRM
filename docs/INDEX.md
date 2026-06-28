@@ -15,7 +15,6 @@
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
-| **Реактивация (Виктория)** | 🟢 Реализована | [docs/reactivation/](reactivation/) | Team Reactivation |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |
 | **Real-time pipeline** | 🟡 В исполнении | [docs/realtime-pipeline/](realtime-pipeline/) | Team Infrastructure |
@@ -61,7 +60,6 @@
 
 - **ОКК Консультант** — основные функции реализованы, в развитии
 - **Lead Catcher (Елена)** — полностью реализован
-- **Реактивация (Виктория)** — полностью реализована
 - **Транскрибация** — pipeline закрыто, мониторинг внедрён
 
 ---

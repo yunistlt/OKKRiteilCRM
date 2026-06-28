@@ -288,7 +288,7 @@ export async function loadAccessControlData(): Promise<{
         loadAccountsTable('users'),
         loadManagersTable(),
         supabase.from('access_route_rules').select('prefix, label, description, category, allowed_roles'),
-        supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_reactivation, can_view_salary, can_view_settings, can_manage_users, can_run_bulk_operations'),
+        supabase.from('access_role_capabilities').select('role, data_scope, edit_scope, can_view_analytics, can_view_audit, can_view_salary, can_view_settings, can_manage_users, can_run_bulk_operations'),
         supabase.from('access_invitations').select('id, token, role, retail_crm_manager_id, first_name, last_name, note, revoked, used_count, last_used_at, created_at, created_by').order('created_at', { ascending: false }),
     ]);
 
@@ -323,7 +323,6 @@ export async function loadAccessControlData(): Promise<{
                 editScope: item.edit_scope,
                 canViewAnalytics: item.can_view_analytics,
                 canViewAudit: item.can_view_audit,
-                canViewReactivation: item.can_view_reactivation,
                 canViewSalary: item.can_view_salary,
                 canViewSettings: item.can_view_settings,
                 canManageUsers: item.can_manage_users,
@@ -616,7 +615,6 @@ export async function saveRoleCapabilities(roleCapabilities: RoleCapabilityProfi
                 edit_scope: normalized.editScope,
                 can_view_analytics: normalized.canViewAnalytics,
                 can_view_audit: normalized.canViewAudit,
-                can_view_reactivation: normalized.canViewReactivation,
                 can_view_salary: normalized.canViewSalary,
                 can_view_settings: normalized.canViewSettings,
                 can_manage_users: normalized.canManageUsers,

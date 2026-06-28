@@ -76,7 +76,6 @@ export default function Sidebar() {
             items: [
                 { name: 'Ловец Лидов', href: '/okk/lead-catcher', icon: '🎯', agent: 'elena' },
                 { name: 'Мессенджер', href: '/messenger', icon: '💬' },
-                { name: 'Реактивация', href: '/reactivation', icon: '💌', agent: 'victoria', allowed: ['admin', 'rop'] },
             ]
         },
         {

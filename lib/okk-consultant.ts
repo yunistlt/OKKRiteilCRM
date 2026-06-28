@@ -149,7 +149,6 @@ export type ConsultantSectionKey =
     | 'system-status'
     | 'salary'
     | 'messenger'
-    | 'reactivation'
     | 'lead-catcher'
     | 'legal'
     | 'settings';
@@ -1497,16 +1496,6 @@ const CONSULTANT_SECTION_CONFIGS: ConsultantSectionConfig[] = [
         aliases: ['мессенджер', 'чат', 'переписка', 'сообщения', 'push', 'уведомления'],
         summary: 'Корпоративный мессенджер: каналы, сообщения, web-push уведомления.',
         pathPrefixes: ['/messenger'],
-        topics: [],
-        materializeToKb: false,
-    },
-    {
-        key: 'reactivation',
-        title: 'Реактивация',
-        shortTitle: 'Реактивация',
-        aliases: ['реактивация', 'виктория', 'возврат клиентов', 'реанимация', 'пиксель', 'webhook'],
-        summary: 'Реактивация ("Виктория"): возврат «спящих» клиентов через триггеры, пиксель и сценарии.',
-        pathPrefixes: ['/reactivation', '/admin/reactivation'],
         topics: [],
         materializeToKb: false,
     },

@@ -33,7 +33,7 @@ Migrations are raw SQL in `migrations/` (123+ files, date-prefixed). There is no
 ## Architecture
 
 ### Request flow & auth
-- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/reactivation/{webhook,pixel,track}`, `/api/widget`) bypass auth; everything else requires a session.
+- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) bypass auth; everything else requires a session.
 - Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | demo`.
 - RBAC is a route-prefix → allowed-roles table in `lib/rbac.ts` (`DEFAULT_ROUTE_RULES`). `lib/rbac-server.ts` resolves it server-side (rules can be overridden in DB). When adding a page or API route, add a matching `RouteRule` or it inherits the longest-prefix match.
 
@@ -50,7 +50,7 @@ External events (RetailCRM order changes, Telphin call/recording webhooks) are *
 - **Principles** (`docs/ARCHITECTURE.md`): webhook-first with poller fallback; each domain object has one canonical table (`orders`, `raw_telphin_calls`, `raw_order_events`) — legacy tables are read-only fallbacks; idempotency everywhere; graceful degradation when OpenAI/RetailCRM are down.
 
 ### AI agents
-Each agent is a specialized module that reads from one table and writes to one table/queue — they hand off via tables, not synchronous calls. The personas (Семён/OKK consultant, Анна/order facts, Максим/rules & penalties, Игорь/SLA, Елена/lead catcher, Виктория/reactivation, plus the Legal team Лев/Дарья/Борис/Григорий) are the **source of truth** documented in `docs/ai-team/STAFF_ROLES.md`. Read it before modifying agent logic.
+Each agent is a specialized module that reads from one table and writes to one table/queue — they hand off via tables, not synchronous calls. The personas (Семён/OKK consultant, Анна/order facts, Максим/rules & penalties, Игорь/SLA, Елена/lead catcher, plus the Legal team Лев/Дарья/Борис/Григорий) are the **source of truth** documented in `docs/ai-team/STAFF_ROLES.md`. Read it before modifying agent logic.
 
 Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>` + `docs/<feature>`):
 - **OKK Consultant ("Семён")** — `lib/okk-consultant*.ts`, `lib/okk-evaluator.ts`. Most safety-critical; has a strict quality gate and golden fixtures. Chats are global and isolated from order context.
@@ -59,7 +59,6 @@ Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>
 - **Telphin calls & transcription** — `lib/telphin*.ts`, `lib/call-matching.ts`, `lib/transcribe.ts` / `lib/transcription.ts`.
 - **Legal AI** — `lib/legal-*.ts` (consultant, contract analysis, OCR, antivirus, counterparty check).
 - **Lead Catcher ("Елена")** — `app/api/lead-catcher/*`, `app/lead-catcher`, embeddable widget (`/api/widget`).
-- **Reactivation ("Виктория")** — `lib/reactivation*.ts`, `app/reactivation`, `app/admin/reactivation`.
 - **Corporate Messenger** — `lib/messenger/`, `app/messenger`. Has web-push and a separate release runbook.
 - **Salary ОП ("Зарплата")** — `lib/salary/`, `app/salary`, `app/api/salary/*`. Composable bonus-block engine (per-manager schemes/roles), effective-dated, zero-hardcode. **Read `docs/salary/OVERVIEW.md` (as-built canonical guide) before changing anything.** UI follows `golds/`.
 
