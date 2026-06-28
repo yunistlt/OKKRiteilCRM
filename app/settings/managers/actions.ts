@@ -49,6 +49,25 @@ export async function saveSalaryRoster(participantIds: number[], choices: { mana
     }
 }
 
+/** Сохраняет добавочные (внутренние номера Телфина) для AI-секретаря. Пустое значение очищает поле. */
+export async function saveManagerExtensions(items: { managerId: number; extension: string }[]) {
+    try {
+        for (const { managerId, extension } of items) {
+            const value = (extension || '').trim() || null;
+            const { error } = await supabase.from('managers').update({ telphin_extension: value }).eq('id', managerId);
+            if (error) {
+                const missing = error.code === '42703' || (error.message || '').includes('telphin_extension') || (error.message || '').includes('schema cache');
+                if (missing) return { success: false, errorType: 'COLUMN_MISSING' as const };
+                throw error;
+            }
+        }
+        revalidatePath('/settings/managers');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
 function sanitizeLoginCandidate(value: string | null | undefined) {
     return (value || '')
         .trim()

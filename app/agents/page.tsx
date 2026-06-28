@@ -4,6 +4,7 @@ import {
     AGENT_PROFILES,
     AGENT_STATUS_LABELS,
     AGENT_STATUS_STYLES,
+    AGENT_DETAIL_IDS,
     AgentProfile,
 } from '@/lib/agents-catalog';
 
@@ -157,6 +158,14 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
                                             </div>
                                             <div className="mt-2 text-sm font-bold text-sky-800">{agent.role}</div>
                                             <p className="mt-3 text-sm leading-6 text-slate-600">{agent.summary}</p>
+                                            {AGENT_DETAIL_IDS.has(agent.id) ? (
+                                                <Link
+                                                    href={`/agents/${agent.id}`}
+                                                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-sky-300 bg-sky-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-sky-800 transition hover:bg-sky-100"
+                                                >
+                                                    Открыть рабочий экран →
+                                                </Link>
+                                            ) : null}
                                         </div>
                                     </div>
 

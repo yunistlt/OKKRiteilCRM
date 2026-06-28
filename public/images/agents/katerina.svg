@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" role="img" aria-label="Катерина — секретарь">
+  <rect width="400" height="400" fill="#0f4c81"/>
+  <rect y="300" width="400" height="100" fill="#0b3b65"/>
+  <!-- shoulders / blouse -->
+  <path d="M70 400 C70 320 120 280 200 280 C280 280 330 320 330 400 Z" fill="#e8edf2"/>
+  <path d="M200 280 L176 330 L200 360 L224 330 Z" fill="#0f4c81"/>
+  <!-- collar -->
+  <path d="M170 292 L200 332 L160 318 Z" fill="#cfd8e0"/>
+  <path d="M230 292 L200 332 L240 318 Z" fill="#cfd8e0"/>
+  <!-- neck -->
+  <rect x="183" y="232" width="34" height="56" fill="#e8b58f"/>
+  <!-- hair back -->
+  <path d="M126 196 C126 120 274 120 274 196 L274 250 C274 240 262 236 256 246 C252 200 148 200 144 246 C138 236 126 240 126 250 Z" fill="#5a3b27"/>
+  <!-- face -->
+  <ellipse cx="200" cy="188" rx="66" ry="74" fill="#f0c19a"/>
+  <!-- hair front / fringe -->
+  <path d="M134 188 C134 116 266 116 266 188 C266 158 246 150 232 152 C214 130 186 130 168 152 C154 150 134 158 134 188 Z" fill="#6b4630"/>
+  <path d="M134 190 C130 156 142 140 142 140 L150 178 Z" fill="#6b4630"/>
+  <path d="M266 190 C270 156 258 140 258 140 L250 178 Z" fill="#6b4630"/>
+  <!-- eyes -->
+  <ellipse cx="176" cy="190" rx="7" ry="9" fill="#3b2b22"/>
+  <ellipse cx="224" cy="190" rx="7" ry="9" fill="#3b2b22"/>
+  <!-- brows -->
+  <rect x="166" y="172" width="22" height="4" fill="#6b4630"/>
+  <rect x="212" y="172" width="22" height="4" fill="#6b4630"/>
+  <!-- smile -->
+  <path d="M184 220 Q200 232 216 220" stroke="#b9785a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- headset (secretary) -->
+  <path d="M132 188 C132 150 268 150 268 188" stroke="#1f2937" stroke-width="8" fill="none"/>
+  <rect x="120" y="186" width="20" height="34" fill="#1f2937"/>
+  <rect x="260" y="186" width="20" height="34" fill="#1f2937"/>
+  <path d="M122 220 C122 252 150 256 168 250" stroke="#1f2937" stroke-width="7" fill="none"/>
+  <circle cx="168" cy="250" r="7" fill="#1f2937"/>
+</svg>
