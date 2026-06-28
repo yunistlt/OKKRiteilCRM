@@ -9,7 +9,6 @@ export type RoleCapabilityProfile = {
     editScope: AccessEditScope;
     canViewAnalytics: boolean;
     canViewAudit: boolean;
-    canViewReactivation: boolean;
     canViewSalary: boolean;
     canViewSettings: boolean;
     canManageUsers: boolean;
@@ -45,7 +44,6 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         editScope: 'all',
         canViewAnalytics: true,
         canViewAudit: true,
-        canViewReactivation: true,
         canViewSalary: true,
         canViewSettings: true,
         canManageUsers: true,
@@ -57,7 +55,6 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         editScope: 'own',
         canViewAnalytics: false,
         canViewAudit: false,
-        canViewReactivation: false,
         canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
@@ -69,7 +66,6 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         editScope: 'team',
         canViewAnalytics: true,
         canViewAudit: true,
-        canViewReactivation: false,
         canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
@@ -81,7 +77,6 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         editScope: 'team',
         canViewAnalytics: true,
         canViewAudit: true,
-        canViewReactivation: true,
         canViewSalary: true,
         canViewSettings: false,
         canManageUsers: false,
@@ -93,7 +88,6 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         editScope: 'own',
         canViewAnalytics: false,
         canViewAudit: false,
-        canViewReactivation: false,
         canViewSalary: false,
         canViewSettings: false,
         canManageUsers: false,
@@ -118,7 +112,6 @@ export function normalizeRoleCapabilityProfile(input: Partial<RoleCapabilityProf
         editScope: normalizeEditScope(input.editScope ?? fallback.editScope),
         canViewAnalytics: typeof input.canViewAnalytics === 'boolean' ? input.canViewAnalytics : fallback.canViewAnalytics,
         canViewAudit: typeof input.canViewAudit === 'boolean' ? input.canViewAudit : fallback.canViewAudit,
-        canViewReactivation: typeof input.canViewReactivation === 'boolean' ? input.canViewReactivation : fallback.canViewReactivation,
         canViewSalary: typeof input.canViewSalary === 'boolean' ? input.canViewSalary : fallback.canViewSalary,
         canViewSettings: typeof input.canViewSettings === 'boolean' ? input.canViewSettings : fallback.canViewSettings,
         canManageUsers: typeof input.canManageUsers === 'boolean' ? input.canManageUsers : fallback.canManageUsers,

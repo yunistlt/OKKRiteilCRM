@@ -148,7 +148,6 @@ export default function AccessControlClient({ initialAccounts, initialManagers, 
         if (prefix === '/okk/lead-catcher') return ['/api/lead-catcher'];
         if (prefix === '/analytics') return ['/api/analysis'];
         if (prefix === '/messenger') return ['/api/messenger'];
-        if (prefix === '/reactivation') return ['/api/reactivation'];
         if (prefix === '/legal') return ['/api/legal'];
         if (prefix === '/settings/managers') return ['/api/managers', '/api/sync/managers'];
         if (prefix === '/settings/statuses') return ['/api/statuses', '/api/dict/statuses'];
@@ -310,7 +309,6 @@ CREATE TABLE IF NOT EXISTS public.access_role_capabilities (
     edit_scope TEXT NOT NULL DEFAULT 'own',
     can_view_analytics BOOLEAN NOT NULL DEFAULT false,
     can_view_audit BOOLEAN NOT NULL DEFAULT false,
-    can_view_reactivation BOOLEAN NOT NULL DEFAULT false,
     can_view_salary BOOLEAN NOT NULL DEFAULT false,
     can_view_settings BOOLEAN NOT NULL DEFAULT false,
     can_manage_users BOOLEAN NOT NULL DEFAULT false,
@@ -373,7 +371,6 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                         {[
                             ['canViewAnalytics', 'Доступ к аналитике'],
                             ['canViewAudit', 'Доступ к аудиту ОКК'],
-                            ['canViewReactivation', 'Доступ к реактивации'],
                             ['canViewSalary', 'Доступ к зарплате'],
                             ['canViewSettings', 'Доступ к настройкам'],
                             ['canManageUsers', 'Управление пользователями и ролями'],

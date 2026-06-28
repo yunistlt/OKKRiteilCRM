@@ -61,7 +61,6 @@
 - Игорь → мониторинг SLA и приоритеты (чистая логика, без AI)
 - Семён → синхронизация и Lead Catching
 - Елена → консультирование и сбор контактов
-- Виктория (4 роли) → реактивация клиентов
 
 ✅ **ПРАВИЛО 2: Чёткие интерфейсы**
 - Каждый агент читает из одной таблицы (input)
@@ -203,7 +202,6 @@
 | **Lead Catcher** | Team Sales | Live | 🟢 MEDIUM |
 | **Real-time Pipeline** | Team Infra | < 2 min SLA | 🔴 CRITICAL |
 | **Transcription** | Team Infra | p95 < 5 min | 🟡 HIGH |
-| **Reactivation** | Team Growth | Async | 🟢 MEDIUM |
 | **Knowledge Base** | Team KM | Async | 🟢 MEDIUM |
 
 | **AI Team** | Admin | Source of truth | 📚 REFERENCE |

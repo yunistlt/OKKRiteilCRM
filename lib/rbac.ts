@@ -33,9 +33,6 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/settings', label: 'Раздел настроек', description: 'Общий административный раздел.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings', label: 'API настроек', description: 'Серверные маршруты административных настроек.', category: 'Система', allowed: ['admin'] },
-    { prefix: '/admin/reactivation', label: 'Админка реактивации', description: 'Управление реактивационными кампаниями.', category: 'Реактивация', allowed: ['admin', 'rop'] },
-    { prefix: '/api/reactivation', label: 'API реактивации', description: 'Серверные методы реактивации.', category: 'Реактивация', allowed: ['admin', 'rop'] },
-    { prefix: '/reactivation', label: 'Экран реактивации', description: 'Рабочий интерфейс реактивации.', category: 'Реактивация', allowed: ['admin', 'rop'] },
     { prefix: '/api/okk/consultant/logs', label: 'Логи консультанта ОКК', description: 'Аудит и trace-логи консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/okk/audit', label: 'Аудит ОКК', description: 'Экран разбора ответов консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/okk/criteria', label: 'Критерии качества', description: 'Управление критериями «Контроля качества» (добавление/редактирование/удаление).', category: 'ОКК', allowed: ['admin'] },
@@ -79,7 +76,7 @@ export function hasAnyRole(session: AppSession | null | undefined, allowed: AppR
 
 export function getDefaultPathForRole(role: AppRole | null | undefined): string {
     if (role === 'manager') return '/okk';
-    if (role === 'rop') return '/reactivation';
+    if (role === 'rop') return '/okk';
     if (role === 'okk') return '/okk';
     if (role === 'demo') return '/okk';
     return '/';

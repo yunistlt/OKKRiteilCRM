@@ -193,8 +193,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                        {[...safeAgents, 
-                                            ...(safeAgents.find(a => a.agent_id === 'victoria') ? [] : [{ agent_id: 'victoria', name: 'Виктория', role: 'Агент Реактивации', status: 'idle' }]),
+                                        {[...safeAgents,
                                             ...(safeAgents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }]),
                                             ...(safeAgents.find(a => a.agent_id === 'artem') ? [] : [{ agent_id: 'artem', name: 'Артем', role: 'Голосовой Менеджер', status: 'idle' }])
                     ].map((agent: any) => {
@@ -235,21 +234,12 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                                 load: agent.status === 'working' ? 60 : 18,
                                 stateDesc: agent.status === 'working' ? "Инкрементальная загрузка" : "Обновление клиентов"
                             },
-                            victoria: {
-                                role: "Спец. реактивации",
-                                mission: "Поиск, контакт и реактивация (Разведчик, Писатель, Аналитик, Ответчик)",
-                                functions: ["Поиск и отбор клиентов для реактивации", "Составление персонализированных писем", "Классификация ответов клиентов", "Написание ответного письма"],
-                                instruments: "API RetailCRM, GPT-4o-mini, JSON-режим.",
-                                connection: "RetailCRM триггеры, Пиксель трекинга, Дашборд.",
-                                load: agent.status === 'working' ? 45 : 5,
-                                stateDesc: agent.status === 'working' ? "Написание письма" : "Поиск по базе"
-                            },
                             elena: {
                                 role: "Продуктолог",
                                 mission: "Хранитель технической номенклатуры и эксперт по продукции.",
                                 functions: ["Автономное исследование товаров zmktlt.ru", "Формирование таблицы product_knowledge", "Предоставление точных технических справок", "Верификация заказов (блокировка отмен)"],
                                 instruments: "Web Search, AI Browser Crawler, GPT-4o.",
-                                connection: "Работает в фоне, передает данные Максиму и Виктории.",
+                                connection: "Работает в фоне, передает данные Максиму.",
                                 load: agent.status === 'working' ? 80 : 10,
                                 stateDesc: agent.status === 'working' ? "Верификация заказов" : "База знаний"
                             },

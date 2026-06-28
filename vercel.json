@@ -102,10 +102,6 @@
             "schedule": "15 4 * * *"
         },
         {
-            "path": "/api/cron/reactivation-worker",
-            "schedule": "*/15 * * * *"
-        },
-        {
             "path": "/api/cron/lead-catcher",
             "schedule": "*/1 * * * *"
         },
