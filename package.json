@@ -32,8 +32,10 @@
     "clsx": "^2.1.1",
     "cookie": "^1.1.1",
     "dotenv": "^17.2.3",
+    "imapflow": "^1.4.3",
     "jose": "^6.1.3",
     "lucide-react": "^0.562.0",
+    "mailparser": "^3.9.12",
     "mammoth": "^1.12.0",
     "next": "14.1.0",
     "nodemailer": "^8.0.7",
@@ -52,6 +54,7 @@
   },
   "devDependencies": {
     "@types/axios": "^0.9.36",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

@@ -112,6 +112,10 @@
         {
             "path": "/api/cron/lead-reminders",
             "schedule": "0 * * * *"
+        },
+        {
+            "path": "/api/cron/email-poll",
+            "schedule": "*/5 * * * *"
         }
     ]
 }

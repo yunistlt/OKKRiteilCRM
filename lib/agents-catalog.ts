@@ -3,7 +3,7 @@ import { DEFAULT_VICTORIA_PROMPT } from '@/lib/reactivation';
 import { DEFAULT_LEGAL_PROMPTS } from '@/lib/legal-consultant-ai';
 
 export type AgentStatus = 'production' | 'foundation' | 'planned';
-export type AgentDomain = 'ОКК' | 'Реактивация' | 'Legal' | 'Support';
+export type AgentDomain = 'ОКК' | 'Реактивация' | 'Legal' | 'Support' | 'Секретариат';
 
 export type AgentProfile = {
     id: string;
@@ -34,7 +34,10 @@ export const AGENT_STATUS_STYLES: Record<AgentStatus, string> = {
     planned: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
-export const AGENT_DOMAINS: AgentDomain[] = ['ОКК', 'Реактивация', 'Legal', 'Support'];
+export const AGENT_DOMAINS: AgentDomain[] = ['ОКК', 'Реактивация', 'Legal', 'Support', 'Секретариат'];
+
+/** Агенты с детальным экраном по клику на карточку (href = /agents/<id>). */
+export const AGENT_DETAIL_IDS = new Set<string>(['katerina']);
 
 function compactPrompt(prompt: string, maxLength: number = 420) {
     const normalized = prompt.replace(/\s+/g, ' ').trim();
@@ -43,6 +46,29 @@ function compactPrompt(prompt: string, maxLength: number = 420) {
 }
 
 export const AGENT_PROFILES: AgentProfile[] = [
+    {
+        id: 'katerina',
+        name: 'Катерина',
+        role: 'Секретарь',
+        domain: 'Секретариат',
+        avatarSrc: '/images/agents/katerina.svg',
+        status: 'production',
+        summary: 'Разбирает входящую почту: отделяет новые заявки от переписки и спама, заводит заказ и назначает менеджера.',
+        responsibilities: [
+            'Читает входящий почтовый ящик и определяет тип каждого письма.',
+            'Новая заявка → создаёт заказ и назначает менеджера (по истории клиента или по нагрузке).',
+            'Переписку по заказам (Re), роботов (noreply) и рекламу — пропускает.',
+        ],
+        connections: [
+            'Передаёт новые заявки в RetailCRM и закрепляет за клиентским менеджером.',
+            'Пул менеджеров и рабочие статусы берёт из настроек (Менеджеры, Статусы Заказов).',
+        ],
+        promptLabel: 'System Prompt',
+        promptText: 'Загружается из ai_prompts (email_secretary_classifier).',
+        promptSourceLabel: 'ai_prompts (runtime)',
+        promptSourceHref: '/agents/katerina',
+        routes: ['/agents/katerina'],
+    },
     {
         id: 'anna',
         name: 'Анна',
