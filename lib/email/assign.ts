@@ -38,6 +38,35 @@ export async function getManagerPool(): Promise<number[]> {
     return (data || []).map((r: any) => Number(r.manager_id));
 }
 
+/** Окно балансировки (дни) из настройки; по умолчанию 7. */
+export async function getBalanceWindowDays(): Promise<number> {
+    const { data } = await supabase.from('email_intake_config').select('balance_window_days').maybeSingle();
+    const n = Number(data?.balance_window_days);
+    return Number.isFinite(n) && n > 0 ? n : 7;
+}
+
+/**
+ * Сколько заявок Катерина назначила каждому менеджеру пула за последние `days` дней.
+ * Это и есть основа распределения «поровну за период» — балансируем СВОЙ поток заявок,
+ * а не исторические остатки заказов. Учитываются и заявки «по истории клиента».
+ */
+export async function getRecentAssignmentCounts(pool: number[], days: number): Promise<Record<number, number>> {
+    const counts: Record<number, number> = {};
+    for (const id of pool) counts[id] = 0;
+    if (pool.length === 0) return counts;
+    const since = new Date(Date.now() - days * 864e5).toISOString();
+    const { data } = await supabase
+        .from('incoming_emails')
+        .select('assigned_manager_id')
+        .not('assigned_manager_id', 'is', null)
+        .gte('received_at', since);
+    for (const r of data || []) {
+        const id = Number(r.assigned_manager_id);
+        if (id in counts) counts[id]++;
+    }
+    return counts;
+}
+
 /** Текущая нагрузка по каждому менеджеру пула: { managerId: count активных заказов }. */
 export async function getManagerLoad(pool: number[], loadCodes: string[]): Promise<Record<number, number>> {
     const load: Record<number, number> = {};
@@ -86,7 +115,7 @@ export async function findOwnerByEmail(email: string): Promise<number | null> {
  */
 export async function resolveAssignment(
     senderEmail: string,
-    ctx: { pool: number[]; loadCodes: string[]; load: Record<number, number>; managerNames: Record<number, string> }
+    ctx: { pool: number[]; load: Record<number, number>; managerNames: Record<number, string> }
 ): Promise<AssignmentResult> {
     if (ctx.pool.length === 0) return { managerId: null, method: 'none', reason: 'Пул менеджеров пуст' };
 
@@ -97,11 +126,11 @@ export async function resolveAssignment(
         return { managerId: owner, method: 'history', reason: `Клиент известен — закреплён за ${ctx.managerNames[owner] || owner}` };
     }
 
-    // 2) по нагрузке (наименее загруженный)
+    // 2) поровну за период: тому, кому за окно назначено меньше всего заявок
     const least = ctx.pool.reduce((a, b) => ((ctx.load[a] ?? 0) <= (ctx.load[b] ?? 0) ? a : b));
     ctx.load[least] = (ctx.load[least] || 0) + 1;
     const base = owner ? 'история-менеджер вне пула' : 'новый клиент';
-    return { managerId: least, method: 'load', reason: `По нагрузке (${base}) → ${ctx.managerNames[least] || least}` };
+    return { managerId: least, method: 'load', reason: `Поровну за период (${base}) → ${ctx.managerNames[least] || least}` };
 }
 
 /** Имена менеджеров пула (для логов/UI). */
