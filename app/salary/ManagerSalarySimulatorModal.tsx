@@ -96,11 +96,13 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
     const [teamRevenue, setTeamRevenue] = useState(0);
     const [personalPlan, setPersonalPlan] = useState(0);
     const [deptPlan, setDeptPlan] = useState(0);
-    // Менеджерский режим: единый ползунок «% выполнения плана» (вместо сумм планов и порогов).
-    const [planPct, setPlanPct] = useState(100);
+    // Менеджерский режим: отдельные ползунки «% выполнения» — для личного плана и плана отдела
+    // (вместо сумм планов и порогов, которые задаёт руководитель).
+    const [personalPlanPct, setPersonalPlanPct] = useState(100);
+    const [deptPlanPct, setDeptPlanPct] = useState(100);
     const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
     // дефолты для кнопки «Сброс»
-    const [defaults, setDefaults] = useState<{ inputs: SimManagerInputs; blocks: SchemeBlockLite[]; teamRevenue: number; personalPlan: number; deptPlan: number; planPct: number } | null>(null);
+    const [defaults, setDefaults] = useState<{ inputs: SimManagerInputs; blocks: SchemeBlockLite[]; teamRevenue: number; personalPlan: number; deptPlan: number; personalPlanPct: number; deptPlanPct: number } | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true); setError(null);
@@ -114,12 +116,13 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
             const tRev = j.baseTeamRev || 0;
             const pPlan = j.personalPlan || 0;
             const dPlan = j.deptPlan || 0;
-            // % выполнения личного плана из факта baseline (для дефолта единого ползунка).
-            const defPct = pPlan > 0 ? Math.round((b.baseRevenue / pPlan) * 100) : 100;
+            // % выполнения из факта baseline (дефолты ползунков): личный = выручка/личный план, отдел = выручка отдела/план отдела.
+            const defPersPct = pPlan > 0 ? Math.round((b.baseRevenue / pPlan) * 100) : 100;
+            const defDeptPct = dPlan > 0 ? Math.round((tRev / dPlan) * 100) : 100;
             setBase(b); setBusinessDays(j.businessDays ?? 21); setBaseTeamRev(tRev); setSchemeCode(j.schemeCode ?? '');
             setCategoryNames(j.categoryNames ?? {});
-            setInputs(inp); setBlocks(blk); setTeamRevenue(tRev); setPersonalPlan(pPlan); setDeptPlan(dPlan); setPlanPct(defPct);
-            setDefaults({ inputs: inp, blocks: blk.map((x) => ({ ...x, params: structuredClone(x.params) })), teamRevenue: tRev, personalPlan: pPlan, deptPlan: dPlan, planPct: defPct });
+            setInputs(inp); setBlocks(blk); setTeamRevenue(tRev); setPersonalPlan(pPlan); setDeptPlan(dPlan); setPersonalPlanPct(defPersPct); setDeptPlanPct(defDeptPct);
+            setDefaults({ inputs: inp, blocks: blk.map((x) => ({ ...x, params: structuredClone(x.params) })), teamRevenue: tRev, personalPlan: pPlan, deptPlan: dPlan, personalPlanPct: defPersPct, deptPlanPct: defDeptPct });
         } catch (e: any) { setError(e.message); }
         finally { setLoading(false); }
     }, [year, month, managerId]);
@@ -135,12 +138,13 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
         let pPlan = personalPlan, dPlan = deptPlan;
         if (planMode && inputs) {
             const rev = Math.max(0, Math.round(inputs.ordersNew) + Math.round(inputs.ordersPermanent)) * Math.max(0, inputs.avgCheck);
-            const frac = planPct > 0 ? planPct / 100 : 0;
-            pPlan = frac > 0 ? rev / frac : rev > 0 ? rev * 1e9 : 0; // %=0 → план «недостижим» → выполнение ≈0
-            dPlan = frac > 0 ? teamRevenue / frac : teamRevenue > 0 ? teamRevenue * 1e9 : 0;
+            const pf = personalPlanPct > 0 ? personalPlanPct / 100 : 0;
+            const df = deptPlanPct > 0 ? deptPlanPct / 100 : 0;
+            pPlan = pf > 0 ? rev / pf : rev > 0 ? rev * 1e9 : 0; // %=0 → план «недостижим» → выполнение ≈0
+            dPlan = df > 0 ? teamRevenue / df : teamRevenue > 0 ? teamRevenue * 1e9 : 0;
         }
         return { teamRevenue, personalPlan: pPlan, deptPlan: dPlan, businessDays, year, month, categoryNames };
-    }, [teamRevenue, personalPlan, deptPlan, businessDays, year, month, categoryNames, canEditParams, blockCodes, inputs, planPct]);
+    }, [teamRevenue, personalPlan, deptPlan, businessDays, year, month, categoryNames, canEditParams, blockCodes, inputs, personalPlanPct, deptPlanPct]);
 
     const result = useMemo(() => {
         if (!base || !inputs) return null;
@@ -171,7 +175,7 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
         if (!defaults) return;
         setInputs(defaults.inputs);
         setBlocks(defaults.blocks.map((x) => ({ ...x, params: structuredClone(x.params) })));
-        setTeamRevenue(defaults.teamRevenue); setPersonalPlan(defaults.personalPlan); setDeptPlan(defaults.deptPlan); setPlanPct(defaults.planPct);
+        setTeamRevenue(defaults.teamRevenue); setPersonalPlan(defaults.personalPlan); setDeptPlan(defaults.deptPlan); setPersonalPlanPct(defaults.personalPlanPct); setDeptPlanPct(defaults.deptPlanPct);
     };
 
     const hasAny = (codes: string[]) => codes.some((c) => blockCodes.includes(c));
@@ -179,7 +183,8 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
     const attainment = result?.attainmentPct ?? 0;
     // Менеджерский режим: плановые блоки сворачиваются в один ползунок «% выполнения плана».
     const managerPlanMode = !canEditParams && hasAny(PLAN_ALL_BLOCKS);
-    const planTint = tintFor('plan_coef');
+    const personalPlanOwner = blocks.find((b) => PLAN_BLOCKS.includes(b.block_code))?.block_code;
+    const deptPlanOwner = blocks.find((b) => DEPT_PLAN_BLOCKS.includes(b.block_code))?.block_code;
 
     // показатели, релевантные схеме (значение != null или блок-условие истинно)
     const shownInputs = INPUT_DESCS.filter((d) => hasAny(d.blocks) && (inputs ? inputs[d.key] != null : true));
@@ -252,25 +257,39 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
                                 </div>
                             )}
 
-                            {/* Менеджеру — единый ползунок «% выполнения плана» вместо сумм планов и порогов */}
-                            {managerPlanMode && (
-                                <div className="mb-2 border" style={{ backgroundColor: planTint.bg, borderLeft: `3px solid ${planTint.bar}` }}>
-                                    <div className="flex items-center gap-1.5 border-b px-2 py-1 text-[11px] font-semibold">Выполнение плана</div>
-                                    <div className="p-2">
-                                        <Slider label="% выполнения плана" min={0} max={150} step={5} value={planPct} fmt={pctFmt} onChange={setPlanPct} />
-                                        <div className="mt-1 text-[10px] leading-snug text-muted-foreground">Один ползунок: личный план и план отдела считаются от этого %.</div>
-                                    </div>
-                                </div>
-                            )}
-
                             {/* По одной карточке на блок схемы: сверху его показатели, ниже его тариф */}
                             {blocks.map((b) => {
                                 const realIdx = blocks.indexOf(b);
                                 const ins = inputsByOwner.get(b.block_code) ?? [];
-                                // У менеджера плановые блоки не показывают свои суммы/пороги — их заменяет единый ползунок выше.
-                                const isPlanBlock = PLAN_ALL_BLOCKS.includes(b.block_code);
-                                const ctx = managerPlanMode && isPlanBlock ? [] : contextFor(b.block_code);
-                                const controls = managerPlanMode && isPlanBlock ? [] : controlsForBlock(b.block_code, b.params ?? {}, categoryNames);
+
+                                // Менеджеру плановый блок показывает один ползунок «% выполнения» (личного
+                                // плана или плана отдела) вместо сумм/порогов. Вторичный плановый блок того
+                                // же вида скрыт — его покрывает тот же ползунок.
+                                const isPersonalPlan = PLAN_BLOCKS.includes(b.block_code);
+                                const isDeptPlan = DEPT_PLAN_BLOCKS.includes(b.block_code);
+                                if (managerPlanMode && (isPersonalPlan || isDeptPlan)) {
+                                    const isOwner = b.block_code === (isDeptPlan ? deptPlanOwner : personalPlanOwner);
+                                    if (!isOwner && !ins.length) return null;
+                                    const tint = tintFor(b.block_code);
+                                    const pct = isDeptPlan ? deptPlanPct : personalPlanPct;
+                                    const setPct = isDeptPlan ? setDeptPlanPct : setPersonalPlanPct;
+                                    const label = isDeptPlan ? '% выполнения плана отдела' : '% выполнения личного плана';
+                                    return (
+                                        <div key={b.block_code} className="mb-2 border" style={{ backgroundColor: tint.bg, borderLeft: `3px solid ${tint.bar}` }}>
+                                            <div className="flex items-center gap-1.5 border-b px-2 py-1 text-[11px] font-semibold">{BLOCK_NAMES[b.block_code] ?? b.block_code}</div>
+                                            <div className="p-2">
+                                                {ins.map((d) => (
+                                                    <Slider key={d.key} label={d.label} min={d.min} max={d.maxOf(base)} step={d.step}
+                                                        value={Number(inputs[d.key] ?? 0)} fmt={d.fmt} onChange={(v) => setInput(d.key, v)} />
+                                                ))}
+                                                {isOwner && <Slider label={label} min={0} max={150} step={5} value={pct} fmt={pctFmt} onChange={setPct} />}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+
+                                const ctx = contextFor(b.block_code);
+                                const controls = controlsForBlock(b.block_code, b.params ?? {}, categoryNames);
                                 if (!ins.length && !ctx.length && !controls.length) return null;
                                 const hasParams = ctx.length > 0 || controls.length > 0;
                                 const tint = tintFor(b.block_code);
