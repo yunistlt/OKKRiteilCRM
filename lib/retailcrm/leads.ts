@@ -72,6 +72,71 @@ export async function findCustomerByPhone(phone: string) {
     return null;
 }
 
+export async function findCustomerByEmail(email: string) {
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const url = `${baseUrl}/api/v5/customers?apiKey=${apiKey}&filter[email]=${encodeURIComponent(email)}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    if (data.success && data.customers && data.customers.length > 0) {
+        return data.customers[0];
+    }
+    return null;
+}
+
+/**
+ * Создать заявку по входящему ПИСЬМУ (AI-секретарь «Катерина»).
+ * Статус «Новая» (novyi-1). Менеджер назначается сразу, если передан.
+ * Возвращает id и номер созданного заказа.
+ */
+export async function createEmailLead(params: {
+    email: string;
+    name?: string;
+    subject?: string;
+    bodySnippet?: string;
+    managerId?: number | null;
+}): Promise<{ id: number; number: string }> {
+    const { site } = await getCrmConfig();
+
+    // 1. Найти или создать клиента по email
+    let customerId: number | null = null;
+    const existing = params.email ? await findCustomerByEmail(params.email) : null;
+    if (existing) {
+        customerId = existing.id;
+    } else if (params.email) {
+        const customerResult = await postRetailCrm('customers/create', 'customer', {
+            firstName: params.name || 'Клиент (письмо)',
+            email: params.email,
+        }, site);
+        if (customerResult.success) customerId = customerResult.id;
+    }
+
+    const comment = `✉️ Заявка принята AI-секретарём (входящее письмо)
+
+📧 Email: ${params.email || 'не определён'}
+📨 Тема: ${params.subject || '(без темы)'}
+
+📝 Текст письма:
+${(params.bodySnippet || '').trim() || 'не распознано — открыть письмо'}`;
+
+    const orderData: any = {
+        status: 'novyi-1', // всегда «Новая»
+        firstName: params.name || 'Клиент',
+        email: params.email,
+        customerComment: comment,
+        source: { source: 'email-secretary' },
+    };
+    if (customerId) orderData.customer = { id: customerId };
+    if (params.managerId) orderData.managerId = params.managerId;
+
+    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    if (!orderResult.success) {
+        const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
+        throw new Error(`Email lead create failed: ${errorMessage}`);
+    }
+    const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
+    return { id: orderResult.id as number, number: String(number) };
+}
+
 export async function createLeadInCrm(params: {
     name: string;
     phone?: string;
