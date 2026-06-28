@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { saveManagerSettings, getSalaryRoster, saveSalaryRoster } from './actions';
+import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions } from './actions';
 import Link from 'next/link';
 
 type RosterInfo = { inSalary: boolean; candidates: { code: string; name: string }[]; resolvedName: string | null; needsChoice: boolean };
@@ -12,6 +12,8 @@ export default function ManagerSettingsPage() {
     const [salaryIds, setSalaryIds] = useState<Set<number>>(new Set());
     const [roster, setRoster] = useState<Record<number, RosterInfo>>({});
     const [roleChoice, setRoleChoice] = useState<Record<number, string>>({}); // managerId → выбранная схема (для 2+ ролей)
+    const [extensions, setExtensions] = useState<Record<number, string>>({}); // managerId → добавочный Телфина
+    const [origExtensions, setOrigExtensions] = useState<Record<number, string>>({}); // исходные значения для диффа
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
@@ -31,6 +33,12 @@ export default function ManagerSettingsPage() {
 
                 setManagers(mData || []);
                 setControlledIds(new Set((sData || []).map((s: any) => s.id)));
+
+                // Добавочные Телфина (для AI-секретаря)
+                const extMap: Record<number, string> = {};
+                for (const m of (mData || [])) extMap[m.id] = m.telphin_extension || '';
+                setExtensions(extMap);
+                setOrigExtensions(extMap);
 
                 // 3. Реестр ЗП (участие + роль из групп RetailCRM)
                 const rosterRows = await getSalaryRoster();
@@ -76,6 +84,10 @@ export default function ManagerSettingsPage() {
         });
     };
 
+    const handleExtensionChange = (id: number, value: string) => {
+        setExtensions((prev) => ({ ...prev, [id]: value.replace(/[^0-9]/g, '') }));
+    };
+
     const handleSave = async () => {
         setSaving(true);
         setSaveMessage('');
@@ -87,6 +99,22 @@ export default function ManagerSettingsPage() {
             const salaryRes = await saveSalaryRoster(Array.from(salaryIds), choices);
             if (!salaryRes.success && salaryRes.errorType !== 'TABLE_MISSING') {
                 alert('Ошибка сохранения реестра ЗП: ' + (salaryRes.error || 'неизвестная'));
+            }
+
+            // Добавочные Телфина — сохраняем только изменённые
+            const changedExt = Object.keys(extensions)
+                .map(Number)
+                .filter((id) => (extensions[id] || '') !== (origExtensions[id] || ''))
+                .map((id) => ({ managerId: id, extension: extensions[id] || '' }));
+            if (changedExt.length > 0) {
+                const extRes = await saveManagerExtensions(changedExt);
+                if (extRes.success) {
+                    setOrigExtensions((prev) => ({ ...prev, ...Object.fromEntries(changedExt.map((c) => [c.managerId, c.extension])) }));
+                } else if (extRes.errorType === 'COLUMN_MISSING') {
+                    alert('Поле «Доб. Телфин» не создано в БД. Примените миграцию 20260628_telphin_secretary.sql');
+                } else {
+                    alert('Ошибка сохранения добавочных: ' + (extRes.error || 'неизвестная'));
+                }
             }
 
             const result = await saveManagerSettings(Array.from(controlledIds));
@@ -124,7 +152,7 @@ export default function ManagerSettingsPage() {
             <div className="flex flex-col gap-4 mb-6">
                 {/* Mobile-first text */}
                 <p className="text-sm text-gray-500 font-medium">
-                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную).
+                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора).
                 </p>
                 <button
                     onClick={handleSave}
@@ -227,6 +255,17 @@ NOTIFY pgrst, 'reload config';`}
                                     ) : salaryIds.has(m.id) && roster[m.id]?.resolvedName ? (
                                         <span className="text-[9px] text-gray-500">{roster[m.id]?.resolvedName}</span>
                                     ) : null}
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">Доб.</span>
+                                        <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={extensions[m.id] ?? ''}
+                                            onChange={(e) => handleExtensionChange(m.id, e.target.value)}
+                                            placeholder="—"
+                                            className="w-16 border border-gray-300 rounded px-1 py-0.5 text-[10px] tabular-nums outline-none"
+                                        />
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -243,6 +282,7 @@ NOTIFY pgrst, 'reload config';`}
                                     <th className="p-4 md:p-6">RetailCRM</th>
                                     <th className="p-4 md:p-6">Доступ в ОКК</th>
                                     <th className="p-4 md:p-6">В ЗП / Роль</th>
+                                    <th className="p-4 md:p-6">Доб. Телфин</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -308,6 +348,16 @@ NOTIFY pgrst, 'reload config';`}
                                                     </div>
                                                 );
                                             })()}
+                                        </td>
+                                        <td className="p-4 md:p-6" onClick={(e) => e.stopPropagation()}>
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={extensions[m.id] ?? ''}
+                                                onChange={(e) => handleExtensionChange(m.id, e.target.value)}
+                                                placeholder="не настроено"
+                                                className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-xs tabular-nums focus:border-blue-500 outline-none"
+                                            />
                                         </td>
                                     </tr>
                                 ))}

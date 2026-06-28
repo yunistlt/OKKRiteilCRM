@@ -26,6 +26,7 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/api/matching') ||
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
+        pathname.startsWith('/api/telphin') ||
         pathname.startsWith('/api/reactivation/webhook') ||
         pathname.startsWith('/api/reactivation/pixel') ||
         pathname.startsWith('/api/reactivation/track') ||
