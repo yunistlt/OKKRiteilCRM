@@ -21,14 +21,22 @@ function createTransporter() {
     });
 }
 
+export interface EmailAttachment {
+    filename: string | null;
+    content: Buffer;
+    contentType?: string | null;
+}
+
 export interface SendEmailInput {
     to: string;
     subject: string;
     html: string;
     fromName?: string;
+    replyTo?: string;                 // адрес для «Ответить» (напр. исходный отправитель)
+    attachments?: EmailAttachment[];  // вложения для пересылки
 }
 
-export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CRM' }: SendEmailInput): Promise<{ sent: boolean; error?: string }> {
+export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CRM', replyTo, attachments }: SendEmailInput): Promise<{ sent: boolean; error?: string }> {
     if (!isEmailConfigured()) {
         console.warn('[email] SMTP не настроен (SMTP_USER/SMTP_PASS) — письмо не отправлено');
         return { sent: false, error: 'smtp_not_configured' };
@@ -41,6 +49,12 @@ export async function sendAppEmail({ to, subject, html, fromName = 'OKKRiteil CR
             to,
             subject,
             html,
+            replyTo,
+            attachments: (attachments || []).map((a) => ({
+                filename: a.filename || 'attachment',
+                content: a.content,
+                contentType: a.contentType || undefined,
+            })),
         });
         return { sent: true };
     } catch (error: any) {
