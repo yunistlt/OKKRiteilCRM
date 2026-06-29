@@ -25,6 +25,12 @@ function fmt(dt?: string | null) {
     catch { return '—'; }
 }
 
+function preview(t?: string | null, n = 150) {
+    if (!t) return '';
+    const s = t.replace(/\s+/g, ' ').trim();
+    return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
 export default async function KaterinaPage() {
     // 1) живой статус агента
     const { data: agent } = await supabase
@@ -48,7 +54,7 @@ export default async function KaterinaPage() {
     // 4) последние разобранные письма
     const { data: recent } = await supabase
         .from('incoming_emails')
-        .select('id, from_email, from_name, subject, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, forwarded_department, forwarded_to, status, received_at')
+        .select('id, from_email, from_name, subject, body_text, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, forwarded_department, forwarded_to, status, received_at')
         .in('status', ['classified', 'processed', 'error'])
         .order('received_at', { ascending: false })
         .limit(40);
@@ -201,6 +207,7 @@ export default async function KaterinaPage() {
                                 <th className="py-2 pr-4">Тип</th>
                                 <th className="py-2 pr-4">От кого</th>
                                 <th className="py-2 pr-4">Тема</th>
+                                <th className="py-2 pr-4">Письмо</th>
                                 <th className="py-2 pr-4">Менеджер</th>
                                 <th className="py-2 pr-4">Заказ</th>
                                 <th className="py-2 pr-4">Переслано</th>
@@ -216,6 +223,16 @@ export default async function KaterinaPage() {
                                         <td className="py-2 pr-4"><span className={`border px-2 py-0.5 text-[11px] font-bold ${t.cls}`}>{t.label}</span></td>
                                         <td className="py-2 pr-4 text-slate-700">{r.from_name || r.from_email}</td>
                                         <td className="py-2 pr-4 max-w-[260px] truncate text-slate-700">{r.subject}</td>
+                                        <td className="py-2 pr-4 max-w-[340px] text-xs text-slate-600">
+                                            {r.body_text ? (
+                                                <details>
+                                                    <summary className="cursor-pointer list-none text-slate-600 hover:text-slate-900">{preview(r.body_text)}</summary>
+                                                    <div className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap border-l-2 border-slate-200 pl-2 text-slate-700">{r.body_text}</div>
+                                                </details>
+                                            ) : (
+                                                <span className="text-slate-300">—</span>
+                                            )}
+                                        </td>
                                         <td className="py-2 pr-4 text-slate-700">{r.assigned_manager_id ? (names[Number(r.assigned_manager_id)] || r.assigned_manager_id) : '—'}</td>
                                         <td className="py-2 pr-4 whitespace-nowrap">
                                             {r.created_crm_order_id && orderUrl(r.created_crm_order_id) ? (
@@ -248,7 +265,7 @@ export default async function KaterinaPage() {
                                 );
                             })}
                             {(recent || []).length === 0 ? (
-                                <tr><td colSpan={8} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
+                                <tr><td colSpan={9} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
                             ) : null}
                         </tbody>
                     </table>
