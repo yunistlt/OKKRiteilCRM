@@ -48,7 +48,7 @@ export default async function KaterinaPage() {
     // 4) последние разобранные письма
     const { data: recent } = await supabase
         .from('incoming_emails')
-        .select('id, from_email, from_name, subject, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, received_at')
+        .select('id, from_email, from_name, subject, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, forwarded_department, forwarded_to, status, received_at')
         .in('status', ['classified', 'processed', 'error'])
         .order('received_at', { ascending: false })
         .limit(40);
@@ -203,6 +203,7 @@ export default async function KaterinaPage() {
                                 <th className="py-2 pr-4">Тема</th>
                                 <th className="py-2 pr-4">Менеджер</th>
                                 <th className="py-2 pr-4">Заказ</th>
+                                <th className="py-2 pr-4">Переслано</th>
                                 <th className="py-2 pr-4">Вывод</th>
                             </tr>
                         </thead>
@@ -224,12 +225,30 @@ export default async function KaterinaPage() {
                                                 <span className="text-slate-300">—</span>
                                             )}
                                         </td>
+                                        <td className="py-2 pr-4 whitespace-nowrap">
+                                            {r.forwarded_to ? (
+                                                <span className="inline-flex flex-col" title={r.forwarded_to}>
+                                                    <span className="font-bold text-violet-800">→ {TYPE_LABEL[r.forwarded_department]?.label || r.forwarded_department}</span>
+                                                    <span className="text-[11px] text-slate-400">{r.forwarded_to}</span>
+                                                </span>
+                                            ) : ['accounting', 'logistics', 'legal', 'procurement'].includes(r.email_type) ? (
+                                                r.status === 'needs_review' ? (
+                                                    <span className="border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-900">адрес не настроен</span>
+                                                ) : r.status === 'error' ? (
+                                                    <span className="border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-900">ошибка пересылки</span>
+                                                ) : (
+                                                    <span className="text-[11px] text-slate-400">{TYPE_LABEL[r.email_type]?.label} · не отправлено</span>
+                                                )
+                                            ) : (
+                                                <span className="text-slate-300">—</span>
+                                            )}
+                                        </td>
                                         <td className="py-2 pr-4 max-w-[360px] text-xs text-slate-500">{r.reasoning}</td>
                                     </tr>
                                 );
                             })}
                             {(recent || []).length === 0 ? (
-                                <tr><td colSpan={7} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
+                                <tr><td colSpan={8} className="py-6 text-center text-slate-500">Писем пока нет — Катерина ждёт первую почту.</td></tr>
                             ) : null}
                         </tbody>
                     </table>
