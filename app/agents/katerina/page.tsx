@@ -1,11 +1,19 @@
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts } from '@/lib/email/assign';
+import { getDepartmentRoutes, isForwardEnabled } from '@/lib/email/routes';
+import { getSession } from '@/lib/auth';
+import { hasAnyRole } from '@/lib/rbac';
+import RoutesSettings from './RoutesSettings';
 
 export const dynamic = 'force-dynamic';
 
 const TYPE_LABEL: Record<string, { label: string; cls: string }> = {
     new_request: { label: 'Новая заявка', cls: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+    accounting: { label: 'Бухгалтерия', cls: 'bg-violet-100 text-violet-800 border-violet-200' },
+    logistics: { label: 'Логистика', cls: 'bg-sky-100 text-sky-800 border-sky-200' },
+    legal: { label: 'Юрист', cls: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
+    procurement: { label: 'Снабжение', cls: 'bg-teal-100 text-teal-800 border-teal-200' },
     reply_thread: { label: 'Переписка по заказу', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
     noreply: { label: 'Робот / noreply', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
     not_request: { label: 'Не заявка', cls: 'bg-amber-100 text-amber-900 border-amber-200' },
@@ -26,6 +34,11 @@ export default async function KaterinaPage() {
     const { data: cfg } = await supabase
         .from('email_intake_config').select('create_orders').maybeSingle();
     const dryRun = !cfg?.create_orders;
+
+    // 2b) маршруты пересылки в отделы и режим пересылки
+    const [routes, forwardEnabled, session] = await Promise.all([getDepartmentRoutes(), isForwardEnabled(), getSession()]);
+    const routeList = ['accounting', 'logistics', 'legal', 'procurement'].map((d) => routes[d]).filter(Boolean);
+    const canEditSettings = hasAnyRole(session, ['admin', 'rop']);
 
     // 3) баланс распределения: заявки, назначенные Катериной за окно (по умолч. 7 дней)
     const pool = await getManagerPool();
@@ -74,9 +87,19 @@ export default async function KaterinaPage() {
                                 Создание заказов включено
                             </span>
                         )}
+                        {forwardEnabled ? (
+                            <span className="border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-emerald-800">
+                                Пересылка в отделы включена
+                            </span>
+                        ) : (
+                            <span className="border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-amber-900">
+                                Сухой прогон — письма не пересылаются
+                            </span>
+                        )}
                     </div>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                        Разбирает входящую почту: отделяет новые заявки от переписки и спама, заводит заказ и назначает менеджера.
+                        Разбирает входящую почту: заводит новые заявки заказом и назначает менеджера, а письма по
+                        бухгалтерии, логистике и юристу пересылает в нужный отдел по содержанию.
                         Всего разобрано писем: <b>{totalEmails}</b>.
                     </p>
                 </div>
@@ -98,7 +121,7 @@ export default async function KaterinaPage() {
                     <div className="mt-5 border-t border-slate-100 pt-4">
                         <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Сводка решений</div>
                         <ul className="mt-3 space-y-2 text-sm">
-                            {(['new_request', 'reply_thread', 'noreply', 'not_request'] as const).map((t) => (
+                            {(['new_request', 'accounting', 'logistics', 'legal', 'procurement', 'reply_thread', 'noreply', 'not_request'] as const).map((t) => (
                                 <li key={t} className="flex items-center justify-between">
                                     <span className="text-slate-600">{TYPE_LABEL[t].label}</span>
                                     <span className="font-black text-slate-900">{counts[t] || 0}</span>
@@ -158,6 +181,14 @@ export default async function KaterinaPage() {
                     </ul>
                 </section>
             </div>
+
+            {/* Настройки пересылки */}
+            <RoutesSettings
+                initialRoutes={routeList.map((r: any) => ({ department: r.department, label: r.label, email: r.email, is_active: r.isActive }))}
+                initialCreateOrders={!dryRun}
+                initialForwardEnabled={forwardEnabled}
+                canEdit={canEditSettings}
+            />
 
             {/* Лента разбора */}
             <section className="mt-6 border border-slate-200 bg-white p-5">

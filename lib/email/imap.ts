@@ -87,6 +87,58 @@ async function parseSource(uid: number, uidValidity: number, source: Buffer): Pr
     };
 }
 
+export interface EmailContentForForward {
+    subject: string | null;
+    fromEmail: string | null;
+    fromName: string | null;
+    receivedAt: string | null; // ISO
+    bodyText: string | null;
+    bodyHtml: string | null;
+    attachments: Array<{ filename: string | null; contentType: string | null; content: Buffer }>;
+}
+
+/**
+ * Докачивает ПОЛНОЕ письмо по UID вместе с бинарём вложений — для пересылки в отдел.
+ * Read-only (BODY.PEEK, \Seen не трогаем). Бинарь вложений мы не храним в БД, поэтому при
+ * пересылке берём его прямо из ящика по UID. Возвращает null, если письмо не найдено.
+ */
+export async function fetchEmailContentByUid(uid: number, folder = 'INBOX'): Promise<EmailContentForForward | null> {
+    const { user, pass, host, port } = getImapConfig();
+    if (!user || !pass) throw new Error('IMAP config missing (IMAP_USER/IMAP_PASS or SMTP_USER/SMTP_PASS)');
+
+    const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+    await client.connect();
+    const lock = await client.getMailboxLock(folder, { readOnly: true } as any);
+    try {
+        let source: Buffer | null = null;
+        for await (const msg of client.fetch({ uid: String(uid) } as any, { uid: true, source: true } as any, { uid: true } as any)) {
+            if ((msg as any).source) source = (msg as any).source as Buffer;
+        }
+        if (!source) return null;
+        const parsed = await simpleParser(source);
+        const from = firstAddress(parsed.from);
+        const attachments = (parsed.attachments || [])
+            .filter((a: any) => a.content)
+            .map((a: any) => ({
+                filename: a.filename ?? null,
+                contentType: a.contentType ?? null,
+                content: a.content as Buffer,
+            }));
+        return {
+            subject: parsed.subject ?? null,
+            fromEmail: from.email,
+            fromName: from.name,
+            receivedAt: parsed.date ? parsed.date.toISOString() : null,
+            bodyText: parsed.text ?? null,
+            bodyHtml: typeof parsed.html === 'string' ? parsed.html : null,
+            attachments,
+        };
+    } finally {
+        lock.release();
+        await client.logout().catch(() => {});
+    }
+}
+
 /**
  * Read-only выборка писем, пришедших начиная с указанной даты (IMAP SINCE).
  * Удобно для разовых прогонов/бэкфилла. Флаг \Seen не трогаем.
