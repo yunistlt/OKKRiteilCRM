@@ -16,7 +16,7 @@ import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, isNoReplySender, loadSecretaryPrompt } from '@/lib/email/classify';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 
@@ -220,11 +220,11 @@ export async function GET(req: Request) {
         const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
         const { data: cfg } = await supabase.from('email_intake_config').select('create_orders').maybeSingle();
         const createOrders = Boolean(cfg?.create_orders); // false = сухой прогон заказов
-        const [forwardEnabled, routes] = await Promise.all([isForwardEnabled(), getDepartmentRoutes()]);
+        const [forwardEnabled, routes, orderBlocklist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist()]);
 
         const { data: pending } = await supabase
             .from('incoming_emails')
-            .select('id, from_email, from_name, subject, body_text, body_html, folder, imap_uid, received_at')
+            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at')
             .eq('status', 'new')
             .order('received_at', { ascending: true })
             .limit(CLASSIFY_BATCH);
@@ -239,28 +239,41 @@ export async function GET(req: Request) {
             for (const e of pending) {
                 let emailType: string, reasoning: string, confidence: number | null = null;
                 let assignedManagerId: number | null = null;
+                let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
 
                 if (isNoReplySender(e.from_email)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
                     const v = await classifyRoute(
-                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text },
+                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, attachments: e.attachments_meta },
                         prompt
                     );
                     confidence = v.confidence;
                     reasoning = v.reasoning;
-                    // Переписку по существующему заказу (Re/тег CRM) не превращаем в НОВУЮ заявку
-                    // (иначе плодим дубли заказов), но в отдел по содержанию переслать можно.
-                    if (v.route === 'new_request' && isReplyThread(e.subject)) {
+                    // Переписку по существующему заказу (Re/тег CRM) обрабатываем особо:
+                    //  - new_request: НЕ плодим новый заказ (это ответ по уже существующему);
+                    //  - procurement: НЕ шлём в снабжение. Снабжение = НОВЫЕ предложения поставщиков НАМ;
+                    //    холодное предложение не приходит как «Re:» на наш заказ — это переписка по нашей сделке.
+                    // Бухгалтерию/логистику/юриста по переписке по заказу пересылать можно (вопрос по
+                    // счёту/доставке/договору существующего заказа реально нужен профильному отделу).
+                    if (isReplyThread(e.subject) && (v.route === 'new_request' || v.route === 'procurement')) {
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по существующему заказу (Re/тег) — заказ не создаём | ${v.reasoning}`;
+                        const note = v.route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
+                        reasoning = `Переписка по существующему заказу (Re/тег) — ${note} | ${v.reasoning}`;
                     } else {
                         emailType = v.route;
                     }
                     if (emailType === 'new_request') {
-                        const a = await resolveAssignment(e.from_email || '', ctx);
-                        assignedManagerId = a.managerId;
-                        reasoning = `${reasoning} | Назначение: ${a.reason}`;
+                        if (isSenderBlocked(e.from_email, orderBlocklist)) {
+                            // Отправитель в списке исключений: письмо разбираем, но заказ не заводим
+                            // и менеджера не назначаем (чтобы не искажать баланс распределения).
+                            orderBlocked = true;
+                            reasoning = `${reasoning} | Отправитель в списке исключений — заказ не создаём`;
+                        } else {
+                            const a = await resolveAssignment(e.from_email || '', ctx);
+                            assignedManagerId = a.managerId;
+                            reasoning = `${reasoning} | Назначение: ${a.reason}`;
+                        }
                     }
                 }
                 classify[emailType as keyof typeof classify]++;
@@ -274,8 +287,8 @@ export async function GET(req: Request) {
                 let finalStatus = 'classified';
                 let errorMessage: string | null = null;
 
-                // 1) Новая заявка → создание заказа (если режим включён).
-                if (createOrders && emailType === 'new_request') {
+                // 1) Новая заявка → создание заказа (если режим включён и отправитель не в исключениях).
+                if (createOrders && emailType === 'new_request' && !orderBlocked) {
                     try {
                         const order = await createEmailLead({
                             email: e.from_email || '',
