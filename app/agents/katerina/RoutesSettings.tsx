@@ -14,14 +14,16 @@ interface Props {
     initialRoutes: RouteRow[];
     initialCreateOrders: boolean;
     initialForwardEnabled: boolean;
+    initialOrderBlocklist: string[];
     canEdit: boolean;
 }
 
-export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, canEdit }: Props) {
+export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, initialOrderBlocklist, canEdit }: Props) {
     const router = useRouter();
     const [routes, setRoutes] = useState<RouteRow[]>(initialRoutes.map((r) => ({ ...r, email: r.email || '' })));
     const [createOrders, setCreateOrders] = useState(initialCreateOrders);
     const [forwardEnabled, setForwardEnabled] = useState(initialForwardEnabled);
+    const [blocklist, setBlocklist] = useState((initialOrderBlocklist || []).join('\n'));
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -41,6 +43,7 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                     routes: routes.map((r) => ({ department: r.department, email: r.email?.trim() || '', is_active: r.is_active })),
                     create_orders: createOrders,
                     forward_enabled: forwardEnabled,
+                    order_blocklist: blocklist.split('\n').map((s) => s.trim()).filter(Boolean),
                 }),
             });
             const data = await res.json();
@@ -105,6 +108,25 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Исключения на создание заказов */}
+            <div className="mt-6 border-t border-slate-100 pt-5">
+                <div className="text-sm font-bold text-slate-800">Не создавать заказы по письмам от этих адресов</div>
+                <p className="mt-1 text-xs text-slate-500">
+                    По одному адресу или домену в строке (например <code className="bg-slate-100 px-1">dmto@pharmperspectiva.ru</code> или
+                    {' '}<code className="bg-slate-100 px-1">pharmperspectiva.ru</code>). Письмо от такого отправителя
+                    Катерина разберёт как обычно (и при необходимости перешлёт в отдел), но заказ создавать не будет —
+                    для тендерных робо-рассылок и других нежелательных источников.
+                </p>
+                <textarea
+                    value={blocklist}
+                    disabled={!canEdit}
+                    onChange={(e) => setBlocklist(e.target.value)}
+                    rows={4}
+                    placeholder={'dmto@pharmperspectiva.ru\nexample-tenders.ru'}
+                    className="mt-3 w-full max-w-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-sky-500 disabled:bg-slate-50 disabled:text-slate-500"
+                />
             </div>
 
             {canEdit ? (

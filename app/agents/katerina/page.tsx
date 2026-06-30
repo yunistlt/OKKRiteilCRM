@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, getOrderBlocklist } from '@/lib/email/routes';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import RoutesSettings from './RoutesSettings';
@@ -42,7 +42,7 @@ export default async function KaterinaPage() {
     const dryRun = !cfg?.create_orders;
 
     // 2b) маршруты пересылки в отделы и режим пересылки
-    const [routes, forwardEnabled, session] = await Promise.all([getDepartmentRoutes(), isForwardEnabled(), getSession()]);
+    const [routes, forwardEnabled, orderBlocklist, session] = await Promise.all([getDepartmentRoutes(), isForwardEnabled(), getOrderBlocklist(), getSession()]);
     const routeList = ['accounting', 'logistics', 'legal', 'procurement'].map((d) => routes[d]).filter(Boolean);
     const canEditSettings = hasAnyRole(session, ['admin', 'rop']);
 
@@ -193,6 +193,7 @@ export default async function KaterinaPage() {
                 initialRoutes={routeList.map((r: any) => ({ department: r.department, label: r.label, email: r.email, is_active: r.isActive }))}
                 initialCreateOrders={!dryRun}
                 initialForwardEnabled={forwardEnabled}
+                initialOrderBlocklist={orderBlocklist}
                 canEdit={canEditSettings}
             />
 
