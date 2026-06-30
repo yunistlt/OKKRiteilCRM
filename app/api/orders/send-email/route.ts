@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { sendOrderEmail } from '@/lib/email';
+import { getLastOrderEmailSend, recordOrderEmailSend } from '@/lib/order-email-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -25,6 +26,8 @@ const BodySchema = z.object({
     seq: z.number().int().positive().optional(),
     fromName: z.string().max(120).optional(),
     replyTo: z.string().email().optional(),
+    orderId: z.number().int().positive().optional(),
+    force: z.boolean().optional(), // осознанная повторная отправка по уже отправленному заказу
 });
 
 /** Следующий порядковый номер сообщения в переписке по заказу (по тегам `[#N/order]` во входящих). */
@@ -59,6 +62,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
+    // Идемпотентность: если по заказу уже отправляли письмо — блокируем, пока не передан force.
+    if (!body.force) {
+        const last = await getLastOrderEmailSend(body.orderNumber);
+        if (last) {
+            return NextResponse.json(
+                { ok: false, error: 'already_sent', lastSentAt: last.created_at, lastTo: last.to_email, lastSubject: last.subject },
+                { status: 409 }
+            );
+        }
+    }
+
     const seq = body.seq ?? (await nextThreadSeq(body.orderNumber));
 
     const result = await sendOrderEmail({
@@ -74,6 +88,18 @@ export async function POST(req: Request) {
     if (!result.sent) {
         return NextResponse.json({ ok: false, ...result }, { status: 502 });
     }
+
+    // Фиксируем отправку в реестр (идемпотентность на будущее).
+    await recordOrderEmailSend({
+        orderNumber: body.orderNumber,
+        orderId: body.orderId ?? null,
+        toEmail: body.to,
+        subject: result.subject,
+        messageId: result.messageId,
+        appendedToSent: result.appendedToSent,
+        sentBy: session.user.email || session.user.role,
+    });
+
     // Отправлено, но если копия не легла в Sent — отдаём 200 с предупреждением (письмо ушло клиенту).
     return NextResponse.json({ ok: true, ...result });
 }
