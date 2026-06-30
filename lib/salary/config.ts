@@ -40,6 +40,13 @@ export const SALARY_CONFIG_SCHEMAS = {
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),
+    // НДС определяется витриной-юрлицом (orders.site), а не ставкой из карточки позиции
+    // (менеджеры её массово не проставляют). default_vat_pct — для всех витрин;
+    // exempt_sites — витрины без НДС (ЗВТО). Делитель берётся из nds_normalization.
+    vat_policy: z.object({
+        default_vat_pct: z.number(),
+        exempt_sites: z.array(z.string()),
+    }),
 } as const;
 
 export type SalaryConfigKey = keyof typeof SALARY_CONFIG_SCHEMAS;

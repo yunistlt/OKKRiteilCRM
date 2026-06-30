@@ -20,6 +20,7 @@ export interface CountedOrderRow {
     order_method: string | null;
     typ_castomer: string | null;
     created_at: string;
+    site: string | null; // витрина-юрлиц (orders.site) — определяет ставку НДС
     items: any[] | null;
 }
 
@@ -70,7 +71,7 @@ export interface PeriodMetrics {
 
 // ── Чистые помощники (тестируются на реальных строках) ───────────────────────
 
-/** Делитель НДС по ставке позиции из конфига; для none/null/неизвестного → 1. */
+/** Делитель НДС по ставке из конфига; для none/null/неизвестного → 1. */
 export function vatDivisor(vatRate: unknown, ndsRules: SalaryConfig['nds_normalization']['rules']): number {
     const num = typeof vatRate === 'number' ? vatRate : parseFloat(String(vatRate ?? ''));
     if (!Number.isFinite(num)) return 1;
@@ -78,9 +79,24 @@ export function vatDivisor(vatRate: unknown, ndsRules: SalaryConfig['nds_normali
     return rule ? rule.divisor : 1;
 }
 
-/** Финансовые показатели заказа из его позиций (raw_payload.items). */
+/**
+ * Эффективная ставка НДС заказа по витрине-юрлицу. Ставка из карточки позиции
+ * НЕ используется (менеджеры её массово не проставляют): витрины из exempt_sites
+ * (ЗВТО) — без НДС, остальные — default_vat_pct.
+ */
+export function resolveVatPct(site: string | null, policy: SalaryConfig['vat_policy']): number {
+    if (site != null && policy.exempt_sites.includes(site)) return 0;
+    return policy.default_vat_pct;
+}
+
+/**
+ * Финансовые показатели заказа из его позиций (raw_payload.items).
+ * vatPct — эффективная ставка НДС заказа (по витрине, см. resolveVatPct);
+ * применяется ко всем позициям единым делителем.
+ */
 export function computeOrderFinance(
     items: any[] | null,
+    vatPct: number,
     ndsRules: SalaryConfig['nds_normalization']['rules'],
 ): OrderFinance {
     let goodsBase = 0;
@@ -88,13 +104,13 @@ export function computeOrderFinance(
     let revenueNoVat = 0;
     let margin = 0;
 
+    const divisor = vatDivisor(vatPct, ndsRules);
     for (const it of items ?? []) {
         const qty = Number(it?.quantity ?? 1) || 0;
         const initialPrice = Number(it?.initialPrice ?? 0) || 0;
         const price = Number(it?.prices?.[0]?.price ?? it?.initialPrice ?? 0) || 0;
         const discountTotal = Number(it?.discountTotal ?? 0) || 0;
         const purchasePrice = Number(it?.purchasePrice ?? 0) || 0;
-        const divisor = vatDivisor(it?.vatRate, ndsRules);
 
         goodsBase += initialPrice * qty;
         discountAmount += discountTotal;
@@ -146,7 +162,8 @@ export function buildPeriodMetrics(input: {
         const managerId = row.manager_id == null ? null : Number(row.manager_id);
         if (managerId == null || !Number.isFinite(managerId)) continue;
         const clientId = row.client_id == null ? null : Number(row.client_id);
-        const fin = computeOrderFinance(row.items, config.nds_normalization.rules);
+        const vatPct = resolveVatPct(row.site, config.vat_policy);
+        const fin = computeOrderFinance(row.items, vatPct, config.nds_normalization.rules);
         const deals = clientId != null ? clientDeals.get(clientId) ?? 0 : 0;
         const type = classifyOrderType(clientId, clientDeals, config);
         const category = row.typ_castomer ? String(row.typ_castomer).trim() || null : null;
