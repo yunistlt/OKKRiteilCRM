@@ -109,6 +109,11 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
                             <div className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-700">Legal pipeline</div>
                             <div className="mt-2 text-3xl font-black text-amber-900">{AGENT_PROFILES.filter((agent) => agent.domain === 'Legal').length}</div>
                         </div>
+                        <Link href="/agents/relevance" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 transition hover:border-rose-300">
+                            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-rose-700">Отложенные заказы</div>
+                            <div className="mt-2 text-lg font-black leading-tight text-rose-900">Письма об актуальности</div>
+                            <div className="mt-1 text-[11px] text-rose-700/70">состав заказа + толчок к покупке по причине переноса</div>
+                        </Link>
                     </div>
                 </div>
             </section>

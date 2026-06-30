@@ -140,6 +140,52 @@ export async function fetchEmailContentByUid(uid: number, folder = 'INBOX'): Pro
 }
 
 /**
+ * Находит имя папки «Отправленные» в ящике: сначала по special-use \Sent,
+ * затем по типичным именам Яндекса. Нужна для дозаписи копий исходящих писем,
+ * чтобы они появлялись в «Отправленных» и подхватывались почтовой интеграцией RetailCRM.
+ */
+async function resolveSentFolder(client: ImapFlow): Promise<string | null> {
+    try {
+        const boxes = await client.list();
+        const bySpecial = boxes.find((b: any) => b.specialUse === '\\Sent');
+        if (bySpecial) return bySpecial.path;
+        const byName = boxes.find((b: any) =>
+            ['Отправленные', 'Sent', 'Sent Messages', 'Отправленная почта'].includes(b.path) ||
+            ['Отправленные', 'Sent', 'Sent Messages', 'Отправленная почта'].includes(b.name)
+        );
+        return byName ? byName.path : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Дозаписывает копию готового RFC822-письма в папку «Отправленные» ящика (rop@zmktlt.ru),
+ * помечая её \Seen. Прямая SMTP-отправка не кладёт копию в Sent сама — без этой дозаписи
+ * исходящее не видно ни в веб-почте, ни в RetailCRM (CRM импортирует письма из ящика).
+ *
+ * Деградирует мягко: при отсутствии конфигурации/папки/ошибке возвращает { appended:false },
+ * не бросает — отправку письма это не должно ломать.
+ */
+export async function appendToSentFolder(raw: Buffer): Promise<{ appended: boolean; folder?: string; error?: string }> {
+    const { user, pass, host, port } = getImapConfig();
+    if (!user || !pass) return { appended: false, error: 'imap_not_configured' };
+
+    const client = new ImapFlow({ host, port, secure: true, auth: { user, pass }, logger: false });
+    try {
+        await client.connect();
+        const folder = await resolveSentFolder(client);
+        if (!folder) return { appended: false, error: 'sent_folder_not_found' };
+        await client.append(folder, raw, ['\\Seen']);
+        return { appended: true, folder };
+    } catch (e: any) {
+        return { appended: false, error: e?.message || 'append_failed' };
+    } finally {
+        await client.logout().catch(() => {});
+    }
+}
+
+/**
  * Read-only выборка писем, пришедших начиная с указанной даты (IMAP SINCE).
  * Удобно для разовых прогонов/бэкфилла. Флаг \Seen не трогаем.
  */

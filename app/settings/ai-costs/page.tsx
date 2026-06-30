@@ -11,6 +11,7 @@ export const dynamic = 'force-dynamic';
 const SERVICE_NAMES: Record<string, string> = {
     transcription: 'Транскрибация (служебное)',
     embeddings: 'Эмбеддинги / RAG (служебное)',
+    sales_outreach: 'Письма по заказам (продажи)',
 };
 
 function agentName(id: string): string {
