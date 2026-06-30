@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -87,6 +88,7 @@ export async function GET(req: Request) {
                 ],
                 response_format: { type: 'json_object' }
             });
+            await recordAiUsage({ agentId: AiAgent.ELENA, model: extractionResponse.model, usage: extractionResponse.usage, purpose: 'lead_extraction' });
 
             const extractedData = JSON.parse(extractionResponse.choices[0].message.content || '{}');
 

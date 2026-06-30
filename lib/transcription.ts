@@ -2,6 +2,7 @@ import { OpenAI } from 'openai';
 import { getOpenAIClient } from '@/utils/openai';
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Управление очередью и статусами транскрибации звонков.
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 // const openai = new OpenAI({
 //     apiKey: process.env.OPENAI_API_KEY,
@@ -65,6 +66,7 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
         ],
         response_format: { type: "json_object" }
     });
+    await recordAiUsage({ agentId: AiAgent.TRANSCRIPTION, model: response.model, usage: response.usage, purpose: 'amd' });
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
     return {

@@ -13,6 +13,7 @@ import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide]));
@@ -366,6 +367,7 @@ async function checkTZWithAI(
                 }
             ]
         });
+        await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'tz_detection' });
 
         const parsed = JSON.parse(res.choices[0].message.content || '{}');
         return {
@@ -411,6 +413,7 @@ async function detectRealConversation(
                 }
             ]
         });
+        await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'real_conversation_detection' });
 
         const parsed = JSON.parse(res.choices[0].message.content || '{}');
         return {
@@ -996,6 +999,7 @@ ${transcript.substring(0, 15000)}`
                 }
             ]
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: res.model, usage: res.usage, purpose: 'order_routing' });
 
         const rawContent = res.choices[0].message.content || '{}';
         console.log('[Максим/GPT] Raw AI response received:', rawContent);

@@ -6,6 +6,7 @@ import { getStoredPriorities } from '@/lib/prioritization';
 import { isRealtimePipelineEnabled } from '@/lib/realtime-pipeline';
 import { enqueueOrderRefreshJob } from '@/lib/system-jobs';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -171,6 +172,7 @@ export async function POST(req: Request) {
             ],
             tool_choice: 'auto',
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'admin_chat' });
 
         const responseMessage = completion.choices[0].message;
 

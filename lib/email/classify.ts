@@ -14,6 +14,7 @@
  */
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const SECRETARY_PROMPT_KEY = 'email_secretary_classifier';
 
@@ -137,6 +138,7 @@ ${body || '(пусто)'}`;
             response_format: { type: 'json_object' },
             temperature: 0,
         });
+        await recordAiUsage({ agentId: AiAgent.KATERINA, model: completion.model, usage: completion.usage, purpose: 'email_classify' });
         const raw = completion.choices[0].message.content;
         if (!raw) throw new Error('Empty response');
         const parsed = JSON.parse(raw);

@@ -16,6 +16,7 @@ import {
 } from '@/lib/legal-consultant-ai';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -93,6 +94,7 @@ export async function POST(request: Request) {
                     },
                 ],
             });
+            await recordAiUsage({ agentId: AiAgent.DARYA, model: completion.model, usage: completion.usage, purpose: 'legal_consultant' });
 
             const aiAnswer = completion.choices[0]?.message?.content?.trim();
             if (aiAnswer) {

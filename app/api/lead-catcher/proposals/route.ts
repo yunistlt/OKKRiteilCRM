@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { generateProposalPDF, ProposalData } from '@/lib/pdf-generator';
 import { getOpenAIClient } from '@/utils/openai';
 import { logError } from '@/lib/error-monitor';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest) {
                         ],
                         max_tokens: 200,
                     });
+                    await recordAiUsage({ agentId: AiAgent.ELENA, model: resp.model, usage: resp.usage, purpose: 'lead_proposal_intro' });
                     intro = resp.choices[0]?.message?.content?.trim() || null;
                 }
             } catch (e) {
