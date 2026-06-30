@@ -54,6 +54,8 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
     const [previewLoading, setPreviewLoading] = useState(false);
     const [sending, setSending] = useState(false);
     const [sendResult, setSendResult] = useState<string | null>(null);
+    // Заказы, по которым письмо уже отправлено в этой сессии — защита от повторной отправки.
+    const [sentOrders, setSentOrders] = useState<Set<number>>(new Set());
 
     async function loadCandidates() {
         setLoading(true); setErr(null); setRows(null);
@@ -120,6 +122,8 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                 ? `привязано к заказу, копия в «${data.sentFolder || 'Отправленные'}»`
                 : '⚠ отправлено, но копия НЕ легла в Sent (в CRM может не отобразиться)';
             setSendResult(`✅ Отправлено: ${data.subject} — ${warn}`);
+            // Помечаем заказ как отправленный — кнопка «Отправить» больше не покажется.
+            setSentOrders((prev) => new Set(prev).add(preview.orderId));
         } catch (e: any) {
             setSendResult(`Ошибка: ${e?.message || e}`);
         } finally {
@@ -193,11 +197,15 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                                         <td className="px-3 py-2 whitespace-nowrap">{fmtDate(r.movedAt)}</td>
                                         <td className="px-3 py-2 text-[11px] text-slate-500">{r.reasonSnippet || '—'}</td>
                                         <td className="px-3 py-2">
-                                            <button onClick={() => openPreview(r)} disabled={!r.toEmail}
-                                                className="bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
-                                                title={r.toEmail ? '' : 'У заказа нет email'}>
-                                                Подготовить
-                                            </button>
+                                            {sentOrders.has(r.orderId) ? (
+                                                <span className="inline-block bg-slate-100 px-3 py-1 text-[11px] font-bold text-emerald-700">✓ Отправлено</span>
+                                            ) : (
+                                                <button onClick={() => openPreview(r)} disabled={!r.toEmail}
+                                                    className="bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
+                                                    title={r.toEmail ? '' : 'У заказа нет email'}>
+                                                    Подготовить
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))}
@@ -253,12 +261,16 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                                 <div className="mt-4 flex items-center justify-end gap-2">
                                     <button onClick={() => { setPreview(null); setSendResult(null); }}
                                         className="border border-slate-300 px-4 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100">
-                                        Отмена
+                                        {sentOrders.has(preview.orderId) ? 'Закрыть' : 'Отмена'}
                                     </button>
-                                    <button onClick={send} disabled={sending || !preview.subjectText || !preview.html}
-                                        className="bg-emerald-600 px-5 py-1.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50">
-                                        {sending ? 'Отправка…' : 'Отправить клиенту'}
-                                    </button>
+                                    {sentOrders.has(preview.orderId) ? (
+                                        <span className="bg-slate-100 px-5 py-1.5 text-sm font-bold text-emerald-700">✓ Отправлено</span>
+                                    ) : (
+                                        <button onClick={send} disabled={sending || !preview.subjectText || !preview.html}
+                                            className="bg-emerald-600 px-5 py-1.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50">
+                                            {sending ? 'Отправка…' : 'Отправить клиенту'}
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         )}
