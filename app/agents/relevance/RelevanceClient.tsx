@@ -18,6 +18,7 @@ interface CandidateRow {
     movedAt: string;
     itemsCount: number;
     reasonSnippet: string;
+    lastSentAt: string | null;
 }
 
 interface PreviewState {
@@ -34,6 +35,10 @@ function fmtRub(n: number): string {
 }
 function fmtDate(s: string): string {
     try { return new Date(s).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }); }
+    catch { return '—'; }
+}
+function fmtDateTime(s: string): string {
+    try { return new Date(s).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
     catch { return '—'; }
 }
 
@@ -56,6 +61,8 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
     const [sendResult, setSendResult] = useState<string | null>(null);
     // Заказы, по которым письмо уже отправлено в этой сессии — защита от повторной отправки.
     const [sentOrders, setSentOrders] = useState<Set<number>>(new Set());
+    // Конфликт идемпотентности: по заказу уже отправляли (с сервера, переживает перезагрузку).
+    const [conflict, setConflict] = useState<{ at: string; to: string } | null>(null);
 
     async function loadCandidates() {
         setLoading(true); setErr(null); setRows(null);
@@ -75,6 +82,7 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
 
     async function openPreview(row: CandidateRow) {
         setPreviewLoading(true); setSendResult(null); setPreview(null);
+        setConflict(row.lastSentAt ? { at: row.lastSentAt, to: row.toEmail || '' } : null);
         try {
             const res = await fetch('/api/orders/relevance-email/preview', {
                 method: 'POST',
@@ -99,7 +107,7 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
         }
     }
 
-    async function send() {
+    async function send(force = false) {
         if (!preview) return;
         if (!preview.to) { setSendResult('Укажите адрес получателя'); return; }
         setSending(true); setSendResult(null);
@@ -109,12 +117,20 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     orderNumber: preview.number,
+                    orderId: preview.orderId,
                     to: preview.to,
                     subjectText: preview.subjectText,
                     html: preview.html,
+                    force,
                 }),
             });
             const data = await res.json();
+            if (res.status === 409 && data?.error === 'already_sent') {
+                // По заказу уже отправляли — показываем предупреждение и даём осознанный повтор.
+                setConflict({ at: data.lastSentAt, to: data.lastTo || preview.to });
+                setSendResult(null);
+                return;
+            }
             if (!res.ok || !data.ok) {
                 throw new Error(data?.error || data?.appendError || 'Ошибка отправки');
             }
@@ -122,6 +138,7 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                 ? `привязано к заказу, копия в «${data.sentFolder || 'Отправленные'}»`
                 : '⚠ отправлено, но копия НЕ легла в Sent (в CRM может не отобразиться)';
             setSendResult(`✅ Отправлено: ${data.subject} — ${warn}`);
+            setConflict(null);
             // Помечаем заказ как отправленный — кнопка «Отправить» больше не покажется.
             setSentOrders((prev) => new Set(prev).add(preview.orderId));
         } catch (e: any) {
@@ -199,6 +216,14 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                                         <td className="px-3 py-2">
                                             {sentOrders.has(r.orderId) ? (
                                                 <span className="inline-block bg-slate-100 px-3 py-1 text-[11px] font-bold text-emerald-700">✓ Отправлено</span>
+                                            ) : r.lastSentAt ? (
+                                                <div className="flex flex-col gap-1">
+                                                    <span className="text-[11px] font-bold text-emerald-700" title={`Отправлено ${fmtDateTime(r.lastSentAt)}`}>✓ Отправлено {fmtDate(r.lastSentAt)}</span>
+                                                    <button onClick={() => openPreview(r)} disabled={!r.toEmail}
+                                                        className="self-start text-[10px] text-slate-400 underline hover:text-slate-600 disabled:opacity-40">
+                                                        отправить ещё раз
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <button onClick={() => openPreview(r)} disabled={!r.toEmail}
                                                     className="bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-500 disabled:opacity-40"
@@ -258,15 +283,27 @@ export default function RelevanceClient({ managers }: { managers: ManagerOption[
                                     <div className="mt-3 border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">{sendResult}</div>
                                 )}
 
+                                {conflict && !sentOrders.has(preview.orderId) && (
+                                    <div className="mt-3 border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+                                        ⚠ По заказу №{preview.number} письмо уже отправляли: {fmtDateTime(conflict.at)}
+                                        {conflict.to ? ` → ${conflict.to}` : ''}. Повторная отправка отправит клиенту ещё одно письмо.
+                                    </div>
+                                )}
+
                                 <div className="mt-4 flex items-center justify-end gap-2">
-                                    <button onClick={() => { setPreview(null); setSendResult(null); }}
+                                    <button onClick={() => { setPreview(null); setSendResult(null); setConflict(null); }}
                                         className="border border-slate-300 px-4 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-100">
                                         {sentOrders.has(preview.orderId) ? 'Закрыть' : 'Отмена'}
                                     </button>
                                     {sentOrders.has(preview.orderId) ? (
                                         <span className="bg-slate-100 px-5 py-1.5 text-sm font-bold text-emerald-700">✓ Отправлено</span>
+                                    ) : conflict ? (
+                                        <button onClick={() => send(true)} disabled={sending || !preview.subjectText || !preview.html}
+                                            className="bg-amber-600 px-5 py-1.5 text-sm font-bold text-white hover:bg-amber-500 disabled:opacity-50">
+                                            {sending ? 'Отправка…' : 'Всё равно отправить'}
+                                        </button>
                                     ) : (
-                                        <button onClick={send} disabled={sending || !preview.subjectText || !preview.html}
+                                        <button onClick={() => send(false)} disabled={sending || !preview.subjectText || !preview.html}
                                             className="bg-emerald-600 px-5 py-1.5 text-sm font-bold text-white hover:bg-emerald-500 disabled:opacity-50">
                                             {sending ? 'Отправка…' : 'Отправить клиенту'}
                                         </button>
