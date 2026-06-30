@@ -5,6 +5,7 @@ import { logAgentActivity } from './agent-logger';
 import { collectStageEvidence } from './stage-collector';
 import { generateEmbedding, formatExampleForEmbedding } from './embeddings';
 import { ANNA_INSIGHT_PROMPT } from './prompts';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -141,6 +142,7 @@ KEY METRICS:
             response_format: { type: "json_object" },
             temperature: 0.1,
         });
+        await recordAiUsage({ agentId: AiAgent.ANNA, model: completion.model, usage: completion.usage, purpose: 'insight_analysis' });
 
         const content = completion.choices[0].message.content;
         if (!content) {

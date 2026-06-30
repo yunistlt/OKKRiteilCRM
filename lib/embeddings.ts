@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 const EMBEDDING_DIMENSIONS = 1536;
@@ -84,6 +85,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
             model: "text-embedding-3-small",
             input: text.replace(/\n/g, ' '), // Good practice to replace newlines
         });
+        await recordAiUsage({ agentId: AiAgent.EMBEDDINGS, model: response.model, usage: response.usage, purpose: 'embedding' });
 
         return response.data[0].embedding;
     } catch (error) {

@@ -4,6 +4,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { searchDialogKnowledge, formatKnowledgeForPrompt } from './retrieval';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import {
     type DialogDomain,
     type SalesBotInput,
@@ -121,6 +122,7 @@ async function classifyDomain(message: string, historyContext: string): Promise<
             { role: 'user', content: renderTemplate(prompt.userPromptTemplate, { message, history_context: historyContext }) },
         ],
     });
+    await recordAiUsage({ agentId: AiAgent.ELENA, model: completion.model, usage: completion.usage, purpose: 'sales_bot_router' });
     try {
         const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}');
         const domain = String(parsed.domain || '').trim();
@@ -190,6 +192,7 @@ export async function salesBotRespond(input: SalesBotInput): Promise<SalesBotRes
             { role: 'user', content: userPrompt },
         ],
     });
+    await recordAiUsage({ agentId: AiAgent.ELENA, model: completion.model, usage: completion.usage, purpose: 'sales_bot_responder' });
 
     const reply = completion.choices[0]?.message?.content?.trim()
         || 'Уточню детали и вернусь с ответом. Подскажите, что именно вас интересует по заказу?';

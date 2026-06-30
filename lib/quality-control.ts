@@ -1,6 +1,7 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Сборка чек-листов и финальная оценка качества.
 import OpenAI from 'openai';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -150,6 +151,7 @@ CRITICAL:
             response_format: { type: "json_object" },
             temperature: 0.1,
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'qc_checklist_audit' });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error('No content from LLM');
@@ -276,6 +278,7 @@ OUTPUT JSON FORMAT:
             response_format: { type: "json_object" },
             temperature: 0.1,
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'qc_stage_audit' });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error('No content from LLM');

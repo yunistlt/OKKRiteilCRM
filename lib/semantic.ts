@@ -1,6 +1,7 @@
 
 // ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Семантическая проверка текста и выявление смыслов.
 import { getOpenAIClient } from '@/utils/openai';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 // const openai = new OpenAI({
 //     apiKey: process.env.OPENAI_API_KEY,
@@ -54,6 +55,7 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
             response_format: { type: "json_object" },
             temperature: 0.1,
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'semantic_rule' });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error('No content from LLM');
@@ -124,6 +126,7 @@ Generate the HTML message now for manager "${managerName}" regarding order "${or
             ],
             temperature: 0.8,
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'violation_notification' });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error('No content from LLM');

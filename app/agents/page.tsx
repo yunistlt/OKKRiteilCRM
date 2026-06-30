@@ -11,6 +11,8 @@ import {
 // Чистка файла: удалены все возможные артефакты, незавершённые выражения, лишние символы (=>, ->, legalAgents.map и т.д.). Весь JSX завершён корректно.
 import { getLegalPromptConfig } from '@/lib/legal-consultant-ai';
 import { getConsultantPromptConfig } from '@/lib/okk-consultant-ai';
+import { getAgentCosts, getUsdToRub } from '@/lib/ai-usage';
+import { formatRub, formatIntRu } from '@/lib/format';
 
 type AgentsPageProps = {
     searchParams?: Promise<{ domain?: string }>;
@@ -70,6 +72,13 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
         agents: visibleAgentsWithPrompts.filter((agent) => agent.domain === domain),
     })).filter((group) => group.agents.length > 0);
 
+    // Расходы на LLM за текущий месяц по агентам («зарплата ИИ»).
+    const [agentCosts, usdToRub] = await Promise.all([getAgentCosts(), getUsdToRub()]);
+    const rub = (usd: number) => usd * usdToRub;
+    const monthLabel = new Date().toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+    const totalUsd = Object.values(agentCosts).reduce((s, a) => s + a.costUsd, 0);
+    const serviceUsd = (agentCosts['transcription']?.costUsd || 0) + (agentCosts['embeddings']?.costUsd || 0);
+
     return (
         <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.14),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.12),_transparent_24%),linear-gradient(180deg,#f8fafc,#eef2ff)] px-6 py-8 md:px-8">
             <section className="rounded-[32px] border border-slate-200 bg-white/80 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
@@ -82,7 +91,7 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
                         </p>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                             <div className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Всего агентов</div>
                             <div className="mt-2 text-3xl font-black text-slate-900">{visibleAgents.length}</div>
@@ -91,6 +100,11 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
                             <div className="text-[11px] font-black uppercase tracking-[0.22em] text-emerald-700">Production</div>
                             <div className="mt-2 text-3xl font-black text-emerald-900">{AGENT_PROFILES.filter((agent) => agent.status === 'production').length}</div>
                         </div>
+                        <Link href="/settings/ai-costs" className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 transition hover:border-sky-300">
+                            <div className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">Расход на ИИ / {monthLabel}</div>
+                            <div className="mt-2 text-3xl font-black text-sky-900">{formatRub(rub(totalUsd))}</div>
+                            <div className="mt-1 text-[11px] text-sky-700/70">из них служебные (эмбеддинги, транскрибация): {formatRub(rub(serviceUsd))} · курс {formatRub(usdToRub)}/$ </div>
+                        </Link>
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                             <div className="text-[11px] font-black uppercase tracking-[0.22em] text-amber-700">Legal pipeline</div>
                             <div className="mt-2 text-3xl font-black text-amber-900">{AGENT_PROFILES.filter((agent) => agent.domain === 'Legal').length}</div>
@@ -169,7 +183,25 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
                                         </div>
                                     </div>
 
-                                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+                                    {(() => {
+                                        const cost = agentCosts[agent.id];
+                                        const usesLlm = agent.id !== 'igor';
+                                        const tokens = cost ? cost.promptTokens + cost.completionTokens : 0;
+                                        return (
+                                            <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-4">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-sky-700">Стоимость / {monthLabel}</div>
+                                                    <div className="text-2xl font-black text-sky-900">{cost ? formatRub(rub(cost.costUsd)) : (usesLlm ? '0 ₽' : '—')}</div>
+                                                </div>
+                                                <div className="mt-1 flex items-center justify-between text-[11px] text-sky-800/70">
+                                                    <span>{cost ? `${formatIntRu(cost.calls)} вызов. · ${formatIntRu(tokens)} ток.` : (usesLlm ? 'вызовов не было' : 'без LLM — на чистой логике')}</span>
+                                                    {cost ? <span>${cost.costUsd.toFixed(2)}</span> : null}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
                                         <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Должностной контур</div>
                                         <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-700">
                                             {agent.responsibilities.map((responsibility) => (

@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 // Force dynamic to avid caching
 export const dynamic = 'force-dynamic';
@@ -83,6 +84,7 @@ NOTE: Use 'entity_type': 'order' for rules like "stale order" (checking how long
       response_format: { type: "json_object" },
       temperature: 0.1,
     });
+    await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'rule_generation' });
 
     const content = completion.choices[0].message.content;
     if (!content) throw new Error('No content');

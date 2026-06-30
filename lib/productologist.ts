@@ -2,6 +2,7 @@
 import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { generateEmbedding, formatProductForEmbedding } from './embeddings';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
@@ -88,6 +89,8 @@ export class Productologist {
                 ],
                 response_format: { type: 'json_object' }
             });
+
+            await recordAiUsage({ agentId: AiAgent.ELENA, model: completion.model, usage: completion.usage, purpose: 'product_analysis' });
 
             const rawContent = completion.choices[0].message.content;
             if (!rawContent) throw new Error('Empty response from OpenAI');

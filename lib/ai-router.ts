@@ -3,6 +3,7 @@
 // 1. АННА (Бизнес-аналитик) — Анализ комментариев менеджера для принятия решения.
 // 2. МАКСИМ (Аудитор) — Финальная маршрутизация и смена статусов в CRM.
 import OpenAI from 'openai';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 
@@ -147,6 +148,7 @@ ${productKnowledge}
             response_format: { type: "json_object" },
             temperature: 0, // Zero temperature for audit precision
         });
+        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'ai_routing' });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error('No content from LLM');

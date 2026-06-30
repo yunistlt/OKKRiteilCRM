@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/phone-utils';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const dynamic = 'force-dynamic';
 
@@ -322,6 +323,7 @@ export async function POST(req: Request) {
             model: 'text-embedding-3-small',
             input: message,
         });
+        await recordAiUsage({ agentId: AiAgent.EMBEDDINGS, model: embeddingRes.model, usage: embeddingRes.usage, purpose: 'widget_embedding' });
         const embedding = embeddingRes.data[0].embedding;
 
         // PARALLEL KNOWLEDGE SEARCH
@@ -373,6 +375,7 @@ export async function POST(req: Request) {
             messages: [{ role: 'system', content: systemPrompt }, ...chatHistory, { role: 'user', content: message }],
             temperature: 0.7
         });
+        await recordAiUsage({ agentId: AiAgent.ELENA, model: response.model, usage: response.usage, purpose: 'widget_chat' });
 
         const reply = response.choices[0].message.content || 'Чем могу помочь?';
         

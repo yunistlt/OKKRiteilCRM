@@ -50,6 +50,7 @@ import { audiencesForRole, formatProjectKnowledgeContext, searchProjectKnowledge
 import { buildConsultantTools, executeConsultantTool, type ConsultantToolContext } from '@/lib/consultant-tools';
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -317,6 +318,7 @@ async function buildFallbackAnswer(
             }
         ],
     });
+    await recordAiUsage({ agentId: AiAgent.SEMEN, model: completion.model, usage: completion.usage, purpose: 'consultant_section_answer' });
 
     return {
         reply: completion.choices[0]?.message?.content || null,
@@ -388,6 +390,7 @@ async function buildGlobalKnowledgeAnswer(
             messages,
             tools,
         });
+        await recordAiUsage({ agentId: AiAgent.SEMEN, model: completion.model, usage: completion.usage, purpose: 'consultant_global_answer' });
 
         const choice = completion.choices[0]?.message;
         if (!choice) break;

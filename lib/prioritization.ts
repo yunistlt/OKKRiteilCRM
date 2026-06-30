@@ -2,6 +2,7 @@
 // ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Контроль SLA, приоритетов и времени нахождения в статусах.
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '../utils/openai';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 export type PriorityLevel = 'red' | 'yellow' | 'green' | 'black';
 
@@ -788,6 +789,7 @@ export async function analyzeOrderWithAI(
         response_format: { type: "json_object" },
         temperature: 0.3
     });
+    await recordAiUsage({ agentId: AiAgent.MAXIM, model: response.model, usage: response.usage, purpose: 'order_analysis' });
 
     const content = response.choices[0].message.content;
     if (!content) throw new Error("No AI response");

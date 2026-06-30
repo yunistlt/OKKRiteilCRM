@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { getTelphinToken } from './telphin';
 import { supabase } from '@/utils/supabase';
 import { syncRecordingToStorage } from './telphin-storage';
+import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -239,6 +240,7 @@ async function analyzeAnsweringMachine(transcript: string): Promise<{ isAnswerin
             ],
             response_format: { type: "json_object" }
         });
+        await recordAiUsage({ agentId: AiAgent.TRANSCRIPTION, model: response.model, usage: response.usage, purpose: 'amd' });
 
         const result = JSON.parse(response.choices[0].message.content || '{}');
         return {
@@ -284,6 +286,7 @@ Output format:
             ],
             temperature: 0
         });
+        await recordAiUsage({ agentId: AiAgent.TRANSCRIPTION, model: response.model, usage: response.usage, purpose: 'diarization' });
 
         return response.choices[0].message.content || transcript;
     } catch (e) {
@@ -513,6 +516,7 @@ async function determineOperatorChannel(text0: string, text1: string): Promise<0
             response_format: { type: 'json_object' },
             temperature: 0,
         });
+        await recordAiUsage({ agentId: AiAgent.TRANSCRIPTION, model: resp.model, usage: resp.usage, purpose: 'channel_detection' });
         const r = JSON.parse(resp.choices[0].message.content || '{}');
         return r.operator === 1 ? 1 : 0;
     } catch (e) {
