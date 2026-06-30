@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 
-async function getCrmConfig() {
+export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
     const key = process.env.RETAILCRM_API_KEY;
     const site = process.env.RETAILCRM_SITE;
