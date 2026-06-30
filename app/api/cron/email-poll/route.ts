@@ -19,6 +19,7 @@ import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignm
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
+import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -301,6 +302,23 @@ export async function GET(req: Request) {
                         createdOrderNumber = order.number;
                         finalStatus = 'processed';
                         reasoning = `${reasoning} | Заказ №${order.number} создан`;
+
+                        // Вложения письма → в заказ (ТЗ обычно во вложении). Бинари не храним —
+                        // докачиваем по IMAP UID. Best-effort: ошибка не отменяет уже созданный заказ.
+                        const hasAtt = Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0;
+                        if (hasAtt && e.imap_uid != null) {
+                            try {
+                                const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
+                                const files = content?.attachments || [];
+                                if (files.length > 0) {
+                                    const att = await attachEmailFilesToOrder(order.id, files);
+                                    reasoning = `${reasoning} | Вложения в заказ: ${att.attached}/${att.total}` +
+                                        (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
+                                }
+                            } catch (attErr: any) {
+                                reasoning = `${reasoning} | Вложения не прикреплены: ${attErr?.message || 'ошибка'}`;
+                            }
+                        }
                     } catch (err: any) {
                         finalStatus = 'error';
                         errorMessage = err?.message || 'order_create_failed';
