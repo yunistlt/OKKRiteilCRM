@@ -16,6 +16,7 @@ const KEY_LABELS: Record<string, string> = {
     source_exclusions: 'Источники-исключения',
     tender_duplicate_rule: 'Дубль на тендер (вне знаменателя конверсии)',
     nds_normalization: 'Нормализация НДС',
+    vat_policy: 'НДС по витрине (ЗВТО — без НДС)',
 };
 
 // Эти параметры редактируются ТОЛЬКО в блоках ролей (вкладка «Схемы (роли)») —
@@ -122,6 +123,29 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
                 <div>
                     <label className="text-[11px] text-muted-foreground">Эталонные статусы (тендер / ожидание выхода)</label>
                     <MultiSelectByName options={dicts.statuses} selected={ref} onChange={(v) => onChange({ ...value, reference_statuses: v })} empty="статусы не выбраны" />
+                </div>
+            </div>
+        );
+    }
+    // НДС определяется витриной, а не ставкой из карточки позиции: по умолчанию для всех
+    // витрин default_vat_pct, для витрин-исключений (ЗВТО) — без НДС.
+    if (configKey === 'vat_policy') {
+        const exempt: string[] = Array.isArray(value?.exempt_sites) ? value.exempt_sites : [];
+        return (
+            <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">Ставка НДС по умолчанию, %</span>
+                    <NumberInput value={value?.default_vat_pct ?? 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, default_vat_pct: v ?? 0 })} className={`${numCls} h-8 w-20 text-sm text-right`} />
+                </div>
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Витрины без НДС (код site, напр. ao-zvto)</label>
+                    {exempt.map((s, i) => (
+                        <div key={i} className="mt-1 flex items-center gap-1.5">
+                            <Input value={s} onChange={(e) => onChange({ ...value, exempt_sites: exempt.map((x, idx) => (idx === i ? e.target.value : x)) })} className="h-8 w-48 text-sm" />
+                            <button onClick={() => onChange({ ...value, exempt_sites: exempt.filter((_, idx) => idx !== i) })} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                    ))}
+                    <Button variant="outline" size="sm" className="mt-1 h-7" onClick={() => onChange({ ...value, exempt_sites: [...exempt, ''] })}><Plus className="mr-1 h-3.5 w-3.5" /> Витрина</Button>
                 </div>
             </div>
         );
