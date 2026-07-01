@@ -38,6 +38,34 @@ export async function getManagerPool(): Promise<number[]> {
     return (data || []).map((r: any) => Number(r.manager_id));
 }
 
+/** Дата «сегодня» в часовом поясе МСК (YYYY-MM-DD) — по ней считаем, кто сейчас в отпуске. */
+function mskToday(): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(new Date());
+}
+
+/**
+ * Менеджеры, которые СЕЙЧАС в отпуске/отсутствии (даты включительно).
+ * Их исключаем из распределения НОВЫХ клиентов; постоянные клиенты к ним по-прежнему идут.
+ */
+export async function getManagersOnLeave(): Promise<number[]> {
+    const t = mskToday();
+    const { data } = await supabase
+        .from('email_intake_absences')
+        .select('manager_id')
+        .lte('start_date', t)
+        .gte('end_date', t);
+    return (data || []).map((r: any) => Number(r.manager_id));
+}
+
+/** Все записи отпусков (для интерфейса). */
+export async function getAbsences(): Promise<Array<{ id: number; manager_id: number; start_date: string; end_date: string; note: string | null }>> {
+    const { data } = await supabase
+        .from('email_intake_absences')
+        .select('id, manager_id, start_date, end_date, note')
+        .order('start_date', { ascending: false });
+    return (data as any) || [];
+}
+
 /** Окно балансировки (дни) из настройки; по умолчанию 7. */
 export async function getBalanceWindowDays(): Promise<number> {
     const { data } = await supabase.from('email_intake_config').select('balance_window_days').maybeSingle();
@@ -115,19 +143,22 @@ export async function findOwnerByEmail(email: string): Promise<number | null> {
  */
 export async function resolveAssignment(
     senderEmail: string,
-    ctx: { pool: number[]; load: Record<number, number>; managerNames: Record<number, string> }
+    ctx: { pool: number[]; balancePool?: number[]; load: Record<number, number>; managerNames: Record<number, string> }
 ): Promise<AssignmentResult> {
     if (ctx.pool.length === 0) return { managerId: null, method: 'none', reason: 'Пул менеджеров пуст' };
 
-    // 1) по истории клиента
+    // 1) по истории клиента — постоянный клиент идёт к своему менеджеру ДАЖЕ если тот в отпуске
+    //    (используем полный пул, а не balancePool).
     const owner = await findOwnerByEmail(senderEmail);
     if (owner && ctx.pool.includes(owner)) {
         ctx.load[owner] = (ctx.load[owner] || 0) + 1;
         return { managerId: owner, method: 'history', reason: `Клиент известен — закреплён за ${ctx.managerNames[owner] || owner}` };
     }
 
-    // 2) поровну за период: тому, кому за окно назначено меньше всего заявок
-    const least = ctx.pool.reduce((a, b) => ((ctx.load[a] ?? 0) <= (ctx.load[b] ?? 0) ? a : b));
+    // 2) поровну за период среди ДОСТУПНЫХ (balancePool = пул минус отпускники); если все в отпуске
+    //    — падаем на полный пул, чтобы не оставить заявку без менеджера.
+    const bp = (ctx.balancePool && ctx.balancePool.length) ? ctx.balancePool : ctx.pool;
+    const least = bp.reduce((a, b) => ((ctx.load[a] ?? 0) <= (ctx.load[b] ?? 0) ? a : b));
     ctx.load[least] = (ctx.load[least] || 0) + 1;
     const base = owner ? 'история-менеджер вне пула' : 'новый клиент';
     return { managerId: least, method: 'load', reason: `Поровну за период (${base}) → ${ctx.managerNames[least] || least}` };

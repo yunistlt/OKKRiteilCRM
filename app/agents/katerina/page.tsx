@@ -5,6 +5,7 @@ import { getDepartmentRoutes, isForwardEnabled, getOrderBlocklist } from '@/lib/
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import RoutesSettings from './RoutesSettings';
+import AbsencesSettings from './AbsencesSettings';
 
 export const dynamic = 'force-dynamic';
 
@@ -196,6 +197,9 @@ export default async function KaterinaPage() {
                 initialOrderBlocklist={orderBlocklist}
                 canEdit={canEditSettings}
             />
+
+            {/* Отпуска менеджеров */}
+            <AbsencesSettings canEdit={canEditSettings} />
 
             {/* Лента разбора */}
             <section className="mt-6 border border-slate-200 bg-white p-5">

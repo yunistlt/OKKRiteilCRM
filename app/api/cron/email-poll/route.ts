@@ -15,7 +15,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml } from '@/lib/email/classify';
-import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment } from '@/lib/email/assign';
+import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment, getManagersOnLeave } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
@@ -233,9 +233,11 @@ export async function GET(req: Request) {
         if (pending && pending.length > 0) {
             await setAgentStatus('working', `Разбираю почту: ${pending.length} писем`);
             const [prompt, pool] = await Promise.all([loadSecretaryPrompt(), getManagerPool()]);
-            const [names, windowDays] = await Promise.all([getManagerNames(pool), getBalanceWindowDays()]);
+            const [names, windowDays, onLeave] = await Promise.all([getManagerNames(pool), getBalanceWindowDays(), getManagersOnLeave()]);
             const load = await getRecentAssignmentCounts(pool, windowDays);
-            const ctx = { pool, load, managerNames: names };
+            // Отпускники выпадают из распределения НОВЫХ клиентов (их постоянные клиенты — по-прежнему к ним).
+            const balancePool = pool.filter((id) => !onLeave.includes(id));
+            const ctx = { pool, balancePool, load, managerNames: names };
 
             for (const e of pending) {
                 let emailType: string, reasoning: string, confidence: number | null = null;
