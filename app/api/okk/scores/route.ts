@@ -214,6 +214,7 @@ export async function GET(req: Request) {
         return {
             ...score,
             order_id: o.order_id,
+            created_at: o.created_at,
             order_status: o.status,
             manager_id: o.manager_id,
             eval_date: score.eval_date || null,
