@@ -246,9 +246,16 @@ export async function GET(req: Request) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
                     const v = await classifyRoute(
-                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, attachments: e.attachments_meta },
+                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta },
                         prompt
                     );
+                    // Сбой анализа (например, недоступен OpenAI): НЕ финализируем письмо — оставляем
+                    // status='new', чтобы следующий крон повторил. Иначе транзиентная ошибка навсегда
+                    // помечает заявку как «не заявка» и заказ не создаётся.
+                    if (v.failed) {
+                        console.warn('[email-poll] classify failed, will retry:', e.id, v.reasoning);
+                        continue;
+                    }
                     confidence = v.confidence;
                     reasoning = v.reasoning;
                     // Переписку по существующему заказу (Re/тег CRM) обрабатываем особо:
