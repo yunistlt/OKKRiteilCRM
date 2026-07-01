@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Loader2, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/auth/AuthProvider';
-import OrderDetailsModal from '@/components/OrderDetailsModal';
 import ManagerSalarySimulatorModal from '../ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
@@ -21,7 +20,6 @@ export default function MySalaryPage() {
     const [row, setRow] = useState<any>(null);
     const [status, setStatus] = useState<string>('');
     const [loading, setLoading] = useState(true);
-    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [details, setDetails] = useState<any>(null);
     const [simOpen, setSimOpen] = useState(false);
     const [needsRecalc, setNeedsRecalc] = useState(false);
@@ -142,7 +140,7 @@ export default function MySalaryPage() {
                             return (
                                 <div className="mt-4 border-t pt-3">
                                     <div className="mb-2 text-sm font-semibold">Засчитанные заказы ({totalCounted || countedOrders.length || countedOrderIds.length})</div>
-                                    <CountedOrdersSplit orders={countedOrders} fallbackIds={countedOrderIds} onOpenOrder={setSelectedOrderId} />
+                                    <CountedOrdersSplit orders={countedOrders} fallbackIds={countedOrderIds} />
                                 </div>
                             );
                         })()}
@@ -150,13 +148,13 @@ export default function MySalaryPage() {
                         {/* Конв-бонус: поступившие заявки месяца + отметка «продан» */}
                         <div className="mt-4 border-t pt-3">
                             <div className="mb-2 text-sm font-semibold">Конв-бонус — поступившие заявки</div>
-                            <ConversionOrdersTable orders={incoming} countedIds={countedOrderIds} numerator={b.conversionNumerator ?? countedOrderIds.length} onOpenOrder={setSelectedOrderId} />
+                            <ConversionOrdersTable orders={incoming} countedIds={countedOrderIds} numerator={b.conversionNumerator ?? countedOrderIds.length} />
                         </div>
 
                         {/* К_команды: все засчитанные заказы отдела */}
                         <div className="mt-4 border-t pt-3">
                             <div className="mb-2 text-sm font-semibold">К_команды — заказы отдела</div>
-                            <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} onOpenOrder={setSelectedOrderId} />
+                            <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} />
                         </div>
 
                         <div className="mt-2 text-[11px] text-muted-foreground">
@@ -166,10 +164,6 @@ export default function MySalaryPage() {
                 </Card>
             )}
             </div>
-
-            {selectedOrderId != null && (
-                <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />
-            )}
 
             {simOpen && (
                 <ManagerSalarySimulatorModal
