@@ -34,16 +34,22 @@ const fmtDate = (s?: string) => {
     return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU');
 };
 
-// Кликабельный номер заказа — открывает карточку в ОКК для проверки данных расчёта.
-function OrderLink({ id, onOpenOrder }: { id: number; onOpenOrder: (id: number) => void }) {
+// База RetailCRM (инстанс zmktlt.retailcrm.ru, см. lib/retailcrm/README.md). id заказа
+// в нашей БД = внутренний id RetailCRM (raw_payload.id), по нему и строится /edit-ссылка.
+const CRM_BASE = 'https://zmktlt.retailcrm.ru';
+
+// Кликабельный номер заказа — открывает карточку заказа в RetailCRM (в новой вкладке).
+function OrderLink({ id }: { id: number }) {
     return (
-        <button
-            onClick={() => onOpenOrder(id)}
+        <a
+            href={`${CRM_BASE}/orders/${id}/edit`}
+            target="_blank"
+            rel="noreferrer"
             className="font-medium text-blue-700 hover:underline"
-            title="Открыть карточку заказа в ОКК"
+            title="Открыть карточку заказа в RetailCRM"
         >
             Заказ #{id}
-        </button>
+        </a>
     );
 }
 
@@ -51,11 +57,9 @@ function OrderLink({ id, onOpenOrder }: { id: number; onOpenOrder: (id: number) 
 export function CountedOrdersSplit({
     orders,
     fallbackIds,
-    onOpenOrder,
 }: {
     orders: any[];
     fallbackIds?: number[];
-    onOpenOrder: (id: number) => void;
 }) {
     const hasDetails = Array.isArray(orders) && orders.length > 0;
     const ids = fallbackIds ?? [];
@@ -66,7 +70,7 @@ export function CountedOrdersSplit({
         return (
             <div className="flex flex-wrap gap-2">
                 {ids.map((id) => (
-                    <OrderLink key={id} id={id} onOpenOrder={onOpenOrder} />
+                    <OrderLink key={id} id={id} />
                 ))}
             </div>
         );
@@ -77,13 +81,13 @@ export function CountedOrdersSplit({
 
     return (
         <div className="space-y-3">
-            <OrdersTypeTable title="Постоянные клиенты" rows={permanent} onOpenOrder={onOpenOrder} />
-            <OrdersTypeTable title="Новые клиенты" rows={fresh} onOpenOrder={onOpenOrder} />
+            <OrdersTypeTable title="Постоянные клиенты" rows={permanent} />
+            <OrdersTypeTable title="Новые клиенты" rows={fresh} />
         </div>
     );
 }
 
-function OrdersTypeTable({ title, rows, onOpenOrder }: { title: string; rows: any[]; onOpenOrder: (id: number) => void }) {
+function OrdersTypeTable({ title, rows }: { title: string; rows: any[] }) {
     const sum = rows.reduce((s, o) => s + (Number(o.sum) || 0), 0);
     return (
         <div>
@@ -109,7 +113,7 @@ function OrdersTypeTable({ title, rows, onOpenOrder }: { title: string; rows: an
                         <tbody>
                             {rows.map((o) => (
                                 <tr key={o.id} className="border-t">
-                                    <td className="px-2 py-1.5"><OrderLink id={o.id} onOpenOrder={onOpenOrder} /></td>
+                                    <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5">{orderTypeLabel(o)}</td>
                                     <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
@@ -133,12 +137,10 @@ export function ConversionOrdersTable({
     orders,
     countedIds,
     numerator,
-    onOpenOrder,
 }: {
     orders: any[];
     countedIds: number[];
     numerator: number;
-    onOpenOrder: (id: number) => void;
 }) {
     const soldSet = new Set((countedIds ?? []).map(Number));
     const rows = (orders ?? []).map((o) => ({ ...o, sold: soldSet.has(Number(o.id)) }));
@@ -185,7 +187,7 @@ export function ConversionOrdersTable({
                                     : '';
                             return (
                                 <tr key={o.id} className={`border-t ${rowCls}`}>
-                                    <td className="px-2 py-1.5"><OrderLink id={o.id} onOpenOrder={onOpenOrder} /></td>
+                                    <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5">{o.source || '—'}</td>
                                     <td className="px-2 py-1.5">{fmtDate(o.createdAt)}</td>
@@ -222,11 +224,9 @@ export function ConversionOrdersTable({
 export function TeamOrdersTable({
     orders,
     teamRevenueNoVat,
-    onOpenOrder,
 }: {
     orders: any[];
     teamRevenueNoVat: number;
-    onOpenOrder: (id: number) => void;
 }) {
     const rows = orders ?? [];
     if (rows.length === 0) {
@@ -253,7 +253,7 @@ export function TeamOrdersTable({
                     <tbody>
                         {rows.map((o) => (
                             <tr key={o.id} className="border-t">
-                                <td className="px-2 py-1.5"><OrderLink id={o.id} onOpenOrder={onOpenOrder} /></td>
+                                <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
                                 <td className="px-2 py-1.5">{o.managerName}</td>
                                 <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                 <td className="px-2 py-1.5 text-right">{rub(o.revenueNoVat)}</td>

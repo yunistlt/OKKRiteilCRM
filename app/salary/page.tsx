@@ -8,7 +8,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
 import DutyModal from './DutyModal';
 import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
-import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
 
@@ -43,7 +42,6 @@ export default function SalaryDashboard() {
     const [reopening, setReopening] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
     const [simManager, setSimManager] = useState<{ id: number; name: string } | null>(null);
-    const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
     const [dutyOpen, setDutyOpen] = useState(false);
     const { toast } = useToast();
     const { user } = useAuth();
@@ -268,12 +266,7 @@ export default function SalaryDashboard() {
                     monthLabel={`${MONTHS[month - 1]} ${year}`}
                     details={data?.details}
                     onClose={() => setReportManager(null)}
-                    onOpenOrder={(id) => setSelectedOrderId(id)}
                 />
-            )}
-
-            {selectedOrderId != null && (
-                <OrderDetailsModal orderId={selectedOrderId} isOpen={selectedOrderId != null} onClose={() => setSelectedOrderId(null)} />
             )}
         </div>
     );
@@ -340,20 +333,18 @@ function RowGroup({ r, columns, onOpen, onSim }: { r: CalcRow; columns: BlockCol
 }
 
 // Подробный отчёт по менеджеру в модалке. Номера заказов кликабельны и открывают
-// карточку заказа в ОКК (OrderDetailsModal) — чтобы менеджер и РОП могли проверить
+// карточку заказа в RetailCRM (в новой вкладке) — чтобы менеджер и РОП могли проверить
 // каждую засчитанную заявку, на которой построен расчёт ЗП.
 function ManagerReportModal({
     r,
     monthLabel,
     details: reportDetails,
     onClose,
-    onOpenOrder,
 }: {
     r: CalcRow;
     monthLabel: string;
     details?: any; // { teamOrders, teamRevenueNoVat, incomingByManager } — расшифровка показателей
     onClose: () => void;
-    onOpenOrder: (orderId: number) => void;
 }) {
     const b = r.breakdown || {};
     const counted: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
@@ -446,19 +437,19 @@ function ManagerReportModal({
                     {/* Засчитанные заказы — две таблицы (Постоянные / Новые), номера кликабельны */}
                     <div>
                         <div className="mb-2 font-semibold">Засчитанные заказы ({totalCounted})</div>
-                        <CountedOrdersSplit orders={counted} fallbackIds={orderIds} onOpenOrder={onOpenOrder} />
+                        <CountedOrdersSplit orders={counted} fallbackIds={orderIds} />
                     </div>
 
                     {/* Конв-бонус: поступившие заявки месяца + отметка «продан» */}
                     <div>
                         <div className="mb-2 font-semibold">Конв-бонус — поступившие заявки</div>
-                        <ConversionOrdersTable orders={incoming} countedIds={orderIds} numerator={b.conversionNumerator ?? orderIds.length} onOpenOrder={onOpenOrder} />
+                        <ConversionOrdersTable orders={incoming} countedIds={orderIds} numerator={b.conversionNumerator ?? orderIds.length} />
                     </div>
 
                     {/* К_команды: все засчитанные заказы отдела (из чего сложилась выручка отдела) */}
                     <div>
                         <div className="mb-2 font-semibold">К_команды — заказы отдела</div>
-                        <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} onOpenOrder={onOpenOrder} />
+                        <TeamOrdersTable orders={teamOrders} teamRevenueNoVat={teamRevenueNoVat} />
                     </div>
 
                     <div className="text-[11px] text-muted-foreground">
