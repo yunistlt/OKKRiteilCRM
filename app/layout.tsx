@@ -10,6 +10,7 @@ import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { getEffectiveRouteRules } from '@/lib/rbac-server';
 import GlobalConsultantShell from '@/components/GlobalConsultantShell';
 import PwaBootstrap from './components/PwaBootstrap';
+import SystemAlertsBanner from './components/SystemAlertsBanner';
 
 export const viewport: Viewport = {
     themeColor: '#0f172a',
@@ -69,6 +70,7 @@ export default async function RootLayout({
                         <Sidebar />
                     </Suspense>
                     <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
+                        <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
                         <Header />
                         <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
                             <GlobalConsultantShell>{children}</GlobalConsultantShell>

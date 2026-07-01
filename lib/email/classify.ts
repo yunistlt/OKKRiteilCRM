@@ -15,6 +15,7 @@
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { recordOpenAiOk, recordOpenAiQuotaError } from '@/lib/openai-health';
 
 export const SECRETARY_PROMPT_KEY = 'email_secretary_classifier';
 
@@ -211,6 +212,7 @@ ${body || '(пусто — суть письма может быть во вло
             temperature: 0,
         });
         await recordAiUsage({ agentId: AiAgent.KATERINA, model: completion.model, usage: completion.usage, purpose: 'email_classify' });
+        void recordOpenAiOk(); // вызов прошёл → снимаем алерт «исчерпан баланс OpenAI», если висел
         const raw = completion.choices[0].message.content;
         if (!raw) throw new Error('Empty response');
         const parsed = JSON.parse(raw);
@@ -223,6 +225,7 @@ ${body || '(пусто — суть письма может быть во вло
         };
     } catch (e: any) {
         console.error('[classifyRoute] error:', e?.message || e);
+        void recordOpenAiQuotaError(e); // если это исчерпанный баланс — поднимаем алерт для плашки
         return { route: 'not_request', confidence: 0, reasoning: 'Ошибка анализа', failed: true };
     }
 }
