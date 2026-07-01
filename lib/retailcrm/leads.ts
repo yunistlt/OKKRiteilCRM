@@ -93,6 +93,7 @@ export async function createEmailLead(params: {
     name?: string;
     subject?: string;
     bodySnippet?: string;
+    attachmentNames?: string[];
     managerId?: number | null;
 }): Promise<{ id: number; number: string }> {
     const { site } = await getCrmConfig();
@@ -110,13 +111,17 @@ export async function createEmailLead(params: {
         if (customerResult.success) customerId = customerResult.id;
     }
 
+    const attNames = (params.attachmentNames || []).filter(Boolean);
+    const bodyPart = (params.bodySnippet || '').trim()
+        || (attNames.length ? 'Тело письма пустое — суть во вложении (прикреплено к заказу).' : 'не распознано — открыть письмо');
+    const attLine = attNames.length ? `\n\n📎 Вложения: ${attNames.join(', ')}` : '';
     const comment = `✉️ Заявка принята AI-секретарём (входящее письмо)
 
 📧 Email: ${params.email || 'не определён'}
 📨 Тема: ${params.subject || '(без темы)'}
 
 📝 Текст письма:
-${(params.bodySnippet || '').trim() || 'не распознано — открыть письмо'}`;
+${bodyPart}${attLine}`;
 
     const orderData: any = {
         status: 'novyi-1', // всегда «Новая»

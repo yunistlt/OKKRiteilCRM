@@ -108,6 +108,14 @@ export function isReplyThread(subject?: string | null): boolean {
 }
 
 /**
+ * В теме есть служебный тег RetailCRM `[#N/NNNNN]` — ОПРЕДЕЛЁННО переписка по существующему заказу
+ * (CRM сама вешает его). В отличие от «Re:», тег не бывает у спама — надёжный признак.
+ */
+export function hasCrmOrderTag(subject?: string | null): boolean {
+    return !!subject && /\[#\d+\/\d+\]/.test(subject);
+}
+
+/**
  * Отправитель-робот (noreply/no-reply/donotreply) — тендерные площадки и авто-уведомления.
  * По решению владельца такие письма НЕ заводим как заявку (= спам), AI не вызываем.
  */
