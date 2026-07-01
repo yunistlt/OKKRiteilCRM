@@ -132,8 +132,12 @@ total = base
 | `salary_audit_log` | аудит изменений конфига/схем/планов/расчётов |
 
 **RPC** (миграции `20260608_salary_rpc.sql`, `20260609_salary_counted_orders_robust.sql`):
-`salary_counted_orders(start,end,closing)` — засчитанные заказы (статус «передано в произв.» = `send-assembling`;
-устойчивый источник: история ИЛИ customField-дата ИЛИ текущий статус), `salary_incoming_counts`,
+`salary_counted_orders(start,end,closing)` — засчитанные заказы (статус «передано в произв.» = `send-assembling`).
+Период назначается ОДНОЙ канон-датой на заказ (приоритет: событие изменения статуса в истории → customField-дата →
+текущий статус), фильтруется один раз ⇒ заказ попадает ровно в один месяц. История authoritative, customField/статус —
+фолбэк при отставании синка. Раньше три сигнала фильтровались периодом независимо → двойной счёт на границе месяца
+(смена статуса 30.06 vs ручная дата передачи 01.07). Исправлено в `20260701_salary_counted_orders_single_period.sql`.
+`salary_incoming_counts`,
 `salary_client_deal_counts`.
 
 > Миграции применяются вручную (нет раннера). Применять к той же БД, что и у прода (project `lywtzgntmibdpgoijbty`).
