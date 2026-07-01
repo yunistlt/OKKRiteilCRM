@@ -26,6 +26,7 @@ export interface RouteVerdict {
     route: EmailRoute;
     confidence: number; // 0..1
     reasoning: string; // на русском
+    failed?: boolean;  // true = анализ не выполнен (сбой AI / не настроен) — НЕ финализировать, повторить
 }
 
 export interface EmailAttachmentMeta {
@@ -38,7 +39,35 @@ export interface EmailForClassification {
     fromName?: string | null;
     subject?: string | null;
     bodyText?: string | null;
+    bodyHtml?: string | null; // фолбэк, когда plain-текста нет (HTML-only письма)
     attachments?: EmailAttachmentMeta[] | null;
+}
+
+/**
+ * Грубое извлечение текста из HTML для классификации (когда plain-части нет — HTML-only письма).
+ * Не для отображения, только чтобы модель увидела суть письма. Режем стили/скрипты/теги,
+ * раскрываем базовые сущности, схлопываем пробелы.
+ */
+export function stripHtml(html?: string | null): string {
+    if (!html) return '';
+    return html
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<head[\s\S]*?<\/head>/gi, ' ')
+        .replace(/<!--[\s\S]*?-->/g, ' ')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&rsquo;|&lsquo;/gi, "'")
+        .replace(/&[a-z#0-9]+;/gi, ' ')
+        .replace(/[^\S\n]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 /**
@@ -147,18 +176,20 @@ export async function loadSecretaryPrompt(): Promise<string> {
 const VALID_ROUTES: ReadonlyArray<EmailRoute> = ['new_request', 'accounting', 'logistics', 'legal', 'procurement', 'not_request'];
 
 /**
- * Определяет маршрут письма (один из пяти). При ошибке/недоступности AI — безопасный дефолт
- * 'not_request' (письмо не теряется: оно останется размеченным, заказ/пересылка не выполнятся).
+ * Определяет маршрут письма (один из пяти). При ошибке/недоступности AI возвращает failed=true —
+ * воркер НЕ финализирует такое письмо (оставляет на повтор), чтобы транзиентный сбой не «съел» заявку.
  */
 export async function classifyRoute(
     email: EmailForClassification,
     systemPrompt: string = DEFAULT_SYSTEM_PROMPT
 ): Promise<RouteVerdict> {
     if (!isOpenAIConfigured()) {
-        return { route: 'not_request', confidence: 0, reasoning: 'OpenAI не настроен' };
+        return { route: 'not_request', confidence: 0, reasoning: 'OpenAI не настроен', failed: true };
     }
     const openai = getOpenAIClient();
-    const body = (email.bodyText || '').replace(/\s+\n/g, '\n').slice(0, 4000);
+    // Тело для анализа: plain-текст, а если его нет (HTML-only письмо) — вытаскиваем из HTML.
+    const rawBody = (email.bodyText && email.bodyText.trim()) ? email.bodyText : stripHtml(email.bodyHtml);
+    const body = (rawBody || '').replace(/\s+\n/g, '\n').slice(0, 4000);
     const docs = documentAttachmentNames(email.attachments);
     const attachmentsLine = docs.length
         ? `\nВложения (документы): ${docs.join('; ')}`
@@ -192,6 +223,6 @@ ${body || '(пусто — суть письма может быть во вло
         };
     } catch (e: any) {
         console.error('[classifyRoute] error:', e?.message || e);
-        return { route: 'not_request', confidence: 0, reasoning: 'Ошибка анализа' };
+        return { route: 'not_request', confidence: 0, reasoning: 'Ошибка анализа', failed: true };
     }
 }
