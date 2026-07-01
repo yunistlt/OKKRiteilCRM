@@ -27,13 +27,39 @@ function fmt(dt?: string | null) {
     catch { return '—'; }
 }
 
+function fmtDate(d: string) {
+    const [y, m, day] = d.split('-');
+    return day && m && y ? `${day}.${m}.${y}` : d;
+}
+
 function preview(t?: string | null, n = 150) {
     if (!t) return '';
     const s = t.replace(/\s+/g, ' ').trim();
     return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
-export default async function KaterinaPage() {
+function mskDate(d: Date): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Moscow' }).format(d);
+}
+
+export default async function KaterinaPage({ searchParams }: { searchParams?: { from?: string; to?: string } }) {
+    // Диапазон дат ленты (МСК). По умолчанию — последние 7 дней; можно задать в фильтре.
+    const todayStr = mskDate(new Date());
+    const defFrom = mskDate(new Date(Date.now() - 6 * 864e5));
+    const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    const fromDate = isDate(searchParams?.from) ? (searchParams!.from as string) : defFrom;
+    const toDate = isDate(searchParams?.to) ? (searchParams!.to as string) : todayStr;
+    const fromTs = `${fromDate}T00:00:00+03:00`;
+    const toTs = `${toDate}T23:59:59+03:00`;
+    const yesterdayStr = mskDate(new Date(Date.now() - 864e5));
+    const monthAgoStr = mskDate(new Date(Date.now() - 29 * 864e5));
+    const presets: Array<{ label: string; from: string; to: string }> = [
+        { label: 'Сегодня', from: todayStr, to: todayStr },
+        { label: 'Вчера', from: yesterdayStr, to: yesterdayStr },
+        { label: '7 дней', from: defFrom, to: todayStr },
+        { label: '30 дней', from: monthAgoStr, to: todayStr },
+    ];
+
     // 1) живой статус агента
     const { data: agent } = await supabase
         .from('okk_agent_status').select('*').eq('agent_id', 'katerina').maybeSingle();
@@ -53,13 +79,15 @@ export default async function KaterinaPage() {
     const [names, windowDays] = await Promise.all([getManagerNames(pool), getBalanceWindowDays()]);
     const load = await getRecentAssignmentCounts(pool, windowDays);
 
-    // 4) последние разобранные письма
+    // 4) разобранные письма за выбранный период (по умолчанию — последние 7 дней)
     const { data: recent } = await supabase
         .from('incoming_emails')
         .select('id, from_email, from_name, subject, body_text, email_type, confidence, reasoning, assigned_manager_id, created_crm_order_id, created_crm_order_number, forwarded_department, forwarded_to, status, received_at')
         .in('status', ['classified', 'processed', 'error'])
+        .gte('received_at', fromTs)
+        .lte('received_at', toTs)
         .order('received_at', { ascending: false })
-        .limit(40);
+        .limit(500);
 
     const crmBase = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
     const orderUrl = (id?: number | null) => (crmBase && id ? `${crmBase}/orders/${id}/edit` : null);
@@ -204,7 +232,36 @@ export default async function KaterinaPage() {
 
             {/* Лента разбора */}
             <section className="mt-6 border border-slate-200 bg-white">
-                <div className="border-b border-slate-100 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Лента разбора почты</div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
+                    <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                        Лента разбора почты
+                        <span className="ml-2 normal-case tracking-normal text-slate-400">
+                            {fmtDate(fromDate)} — {fmtDate(toDate)} · {(recent || []).length} писем
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1">
+                            {presets.map((p) => {
+                                const active = p.from === fromDate && p.to === toDate;
+                                return (
+                                    <Link key={p.label} href={`/agents/katerina?from=${p.from}&to=${p.to}`}
+                                        className={`border px-2 py-1 text-[11px] font-bold ${active ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                                        {p.label}
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                        <form method="get" action="/agents/katerina" className="flex items-center gap-1">
+                            <input type="date" name="from" defaultValue={fromDate}
+                                className="border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
+                            <span className="text-slate-400">—</span>
+                            <input type="date" name="to" defaultValue={toDate}
+                                className="border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
+                            <button type="submit"
+                                className="border border-slate-900 bg-slate-900 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-white hover:bg-slate-800">Показать</button>
+                        </form>
+                    </div>
+                </div>
                 <div className="max-h-[72vh] overflow-auto">
                     <table className="w-full border-collapse text-left text-[13px]">
                         <thead className="sticky top-0 z-10">
