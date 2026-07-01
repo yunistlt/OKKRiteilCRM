@@ -53,7 +53,6 @@ export default function Sidebar() {
                 { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
                 { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Команда ОКК', href: '/?office=true', icon: '👥', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
             ]
         },
@@ -142,12 +141,6 @@ export default function Sidebar() {
                 if (searchParams.get(key) !== value) return false;
             }
             return true;
-        }
-
-        // Avoid double highlighting: if we are on a specialized version of the route (like /?office=true),
-        // don't highlight the default route (/) if a more specific item exists.
-        if (pathname === '/' && searchParams.get('office') === 'true' && !targetQuery) {
-            return false;
         }
 
         return true;

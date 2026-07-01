@@ -2,19 +2,8 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
 
-interface Agent {
-    agent_id: string;
-    name: string;
-    role: string;
-    status: 'idle' | 'working' | 'busy' | 'offline';
-    current_task: string;
-    last_active_at: string;
-    avatar_url?: string;
-}
-
-function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setView: (v: 'priorities' | 'team') => void }) {
+function PriorityWidget() {
     const [orders, setOrders] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<string | null>(null);
@@ -22,11 +11,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     const [analyzingOrderId, setAnalyzingOrderId] = useState<number | null>(null);
     const [analysisResults, setAnalysisResults] = useState<Record<number, any>>({});
     const [queuedAnalyses, setQueuedAnalyses] = useState<Record<number, { message: string; cachedAt?: string | null }>>({});
-    const [agents, setAgents] = useState<Agent[]>([]);
-
-    const searchParams = useSearchParams();
-
-    // Synchronization with parent view is handled via props
 
     // Chat state
     const [chatInput, setChatInput] = useState('');
@@ -76,22 +60,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
         }
     };
 
-
-    useEffect(() => {
-        const fetchAgents = () => {
-            fetch('/api/agents/status')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        setAgents(Array.isArray(data.agents) ? data.agents : []);
-                    }
-                })
-                .catch(e => console.error('Failed to fetch agents', e));
-        };
-        fetchAgents();
-        const interval = setInterval(fetchAgents, 5000);
-        return () => clearInterval(interval);
-    }, []);
 
     useEffect(() => {
         fetch('/api/analysis/priorities')
@@ -145,7 +113,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     const formatMoney = (val: number) => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: 0 }).format(val);
 
     const safeOrders = useMemo(() => Array.isArray(orders) ? orders : [], [orders]);
-    const safeAgents = Array.isArray(agents) ? agents : [];
 
     // PERF: считаем сводку одним проходом по заказам и только при изменении данных,
     // а не 12+ раз .filter/.reduce на каждый ре-рендер.
@@ -172,8 +139,8 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
     );
 
     if (loading) return (
-        <div className={`mb-12 w-full ${view === 'team' ? '' : 'bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50'} animate-pulse`}>
-            {view !== 'team' && <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>}
+        <div className="mb-12 w-full bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
+            <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <div className="h-64 bg-gray-100 rounded-[32px]"></div>
                 <div className="h-64 bg-gray-100 rounded-[32px]"></div>
@@ -184,185 +151,6 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
 
     if (safeOrders.length === 0) return null;
 
-    if (view === 'team') {
-        return (
-            <div className="w-full animate-in fade-in duration-700">
-                <div className="flex flex-col items-center mb-12">
-                    <h2 className="text-3xl md:text-5xl font-black text-gray-900 mb-2 tracking-tight">Команда ИИ-агентов</h2>
-                    <p className="text-gray-400 font-bold uppercase text-[10px] md:text-sm tracking-[0.2em]">Цифровые сотрудники OKKRiteilCRM</p>
-                </div>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                                        {[...safeAgents,
-                                            ...(safeAgents.find(a => a.agent_id === 'elena') ? [] : [{ agent_id: 'elena', name: 'Елена', role: 'Продуктолог', status: 'idle' }]),
-                                            ...(safeAgents.find(a => a.agent_id === 'artem') ? [] : [{ agent_id: 'artem', name: 'Артем', role: 'Голосовой Менеджер', status: 'idle' }])
-                    ].map((agent: any) => {
-                        const profile = ({
-                            anna: {
-                                role: "Бизнес-аналитик",
-                                mission: "Стратегический анализ и поиск смыслов.",
-                                functions: ["Глубокий разбор сделок", "Поиск ЛПР", "Детекция «Зомби-сделок»"],
-                                instruments: "Модуль semantic_check (AI Анализ). «Читает» комментарии и звонки.",
-                                connection: "Передает инсайты Максиму для принятия решений.",
-                                load: agent.status === 'working' ? 88 : 12,
-                                stateDesc: agent.status === 'working' ? "Анализ семантики" : "Чтение истории"
-                            },
-                            maxim: {
-                                role: "Аудитор",
-                                mission: "Контроль качества и итоговая оценка.",
-                                functions: ["Сводит результаты Семёна и Игоря", "Считает итоговый %", "Выявляет нарушения регламентов"],
-                                instruments: "Управляет «Движком правил» (Rule Engine).",
-                                connection: "Пишет в Telegram чат отдела продаж ЗМК.",
-                                load: agent.status === 'working' ? 75 : 8,
-                                stateDesc: agent.status === 'working' ? "Расчет рейтинга" : "Аудит нарушений"
-                            },
-                            igor: {
-                                role: "Диспетчер",
-                                mission: "Контроль SLA и алерты.",
-                                functions: ["Мониторинг сроков", "Управление Светофором приоритетов", "Оповещение о критических сбоях"],
-                                instruments: "Чистая логика (без AI) — время в статусе, просроченные задачи.",
-                                connection: "Пишет лично руководителю @zmktlt.",
-                                load: agent.status === 'working' ? 95 : 24,
-                                stateDesc: agent.status === 'working' ? "Проверка статусов" : "Контроль сроков"
-                            },
-                            semen: {
-                                role: "Архивариус",
-                                mission: "Синхронизация данных.",
-                                functions: ["Сбор данных из RetailCRM 24/7 (заказы, история, звонки)", "Ежедневная инкрементальная синхронизация базы `clients`"],
-                                instruments: "API RetailCRM, Vercel Cron. Качает любой чих.",
-                                connection: "Обеспечивает свежими данными Анну, Максима и Игоря.",
-                                load: agent.status === 'working' ? 60 : 18,
-                                stateDesc: agent.status === 'working' ? "Инкрементальная загрузка" : "Обновление клиентов"
-                            },
-                            elena: {
-                                role: "Продуктолог",
-                                mission: "Хранитель технической номенклатуры и эксперт по продукции.",
-                                functions: ["Автономное исследование товаров zmktlt.ru", "Формирование таблицы product_knowledge", "Предоставление точных технических справок", "Верификация заказов (блокировка отмен)"],
-                                instruments: "Web Search, AI Browser Crawler, GPT-4o.",
-                                connection: "Работает в фоне, передает данные Максиму.",
-                                load: agent.status === 'working' ? 80 : 10,
-                                stateDesc: agent.status === 'working' ? "Верификация заказов" : "База знаний"
-                            },
-                            artem: {
-                                role: "Голосовой менеджер",
-                                mission: "Автоматизация первичных звонков и квалификация лидов голосом.",
-                                functions: ["Исходящие звонки по новым лидам", "Квалификация через голосовой диалог", "Передача горячих клиентов менеджерам"],
-                                instruments: "Telphin API, AI Voice Engine (TTS/STT), GPT-4o-realtime.",
-                                connection: "Получает данные от Семёна, передает готовые сделки в RetailCRM.",
-                                load: agent.status === 'working' ? 92 : 0,
-                                stateDesc: agent.status === 'working' ? "Голосовой диалог" : "Режим ожидания"
-                            }
-                        } as any)[agent.agent_id] || {
-                            role: agent.role,
-                            mission: "Я готов к любым системным задачам.",
-                            functions: ["Выполнение системных задач"],
-                            instruments: "Базовые API",
-                            connection: "Отчет руководителю",
-                            load: 0,
-                            stateDesc: "Режим ожидания"
-                        };
-
-                        return (
-                            <div key={agent.agent_id} className="bg-white rounded-[32px] p-5 md:p-6 border border-gray-100 shadow-xl hover:shadow-2xl transition-all group relative overflow-hidden flex flex-col">
-                                <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-50/50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
-                                
-                                <div className="relative z-10 flex-1 flex flex-col">
-                                    <div className="flex items-start gap-4 mb-4">
-                                        <div className="relative flex-shrink-0">
-                                            <div className="w-16 h-16 rounded-2xl overflow-hidden bg-gray-50 border-2 border-gray-100 group-hover:border-indigo-300 transition-all duration-500 transform group-hover:scale-105 shadow-sm">
-                                                <img 
-                                                    src={`/images/agents/${agent.agent_id}.png`} 
-                                                    alt={agent.name}
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <h3 className="text-lg font-black text-gray-900 mb-1">{agent.name}</h3>
-                                            <div className="flex flex-wrap items-center gap-1.5 mb-2">
-                                                <div className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-2 py-0.5 rounded-md">
-                                                    {profile.role}
-                                                </div>
-                                                <div className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
-                                                    agent.status === 'working' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-gray-50 text-gray-500 border-gray-200'
-                                                }`}>
-                                                    {agent.status === 'working' ? 'Активен' : 'Ожидание'}
-                                                </div>
-                                            </div>
-                                            <p className="text-[10px] text-gray-500 font-medium italic leading-snug line-clamp-2">
-                                                "{profile.mission}"
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Capacity Load Indicator */}
-                                    <div className="mb-4 bg-gray-50/80 rounded-xl p-3 md:p-4 border border-gray-100 group-hover:bg-indigo-50/30 transition-colors">
-                                        <div className="flex justify-between items-end mb-2">
-                                            <div>
-                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-1">Состояние</p>
-                                                <p className="text-[11px] font-black text-gray-700">{profile.stateDesc}</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="text-[8px] font-black text-gray-400 uppercase tracking-wider mb-1">Загрузка мощностей</p>
-                                                <p className={`text-sm font-black leading-none ${profile.load > 80 ? 'text-orange-500' : profile.load > 40 ? 'text-blue-500' : 'text-emerald-500'}`}>
-                                                    {profile.load}%
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <div className="h-1.5 w-full bg-gray-200 rounded-full overflow-hidden shadow-inner">
-                                            <div 
-                                                className={`h-full rounded-full transition-all duration-1000 shadow-sm ${profile.load > 80 ? 'bg-orange-500' : profile.load > 40 ? 'bg-blue-500' : 'bg-emerald-500'}`} 
-                                                style={{ width: `${profile.load}%` }}
-                                            ></div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-4 mb-auto">
-                                        <div>
-                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1.5">Обязанности</p>
-                                            <ul className="space-y-1.5">
-                                                {profile.functions.map((f: string, i: number) => (
-                                                    <li key={i} className="flex items-start gap-1.5 text-[11px] font-bold text-gray-700 leading-tight">
-                                                        <span className="text-indigo-400 mt-0.5 flex-shrink-0">
-                                                            <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"></path>
-                                                            </svg>
-                                                        </span>
-                                                        {f}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        <div>
-                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1">Инструментарий</p>
-                                            <p className="text-[10px] font-semibold text-gray-600 leading-snug">{profile.instruments}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100 pb-1 mb-1">Связь</p>
-                                            <p className="text-[10px] font-semibold text-gray-600 leading-snug">{profile.connection}</p>
-                                        </div>
-                                    </div>
-
-                                    {agent.current_task && agent.status === 'working' && (
-                                        <div className="mt-4 pt-3 border-t border-gray-100">
-                                            <div className="flex items-start gap-2">
-                                                <div className="w-2 h-2 mt-0.5 bg-green-500 rounded-full animate-pulse flex-shrink-0"></div>
-                                                <div>
-                                                    <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Текущая операция</p>
-                                                    <p className="text-xs text-gray-900 font-black leading-tight line-clamp-1">{agent.current_task}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="mb-12 w-full bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
@@ -372,22 +160,7 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
                     </div>
                     <div>
                         <h2 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">Центр Управления</h2>
-                        <div className="flex gap-2 mt-1">
-                            <button
-                                onClick={() => setView('priorities')}
-                                className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all ${view === 'priorities' ? 'bg-gray-900 text-white' : 'text-gray-400 hover:text-gray-600'}`}
-                            >
-                                🚥 Приоритеты
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setView('team');
-                                }}
-                                className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all ${(view as string) === 'team' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-600'}`}
-                            >
-                                👥 Команда ОКК
-                            </button>
-                        </div>
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mt-1">🚥 Приоритеты</div>
                     </div>
                 </div>
             </div>
@@ -727,22 +500,10 @@ function PriorityWidget({ view, setView }: { view: 'priorities' | 'team', setVie
 }
 
 function HomeContent() {
-    const searchParams = useSearchParams();
-    const [view, setView] = useState<'priorities' | 'team'>(searchParams.get('office') === 'true' ? 'team' : 'priorities');
-
-    useEffect(() => {
-        if (searchParams.get('office') === 'true') {
-            setView('team');
-        } else {
-            setView('priorities');
-        }
-    }, [searchParams]);
-
     return (
         <div className="flex min-h-[60vh] w-full flex-col justify-center px-4 py-6 md:px-6 md:py-8">
-            <PriorityWidget view={view} setView={setView} />
+            <PriorityWidget />
 
-            {view !== 'team' && (
             <div className="grid w-full grid-cols-1 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-700 md:grid-cols-3 md:gap-6">
 
                 {/* Morning Sprint Card */}
@@ -799,7 +560,6 @@ function HomeContent() {
                     </div>
                 </Link>
                 </div>
-            )}
         </div>
     );
 }
