@@ -1264,7 +1264,7 @@ function OKKContent() {
                                     <tr key={s.order_id} className={`group border-b border-gray-100 ${rowBg} hover:bg-yellow-50`}>
                                         <td className={`w-[40px] min-w-[40px] max-w-[40px] p-0 sticky left-0 border-r border-gray-200 text-center align-middle ${stickyClass}`}><input type="checkbox" checked={isSelected} onChange={() => toggleSelect(s.order_id)} className="w-4 h-4 rounded border-gray-300 text-blue-600" /></td>
                                         <td className={`px-1.5 py-1 sticky left-[40px] min-w-[148px] w-[148px] max-w-[148px] border-r border-gray-200 align-top ${stickyClass}`}>
-                                            <div className="grid grid-rows-2 gap-0.5 min-w-0">
+                                            <div className="grid gap-0.5 min-w-0">
                                                 <div className="grid min-w-0 items-center gap-1" style={{ gridTemplateColumns: '14px auto minmax(0, 1fr)' }}>
                                                     <button onClick={() => handleSingleRun(s.order_id)} disabled={running} className="flex h-[14px] w-[14px] items-center justify-center text-[10px] leading-none hover:scale-125 disabled:opacity-30">↩️</button>
                                                     <a href={`https://zmktlt.retailcrm.ru/orders/${s.order_id}/edit`} target="_blank" rel="noreferrer" className="truncate text-[10px] font-bold text-blue-600 hover:underline font-sans">#{s.order_id}</a>
@@ -1286,6 +1286,9 @@ function OKKContent() {
                                                     <span className="block min-w-0 truncate text-[9px] font-semibold text-gray-700 whitespace-nowrap">
                                                         {s.total_sum ? s.total_sum.toLocaleString('ru-RU') : '0'} ₽
                                                     </span>
+                                                </div>
+                                                <div className="pl-[19px] truncate text-[9px] font-medium text-gray-400 whitespace-nowrap" title="Дата создания заказа">
+                                                    {s.created_at ? new Date(s.created_at).toLocaleDateString('ru-RU') : '—'}
                                                 </div>
                                             </div>
                                         </td>
