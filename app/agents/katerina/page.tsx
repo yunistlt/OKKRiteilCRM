@@ -16,6 +16,7 @@ const TYPE_LABEL: Record<string, { label: string; cls: string }> = {
     legal: { label: 'Юрист', cls: 'bg-indigo-100 text-indigo-800 border-indigo-200' },
     procurement: { label: 'Снабжение', cls: 'bg-teal-100 text-teal-800 border-teal-200' },
     reply_thread: { label: 'Переписка по заказу', cls: 'bg-slate-100 text-slate-600 border-slate-200' },
+    blocked: { label: 'Контрагент в блоке', cls: 'bg-rose-100 text-rose-800 border-rose-200' },
     noreply: { label: 'Робот / noreply', cls: 'bg-slate-100 text-slate-500 border-slate-200' },
     not_request: { label: 'Не заявка', cls: 'bg-amber-100 text-amber-900 border-amber-200' },
 };
@@ -128,7 +129,7 @@ export default async function KaterinaPage() {
                     <div className="mt-5 border-t border-slate-100 pt-4">
                         <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Сводка решений</div>
                         <ul className="mt-3 space-y-2 text-sm">
-                            {(['new_request', 'accounting', 'logistics', 'legal', 'procurement', 'reply_thread', 'noreply', 'not_request'] as const).map((t) => (
+                            {(['new_request', 'accounting', 'logistics', 'legal', 'procurement', 'reply_thread', 'blocked', 'noreply', 'not_request'] as const).map((t) => (
                                 <li key={t} className="flex items-center justify-between">
                                     <span className="text-slate-600">{TYPE_LABEL[t].label}</span>
                                     <span className="font-black text-slate-900">{counts[t] || 0}</span>
@@ -243,6 +244,8 @@ export default async function KaterinaPage() {
                                             {r.created_crm_order_id && orderUrl(r.created_crm_order_id) ? (
                                                 <a href={orderUrl(r.created_crm_order_id) as string} target="_blank" rel="noopener noreferrer"
                                                     className="font-bold text-sky-700 hover:underline">№ {r.created_crm_order_number || r.created_crm_order_id} ↗</a>
+                                            ) : r.email_type === 'new_request' && r.status === 'error' ? (
+                                                <span className="border border-rose-300 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-rose-900">ошибка создания</span>
                                             ) : (
                                                 <span className="text-slate-300">—</span>
                                             )}
