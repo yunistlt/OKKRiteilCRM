@@ -14,7 +14,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { classifyRoute, isReplyThread, isNoReplySender, loadSecretaryPrompt } from '@/lib/email/classify';
+import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml } from '@/lib/email/classify';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
@@ -268,6 +268,11 @@ export async function GET(req: Request) {
                         emailType = 'reply_thread';
                         const note = v.route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
                         reasoning = `Переписка по существующему заказу (Re/тег) — ${note} | ${v.reasoning}`;
+                    } else if (v.route === 'not_request' && hasCrmOrderTag(e.subject)) {
+                        // ИИ счёл «не заявка», но в теме тег заказа [#N/N] (CRM вешает его на переписку
+                        // по заказу) — это переписка по существующему заказу, а не «не заявка».
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${v.reasoning}`;
                     } else {
                         emailType = v.route;
                     }
@@ -298,11 +303,16 @@ export async function GET(req: Request) {
                 // 1) Новая заявка → создание заказа (если режим включён и отправитель не в исключениях).
                 if (createOrders && emailType === 'new_request' && !orderBlocked) {
                     try {
+                        // Текст для комментария: plain-текст, а если его нет (HTML-only письмо) — из HTML.
+                        const bodyForComment = (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html);
+                        const attNames = (Array.isArray(e.attachments_meta) ? e.attachments_meta : [])
+                            .map((a: any) => a?.filename).filter(Boolean);
                         const order = await createEmailLead({
                             email: e.from_email || '',
                             name: e.from_name || undefined,
                             subject: e.subject || undefined,
-                            bodySnippet: (e.body_text || '').slice(0, 1500),
+                            bodySnippet: (bodyForComment || '').slice(0, 1500),
+                            attachmentNames: attNames,
                             managerId: assignedManagerId,
                         });
                         createdOrderId = order.id;
