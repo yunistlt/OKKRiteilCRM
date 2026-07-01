@@ -218,7 +218,7 @@ export async function GET(req: Request) {
         // ── Фаза маршрутизации (агент-секретарь «Катерина»). ──
         // Один маршрут на письмо: заявка → заказ менеджеру; бухгалтерия/логистика/юрист → пересылка
         // в отдел; иначе пропуск. Сухой прогон: create_orders / forward_enabled = false.
-        const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
+        const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, blocked: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
         const { data: cfg } = await supabase.from('email_intake_config').select('create_orders').maybeSingle();
         const createOrders = Boolean(cfg?.create_orders); // false = сухой прогон заказов
         const [forwardEnabled, routes, orderBlocklist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist()]);
@@ -280,10 +280,12 @@ export async function GET(req: Request) {
                     }
                     if (emailType === 'new_request') {
                         if (isSenderBlocked(e.from_email, orderBlocklist)) {
-                            // Отправитель в списке исключений: письмо разбираем, но заказ не заводим
-                            // и менеджера не назначаем (чтобы не искажать баланс распределения).
+                            // Контрагент в списке исключений: письмо разбираем, но НЕ ставим «Новая заявка»
+                            // и не заводим заказ — отдельная метка «Контрагент в блоке». Менеджера не
+                            // назначаем (чтобы не искажать баланс распределения).
                             orderBlocked = true;
-                            reasoning = `${reasoning} | Отправитель в списке исключений — заказ не создаём`;
+                            emailType = 'blocked';
+                            reasoning = `Контрагент в списке исключений — заказ не создаём | ${v.reasoning}`;
                         } else {
                             const a = await resolveAssignment(e.from_email || '', ctx);
                             assignedManagerId = a.managerId;
