@@ -46,8 +46,17 @@ export async function getOrderBlocklist(): Promise<string[]> {
 }
 
 /**
- * Отправитель в списке исключений? Запись с «@» — точный адрес; без «@» — домен
- * (совпадает сам домен и его поддомены). Регистр игнорируется.
+ * Исключения из noreply-фильтра: адреса/домены-роботы, которые НА САМОМ ДЕЛЕ несут лиды
+ * (уведомления сайта-магазина webasyst и т.п.) — их не отсекаем, а классифицируем и заводим заказ.
+ */
+export async function getNoreplyAllowlist(): Promise<string[]> {
+    const { data } = await supabase.from('email_intake_config').select('noreply_allowlist').maybeSingle();
+    return Array.isArray(data?.noreply_allowlist) ? (data!.noreply_allowlist as string[]) : [];
+}
+
+/**
+ * Отправитель в списке (исключений на заказ ИЛИ noreply-исключений)? Запись с «@» — точный адрес;
+ * без «@» — домен (совпадает сам домен и его поддомены). Регистр игнорируется.
  */
 export function isSenderBlocked(fromEmail: string | null | undefined, blocklist: string[]): boolean {
     if (!fromEmail || !blocklist?.length) return false;
