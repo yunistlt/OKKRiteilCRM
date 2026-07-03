@@ -16,7 +16,7 @@ import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml } from '@/lib/email/classify';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment, getManagersOnLeave } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
@@ -221,7 +221,7 @@ export async function GET(req: Request) {
         const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, blocked: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
         const { data: cfg } = await supabase.from('email_intake_config').select('create_orders').maybeSingle();
         const createOrders = Boolean(cfg?.create_orders); // false = сухой прогон заказов
-        const [forwardEnabled, routes, orderBlocklist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist()]);
+        const [forwardEnabled, routes, orderBlocklist, noreplyAllowlist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist(), getNoreplyAllowlist()]);
 
         const { data: pending } = await supabase
             .from('incoming_emails')
@@ -244,7 +244,9 @@ export async function GET(req: Request) {
                 let assignedManagerId: number | null = null;
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
 
-                if (isNoReplySender(e.from_email)) {
+                // noreply-отправитель пропускаем, КРОМЕ исключений (сайт-магазин webasyst и т.п.):
+                // такие письма несут реальные лиды/заказы — их классифицируем как обычно.
+                if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
                     const v = await classifyRoute(

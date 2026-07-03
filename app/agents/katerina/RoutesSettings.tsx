@@ -15,15 +15,17 @@ interface Props {
     initialCreateOrders: boolean;
     initialForwardEnabled: boolean;
     initialOrderBlocklist: string[];
+    initialNoreplyAllowlist: string[];
     canEdit: boolean;
 }
 
-export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, initialOrderBlocklist, canEdit }: Props) {
+export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, initialOrderBlocklist, initialNoreplyAllowlist, canEdit }: Props) {
     const router = useRouter();
     const [routes, setRoutes] = useState<RouteRow[]>(initialRoutes.map((r) => ({ ...r, email: r.email || '' })));
     const [createOrders, setCreateOrders] = useState(initialCreateOrders);
     const [forwardEnabled, setForwardEnabled] = useState(initialForwardEnabled);
     const [blocklist, setBlocklist] = useState((initialOrderBlocklist || []).join('\n'));
+    const [noreplyAllow, setNoreplyAllow] = useState((initialNoreplyAllowlist || []).join('\n'));
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -44,6 +46,7 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                     create_orders: createOrders,
                     forward_enabled: forwardEnabled,
                     order_blocklist: blocklist.split('\n').map((s) => s.trim()).filter(Boolean),
+                    noreply_allowlist: noreplyAllow.split('\n').map((s) => s.trim()).filter(Boolean),
                 }),
             });
             const data = await res.json();
@@ -125,6 +128,25 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                     onChange={(e) => setBlocklist(e.target.value)}
                     rows={4}
                     placeholder={'dmto@pharmperspectiva.ru\nexample-tenders.ru'}
+                    className="mt-3 w-full max-w-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-sky-500 disabled:bg-slate-50 disabled:text-slate-500"
+                />
+            </div>
+
+            {/* Исключения из noreply-фильтра (источники лидов с адреса-робота) */}
+            <div className="mt-6 border-t border-slate-100 pt-5">
+                <div className="text-sm font-bold text-slate-800">Разбирать письма от этих «роботов» (не считать спамом)</div>
+                <p className="mt-1 text-xs text-slate-500">
+                    Обычно адреса с <code className="bg-slate-100 px-1">noreply</code> Катерина пропускает. Но некоторые из них —
+                    реальные лиды: уведомления сайта-магазина (например <code className="bg-slate-100 px-1">webasyst.biz</code> —
+                    «Новый заказ», формы «Заказать звонок»). Адреса/домены отсюда будут разобраны как обычные письма и заведут заказ.
+                    По одному в строке.
+                </p>
+                <textarea
+                    value={noreplyAllow}
+                    disabled={!canEdit}
+                    onChange={(e) => setNoreplyAllow(e.target.value)}
+                    rows={3}
+                    placeholder={'webasyst.biz'}
                     className="mt-3 w-full max-w-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-sky-500 disabled:bg-slate-50 disabled:text-slate-500"
                 />
             </div>
