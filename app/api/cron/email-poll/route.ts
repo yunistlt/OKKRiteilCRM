@@ -290,6 +290,12 @@ export async function GET(req: Request) {
                     } else {
                         emailType = v.route;
                     }
+                    // Источник-робот с лидами (webasyst): если ИИ счёл «не заявка», но в теле есть контакт
+                    // клиента (заявка с сайта, форма «Заказать звонок») — это всё равно лид → заводим заказ.
+                    if (isRobotLead && emailType === 'not_request' && (leadContact.email || leadContact.phone)) {
+                        emailType = 'new_request';
+                        reasoning = `Заявка с сайта (форма/заказ) — контакт клиента в теле | ${v.reasoning}`;
+                    }
                     if (emailType === 'new_request') {
                         if (isSenderBlocked(e.from_email, orderBlocklist)) {
                             // Контрагент в списке исключений: письмо разбираем, но НЕ ставим «Новая заявка»
