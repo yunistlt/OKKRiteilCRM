@@ -94,6 +94,24 @@ export function documentAttachmentNames(attachments?: EmailAttachmentMeta[] | nu
 }
 
 /**
+ * Извлекает реальный контакт клиента из структурированного тела письма (напр. уведомления
+ * сайта-магазина webasyst: блоки «Email:», «Телефон:», «ПОЛУЧАТЕЛЬ»). Нужно, когда From = адрес
+ * робота (noreply@webasyst.biz), а настоящий клиент — в теле. Возвращает то, что нашлось.
+ */
+export function extractLeadContact(body?: string | null): { email?: string; phone?: string; name?: string } {
+    const out: { email?: string; phone?: string; name?: string } = {};
+    if (!body) return out;
+    const emailM = body.match(/e-?mail\s*[:：]\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+    if (emailM) out.email = emailM[1].toLowerCase();
+    const phoneM = body.match(/(?:тел(?:ефон)?|phone)\s*[:：]\s*(\+?\d[\d()\-\s]{5,}\d)/i);
+    if (phoneM) out.phone = phoneM[1].replace(/[()\-\s]/g, '');
+    const nameM = body.match(/ПОЛУЧАТЕЛЬ\s*[\r\n]+\s*([^\r\n]{1,80})/i)
+        || body.match(/ПЛАТЕЛЬЩИК\s*[\r\n]+\s*([^\r\n]{1,80})/i);
+    if (nameM) out.name = nameM[1].trim();
+    return out;
+}
+
+/**
  * Признак «письмо относится к существующему заказу» → переписку пропускаем (AI не читаем).
  * Срабатывает на ЛЮБОЙ из двух признаков:
  *  1) латинский токен `Re` перед двоеточием (Re:, RE:, RE[2]:, "RE: RE:") — ответ в ветке;

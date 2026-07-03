@@ -91,6 +91,7 @@ export async function findCustomerByEmail(email: string) {
 export async function createEmailLead(params: {
     email: string;
     name?: string;
+    phone?: string;
     subject?: string;
     bodySnippet?: string;
     attachmentNames?: string[];
@@ -98,15 +99,16 @@ export async function createEmailLead(params: {
 }): Promise<{ id: number; number: string }> {
     const { site } = await getCrmConfig();
 
-    // 1. Найти или создать клиента по email
+    // 1. Найти или создать клиента по email (для webasyst email — реальный клиента, не робот)
     let customerId: number | null = null;
     const existing = params.email ? await findCustomerByEmail(params.email) : null;
     if (existing) {
         customerId = existing.id;
-    } else if (params.email) {
+    } else if (params.email || params.phone) {
         const customerResult = await postRetailCrm('customers/create', 'customer', {
             firstName: params.name || 'Клиент (письмо)',
-            email: params.email,
+            ...(params.email ? { email: params.email } : {}),
+            ...(params.phone ? { phones: [{ number: params.phone }] } : {}),
         }, site);
         if (customerResult.success) customerId = customerResult.id;
     }
@@ -117,7 +119,7 @@ export async function createEmailLead(params: {
     const attLine = attNames.length ? `\n\n📎 Вложения: ${attNames.join(', ')}` : '';
     const comment = `✉️ Заявка принята AI-секретарём (входящее письмо)
 
-📧 Email: ${params.email || 'не определён'}
+📧 Email: ${params.email || 'не определён'}${params.phone ? `\n📱 Телефон: ${params.phone}` : ''}
 📨 Тема: ${params.subject || '(без темы)'}
 
 📝 Текст письма:
@@ -126,10 +128,11 @@ ${bodyPart}${attLine}`;
     const orderData: any = {
         status: 'novyi-1', // всегда «Новая»
         firstName: params.name || 'Клиент',
-        email: params.email,
         customerComment: comment,
         source: { source: 'email-secretary' },
     };
+    if (params.email) orderData.email = params.email;
+    if (params.phone) orderData.phone = params.phone;
     if (customerId) orderData.customer = { id: customerId };
     if (params.managerId) orderData.managerId = params.managerId;
 

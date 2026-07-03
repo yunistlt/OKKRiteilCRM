@@ -31,7 +31,10 @@
 
 ### Правила поверх ИИ-ответа (в воркере, детерминированные)
 
-- **Пре-фильтр noreply** (`isNoReplySender`) → `noreply`, ИИ не вызываем.
+- **Пре-фильтр noreply** (`isNoReplySender`) → `noreply`, ИИ не вызываем. **Исключения**
+  (`email_intake_config.noreply_allowlist`, `getNoreplyAllowlist`): адреса/домены-роботы, которые
+  несут реальные лиды (сайт-магазин **webasyst.biz**: «Новый заказ», формы «Заказать звонок») —
+  их НЕ отсекаем, а классифицируем как обычно и заводим заказ. Правится в UI.
 - **Переписка по заказу** (`isReplyThread`: латинский `Re:`/`RE[2]:` ИЛИ тег `[#N/NNNNN]`):
   - ИИ сказал `new_request` → **`reply_thread`** (не плодим дубль заказа).
   - ИИ сказал `procurement` → **`reply_thread`** (снабжение = НОВОЕ предложение поставщика; «Re:» на наш
@@ -96,7 +99,8 @@
 ## Тумблеры/настройки (`email_intake_config`, singleton)
 
 `create_orders` (заказы), `forward_enabled` (пересылка), `balance_window_days` (7), `order_blocklist`
-(text[] адресов/доменов), `load_exclude_status_codes`. Всё правится в UI, не в коде.
+(text[] адресов/доменов → метка `blocked`), `noreply_allowlist` (text[] исключений из noreply-фильтра,
+засеян `webasyst.biz`), `load_exclude_status_codes`. Всё правится в UI, не в коде.
 
 ---
 

@@ -14,7 +14,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml } from '@/lib/email/classify';
+import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment, getManagersOnLeave } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
 import { sendAppEmail } from '@/lib/email';
@@ -244,6 +244,16 @@ export async function GET(req: Request) {
                 let assignedManagerId: number | null = null;
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
 
+                // Для «роботов-лидов» (webasyst и т.п.) реальный контакт клиента — в теле письма,
+                // а не в From (там адрес робота). Тянем email/телефон/имя для карточки и назначения.
+                const isRobotLead = isSenderBlocked(e.from_email, noreplyAllowlist);
+                const leadContact = isRobotLead
+                    ? extractLeadContact((e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html))
+                    : {};
+                const custEmail = leadContact.email || e.from_email || '';
+                const custName = leadContact.name || e.from_name || undefined;
+                const custPhone = leadContact.phone || undefined;
+
                 // noreply-отправитель пропускаем, КРОМЕ исключений (сайт-магазин webasyst и т.п.):
                 // такие письма несут реальные лиды/заказы — их классифицируем как обычно.
                 if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
@@ -289,7 +299,7 @@ export async function GET(req: Request) {
                             emailType = 'blocked';
                             reasoning = `Контрагент в списке исключений — заказ не создаём | ${v.reasoning}`;
                         } else {
-                            const a = await resolveAssignment(e.from_email || '', ctx);
+                            const a = await resolveAssignment(custEmail, ctx);
                             assignedManagerId = a.managerId;
                             reasoning = `${reasoning} | Назначение: ${a.reason}`;
                         }
@@ -314,8 +324,9 @@ export async function GET(req: Request) {
                         const attNames = (Array.isArray(e.attachments_meta) ? e.attachments_meta : [])
                             .map((a: any) => a?.filename).filter(Boolean);
                         const order = await createEmailLead({
-                            email: e.from_email || '',
-                            name: e.from_name || undefined,
+                            email: custEmail || '',
+                            name: custName,
+                            phone: custPhone,
                             subject: e.subject || undefined,
                             bodySnippet: (bodyForComment || '').slice(0, 1500),
                             attachmentNames: attNames,
