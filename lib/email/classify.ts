@@ -101,13 +101,43 @@ export function documentAttachmentNames(attachments?: EmailAttachmentMeta[] | nu
 export function extractLeadContact(body?: string | null): { email?: string; phone?: string; name?: string } {
     const out: { email?: string; phone?: string; name?: string } = {};
     if (!body) return out;
-    const emailM = body.match(/e-?mail\s*[:：]\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
-    if (emailM) out.email = emailM[1].toLowerCase();
-    const phoneM = body.match(/(?:тел(?:ефон)?|phone)\s*[:：]\s*(\+?\d[\d()\-\s]{5,}\d)/i);
-    if (phoneM) out.phone = phoneM[1].replace(/[()\-\s]/g, '');
-    const nameM = body.match(/ПОЛУЧАТЕЛЬ\s*[\r\n]+\s*([^\r\n]{1,80})/i)
-        || body.match(/ПЛАТЕЛЬЩИК\s*[\r\n]+\s*([^\r\n]{1,80})/i);
-    if (nameM) out.name = nameM[1].trim();
+
+    // 1. Попробуем извлечь из пересылаемого сообщения (Fwd/Forwarded)
+    // От: Митяшина Дарья Александровна <d.mitiashina@avp-group.org>
+    // From: ...
+    const forwardedM = body.match(/(?:От|From)\s*:\s*([^<\r\n]+?)\s*<([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})>/i);
+    if (forwardedM) {
+        out.name = forwardedM[1].trim();
+        out.email = forwardedM[2].trim().toLowerCase();
+    }
+
+    // 2. Если email не найден в шапке пересылки, ищем e-mail по тексту
+    if (!out.email) {
+        // Поддержка "E - mail : email" и "e-mail: email"
+        const emailM = body.match(/(?:e\s*-\s*mail|email|e-mail)\s*[:：]\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+        if (emailM) {
+            out.email = emailM[1].toLowerCase();
+        } else {
+            // Фолбэк на старый regex
+            const emailOldM = body.match(/e-?mail\s*[:：]\s*([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i);
+            if (emailOldM) out.email = emailOldM[1].toLowerCase();
+        }
+    }
+
+    // 3. Извлечение телефона
+    // Поддержка "тел. +7 ...", "тел: +7 ...", "тел +7 ...", "телефон +7 ...", "phone +7 ..."
+    const phoneM = body.match(/(?:тел(?:ефон)?|phone)\s*[\.:：]?\s*(\+?\d[\d()\-\s]{5,}\d)/i);
+    if (phoneM) {
+        out.phone = phoneM[1].replace(/[()\-\s]/g, '');
+    }
+
+    // 4. Извлечение имени получателя/плательщика (для форм с сайта)
+    if (!out.name) {
+        const nameM = body.match(/ПОЛУЧАТЕЛЬ\s*[\r\n]+\s*([^\r\n]{1,80})/i)
+            || body.match(/ПЛАТЕЛЬЩИК\s*[\r\n]+\s*([^\r\n]{1,80})/i);
+        if (nameM) out.name = nameM[1].trim();
+    }
+
     return out;
 }
 
