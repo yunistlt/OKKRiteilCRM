@@ -1,0 +1,11 @@
+import postgres from 'postgres';
+import { readFileSync } from 'fs';
+const env = readFileSync('.env.local','utf8');
+const url = env.match(/^DATABASE_URL=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+const sql = postgres(url, { ssl: 'require' });
+await sql.unsafe(readFileSync('migrations/20260701_email_intake_absences.sql','utf8'));
+const exist = await sql.unsafe(`SELECT id FROM email_intake_absences WHERE manager_id=10 AND start_date='2026-07-01' AND end_date='2026-07-14'`);
+if(!exist.length) await sql.unsafe(`INSERT INTO email_intake_absences(manager_id,start_date,end_date,note) VALUES (10,'2026-07-01','2026-07-14','отпуск')`);
+const rows = await sql.unsafe(`SELECT a.id,a.manager_id,a.start_date::text,a.end_date::text,(m.first_name||' '||m.last_name) name FROM email_intake_absences a LEFT JOIN managers m ON m.id=a.manager_id ORDER BY start_date DESC`);
+console.log('absences:', JSON.stringify(rows, null, 2));
+await sql.end();

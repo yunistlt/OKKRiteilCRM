@@ -1,0 +1,10 @@
+import postgres from 'postgres';
+import { readFileSync } from 'fs';
+const env = readFileSync('.env.local','utf8');
+const url = env.match(/^DATABASE_URL=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+const sql = postgres(url, { ssl: 'require' });
+const r = await sql.unsafe(`SELECT subject, body_text, coalesce(length(body_html),0) hlen FROM incoming_emails WHERE from_email ILIKE '%webasyst%' AND subject ILIKE 'Новый заказ%' ORDER BY received_at DESC LIMIT 1`);
+console.log('SUBJECT:', r[0].subject, '| html_len:', r[0].hlen);
+console.log('--- BODY_TEXT ---');
+console.log(r[0].body_text || '(пусто)');
+await sql.end();

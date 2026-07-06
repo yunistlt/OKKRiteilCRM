@@ -62,6 +62,7 @@ export default function LeadCatcherPage() {
     const [totalSessionsCount, setTotalSessionsCount] = useState<number>(0);
     const [totalOrdersCount, setTotalOrdersCount] = useState<number>(0);
     const [capturedContactsList, setCapturedContactsList] = useState<Session[]>([]);
+    const [ordersMap, setOrdersMap] = useState<Record<number, any>>({});
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +74,7 @@ export default function LeadCatcherPage() {
     };
 
     const fetchSessions = async () => {
-        const [sessRes, countRes, totalRes, ordersRes, contactsListRes] = await Promise.all([
+        const [sessRes, countRes, totalRes, ordersCountRes, contactsListRes] = await Promise.all([
             supabase
                 .from('widget_sessions')
                 .select('*')
@@ -104,15 +105,75 @@ export default function LeadCatcherPage() {
         if (totalRes.count !== null) {
             setTotalSessionsCount(totalRes.count);
         }
-        if (ordersRes.count !== null) {
-            setTotalOrdersCount(ordersRes.count);
+        if (ordersCountRes.count !== null) {
+            setTotalOrdersCount(ordersCountRes.count);
         }
         if (contactsListRes.data) {
             setCapturedContactsList(contactsListRes.data);
         }
 
-        const sessData = sessRes.data;
-        if (sessData) {
+        const sessData = sessRes.data || [];
+        const contactsList = contactsListRes.data || [];
+        const orderIds = Array.from(new Set([
+            ...sessData.map((s: any) => s.crm_order_id),
+            ...contactsList.map((c: any) => c.crm_order_id)
+        ].filter(Boolean))) as number[];
+
+        let newOrdersMap: Record<number, any> = {};
+
+        if (orderIds.length > 0) {
+            const [ordersRes, managersRes, statusesRes] = await Promise.all([
+                supabase
+                    .from('orders')
+                    .select('order_id, status, totalsumm, raw_payload, manager_id')
+                    .in('order_id', orderIds),
+                supabase
+                    .from('managers')
+                    .select('id, first_name, last_name'),
+                supabase
+                    .from('statuses')
+                    .select('code, name, color')
+            ]);
+
+            const ordersList = ordersRes.data || [];
+            const managersList = managersRes.data || [];
+            const statusesList = statusesRes.data || [];
+
+            const managersMap = new Map<number, string>(managersList.map((m: any) => [m.id, `${m.first_name || ''} ${m.last_name || ''}`.trim()]));
+            const statusesMap = new Map<string, { name: string | null; color: string | null }>(
+                statusesList.map((s: any) => [s.code, { name: s.name, color: s.color }])
+            );
+
+            ordersList.forEach((o: any) => {
+                const rawPayload = o.raw_payload || {};
+                const customer = rawPayload?.customer || {};
+                const nameParts = [
+                    customer?.lastName || rawPayload?.lastName || '',
+                    customer?.firstName || rawPayload?.firstName || '',
+                    customer?.patronymic || rawPayload?.patronymic || ''
+                ].filter(Boolean);
+                let customerName = nameParts.join(' ').trim();
+                if (!customerName) {
+                    const contragent = rawPayload?.contragent || {};
+                    customerName = contragent?.companyName || contragent?.contragentName || '';
+                }
+
+                const statusInfo = statusesMap.get(o.status) || { name: o.status || null, color: null };
+                const managerName = managersMap.get(o.manager_id) || (rawPayload?.manager ? `${rawPayload.manager.firstName || ''} ${rawPayload.manager.lastName || ''}`.trim() : null);
+
+                newOrdersMap[o.order_id] = {
+                    order_id: o.order_id,
+                    statusName: statusInfo.name,
+                    statusColor: statusInfo.color,
+                    amount: o.totalsumm,
+                    managerName: managerName || '—',
+                    customerName: customerName || null
+                };
+            });
+        }
+        setOrdersMap(newOrdersMap);
+
+        if (sessData.length > 0) {
             const sessionsWithPreview = await Promise.all(sessData.map(async (s: any) => {
                 const { data: lastMsg } = await supabase
                     .from('widget_messages')
@@ -237,9 +298,7 @@ export default function LeadCatcherPage() {
     };
 
     const selectedSession = sessions.find((s: Session) => s.id === selectedSessionId);
-    const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';
-
-    return (
+    const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';    return (
         <div className="flex h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
             {/* Lead List Sidebar */}
             <div className="w-96 border-r bg-white flex flex-col shadow-lg z-20">
@@ -256,12 +315,6 @@ export default function LeadCatcherPage() {
                         >
                             <span>⚙️</span> Настройки
                         </a>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between bg-gray-800/40 rounded-xl px-3 py-2 text-[11px] border border-gray-800">
-                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[9px]">Собрано контактов:</span>
-                        <span className="bg-green-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.4)]">
-                            {totalContacts !== null ? totalContacts : '...'}
-                        </span>
                     </div>
                     <div className="mt-4">
                         <input 
@@ -280,52 +333,56 @@ export default function LeadCatcherPage() {
                     ) : filteredSessions.length === 0 ? (
                         <div className="p-10 text-center text-gray-400 italic text-sm">Ничего не найдено</div>
                     ) : (
-                        filteredSessions.map(s => (
-                            <div 
-                                key={s.id} 
-                                onClick={() => setSelectedSessionId(s.id)}
-                                className={`p-4 border-b cursor-pointer transition-all hover:bg-blue-50/50 relative group ${selectedSessionId === s.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
-                            >
-                                <div className="flex items-start gap-3">
-                                    <div className="relative">
-                                        <div className={`w-10 h-10 rounded-2xl flex-shrink-0 flex items-center justify-center text-xs font-black shadow-sm ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
-                                            {getInitials(s.nickname)}
-                                        </div>
-                                        {isOnline(s.updated_at) && (
-                                            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex justify-between items-center mb-1">
-                                            <span className="text-sm font-black text-gray-900 truncate flex items-center gap-1.5">
-                                                {s.nickname || 'Аноним'}
-                                                {s.has_contacts && (
-                                                    <span className="bg-green-100 text-green-800 text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider" title="Контакт получен">
-                                                        📞
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="text-[8px] text-gray-400 font-bold">{new Date(s.updated_at || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                        </div>
-                                        <div className="text-[11px] text-blue-600 font-black truncate">
-                                            {s.last_message ? (
-                                                <span className="text-gray-500 font-medium italic">💬 {s.last_message}</span>
-                                            ) : (
-                                                <span className="text-gray-300 font-normal italic">Нет сообщений</span>
+                        filteredSessions.map(s => {
+                            const orderDetails = s.crm_order_id ? ordersMap[s.crm_order_id] : null;
+                            const displayName = orderDetails?.customerName || s.nickname || 'Аноним';
+                            return (
+                                <div 
+                                    key={s.id} 
+                                    onClick={() => setSelectedSessionId(s.id)}
+                                    className={`p-4 border-b cursor-pointer transition-all hover:bg-blue-50/50 relative group ${selectedSessionId === s.id ? 'bg-blue-50 border-l-4 border-l-blue-600' : ''}`}
+                                >
+                                    <div className="flex items-start gap-3">
+                                        <div className="relative">
+                                            <div className={`w-10 h-10 rounded-2xl flex-shrink-0 flex items-center justify-center text-xs font-black shadow-sm ${selectedSessionId === s.id ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-500'}`}>
+                                                {getInitials(displayName)}
+                                            </div>
+                                            {isOnline(s.updated_at) && (
+                                                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full shadow-sm"></div>
                                             )}
                                         </div>
-                                        <div className="text-[9px] text-gray-400 mt-1 flex items-center gap-1">
-                                            <span className="font-bold">{s.geo_city || 'Неизвестно'}</span>
-                                            <span>•</span>
-                                            <span>{s.domain}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="text-sm font-black text-gray-900 truncate flex items-center gap-1.5">
+                                                    {displayName}
+                                                    {s.has_contacts && (
+                                                        <span className="bg-green-100 text-green-800 text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider" title="Контакт получен">
+                                                            📞
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span className="text-[8px] text-gray-400 font-bold">{new Date(s.updated_at || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            </div>
+                                            <div className="text-[11px] text-blue-600 font-black truncate">
+                                                {s.last_message ? (
+                                                    <span className="text-gray-500 font-medium italic">💬 {s.last_message}</span>
+                                                ) : (
+                                                    <span className="text-gray-300 font-normal italic">Нет сообщений</span>
+                                                )}
+                                            </div>
+                                            <div className="text-[9px] text-gray-400 mt-1 flex items-center gap-1">
+                                                <span className="font-bold">{s.geo_city || 'Неизвестно'}</span>
+                                                <span>•</span>
+                                                <span>{s.domain}</span>
+                                            </div>
                                         </div>
+                                        {s.is_human_takeover && (
+                                            <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1 animate-pulse"></div>
+                                        )}
                                     </div>
-                                    {s.is_human_takeover && (
-                                        <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0 mt-1 animate-pulse"></div>
-                                    )}
                                 </div>
-                            </div>
-                        ))
+                            );
+                        })
                     )}
                 </div>
             </div>
@@ -335,40 +392,45 @@ export default function LeadCatcherPage() {
                 {selectedSession ? (
                     <>
                         {/* Session Header */}
-                        <div className="px-8 py-6 border-b flex justify-between items-center bg-white/80 backdrop-blur-md z-10 sticky top-0">
-                            <div className="flex items-center gap-4">
-                                <div className="relative">
-                                    <div className="w-12 h-12 rounded-3xl bg-gray-900 text-white flex items-center justify-center text-lg font-black">
-                                        {getInitials(selectedSession.nickname)}
+                        {(() => {
+                            const selectedSessionDetails = selectedSession?.crm_order_id ? ordersMap[selectedSession.crm_order_id] : null;
+                            const selectedDisplayName = selectedSessionDetails?.customerName || selectedSession?.nickname || 'Аноним';
+                            return (
+                                <div className="px-8 py-6 border-b flex justify-between items-center bg-white/80 backdrop-blur-md z-10 sticky top-0">
+                                    <div className="flex items-center gap-4">
+                                        <div className="relative">
+                                            <div className="w-12 h-12 rounded-3xl bg-gray-900 text-white flex items-center justify-center text-lg font-black">
+                                                {getInitials(selectedDisplayName)}
+                                            </div>
+                                            {isOnline(selectedSession.updated_at) && (
+                                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-lg"></div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                                                {selectedDisplayName}
+                                                {selectedSession.is_human_takeover && (
+                                                    <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider">Прямой эфир</span>
+                                                )}
+                                            </h2>
+                                            <p className="text-xs text-gray-400 font-medium">Сессия: {selectedSession.id.slice(0,8)} • {selectedSession.geo_city || 'Братислава?'}</p>
+                                        </div>
                                     </div>
-                                    {isOnline(selectedSession.updated_at) && (
-                                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full shadow-lg"></div>
-                                    )}
+                                    <div className="flex gap-3">
+                                        <button 
+                                            onClick={() => toggleTakeover(selectedSession.id, selectedSession.is_human_takeover)}
+                                            className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
+                                                selectedSession.is_human_takeover 
+                                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-green-200' 
+                                                : 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200'
+                                            }`}
+                                        >
+                                            {selectedSession.is_human_takeover ? 'Вернуть ИИ' : 'Перехватить диалог'}
+                                        </button>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                                        {selectedSession.nickname}
-                                        {selectedSession.is_human_takeover && (
-                                            <span className="bg-orange-100 text-orange-600 text-[9px] px-2 py-0.5 rounded-lg font-black uppercase tracking-wider">Прямой эфир</span>
-                                        )}
-                                    </h2>
-                                    <p className="text-xs text-gray-400 font-medium">Сессия: {selectedSession.id.slice(0,8)} • {selectedSession.geo_city || 'Братислава?'}</p>
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-3">
-                                <button 
-                                    onClick={() => toggleTakeover(selectedSession.id, selectedSession.is_human_takeover)}
-                                    className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                                        selectedSession.is_human_takeover 
-                                        ? 'bg-green-500 text-white hover:bg-green-600 shadow-green-200' 
-                                        : 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200'
-                                    }`}
-                                >
-                                    {selectedSession.is_human_takeover ? 'Вернуть ИИ' : 'Перехватить диалог'}
-                                </button>
-                            </div>
-                        </div>
+                            );
+                        })()}
 
                         <div className="flex-1 flex overflow-hidden">
                             {/* Chat Window */}
@@ -622,6 +684,8 @@ export default function LeadCatcherPage() {
                                         ) : (
                                             capturedContactsList.map(item => {
                                                 const hasOrder = item.crm_order_id !== null && item.crm_order_id !== undefined;
+                                                const orderDetails = item.crm_order_id ? ordersMap[item.crm_order_id] : null;
+                                                const displayName = orderDetails?.customerName || item.nickname || 'Аноним';
                                                 return (
                                                     <tr 
                                                         key={item.id} 
@@ -629,7 +693,7 @@ export default function LeadCatcherPage() {
                                                         className="hover:bg-blue-50/20 cursor-pointer transition-all text-xs"
                                                     >
                                                         <td className="px-6 py-4 font-bold text-gray-900">
-                                                            {item.nickname || 'Аноним'}
+                                                            {displayName}
                                                         </td>
                                                         <td className="px-6 py-4 space-y-0.5">
                                                             {item.contact_phone && <p className="font-bold text-gray-700">{item.contact_phone}</p>}
@@ -644,14 +708,26 @@ export default function LeadCatcherPage() {
                                                         </td>
                                                         <td className="px-6 py-4" onClick={(e) => hasOrder && e.stopPropagation()}>
                                                             {hasOrder ? (
-                                                                <a 
-                                                                    href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`} 
-                                                                    target="_blank" 
-                                                                    rel="noopener noreferrer" 
-                                                                    className="inline-flex items-center gap-1 bg-green-50 text-green-700 font-black px-2.5 py-1 rounded-lg border border-green-100 hover:bg-green-100 transition-all text-[10px]"
-                                                                >
-                                                                    #{item.crm_order_id} ↗
-                                                                </a>
+                                                                <div className="flex flex-col gap-1">
+                                                                    <a 
+                                                                        href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`} 
+                                                                        target="_blank" 
+                                                                        rel="noopener noreferrer" 
+                                                                        className="text-blue-600 font-bold hover:text-blue-800 hover:underline text-sm"
+                                                                    >
+                                                                        #{item.crm_order_id} ↗
+                                                                    </a>
+                                                                    {orderDetails && (
+                                                                        <div className="text-[10px] text-gray-500 space-y-0.5 mt-0.5">
+                                                                            <div className="flex items-center gap-1">
+                                                                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: orderDetails.statusColor || '#CBD5E1' }}></span>
+                                                                                <span className="font-semibold text-gray-700">{orderDetails.statusName || 'Без статуса'}</span>
+                                                                            </div>
+                                                                            <p className="font-bold text-gray-800">Сумма: {orderDetails.amount?.toLocaleString() || 0} руб.</p>
+                                                                            <p className="text-gray-450">Менеджер: {orderDetails.managerName || '—'}</p>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
                                                             ) : (
                                                                 <span className="text-gray-300 italic text-[10px]">в очереди...</span>
                                                             )}
