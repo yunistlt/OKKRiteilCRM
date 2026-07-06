@@ -29,6 +29,7 @@ interface CalcRow {
     total: number;
     margin_info: number;
     breakdown: any;
+    computed_at?: string;
 }
 
 export default function SalaryDashboard() {
@@ -189,6 +190,17 @@ export default function SalaryDashboard() {
                 <span className={`px-2 py-0.5 text-xs ${closed ? 'bg-gray-200 text-gray-700' : data?.period?.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                     {closed ? 'закрыт' : data?.period?.status === 'open' ? 'открыт' : 'не рассчитан'}
                 </span>
+                {rows.length > 0 && rows[0].computed_at && (
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5" title="Время последнего пересчета показателей">
+                        Расчёт от: {new Date(rows[0].computed_at).toLocaleString('ru-RU', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        })}
+                    </span>
+                )}
                 {rows.length > 0 && <span className="ml-auto font-medium text-foreground">ФОТ отдела: {rub(data!.total)}</span>}
             </div>
 
