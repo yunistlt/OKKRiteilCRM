@@ -22,6 +22,11 @@ interface Session {
     updated_at: string; // Used for online status
     last_message?: string;
     last_message_time?: string;
+    has_contacts?: boolean;
+    contact_name?: string | null;
+    contact_phone?: string | null;
+    contact_email?: string | null;
+    contact_company?: string | null;
 }
 
 interface Message {
@@ -51,6 +56,7 @@ export default function LeadCatcherPage() {
     const [sending, setSending] = useState(false);
     const [notes, setNotes] = useState('');
     const [search, setSearch] = useState('');
+    const [totalContacts, setTotalContacts] = useState<number | null>(null);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -62,12 +68,23 @@ export default function LeadCatcherPage() {
     };
 
     const fetchSessions = async () => {
-        const { data: sessData } = await supabase
-            .from('widget_sessions')
-            .select('*')
-            .order('updated_at', { ascending: false })
-            .limit(100);
+        const [sessRes, countRes] = await Promise.all([
+            supabase
+                .from('widget_sessions')
+                .select('*')
+                .order('updated_at', { ascending: false })
+                .limit(100),
+            supabase
+                .from('widget_sessions')
+                .select('*', { count: 'exact', head: true })
+                .eq('has_contacts', true)
+        ]);
         
+        if (countRes.count !== null) {
+            setTotalContacts(countRes.count);
+        }
+
+        const sessData = sessRes.data;
         if (sessData) {
             const sessionsWithPreview = await Promise.all(sessData.map(async (s: any) => {
                 const { data: lastMsg } = await supabase
@@ -213,6 +230,12 @@ export default function LeadCatcherPage() {
                             <span>⚙️</span> Настройки
                         </a>
                     </div>
+                    <div className="mt-3 flex items-center justify-between bg-gray-850 rounded-xl px-3 py-2 text-[11px] border border-gray-800">
+                        <span className="text-gray-450 font-bold uppercase tracking-wider text-[9px]">Собрано контактов:</span>
+                        <span className="bg-green-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.4)]">
+                            {totalContacts !== null ? totalContacts : '...'}
+                        </span>
+                    </div>
                     <div className="mt-4">
                         <input 
                             type="text" 
@@ -247,7 +270,14 @@ export default function LeadCatcherPage() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-center mb-1">
-                                            <span className="text-sm font-black text-gray-900 truncate">{s.nickname || 'Аноним'}</span>
+                                            <span className="text-sm font-black text-gray-900 truncate flex items-center gap-1.5">
+                                                {s.nickname || 'Аноним'}
+                                                {s.has_contacts && (
+                                                    <span className="bg-green-100 text-green-800 text-[8px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wider" title="Контакт получен">
+                                                        📞
+                                                    </span>
+                                                )}
+                                            </span>
                                             <span className="text-[8px] text-gray-400 font-bold">{new Date(s.updated_at || s.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
                                         <div className="text-[11px] text-blue-600 font-black truncate">
@@ -409,6 +439,44 @@ export default function LeadCatcherPage() {
                                             </div>
                                         </div>
                                     </section>
+                                    
+                                    {/* Captured Contacts */}
+                                    {(selectedSession.has_contacts || selectedSession.contact_phone || selectedSession.contact_email) && (
+                                        <section>
+                                            <h3 className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span> Контактные данные
+                                            </h3>
+                                            <div className="bg-green-50/50 p-4 rounded-2xl border border-green-150 space-y-3">
+                                                {selectedSession.contact_name && (
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-green-700 uppercase">Имя</p>
+                                                        <p className="text-xs font-bold text-gray-800">{selectedSession.contact_name}</p>
+                                                    </div>
+                                                )}
+                                                {selectedSession.contact_phone && (
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-green-700 uppercase">Телефон</p>
+                                                        <p className="text-xs font-bold text-gray-800">{selectedSession.contact_phone}</p>
+                                                    </div>
+                                                )}
+                                                {selectedSession.contact_email && (
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-green-700 uppercase">Email</p>
+                                                        <p className="text-xs font-bold text-gray-800">{selectedSession.contact_email}</p>
+                                                    </div>
+                                                )}
+                                                {selectedSession.contact_company && (
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-green-700 uppercase">Компания</p>
+                                                        <p className="text-xs font-bold text-gray-800">{selectedSession.contact_company}</p>
+                                                    </div>
+                                                )}
+                                                {!selectedSession.contact_name && !selectedSession.contact_phone && !selectedSession.contact_email && !selectedSession.contact_company && (
+                                                    <p className="text-xs font-medium text-green-800 italic">Контакт определен, но данные еще не структурированы.</p>
+                                                )}
+                                            </div>
+                                        </section>
+                                    )}
 
                                     {/* Manager Notes */}
                                     <section>
