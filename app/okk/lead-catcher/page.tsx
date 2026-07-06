@@ -64,6 +64,13 @@ export default function LeadCatcherPage() {
     const [capturedContactsList, setCapturedContactsList] = useState<Session[]>([]);
     const [ordersMap, setOrdersMap] = useState<Record<number, any>>({});
     
+    // Analytics Dynamics States
+    const [selectedRange, setSelectedRange] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
+    const [selectedMetric, setSelectedMetric] = useState<'dialogs' | 'contacts' | 'orders' | 'conversion'>('dialogs');
+    const [analyticsData, setAnalyticsData] = useState<any[]>([]);
+    const [analyticsLoading, setAnalyticsLoading] = useState(false);
+    const [hoveredPointIdx, setHoveredPointIdx] = useState<number | null>(null);
+    
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Check if session is "Online" (active in last 5 mins)
@@ -71,6 +78,21 @@ export default function LeadCatcherPage() {
         const lastActive = new Date(updatedAt).getTime();
         const now = new Date().getTime();
         return (now - lastActive) < 5 * 60 * 1000; // 5 minutes window
+    };
+
+    const fetchAnalytics = async () => {
+        setAnalyticsLoading(true);
+        try {
+            const res = await fetch(`/api/lead-catcher/analytics?range=${selectedRange}`);
+            const data = await res.json();
+            if (data.points) {
+                setAnalyticsData(data.points);
+            }
+        } catch (err) {
+            console.error('Ошибка загрузки аналитики:', err);
+        } finally {
+            setAnalyticsLoading(false);
+        }
     };
 
     const fetchSessions = async () => {
@@ -180,6 +202,10 @@ export default function LeadCatcherPage() {
     }, []);
 
     useEffect(() => {
+        fetchAnalytics();
+    }, [selectedRange]);
+
+    useEffect(() => {
         if (!selectedSessionId) return;
 
         const fetchData = async () => {
@@ -261,6 +287,70 @@ export default function LeadCatcherPage() {
         await supabase.from('widget_sessions').update({ is_human_takeover: !current }).eq('id', sessionId);
         setSessions((prev: Session[]) => prev.map((s: Session) => s.id === sessionId ? { ...s, is_human_takeover: !current } : s));
     };
+
+    // Math and SVG Calculations for dynamics chart
+    const chartWidth = 800;
+    const chartHeight = 200;
+    const paddingLeft = 45;
+    const paddingRight = 20;
+    const paddingTop = 20;
+    const paddingBottom = 30;
+
+    const usableWidth = chartWidth - paddingLeft - paddingRight;
+    const usableHeight = chartHeight - paddingTop - paddingBottom;
+
+    const values = useMemo(() => analyticsData.map(p => {
+        if (selectedMetric === 'dialogs') return p.dialogs;
+        if (selectedMetric === 'contacts') return p.contacts;
+        if (selectedMetric === 'orders') return p.orders;
+        return p.conversion;
+    }), [analyticsData, selectedMetric]);
+
+    const maxVal = useMemo(() => {
+        const mv = Math.max(...values, 0);
+        return mv === 0 ? 10 : Math.ceil(mv * 1.15); // Add 15% headroom, fallback to 10
+    }, [values]);
+
+    const svgPoints = useMemo(() => {
+        if (analyticsData.length === 0) return [];
+        return analyticsData.map((p, i) => {
+            const val = selectedMetric === 'dialogs' ? p.dialogs : 
+                        selectedMetric === 'contacts' ? p.contacts :
+                        selectedMetric === 'orders' ? p.orders : p.conversion;
+            const x = paddingLeft + (i * usableWidth) / Math.max(analyticsData.length - 1, 1);
+            const y = chartHeight - paddingBottom - (val / maxVal) * usableHeight;
+            return { x, y, val, label: p.label, raw: p };
+        });
+    }, [analyticsData, selectedMetric, maxVal, usableWidth, usableHeight, chartHeight, paddingBottom]);
+
+    const linePath = useMemo(() => {
+        if (svgPoints.length === 0) return '';
+        return `M ${svgPoints.map(p => `${p.x},${p.y}`).join(' L ')}`;
+    }, [svgPoints]);
+
+    const areaPath = useMemo(() => {
+        if (svgPoints.length === 0) return '';
+        const firstX = svgPoints[0].x;
+        const lastX = svgPoints[svgPoints.length - 1].x;
+        const bottomY = chartHeight - paddingBottom;
+        return `M ${firstX},${bottomY} L ${svgPoints.map(p => `${p.x},${p.y}`).join(' L ')} L ${lastX},${bottomY} Z`;
+    }, [svgPoints, chartHeight, paddingBottom]);
+
+    const yGridLines = useMemo(() => {
+        const lines = [];
+        for (let i = 0; i <= 4; i++) {
+            const val = (maxVal / 4) * i;
+            const y = chartHeight - paddingBottom - (val / maxVal) * usableHeight;
+            lines.push({ y, val: selectedMetric === 'conversion' ? `${val.toFixed(1)}%` : Math.round(val) });
+        }
+        return lines;
+    }, [maxVal, chartHeight, paddingBottom, usableHeight, selectedMetric]);
+
+    const xLabels = useMemo(() => {
+        if (svgPoints.length === 0) return [];
+        const step = Math.max(1, Math.ceil(svgPoints.length / 8));
+        return svgPoints.filter((_, idx) => idx % step === 0);
+    }, [svgPoints]);
 
     const selectedSession = sessions.find((s: Session) => s.id === selectedSessionId);
     const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';    return (
@@ -620,6 +710,203 @@ export default function LeadCatcherPage() {
                                     </span>
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Interactive Dynamics Chart Block */}
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col font-sans relative">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                                <div>
+                                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Динамика показателей</h3>
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">АКТИВНОСТЬ ЛОВЦА ЛИДОВ И КОНВЕРСИЯ</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    {/* Metric Selector */}
+                                    <div className="bg-gray-100 p-0.5 rounded-lg flex text-[10px] font-bold uppercase tracking-wider">
+                                        <button
+                                            onClick={() => setSelectedMetric('dialogs')}
+                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'dialogs' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                        >
+                                            Диалоги
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedMetric('contacts')}
+                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'contacts' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                        >
+                                            Контакты
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedMetric('orders')}
+                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'orders' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                        >
+                                            Заказы
+                                        </button>
+                                        <button
+                                            onClick={() => setSelectedMetric('conversion')}
+                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'conversion' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                        >
+                                            Конверсия (%)
+                                        </button>
+                                    </div>
+
+                                    {/* Range Selector */}
+                                    <div className="bg-gray-100 p-0.5 rounded-lg flex text-[10px] font-bold uppercase tracking-wider">
+                                        {(['week', 'month', 'quarter', 'year'] as const).map((r) => {
+                                            const labelMap = { week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' };
+                                            return (
+                                                <button
+                                                    key={r}
+                                                    onClick={() => setSelectedRange(r)}
+                                                    className={`px-3 py-1.5 rounded-md transition-all ${selectedRange === r ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                                >
+                                                    {labelMap[r]}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {analyticsLoading ? (
+                                <div className="h-[250px] flex items-center justify-center text-xs text-gray-400 italic">
+                                    Загрузка данных динамики...
+                                </div>
+                            ) : analyticsData.length === 0 ? (
+                                <div className="h-[250px] flex items-center justify-center text-xs text-gray-400 italic border border-dashed border-gray-200 rounded-xl">
+                                    Нет данных за выбранный период
+                                </div>
+                            ) : (
+                                <div className="relative w-full overflow-hidden">
+                                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto overflow-visible">
+                                        <defs>
+                                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="0%" stopColor={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'} stopOpacity="0.15" />
+                                                <stop offset="100%" stopColor={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'} stopOpacity="0.00" />
+                                            </linearGradient>
+                                        </defs>
+
+                                        {/* Y-Axis Grid Lines */}
+                                        {yGridLines.map((line, idx) => (
+                                            <g key={idx}>
+                                                <line
+                                                    x1={paddingLeft}
+                                                    y1={line.y}
+                                                    x2={chartWidth - paddingRight}
+                                                    y2={line.y}
+                                                    stroke="#F3F4F6"
+                                                    strokeWidth={1}
+                                                    strokeDasharray={idx === 0 ? '0' : '4 4'}
+                                                />
+                                                <text
+                                                    x={paddingLeft - 8}
+                                                    y={line.y + 3}
+                                                    textAnchor="end"
+                                                    className="fill-gray-400 font-bold text-[9px]"
+                                                >
+                                                    {line.val}
+                                                </text>
+                                            </g>
+                                        ))}
+
+                                        {/* Area Path */}
+                                        <path d={areaPath} fill="url(#chartGradient)" />
+
+                                        {/* Line Path */}
+                                        <path
+                                            d={linePath}
+                                            fill="none"
+                                            stroke={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'}
+                                            strokeWidth={2}
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        />
+
+                                        {/* X-Axis Labels */}
+                                        {xLabels.map((pt, idx) => (
+                                            <g key={idx}>
+                                                <text
+                                                    x={pt.x}
+                                                    y={chartHeight - 8}
+                                                    textAnchor="middle"
+                                                    className="fill-gray-400 font-bold text-[9px]"
+                                                >
+                                                    {pt.label}
+                                                </text>
+                                                <line
+                                                    x1={pt.x}
+                                                    y1={chartHeight - paddingBottom}
+                                                    x2={pt.x}
+                                                    y2={chartHeight - paddingBottom + 4}
+                                                    stroke="#E5E7EB"
+                                                    strokeWidth={1}
+                                                />
+                                            </g>
+                                        ))}
+
+                                        {/* Interactive Hover Dots & Vertical Guide Line */}
+                                        {hoveredPointIdx !== null && svgPoints[hoveredPointIdx] && (
+                                            <line
+                                                x1={svgPoints[hoveredPointIdx].x}
+                                                y1={paddingTop}
+                                                x2={svgPoints[hoveredPointIdx].x}
+                                                y2={chartHeight - paddingBottom}
+                                                stroke="#E5E7EB"
+                                                strokeWidth={1.5}
+                                                strokeDasharray="2 2"
+                                            />
+                                        )}
+
+                                        {svgPoints.map((pt, idx) => (
+                                            <g key={idx}>
+                                                {/* Mouse Hover Hotspot (Wide Vertical Rectangle) */}
+                                                <rect
+                                                    x={pt.x - (usableWidth / Math.max(svgPoints.length - 1, 1)) / 2}
+                                                    y={paddingTop}
+                                                    width={usableWidth / Math.max(svgPoints.length - 1, 1)}
+                                                    height={usableHeight}
+                                                    fill="transparent"
+                                                    className="cursor-pointer"
+                                                    onMouseEnter={() => setHoveredPointIdx(idx)}
+                                                    onMouseLeave={() => setHoveredPointIdx(null)}
+                                                />
+                                                {/* Interactive Dot */}
+                                                <circle
+                                                    cx={pt.x}
+                                                    cy={pt.y}
+                                                    r={hoveredPointIdx === idx ? 5 : 3.5}
+                                                    fill="#FFFFFF"
+                                                    stroke={
+                                                        selectedMetric === 'contacts' ? '#22C55E' : 
+                                                        selectedMetric === 'orders' ? '#2563EB' : 
+                                                        selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'
+                                                    }
+                                                    strokeWidth={hoveredPointIdx === idx ? 3 : 2}
+                                                    className="transition-all duration-150 pointer-events-none"
+                                                />
+                                            </g>
+                                        ))}
+                                    </svg>
+
+                                    {/* Tooltip Overlay */}
+                                    {hoveredPointIdx !== null && svgPoints[hoveredPointIdx] && (
+                                        <div
+                                            className="absolute bg-gray-900 text-white rounded-lg p-2.5 shadow-xl text-[10px] pointer-events-none z-30 flex flex-col gap-1 border border-gray-800"
+                                            style={{
+                                                left: `${((svgPoints[hoveredPointIdx].x - paddingLeft) / usableWidth) * 85 + 7}%`,
+                                                top: `${Math.max(10, svgPoints[hoveredPointIdx].y - 80)}px`,
+                                                transform: 'translateX(-50%)',
+                                            }}
+                                        >
+                                            <p className="font-black border-b border-gray-800 pb-1 text-gray-400">Период: {svgPoints[hoveredPointIdx].label}</p>
+                                            <div className="space-y-0.5 pt-1">
+                                                <p className="flex justify-between gap-4"><span>💬 Диалоги:</span> <span className="font-bold text-white">{svgPoints[hoveredPointIdx].raw.dialogs}</span></p>
+                                                <p className="flex justify-between gap-4"><span className="text-green-400">📞 Контакты:</span> <span className="font-bold text-green-400">{svgPoints[hoveredPointIdx].raw.contacts}</span></p>
+                                                <p className="flex justify-between gap-4"><span className="text-blue-400">📦 Заказы:</span> <span className="font-bold text-blue-400">{svgPoints[hoveredPointIdx].raw.orders}</span></p>
+                                                <p className="flex justify-between gap-4"><span className="text-purple-400">📈 Конверсия:</span> <span className="font-bold text-purple-400">{svgPoints[hoveredPointIdx].raw.conversion}%</span></p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Contacts Table Block */}
