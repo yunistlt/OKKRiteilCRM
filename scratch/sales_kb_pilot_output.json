@@ -1,0 +1,290 @@
+[
+  {
+    "call_id": "67643",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67650",
+    "order": "51467",
+    "roles_swapped": false,
+    "call_class": "sales",
+    "role_confidence": "high",
+    "units": [
+      {
+        "type": "product_qa",
+        "customer_utterance": "У нас такой вопрос возник в коммерческих, в котором одна позиция, один ящик, но в двух экземплярах. Скажите, а он у нас получается идет с тремя выдвижными ящиками, правильно?",
+        "manager_response": "Да.",
+        "comment": "Менеджер подтвердил информацию о товаре, что помогает клиенту уточнить детали заказа."
+      },
+      {
+        "type": "product_qa",
+        "customer_utterance": "А, то есть это не полки, а выдвижные ящики.",
+        "manager_response": "Да.",
+        "comment": "Менеджер подтвердил правильность понимания клиента о характеристиках товара."
+      },
+      {
+        "type": "product_qa",
+        "customer_utterance": "Ну да. Все понял. А то что-то первый раз, когда до этого разговаривали, какая-то путаница была с ящиками и с полкой.",
+        "manager_response": "Да-да-да. Это ящики выдвижные. Все понял.",
+        "comment": "Менеджер устранил путаницу, что укрепляет доверие клиента."
+      }
+    ]
+  },
+  {
+    "call_id": "67665",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67842",
+    "order": "51435",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67879",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67881",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67915",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67955",
+    "order": "49120",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67956",
+    "order": "51104",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67986",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "67992",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "sales",
+    "role_confidence": "high",
+    "units": [
+      {
+        "type": "product_qa",
+        "customer_utterance": "Как насчет других столов?",
+        "manager_response": "Ну, там вы имеете еще одну позицию, но это, я же сказал, в марте месяце предварительно.",
+        "comment": "Менеджер уточняет сроки по дополнительным позициям, что важно для клиента."
+      },
+      {
+        "type": "pitch",
+        "customer_utterance": "Может быть имеет смысл, чтобы вы нашу продовольственную станцию разместили?",
+        "manager_response": "Понимаете, в чем проблематично, основная проблема, загвоздка, в чем с нашей стороны, то, что у вас НДР снизилась в 22%, вот это вот самое, печаль-печаль.",
+        "comment": "Менеджер отрабатывает возражение клиента, указывая на проблемы с НДР, что важно для понимания условий сотрудничества."
+      },
+      {
+        "type": "pitch",
+        "customer_utterance": "Давайте я вам протокол отправлю.",
+        "manager_response": "Вы присылайте, да, на почту все, я это своим товарищам перешлю, я думаю, проблем не будет, что у нас все это на сайте произойдет.",
+        "comment": "Менеджер поддерживает инициативу клиента, что способствует дальнейшему взаимодействию."
+      }
+    ]
+  },
+  {
+    "call_id": "67993",
+    "order": "51710",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68494",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "sales",
+    "role_confidence": "high",
+    "units": [
+      {
+        "type": "product_qa",
+        "customer_utterance": "Я вижу шкаф, который, это вы у нас на сайте взяли шкаф, или это где-то?",
+        "manager_response": "Вы знаете, нет, не совсем у вас на сайте, нет, нет.",
+        "comment": "Менеджер корректно уточняет источник информации о товаре."
+      },
+      {
+        "type": "pricing",
+        "customer_utterance": "учитывая вот эти вот, то есть все ваши 5-процентные НДС и тому подпрочее, это всё ложится на наши плечи, соответственно, от вас максимально возможные скидки.",
+        "manager_response": "У вас какая форма закупки, это по прямому договору будет или на торги пойдётся?",
+        "comment": "Менеджер уточняет условия закупки для обсуждения цен."
+      },
+      {
+        "type": "pricing",
+        "customer_utterance": "самое главное, конечно, для нас цена.",
+        "manager_response": "А есть ещё выходная цена?",
+        "comment": "Менеджер пытается выяснить цену, чтобы предложить конкурентное предложение."
+      },
+      {
+        "type": "product_qa",
+        "customer_utterance": "Почему?",
+        "manager_response": "Ну, такие шкафы, они только в собранном идут.",
+        "comment": "Менеджер объясняет особенности товара, что важно для клиента."
+      },
+      {
+        "type": "objection",
+        "customer_utterance": "Ну, если 45 делаете, вообще, будет супер, я думаю, там, ну, отодвинем срок некритично, самое главное, конечно, для нас цена.",
+        "manager_response": "У нас 60 дней календаря данные шкафы изготавливать, да, может быть, чуть пораньше, но, вообще, стандартный срок 2 месяца.",
+        "comment": "Менеджер отрабатывает возражение о сроках, предоставляя реальную информацию."
+      }
+    ]
+  },
+  {
+    "call_id": "68516",
+    "order": "50928",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68534",
+    "order": "51710",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68600",
+    "order": "51467",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68849",
+    "order": "51827",
+    "roles_swapped": false,
+    "call_class": "sales",
+    "role_confidence": "high",
+    "units": [
+      {
+        "type": "product_qa",
+        "customer_utterance": "Смотрите, еще такой вопрос, а Вы шкафы обычные делаете? Не только сушильные, а обычные?",
+        "manager_response": "Мы делаем гардеробные шкафы, но если речь идет про обычные типа там ШРМ, вот такие вот гардеробные, которые ставятся, то мы их перепродаем.",
+        "comment": "Менеджер уточняет ассортимент, что позволяет клиенту понять, какие продукты доступны."
+      },
+      {
+        "type": "pricing",
+        "customer_utterance": "Ага, я поняла, я Вам все попишу. Срок производства, я Вам вышлю паспорт, сертификат, если нужно, пропишу транспортные габариты.",
+        "manager_response": "Ладно, все, поняла, хорошо, сейчас я Вам отправлю туда коммерческое со скидкой для торгующей организации.",
+        "comment": "Менеджер предлагает коммерческое предложение со скидкой, что может стимулировать клиента к покупке."
+      },
+      {
+        "type": "objection",
+        "customer_utterance": "А шкафы мы...",
+        "manager_response": "Да, давайте, чем Вы занимаетесь, то Вы заплатите да.",
+        "comment": "Менеджер пытается вернуть разговор к основной теме, что помогает сохранить фокус на продаже."
+      }
+    ]
+  },
+  {
+    "call_id": "68859",
+    "order": "51827",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68867",
+    "order": "50993",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68881",
+    "order": "51848",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "68889",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68892",
+    "order": "51827",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68908",
+    "order": "51854",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68915",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "68920",
+    "order": "51006",
+    "roles_swapped": false,
+    "call_class": "non_sales",
+    "role_confidence": "high",
+    "units": []
+  }
+]

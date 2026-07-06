@@ -1,0 +1,619 @@
+[
+  {
+    "call_id": "83423",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "13384",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Срок изготовления 14 календарных дней.",
+        "manager_response": "Согласовала с производством, что за 14 календарных дней это 10 рабочих сделаем.",
+        "comment": "Уточнение сроков изготовления заказа."
+      },
+      {
+        "domain": "продажа",
+        "type": "приём_закрытия",
+        "bot_can_answer": true,
+        "customer_utterance": "Рассмотрим счет на 6 сушильных шкафов.",
+        "manager_response": "Я вам отправила счет на 6 сушильных шкафов, сумма заказа 290 400.",
+        "comment": "Подтверждение отправки счета и суммы заказа."
+      }
+    ]
+  },
+  {
+    "call_id": "78148",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "70628",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Хотелось бы попросить вас в сушильные шкафы Буран, Девич-Пук, Тюмень.",
+        "manager_response": "Отправила всё на рассмотрение. Перетовских ещё не было. Ожидаем. Поэтому жду информацию от заказчика.",
+        "comment": "Менеджер информирует о текущем статусе заказа и ожидании информации от заказчика."
+      }
+    ]
+  },
+  {
+    "call_id": "13220",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "64392",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": false,
+        "customer_utterance": "Скажите, пожалуйста, а у вас же есть где-то в Москве свой склад?",
+        "manager_response": "Нет.",
+        "comment": "Менеджер подтвердил отсутствие склада в Москве."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": false,
+        "customer_utterance": "Хорошо, но вы знаете, вот поймите, пожалуйста, пока доставку не нужно, чтобы вы доставили до нашей транспортной компании в Москве.",
+        "manager_response": "Мы работаем с разными транспортными компаниями.",
+        "comment": "Менеджер объяснил, что работают с разными транспортными компаниями для доставки."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": false,
+        "customer_utterance": "Это уже в дальнейшем, да? Или сейчас вам посчитать?",
+        "manager_response": "Сейчас бы, хотелось бы уже тоже узнать.",
+        "comment": "Менеджер проявил интерес к расчету стоимости доставки."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": false,
+        "customer_utterance": "А вот от вас до Москвы не знаю. Поэтому мне в цену тоже должен войти.",
+        "manager_response": "Ладно, я сейчас запрошу логистов до терминала транспортной компании.",
+        "comment": "Менеджер согласился запросить информацию о стоимости доставки."
+      }
+    ]
+  },
+  {
+    "call_id": "66623",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "89785",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "69183",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "60882",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "78026",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "90698",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "84846",
+    "primary_domain": "продажа",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "А срок производства подскажете?",
+        "manager_response": "Да, подскажу 35 календарных дней на всю партию. Отгрузка из города Тольятти.",
+        "comment": "Указан срок производства и место отгрузки."
+      },
+      {
+        "domain": "продажа",
+        "type": "возражение_цена",
+        "bot_can_answer": true,
+        "customer_utterance": "А какая сумма там итоговая, можете сказать?",
+        "manager_response": "Так. Итоговая сумма 2.265.950 рублей.",
+        "comment": "Предоставлена итоговая сумма заказа."
+      },
+      {
+        "domain": "товар",
+        "type": "ассортимент",
+        "bot_can_answer": true,
+        "customer_utterance": "Евгения, у вас шкафы, да, и они соответствуют?",
+        "manager_response": "Да, да, да. Более того, у нас уже были запросы подобные, там они, правда, количество туда-сюда делают.",
+        "comment": "Подтверждено наличие шкафов и их соответствие."
+      }
+    ]
+  },
+  {
+    "call_id": "1198892",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": false,
+        "customer_utterance": "спрашивает о сроках поставки сушильных шкафов для РЖД в Екатеринбург",
+        "manager_response": "обещали подсказать, как только информация появится",
+        "comment": "Менеджер подтвердил, что информация о сроках будет предоставлена позже."
+      }
+    ]
+  },
+  {
+    "call_id": "88986",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "77571",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "77826",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Нам удобнее, если бы отправили с деловыми линиями.",
+        "manager_response": "Давайте. Диктуйте адрес с деловыми линиями.",
+        "comment": "Менеджер согласился на доставку, что может помочь в будущем при аналогичных запросах."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Куда? Воронежскую область. Поворинский район.",
+        "manager_response": "Поворинский?",
+        "comment": "Менеджер уточнил адрес доставки, что важно для точности выполнения заказа."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Пролетарская, 59.",
+        "manager_response": "Пески. Угу. Улица Пролетарская, дом 59.",
+        "comment": "Менеджер подтвердил адрес, что снижает вероятность ошибок при доставке."
+      }
+    ]
+  },
+  {
+    "call_id": "60473",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "76255",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "84789",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "69193",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "63618",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "76569",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Во вторник они вам доставят, в понедельник вас должны набрать, согласовать.",
+        "manager_response": "Все, хорошо, поняла, спасибо большое.",
+        "comment": "Менеджер подтвердил информацию о доставке и согласовании."
+      }
+    ]
+  },
+  {
+    "call_id": "88743",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "тишина от заказчика",
+        "manager_response": "попробовать когда у них там планируется закупка",
+        "comment": "Менеджер предложил уточнить сроки закупки у заказчика."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "я с заказчиком напрямую не общаюсь",
+        "manager_response": "я сейчас менеджерам передам, чтобы она уточнила",
+        "comment": "Менеджер взял на себя ответственность передать информацию для уточнения сроков."
+      }
+    ]
+  },
+  {
+    "call_id": "75893",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": false,
+        "customer_utterance": "Вы не присылали мне платёжку на сушильный стеллаж?",
+        "manager_response": "Так, нет, не присылал. А оплачивали?",
+        "comment": "Менеджер уточняет статус оплаты, что важно для начала производства."
+      }
+    ]
+  },
+  {
+    "call_id": "825505",
+    "primary_domain": "товар",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": [
+      {
+        "domain": "товар",
+        "type": "характеристика_товара",
+        "bot_can_answer": true,
+        "customer_utterance": "Можно ли сделать размеры под заказ?",
+        "manager_response": "Можно будет сделать под заказ, но расчет займет время.",
+        "comment": "Менеджер подтвердил возможность индивидуального заказа, что может быть полезно для клиентов с нестандартными размерами."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Какой стандартный срок изготовления?",
+        "manager_response": "Стандартный срок изготовления составляет 30 дней.",
+        "comment": "Менеджер предоставил информацию о стандартных сроках, что важно для планирования клиента."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "А если размеры нестандартные, то сроки будут больше?",
+        "manager_response": "Нет, такие же сроки будут для нестандартных размеров.",
+        "comment": "Менеджер уточнил, что сроки не увеличиваются для нестандартных размеров, что может снизить опасения клиента."
+      }
+    ]
+  },
+  {
+    "call_id": "8207",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Когда придет груз, не подскажете?",
+        "manager_response": "Будем отгружать машиной, завтра погрузка, и завтра у нас стрида. Соответственно, придет в четверг, пятница.",
+        "comment": "Менеджер уточнил сроки доставки груза."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "А какие документы ему надо давать?",
+        "manager_response": "У него с тобой будет транспортная накладная, которую мы передадим УПД. Подпишем.",
+        "comment": "Менеджер объяснил, какие документы нужны для получения груза."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "А доверенность какая нужна?",
+        "manager_response": "При приемке груза у вас должна быть либо доверенность на человека, который встречает, либо печать организации.",
+        "comment": "Менеджер уточнил требования к доверенности для получения груза."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "А веса какие мы снимем вручную, нет?",
+        "manager_response": "Один комплект у вас самый большой, он весит 207 килограмм, но он разделен на две части.",
+        "comment": "Менеджер предоставил информацию о весе и делении груза на части."
+      }
+    ]
+  },
+  {
+    "call_id": "78225",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": []
+  },
+  {
+    "call_id": "82832",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "8363",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Оплата еще не прошла, потому что когда в пятницу завел нашу систему, она сейчас на согласовании.",
+        "manager_response": "Может, на этой неделе, да, будет?",
+        "comment": "Менеджер уточняет сроки оплаты, что может повлиять на сроки выполнения заказа."
+      }
+    ]
+  },
+  {
+    "call_id": "1666",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Подскажите, получатель общества с ограниченной ответственностью, ПСК, авалон и контактное лицо указываю в ваш номер телефона.",
+        "manager_response": "Будем отгружать деловыми линиями.",
+        "comment": "Менеджер подтвердил способ доставки и уточнил детали отгрузки."
+      }
+    ]
+  },
+  {
+    "call_id": "835230",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "77767",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "77520",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "65966",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  },
+  {
+    "call_id": "78400",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Как у вас по оплате?",
+        "manager_response": "Я как только платежку получу, я вам сразу направлю и можете запускать производство.",
+        "comment": "Менеджер уточняет, что производство будет запущено сразу после получения платежа."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Я думаю, да. Либо сегодня, либо завтра поступит оплата.",
+        "manager_response": "Сегодня-завтра, да?",
+        "comment": "Клиент сообщает о сроках поступления оплаты, что важно для планирования производства."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Ирина, подскажите, пожалуйста, я же правильно там указал, мы с вами договаривались, 70 на 30, все верно?",
+        "manager_response": "Да, 70 на 30 по готовности.",
+        "comment": "Менеджер подтверждает условия оплаты, что важно для клиента."
+      }
+    ]
+  },
+  {
+    "call_id": "61037",
+    "primary_domain": "товар",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "товар",
+        "type": "характеристика_товара",
+        "bot_can_answer": true,
+        "customer_utterance": "Какое вам требуется соединение с сетью?",
+        "manager_response": "Есть Wi-Fi, есть 4G, есть интернет 4G45.",
+        "comment": "Менеджер предоставил информацию о доступных вариантах соединения."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Почему так долго ждать?",
+        "manager_response": "Срочь изготовления 65 рабочих дней.",
+        "comment": "Менеджер объяснил сроки изготовления, что может помочь в планировании клиента."
+      },
+      {
+        "domain": "товар",
+        "type": "характеристика_товара",
+        "bot_can_answer": true,
+        "customer_utterance": "А конструктивно нагреватели в итоге вертикальны или горизонтальны?",
+        "manager_response": "Горизонтальны. Горизонтальны они стоят.",
+        "comment": "Менеджер уточнил конструкцию нагревателей, что важно для клиента."
+      },
+      {
+        "domain": "товар",
+        "type": "ассортимент",
+        "bot_can_answer": true,
+        "customer_utterance": "А боковое вертикальное исполнение у вас есть?",
+        "manager_response": "У нас горизонтально все идет.",
+        "comment": "Менеджер подтвердил отсутствие вертикального исполнения, что важно для выбора клиента."
+      },
+      {
+        "domain": "товар",
+        "type": "характеристика_товара",
+        "bot_can_answer": true,
+        "customer_utterance": "Вы точно-точно говорите про 1400 градусов?",
+        "manager_response": "По описанию, да, 1400 градусов.",
+        "comment": "Менеджер подтвердил температурные характеристики, что критично для клиента."
+      },
+      {
+        "domain": "продажа",
+        "type": "возражение_цена",
+        "bot_can_answer": true,
+        "customer_utterance": "А стоимость не подскажете, в итоге, на эту печь?",
+        "manager_response": "Без НДС, 239 750, ну, 240 тысяч.",
+        "comment": "Менеджер озвучил цену, что важно для принятия решения клиентом."
+      }
+    ]
+  },
+  {
+    "call_id": "68806",
+    "primary_domain": "логистика_сроки",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "логистика_сроки",
+        "type": "срок_изготовления",
+        "bot_can_answer": true,
+        "customer_utterance": "Интересует сушильный шкаф для детского сада «Татышка-5».",
+        "manager_response": "Тридцать календарных дней срока изготовления находимся в городе Тольятти.",
+        "comment": "Указан срок изготовления для сушильного шкафа."
+      }
+    ]
+  },
+  {
+    "call_id": "60921",
+    "primary_domain": "продажа",
+    "roles_swapped": false,
+    "role_confidence": "high",
+    "units": [
+      {
+        "domain": "продажа",
+        "type": "характеристика_товара",
+        "bot_can_answer": true,
+        "customer_utterance": "Я вообще думал, что это какой-то типа шкафа будет, вот я смотрел.",
+        "manager_response": "Большой объем печей и для таких больших печей мы делаем вот такие вытяжки.",
+        "comment": "Менеджер объяснил, что вытяжки предназначены для больших печей, что может помочь клиенту лучше понять ассортимент."
+      },
+      {
+        "domain": "продажа",
+        "type": "ассортимент",
+        "bot_can_answer": true,
+        "customer_utterance": "Но вот прям конкретно то, что мне не нравится. Либо загрузка, либо они очень большие, либо очень маленькие.",
+        "manager_response": "Нет, но эта печь у нас, как-то говорится, стоит на потоке. Если ее часто берут.",
+        "comment": "Менеджер подчеркнул, что печь пользуется спросом, что может повысить доверие клиента к продукту."
+      },
+      {
+        "domain": "логистика_сроки",
+        "type": "доставка",
+        "bot_can_answer": true,
+        "customer_utterance": "Но это и печь, и зонд. Если будет одна печь, это будет дешевле.",
+        "manager_response": "Наверное, обратили внимание, что деловыми линиями от нас до вас будет месяц СНДР 18-333.",
+        "comment": "Менеджер предоставил информацию о сроках доставки, что важно для клиента при принятии решения."
+      }
+    ]
+  },
+  {
+    "call_id": "90089",
+    "primary_domain": "прочее",
+    "roles_swapped": false,
+    "role_confidence": "low",
+    "units": []
+  }
+]

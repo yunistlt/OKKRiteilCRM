@@ -1,0 +1,578 @@
+{
+  "year": 2026,
+  "month": 5,
+  "scheme": "menedzhery",
+  "baseTeamRev": 8843365,
+  "businessDays": 21,
+  "baseline": [
+    {
+      "id": 98,
+      "name": "Матвеева Евгения",
+      "personalRev": 3714930,
+      "orders": 16,
+      "planAtt": 93,
+      "computed": 70000,
+      "actual": 70000
+    },
+    {
+      "id": 10,
+      "name": "Парфенова Елена",
+      "personalRev": 2958587,
+      "orders": 14,
+      "planAtt": 74,
+      "computed": 30000,
+      "actual": 30000
+    },
+    {
+      "id": 249,
+      "name": "Гордеева Ирина",
+      "personalRev": 2169848,
+      "orders": 12,
+      "planAtt": 54,
+      "computed": 30000,
+      "actual": 30000
+    }
+  ],
+  "grid": [
+    {
+      "teamRev": 8000000,
+      "scale": 0.905,
+      "total": 91000,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 3360648,
+          "orders": 14,
+          "total": 31000,
+          "oklad": 30000,
+          "premiaZayavki": 29000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 1000,
+          "kTeam": 1,
+          "planGate": 0
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 2676436,
+          "orders": 13,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 21000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 1962916,
+          "orders": 11,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 20000,
+          "premiaCat": 3000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        }
+      ]
+    },
+    {
+      "teamRev": 10000000,
+      "scale": 1.131,
+      "total": 134000,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 4200810,
+          "orders": 18,
+          "total": 74000,
+          "oklad": 30000,
+          "premiaZayavki": 35000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 1000,
+          "kTeam": 1,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 3345545,
+          "orders": 16,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 26000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 2453645,
+          "orders": 14,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 24000,
+          "premiaCat": 3000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        }
+      ]
+    },
+    {
+      "teamRev": 12000000,
+      "scale": 1.357,
+      "total": 174000,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 5040972,
+          "orders": 22,
+          "total": 80000,
+          "oklad": 30000,
+          "premiaZayavki": 41000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 1000,
+          "kTeam": 1,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 4014653,
+          "orders": 19,
+          "total": 64000,
+          "oklad": 30000,
+          "premiaZayavki": 31000,
+          "premiaCat": 3000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 2944374,
+          "orders": 16,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 31000,
+          "premiaCat": 3000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        }
+      ]
+    },
+    {
+      "teamRev": 14000000,
+      "scale": 1.583,
+      "total": 195000,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 5881135,
+          "orders": 25,
+          "total": 93000,
+          "oklad": 30000,
+          "premiaZayavki": 50000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 2000,
+          "kTeam": 1,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 4683762,
+          "orders": 22,
+          "total": 72000,
+          "oklad": 30000,
+          "premiaZayavki": 36000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 3435103,
+          "orders": 19,
+          "total": 30000,
+          "oklad": 30000,
+          "premiaZayavki": 35000,
+          "premiaCat": 6000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1,
+          "planGate": 0
+        }
+      ]
+    },
+    {
+      "teamRev": 16000000,
+      "scale": 1.809,
+      "total": 279450,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 6721297,
+          "orders": 29,
+          "total": 109050,
+          "oklad": 30000,
+          "premiaZayavki": 56000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 2000,
+          "kTeam": 1.15,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 5352871,
+          "orders": 25,
+          "total": 84050,
+          "oklad": 30000,
+          "premiaZayavki": 41000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.15,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 3925832,
+          "orders": 22,
+          "total": 86350,
+          "oklad": 30000,
+          "premiaZayavki": 40000,
+          "premiaCat": 6000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.15,
+          "planGate": 1
+        }
+      ]
+    },
+    {
+      "teamRev": 18000000,
+      "scale": 2.035,
+      "total": 299000,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 7561459,
+          "orders": 33,
+          "total": 118250,
+          "oklad": 30000,
+          "premiaZayavki": 64000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 2000,
+          "kTeam": 1.15,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 6021980,
+          "orders": 28,
+          "total": 89800,
+          "oklad": 30000,
+          "premiaZayavki": 46000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.15,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 4416561,
+          "orders": 24,
+          "total": 90950,
+          "oklad": 30000,
+          "premiaZayavki": 44000,
+          "premiaCat": 6000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.15,
+          "planGate": 1
+        }
+      ]
+    },
+    {
+      "teamRev": 20000000,
+      "scale": 2.262,
+      "total": 349400,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 8401621,
+          "orders": 36,
+          "total": 137300,
+          "oklad": 30000,
+          "premiaZayavki": 70000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 2000,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 6691089,
+          "orders": 32,
+          "total": 104100,
+          "oklad": 30000,
+          "premiaZayavki": 51000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 4907290,
+          "orders": 27,
+          "total": 108000,
+          "oklad": 30000,
+          "premiaZayavki": 51000,
+          "premiaCat": 6000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        }
+      ]
+    },
+    {
+      "teamRev": 22000000,
+      "scale": 2.488,
+      "total": 369900,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 9241783,
+          "orders": 40,
+          "total": 146100,
+          "oklad": 30000,
+          "premiaZayavki": 76000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 3000,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 7360198,
+          "orders": 35,
+          "total": 110600,
+          "oklad": 30000,
+          "premiaZayavki": 56000,
+          "premiaCat": 6000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 5398019,
+          "orders": 30,
+          "total": 113200,
+          "oklad": 30000,
+          "premiaZayavki": 55000,
+          "premiaCat": 6000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        }
+      ]
+    },
+    {
+      "teamRev": 24000000,
+      "scale": 2.714,
+      "total": 406300,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 10081945,
+          "orders": 43,
+          "total": 161700,
+          "oklad": 30000,
+          "premiaZayavki": 85000,
+          "premiaCat": 9000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 3000,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 8029307,
+          "orders": 38,
+          "total": 122300,
+          "oklad": 30000,
+          "premiaZayavki": 62000,
+          "premiaCat": 9000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 5888748,
+          "orders": 33,
+          "total": 122300,
+          "oklad": 30000,
+          "premiaZayavki": 59000,
+          "premiaCat": 9000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        }
+      ]
+    },
+    {
+      "teamRev": 26000000,
+      "scale": 2.94,
+      "total": 427100,
+      "perManager": [
+        {
+          "id": 98,
+          "name": "Матвеева Евгения",
+          "personalRev": 10922107,
+          "orders": 47,
+          "total": 169500,
+          "oklad": 30000,
+          "premiaZayavki": 91000,
+          "premiaCat": 9000,
+          "convBonus": 0,
+          "discountBonus": 5000,
+          "sameDay": 3000,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 10,
+          "name": "Парфенова Елена",
+          "personalRev": 8698416,
+          "orders": 41,
+          "total": 128800,
+          "oklad": 30000,
+          "premiaZayavki": 67000,
+          "premiaCat": 9000,
+          "convBonus": 0,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        },
+        {
+          "id": 249,
+          "name": "Гордеева Ирина",
+          "personalRev": 6379477,
+          "orders": 35,
+          "total": 128800,
+          "oklad": 30000,
+          "premiaZayavki": 64000,
+          "premiaCat": 9000,
+          "convBonus": 3000,
+          "discountBonus": 0,
+          "sameDay": 0,
+          "kTeam": 1.3,
+          "planGate": 1
+        }
+      ]
+    }
+  ],
+  "kTeamTiers": [
+    {
+      "k": 1.3,
+      "min": 20000000
+    },
+    {
+      "k": 1.15,
+      "min": 16000000
+    },
+    {
+      "k": 1,
+      "min": 12000000
+    }
+  ],
+  "personalPlans": {
+    "10": 4000000,
+    "98": 4000000,
+    "249": 4000000
+  },
+  "deptPlan": 12000000
+}

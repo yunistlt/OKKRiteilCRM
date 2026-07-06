@@ -1,0 +1,15 @@
+import postgres from 'postgres';
+import fs from 'fs';
+const env = fs.readFileSync('.env.local','utf8');
+const get = k => (env.match(new RegExp('^'+k+'=(.*)$','m'))||[])[1]?.replace(/^["']|["']$/g,'').trim();
+const sql = postgres(get('DATABASE_URL')||get('POSTGRES_URL'), { ssl:'require' });
+const cols = await sql`select column_name from information_schema.columns where table_name='salary_audit_log' order by ordinal_position`;
+console.log('salary_audit_log cols:', cols.map(c=>c.column_name).join(', '));
+const ent = await sql`select entity, action, count(*), max(created_at) as last from salary_audit_log group by entity, action order by last desc nulls last limit 30`;
+console.table(ent.map(e=>({entity:e.entity, action:e.action, n:Number(e.count), last:e.last?.toISOString?.().slice(0,19)})));
+console.log('\n=== computed_at июнь vs последние правки мотивации ===');
+const cj = await sql`select c.manager_id, c.computed_at from salary_calc c join salary_period p on p.id=c.period_id where p.year=2026 and p.month=6 order by c.computed_at desc limit 5`;
+console.table(cj.map(r=>({mid:r.manager_id, computed_at:r.computed_at?.toISOString?.().slice(0,19)})));
+const last = await sql`select entity, action, created_at from salary_audit_log order by created_at desc limit 8`;
+console.table(last.map(r=>({entity:r.entity, action:r.action, at:r.created_at?.toISOString?.().slice(0,19)})));
+await sql.end();

@@ -1,0 +1,22 @@
+import postgres from 'postgres';
+import { readFileSync } from 'fs';
+const env = readFileSync('.env.local','utf8');
+const url = env.match(/^DATABASE_URL=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+const sql = postgres(url, { ssl: 'require' });
+const CLOSING='send-assembling';
+const rows = await sql.unsafe(`SELECT items FROM salary_counted_orders('2025-07-01','2026-07-01',$1)`,[CLOSING]);
+const vat={}; let valByVat={}; let n=0;
+for(const r of rows) for(const it of r.items??[]){ n++;
+  const k=String(it?.vatRate); vat[k]=(vat[k]||0)+1;
+  const qty=Number(it?.quantity??1)||0, price=Number(it?.prices?.[0]?.price ?? it?.initialPrice ?? 0)||0;
+  valByVat[k]=(valByVat[k]||0)+price*qty;
+}
+console.log('Позиций за 12 мес:',n);
+console.log('Кол-во позиций по vatRate:', JSON.stringify(vat));
+const fmt=v=>Math.round(v).toLocaleString('ru-RU');
+console.log('Сумма (price*qty) по vatRate:');
+for(const k of Object.keys(valByVat)) console.log('  vatRate='+k+':', fmt(valByVat[k]));
+const total=Object.values(valByVat).reduce((a,b)=>a+b,0);
+const withVat=Object.entries(valByVat).filter(([k])=>Number(k)>0).reduce((a,[,v])=>a+v,0);
+console.log('Доля оборота с ненулевым НДС:', (withVat/total*100).toFixed(2)+'%');
+await sql.end();

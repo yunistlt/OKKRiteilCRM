@@ -1,0 +1,15 @@
+import postgres from 'postgres';
+import { readFileSync } from 'fs';
+const env = readFileSync('.env.local','utf8');
+const url = env.match(/^DATABASE_URL=(.*)$/m)[1].trim().replace(/^["']|["']$/g,'');
+const sql = postgres(url, { ssl: 'require' });
+const pool = (await sql.unsafe(`SELECT p.manager_id, (m.first_name||' '||m.last_name) name FROM email_intake_pool p LEFT JOIN managers m ON m.id=p.manager_id`));
+const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Moscow'}).format(new Date());
+const onLeave = (await sql.unsafe(`SELECT manager_id FROM email_intake_absences WHERE start_date <= '${today}' AND end_date >= '${today}'`)).map(r=>Number(r.manager_id));
+console.log('Сегодня (МСК):', today);
+console.log('Пул:', pool.map(p=>`${p.manager_id}(${p.name})`).join(', '));
+console.log('В отпуске сейчас:', onLeave.join(', ') || '—');
+const balance = pool.map(p=>Number(p.manager_id)).filter(id=>!onLeave.includes(id));
+console.log('НОВЫЕ клиенты распределяются на:', balance.map(id=>pool.find(p=>Number(p.manager_id)===id)?.name).join(', '));
+console.log('Постоянные клиенты Парфёновой (id 10) → по-прежнему к ней (слой 1 по полному пулу).');
+await sql.end();
