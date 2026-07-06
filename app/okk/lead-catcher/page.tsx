@@ -27,6 +27,8 @@ interface Session {
     contact_phone?: string | null;
     contact_email?: string | null;
     contact_company?: string | null;
+    crm_order_id?: number | null;
+    crm_customer_id?: number | null;
 }
 
 interface Message {
@@ -57,6 +59,9 @@ export default function LeadCatcherPage() {
     const [notes, setNotes] = useState('');
     const [search, setSearch] = useState('');
     const [totalContacts, setTotalContacts] = useState<number | null>(null);
+    const [totalSessionsCount, setTotalSessionsCount] = useState<number>(0);
+    const [totalOrdersCount, setTotalOrdersCount] = useState<number>(0);
+    const [capturedContactsList, setCapturedContactsList] = useState<Session[]>([]);
     
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -68,7 +73,7 @@ export default function LeadCatcherPage() {
     };
 
     const fetchSessions = async () => {
-        const [sessRes, countRes] = await Promise.all([
+        const [sessRes, countRes, totalRes, ordersRes, contactsListRes] = await Promise.all([
             supabase
                 .from('widget_sessions')
                 .select('*')
@@ -77,11 +82,33 @@ export default function LeadCatcherPage() {
             supabase
                 .from('widget_sessions')
                 .select('*', { count: 'exact', head: true })
+                .eq('has_contacts', true),
+            supabase
+                .from('widget_sessions')
+                .select('*', { count: 'exact', head: true }),
+            supabase
+                .from('widget_sessions')
+                .select('*', { count: 'exact', head: true })
+                .not('crm_order_id', 'is', null),
+            supabase
+                .from('widget_sessions')
+                .select('*')
                 .eq('has_contacts', true)
+                .order('updated_at', { ascending: false })
+                .limit(50)
         ]);
         
         if (countRes.count !== null) {
             setTotalContacts(countRes.count);
+        }
+        if (totalRes.count !== null) {
+            setTotalSessionsCount(totalRes.count);
+        }
+        if (ordersRes.count !== null) {
+            setTotalOrdersCount(ordersRes.count);
+        }
+        if (contactsListRes.data) {
+            setCapturedContactsList(contactsListRes.data);
         }
 
         const sessData = sessRes.data;
@@ -230,8 +257,8 @@ export default function LeadCatcherPage() {
                             <span>⚙️</span> Настройки
                         </a>
                     </div>
-                    <div className="mt-3 flex items-center justify-between bg-gray-850 rounded-xl px-3 py-2 text-[11px] border border-gray-800">
-                        <span className="text-gray-450 font-bold uppercase tracking-wider text-[9px]">Собрано контактов:</span>
+                    <div className="mt-3 flex items-center justify-between bg-gray-800/40 rounded-xl px-3 py-2 text-[11px] border border-gray-800">
+                        <span className="text-gray-400 font-bold uppercase tracking-wider text-[9px]">Собрано контактов:</span>
                         <span className="bg-green-500 text-white font-black px-2.5 py-0.5 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.4)]">
                             {totalContacts !== null ? totalContacts : '...'}
                         </span>
@@ -532,12 +559,114 @@ export default function LeadCatcherPage() {
                         </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-200 p-20 text-center">
-                        <div className="w-32 h-32 bg-gray-50 rounded-full flex items-center justify-center mb-8 border-4 border-dashed border-gray-100">
-                            <span className="text-6xl animate-bounce">🎯</span>
+                    <div className="flex-1 flex flex-col h-full bg-gray-50 overflow-y-auto p-8 space-y-8">
+                        <div>
+                            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Аналитика и Лиды</h2>
+                            <p className="text-xs text-gray-400 font-bold mt-1">ОБЗОР АКТИВНОСТИ ИИ-КОНСУЛЬТАНТА ЕЛЕНЫ</p>
                         </div>
-                        <h2 className="text-2xl font-black text-gray-900 mb-2 uppercase tracking-tighter">Система готова к охоте</h2>
-                        <p className="text-gray-400 font-medium max-w-xs">Выберите посетителя слева, чтобы начать мониторинг в реальном времени</p>
+
+                        {/* Metrics Cards */}
+                        <div className="grid grid-cols-4 gap-4">
+                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Всего диалогов</span>
+                                <div className="flex items-baseline gap-2 mt-2">
+                                    <span className="text-3xl font-black text-gray-900">{totalSessionsCount}</span>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-green-600">Захвачено контактов</span>
+                                <div className="flex items-baseline gap-2 mt-2">
+                                    <span className="text-3xl font-black text-green-600">{totalContacts || 0}</span>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-blue-600">Создано заказов</span>
+                                <div className="flex items-baseline gap-2 mt-2">
+                                    <span className="text-3xl font-black text-blue-600">{totalOrdersCount}</span>
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
+                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-purple-600">Конверсия</span>
+                                <div className="flex items-baseline gap-2 mt-2">
+                                    <span className="text-3xl font-black text-purple-600">
+                                        {totalSessionsCount > 0 ? (((totalContacts || 0) / totalSessionsCount) * 100).toFixed(1) : 0}%
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Contacts Table Block */}
+                        <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden flex flex-col">
+                            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Список захваченных контактов</h3>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">Последние 50 записей</span>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                            <th className="px-6 py-4">Имя посетителя</th>
+                                            <th className="px-6 py-4">Телефон / Email</th>
+                                            <th className="px-6 py-4">Локация</th>
+                                            <th className="px-6 py-4">RetailCRM Заказ</th>
+                                            <th className="px-6 py-4 text-right">Дата / Время</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {capturedContactsList.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-400 italic">
+                                                    Контакты пока не собраны
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            capturedContactsList.map(item => {
+                                                const hasOrder = item.crm_order_id !== null && item.crm_order_id !== undefined;
+                                                return (
+                                                    <tr 
+                                                        key={item.id} 
+                                                        onClick={() => setSelectedSessionId(item.id)}
+                                                        className="hover:bg-blue-50/20 cursor-pointer transition-all text-xs"
+                                                    >
+                                                        <td className="px-6 py-4 font-bold text-gray-900">
+                                                            {item.nickname || 'Аноним'}
+                                                        </td>
+                                                        <td className="px-6 py-4 space-y-0.5">
+                                                            {item.contact_phone && <p className="font-bold text-gray-700">{item.contact_phone}</p>}
+                                                            {item.contact_email && <p className="text-gray-400 font-medium">{item.contact_email}</p>}
+                                                            {!item.contact_phone && !item.contact_email && <span className="text-gray-300 italic">нет данных</span>}
+                                                        </td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="flex flex-col">
+                                                                <span className="font-bold text-gray-700">{item.geo_city || '—'}</span>
+                                                                <span className="text-[9px] text-gray-400">{item.domain}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-6 py-4" onClick={(e) => hasOrder && e.stopPropagation()}>
+                                                            {hasOrder ? (
+                                                                <a 
+                                                                    href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer" 
+                                                                    className="inline-flex items-center gap-1 bg-green-50 text-green-700 font-black px-2.5 py-1 rounded-lg border border-green-100 hover:bg-green-100 transition-all text-[10px]"
+                                                                >
+                                                                    #{item.crm_order_id} ↗
+                                                                </a>
+                                                            ) : (
+                                                                <span className="text-gray-300 italic text-[10px]">в очереди...</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right text-gray-400 font-medium">
+                                                            {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 )}
             </div>
