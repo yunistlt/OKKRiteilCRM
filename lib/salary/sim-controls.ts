@@ -56,7 +56,7 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
     if (key === 'oklad') return 'Оклад';
     if (key === 'new') return 'Ставка за новую заявку';
     if (key === 'permanent') return 'Ставка за постоянного';
-    if (key === 'rate') return blockCode === 'duty' ? 'Ставка за смену' : 'Ставка за заказ';
+    if (key === 'rate') return 'Ставка за заказ';
     if (key === 'perPercent') return 'Ставка за 1% сверх плана';
     if (key === 'minZayavki') return 'Мин. входящих для допуска';
     if (key === 'thresholdPct') return 'Порог выполнения плана';
@@ -123,7 +123,7 @@ export function setAtPath(obj: any, path: (string | number)[], value: number): a
 export const BLOCK_NAMES: Record<string, string> = {
     oklad: 'Оклад', premia_zayavki: 'Премия за заявки', premia_categorii: 'Премия за категории',
     coef_categorii: 'Коэффициент за категории', k_quality: 'К_качества', conv_bonus: 'Конв-бонус',
-    discount_bonus: 'Скидочная дисциплина', k_team: 'К_команды', duty: 'Дежурства',
+    discount_bonus: 'Скидочная дисциплина', k_team: 'К_команды',
     plan_attainment: 'Выполнение плана', plan_accelerator: 'Ускоритель плана',
     plan_coef: 'Коэффициент по личному плану', dept_plan_coef: 'Коэффициент по плану отдела',
     volume_bonus: 'Бонус за объём', same_day_sale: 'Продажа в день обращения',

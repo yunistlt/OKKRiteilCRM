@@ -219,19 +219,4 @@ const kTeam: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
     },
 };
 
-// Дежурства — не режутся множителями.
-const duty: BonusBlock<{ rate: number }> = {
-    code: 'duty',
-    name: 'Дежурства',
-    methodology: 'Оплата дежурств: количество смен × ставка за смену.',
-    kind: 'base',
-    group: 'duty',
-    requiredMetrics: ['duty_shifts'],
-    paramSchema: z.object({ rate: z.number().nonnegative() }),
-    compute(m, p) {
-        const amount = round2(m.dutyShifts * p.rate);
-        return { amount, explain: `${m.dutyShifts} смен × ${rub(p.rate)} = ${rub(amount)}`, dataFill: fullFill(1) };
-    },
-};
-
-export const CORE_BLOCKS: BonusBlock[] = [oklad, premiaZayavki, premiaCategorii, coefCategorii, kQuality, convBonus, discountBonus, kTeam, duty];
+export const CORE_BLOCKS: BonusBlock[] = [oklad, premiaZayavki, premiaCategorii, coefCategorii, kQuality, convBonus, discountBonus, kTeam];

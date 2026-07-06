@@ -69,6 +69,6 @@ function emptyBase(id: number, grade: number | null, planTarget: number | null):
         countsByType: { new: 0, permanent: 0 }, countsByCategory: {}, revenueByCategory: {},
         sameDayShare: 0, discountMetricValue: null, qualityAvgScore: null, qualityScriptPct: null,
         fastContactShare: null, fieldsFilledShare: null, conversionPct: 0, conversionDenominator: 0,
-        dutyShifts: 0, grade, planTarget,
+        grade, planTarget,
     };
 }

@@ -138,7 +138,6 @@ export default function MySalaryPage() {
                                 })()}
                                 <Line label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`} />
                                 <Line label="Бонус за скидочную дисциплину" value={rub(row.discount_bonus)} sub={b.discountValue != null ? `скидка ${b.discountValue}%` : undefined} />
-                                <Line label="Дежурства" value={rub(row.duty_pay)} />
                                 <Line label="К_команды (множитель переменной части)" value={`× ${row.k_team}`} />
                                 <tr className="border-t-2 font-semibold">
                                     <td className="py-2">Итого к выплате</td>

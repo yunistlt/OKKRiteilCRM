@@ -61,7 +61,6 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
     const premia = sumAdditive('premia');
     const variable = sumAdditive('variable');
     const flat = sumAdditive('flat');
-    const duty = sumAdditive('duty');
     const penalty = contributions.filter((c) => c.kind === 'penalty').reduce((s, c) => s + (c.amount || 0), 0);
 
     const mPremia = prodMult('premia');
@@ -69,7 +68,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
 
     const premiaAfter = premia * mPremia;
     const variablePart = (premiaAfter + variable) * mTeam;
-    const total = base + variablePart + flat + duty + penalty;
+    const total = base + variablePart + flat + penalty;
 
     return {
         total: round2(total),
@@ -78,7 +77,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
         premiaAfter: round2(premiaAfter),
         variable: round2(variable),
         flat: round2(flat),
-        duty: round2(duty),
+        duty: 0,
         penalty: round2(penalty),
         mPremia,
         mTeam,

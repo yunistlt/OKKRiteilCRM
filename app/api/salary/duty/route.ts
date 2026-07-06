@@ -68,7 +68,7 @@ export async function POST(req: Request) {
         const row = {
             manager_id: Number(manager_id),
             work_date,
-            kind: kind === 'worked_day' ? 'worked_day' : 'duty',
+            kind: 'worked_day',
             shifts: shifts == null ? 1 : Number(shifts),
             note: note ?? null,
             created_by: session?.user?.email ?? null,

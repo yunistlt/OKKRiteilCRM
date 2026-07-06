@@ -43,7 +43,6 @@ const GROUP_LABELS: Record<string, string> = {
     premia: 'Премия',
     variable: 'Переменная часть',
     flat: 'Разовая доплата',
-    duty: 'Дежурства',
 };
 const groupLabel = (g: string) => GROUP_LABELS[g] ?? g;
 

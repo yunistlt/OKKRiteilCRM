@@ -152,7 +152,7 @@ export default function SalaryDashboard() {
                         {[year - 1, year, year + 1].map((y) => <option key={y} value={y}>{y}</option>)}
                     </select>
                     <Button variant="outline" size="sm" onClick={() => setDutyOpen(true)}>
-                        <CalendarClock className="mr-2 h-4 w-4" /> Дежурства
+                        <CalendarClock className="mr-2 h-4 w-4" /> Табель
                     </Button>
                     <Link href="/salary/settings">
                         <Button variant="outline" size="sm"><Settings className="mr-2 h-4 w-4" /> Настройки мотивации</Button>
@@ -236,7 +236,6 @@ export default function SalaryDashboard() {
                                         <th className="p-3 text-right">Конв</th>
                                         <th className="p-3 text-right">Скидка</th>
                                         <th className="p-3 text-right">К_ком</th>
-                                        <th className="p-3 text-right">Деж</th>
                                     </>
                                 )}
                                 <th className="p-3 text-right font-semibold">Итого</th>
@@ -336,7 +335,6 @@ function RowGroup({ r, columns, onOpen, onSim }: { r: CalcRow; columns: BlockCol
                     <td className="p-3 text-right">{rub(r.conv_bonus)}</td>
                     <td className="p-3 text-right">{rub(r.discount_bonus)}</td>
                     <td className="p-3 text-right">×{r.k_team}</td>
-                    <td className="p-3 text-right">{rub(r.duty_pay)}</td>
                 </>
             )}
             <td className="p-3 text-right font-semibold">{rub(r.total)}</td>
@@ -418,7 +416,6 @@ function ManagerReportModal({
                                 <div>Конв-бонус: {rub(r.conv_bonus)}</div>
                                 <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
                                 <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
-                                <div>Дежурства: {rub(r.duty_pay)}</div>
                             </div>
                         )}
                         <div className="mt-2 border-t pt-2 font-semibold">Итого: {rub(r.total)}</div>
