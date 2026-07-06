@@ -26,7 +26,7 @@ const KEY_LABELS: Record<string, string> = {
 // остаются только сквозные настройки сбора данных/классификации, которых в ролях нет.
 const ROLE_BLOCK_KEYS = new Set<string>([
     'oklad', 'rate_zayavka', 'k_quality_tiers', 'conv_bonus_tiers',
-    'conv_min_zayavki', 'discount_bonus', 'duty_rate', 'k_team_tiers',
+    'conv_min_zayavki', 'discount_bonus', 'k_team_tiers',
 ]);
 const todayStr = () => new Date().toISOString().slice(0, 10);
 

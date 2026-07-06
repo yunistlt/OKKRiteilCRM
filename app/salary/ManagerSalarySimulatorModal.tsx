@@ -62,7 +62,6 @@ const INPUT_DESCS: InputDesc[] = [
     { key: 'fastContactShare', label: 'Скорость первого контакта', blocks: ['fast_contact_bonus'], min: 0, maxOf: () => 100, step: 1, fmt: pctFmt },
     { key: 'fieldsFilledShare', label: 'Заполнение ТЗ', blocks: ['fields_bonus'], min: 0, maxOf: () => 100, step: 1, fmt: pctFmt },
     { key: 'discountMetricValue', label: 'Скидочная дисциплина', blocks: ['discount_bonus'], min: 0, maxOf: () => 100, step: 0.5, fmt: pctFmt },
-    { key: 'dutyShifts', label: 'Дежурства (смен)', blocks: ['duty'], min: 0, maxOf: () => 31, step: 1, fmt: shtFmt },
     { key: 'grade', label: 'Грейд', blocks: ['grade_multiplier'], min: 1, maxOf: () => 5, step: 1, fmt: (v) => 'грейд ' + Math.round(v) },
 ];
 
@@ -74,7 +73,7 @@ const INPUT_OWNER: Record<InputKey, string> = {
     sameDayShare: 'same_day_sale',
     qualityAvgScore: 'k_quality', qualityScriptPct: 'script_bonus',
     fastContactShare: 'fast_contact_bonus', fieldsFilledShare: 'fields_bonus',
-    discountMetricValue: 'discount_bonus', dutyShifts: 'duty', grade: 'grade_multiplier',
+    discountMetricValue: 'discount_bonus', grade: 'grade_multiplier',
 };
 
 const PLAN_BLOCKS = ['plan_attainment', 'plan_accelerator', 'plan_coef'];

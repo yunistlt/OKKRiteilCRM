@@ -189,7 +189,6 @@ function zeroMetrics(managerId: number): ManagerMetrics {
         fastContactShare: null,
         fieldsFilledShare: null,
         conversion: { numerator: 0, denominator: 0, pct: 0, eligible: false },
-        dutyShifts: 0,
         workedDays: null,
         marginTotal: 0,
     };
@@ -245,7 +244,6 @@ type SalaryOverrides = {
     addNew?: number;
     addPermanent?: number;
     setConversionPct?: number;
-    addDutyShifts?: number;
     setQualityScore?: number;
     setTeamRevenueNoVat?: number;
 };
@@ -259,7 +257,6 @@ function simulateSalary(base: SalaryBase, overrides: SalaryOverrides) {
     if (overrides.addNew) { m.countsByType.new += overrides.addNew; applied.addNew = overrides.addNew; }
     if (overrides.addPermanent) { m.countsByType.permanent += overrides.addPermanent; applied.addPermanent = overrides.addPermanent; }
     if (overrides.setConversionPct != null) { m.conversion.pct = overrides.setConversionPct; applied.setConversionPct = overrides.setConversionPct; }
-    if (overrides.addDutyShifts) { m.dutyShifts += overrides.addDutyShifts; applied.addDutyShifts = overrides.addDutyShifts; }
     if (overrides.setQualityScore != null) { m.qualityAvgScore = overrides.setQualityScore; applied.setQualityScore = overrides.setQualityScore; }
 
     let ctx = base.ctx;
@@ -333,7 +330,6 @@ export const SALARY_TOOLS = [
                     addNew: { type: 'integer', description: 'Добавить N новых заявок.' },
                     addPermanent: { type: 'integer', description: 'Добавить N постоянных заявок.' },
                     setConversionPct: { type: 'number', description: 'Установить конверсию в процентах.' },
-                    addDutyShifts: { type: 'integer', description: 'Добавить N дежурств.' },
                     setQualityScore: { type: 'number', description: 'Установить средний балл качества (0-100, влияет на K_качества).' },
                     setTeamRevenueNoVat: { type: 'number', description: 'Установить выручку отдела без НДС (влияет на K_команды; общекомандный показатель).' },
                     year: { type: 'integer' },
@@ -384,7 +380,6 @@ export async function executeSalaryTool(name: string, args: any, ctx: SalaryTool
                 addNew: Number(args?.addNew) || undefined,
                 addPermanent: Number(args?.addPermanent) || undefined,
                 setConversionPct: args?.setConversionPct != null ? Number(args.setConversionPct) : undefined,
-                addDutyShifts: Number(args?.addDutyShifts) || undefined,
                 setQualityScore: args?.setQualityScore != null ? Number(args.setQualityScore) : undefined,
                 setTeamRevenueNoVat: args?.setTeamRevenueNoVat != null ? Number(args.setTeamRevenueNoVat) : undefined,
             });

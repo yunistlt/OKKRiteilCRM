@@ -28,7 +28,6 @@ export const METRICS_CATALOG: Record<string, MetricDef> = {
     okk_first_contact: { code: 'okk_first_contact', label: 'Скорость первого контакта', source: 'okk_order_scores.lead_in_work_lt_1_day', availability: 'full' },
     okk_fields_filled: { code: 'okk_fields_filled', label: 'Заполнение ТЗ/обязательных полей', source: 'okk_order_scores.field_*/tz_received', availability: 'full' },
     conversion_incoming: { code: 'conversion_incoming', label: 'Входящие лиды (знаменатель конверсии)', source: 'salary_incoming_counts', availability: 'full' },
-    duty_shifts: { code: 'duty_shifts', label: 'Дежурства', source: 'salary_duty', availability: 'full' },
     worked_days: { code: 'worked_days', label: 'Отработанные дни', source: 'salary_duty (worked_day)', availability: 'full' },
     team_revenue: { code: 'team_revenue', label: 'Выручка отдела', source: 'Σ revenue_no_vat по реестру', availability: 'full' },
     plan_personal: { code: 'plan_personal', label: 'Личный план (выручка без НДС)', source: 'salary_plan', availability: 'full' },

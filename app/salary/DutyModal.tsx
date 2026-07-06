@@ -16,7 +16,7 @@ interface DutyRow {
 }
 interface Manager { id: number; name: string }
 
-const KIND_LABEL: Record<string, string> = { duty: 'Дежурство', worked_day: 'Отработанный день' };
+const KIND_LABEL: Record<string, string> = { worked_day: 'Отработанный день' };
 
 export default function DutyModal({ period, monthLabel, onClose }: { period: string; monthLabel: string; onClose: () => void }) {
     const [rows, setRows] = useState<DutyRow[]>([]);
@@ -27,7 +27,7 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
 
     const [mgr, setMgr] = useState<number | ''>('');
     const [date, setDate] = useState('');
-    const [kind, setKind] = useState('duty');
+    const [kind, setKind] = useState('worked_day');
     const [shifts, setShifts] = useState(1);
 
     const load = useCallback(async () => {
@@ -86,7 +86,7 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
             <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto border border-border bg-background p-5" onClick={(e) => e.stopPropagation()}>
                 <div className="mb-4 flex items-center">
-                    <h2 className="text-lg font-semibold">Дежурства и табель — {monthLabel}</h2>
+                    <h2 className="text-lg font-semibold">Табель отработанных дней — {monthLabel}</h2>
                     <button onClick={onClose} className="ml-auto text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
                 </div>
 
@@ -96,10 +96,9 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
                         {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9" />
-                    <select value={kind} onChange={(e) => setKind(e.target.value)} className="h-9 border border-input bg-background px-2 text-sm">
-                        <option value="duty">Дежурство</option>
-                        <option value="worked_day">Отработанный день</option>
-                    </select>
+                    <div className="flex items-center text-sm text-muted-foreground px-2 bg-muted/20 border border-input rounded-md h-9">
+                        Отработанный день
+                    </div>
                     <Input type="number" min={0} step={0.5} value={shifts} onChange={(e) => setShifts(Number(e.target.value))} className="h-9" title="Смен/дней" />
                     <Button size="sm" onClick={add} disabled={saving}>
                         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />} Добавить
@@ -131,7 +130,7 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
                     </table>
                 )}
                 <p className="mt-3 text-xs text-muted-foreground">
-                    «Дежурство» × ставку идёт в ЗП. «Отработанный день» используется для пропорции оклада. После изменений нажмите «Пересчитать» на дашборде.
+                    «Отработанный день» используется для пропорции оклада. После изменений нажмите «Пересчитать» на дашборде.
                 </p>
             </div>
         </div>

@@ -35,7 +35,6 @@ const SELLER_BLOCKS: BlockInstance[] = [
     { code: 'conv_bonus', params: { tiers: CFG.conv_bonus_tiers, minZayavki: CFG.conv_min_zayavki } },
     { code: 'discount_bonus', params: CFG.discount_bonus },
     { code: 'k_team', params: { tiers: CFG.k_team_tiers } },
-    { code: 'duty', params: { rate: CFG.duty_rate } },
 ];
 
 // Прежняя формула — эталон ИТОГА. Печь даёт ту же премию (group premia), что и раньше,
@@ -53,7 +52,7 @@ function oldFormula(m: ManagerMetrics, businessDays: number, teamRev: number) {
     const discountBonus = discountPassed ? CFG.discount_bonus.bonus : 0;
     const okladProration = m.workedDays == null || businessDays <= 0 ? 1 : Math.min(1, m.workedDays / businessDays);
     const oklad = CFG.oklad * okladProration;
-    const dutyPay = m.dutyShifts * CFG.duty_rate;
+    const dutyPay = 0;
     const kTeam = pickTier(teamRev, CFG.k_team_tiers)?.k ?? 1;
     const variablePart = (premia * kQuality + convBonus + discountBonus) * kTeam;
     return { oklad: round2(oklad), premiaZayavki: round2(premiaClient), kQuality, convBonus: round2(convBonus), discountBonus: round2(discountBonus), dutyPay: round2(dutyPay), kTeam, total: round2(oklad + variablePart + dutyPay) };
@@ -72,7 +71,6 @@ function mkMetrics(p: Partial<ManagerMetrics>): ManagerMetrics {
         fastContactShare: null,
         fieldsFilledShare: null,
         conversion: { numerator: 0, denominator: 0, pct: 0, eligible: false },
-        dutyShifts: 0,
         workedDays: null,
         marginTotal: 0,
         ...p,
@@ -82,7 +80,7 @@ function mkMetrics(p: Partial<ManagerMetrics>): ManagerMetrics {
 const CASES: { name: string; m: ManagerMetrics; businessDays: number; teamRev: number }[] = [
     {
         name: 'продавец с премией, качеством, конверсией, скидкой',
-        m: mkMetrics({ countsByType: { new: 11, permanent: 1 }, countsByCategory: { pech: 2 }, qualityAvgScore: 78, conversion: { numerator: 14, denominator: 30, pct: 46.7, eligible: true }, discountMetricValue: 4.2, dutyShifts: 3 }),
+        m: mkMetrics({ countsByType: { new: 11, permanent: 1 }, countsByCategory: { pech: 2 }, qualityAvgScore: 78, conversion: { numerator: 14, denominator: 30, pct: 46.7, eligible: true }, discountMetricValue: 4.2 }),
         businessDays: 20,
         teamRev: 8843365,
     },

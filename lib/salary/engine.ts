@@ -96,7 +96,6 @@ function zeroMetrics(managerId: number): ManagerMetrics {
         fastContactShare: null,
         fieldsFilledShare: null,
         conversion: { numerator: 0, denominator: 0, pct: 0, eligible: false },
-        dutyShifts: 0,
         workedDays: null,
         marginTotal: 0,
     };

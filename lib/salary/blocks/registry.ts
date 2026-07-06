@@ -27,7 +27,6 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     conv_bonus: { tiers: [{ min: 45, bonus: 9000 }, { min: 35, bonus: 6000 }, { min: 25, bonus: 3000 }, { min: 0, bonus: 0 }], minZayavki: 10 },
     discount_bonus: { metric: 'avg_order_discount_pct', comparator: 'lte', threshold: 5, bonus: 5000 },
     k_team: { tiers: [{ min: 20000000, k: 1.3 }, { min: 16000000, k: 1.15 }, { min: 12000000, k: 1.0 }, { min: 0, k: 0.5 }] },
-    duty: { rate: 250 },
     grade_multiplier: { tiers: [{ level: 1, k: 1.25 }, { level: 2, k: 1.1 }, { level: 3, k: 1.0 }] },
     plan_attainment: { thresholdPct: 100, bonus: 10000 },
     plan_accelerator: { perPercent: 500 },

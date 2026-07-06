@@ -26,7 +26,6 @@ export const SALARY_CONFIG_SCHEMAS = {
         threshold: z.number(),
         bonus: z.number().nonnegative(),
     }),
-    duty_rate: z.number().nonnegative(),
     k_team_tiers: z.array(tierK).min(1),
     closing_status: z.object({ code: z.string().min(1) }),
     permanent_client_threshold: z.number().int().nonnegative(),

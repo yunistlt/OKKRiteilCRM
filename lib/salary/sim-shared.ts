@@ -26,7 +26,6 @@ export interface SimManagerBase {
     fieldsFilledShare: number | null;
     conversionPct: number;
     conversionDenominator: number;
-    dutyShifts: number;
     grade: number | null;
     planTarget: number | null; // личный план baseline-месяца (если задан)
 }
@@ -53,7 +52,6 @@ export function toSimBase(m: ManagerMetrics, share: number, grade: number | null
         fieldsFilledShare: m.fieldsFilledShare,
         conversionPct: m.conversion.pct,
         conversionDenominator: m.conversion.denominator,
-        dutyShifts: m.dutyShifts,
         grade,
         planTarget,
     };
@@ -90,7 +88,6 @@ export function buildScaledMetrics(b: SimManagerBase, s: number): ManagerMetrics
         fastContactShare: b.fastContactShare,
         fieldsFilledShare: b.fieldsFilledShare,
         conversion: { numerator: N2, denominator: denom, pct: b.conversionPct, eligible: denom >= 1 },
-        dutyShifts: b.dutyShifts,
         workedDays: null,
         marginTotal: 0,
     };
@@ -128,7 +125,6 @@ export interface SimManagerInputs {
     fastContactShare: number | null; // доля «в работе < 1 дня», %
     fieldsFilledShare: number | null; // доля заполненных ТЗ, %
     discountMetricValue: number | null; // метрика скидочной дисциплины
-    dutyShifts: number; // смены дежурств
     grade: number | null; // грейд
 }
 
@@ -147,7 +143,6 @@ export function inputsFromBase(b: SimManagerBase): SimManagerInputs {
         fastContactShare: b.fastContactShare,
         fieldsFilledShare: b.fieldsFilledShare,
         discountMetricValue: b.discountMetricValue,
-        dutyShifts: b.dutyShifts,
         grade: b.grade,
     };
 }
@@ -183,7 +178,6 @@ export function buildMetricsFromInputs(b: SimManagerBase, inp: SimManagerInputs)
         fastContactShare: inp.fastContactShare,
         fieldsFilledShare: inp.fieldsFilledShare,
         conversion: { numerator: N, denominator: Math.max(0, Math.round(inp.incomingCount)), pct: inp.conversionPct, eligible: Math.round(inp.incomingCount) >= 1 },
-        dutyShifts: Math.max(0, Math.round(inp.dutyShifts)),
         workedDays: null,
         marginTotal: 0,
     };

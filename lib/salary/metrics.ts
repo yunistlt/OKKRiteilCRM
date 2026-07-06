@@ -57,7 +57,6 @@ export interface ManagerMetrics {
     fastContactShare: number | null; // доля заказов «в работе < 1 дня», %, null если нет оценок
     fieldsFilledShare: number | null; // доля заказов с полученным ТЗ, %, null если нет оценок
     conversion: { numerator: number; denominator: number; pct: number; eligible: boolean };
-    dutyShifts: number;
     workedDays: number | null; // отработанные дни (для пропорции оклада); null = полный месяц
     marginTotal: number;
 }
@@ -247,7 +246,6 @@ export function buildPeriodMetrics(input: {
             fastContactShare: fastContactByManager.get(managerId) ?? null,
             fieldsFilledShare: fieldsByManager.get(managerId) ?? null,
             conversion,
-            dutyShifts: dutyByManager.get(managerId) ?? 0,
             workedDays: workedDaysByManager.has(managerId) ? workedDaysByManager.get(managerId)! : null,
             marginTotal,
         });
