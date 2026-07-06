@@ -95,7 +95,7 @@ export default function LeadCatcherPage() {
                 .from('widget_sessions')
                 .select('*')
                 .eq('has_contacts', true)
-                .order('updated_at', { ascending: false })
+                .order('created_at', { ascending: false })
                 .limit(50)
         ]);
         
@@ -623,73 +623,74 @@ export default function LeadCatcherPage() {
                         </div>
 
                         {/* Contacts Table Block */}
-                        <div className="bg-white rounded-3xl border border-gray-150 shadow-sm overflow-hidden flex flex-col">
-                            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                                <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Список захваченных контактов</h3>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase">Последние 50 записей</span>
+                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col font-sans">
+                            <div className="px-4 py-3 bg-gray-900 text-white flex items-center justify-between">
+                                <h3 className="text-[11px] font-black uppercase tracking-wider">Список захваченных контактов</h3>
+                                <span className="text-[9px] text-gray-400 font-bold uppercase">Последние 50 записей</span>
                             </div>
                             <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse">
+                                <table className="w-full text-left border-collapse text-[11px] min-w-max">
                                     <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                            <th className="px-6 py-4">Имя посетителя</th>
-                                            <th className="px-6 py-4">Телефон / Email</th>
-                                            <th className="px-6 py-4">Локация</th>
-                                            <th className="px-6 py-4">RetailCRM Заказ</th>
-                                            <th className="px-6 py-4 text-right">Дата / Время</th>
+                                        <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold text-[10px] uppercase tracking-wider">
+                                            <th className="px-4 py-2.5 border-r border-gray-200">Имя посетителя</th>
+                                            <th className="px-4 py-2.5 border-r border-gray-200">Телефон / Email</th>
+                                            <th className="px-4 py-2.5 border-r border-gray-200">Локация / Сайт</th>
+                                            <th className="px-4 py-2.5 border-r border-gray-200">RetailCRM Заказ</th>
+                                            <th className="px-4 py-2.5 text-right">Дата / Время</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100">
+                                    <tbody className="divide-y divide-gray-200">
                                         {capturedContactsList.length === 0 ? (
                                             <tr>
-                                                <td colSpan={5} className="px-6 py-12 text-center text-xs text-gray-400 italic">
+                                                <td colSpan={5} className="px-4 py-12 text-center text-gray-400 italic">
                                                     Контакты пока не собраны
                                                 </td>
                                             </tr>
                                         ) : (
-                                            capturedContactsList.map(item => {
+                                            capturedContactsList.map((item, idx) => {
                                                 const hasOrder = item.crm_order_id !== null && item.crm_order_id !== undefined;
                                                 const orderDetails = item.crm_order_id ? ordersMap[item.crm_order_id] : null;
                                                 const displayName = orderDetails?.customerName || item.nickname || 'Аноним';
+                                                const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50';
                                                 return (
                                                     <tr 
                                                         key={item.id} 
                                                         onClick={() => setSelectedSessionId(item.id)}
-                                                        className="hover:bg-blue-50/20 cursor-pointer transition-all text-xs"
+                                                        className={`hover:bg-yellow-50 cursor-pointer transition-all border-b border-gray-100 ${rowBg}`}
                                                     >
-                                                        <td className="px-6 py-4 font-bold text-gray-900">
+                                                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-200 align-top">
                                                             {displayName}
                                                         </td>
-                                                        <td className="px-6 py-4 space-y-0.5">
+                                                        <td className="px-4 py-3 space-y-0.5 border-r border-gray-200 align-top">
                                                             {item.contact_phone && <p className="font-bold text-gray-700">{item.contact_phone}</p>}
                                                             {item.contact_email && <p className="text-gray-400 font-medium">{item.contact_email}</p>}
                                                             {!item.contact_phone && !item.contact_email && <span className="text-gray-300 italic">нет данных</span>}
                                                         </td>
-                                                        <td className="px-6 py-4">
+                                                        <td className="px-4 py-3 border-r border-gray-200 align-top">
                                                             <div className="flex flex-col">
                                                                 <span className="font-bold text-gray-700">{item.geo_city || '—'}</span>
                                                                 <span className="text-[9px] text-gray-400">{item.domain}</span>
                                                             </div>
                                                         </td>
-                                                        <td className="px-6 py-4" onClick={(e) => hasOrder && e.stopPropagation()}>
+                                                        <td className="px-4 py-3 border-r border-gray-200 align-top" onClick={(e) => hasOrder && e.stopPropagation()}>
                                                             {hasOrder ? (
-                                                                <div className="flex flex-col gap-1">
+                                                                <div className="flex flex-col gap-1 min-w-[150px]">
                                                                     <a 
                                                                         href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`} 
                                                                         target="_blank" 
                                                                         rel="noopener noreferrer" 
-                                                                        className="text-blue-600 font-bold hover:text-blue-800 hover:underline text-sm"
+                                                                        className="text-blue-600 font-bold hover:text-blue-800 hover:underline text-[11px]"
                                                                     >
                                                                         #{item.crm_order_id} ↗
                                                                     </a>
                                                                     {orderDetails && (
-                                                                        <div className="text-[10px] text-gray-500 space-y-0.5 mt-0.5">
+                                                                        <div className="text-[9px] text-gray-500 space-y-0.5 mt-0.5">
                                                                             <div className="flex items-center gap-1">
                                                                                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: orderDetails.statusColor || '#CBD5E1' }}></span>
-                                                                                <span className="font-semibold text-gray-700">{orderDetails.statusName || 'Без статуса'}</span>
+                                                                                <span className="font-bold text-gray-700">{orderDetails.statusName || 'Без статуса'}</span>
                                                                             </div>
                                                                             <p className="font-bold text-gray-800">Сумма: {orderDetails.amount?.toLocaleString() || 0} руб.</p>
-                                                                            <p className="text-gray-450">Менеджер: {orderDetails.managerName || '—'}</p>
+                                                                            <p className="text-gray-400">Менеджер: {orderDetails.managerName || '—'}</p>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -697,7 +698,7 @@ export default function LeadCatcherPage() {
                                                                 <span className="text-gray-300 italic text-[10px]">в очереди...</span>
                                                             )}
                                                         </td>
-                                                        <td className="px-6 py-4 text-right text-gray-400 font-medium">
+                                                        <td className="px-4 py-3 text-right text-gray-400 font-medium align-top">
                                                             {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
                                                         </td>
                                                     </tr>
