@@ -244,10 +244,13 @@ export async function GET(req: Request) {
                 let assignedManagerId: number | null = null;
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
 
-                // Для «роботов-лидов» (webasyst и т.п.) реальный контакт клиента — в теле письма,
-                // а не в From (там адрес робота). Тянем email/телефон/имя для карточки и назначения.
+                // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
+                // а не в From. Тянем email/телефон/имя для карточки и назначения.
                 const isRobotLead = isSenderBlocked(e.from_email, noreplyAllowlist);
-                const leadContact = isRobotLead
+                const isForwarded = (e.subject ? /^(?:fwd?|fw)\s*:/i.test(e.subject) : false) ||
+                    (e.body_text ? /---\s*Пересылаемое сообщение\s*---|---\s*Forwarded message\s*---/i.test(e.body_text) : false) ||
+                    (e.body_html ? /---\s*Пересылаемое сообщение\s*---|---\s*Forwarded message\s*---/i.test(stripHtml(e.body_html)) : false);
+                const leadContact = (isRobotLead || isForwarded)
                     ? extractLeadContact((e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html))
                     : {};
                 const custEmail = leadContact.email || e.from_email || '';
