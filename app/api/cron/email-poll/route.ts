@@ -15,7 +15,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
-import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment, getManagersOnLeave } from '@/lib/email/assign';
+import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
@@ -232,12 +232,7 @@ export async function GET(req: Request) {
 
         if (pending && pending.length > 0) {
             await setAgentStatus('working', `Разбираю почту: ${pending.length} писем`);
-            const [prompt, pool] = await Promise.all([loadSecretaryPrompt(), getManagerPool()]);
-            const [names, windowDays, onLeave] = await Promise.all([getManagerNames(pool), getBalanceWindowDays(), getManagersOnLeave()]);
-            const load = await getRecentAssignmentCounts(pool, windowDays);
-            // Отпускники выпадают из распределения НОВЫХ клиентов (их постоянные клиенты — по-прежнему к ним).
-            const balancePool = pool.filter((id) => !onLeave.includes(id));
-            const ctx = { pool, balancePool, load, managerNames: names };
+            const [prompt, ctx] = await Promise.all([loadSecretaryPrompt(), getAssignmentContext()]);
 
             for (const e of pending) {
                 let emailType: string, reasoning: string, confidence: number | null = null;
@@ -398,10 +393,32 @@ export async function GET(req: Request) {
                 // 1) Новая заявка → создание заказа (если режим включён и отправитель не в исключениях).
                 if (createOrders && emailType === 'new_request' && !orderBlocked) {
                     try {
-                        // Текст для комментария: plain-текст, а если его нет (HTML-only письмо) — из HTML.
                         const bodyForComment = (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html);
                         const attNames = (Array.isArray(e.attachments_meta) ? e.attachments_meta : [])
                             .map((a: any) => a?.filename).filter(Boolean);
+
+                        // Предварительно скачиваем файлы вложений и извлекаем из них текст для поиска дубликатов
+                        const hasAtt = Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0;
+                        let files: any[] = [];
+                        let attachmentText = '';
+                        if (hasAtt && e.imap_uid != null) {
+                            try {
+                                const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
+                                files = content?.attachments || [];
+                                if (files.length > 0) {
+                                    const { extractTextFromBuffer } = await import('@/lib/email/attachment-parser');
+                                    for (const file of files) {
+                                        const text = await extractTextFromBuffer(file.content, file.filename);
+                                        if (text) {
+                                            attachmentText += `\n[Файл: ${file.filename}]\n${text}`;
+                                        }
+                                    }
+                                }
+                            } catch (attErr: any) {
+                                console.error('Ошибка предварительного скачивания/парсинга вложений:', attErr);
+                            }
+                        }
+
                         const order = await createEmailLead({
                             email: custEmail || '',
                             name: custName,
@@ -410,24 +427,20 @@ export async function GET(req: Request) {
                             bodySnippet: (bodyForComment || '').slice(0, 1500),
                             attachmentNames: attNames,
                             managerId: assignedManagerId,
+                            corporateDetails: v?.corporateDetails || null,
+                            attachmentText: attachmentText || undefined,
                         });
                         createdOrderId = order.id;
                         createdOrderNumber = order.number;
                         finalStatus = 'processed';
                         reasoning = `${reasoning} | Заказ №${order.number} создан`;
 
-                        // Вложения письма → в заказ (ТЗ обычно во вложении). Бинари не храним —
-                        // докачиваем по IMAP UID. Best-effort: ошибка не отменяет уже созданный заказ.
-                        const hasAtt = Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0;
-                        if (hasAtt && e.imap_uid != null) {
+                        // Вложения письма → в заказ (ТЗ обычно во вложении). Реиспользуем уже скачанные файлы.
+                        if (files.length > 0) {
                             try {
-                                const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
-                                const files = content?.attachments || [];
-                                if (files.length > 0) {
-                                    const att = await attachEmailFilesToOrder(order.id, files);
-                                    reasoning = `${reasoning} | Вложения в заказ: ${att.attached}/${att.total}` +
-                                        (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
-                                }
+                                const att = await attachEmailFilesToOrder(order.id, files);
+                                reasoning = `${reasoning} | Вложения в заказ: ${att.attached}/${att.total}` +
+                                    (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
                             } catch (attErr: any) {
                                 reasoning = `${reasoning} | Вложения не прикреплены: ${attErr?.message || 'ошибка'}`;
                             }

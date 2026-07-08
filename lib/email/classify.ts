@@ -23,12 +23,27 @@ export const SECRETARY_PROMPT_KEY = 'email_secretary_classifier';
 export type EmailRoute = 'new_request' | 'accounting' | 'logistics' | 'legal' | 'procurement' | 'not_request';
 export const DEPARTMENT_ROUTES: ReadonlyArray<EmailRoute> = ['accounting', 'logistics', 'legal', 'procurement'];
 
+export interface CorporateDetails {
+    isCorporate: boolean;
+    companyName?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    bank?: string | null;
+    bik?: string | null;
+    bankAccount?: string | null;
+    corrAccount?: string | null;
+}
+
 export interface RouteVerdict {
     route: EmailRoute;
     confidence: number; // 0..1
     reasoning: string; // на русском
     orderNumber?: string | null;
     failed?: boolean;  // true = анализ не выполнен (сбой AI / не настроен) — НЕ финализировать, повторить
+    corporateDetails?: CorporateDetails | null;
 }
 
 export interface EmailAttachmentMeta {
@@ -175,7 +190,7 @@ export function isNoReplySender(fromEmail?: string | null): boolean {
 }
 
 const DEFAULT_SYSTEM_PROMPT = `Ты — Катерина, секретарь компании, торгующей металлоконструкциями/шкафами/стеллажами (B2B).
-Твоя задача — определить ЕДИНСТВЕННЫЙ маршрут входящего письма по его СОДЕРЖАНИЮ.
+Твоя задача — определить ЕДИНСТВЕННЫЙ маршрут входящего письма по его СОДЕРЖАНИЮ и при наличии реквизитов извлечь данные компании (корпоративного клиента).
 
 Верни ровно один код маршрута (route):
 
@@ -211,7 +226,20 @@ const DEFAULT_SYSTEM_PROMPT = `Ты — Катерина, секретарь к�
   "route": "new_request" | "accounting" | "logistics" | "legal" | "procurement" | "not_request",
   "confidence": число от 0 до 1,
   "reasoning": "краткое обоснование на русском (1 предложение)",
-  "order_number": "найденный в теме или тексте письма номер заказа (строка только из цифр, например: '53759'), если в теме/письме явно указан конкретный номер существующего заказа нашей компании; иначе null"
+  "order_number": "найденный в теме или тексте письма номер заказа (строка только из цифр, например: '53759'), если в теме/письме явно указан конкретный номер существующего заказа нашей компании; иначе null",
+  "corporate_details": {
+    "is_corporate": true, // true, если в письме/теме есть реквизиты компании (ИНН, КПП, ОГРН, р/счет, название компании вроде ООО, ИП, ЗАО, ОАО, АО) или запрос явно исходит от организации/бизнеса; иначе false
+    "company_name": "Краткое название компании (например: ООО «Нейровет» или ИП Иванов)", // null, если нет
+    "inn": "ИНН компании (строка только из цифр)", // null, если нет
+    "kpp": "КПП компании (строка только из цифр)", // null, если нет
+    "address": "Фактический или юридический адрес компании", // null, если нет
+    "contact_name": "Имя контактного лица (ФИО или Имя из подписи/текста, например: Александр Тельнов)", // null, если нет
+    "contact_phone": "Телефон контактного лица (только цифры)", // null, если нет
+    "bank": "Название банка для реквизитов", // null, если нет
+    "bik": "БИК банка для реквизитов (только цифры)", // null, если нет
+    "bank_account": "Расчетный счет (р/с, только цифры)", // null, если нет
+    "corr_account": "Корреспондентский счет (к/с, только цифры)" // null, если нет
+  }
 }`;
 
 /**
@@ -281,6 +309,19 @@ ${body || '(пусто — суть письма может быть во вло
             confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0,
             reasoning: parsed.reasoning ?? '',
             orderNumber: parsed.order_number ? String(parsed.order_number).trim() : null,
+            corporateDetails: parsed.corporate_details ? {
+                isCorporate: Boolean(parsed.corporate_details.is_corporate),
+                companyName: parsed.corporate_details.company_name || null,
+                inn: parsed.corporate_details.inn || null,
+                kpp: parsed.corporate_details.kpp || null,
+                address: parsed.corporate_details.address || null,
+                contactName: parsed.corporate_details.contact_name || null,
+                contactPhone: parsed.corporate_details.contact_phone || null,
+                bank: parsed.corporate_details.bank || null,
+                bik: parsed.corporate_details.bik || null,
+                bankAccount: parsed.corporate_details.bank_account || null,
+                corrAccount: parsed.corporate_details.corr_account || null,
+            } : null,
         };
     } catch (e: any) {
         console.error('[classifyRoute] error:', e?.message || e);

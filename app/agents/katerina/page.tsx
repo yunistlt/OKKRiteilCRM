@@ -170,7 +170,7 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                 {/* Блок 2: текущая загрузка */}
                 <section className="border border-slate-200 bg-white p-5">
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Распределение заявок</div>
-                    <div className="mt-2 text-xs text-slate-400">Заявок назначено Катериной за последние {windowDays} дн. (на этом и балансируется распределение)</div>
+                    <div className="mt-2 text-xs text-slate-400">Заявок назначено ИИ (почта + виджет) за последние {windowDays} дн. (на этом и балансируется распределение)</div>
                     <div className="mt-4 space-y-4">
                         {pool.map((id) => {
                             const max = Math.max(1, ...pool.map((p) => load[p] || 0));
