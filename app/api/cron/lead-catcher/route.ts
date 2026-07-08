@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({
@@ -43,6 +44,8 @@ export async function GET(req: Request) {
             return NextResponse.json({ message: 'No sessions to process' });
         }
 
+        const assignmentCtx = await getAssignmentContext();
+
         const results = [];
 
         for (const session of sessions) {
@@ -81,7 +84,20 @@ export async function GET(req: Request) {
                             "email": "Email",
                             "telegram": "Ник в Telegram",
                             "query_summary": "Структурированная выжимка потребностей клиента",
-                            "gifts": ["free_installation"] или ["alice_speaker"] или ["free_installation", "alice_speaker"] или []
+                            "gifts": ["free_installation"] или ["alice_speaker"] или ["free_installation", "alice_speaker"] или [],
+                            "corporate_details": {
+                                "is_corporate": true/false, // true, если в диалоге есть упоминание названия компании, ИНН или реквизитов
+                                "company_name": "Название компании (например: ООО «Нейровет»)", // null, если нет
+                                "inn": "ИНН компании (только цифры)", // null, если нет
+                                "kpp": "КПП компании (только цифры)", // null, если нет
+                                "address": "Адрес компании/доставки", // null, если нет
+                                "contact_name": "Имя контактного лица", // null, если нет
+                                "contact_phone": "Телефон контактного лица (только цифры)", // null, если нет
+                                "bank": "Название банка для реквизитов", // null, если нет
+                                "bik": "БИК банка (только цифры)", // null, если нет
+                                "bank_account": "Расчетный счет (только цифры)", // null, если нет
+                                "corr_account": "Корреспондентский счет (только цифры)" // null, если нет
+                            }
                         }`
                     },
                     { role: 'user', content: `Лог диалога:\n${chatLog}` }
@@ -94,6 +110,24 @@ export async function GET(req: Request) {
 
             if (extractedData.phone || extractedData.email || extractedData.telegram) {
                 try {
+                    const contacts = { email: extractedData.email || undefined, phone: extractedData.phone || undefined };
+                    const assignment = await resolveAssignment(contacts, assignmentCtx);
+                    const managerId = assignment.managerId;
+
+                    const corpDetails = extractedData.corporate_details ? {
+                        isCorporate: Boolean(extractedData.corporate_details.is_corporate),
+                        companyName: extractedData.corporate_details.company_name || null,
+                        inn: extractedData.corporate_details.inn || null,
+                        kpp: extractedData.corporate_details.kpp || null,
+                        address: extractedData.corporate_details.address || null,
+                        contactName: extractedData.corporate_details.contact_name || null,
+                        contactPhone: extractedData.corporate_details.contact_phone || null,
+                        bank: extractedData.corporate_details.bank || null,
+                        bik: extractedData.corporate_details.bik || null,
+                        bankAccount: extractedData.corporate_details.bank_account || null,
+                        corrAccount: extractedData.corporate_details.corr_account || null,
+                    } : null;
+
                     const crmResult = await createLeadInCrm({
                         name: extractedData.name || session.nickname || 'Клиент из чата',
                         phone: extractedData.phone,
@@ -104,7 +138,9 @@ export async function GET(req: Request) {
                         domain: 'zmktlt.ru',
                         city: session.geo_city,
                         history: messages,
-                        visitedPages: []
+                        visitedPages: [],
+                        managerId: managerId,
+                        corporateDetails: corpDetails
                     });
 
                     const orderNumber = crmResult.order?.number || crmResult.id?.toString();
@@ -116,6 +152,7 @@ export async function GET(req: Request) {
                         contact_phone: extractedData.phone,
                         contact_email: extractedData.email,
                         contact_name: extractedData.name || session.nickname || null,
+                        assigned_manager_id: managerId
                     };
 
                     let { error: updateError } = await supabase
@@ -127,6 +164,7 @@ export async function GET(req: Request) {
                         const fallbackPayload: any = {
                             is_lead_created: true,
                             crm_order_number: orderNumber,
+                            assigned_manager_id: managerId
                         };
                         const fallbackResult = await supabase
                             .from('widget_sessions')
@@ -142,6 +180,11 @@ export async function GET(req: Request) {
                             session_id: session.id,
                             role: 'system',
                             content: `✅ Заказ #${orderNumber} успешно создан в CRM (Семён-Архивариус)`
+                        },
+                        {
+                            session_id: session.id,
+                            role: 'system',
+                            content: `👤 Распределено ИИ: ${assignmentCtx.managerNames[managerId!] || managerId} (${assignment.reason})`
                         },
                         {
                             session_id: session.id,
