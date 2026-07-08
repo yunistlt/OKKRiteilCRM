@@ -17,7 +17,7 @@ import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts, resolveAssignment, getManagersOnLeave } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
-import { sendAppEmail } from '@/lib/email';
+import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
 
@@ -243,6 +243,7 @@ export async function GET(req: Request) {
                 let emailType: string, reasoning: string, confidence: number | null = null;
                 let assignedManagerId: number | null = null;
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
+                let v: any = null;
 
                 // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
                 // а не в From. Тянем email/телефон/имя для карточки и назначения.
@@ -262,7 +263,7 @@ export async function GET(req: Request) {
                 if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
-                    const v = await classifyRoute(
+                    v = await classifyRoute(
                         { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta },
                         prompt
                     );
@@ -318,6 +319,75 @@ export async function GET(req: Request) {
 
                 let createdOrderId: number | null = null;
                 let createdOrderNumber: string | null = null;
+
+                // Разрешаем существующий заказ для переписки
+                if (emailType === 'reply_thread') {
+                    let orderNum: string | null = null;
+
+                    // 1. Проверяем тему на наличие CRM-тега [#N/NNNNN]
+                    if (e.subject) {
+                        orderNum = parseOrderNumberFromSubject(e.subject);
+                    }
+
+                    // 2. Если не нашли, проверяем номер, возвращённый ИИ-классификатором
+                    if (!orderNum && v && v.orderNumber) {
+                        orderNum = v.orderNumber;
+                    }
+
+                    // 3. Если не нашли, ищем номер регулярным выражением в теме
+                    if (!orderNum && e.subject) {
+                        const m = e.subject.match(/(?:заказ|счет|№|order|invoice)\s*#?\s*(\d{4,6})/i);
+                        if (m) orderNum = m[1];
+                    }
+
+                    // 4. Если не нашли, ищем регулярным выражением в начале тела письма
+                    if (!orderNum && e.body_text) {
+                        const m = e.body_text.slice(0, 1000).match(/(?:заказ|счет|№|order|invoice)\s*#?\s*(\d{4,6})/i);
+                        if (m) orderNum = m[1];
+                    }
+
+                    let resolvedOrder: { id: number; number: string } | null = null;
+                    if (orderNum) {
+                        const { data } = await supabase
+                            .from('orders')
+                            .select('id, number')
+                            .eq('number', orderNum)
+                            .limit(1)
+                            .maybeSingle();
+                        if (data) {
+                            resolvedOrder = { id: Number(data.id), number: String(data.number) };
+                        }
+                    }
+
+                    // 5. Фолбэк: если заказ всё ещё не определён, ищем последний заказ клиента по email
+                    if (!resolvedOrder && custEmail) {
+                        const eClean = custEmail.trim().toLowerCase();
+                        const paths = ['raw_payload->contact->>email', 'raw_payload->>email', 'raw_payload->customer->>email'];
+                        let bestOrder: { id: number; number: string; createdAt: string } | null = null;
+                        for (const path of paths) {
+                            const { data } = await supabase
+                                .from('orders')
+                                .select('id, number, created_at')
+                                .ilike(path, eClean)
+                                .order('created_at', { ascending: false })
+                                .limit(1);
+                            const row = (data || [])[0] as any;
+                            if (row && (!bestOrder || new Date(row.created_at) > new Date(bestOrder.createdAt))) {
+                                bestOrder = { id: Number(row.id), number: String(row.number), createdAt: row.created_at };
+                            }
+                        }
+                        if (bestOrder) {
+                            resolvedOrder = { id: bestOrder.id, number: bestOrder.number };
+                        }
+                    }
+
+                    if (resolvedOrder) {
+                        createdOrderId = resolvedOrder.id;
+                        createdOrderNumber = resolvedOrder.number;
+                        reasoning = `${reasoning} | Привязано к заказу №${resolvedOrder.number}`;
+                    }
+                }
+
                 let forwardedDepartment: string | null = null;
                 let forwardedTo: string | null = null;
                 let forwardedAt: string | null = null;
