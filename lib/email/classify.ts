@@ -27,6 +27,7 @@ export interface RouteVerdict {
     route: EmailRoute;
     confidence: number; // 0..1
     reasoning: string; // на русском
+    orderNumber?: string | null;
     failed?: boolean;  // true = анализ не выполнен (сбой AI / не настроен) — НЕ финализировать, повторить
 }
 
@@ -209,7 +210,8 @@ const DEFAULT_SYSTEM_PROMPT = `Ты — Катерина, секретарь к�
 {
   "route": "new_request" | "accounting" | "logistics" | "legal" | "procurement" | "not_request",
   "confidence": число от 0 до 1,
-  "reasoning": "краткое обоснование на русском (1 предложение)"
+  "reasoning": "краткое обоснование на русском (1 предложение)",
+  "order_number": "найденный в теме или тексте письма номер заказа (строка только из цифр, например: '53759'), если в теме/письме явно указан конкретный номер существующего заказа нашей компании; иначе null"
 }`;
 
 /**
@@ -278,6 +280,7 @@ ${body || '(пусто — суть письма может быть во вло
             route,
             confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0,
             reasoning: parsed.reasoning ?? '',
+            orderNumber: parsed.order_number ? String(parsed.order_number).trim() : null,
         };
     } catch (e: any) {
         console.error('[classifyRoute] error:', e?.message || e);
