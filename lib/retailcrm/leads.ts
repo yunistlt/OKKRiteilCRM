@@ -545,3 +545,50 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
     const number = (orderResult.order && orderResult.order.number) || orderResult.number || String(orderResult.id);
     return { id: orderResult.id as number, number: String(number) };
 }
+
+export async function updateExistingOrderInCrm(orderId: number, params: {
+    status?: string;
+    noteText?: string;
+}) {
+    const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
+    
+    // 1. Update order status if provided
+    if (params.status) {
+        const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
+        const body = new URLSearchParams();
+        body.append('order', JSON.stringify({ status: params.status }));
+        if (configSite) body.append('site', configSite);
+        body.append('by', 'id');
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        });
+        const result = await response.json();
+        if (!result.success) {
+            console.error(`Failed to update order status for order ${orderId}:`, result);
+        }
+    }
+    
+    // 2. Add note to order if provided
+    if (params.noteText) {
+        const url = `${baseUrl}/api/v5/orders/${orderId}/notes/create?apiKey=${apiKey}`;
+        const body = new URLSearchParams();
+        body.append('note', JSON.stringify({ text: params.noteText }));
+        body.append('order', JSON.stringify({ id: orderId }));
+        if (configSite) body.append('site', configSite);
+        
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString()
+        });
+        const result = await response.json();
+        if (!result.success) {
+            console.error(`Failed to add note to order ${orderId}:`, result);
+        }
+    }
+    
+    return { success: true };
+}

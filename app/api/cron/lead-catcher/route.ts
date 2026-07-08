@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { createLeadInCrm } from '@/lib/retailcrm/leads';
+import { createLeadInCrm, updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
@@ -128,22 +128,64 @@ export async function GET(req: Request) {
                         corrAccount: extractedData.corporate_details.corr_account || null,
                     } : null;
 
-                    const crmResult = await createLeadInCrm({
-                        name: extractedData.name || session.nickname || 'Клиент из чата',
-                        phone: extractedData.phone,
-                        email: extractedData.email,
-                        telegram: extractedData.telegram,
-                        query_summary: extractedData.query_summary,
-                        gifts: Array.isArray(extractedData.gifts) ? extractedData.gifts : [],
-                        domain: 'zmktlt.ru',
-                        city: session.geo_city,
-                        history: messages,
-                        visitedPages: [],
-                        managerId: managerId,
-                        corporateDetails: corpDetails
-                    });
+                    let existingOrderId: number | null = null;
+                    if (session.utm_campaign) {
+                        const m = session.utm_campaign.match(/\d+/);
+                        if (m) {
+                            existingOrderId = parseInt(m[0]);
+                        }
+                    }
 
-                    const orderNumber = crmResult.order?.number || crmResult.id?.toString();
+                    let orderNumber: string;
+                    if (existingOrderId) {
+                        const giftsInfo = extractedData.gifts && extractedData.gifts.length > 0
+                            ? extractedData.gifts.map((g: string) => {
+                                if (g === 'free_installation') return '🎁 Бесплатный монтаж + КП на фирменном бланке';
+                                if (g === 'alice_speaker') return '🎁 Яндекс Станция Алиса Мини';
+                                return g;
+                            }).join('\n')
+                            : 'нет';
+
+                        const managerComment = `🔥 ИНФОРМАЦИЯ ИЗ ИИ-ЧАТА (КВАЛИФИКАЦИЯ)
+
+📍 ГЕО: ${session.geo_city || 'не определен'}
+📱 КОНТАКТЫ: ${extractedData.telegram ? `Telegram: ${extractedData.telegram}` : ''} ${extractedData.phone || ''} ${extractedData.email || ''}
+
+🎁 ПОДАРКИ (зафиксировала Елена):
+${giftsInfo}
+
+📝 СУТЬ ЗАПРОСА (Анализ от Семёна):
+${extractedData.query_summary}
+
+-------------------------------------------
+🔎 ДЕТАЛИ:
+- Товары: ${session.interested_products?.join(', ') || 'не указаны'}
+
+📜 КРАТКИЙ ЛОГ ДИАЛОГА:
+${chatLog.split('\n').slice(-10).join('\n')}`;
+
+                        await updateExistingOrderInCrm(existingOrderId, {
+                            status: 'zapros-kontaktov',
+                            noteText: managerComment
+                        });
+                        orderNumber = String(existingOrderId);
+                    } else {
+                        const crmResult = await createLeadInCrm({
+                            name: extractedData.name || session.nickname || 'Клиент из чата',
+                            phone: extractedData.phone,
+                            email: extractedData.email,
+                            telegram: extractedData.telegram,
+                            query_summary: extractedData.query_summary,
+                            gifts: Array.isArray(extractedData.gifts) ? extractedData.gifts : [],
+                            domain: 'zmktlt.ru',
+                            city: session.geo_city,
+                            history: messages,
+                            visitedPages: [],
+                            managerId: managerId,
+                            corporateDetails: corpDetails
+                        });
+                        orderNumber = crmResult.order?.number || crmResult.id?.toString();
+                    }
                     // Compatibility: different environments may have either crm_order_id or crm_order_number,
                     // and some may not yet have contact_* columns.
                     const primaryPayload: any = {
