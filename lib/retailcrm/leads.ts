@@ -247,7 +247,7 @@ export async function createEmailLead(params: {
             const customerResult = await postRetailCrm('customers/create', 'customer', {
                 firstName: params.name || 'Клиент (письмо)',
                 ...(params.email ? { email: params.email } : {}),
-                ...(params.phone ? { phones: [{ number: params.phone }] : {}),
+                ...(params.phone ? { phones: [{ number: params.phone }] } : {}),
             }, site);
             if (customerResult.success) customerId = customerResult.id;
         }

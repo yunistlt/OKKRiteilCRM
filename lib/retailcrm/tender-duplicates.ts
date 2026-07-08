@@ -28,11 +28,11 @@ function tokenize(text: string): Set<string> {
 function calculateOverlap(setA: Set<string>, setB: Set<string>): number {
     if (setA.size === 0 || setB.size === 0) return 0;
     let intersectionSize = 0;
-    for (const item of setA) {
+    setA.forEach((item) => {
         if (setB.has(item)) {
             intersectionSize++;
         }
-    }
+    });
     return intersectionSize / Math.min(setA.size, setB.size);
 }
 
