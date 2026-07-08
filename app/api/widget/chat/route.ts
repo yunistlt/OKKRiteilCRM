@@ -192,6 +192,37 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: greeting }, { headers: CORS_HEADERS });
         }
 
+        // Load existing order details if visitor campaign points to an order
+        let existingOrderId: number | null = null;
+        const utmCampaign = visitorData?.utm?.campaign || session?.utm_campaign;
+        if (utmCampaign) {
+            const m = String(utmCampaign).match(/\d+/);
+            if (m) {
+                existingOrderId = parseInt(m[0]);
+            }
+        }
+
+        let crmOrder: any = null;
+        let orderItemsText = '';
+        if (existingOrderId) {
+            try {
+                const { fetchRetailCrmOrder } = await import('@/lib/retailcrm/orders');
+                crmOrder = await fetchRetailCrmOrder(existingOrderId);
+                if (crmOrder?.items) {
+                    orderItemsText = crmOrder.items
+                        .map((it: any) => {
+                            const name = it.offer?.displayName || it.productName || '';
+                            const qty = it.quantity ? ` (${it.quantity} шт)` : '';
+                            return `${name}${qty}`;
+                        })
+                        .filter(Boolean)
+                        .join(', ');
+                }
+            } catch (err) {
+                console.error('Error fetching order context for widget:', err);
+            }
+        }
+
         if (type === 'init') {
             if (visitorData?.visitedPages?.length > 0) {
                 const lastPage = visitorData.visitedPages[visitorData.visitedPages.length - 1];
@@ -214,9 +245,18 @@ export async function POST(req: Request) {
                 .eq('role', 'assistant');
 
             if ((assistantMsgCount || 0) === 0) {
-                const greeting = (visitorData?.cartItems?.length > 0)
-                    ? `Здравствуйте! Я Елена, эксперт завода ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подскажите, для каких задач вы выбираете печь (обжиг керамики, закалка металла или лаборатория) и в какой город планируется доставка? Помогу рассчитать логистику и подобрать оптимальную комплектацию.`
-                    : "Добрый день! Я Елена, эксперт завода ЗМК. Помогу подобрать печь под ваши параметры и рассчитать доставку. Подскажите, для каких задач выбираете оборудование (обжиг, закалка или лаборатория) и в какой город планируется доставка?";
+                let greeting = '';
+                if (crmOrder) {
+                    const clientName = crmOrder.firstName || 'коллеги';
+                    const orderNum = crmOrder.number || String(existingOrderId);
+                    const itemsLabel = orderItemsText ? ` по поводу ${orderItemsText}` : '';
+                    
+                    greeting = `Здравствуйте, ${clientName}! Я Елена, инженер-консультант ЗМК. Вижу ваше обращение${itemsLabel} (заказ №${orderNum}).\n\nЯ помогу вам быстро рассчитать доставку, согласовать технические параметры оборудования и подготовить КП. Подскажите, пожалуйста: к какому сроку вам нужно оборудование, требуются ли какие-то особые характеристики и какая форма оплаты предпочтительна?`;
+                } else {
+                    greeting = (visitorData?.cartItems?.length > 0)
+                        ? `Здравствуйте! Я Елена, эксперт завода ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подскажите, для каких задач вы выбираете печь (обжиг керамики, закалка металла или лаборатория) и в какой город планируется доставка? Помогу рассчитать логистику и подобрать оптимальную комплектацию.`
+                        : "Добрый день! Я Елена, эксперт завода ЗМК. Помогу подобрать печь под ваши параметры и рассчитать доставку. Подскажите, для каких задач выбираете оборудование (обжиг, закалка или лаборатория) и в какой город планиготовка?";
+                }
                 
                 await supabase.from('widget_messages').insert({
                     session_id: sessionId,
@@ -387,11 +427,24 @@ export async function POST(req: Request) {
             content: h.content
         })) || [];
 
-        const systemPrompt = SYSTEM_PROMPT_TEMPLATE
+        let systemPrompt = SYSTEM_PROMPT_TEMPLATE
             .replace('{{domain}}', visitorData?.domain || '')
             .replace('{{cartItems}}', visitorData?.cartItems?.join(', ') || '')
             .replace('{{visitedPages}}', visitorData?.visitedPages?.slice(-3).map((p: any) => p.title).join(', ') || '')
             .replace('{{knowledgeContext}}', knowledgeContext);
+
+        if (crmOrder) {
+            const clientName = crmOrder.firstName || 'не указано';
+            const orderNum = crmOrder.number || String(existingOrderId);
+            
+            systemPrompt += `\n\nДАННЫЕ ТЕКУЩЕГО ЗАКАЗА КЛИЕНТА (ОЧЕНЬ ВАЖНО):
+- Номер заказа: ${orderNum}
+- Имя клиента: ${clientName}
+- Заказанные позиции: ${orderItemsText || 'не указаны'}
+- Источник перехода: переход из письма РОП-бота.
+
+ПРАВИЛО: Ты уже знаешь имя клиента (${clientName}) и его заказ №${orderNum}. Обращайся к нему по имени. Твоя задача — провести квалификацию по этому заказу (срок, характеристики, оплата). Тебе НЕ нужно собирать его имя, телефон или email заново, если они уже указаны в заказе. Просто уточни недостающие детали и подтверди их.`;
+        }
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
