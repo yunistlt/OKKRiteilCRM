@@ -25,7 +25,8 @@ const DEFAULTS = {
     widget_bg_opacity: 100,
 };
 
-export async function GET() {
+export async function GET(req: Request) {
+    const origin = new URL(req.url).origin;
     // Читаем конфиг из Supabase
     const { data } = await supabase
         .from('widget_settings')
@@ -79,8 +80,8 @@ window.OKK_LEAD_CATCHER_CALLBACKS = window.OKK_LEAD_CATCHER_CALLBACKS || {
 };
 
 var WIDGET_CONFIG = {
-    apiEndpoint: 'https://okk.zmksoft.com/api/widget/chat',
-    wishlistEndpoint: 'https://okk.zmksoft.com/api/widget/wishlist-email',
+    apiEndpoint: '${origin}/api/widget/chat',
+    wishlistEndpoint: '${origin}/api/widget/wishlist-email',
     agentName: ${agentNameEsc},
     primaryColor: ${JSON.stringify(primaryColor)},
     exitIntentEnabled: ${cfg.exit_intent_enabled},
