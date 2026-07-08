@@ -549,14 +549,19 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
 export async function updateExistingOrderInCrm(orderId: number, params: {
     status?: string;
     noteText?: string;
+    customFields?: Record<string, any>;
 }) {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
     
-    // 1. Update order status if provided
-    if (params.status) {
+    // 1. Update order status and customFields if provided
+    if (params.status || params.customFields) {
         const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
         const body = new URLSearchParams();
-        body.append('order', JSON.stringify({ status: params.status }));
+        const orderData: any = {};
+        if (params.status) orderData.status = params.status;
+        if (params.customFields) orderData.customFields = params.customFields;
+        
+        body.append('order', JSON.stringify(orderData));
         if (configSite) body.append('site', configSite);
         body.append('by', 'id');
         
@@ -567,7 +572,7 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
         });
         const result = await response.json();
         if (!result.success) {
-            console.error(`Failed to update order status for order ${orderId}:`, result);
+            console.error(`Failed to update order status/customFields for order ${orderId}:`, result);
         }
     }
     

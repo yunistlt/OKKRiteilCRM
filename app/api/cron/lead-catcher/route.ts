@@ -10,6 +10,21 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+function mapPurchaseForm(raw?: string): string {
+    if (!raw) return 'trebuetsya-utochnit';
+    const val = raw.toLowerCase();
+    if (val.includes('прямая') || val.includes('внутренний')) {
+        return 'dlya-sebya-pryamaya-zakupka-vnutrennij-tender';
+    }
+    if (val.includes('гос') || val.includes('44-фз') || val.includes('223-фз') || val.includes('государствен') || val.includes('тендер')) {
+        return 'tender';
+    }
+    if (val.includes('смета')) {
+        return 'dlya-sebya-smeta';
+    }
+    return 'trebuetsya-utochnit';
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
@@ -97,6 +112,15 @@ export async function GET(req: Request) {
                                 "bik": "БИК банка (только цифры)", // null, если нет
                                 "bank_account": "Расчетный счет (только цифры)", // null, если нет
                                 "corr_account": "Корреспондентский счет (только цифры)" // null, если нет
+                            },
+                            "qualification": {
+                                "delivery_timing": "Когда нужно чтобы стояло оборудование (желаемая дата/месяц/срок, например 'до сентября' или 'в течение 2 месяцев')", // null, если нет
+                                "budget": "Бюджет в рублях (число или null, если не назван)", // null, если нет
+                                "decision_drivers": "Что принципиально важно для принятия решения (цена, сроки, качество, характеристики и т.д.)", // null, если нет
+                                "inn": "ИНН компании, если указан (9-12 цифр, или null)", // null, если нет
+                                "has_tz": true/false/null, // true, если клиент прикрепил ТЗ или сказал, что ТЗ есть; false, если ТЗ точно нет; null, если вопрос не обсуждался
+                                "competitors": "С кем будут сравнивать наше предложение (названия конкурентов, или null)", // null, если нет
+                                "purchase_form_raw": "Прямая закупка | Тендер на гос площадке | Внутренний тендер | Смета | другое" // null, если нет
                             }
                         }`
                     },
@@ -146,6 +170,7 @@ export async function GET(req: Request) {
                             }).join('\n')
                             : 'нет';
 
+                        const qualification = extractedData.qualification || {};
                         const managerComment = `🔥 ИНФОРМАЦИЯ ИЗ ИИ-ЧАТА (КВАЛИФИКАЦИЯ)
 
 📍 ГЕО: ${session.geo_city || 'не определен'}
@@ -158,15 +183,35 @@ ${giftsInfo}
 ${extractedData.query_summary}
 
 -------------------------------------------
+❓ ОТВЕТЫ НА ВОПРОСЫ КВАЛИФИКАЦИИ:
+1. Срок установки: ${qualification.delivery_timing || 'не указан'}
+2. Бюджет: ${qualification.budget ? `${qualification.budget} руб.` : 'не указан'}
+3. Критично при выборе: ${qualification.decision_drivers || 'не указано'}
+4. ИНН: ${qualification.inn || extractedData.corporate_details?.inn || 'не указан'}
+5. Наличие ТЗ: ${qualification.has_tz === true ? 'Да (запрошено/прикреплено)' : qualification.has_tz === false ? 'Нет (требуется составить)' : 'не обсуждалось'}
+6. С кем сравнивают (конкуренты): ${qualification.competitors || 'не указаны'}
+7. Форма закупки: ${qualification.purchase_form_raw || 'не указана'}
+
+-------------------------------------------
 🔎 ДЕТАЛИ:
 - Товары: ${session.interested_products?.join(', ') || 'не указаны'}
 
 📜 КРАТКИЙ ЛОГ ДИАЛОГА:
 ${chatLog.split('\n').slice(-10).join('\n')}`;
 
+                        const customFields: Record<string, any> = {
+                            kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo: qualification.delivery_timing || null,
+                            typ_customer_margin: mapPurchaseForm(qualification.purchase_form_raw)
+                        };
+                        if (qualification.budget) {
+                            customFields.expected_amount = Number(qualification.budget) || null;
+                            customFields.ozhidaemaya_summa = Number(qualification.budget) || null;
+                        }
+
                         await updateExistingOrderInCrm(existingOrderId, {
                             status: 'zapros-kontaktov',
-                            noteText: managerComment
+                            noteText: managerComment,
+                            customFields
                         });
                         orderNumber = String(existingOrderId);
                     } else {
