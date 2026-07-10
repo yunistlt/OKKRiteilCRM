@@ -35,10 +35,12 @@
 ## Спецификация
 
 - [SPECS.md](SPECS.md) — полная техническая спецификация (230+ строк)
+- [QUALIFICATION.md](QUALIFICATION.md) — интеграция квалификации РОП-бот и Елена
 
 ## Документация
 
 - **Функциональность:** [SPECS.md](SPECS.md)
+- **Квалификация клиентов:** [QUALIFICATION.md](QUALIFICATION.md)
 - **Database schema:** widget_messages, widget_threads, lead_extractions
 - **API endpoints:** `/api/okk/consultant`, `/api/okk/lead-catcher`
 

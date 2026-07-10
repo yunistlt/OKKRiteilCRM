@@ -36,6 +36,7 @@
 
 ### 🔧 Спецификации и чеклисты
 - [lead-catcher/SPECS.md](lead-catcher/SPECS.md) — Спецификации Lead Catcher
+- [lead-catcher/QUALIFICATION.md](lead-catcher/QUALIFICATION.md) — Интеграция квалификации РОП-бот + Елена
 - [legal-ai/CHECKLIST.md](legal-ai/CHECKLIST.md) — Чек-лист реализации legal
 - [messenger/SMOKE_CHECK.md](messenger/SMOKE_CHECK.md) — Дымовое тестирование
 - [transcription/CHECKLIST.md](transcription/CHECKLIST.md) — Транскрибация (✅ готово)
