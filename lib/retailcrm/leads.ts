@@ -580,8 +580,10 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
 }) {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
 
-    // 1. Update order status, customFields, firstName and/or manager if provided
-    if (params.status || params.customFields || params.firstName || params.managerId) {
+    // Всё пишем одним вызовом orders/edit (единственный метод, доступный API-ключу).
+    // Сводку квалификации (noteText) кладём в managerComment («Комментарий оператора») —
+    // отдельный метод orders/notes/create этому ключу недоступен (404), а edit проходит.
+    if (params.status || params.customFields || params.firstName || params.managerId || params.noteText) {
         const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
         const body = new URLSearchParams();
         const orderData: any = {};
@@ -589,11 +591,12 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
         if (params.customFields) orderData.customFields = params.customFields;
         if (params.firstName) orderData.firstName = params.firstName;
         if (params.managerId) orderData.managerId = params.managerId;
-        
+        if (params.noteText) orderData.managerComment = params.noteText;
+
         body.append('order', JSON.stringify(orderData));
         if (configSite) body.append('site', configSite);
         body.append('by', 'id');
-        
+
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -601,28 +604,9 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
         });
         const result = await response.json();
         if (!result.success) {
-            console.error(`Failed to update order status/customFields for order ${orderId}:`, result);
+            console.error(`Failed to update order ${orderId}:`, result);
         }
     }
-    
-    // 2. Add note to order if provided
-    if (params.noteText) {
-        const url = `${baseUrl}/api/v5/orders/${orderId}/notes/create?apiKey=${apiKey}`;
-        const body = new URLSearchParams();
-        body.append('note', JSON.stringify({ text: params.noteText }));
-        body.append('order', JSON.stringify({ id: orderId }));
-        if (configSite) body.append('site', configSite);
-        
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString()
-        });
-        const result = await response.json();
-        if (!result.success) {
-            console.error(`Failed to add note to order ${orderId}:`, result);
-        }
-    }
-    
+
     return { success: true };
 }
