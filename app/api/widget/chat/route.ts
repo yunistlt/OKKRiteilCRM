@@ -16,10 +16,101 @@ const CORS_HEADERS = {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
-// External Supabase for LVZ Knowledge
+// External Supabase for LVZ Knowledge + catalog (marketing_products, webasyst_categories)
 const lvzSupabase = process.env.LVZ_SUPABASE_URL && process.env.LVZ_SUPABASE_ANON_KEY
     ? createClient(process.env.LVZ_SUPABASE_URL, process.env.LVZ_SUPABASE_ANON_KEY)
     : null;
+
+type CatalogMatch = { id: string; name: string; price: number; url: string; category: string };
+
+// Слишком общие слова, по которым бессмысленно искать конкретный товар в каталоге
+const CATALOG_STOPWORDS = new Set([
+    'шкаф', 'шкафы', 'цена', 'цену', 'цены', 'стоит', 'стоимость', 'сколько', 'доставка',
+    'доставить', 'доставку', 'город', 'нужно', 'нужен', 'нужна', 'какой', 'какая', 'какие',
+    'есть', 'здравствуйте', 'добрый', 'день', 'привет', 'змк', 'комфорт', 'размер', 'размеры',
+    'модель', 'подскажите', 'узнать', 'хочу', 'можно', 'пожалуйста', 'заказ', 'заказать',
+]);
+
+// Каталог хранит «сырые» имена с HTML-сущностями и неразрывными пробелами — чистим для показа
+function cleanProductName(name: string): string {
+    return (name || '')
+        .replace(/&quot;/g, '"')
+        .replace(/&laquo;|&raquo;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/ /g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+// Достаём из сообщения значимые токены (без стоп-слов), самые длинные — впереди
+function extractCatalogTokens(message: string): string[] {
+    const raw = (message || '').toLowerCase().match(/[a-zа-яё0-9]{4,}/gi) || [];
+    const seen = new Set<string>();
+    const tokens: string[] = [];
+    for (const t of raw) {
+        const tok = t.toLowerCase();
+        if (CATALOG_STOPWORDS.has(tok) || seen.has(tok)) continue;
+        seen.add(tok);
+        tokens.push(tok);
+    }
+    return tokens.sort((a, b) => b.length - a.length).slice(0, 4);
+}
+
+// Поиск реальных позиций в каталоге ЗМК (LVZ marketing_products) по запросу клиента.
+// Возвращает [] при отсутствии моста/совпадений или любой ошибке — Елена работает как раньше.
+async function searchCatalog(message: string): Promise<CatalogMatch[]> {
+    if (!lvzSupabase) return [];
+    const tokens = extractCatalogTokens(message);
+    if (tokens.length === 0) return [];
+    try {
+        // Широкий OR-поиск по токенам (в токенах шум — город, глаголы), затем ранжируем
+        // по числу реально совпавших токенов и берём топ-3. Это устойчивее строгого AND,
+        // который «ломается» о город/лишние слова в запросе клиента.
+        const orExpr = tokens.map((t) => `name.ilike.%${t}%`).join(',');
+        const { data: recall } = await lvzSupabase
+            .from('marketing_products')
+            .select('id, name, price, full_url, category_id, meta')
+            .or(orExpr)
+            .gt('price', 0)
+            .eq('meta->>status', '1')
+            .limit(40);
+        if (!recall || recall.length === 0) return [];
+
+        const score = (name: string) => {
+            const n = (name || '').toLowerCase();
+            return tokens.reduce((acc, t) => acc + (n.includes(t) ? 1 : 0), 0);
+        };
+        const data = recall
+            .map((d: any) => ({ d, s: score(d.name) }))
+            .filter((x) => x.s > 0)
+            .sort((a, b) => b.s - a.s)
+            .slice(0, 3)
+            .map((x) => x.d);
+        if (data.length === 0) return [];
+
+        // Резолвим человекочитаемые имена категорий
+        const catIds = Array.from(new Set(data.map((d: any) => d.category_id).filter(Boolean)));
+        let catMap: Record<string, string> = {};
+        if (catIds.length > 0) {
+            const { data: cats } = await lvzSupabase
+                .from('webasyst_categories')
+                .select('id, name')
+                .in('id', catIds as any);
+            catMap = Object.fromEntries((cats || []).map((c: any) => [String(c.id), c.name]));
+        }
+
+        return data.map((d: any) => ({
+            id: String(d.id),
+            name: cleanProductName(d.name),
+            price: Number(d.price) || 0,
+            url: d.full_url || '',
+            category: catMap[String(d.category_id)] || '',
+        }));
+    } catch (e) {
+        console.error('Catalog search error:', e);
+        return [];
+    }
+}
 
 const ADJECTIVES = ['Мягкий', 'Быстрый', 'Смелый', 'Умный', 'Яркий', 'Тихий', 'Мудрый', 'Ловкий', 'Верный', 'Гордый'];
 const COLORS = ['Малиновый', 'Синий', 'Оранжевый', 'Зеленый', 'Золотой', 'Серебряный', 'Изумрудный', 'Алый', 'Бирюзовый', 'Фиолетовый'];
@@ -36,8 +127,9 @@ export async function OPTIONS() {
     return NextResponse.json({}, { headers: CORS_HEADERS });
 }
 
-const SYSTEM_PROMPT_TEMPLATE = `Ты — Елена, ведущий инженер-консультант завода муфельных печей ЗМК.
-Твоя цель на данном этапе — СТРОГО КВАЛИФИКАЦИЯ клиента. Ты не должна продавать печи или консультировать по стоимости/доставке (скажи, что стоимость и логистику детально рассчитывает инженер-технолог после получения всех параметров).
+const SYSTEM_PROMPT_TEMPLATE = `Ты — Елена, ведущий инженер-консультант завода ЗМК (ЗМКТЛТ, сайт zmktlt.ru) — производителя промышленного оборудования и металлоконструкций полного цикла. Ассортимент широкий (сушильные шкафы, стеллажи, печи, закалочные ванны, шкафы для АКБ и ЛВЖ, краны, сборочные столы и др.). ВСЕГДА работай с тем товаром и категорией, о которых спрашивает клиент; НИКОГДА не своди разговор к какому-то одному виду продукции (например к печам) и не подменяй товар клиента другим.
+Твоя цель на данном этапе — СТРОГО КВАЛИФИКАЦИЯ клиента. Ты не должна продавать или консультировать по стоимости/доставке (скажи, что стоимость и логистику детально рассчитывает инженер-технолог после получения всех параметров).
+ЗАПРЕТ НА ЦЕНУ: НИКОГДА не называй клиенту конкретную стоимость — даже приблизительную, даже если клиент сам назвал цифру или модель. Не подтверждай и не выдумывай цены. На вопрос о цене отвечай, что точный расчёт пришлёт инженер-технолог в коммерческом предложении.
 
 ТВОЯ ЗАДАЧА — закрыть следующие 7 вопросов квалификации в ходе диалога:
 1. Когда нужно, чтобы оборудование уже стояло на объекте (желаемый срок)?
@@ -264,8 +356,8 @@ export async function POST(req: Request) {
                     }
                 } else {
                     greeting = (visitorData?.cartItems?.length > 0)
-                        ? `Здравствуйте! Я Елена, эксперт завода ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подскажите, для каких задач вы выбираете печь (обжиг керамики, закалка металла или лаборатория) и в какой город планируется доставка? Помогу рассчитать логистику и подобрать оптимальную комплектацию.`
-                        : "Добрый день! Я Елена, эксперт завода ЗМК. Помогу подобрать печь под ваши параметры и рассчитать доставку. Подскажите, для каких задач выбираете оборудование (обжиг, закалка или лаборатория) и в какой город планируется доставка?";
+                        ? `Здравствуйте! Я Елена, эксперт завода ЗМК. Вижу, вы интересовались "${visitorData.cartItems[0]}". Подскажите, для каких задач подбираете оборудование и в какой город планируется доставка? Помогу подобрать оптимальную комплектацию и рассчитать логистику.`
+                        : "Добрый день! Я Елена, эксперт завода ЗМК. Помогу подобрать оборудование под ваши задачи и рассчитать доставку. Подскажите, что вас интересует и в какой город планируется доставка?";
                 }
                 
                 await supabase.from('widget_messages').insert({
@@ -425,6 +517,27 @@ export async function POST(req: Request) {
         
         const knowledgeContext = [...localKnowledge, ...lvzKnowledge].join('\n\n') || '';
 
+        // Заземление: ищем реальные позиции каталога ЗМК под запрос клиента.
+        // Клиенту цену НЕ показываем (её нет в контексте LLM) — только имя/категория/ссылка.
+        // Реальную цену сохраняем на сессию для менеджера (уходит в комментарий лида).
+        const catalogMatches = await searchCatalog(message);
+        let catalogContext = '';
+        if (catalogMatches.length > 0) {
+            catalogContext = '\n\nРЕАЛЬНЫЕ ПОЗИЦИИ ИЗ КАТАЛОГА ЗМК (соответствуют запросу клиента — работай именно с этим товаром, не подменяй его другим видом продукции; цену НЕ называй):\n'
+                + catalogMatches.map((p, i) => `${i + 1}. ${p.name}${p.category ? ` — категория: ${p.category}` : ''}${p.url ? ` — ${p.url}` : ''}`).join('\n');
+            try {
+                const existing: CatalogMatch[] = Array.isArray(session.matched_catalog_products) ? session.matched_catalog_products : [];
+                const byKey = new Map<string, CatalogMatch>();
+                for (const p of [...existing, ...catalogMatches]) byKey.set(p.url || p.name, p);
+                await supabase
+                    .from('widget_sessions')
+                    .update({ matched_catalog_products: Array.from(byKey.values()).slice(0, 10) })
+                    .eq('id', sessionId);
+            } catch (e) {
+                console.error('persist catalog matches error:', e);
+            }
+        }
+
         const { data: history } = await supabase
             .from('widget_messages')
             .select('role, content')
@@ -441,7 +554,7 @@ export async function POST(req: Request) {
             .replace('{{domain}}', visitorData?.domain || '')
             .replace('{{cartItems}}', visitorData?.cartItems?.join(', ') || '')
             .replace('{{visitedPages}}', visitorData?.visitedPages?.slice(-3).map((p: any) => p.title).join(', ') || '')
-            .replace('{{knowledgeContext}}', knowledgeContext);
+            .replace('{{knowledgeContext}}', knowledgeContext + catalogContext);
 
         if (crmOrder) {
             const clientName = crmOrder.firstName || 'не указано';
@@ -454,6 +567,13 @@ export async function POST(req: Request) {
 - Источник перехода: переход из письма РОП-бота.
 
 ПРАВИЛО: Ты уже знаешь имя клиента (${clientName}) и его заказ №${orderNum}. Обращайся к нему по имени. Твоя задача — провести квалификацию по этому заказу (срок, характеристики, оплата). Тебе НЕ нужно собирать его имя, телефон или email заново, если они уже указаны в заказе. Просто уточни недостающие детали и подтверди их.`;
+
+            // Постоянный клиент (есть прошлые заказы) — короткая квалификация ТОЛЬКО по заявке,
+            // без данных о самом клиенте (ИНН, конкуренты, форма закупки у нас уже есть).
+            const ordersCount = Number(crmOrder?.customer?.ordersCount ?? 0);
+            if (ordersCount > 1) {
+                systemPrompt += `\n\nПОСТОЯННЫЙ КЛИЕНТ: этот клиент уже работал с нами (прошлых заказов: ${ordersCount}). НЕ спрашивай ИНН/название компании (вопрос 4), с кем он сравнивает предложение (вопрос 6) и форму закупки (вопрос 7) — эти данные о клиенте у нас уже есть. Квалифицируй ТОЛЬКО по текущей заявке, закрой всего 4 вопроса: (1) желаемый срок установки, (2) ориентировочный бюджет, (3) что принципиально важно при выборе, (5) наличие готового ТЗ. Больше вопросов из общего списка не задавай.`;
+            }
         }
 
         const response = await openai.chat.completions.create({

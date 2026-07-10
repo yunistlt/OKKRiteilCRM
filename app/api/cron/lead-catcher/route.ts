@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { createLeadInCrm, updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
+import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
@@ -162,6 +163,12 @@ export async function GET(req: Request) {
                     const assignment = await resolveAssignment(contacts, assignmentCtx);
                     const managerId = assignment.managerId;
 
+                    // Добираем АКТУАЛЬНУЮ цену найденных товаров прямо с сайта (Webasyst getInfo по ID).
+                    // Живой фетч здесь, в кроне: клиент цену не видит, запрос идёт только для реального лида.
+                    const enrichedCatalog = await enrichWithLivePrice(
+                        Array.isArray(session.matched_catalog_products) ? session.matched_catalog_products : []
+                    );
+
                     const corpDetails = extractedData.corporate_details ? {
                         isCorporate: Boolean(extractedData.corporate_details.is_corporate),
                         companyName: extractedData.corporate_details.company_name || null,
@@ -211,7 +218,7 @@ ${extractedData.query_summary}
 -------------------------------------------
 🔎 ДЕТАЛИ:
 - Товары: ${session.interested_products?.join(', ') || 'не указаны'}
-
+${formatMatchedCatalogProducts(enrichedCatalog)}
 📜 КРАТКИЙ ЛОГ ДИАЛОГА:
 ${chatLog.split('\n').slice(-10).join('\n')}`;
 
@@ -249,7 +256,8 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             history: messages,
                             visitedPages: [],
                             managerId: managerId,
-                            corporateDetails: corpDetails
+                            corporateDetails: corpDetails,
+                            matchedCatalogProducts: enrichedCatalog
                         });
                         orderNumber = crmResult.order?.number || crmResult.id?.toString();
                     }
