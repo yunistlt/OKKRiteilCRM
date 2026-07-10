@@ -316,6 +316,28 @@ ${bodyPart}${attLine}${duplicateReason}`;
     return { id: orderResult.id as number, number: String(number) };
 }
 
+// Форматирует найденные в каталоге ЗМК позиции с реальной ценой — для менеджера.
+// Цена показывается только менеджеру в комментарии заказа; клиенту в чате она не озвучивается.
+export function formatMatchedCatalogProducts(
+    products?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>
+): string {
+    if (!products || products.length === 0) return '';
+    const lines = products
+        .filter((p) => p && p.name)
+        .map((p, i) => {
+            let priceStr: string;
+            if (p.price > 0) {
+                const note = p.priceSource === 'cache' ? ' (из кэша, сверьте на сайте)' : ' (актуально с сайта)';
+                priceStr = `${Math.round(p.price).toLocaleString('ru-RU')} ₽${note}`;
+            } else {
+                priceStr = 'цена не указана';
+            }
+            return `${i + 1}. ${p.name} — ${priceStr}${p.url ? ` — ${p.url}` : ''}`;
+        });
+    if (lines.length === 0) return '';
+    return `\n📦 НАЙДЕНО В КАТАЛОГЕ ЗМК (реальная цена — для менеджера; клиенту НЕ озвучена):\n${lines.join('\n')}\n`;
+}
+
 export async function createLeadInCrm(params: {
     name: string;
     phone?: string;
@@ -330,6 +352,7 @@ export async function createLeadInCrm(params: {
     history?: Array<{ role: string; content: string }>;
     visitedPages?: Array<{ url: string; title: string }>;
     managerId?: number | null;
+    matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>;
     corporateDetails?: {
         isCorporate: boolean;
         companyName?: string | null;
@@ -430,6 +453,8 @@ export async function createLeadInCrm(params: {
         }).join('\n')
         : 'нет';
 
+    const catalogBlock = formatMatchedCatalogProducts(params.matchedCatalogProducts);
+
     const managerComment = `🔥 НОВЫЙ ЛИД ИЗ ИИ-ЧАТА
 
 📍 ГЕО: ${cityStr}
@@ -445,7 +470,7 @@ ${params.query_summary}
 🔎 ДЕТАЛИ:
 - Страницы: ${visitedPagesStr}
 - Товары: ${params.items?.join(', ') || 'не указаны'}
-
+${catalogBlock}
 📜 КРАТКИЙ ЛОГ ДИАЛОГА:
 ${historyLog.split('\n').slice(-10).join('\n')}
 `;
@@ -551,17 +576,19 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
     noteText?: string;
     customFields?: Record<string, any>;
     firstName?: string;
+    managerId?: number | null;
 }) {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
-    
-    // 1. Update order status, customFields, and firstName if provided
-    if (params.status || params.customFields || params.firstName) {
+
+    // 1. Update order status, customFields, firstName and/or manager if provided
+    if (params.status || params.customFields || params.firstName || params.managerId) {
         const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
         const body = new URLSearchParams();
         const orderData: any = {};
         if (params.status) orderData.status = params.status;
         if (params.customFields) orderData.customFields = params.customFields;
         if (params.firstName) orderData.firstName = params.firstName;
+        if (params.managerId) orderData.managerId = params.managerId;
         
         body.append('order', JSON.stringify(orderData));
         if (configSite) body.append('site', configSite);
