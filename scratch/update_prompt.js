@@ -8,7 +8,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  const sqlFile = path.join(__dirname, '../migrations/20260708_update_katerina_prompt.sql');
+  const sqlFile = path.join(__dirname, '../migrations/20260708_update_katerina_prompt_corporate.sql');
   const sqlContent = fs.readFileSync(sqlFile, 'utf8');
 
   // Extract prompt content between $prompt$ delimiters

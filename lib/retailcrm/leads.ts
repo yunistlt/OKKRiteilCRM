@@ -550,16 +550,18 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
     status?: string;
     noteText?: string;
     customFields?: Record<string, any>;
+    firstName?: string;
 }) {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
     
-    // 1. Update order status and customFields if provided
-    if (params.status || params.customFields) {
+    // 1. Update order status, customFields, and firstName if provided
+    if (params.status || params.customFields || params.firstName) {
         const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
         const body = new URLSearchParams();
         const orderData: any = {};
         if (params.status) orderData.status = params.status;
         if (params.customFields) orderData.customFields = params.customFields;
+        if (params.firstName) orderData.firstName = params.firstName;
         
         body.append('order', JSON.stringify(orderData));
         if (configSite) body.append('site', configSite);

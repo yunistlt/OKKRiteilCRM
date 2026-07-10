@@ -40,11 +40,11 @@ export async function GET(req: Request) {
             .from('widget_sessions')
             .select('*')
             .eq('is_lead_created', false)
-            .eq('has_contacts', true) // Берем только те, где Лена нашла контакты
+            .or('has_contacts.eq.true,utm_campaign.not.is.null') // Берем те, где есть контакты ИЛИ пришли с UTM кампанией заказа
             .order('updated_at', { ascending: false })
             .limit(10);
 
-        // Закрываем старые сессии (> 3 дней без движения) у которых has_contacts = false,
+        // Закрываем старые сессии (> 3 дней без движения) у которых has_contacts = false и нет utm_campaign,
         // чтобы они не крутились вечно
         const cutoff3d = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
         await supabase
@@ -52,6 +52,7 @@ export async function GET(req: Request) {
             .update({ is_lead_created: true })
             .eq('is_lead_created', false)
             .eq('has_contacts', false)
+            .is('utm_campaign', null)
             .lt('updated_at', cutoff3d);
 
         if (sessionsError) throw sessionsError;
@@ -66,11 +67,26 @@ export async function GET(req: Request) {
         for (const session of sessions) {
             const { data: messages, error: msgsError } = await supabase
                 .from('widget_messages')
-                .select('role, content')
+                .select('role, content, created_at')
                 .eq('session_id', session.id)
                 .order('created_at', { ascending: true });
 
             if (msgsError || !messages || messages.length === 0) continue;
+
+            // 1. Проверяем, ответил ли вообще клиент хоть раз
+            const hasUserMsg = messages.some((m: any) => m.role === 'user');
+            if (!hasUserMsg) continue;
+
+            // 2. Проверяем неактивность (ждем завершения диалога)
+            const isSimulation = session.visitor_id && session.visitor_id.startsWith('v_lc_sim_');
+            const lastMsg = messages[messages.length - 1];
+            const lastMsgTime = new Date(lastMsg.created_at || new Date()).getTime();
+            const timeSinceLastMsg = Date.now() - lastMsgTime;
+            
+            // Если это не симуляция и последнее сообщение было менее 2 минут назад - даем клиенту договорить
+            if (!isSimulation && timeSinceLastMsg < 2 * 60 * 1000) {
+                continue;
+            }
 
             const chatLog = messages.map((m: any) => `${m.role === 'user' ? 'Клиент' : 'ИИ'}: ${m.content}`).join('\n');
 
@@ -132,7 +148,15 @@ export async function GET(req: Request) {
 
             const extractedData = JSON.parse(extractionResponse.choices[0].message.content || '{}');
 
-            if (extractedData.phone || extractedData.email || extractedData.telegram) {
+            let existingOrderId: number | null = null;
+            if (session.utm_campaign) {
+                const m = session.utm_campaign.match(/\d+/);
+                if (m) {
+                    existingOrderId = parseInt(m[0]);
+                }
+            }
+
+            if (extractedData.phone || extractedData.email || extractedData.telegram || existingOrderId) {
                 try {
                     const contacts = { email: extractedData.email || undefined, phone: extractedData.phone || undefined };
                     const assignment = await resolveAssignment(contacts, assignmentCtx);
@@ -151,14 +175,6 @@ export async function GET(req: Request) {
                         bankAccount: extractedData.corporate_details.bank_account || null,
                         corrAccount: extractedData.corporate_details.corr_account || null,
                     } : null;
-
-                    let existingOrderId: number | null = null;
-                    if (session.utm_campaign) {
-                        const m = session.utm_campaign.match(/\d+/);
-                        if (m) {
-                            existingOrderId = parseInt(m[0]);
-                        }
-                    }
 
                     let orderNumber: string;
                     if (existingOrderId) {
@@ -208,10 +224,16 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             customFields.ozhidaemaya_summa = Number(qualification.budget) || null;
                         }
 
+                        let nameToUpdate = extractedData.name || null;
+                        if (nameToUpdate === 'Клиент из чата' || nameToUpdate === session.nickname) {
+                            nameToUpdate = null;
+                        }
+
                         await updateExistingOrderInCrm(existingOrderId, {
                             status: 'zapros-kontaktov',
                             noteText: managerComment,
-                            customFields
+                            customFields,
+                            firstName: nameToUpdate || undefined
                         });
                         orderNumber = String(existingOrderId);
                     } else {

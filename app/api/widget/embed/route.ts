@@ -207,7 +207,30 @@ async function initWidget() {
     var typingIndicator = document.getElementById('okk-typing-indicator');
     var addedMessages = new Set();
 
-    if (widget) widget.style.display = 'flex';
+    var isQualificationMode = false;
+    var utmParams = {};
+    try {
+        utmParams = JSON.parse(localStorage.getItem(WIDGET_CONFIG.storageKeys.utm) || '{}');
+    } catch(e) {}
+    var campaign = utmParams.campaign || new URLSearchParams(window.location.search).get('utm_campaign');
+    if (campaign && /\d+/.test(campaign)) {
+        isQualificationMode = true;
+    }
+
+    if (widget) {
+        widget.style.display = 'flex';
+        if (isQualificationMode) {
+            widget.classList.add('okk-qualification-modal');
+            widget.classList.remove('minimized');
+            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, 'true');
+            
+            // Render backdrop
+            var backdrop = document.createElement('div');
+            backdrop.id = 'okk-qualification-backdrop';
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.45);backdrop-filter:blur(4px);z-index:2147483646;animation:okkFadeIn 0.3s ease-out;';
+            document.body.appendChild(backdrop);
+        }
+    }
 
     // ── Публичный API для внешних скриптов (калькулятор на странице) ──────────
     window.__OKK_OPEN_WITH_CONTEXT__ = async function(specs, price) {
@@ -325,21 +348,25 @@ async function initWidget() {
                 markGreetingShown();
                 lastMessageTimestamp = new Date().toISOString();
                 localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
-                var sentences = data.magicGreeting.match(/[^\\.!\\?]+[\\.!\\?]+/g) || [data.magicGreeting];
-                var part1 = sentences[0];
-                var part2 = sentences.slice(1).join(' ').trim();
-                setTimeout(function() {
-                    if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addMsg(part1, 'ai', false, true);
-                }, WIDGET_CONFIG.greetingDelay1);
-                if (part2) {
+                if (isQualificationMode) {
+                    addMsg(data.magicGreeting, 'ai', false, false);
+                } else {
+                    var sentences = data.magicGreeting.match(/[^\\.!\\?]+[\\.!\\?]+/g) || [data.magicGreeting];
+                    var part1 = sentences[0];
+                    var part2 = sentences.slice(1).join(' ').trim();
                     setTimeout(function() {
-                        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addMsg(part2, 'ai', false, true);
-                    }, WIDGET_CONFIG.greetingDelay2);
-                }
-                if (WIDGET_CONFIG.quickButtonsEnabled) {
-                    setTimeout(function() {
-                        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addQuickButtons();
-                    }, WIDGET_CONFIG.quickButtonsDelay);
+                        if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addMsg(part1, 'ai', false, true);
+                    }, WIDGET_CONFIG.greetingDelay1);
+                    if (part2) {
+                        setTimeout(function() {
+                            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addMsg(part2, 'ai', false, true);
+                        }, WIDGET_CONFIG.greetingDelay2);
+                    }
+                    if (WIDGET_CONFIG.quickButtonsEnabled) {
+                        setTimeout(function() {
+                            if (localStorage.getItem(WIDGET_CONFIG.storageKeys.hasInteracted) !== 'true') addQuickButtons();
+                        }, WIDGET_CONFIG.quickButtonsDelay);
+                    }
                 }
             }
             return data;
@@ -403,12 +430,18 @@ async function initWidget() {
             if (!widget) return;
             localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
             if (autoExpandTimer) clearTimeout(autoExpandTimer);
-            widget.classList.toggle('minimized');
-            var isOpen = !widget.classList.contains('minimized');
-            localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, isOpen);
-            if (toggle) toggle.innerHTML = isOpen ? '▼' : '▲';
-            if (isOpen && preview) preview.style.display = 'none';
-            window.OKK_LEAD_CATCHER_CALLBACKS.onWidgetToggle(isOpen);
+            if (isQualificationMode) {
+                widget.style.display = 'none';
+                var bd = document.getElementById('okk-qualification-backdrop');
+                if (bd) bd.remove();
+            } else {
+                widget.classList.toggle('minimized');
+                var isOpen = !widget.classList.contains('minimized');
+                localStorage.setItem(WIDGET_CONFIG.storageKeys.widgetOpen, isOpen);
+                if (toggle) toggle.innerHTML = isOpen ? '▼' : '▲';
+                if (isOpen && preview) preview.style.display = 'none';
+                window.OKK_LEAD_CATCHER_CALLBACKS.onWidgetToggle(isOpen);
+            }
         };
     }
 
@@ -446,6 +479,7 @@ async function initWidget() {
 
     // ── Email capture ──────────────────────────────────────────────────────────
     function addEmailCapture() {
+        if (isQualificationMode) return;
         if (!messages || !WIDGET_CONFIG.emailCaptureEnabled) return;
         if (document.getElementById('okk-lc-email-capture')) return;
         var wrap = document.createElement('div');
@@ -507,6 +541,7 @@ async function initWidget() {
 
     // ── Quick buttons ──────────────────────────────────────────────────────────
     function addQuickButtons() {
+        if (isQualificationMode) return;
         if (!messages || document.getElementById('okk-lc-quick-btns')) return;
         var wrap = document.createElement('div');
         wrap.id = 'okk-lc-quick-btns';
@@ -536,6 +571,7 @@ async function initWidget() {
 
     // ── Phone capture ──────────────────────────────────────────────────────────
     function addPhoneCapture() {
+        if (isQualificationMode) return;
         if (!messages || document.getElementById('okk-lc-phone-capture')) return;
         var wrap = document.createElement('div'); wrap.id = 'okk-lc-phone-capture'; wrap.className = 'okk-msg ai';
         wrap.style.cssText = 'padding:0;background:transparent;box-shadow:none;border:none;';
@@ -606,6 +642,7 @@ async function initWidget() {
     }
 
     function setupExitIntent() {
+        if (isQualificationMode) return;
         if (!WIDGET_CONFIG.exitIntentEnabled) return;
         if (localStorage.getItem(WIDGET_CONFIG.storageKeys.exitIntentFired)) return;
         // Не показываем exit-intent пока пользователь не посетил ≥2 страниц
@@ -757,5 +794,8 @@ function buildCSS(cfg: any): string {
 .okk-dot:nth-child(3){animation-delay:.4s;}
 @keyframes okkDotPulse{0%,80%,100%{transform:scale(.3);opacity:.3}40%{transform:scale(1);opacity:1}}
 #okk-lead-catcher-preview{position:fixed;${previewPosCSS}background:#fff;padding:12px 18px;border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.1);max-width:280px;font-size:13px;color:#333;display:none;z-index:2147483646;animation:okkFadeIn .3s ease-out;border-bottom-right-radius:4px;${cfg.hide_on_mobile ? '@media(max-width:600px){display:none!important;}' : ''}}
+#okk-lead-catcher-widget.okk-qualification-modal{position:fixed;top:50%!important;left:50%!important;bottom:auto!important;right:auto!important;transform:translate(-50%,-50%)!important;width:600px!important;height:650px!important;border-radius:28px!important;box-shadow:0 20px 80px rgba(15,23,42,0.25)!important;transition:none!important;}
+#okk-lead-catcher-widget.okk-qualification-modal.minimized{display:none!important;}
+#okk-lead-catcher-widget.okk-qualification-modal #okk-lead-catcher-toggle{display:none!important;}
 `.trim();
 }
