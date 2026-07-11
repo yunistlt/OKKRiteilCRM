@@ -28,6 +28,7 @@ interface Payment {
   extracted_invoice_number: string | null;
   match_candidates: Candidate[] | null;
   matched_order_number: string | null;
+  matched_order_id: number | null;
   retailcrm_payment_id: string | null;
   retailcrm_synced_at: string | null;
   retailcrm_error: string | null;
@@ -65,10 +66,19 @@ function formatMoney(kopecks: number, currency = 'RUB') {
   return rub.toLocaleString('ru-RU', { style: 'currency', currency, minimumFractionDigits: 2 });
 }
 
+// Ссылка на карточку заказа в RetailCRM (по внутреннему id, иначе по номеру).
+function crmOrderLink(crmUrl: string, orderId: number | null, orderNumber?: string | null): string | null {
+  if (!crmUrl) return null;
+  if (orderId) return `${crmUrl}/orders/${orderId}/edit`;
+  if (orderNumber) return `${crmUrl}/orders/${encodeURIComponent(orderNumber)}/edit?by=number`;
+  return null;
+}
+
 export default function PaymentsPage() {
   const [tab, setTab] = useState<string>('pending_match');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [summary, setSummary] = useState<Record<string, number>>({});
+  const [crmUrl, setCrmUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [manualNumber, setManualNumber] = useState<Record<number, string>>({});
@@ -117,6 +127,7 @@ export default function PaymentsPage() {
       if (!res.ok) throw new Error(json.error || 'Ошибка загрузки');
       setPayments(json.payments || []);
       setSummary(json.summary || {});
+      setCrmUrl(json.crm_url || '');
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -298,7 +309,21 @@ export default function PaymentsPage() {
                 <div className="text-right text-xs text-gray-400">
                   <div>Платёж #{p.document_number || p.external_payment_id}</div>
                   {p.matched_order_number && (
-                    <div className="text-emerald-600">Заказ №{p.matched_order_number}</div>
+                    <div>
+                      {crmOrderLink(crmUrl, p.matched_order_id, p.matched_order_number) ? (
+                        <a
+                          href={crmOrderLink(crmUrl, p.matched_order_id, p.matched_order_number)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-semibold text-emerald-600 underline decoration-dotted hover:text-emerald-700"
+                          title="Открыть заказ в RetailCRM"
+                        >
+                          Заказ №{p.matched_order_number} ↗
+                        </a>
+                      ) : (
+                        <span className="text-emerald-600">Заказ №{p.matched_order_number}</span>
+                      )}
+                    </div>
                   )}
                   {p.retailcrm_synced_at && (
                     <div className="text-emerald-600">✓ в RetailCRM</div>
@@ -329,16 +354,28 @@ export default function PaymentsPage() {
                       <div className="mb-1 text-xs font-semibold text-gray-500">Кандидаты:</div>
                       <div className="flex flex-wrap gap-2">
                         {p.match_candidates.map((c, i) => (
-                          <button
-                            key={i}
-                            disabled={busyId === p.id}
-                            onClick={() => assign(p.id, c.orderNumber)}
-                            className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-sm text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-                            title={c.reason}
-                          >
-                            №{c.orderNumber}
-                            {c.totalKopecks != null ? ` · ${formatMoney(c.totalKopecks)}` : ''}
-                          </button>
+                          <span key={i} className="inline-flex items-center overflow-hidden rounded-lg border border-violet-200 bg-violet-50">
+                            <button
+                              disabled={busyId === p.id}
+                              onClick={() => assign(p.id, c.orderNumber)}
+                              className="px-3 py-1.5 text-sm text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+                              title={`Привязать к заказу №${c.orderNumber} (${c.reason})`}
+                            >
+                              №{c.orderNumber}
+                              {c.totalKopecks != null ? ` · ${formatMoney(c.totalKopecks)}` : ''}
+                            </button>
+                            {crmOrderLink(crmUrl, c.orderId, c.orderNumber) && (
+                              <a
+                                href={crmOrderLink(crmUrl, c.orderId, c.orderNumber)!}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="border-l border-violet-200 px-2 py-1.5 text-violet-500 hover:bg-violet-100"
+                                title="Открыть заказ в RetailCRM"
+                              >
+                                ↗
+                              </a>
+                            )}
+                          </span>
                         ))}
                       </div>
                     </div>
