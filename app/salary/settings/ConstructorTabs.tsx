@@ -12,7 +12,7 @@ import BaseConfigTab from './BaseConfigTab';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 
-type Catalog = { code: string; name: string; methodology: string; kind: string; group: string; requiredMetrics: string[]; defaultParams: any; available: boolean }[];
+type Catalog = { code: string; name: string; methodology: string; kind: string; group: string; scope?: string; requiredMetrics: string[]; defaultParams: any; available: boolean }[];
 type SchemeBlock = { block_code: string; params: any; raw: boolean; rawText: string; enabled: boolean };
 // prevEffectiveFrom — дата версии «как загружена». Если при сохранении дата изменилась,
 // бэкенд переносит ту же версию на новую дату (а не плодит дубль). '' = новая, ещё не сохранённая схема.
@@ -364,7 +364,7 @@ export function SchemesTab() {
                 <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
                 <div className="mb-1.5 text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
                 <div className="divide-y border">
-                    {catalog.map((b) => {
+                    {catalog.filter((b) => b.scope !== 'engineer').map((b) => {
                         const tint = tintFor(b.code);
                         return (
                             <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })}

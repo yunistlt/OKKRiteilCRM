@@ -53,6 +53,7 @@ export interface BonusBlock<P = any> {
     kind: BlockKind;
     group: CompositionGroup; // значим для аддитивных/штрафных
     multiplierScope?: MultiplierScope; // обязателен для kind === 'multiplier'
+    scope?: 'manager' | 'engineer'; // 'engineer' — блок только для ролей инженеров (скрыт из менеджерской палитры); по умолчанию 'manager'
     requiredMetrics: string[]; // коды из metrics-catalog (структурный гейт)
     paramSchema: z.ZodType<P>;
     compute(m: ManagerMetrics, params: P, ctx: BlockComputeContext): BlockResult;

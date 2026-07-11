@@ -278,6 +278,7 @@ const percentZaRaschet: BonusBlock<{
         'Инженеру-расчётчику: по каждому заказу сумма × % × K_срочности. K — по отношению факта времени расчёта (В просчёте → Согласование параметров заказа) к нормативу от суммы заказа; нет данных таймера → нейтральный K.',
     kind: 'base',
     group: 'base',
+    scope: 'engineer',
     requiredMetrics: ['engineer_orders'],
     paramSchema: z.object({
         percent: z.number().nonnegative(),

@@ -66,6 +66,7 @@ export function listBlocks() {
         kind: b.kind,
         group: b.group,
         multiplierScope: b.multiplierScope,
+        scope: b.scope ?? 'manager',
         requiredMetrics: b.requiredMetrics,
         defaultParams: DEFAULT_BLOCK_PARAMS[b.code] ?? {},
         // блок доступен в конструкторе, только если ВСЕ его метрики есть в БД
