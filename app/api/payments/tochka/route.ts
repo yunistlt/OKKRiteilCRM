@@ -90,6 +90,17 @@ export async function POST(req: NextRequest) {
 
     const { row, isNew } = await ingestPointPayment(normalized);
 
+    // Фиксируем результат записи — чтобы видеть, что строка реально создана.
+    await captureLastWebhook({
+      at: new Date().toISOString(),
+      stage: 'ingested',
+      payment_id: row?.id ?? null,
+      is_new: isNew,
+      status: row?.status ?? null,
+      external_payment_id: normalized.externalPaymentId,
+      amount_kopecks: normalized.amountKopecks,
+    });
+
     await recordWorkerSuccess(WORKER_KEY, {
       payment_id: row.id,
       external_payment_id: normalized.externalPaymentId,
@@ -99,6 +110,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, payment_id: row.id, is_new: isNew });
   } catch (error: any) {
+    await captureLastWebhook({
+      at: new Date().toISOString(),
+      stage: 'error',
+      error: String(error?.message || error).slice(0, 2000),
+    });
     await recordWorkerFailure(WORKER_KEY, error?.message || 'tochka webhook error');
     return NextResponse.json(
       { ok: false, error: error?.message || 'internal error' },
