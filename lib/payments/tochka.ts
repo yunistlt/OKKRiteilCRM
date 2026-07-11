@@ -137,6 +137,9 @@ const TochkaPaymentSchema = z
     // Наш счёт.
     accountId: z.string().optional(),
     account: z.string().optional(),
+    // Реальная структура вебхука Точки: стороны платежа с суммой и реквизитами.
+    SidePayer: z.record(z.string(), z.any()).optional(),
+    SideRecipient: z.record(z.string(), z.any()).optional(),
   })
   .passthrough();
 
@@ -180,7 +183,14 @@ export function normalizeTochkaPayment(
   const externalPaymentId = str(p.paymentId) || str(p.id);
   if (!externalPaymentId) return null;
 
-  const amountKopecks = parseAmountToKopecks(p.amount ?? p.sum);
+  // Реальная структура Точки: сумма и реквизиты сторон — в SidePayer/SideRecipient.
+  // Для входящего платежа плательщик — SidePayer, наш счёт — SideRecipient.
+  const payer: any = p.SidePayer || p.sidePayer || {};
+  const recipient: any = p.SideRecipient || p.sideRecipient || {};
+
+  const amountKopecks = parseAmountToKopecks(
+    payer.amount ?? recipient.amount ?? p.amount ?? p.sum,
+  );
   if (amountKopecks === null) return null;
 
   const paymentDate = toIsoDate(str(p.date) || str(p.paymentDate) || str(p.executionDate));
@@ -196,13 +206,13 @@ export function normalizeTochkaPayment(
     paymentDatetime: paymentDate ? new Date(`${paymentDate}T00:00:00Z`).toISOString() : null,
     purpose: str(p.purpose) || str(p.paymentPurpose),
     documentNumber: str(p.documentNumber) || str(p.number),
-    payerName: str(p.payerName) || str(p.sidePayerName),
-    payerInn: str(p.payerInn) || str(p.payerINN),
-    payerKpp: str(p.payerKpp) || str(p.payerKPP),
-    payerAccount: str(p.payerAccount),
-    payerBankBic: str(p.payerBankBic) || str(p.payerBankBik),
-    payerBankName: str(p.payerBankName),
-    accountId: str(p.accountId) || str(p.account),
+    payerName: str(payer.name) || str(p.payerName) || str(p.sidePayerName),
+    payerInn: str(payer.inn) || str(p.payerInn) || str(p.payerINN),
+    payerKpp: str(payer.kpp) || str(p.payerKpp) || str(p.payerKPP),
+    payerAccount: str(payer.account) || str(p.payerAccount),
+    payerBankBic: str(payer.bankCode) || str(p.payerBankBic) || str(p.payerBankBik),
+    payerBankName: str(payer.bankName) || str(p.payerBankName),
+    accountId: str(recipient.account) || str(p.accountId) || str(p.account),
     signatureVerified,
     rawPayload,
   };
