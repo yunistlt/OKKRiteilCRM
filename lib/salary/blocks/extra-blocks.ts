@@ -247,6 +247,70 @@ const gradeMultiplier: BonusBlock<{ tiers: { level: number; k: number }[] }> = {
     },
 };
 
+// ── Инженер-расчётчик: % от суммы заказа × K_срочности (позаказно) ───────────
+// Единый самодостаточный блок: у каждого заказа своя сумма и своя длительность
+// расчёта, поэтому K применяется ПОЗАКАЗНО (а не как общий множитель схемы).
+//   amount = Σ по заказам( сумма × percent/100 × K )
+//   норматив срочности зависит от суммы заказа (slaNormy, часы); K — из kTiers по
+//   отношению факт/норма (первый tier с maxRatio ≥ ratio, иначе последний = грубая
+//   просрочка). Нет данных таймера → kMissing (нейтраль, не штраф — закон
+//   scoring-three-state: null = системное «нет данных»).
+const raschetNorm = (sum: number, normy: { maxSum: number; normHours: number }[]): number => {
+    const sorted = [...normy].sort((a, b) => a.maxSum - b.maxSum);
+    for (const n of sorted) if (sum <= n.maxSum) return n.normHours;
+    return sorted.length ? sorted[sorted.length - 1].normHours : 0;
+};
+const raschetK = (ratio: number, tiers: { maxRatio: number; k: number }[]): number => {
+    const sorted = [...tiers].sort((a, b) => a.maxRatio - b.maxRatio);
+    for (const t of sorted) if (ratio <= t.maxRatio) return t.k;
+    return sorted.length ? sorted[sorted.length - 1].k : 1;
+};
+
+const percentZaRaschet: BonusBlock<{
+    percent: number;
+    slaNormy: { maxSum: number; normHours: number }[];
+    kTiers: { maxRatio: number; k: number }[];
+    kMissing: number;
+}> = {
+    code: 'procent_za_raschet',
+    name: 'Процент за расчёт',
+    methodology:
+        'Инженеру-расчётчику: по каждому заказу сумма × % × K_срочности. K — по отношению факта времени расчёта (В просчёте → Согласование параметров заказа) к нормативу от суммы заказа; нет данных таймера → нейтральный K.',
+    kind: 'base',
+    group: 'base',
+    scope: 'engineer',
+    requiredMetrics: ['engineer_orders'],
+    paramSchema: z.object({
+        percent: z.number().nonnegative(),
+        slaNormy: z.array(z.object({ maxSum: z.number().nonnegative(), normHours: z.number().positive() })).min(1),
+        kTiers: z.array(z.object({ maxRatio: z.number().nonnegative(), k: z.number().nonnegative() })).min(1),
+        kMissing: z.number().nonnegative(),
+    }),
+    compute(m, p) {
+        const orders = m.engineerOrders ?? [];
+        let amount = 0;
+        let withTimer = 0;
+        for (const o of orders) {
+            const bare = o.orderSum * (p.percent / 100);
+            let k = p.kMissing;
+            if (o.raschetSeconds != null) {
+                const hours = o.raschetSeconds / 3600;
+                const norm = raschetNorm(o.orderSum, p.slaNormy);
+                const ratio = norm > 0 ? hours / norm : 999;
+                k = raschetK(ratio, p.kTiers);
+                withTimer++;
+            }
+            amount += bare * k;
+        }
+        const n = orders.length;
+        return {
+            amount: round2(amount),
+            explain: `Заказов: ${n} · ${p.percent}% от суммы · K_срочности у ${withTimer}/${n} (нет данных → ×${p.kMissing})`,
+            dataFill: { required: n, present: withTimer, pct: n ? withTimer / n : 1 },
+        };
+    },
+};
+
 export const EXTRA_BLOCKS: BonusBlock[] = [
     gradeMultiplier,
     planAttainment,
@@ -258,4 +322,5 @@ export const EXTRA_BLOCKS: BonusBlock[] = [
     scriptBonus,
     fastContactBonus,
     fieldsBonus,
+    percentZaRaschet,
 ];

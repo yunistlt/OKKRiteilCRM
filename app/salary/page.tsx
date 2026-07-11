@@ -32,16 +32,26 @@ interface CalcRow {
     computed_at?: string;
 }
 
+interface EngineerRow {
+    item_code: string;
+    engineer_name: string;
+    scheme_code: string | null;
+    total: number;
+    breakdown: any; // { schemeCode, blockContributions[], orders[] }
+    computed_at?: string;
+}
+
 export default function SalaryDashboard() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean } | null>(null);
+    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number } | null>(null);
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
     const [reopening, setReopening] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
+    const [reportEngineer, setReportEngineer] = useState<EngineerRow | null>(null);
     const [simManager, setSimManager] = useState<{ id: number; name: string } | null>(null);
     const [dutyOpen, setDutyOpen] = useState(false);
     const { toast } = useToast();
@@ -256,6 +266,39 @@ export default function SalaryDashboard() {
                 </div>
                 );
             })()}
+
+            {/* ── Инженеры-расчётчики ── */}
+            {!loading && (data?.engineers?.length ?? 0) > 0 && (
+                <div className="mt-6 space-y-2">
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-sm font-semibold">Инженеры-расчётчики</h2>
+                        <span className="ml-auto text-sm font-medium">Итого: {rub(data!.engineersTotal ?? 0)}</span>
+                    </div>
+                    <div className="overflow-x-auto border">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+                                <tr><th className="p-3"></th><th className="p-3">Инженер</th><th className="p-3 text-right">Заказов</th><th className="p-3 text-right font-semibold">Итого</th></tr>
+                            </thead>
+                            <tbody>
+                                {data!.engineers!.map((e) => {
+                                    const cnt = Array.isArray(e.breakdown?.orders) ? e.breakdown.orders.length : 0;
+                                    return (
+                                        <tr key={e.item_code} className="cursor-pointer border-t hover:bg-muted/30" onClick={() => setReportEngineer(e)} title="Открыть подробный отчёт">
+                                            <td className="p-3 text-muted-foreground"><ChevronRight className="h-4 w-4" /></td>
+                                            <td className="p-3">{e.engineer_name}</td>
+                                            <td className="p-3 text-right">{cnt}</td>
+                                            <td className="p-3 text-right font-semibold">{rub(e.total)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot className="border-t bg-muted/30 font-semibold">
+                                <tr><td className="p-3" colSpan={3}>Итого инженеры</td><td className="p-3 text-right">{rub(data!.engineersTotal ?? 0)}</td></tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            )}
             </div>
 
             {dutyOpen && <DutyModal period={period} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setDutyOpen(false)} />}
@@ -279,6 +322,61 @@ export default function SalaryDashboard() {
                     onClose={() => setReportManager(null)}
                 />
             )}
+
+            {reportEngineer && (
+                <EngineerReportModal r={reportEngineer} monthLabel={`${MONTHS[month - 1]} ${year}`} onClose={() => setReportEngineer(null)} />
+            )}
+        </div>
+    );
+}
+
+// Подробный отчёт по инженеру: формула (вклад блока) + заказы с суммой и временем расчёта.
+function EngineerReportModal({ r, monthLabel, onClose }: { r: EngineerRow; monthLabel: string; onClose: () => void }) {
+    const orders: any[] = Array.isArray(r.breakdown?.orders) ? r.breakdown.orders : [];
+    const contributions: any[] = Array.isArray(r.breakdown?.blockContributions) ? r.breakdown.blockContributions : [];
+    const fmtHours = (sec: number | null) => (sec == null ? '—' : `${(sec / 3600).toFixed(1)} ч`);
+    return (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+            <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden border border-border bg-white" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between border-b p-4">
+                    <div>
+                        <div className="text-lg font-semibold text-gray-900">{r.engineer_name}</div>
+                        <div className="text-xs text-muted-foreground">Инженер-расчётчик · {monthLabel}</div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="text-right"><div className="text-xs text-muted-foreground">Итого</div><div className="text-xl font-semibold text-gray-900">{rub(r.total)}</div></div>
+                        <button onClick={onClose} className="p-1.5 text-gray-500 hover:bg-gray-100" aria-label="Закрыть"><X className="h-5 w-5" /></button>
+                    </div>
+                </div>
+                <div className="space-y-4 overflow-y-auto p-4 text-sm">
+                    {contributions.map((c, i) => (
+                        <div key={i} className="border-l-2 pl-2">
+                            <div className="font-medium">{c.name}: {rub(c.amount || 0)}</div>
+                            {c.explain && <div className="text-xs text-muted-foreground">{c.explain}</div>}
+                        </div>
+                    ))}
+                    <div>
+                        <div className="mb-2 font-semibold">Заказы ({orders.length})</div>
+                        <div className="overflow-x-auto border">
+                            <table className="w-full text-xs">
+                                <thead className="bg-muted/50 text-left text-muted-foreground"><tr><th className="px-3 py-1.5">Заказ</th><th className="px-3 py-1.5 text-right">Сумма</th><th className="px-3 py-1.5 text-right">Время расчёта</th><th className="px-3 py-1.5">Передан в произв.</th></tr></thead>
+                                <tbody>
+                                    {orders.map((o) => (
+                                        <tr key={o.id} className="border-t odd:bg-white even:bg-muted/20">
+                                            <td className="px-3 py-1.5">
+                                                <Link href={`/orders/${o.id}`} className="text-primary hover:underline" onClick={(e) => e.stopPropagation()}>{o.id}</Link>
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right">{rub(o.sum)}</td>
+                                            <td className="px-3 py-1.5 text-right">{fmtHours(o.raschetSeconds)}</td>
+                                            <td className="px-3 py-1.5 text-muted-foreground">{o.enteredAt ? String(o.enteredAt).slice(0, 10) : '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

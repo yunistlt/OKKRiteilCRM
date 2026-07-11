@@ -37,6 +37,24 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     script_bonus: { thresholdPct: 80, bonus: 5000 },
     fast_contact_bonus: { thresholdPct: 80, bonus: 5000 },
     fields_bonus: { thresholdPct: 80, bonus: 3000 },
+    // Плейсхолдеры для конструктора: percent и нормативы бизнес задаёт пофамильно.
+    // slaNormy в часах (фаза 1 — календарные), kTiers по отношению факт/норма.
+    procent_za_raschet: {
+        percent: 1,
+        slaNormy: [
+            { maxSum: 500000, normHours: 24 },
+            { maxSum: 2000000, normHours: 48 },
+            { maxSum: 5000000, normHours: 72 },
+            { maxSum: 1000000000, normHours: 72 },
+        ],
+        kTiers: [
+            { maxRatio: 0.5, k: 1.15 },
+            { maxRatio: 1.0, k: 1.0 },
+            { maxRatio: 1.5, k: 0.9 },
+            { maxRatio: 9999, k: 0.8 },
+        ],
+        kMissing: 1.0,
+    },
 };
 
 /** Каталог для UI-конструктора: дескрипторы + доступность данных (без compute). */
@@ -48,6 +66,7 @@ export function listBlocks() {
         kind: b.kind,
         group: b.group,
         multiplierScope: b.multiplierScope,
+        scope: b.scope ?? 'manager',
         requiredMetrics: b.requiredMetrics,
         defaultParams: DEFAULT_BLOCK_PARAMS[b.code] ?? {},
         // блок доступен в конструкторе, только если ВСЕ его метрики есть в БД

@@ -4,6 +4,8 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
 import { getRecalcState } from '@/lib/salary/recalc-state';
+import { getResolvedConfig } from '@/lib/salary/config';
+import { listEngineerDictionary } from '@/lib/salary/schemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -78,6 +80,23 @@ export async function GET(req: Request) {
         // Устарел ли расчёт относительно изменений мотивации (нужен пересчёт).
         const recalcState = await getRecalcState(periodRow.id, periodRow.status, year, month);
 
+        // Инженеры-расчётчики (только для admin/rop; менеджер видит лишь свою строку).
+        let engineers: any[] = [];
+        let engineersTotal = 0;
+        if (!isManagerOnly) {
+            const { data: engRows } = await supabase.from('salary_engineer_calc').select('*').eq('period_id', periodRow.id);
+            if ((engRows as any[])?.length) {
+                let nameByCode = new Map<string, string>();
+                try {
+                    const cfg = await getResolvedConfig(`${year}-${String(month).padStart(2, '0')}-01`);
+                    const dict = await listEngineerDictionary(cfg.engineer_field.code);
+                    nameByCode = new Map(dict.map((d) => [d.itemCode, d.name]));
+                } catch { /* справочник не синкнут — покажем item_code */ }
+                engineers = (engRows as any[]).map((r) => ({ ...r, engineer_name: nameByCode.get(r.item_code) || r.item_code }));
+                engineersTotal = engineers.reduce((s, r) => s + Number(r.total || 0), 0);
+            }
+        }
+
         return NextResponse.json({
             period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
             rows,
@@ -86,6 +105,8 @@ export async function GET(req: Request) {
             needsRecalc: recalcState.needsRecalc,
             recalcChangedAt: recalcState.changedAt,
             details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incomingByManager },
+            engineers,
+            engineersTotal,
         });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });

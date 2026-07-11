@@ -45,6 +45,14 @@ export interface CountedOrder extends OrderFinance {
     totalsumm: number; // сумма заказа (raw_payload/orders.totalsumm), для отчёта по менеджеру
 }
 
+/** Заказ, засчитываемый инженеру-расчётчику: сумма + длительность работы расчётчика. */
+export interface EngineerOrder {
+    orderId: number;
+    orderSum: number; // сумма заказа (база для %)
+    raschetSeconds: number | null; // время В просчёте → Согласование параметров; null = нет данных таймера
+    enteredAt: string; // дата передачи в производство (период начисления)
+}
+
 export interface ManagerMetrics {
     managerId: number;
     countedOrders: CountedOrder[];
@@ -59,6 +67,7 @@ export interface ManagerMetrics {
     conversion: { numerator: number; denominator: number; pct: number; eligible: boolean };
     workedDays: number | null; // отработанные дни (для пропорции оклада); null = полный месяц
     marginTotal: number;
+    engineerOrders?: EngineerOrder[]; // ТОЛЬКО для участников-инженеров (см. collectEngineerMetrics); менеджерские блоки игнорируют
 }
 
 export interface PeriodMetrics {
@@ -379,4 +388,52 @@ export async function collectPeriodMetrics(
         workedDaysByManager,
         config,
     });
+}
+
+interface EngineerOrderRow {
+    order_id: number;
+    item_code: string | null;
+    entered_at: string;
+    order_sum: number | null;
+    raschet_seconds: number | null;
+    created_at: string;
+}
+
+/**
+ * Заказы инженеров-расчётчиков за период, сгруппированные по коду элемента
+ * справочника (item_code кастом-поля инженера). Атрибуция — по customField, НЕ
+ * по manager_id (RPC salary_engineer_orders). Период — по переходу в closing_status
+ * (тот же, что у менеджеров), чтобы заказ падал инженеру в тот же месяц.
+ */
+export async function collectEngineerMetrics(
+    year: number,
+    month: number,
+    configArg?: SalaryConfig,
+): Promise<Map<string, EngineerOrder[]>> {
+    const config = configArg ?? (await getConfigForPeriod(year, month));
+    const { start, end } = monthBounds(year, month);
+    const { data, error } = await supabase.rpc('salary_engineer_orders', {
+        p_start: start,
+        p_end: end,
+        p_closing: config.closing_status.code,
+        p_field_code: config.engineer_field.code,
+        p_calc_start_status: config.engineer_calc_status.start,
+        p_calc_end_status: config.engineer_calc_status.end,
+    });
+    if (error) throw error;
+
+    const byItem = new Map<string, EngineerOrder[]>();
+    for (const r of (data as EngineerOrderRow[]) ?? []) {
+        const code = r.item_code?.trim();
+        if (!code) continue;
+        const arr = byItem.get(code) ?? [];
+        arr.push({
+            orderId: Number(r.order_id),
+            orderSum: Number(r.order_sum ?? 0),
+            raschetSeconds: r.raschet_seconds == null ? null : Number(r.raschet_seconds),
+            enteredAt: r.entered_at,
+        });
+        byItem.set(code, arr);
+    }
+    return byItem;
 }

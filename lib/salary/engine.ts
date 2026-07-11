@@ -1,9 +1,9 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
-import { collectPeriodMetrics, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
+import { collectEngineerMetrics, collectPeriodMetrics, type EngineerOrder, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
 import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
-import { getPlansForPeriod, listSchemes, resolveManagerComp, type PeriodPlans } from '@/lib/salary/schemes';
+import { getPlansForPeriod, listSchemes, resolveEngineerComp, resolveManagerComp, type EngineerComp, type PeriodPlans } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
 import type { BlockComputeContext, BlockContribution, BlockInstance } from '@/lib/salary/blocks/types';
 
@@ -205,6 +205,85 @@ export function computePeriodSalary(
     return { year: pm.year, month: pm.month, teamRevenueNoVat, kTeam, results };
 }
 
+// ── Инженеры-расчётчики (изолированный путь) ─────────────────────────────────
+// Инженер — не пользователь CRM (ключ = item_code справочника), метрики и
+// атрибуция другие (сумма заказа + скорость по статусам, а не заявки/менеджер),
+// поэтому отдельный расчёт и отдельная таблица salary_engineer_calc. Но формулу
+// собирает тот же compose() — консистентный breakdown с блоками.
+
+export interface EngineerSalaryResult {
+    itemCode: string;
+    schemeCode: string;
+    total: number;
+    breakdown: {
+        schemeCode: string;
+        blockContributions: BlockContribution[];
+        orders: { id: number; sum: number; raschetSeconds: number | null; enteredAt: string }[];
+    };
+}
+
+export interface EngineerPeriodSalary {
+    year: number;
+    month: number;
+    results: EngineerSalaryResult[];
+}
+
+/** ManagerMetrics-обёртка для инженера: пустые менеджерские поля + заказы инженера. */
+function engineerMetrics(orders: EngineerOrder[]): ManagerMetrics {
+    return { ...zeroMetrics(0), engineerOrders: orders };
+}
+
+export function computeEngineerSalary(comp: EngineerComp, orders: EngineerOrder[], ctx: BlockComputeContext): EngineerSalaryResult {
+    const composed = compose(comp.blocks, engineerMetrics(orders), ctx);
+    return {
+        itemCode: comp.itemCode,
+        schemeCode: comp.schemeCode,
+        total: composed.total,
+        breakdown: {
+            schemeCode: comp.schemeCode,
+            blockContributions: composed.contributions,
+            orders: orders.map((o) => ({ id: o.orderId, sum: round2(o.orderSum), raschetSeconds: o.raschetSeconds, enteredAt: o.enteredAt })),
+        },
+    };
+}
+
+export function computeEngineerPeriod(
+    year: number,
+    month: number,
+    engMetrics: Map<string, EngineerOrder[]>,
+    compMap: Map<string, EngineerComp>,
+    categoryNames: Record<string, string> = {},
+): EngineerPeriodSalary {
+    const businessDays = businessDaysInMonth(year, month);
+    const results: EngineerSalaryResult[] = [];
+    for (const [itemCode, comp] of Array.from(compMap)) {
+        const orders = engMetrics.get(itemCode) ?? [];
+        const ctx: BlockComputeContext = {
+            year,
+            month,
+            businessDays,
+            teamRevenueNoVat: 0,
+            personalPlanTarget: null,
+            departmentPlanTarget: null,
+            managerGrade: null,
+            categoryNames,
+        };
+        results.push(computeEngineerSalary(comp, orders, ctx));
+    }
+    results.sort((a, b) => a.itemCode.localeCompare(b.itemCode));
+    return { year, month, results };
+}
+
+/** Считает период по инженерам из боевых данных. Без записи. */
+export async function calculateEngineerPeriod(year: number, month: number): Promise<EngineerPeriodSalary> {
+    const config = await getConfigForPeriod(year, month);
+    const engMetrics = await collectEngineerMetrics(year, month, config);
+    const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
+    const compMap = await resolveEngineerComp(asOf);
+    const categoryNames = await loadCategoryNames();
+    return computeEngineerPeriod(year, month, engMetrics, compMap, categoryNames);
+}
+
 // ── Оркестратор + персистентность ───────────────────────────────────────────
 
 /** Считает период из боевых данных (метрики → схемы/планы → блоки). Без записи. */
@@ -294,6 +373,26 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
     if (keepIds.length) del = del.not('manager_id', 'in', `(${keepIds.join(',')})`);
     const { error: delErr } = await del;
     if (delErr) throw delErr;
+
+    // Инженеры-расчётчики → salary_engineer_calc (изолированный путь, тот же период).
+    const eng = await calculateEngineerPeriod(year, month);
+    const engRows = eng.results.map((r) => ({
+        period_id: periodId,
+        item_code: r.itemCode,
+        scheme_code: r.schemeCode,
+        total: r.total,
+        breakdown: r.breakdown,
+        computed_at: new Date().toISOString(),
+    }));
+    if (engRows.length) {
+        const { error } = await supabase.from('salary_engineer_calc').upsert(engRows, { onConflict: 'period_id,item_code' });
+        if (error) throw error;
+    }
+    // Чистим выбывших инженеров периода.
+    let delE = supabase.from('salary_engineer_calc').delete().eq('period_id', periodId);
+    if (engRows.length) delE = delE.not('item_code', 'in', `(${engRows.map((r) => `"${r.item_code}"`).join(',')})`);
+    const { error: delEErr } = await delE;
+    if (delEErr) throw delEErr;
 
     await supabase.from('salary_audit_log').insert({
         entity: 'calc',
