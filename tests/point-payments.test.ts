@@ -80,6 +80,42 @@ describe('normalizeTochkaPayment', () => {
     expect(n!.signatureVerified).toBe(true);
   });
 
+  it('распознаёт реальную структуру Точки (сумма/плательщик в SidePayer)', () => {
+    // Формат из боевого тестового вебхука Точки (test_send).
+    const payload = {
+      SidePayer: {
+        bankCode: '044525104',
+        bankName: 'ООО Банк Точка',
+        account: '40802810000000000001',
+        name: 'ИП Тест',
+        amount: '40.0',
+        currency: 'RUB',
+        inn: '1234567890',
+        kpp: '0',
+      },
+      SideRecipient: {
+        account: '40802810620000000009',
+        name: 'ЗВТО АО',
+        amount: '40.0',
+        currency: 'RUB',
+      },
+      purpose: 'Оплата по счету № 53433',
+      documentNumber: '3685',
+      paymentId: '10730323',
+      date: '2026-07-10',
+      webhookType: 'incomingPayment',
+      customerCode: '300117921',
+    };
+    const n = normalizeTochkaPayment(payload, true);
+    expect(n).not.toBeNull();
+    expect(n!.amountKopecks).toBe(4000); // 40.0 руб
+    expect(n!.payerName).toBe('ИП Тест');
+    expect(n!.payerInn).toBe('1234567890');
+    expect(n!.payerBankBic).toBe('044525104');
+    expect(n!.accountId).toBe('40802810620000000009');
+    expect(n!.purpose).toContain('53433');
+  });
+
   it('исходящий платёж игнорируется (null)', () => {
     expect(normalizeTochkaPayment({ webhookType: 'outgoingPayment', paymentId: '1', amount: '10' }, true)).toBeNull();
   });
