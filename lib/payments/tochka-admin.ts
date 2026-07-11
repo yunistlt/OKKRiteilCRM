@@ -1,7 +1,8 @@
 // Управление подпиской на вебхуки Точки через её API (UI у Точки для этого нет).
 // Работает на сервере (Vercel), где есть TOCHKA_JWT_TOKEN и доступ к enter.tochka.com.
 
-const API_VERSION = '1.0';
+// Версия API Точки в пути — с префиксом «v» (подтверждено рабочими клиентами Точки).
+const API_VERSION = process.env.TOCHKA_API_VERSION || 'v1.0';
 const WEBHOOK_TYPES = ['incomingPayment', 'incomingSbpPayment', 'incomingSbpB2BPayment'];
 
 function decodeIssFromToken(token: string): string | null {
