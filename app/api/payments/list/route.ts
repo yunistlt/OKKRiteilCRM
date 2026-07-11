@@ -42,7 +42,9 @@ export async function GET(req: NextRequest) {
       summary[r.status] = (summary[r.status] || 0) + 1;
     });
 
-    return NextResponse.json({ payments: data || [], summary });
+    const crmUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
+
+    return NextResponse.json({ payments: data || [], summary, crm_url: crmUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
