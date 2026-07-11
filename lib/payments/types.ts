@@ -33,6 +33,8 @@ export interface NormalizedPointPayment {
   payerBankBic?: string | null;
   payerBankName?: string | null;
   accountId?: string | null;      // счёт получателя (наш)
+  recipientName?: string | null;  // наименование юрлица-получателя (наше)
+  recipientInn?: string | null;   // ИНН получателя
   signatureVerified: boolean;     // проверена ли подпись вебхука
   rawPayload: Record<string, unknown>;
 }

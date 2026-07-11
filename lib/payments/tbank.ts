@@ -156,6 +156,8 @@ export function normalizeTbankOperation(op: any, accountNumber: string): Normali
   if (amountKopecks === null || amountKopecks <= 0) return null;
 
   const cp = op?.counterParty || op?.counterparty || op?.payer || {};
+  // Получатель (наше юрлицо, на чей счёт пришли деньги) — из receiver.
+  const rc = op?.receiver || op?.recipient || {};
 
   const purpose = str(op?.payPurpose) || str(op?.purpose) || str(op?.description) || str(op?.paymentPurpose);
   const dateIso = str(op?.operationDate) || str(op?.chargeDate) || str(op?.drawDate) || str(op?.date);
@@ -179,6 +181,8 @@ export function normalizeTbankOperation(op: any, accountNumber: string): Normali
     payerBankBic: str(op?.payerBic) || str(op?.payerBankBic) || str(cp?.bankBic) || str(cp?.bic),
     payerBankName: str(op?.payerBankName) || str(cp?.bankName),
     accountId: accountNumber,
+    recipientName: str(rc?.name) || str(op?.receiverName),
+    recipientInn: str(rc?.inn) || str(op?.receiverInn),
     // Выписка получена по авторизованному API → доверенный источник (как у Точки),
     // авто-матч разрешён.
     signatureVerified: true,

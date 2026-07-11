@@ -12,6 +12,7 @@ const SELECT_COLUMNS =
   'id, source, external_payment_id, webhook_type, customer_code, signature_verified, ' +
   'amount_kopecks, currency, payment_date, payment_datetime, purpose, document_number, ' +
   'payer_name, payer_inn, payer_kpp, payer_account, payer_bank_bic, payer_bank_name, account_id, ' +
+  'recipient_name, recipient_inn, ' +
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, raw_payload, created_at, updated_at';
@@ -54,6 +55,8 @@ function normalizedFromRow(row: PointPaymentRow): NormalizedPointPayment {
     payerBankBic: row.payer_bank_bic ?? null,
     payerBankName: row.payer_bank_name ?? null,
     accountId: row.account_id ?? null,
+    recipientName: row.recipient_name ?? null,
+    recipientInn: row.recipient_inn ?? null,
     signatureVerified: Boolean(row.signature_verified),
     rawPayload: row.raw_payload ?? {},
   };
@@ -85,6 +88,8 @@ export async function ingestPointPayment(
     payer_bank_bic: p.payerBankBic ?? null,
     payer_bank_name: p.payerBankName ?? null,
     account_id: p.accountId ?? null,
+    recipient_name: p.recipientName ?? null,
+    recipient_inn: p.recipientInn ?? null,
     raw_payload: p.rawPayload ?? {},
     status: 'pending_match',
   };

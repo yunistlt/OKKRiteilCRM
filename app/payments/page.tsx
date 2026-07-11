@@ -22,6 +22,8 @@ interface Payment {
   document_number: string | null;
   payer_name: string | null;
   payer_inn: string | null;
+  recipient_name: string | null;
+  recipient_inn: string | null;
   status: string;
   match_method: string | null;
   match_confidence: string | null;
@@ -577,15 +579,15 @@ export default function PaymentsPage() {
         ) : payments.length === 0 ? (
           <div className="py-16 text-center text-gray-400">Платежей нет</div>
         ) : (
-          <table className="w-full min-w-[1000px] border-collapse text-sm">
+          <table className="w-full min-w-[1200px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-gray-200 bg-gray-100 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
                 <th className="px-4 py-3">Статус</th>
                 <th className="px-4 py-3 text-right">Сумма</th>
                 <th className="px-4 py-3">Плательщик</th>
+                <th className="px-4 py-3">Получатель</th>
                 <th className="px-4 py-3">Дата</th>
                 <th className="px-4 py-3">Назначение</th>
-                <th className="px-4 py-3">№ счёта</th>
                 <th className="px-4 py-3">Заказ</th>
                 <th className="px-4 py-3">Действия</th>
               </tr>
@@ -625,10 +627,18 @@ export default function PaymentsPage() {
 
                     {/* Плательщик */}
                     <td className="px-4 py-3 align-top">
-                      <div className="max-w-[220px] truncate" title={p.payer_name || ''}>
+                      <div className="min-w-[180px] max-w-[260px] break-words">
                         {p.payer_name || <Dash />}
                       </div>
                       {p.payer_inn && <div className="text-xs text-gray-500">ИНН {p.payer_inn}</div>}
+                    </td>
+
+                    {/* Получатель (наше юрлицо) */}
+                    <td className="px-4 py-3 align-top">
+                      <div className="min-w-[180px] max-w-[260px] break-words">
+                        {p.recipient_name || <Dash />}
+                      </div>
+                      {p.recipient_inn && <div className="text-xs text-gray-500">ИНН {p.recipient_inn}</div>}
                     </td>
 
                     {/* Дата */}
@@ -648,11 +658,6 @@ export default function PaymentsPage() {
                       <div className="mt-0.5 text-xs text-gray-400">
                         Платёж #{p.document_number || p.external_payment_id}
                       </div>
-                    </td>
-
-                    {/* № счёта */}
-                    <td className="px-4 py-3 align-top font-semibold">
-                      {p.extracted_invoice_number || <Dash />}
                     </td>
 
                     {/* Заказ + состояние проброса в CRM */}

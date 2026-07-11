@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 const LIST_COLUMNS =
   'id, source, external_payment_id, amount_kopecks, currency, payment_date, purpose, ' +
-  'document_number, payer_name, payer_inn, status, match_method, match_confidence, ' +
+  'document_number, payer_name, payer_inn, recipient_name, recipient_inn, status, match_method, match_confidence, ' +
   'extracted_invoice_number, match_candidates, matched_order_number, matched_order_id, ' +
   'retailcrm_payment_id, retailcrm_synced_at, retailcrm_error, signature_verified, ' +
   'reviewed_by, reviewed_at, created_at';
