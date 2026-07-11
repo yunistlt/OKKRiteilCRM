@@ -16,7 +16,10 @@ type Catalog = { code: string; name: string; methodology: string; kind: string; 
 type SchemeBlock = { block_code: string; params: any; raw: boolean; rawText: string; enabled: boolean };
 // prevEffectiveFrom — дата версии «как загружена». Если при сохранении дата изменилась,
 // бэкенд переносит ту же версию на новую дату (а не плодит дубль). '' = новая, ещё не сохранённая схема.
-type EditScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; blocks: SchemeBlock[] };
+// kind — тип участника роли: 'manager' (роль=группа RetailCRM) | 'engineer' (роль
+// инженера-расчётчика, код задаётся вручную). isNew — новая, ещё не сохранённая роль
+// (у инженера редактируется код). Механика блоков/drag-drop одинакова для всех типов.
+type EditScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; blocks: SchemeBlock[]; kind?: 'manager' | 'engineer'; isNew?: boolean };
 
 // ── RU-лейблы технических ключей параметров ──
 const PARAM_LABELS: Record<string, string> = {
@@ -241,11 +244,12 @@ export function SchemesTab() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const [bRes, sRes, cRes, gRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes'), fetch('/api/salary/categories'), fetch('/api/salary/groups')]);
+            const [bRes, sRes, cRes, gRes, eRes] = await Promise.all([fetch('/api/salary/blocks'), fetch('/api/salary/schemes'), fetch('/api/salary/categories'), fetch('/api/salary/groups'), fetch('/api/salary/engineers')]);
             const bJson = await bRes.json();
             const sJson = await sRes.json();
             const cJson = await cRes.json().catch(() => ({ categories: [] }));
             const gJson = await gRes.json().catch(() => ({ groups: [] }));
+            const eJson = await eRes.json().catch(() => ({ schemes: [] }));
             if (bJson.error) throw new Error(bJson.error);
             if (sJson.error) throw new Error(sJson.error);
             setCatalog(bJson.blocks ?? []);
@@ -254,18 +258,30 @@ export function SchemesTab() {
             setArchived(sJson.archived ?? []);
             setManagers(sJson.managers ?? []);
             setAssignments(sJson.assignments ?? []);
-            setSchemes((sJson.schemes ?? []).map((s: any) => ({
-                code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10), prevEffectiveFrom: String(s.effectiveFrom).slice(0, 10),
+            const toEdit = (s: any, kind: 'manager' | 'engineer'): EditScheme => ({
+                code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10), prevEffectiveFrom: String(s.effectiveFrom).slice(0, 10), kind,
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
-            })));
+            });
+            // Одна общая лента ролей: менеджерские (из групп RetailCRM) + инженерные (справочник).
+            setSchemes([
+                ...(sJson.schemes ?? []).map((s: any) => toEdit(s, 'manager')),
+                ...(eJson.schemes ?? []).map((s: any) => toEdit(s, 'engineer')),
+            ]);
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setLoading(false); }
     }, [toast]);
     useEffect(() => { load(); }, [load]);
 
     const byCode = (code: string) => catalog.find((c) => c.code === code);
+    // Совместимость блока с типом роли: блок доступен роли, если его scope = 'any'
+    // либо совпадает с типом участника роли. Так одна палитра обслуживает все роли.
+    const blockFitsRole = (code: string, kind: EditScheme['kind']) => {
+        const scope = byCode(code)?.scope ?? 'manager';
+        return scope === 'any' || scope === (kind ?? 'manager');
+    };
     const addBlock = (si: number, code: string) => setSchemes((prev) => prev.map((s, i) => {
         if (i !== si || s.blocks.some((b) => b.block_code === code)) return s;
+        if (!blockFitsRole(code, s.kind)) return s; // несовместимый блок в роль не кладём
         return { ...s, blocks: [...s.blocks, { block_code: code, params: byCode(code)?.defaultParams ?? {}, raw: false, rawText: '', enabled: true }] };
     }));
     const removeBlock = (si: number, bi: number) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.filter((_, j) => j !== bi) } : s)));
@@ -275,33 +291,44 @@ export function SchemesTab() {
     const setField = (si: number, patch: Partial<EditScheme>) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, ...patch } : s)));
     const patchBlock = (si: number, bi: number, patch: Partial<SchemeBlock>) =>
         setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.map((b, j) => (j === bi ? { ...b, ...patch } : b)) } : s)));
-    const save = async (s: EditScheme) => {
+    const save = async (s: EditScheme, si: number) => {
+        const isEng = (s.kind ?? 'manager') === 'engineer';
+        if (isEng && (!s.code.trim() || !s.name.trim())) { toast({ title: 'Нужны код и название роли', variant: 'destructive' }); return; }
         const blocks = s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }));
-        setSaving(s.code);
+        const saveKey = s.code || `new-${si}`;
+        setSaving(saveKey);
         try {
-            const res = await fetch('/api/salary/schemes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, blocks }) });
+            const url = isEng ? '/api/salary/engineers' : '/api/salary/schemes';
+            const res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code.trim(), name: s.name.trim(), effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, blocks }) });
             const j = await res.json();
             if (!res.ok) throw new Error(j.error || 'Ошибка');
-            toast({ title: 'Схема сохранена', description: s.name }); load();
+            toast({ title: 'Роль сохранена', description: s.name }); load();
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setSaving(null); }
     };
-    // Роль = группа RetailCRM. Новую схему создаём выбором группы из справочника (не вручную).
+    // Менеджерская роль = группа RetailCRM. Новую создаём выбором группы из справочника (не вручную).
     const addSchemeFromGroup = (code: string) => {
         if (!code) return;
         if (schemes.some((s) => s.code === code)) { toast({ title: 'Схема для этой роли уже есть', variant: 'destructive' }); return; }
         const grp = groups.find((g) => g.code === code);
-        setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [] }]);
+        setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [], kind: 'manager' }]);
     };
+    // Инженерная роль — код задаётся вручную (инженеры не пользователи CRM). Пустая, блоки перетаскиваются из палитры.
+    const addEngineerScheme = () => setSchemes((p) => [...p, { code: '', name: '', effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [], kind: 'engineer', isNew: true }]);
     const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code) && !archived.some((a) => a.code === g.code));
 
     // Удалить роль целиком. Если по ней уже считалась ЗП — бэкенд заархивирует (с возможностью восстановления).
     const removeScheme = async (si: number) => {
         const s = schemes[si];
-        if (!confirm(`Удалить роль «${s.name}»?\n\nЕсли по этой роли уже рассчитывалась зарплата за прошлые месяцы — она будет заархивирована (история сохранится, роль можно восстановить из архива).`)) return;
+        // Несохранённую новую роль (инженер) просто убираем из списка — на сервере её нет.
+        if (s.isNew) { setSchemes((p) => p.filter((_, i) => i !== si)); return; }
+        const isEng = (s.kind ?? 'manager') === 'engineer';
+        if (!confirm(`Удалить роль «${s.name}»?${isEng ? '' : '\n\nЕсли по этой роли уже рассчитывалась зарплата за прошлые месяцы — она будет заархивирована (история сохранится, роль можно восстановить из архива).'}`)) return;
         setSaving(s.code);
         try {
-            const res = await fetch(`/api/salary/schemes?code=${encodeURIComponent(s.code)}`, { method: 'DELETE' });
+            const res = isEng
+                ? await fetch('/api/salary/engineers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_scheme', schemeCode: s.code }) })
+                : await fetch(`/api/salary/schemes?code=${encodeURIComponent(s.code)}`, { method: 'DELETE' });
             const j = await res.json();
             if (!res.ok) throw new Error(j.error || 'Ошибка');
             if (j.action === 'archived') toast({ title: 'Роль заархивирована', description: 'По роли уже считалась зарплата — она перенесена в архив. Восстановить можно ниже.' });
@@ -315,7 +342,7 @@ export function SchemesTab() {
         setSimulating(true);
         setSimResult(null);
         try {
-            const payloadSchemes = schemes.map((s) => ({
+            const payloadSchemes = schemes.filter((s) => (s.kind ?? 'manager') === 'manager').map((s) => ({
                 code: s.code,
                 blocks: s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled })),
             }));
@@ -364,8 +391,9 @@ export function SchemesTab() {
                 <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
                 <div className="mb-1.5 text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
                 <div className="divide-y border">
-                    {catalog.filter((b) => b.scope !== 'engineer').map((b) => {
+                    {catalog.map((b) => {
                         const tint = tintFor(b.code);
+                        const scope = b.scope ?? 'manager';
                         return (
                             <div key={b.code} draggable={b.available} onDragStart={() => setDrag({ fromPalette: b.code })}
                                 onDragEnd={() => { setDrag(null); setOverScheme(null); }}
@@ -374,6 +402,7 @@ export function SchemesTab() {
                                 <div className="flex items-center gap-1 leading-tight">
                                     <span className="font-medium">{b.name}</span>
                                     <MethodologyTip text={b.methodology} />
+                                    {scope === 'engineer' && <span className="ml-auto shrink-0 bg-amber-100 px-1 text-[9px] font-medium uppercase text-amber-700" title="Блок для роли инженера-расчётчика">инж.</span>}
                                 </div>
                                 <div className="text-[10px] text-muted-foreground">{groupLabel(b.group)}{b.available ? '' : ' · нет данных'}</div>
                             </div>
@@ -503,7 +532,7 @@ export function SchemesTab() {
                         );
                     })()}
                 </div>
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                     <span className="text-[11px] text-muted-foreground">Роль (группа RetailCRM):</span>
                     <select
                         value=""
@@ -514,26 +543,37 @@ export function SchemesTab() {
                         <option value="">{availableGroups.length ? '+ Добавить роль из справочника…' : 'все роли уже добавлены'}</option>
                         {availableGroups.map((g) => <option key={g.code} value={g.code}>{g.name}</option>)}
                     </select>
+                    <Button size="sm" variant="outline" className="h-8" onClick={addEngineerScheme} title="Роль инженера-расчётчика (код задаётся вручную, блоки — из палитры)"><Plus className="mr-1 h-3.5 w-3.5" /> Роль инженера</Button>
                 </div>
                 {schemes.map((s, si) => {
+                  const isEng = (s.kind ?? 'manager') === 'engineer';
+                  const saveKey = s.code || `new-${si}`;
                   const paletteDrag = !!drag?.fromPalette;          // тащим блок из палитры
                   const dup = paletteDrag && s.blocks.some((b) => b.block_code === drag!.fromPalette); // блок уже есть в роли
+                  const incompatible = paletteDrag && !dup && !blockFitsRole(drag!.fromPalette!, s.kind); // блок другого типа роли
                   const over = overScheme === si;
                   return (
-                    <div key={s.code}
+                    <div key={`${s.kind ?? 'manager'}:${s.code || si}`}
                         onDragOver={(e) => { e.preventDefault(); if (paletteDrag) setOverScheme(si); }}
                         onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); setOverScheme(null); }}
-                        className={`border transition-[box-shadow,background-color] ${paletteDrag ? (dup ? 'ring-1 ring-amber-300' : over ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'ring-1 ring-blue-300') : ''}`}>
+                        className={`border transition-[box-shadow,background-color] ${paletteDrag ? (dup || incompatible ? 'ring-1 ring-amber-300' : over ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'ring-1 ring-blue-300') : ''}`}>
                         {paletteDrag && (
-                            <div className={`px-2 py-1 text-center text-[10px] font-medium ${dup ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                                {dup ? 'Блок уже добавлен в эту роль' : over ? '↓ Отпустите, чтобы добавить в эту роль' : 'Можно перетащить сюда'}
+                            <div className={`px-2 py-1 text-center text-[10px] font-medium ${dup || incompatible ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                                {incompatible ? 'Блок не подходит этой роли' : dup ? 'Блок уже добавлен в эту роль' : over ? '↓ Отпустите, чтобы добавить в эту роль' : 'Можно перетащить сюда'}
                             </div>
                         )}
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
-                            <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
+                            {isEng ? (
+                                <>
+                                    <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className="h-8 min-w-[160px] flex-1 border px-2 text-sm font-semibold" title="Роль инженера-расчётчика" />
+                                    {s.isNew && <input value={s.code} onChange={(e) => setField(si, { code: e.target.value })} placeholder="код" className="h-8 w-24 border px-2 text-xs" title="Код роли (латиница)" />}
+                                </>
+                            ) : (
+                                <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
+                            )}
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
-                            {(() => {
+                            {!isEng && (() => {
                                 const assigned = assignments.filter((a) => a.schemeCode === s.code).length;
                                 return (
                                     <Button size="sm" variant="outline" className="h-8 border-violet-300 text-violet-700 hover:bg-violet-50" onClick={() => setSimSchemeIdx(si)} disabled={assigned === 0}
@@ -542,8 +582,8 @@ export function SchemesTab() {
                                     </Button>
                                 );
                             })()}
-                            <Button size="sm" className="h-8" onClick={() => save(s)} disabled={saving === s.code}>{saving === s.code ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
-                            <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => removeScheme(si)} disabled={saving === s.code} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
+                            <Button size="sm" className="h-8" onClick={() => save(s, si)} disabled={saving === saveKey}>{saving === saveKey ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить</Button>
+                            <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => removeScheme(si)} disabled={saving === saveKey} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
                         </div>
                         {s.blocks.length === 0 ? (
                             <div className="m-2 border border-dashed p-3 text-center text-[11px] text-muted-foreground">Перетащите сюда блоки</div>
@@ -603,8 +643,6 @@ export function SchemesTab() {
                         </div>
                     </div>
                 )}
-                {/* Роли инженеров-расчётчиков — в той же колонке, что и менеджерские роли. */}
-                <EngineerRolesSection />
             </div>
         </div>
         {simSchemeIdx != null && schemes[simSchemeIdx] && (
@@ -768,91 +806,10 @@ export function PlansTab() {
 }
 
 // ── Инженеры-расчётчики ОП ────────────────────────────────────────────────────
-// Изолированный путь: инженеры — элементы справочника (кастом-поле заказа), не
-// пользователи CRM. Здесь их мини-схемы (один блок «Процент за расчёт») и реестр
-// (опт-ин из справочника + назначение схемы пофамильно, effective-dated).
-type EditEngScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; params: any; isNew?: boolean };
-
+// Роли инженеров — в общем конструкторе SchemesTab (kind='engineer', drag-drop из
+// той же палитры). Здесь — только реестр людей (для вкладки «Реестр ОП»): инженеры
+// не пользователи CRM, а элементы справочника; опт-ин + назначение роли пофамильно.
 const firstOfThisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
-
-// Роли инженеров-расчётчиков — ОПРЕДЕЛЕНИЕ роли (ставка % + нормативы). Живёт на
-// вкладке «Схемы (роли)» рядом с менеджерскими ролями. Назначение людям — в «Реестр ОП».
-export function EngineerRolesSection() {
-    const { toast } = useToast();
-    const [loading, setLoading] = useState(true);
-    const [defaultParams, setDefaultParams] = useState<any>(null);
-    const [schemes, setSchemes] = useState<EditEngScheme[]>([]);
-    const [savingScheme, setSavingScheme] = useState<string | null>(null);
-
-    const load = useCallback(async () => {
-        setLoading(true);
-        try {
-            const [eRes, bRes] = await Promise.all([fetch('/api/salary/engineers'), fetch('/api/salary/blocks')]);
-            const e = await eRes.json(); if (e.error) throw new Error(e.error);
-            const b = await bRes.json();
-            const blocks = Array.isArray(b) ? b : (b.blocks ?? []);
-            setDefaultParams(blocks.find((x: any) => x.code === 'procent_za_raschet')?.defaultParams ?? null);
-            setSchemes((e.schemes ?? []).map((s: any) => ({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.effectiveFrom, params: s.blocks?.[0]?.params ?? {} })));
-        } catch (err: any) { toast({ title: 'Ошибка', description: err.message, variant: 'destructive' }); }
-        finally { setLoading(false); }
-    }, [toast]);
-    useEffect(() => { load(); }, [load]);
-
-    const setScheme = (i: number, patch: Partial<EditEngScheme>) => setSchemes((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-    const addScheme = () => setSchemes((ss) => [...ss, { code: '', name: '', effectiveFrom: firstOfThisMonth(), prevEffectiveFrom: '', params: defaultParams ?? {}, isNew: true }]);
-
-    const saveScheme = async (i: number) => {
-        const s = schemes[i];
-        if (!s.code.trim() || !s.name.trim()) { toast({ title: 'Нужны код и название роли', variant: 'destructive' }); return; }
-        setSavingScheme(s.code || `new-${i}`);
-        try {
-            const res = await fetch('/api/salary/engineers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code.trim(), name: s.name.trim(), effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, params: s.params }) });
-            const j = await res.json(); if (j.error) throw new Error(j.error);
-            toast({ title: 'Роль сохранена' });
-            await load();
-        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
-        finally { setSavingScheme(null); }
-    };
-
-    const deleteScheme = async (i: number) => {
-        const s = schemes[i];
-        if (s.isNew) { setSchemes((ss) => ss.filter((_, j) => j !== i)); return; }
-        if (!confirm(`Удалить роль «${s.name}»?`)) return;
-        try {
-            const res = await fetch('/api/salary/engineers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_scheme', schemeCode: s.code }) });
-            const j = await res.json(); if (j.error) throw new Error(j.error);
-            toast({ title: 'Роль удалена' });
-            await load();
-        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
-    };
-
-    if (loading) return <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>;
-
-    return (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between border-t pt-3">
-                <div className="text-xs font-semibold uppercase tracking-tight text-muted-foreground" title="Оплата = % от суммы заказа × K срочности (В просчёте → Согласование параметров). Кому назначена — в «Реестр ОП».">Роли инженеров-расчётчиков</div>
-                <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-3.5 w-3.5" /> Добавить роль инженера</Button>
-            </div>
-            {schemes.length === 0 && <div className="border border-dashed p-3 text-center text-[11px] text-muted-foreground">Ролей инженеров пока нет. «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её людям во вкладке «Реестр ОП».</div>}
-            {schemes.map((s, i) => (
-                <div key={i} className="border">
-                    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
-                        <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className="h-8 min-w-[180px] flex-1 border px-2 text-sm font-semibold" />
-                        {s.isNew && <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} placeholder="код" className="h-8 w-28 border px-2 text-xs" />}
-                        <label className="ml-auto text-[11px] text-muted-foreground">с</label>
-                        <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
-                        <Button size="sm" className="h-8" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
-                            {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить
-                        </Button>
-                        <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => deleteScheme(i)} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
-                    </div>
-                    <div className="p-2"><div className="border bg-white p-2"><ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} /></div></div>
-                </div>
-            ))}
-        </div>
-    );
-}
 
 // Реестр инженеров-расчётчиков — ЛЮДИ ОП: опт-ин + назначение роли пофамильно.
 // Живёт во вкладке «Реестр ОП» (инженеры — сотрудники ОП, но не пользователи CRM).
