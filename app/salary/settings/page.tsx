@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { SchemesTab, RosterTab, PlansTab, EngineersTab } from './ConstructorTabs';
+import { SchemesTab, RosterTab, PlansTab, EngineerRolesSection } from './ConstructorTabs';
 import GradesTab from './GradesTab';
 import { useConsultantScreenHint } from '@/components/consultant/ConsultantScreenContext';
 
@@ -33,12 +33,9 @@ export default function SalarySettingsPage() {
             {tab === 'schemes' && (
                 <div className="space-y-6">
                     <SchemesTab />
-                    {/* Роли инженеров-расчётчиков — на той же странице, отдельной секцией
-                        (не в менеджерском drag-drop конструкторе: у инженеров своя механика). */}
-                    <div className="border-t pt-4">
-                        <h2 className="mb-2 text-base font-semibold">Инженеры-расчётчики ОП</h2>
-                        <EngineersTab />
-                    </div>
+                    {/* Роли инженеров-расчётчиков — определение роли (ставка % + нормативы).
+                        Назначение людям — во вкладке «Реестр ОП» (инженеры = сотрудники ОП). */}
+                    <div className="border-t pt-4"><EngineerRolesSection /></div>
                 </div>
             )}
             {tab === 'roster' && <RosterTab />}

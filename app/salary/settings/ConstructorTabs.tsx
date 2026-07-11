@@ -643,27 +643,32 @@ export function RosterTab() {
     const inRoster = (m: any) => assignmentName(m.id) != null;
 
     return (
-        <div className="space-y-2">
-            <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-                Роль (схема) определяется <b>группами пользователя в RetailCRM</b> автоматически; при нескольких подходящих ролях её выбирают там же.
-                Кто участвует в расчёте ЗП — отмечается пофамильно в <a href="/settings/managers" className="text-primary underline">Настройки → Менеджеры</a>.
-                Здесь — только просмотр итогового реестра.
+        <div className="space-y-4">
+            <div className="space-y-2">
+                <div className="text-sm font-semibold">Менеджеры</div>
+                <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+                    Роль (схема) определяется <b>группами пользователя в RetailCRM</b> автоматически; при нескольких подходящих ролях её выбирают там же.
+                    Кто участвует в расчёте ЗП — отмечается пофамильно в <a href="/settings/managers" className="text-primary underline">Настройки → Менеджеры</a>.
+                    Здесь — только просмотр итогового реестра.
+                </div>
+                <div className="overflow-x-auto border">
+                    <table className="w-full text-sm">
+                        <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">ID</th><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Активен</th><th className="px-2 py-1.5">Роль (из RetailCRM)</th></tr></thead>
+                        <tbody>
+                            {(data.managers ?? []).map((m: any) => (
+                                <tr key={m.id} className={`border-t ${inRoster(m) ? '' : 'opacity-50'}`}>
+                                    <td className="px-2 py-1 text-muted-foreground">{m.id}</td>
+                                    <td className="px-2 py-1">{m.name}</td>
+                                    <td className="px-2 py-1">{m.active ? '✓' : '—'}</td>
+                                    <td className="px-2 py-1">{assignmentName(m.id) ?? <span className="text-muted-foreground">— не в реестре ЗП —</span>}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div className="overflow-x-auto border">
-                <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-2 py-1.5">ID</th><th className="px-2 py-1.5">Менеджер</th><th className="px-2 py-1.5">Активен</th><th className="px-2 py-1.5">Роль (из RetailCRM)</th></tr></thead>
-                    <tbody>
-                        {(data.managers ?? []).map((m: any) => (
-                            <tr key={m.id} className={`border-t ${inRoster(m) ? '' : 'opacity-50'}`}>
-                                <td className="px-2 py-1 text-muted-foreground">{m.id}</td>
-                                <td className="px-2 py-1">{m.name}</td>
-                                <td className="px-2 py-1">{m.active ? '✓' : '—'}</td>
-                                <td className="px-2 py-1">{assignmentName(m.id) ?? <span className="text-muted-foreground">— не в реестре ЗП —</span>}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            {/* Инженеры-расчётчики — тоже сотрудники ОП (из справочника, не пользователи CRM). */}
+            <div className="border-t pt-4"><EngineerRosterSection /></div>
         </div>
     );
 }
@@ -768,16 +773,14 @@ type EditEngScheme = { code: string; name: string; effectiveFrom: string; prevEf
 
 const firstOfThisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
 
-export function EngineersTab() {
+// Роли инженеров-расчётчиков — ОПРЕДЕЛЕНИЕ роли (ставка % + нормативы). Живёт на
+// вкладке «Схемы (роли)» рядом с менеджерскими ролями. Назначение людям — в «Реестр ОП».
+export function EngineerRolesSection() {
     const { toast } = useToast();
     const [loading, setLoading] = useState(true);
-    const [fieldCode, setFieldCode] = useState('');
     const [defaultParams, setDefaultParams] = useState<any>(null);
     const [schemes, setSchemes] = useState<EditEngScheme[]>([]);
-    const [roster, setRoster] = useState<{ itemCode: string; name: string; inRoster: boolean; schemeCode: string | null }[]>([]);
-    const [effectiveFrom, setEffectiveFrom] = useState(firstOfThisMonth);
     const [savingScheme, setSavingScheme] = useState<string | null>(null);
-    const [savingRoster, setSavingRoster] = useState(false);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -787,16 +790,14 @@ export function EngineersTab() {
             const b = await bRes.json();
             const blocks = Array.isArray(b) ? b : (b.blocks ?? []);
             setDefaultParams(blocks.find((x: any) => x.code === 'procent_za_raschet')?.defaultParams ?? null);
-            setFieldCode(e.fieldCode || '');
             setSchemes((e.schemes ?? []).map((s: any) => ({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.effectiveFrom, params: s.blocks?.[0]?.params ?? {} })));
-            setRoster((e.roster ?? []).map((r: any) => ({ itemCode: r.itemCode, name: r.name, inRoster: !!r.inRoster, schemeCode: r.schemeCode ?? null })));
         } catch (err: any) { toast({ title: 'Ошибка', description: err.message, variant: 'destructive' }); }
         finally { setLoading(false); }
     }, [toast]);
     useEffect(() => { load(); }, [load]);
 
     const setScheme = (i: number, patch: Partial<EditEngScheme>) => setSchemes((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)));
-    const addScheme = () => setSchemes((ss) => [...ss, { code: '', name: '', effectiveFrom, prevEffectiveFrom: '', params: defaultParams ?? {}, isNew: true }]);
+    const addScheme = () => setSchemes((ss) => [...ss, { code: '', name: '', effectiveFrom: firstOfThisMonth(), prevEffectiveFrom: '', params: defaultParams ?? {}, isNew: true }]);
 
     const saveScheme = async (i: number) => {
         const s = schemes[i];
@@ -805,7 +806,7 @@ export function EngineersTab() {
         try {
             const res = await fetch('/api/salary/engineers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code.trim(), name: s.name.trim(), effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, params: s.params }) });
             const j = await res.json(); if (j.error) throw new Error(j.error);
-            toast({ title: 'Схема сохранена' });
+            toast({ title: 'Роль сохранена' });
             await load();
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setSavingScheme(null); }
@@ -814,14 +815,71 @@ export function EngineersTab() {
     const deleteScheme = async (i: number) => {
         const s = schemes[i];
         if (s.isNew) { setSchemes((ss) => ss.filter((_, j) => j !== i)); return; }
-        if (!confirm(`Удалить схему «${s.name}»?`)) return;
+        if (!confirm(`Удалить роль «${s.name}»?`)) return;
         try {
             const res = await fetch('/api/salary/engineers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_scheme', schemeCode: s.code }) });
             const j = await res.json(); if (j.error) throw new Error(j.error);
-            toast({ title: 'Схема удалена' });
+            toast({ title: 'Роль удалена' });
             await load();
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
     };
+
+    if (loading) return <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+
+    const inputCls = 'border px-2 py-1 text-sm';
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-semibold">Роли инженеров-расчётчиков</div>
+                    <div className="text-[11px] text-muted-foreground">Оплата = % от суммы заказа × K срочности (В просчёте → Согласование параметров). Кому назначена — в «Реестр ОП».</div>
+                </div>
+                <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Добавить роль инженера</Button>
+            </div>
+            {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Ролей инженеров пока нет. Нажмите «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её инженерам во вкладке «Реестр ОП».</div>}
+            {schemes.map((s, i) => (
+                <div key={i} className="border">
+                    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
+                        <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
+                        <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} disabled={!s.isNew} placeholder="код (латиница)" className={`${inputCls} w-40 disabled:bg-muted disabled:text-muted-foreground`} />
+                        <label className="flex items-center gap-1 text-xs text-muted-foreground">с <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className={inputCls} /></label>
+                        <Button size="sm" className="h-8 bg-slate-900 text-white hover:bg-slate-700" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
+                            {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} Сохранить
+                        </Button>
+                        <button onClick={() => deleteScheme(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                    </div>
+                    <div className="p-3">
+                        <ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} />
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+// Реестр инженеров-расчётчиков — ЛЮДИ ОП: опт-ин + назначение роли пофамильно.
+// Живёт во вкладке «Реестр ОП» (инженеры — сотрудники ОП, но не пользователи CRM).
+export function EngineerRosterSection() {
+    const { toast } = useToast();
+    const [loading, setLoading] = useState(true);
+    const [fieldCode, setFieldCode] = useState('');
+    const [schemes, setSchemes] = useState<{ code: string; name: string }[]>([]);
+    const [roster, setRoster] = useState<{ itemCode: string; name: string; inRoster: boolean; schemeCode: string | null }[]>([]);
+    const [effectiveFrom, setEffectiveFrom] = useState(firstOfThisMonth);
+    const [savingRoster, setSavingRoster] = useState(false);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const res = await fetch('/api/salary/engineers');
+            const e = await res.json(); if (e.error) throw new Error(e.error);
+            setFieldCode(e.fieldCode || '');
+            setSchemes((e.schemes ?? []).map((s: any) => ({ code: s.code, name: s.name })));
+            setRoster((e.roster ?? []).map((r: any) => ({ itemCode: r.itemCode, name: r.name, inRoster: !!r.inRoster, schemeCode: r.schemeCode ?? null })));
+        } catch (err: any) { toast({ title: 'Ошибка', description: err.message, variant: 'destructive' }); }
+        finally { setLoading(false); }
+    }, [toast]);
+    useEffect(() => { load(); }, [load]);
 
     const saveRoster = async () => {
         if (roster.some((r) => r.inRoster && !r.schemeCode)) { toast({ title: 'У отмеченных инженеров не выбрана роль', variant: 'destructive' }); return; }
@@ -836,51 +894,24 @@ export function EngineersTab() {
         finally { setSavingRoster(false); }
     };
 
-    if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+    if (loading) return <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
     const inputCls = 'border px-2 py-1 text-sm';
     return (
-        <div className="space-y-4">
-            <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-                Инженеры-расчётчики — <b>элементы справочника</b> (кастом-поле заказа <code>{fieldCode || 'inzhener_zakaza'}</code>), а не пользователи RetailCRM; инженера в заказе проставляет менеджер. Оплата = <b>% от суммы заказа × K срочности</b> (В просчёте → Согласование параметров), по заказам, дошедшим до производства.
-            </div>
-
-            {/* ── Схемы инженеров ── */}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">Роли инженеров</div>
-                    <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Добавить роль инженера</Button>
+        <div className="space-y-2">
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-semibold">Инженеры-расчётчики</div>
+                    <div className="text-[11px] text-muted-foreground">Сотрудники ОП из справочника «Инженера ОП» (не пользователи CRM). Отметьте, кто в ЗП, и выберите роль. Роли настраиваются во вкладке «Схемы (роли)».</div>
                 </div>
-                {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Ролей инженеров пока нет. Нажмите «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её инженерам в реестре ниже.</div>}
-                {schemes.map((s, i) => (
-                    <div key={i} className="border">
-                        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
-                            <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
-                            <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} disabled={!s.isNew} placeholder="код (латиница)" className={`${inputCls} w-40 disabled:bg-muted disabled:text-muted-foreground`} />
-                            <label className="flex items-center gap-1 text-xs text-muted-foreground">с <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className={inputCls} /></label>
-                            <Button size="sm" className="h-8 bg-slate-900 text-white hover:bg-slate-700" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
-                                {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} Сохранить
-                            </Button>
-                            <button onClick={() => deleteScheme(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
-                        </div>
-                        <div className="p-3">
-                            <ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} />
-                        </div>
-                    </div>
-                ))}
+                <label className="flex items-center gap-1 text-xs text-muted-foreground">назначить с <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className={inputCls} /></label>
             </div>
-
-            {/* ── Реестр инженеров ── */}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">Реестр инженеров</div>
-                    <label className="flex items-center gap-1 text-xs text-muted-foreground">назначить с <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className={inputCls} /></label>
+            {roster.length === 0 ? (
+                <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Справочник инженеров не синхронизирован (поле <code>{fieldCode || 'inzhener_zakaza'}</code> ещё не подтянулось в базу). Запустите синхронизацию справочников <code>/api/sync/dictionaries</code> — список появится здесь автоматически.
                 </div>
-                {roster.length === 0 ? (
-                    <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                        Справочник инженеров не синхронизирован (поле <code>{fieldCode || 'inzhener_zakaza'}</code> ещё не подтянулось в базу). Запустите синхронизацию справочников <code>/api/sync/dictionaries</code> — список появится здесь автоматически.
-                    </div>
-                ) : (
+            ) : (
+                <>
                     <div className="overflow-x-auto border">
                         <table className="w-full text-sm">
                             <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="w-10 px-2 py-1.5">В ЗП</th><th className="px-2 py-1.5">Инженер</th><th className="px-2 py-1.5">Код</th><th className="px-2 py-1.5">Роль</th></tr></thead>
@@ -902,13 +933,11 @@ export function EngineersTab() {
                             </tbody>
                         </table>
                     </div>
-                )}
-                {roster.length > 0 && (
                     <Button size="sm" className="h-9 bg-slate-900 px-4 text-white hover:bg-slate-700" onClick={saveRoster} disabled={savingRoster}>
-                        {savingRoster ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Сохранить реестр
+                        {savingRoster ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Сохранить
                     </Button>
-                )}
-            </div>
+                </>
+            )}
         </div>
     );
 }
