@@ -68,7 +68,7 @@ export async function getTbankAccounts(cfg: TbankConfig): Promise<string[]> {
     : res.data?.accounts || res.data?.bankAccounts || res.data?.data || [];
   const numbers = list
     .map((a) => str(a?.accountNumber) || str(a?.number) || str(a?.account))
-    .filter((n): n is string => Boolean(n) && /^\d{20}$/.test(n));
+    .filter((n): n is string => n !== null && /^\d{20}$/.test(n));
   // Уникализируем на случай дублей между разделами ответа.
   return Array.from(new Set(numbers));
 }
