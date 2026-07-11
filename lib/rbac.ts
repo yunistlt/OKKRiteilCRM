@@ -53,6 +53,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/salary/sim-manager', label: 'API персонального симулятора ЗП', description: 'Срез показателей менеджера для симулятора ЗП (менеджер — только свой).', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },
     { prefix: '/salary', label: 'Зарплата', description: 'Расчёт ЗП менеджеров, настройки мотивации, закрытие периода.', category: 'Зарплата', allowed: ['admin', 'rop'] },
     { prefix: '/api/salary', label: 'API зарплаты', description: 'Серверные методы расчёта ЗП и конфигурации мотивации.', category: 'Зарплата', allowed: ['admin', 'rop'] },
+    { prefix: '/payments', label: 'Платежи', description: 'Распределение банковских платежей «с точки» по заказам и ручной разбор.', category: 'Финансы', allowed: ['admin', 'rop'] },
+    { prefix: '/api/payments', label: 'API платежей', description: 'Серверные методы сервиса распределения платежей (список, привязка, разбор).', category: 'Финансы', allowed: ['admin', 'rop'] },
     { prefix: '/', label: 'Центр управления', description: 'Главная страница и дашборд офиса.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/admin', label: 'Раздел admin', description: 'Прочие административные страницы.', category: 'Система', allowed: ['admin'] },
 ];

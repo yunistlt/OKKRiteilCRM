@@ -16,6 +16,7 @@
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
+| **Платежи «с точки» (Точка → заказы)** | 🟢 Реализован | [docs/payments/](payments/OVERVIEW.md) | Team Finance |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |
 | **Real-time pipeline** | 🟡 В исполнении | [docs/realtime-pipeline/](realtime-pipeline/) | Team Infrastructure |
 | **Транскрибация** | 🟢 ✅ Закрыто | [docs/transcription/](transcription/) | Team Infrastructure |

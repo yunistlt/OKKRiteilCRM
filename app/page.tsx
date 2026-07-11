@@ -559,6 +559,24 @@ function HomeContent() {
                         <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Дашборды по выручке, воронке продаж и эффективности.</p>
                     </div>
                 </Link>
+
+                {/* Payments Card */}
+                <Link href="/payments"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-violet-600 to-fuchsia-700 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-violet-600/30 hover:shadow-violet-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                >
+                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
+                        <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                    </div>
+                    <div className="relative z-10">
+                        <div className="w-12 h-12 md:w-16 md:h-16 bg-white/20 rounded-xl md:rounded-2xl flex items-center justify-center mb-6 text-white group-hover:scale-110 transition-transform">
+                            <svg className="w-6 h-6 md:w-8 md:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path>
+                            </svg>
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-black text-white mb-3 tracking-tight">Платежи</h2>
+                        <p className="text-sm md:text-base text-white/70 font-medium leading-relaxed">Разнос банковских платежей по заказам и ручной разбор.</p>
+                    </div>
+                </Link>
                 </div>
         </div>
     );
