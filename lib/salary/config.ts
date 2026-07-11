@@ -46,6 +46,12 @@ export const SALARY_CONFIG_SCHEMAS = {
         default_vat_pct: z.number(),
         exempt_sites: z.array(z.string()),
     }),
+    // Инженеры-расчётчики ОП: код кастом-поля заказа с инженером (справочник) и
+    // статусы таймера скорости расчёта. Инженера в заказ проставляет менеджер,
+    // переводя заказ в start-статус (= передача инженеру). Ноль хардкода: коды —
+    // здесь, читаются в RPC salary_engineer_orders / collectEngineerMetrics.
+    engineer_field: z.object({ code: z.string().min(1) }),
+    engineer_calc_status: z.object({ start: z.string().min(1), end: z.string().min(1) }),
 } as const;
 
 export type SalaryConfigKey = keyof typeof SALARY_CONFIG_SCHEMAS;

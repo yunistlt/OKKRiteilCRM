@@ -27,6 +27,9 @@ const PARAM_LABELS: Record<string, string> = {
     rate: 'Ставка, ₽',
     thresholdPct: 'Порог, %', perPercent: 'Ставка за 1% сверх плана, ₽',
     rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
+    // Инженер-расчётчик (блок procent_za_raschet)
+    percent: 'Процент от суммы, %', slaNormy: 'Норматив срочности (по сумме заказа)', maxSum: 'Сумма заказа до, ₽', normHours: 'Норма, ч',
+    kTiers: 'K срочности (по факт/норма)', maxRatio: 'Отношение факт/норма до', kMissing: 'K при отсутствии данных таймера',
 };
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
@@ -753,6 +756,159 @@ export function PlansTab() {
                     </div>
                 </>
             )}
+        </div>
+    );
+}
+
+// ── Инженеры-расчётчики ОП ────────────────────────────────────────────────────
+// Изолированный путь: инженеры — элементы справочника (кастом-поле заказа), не
+// пользователи CRM. Здесь их мини-схемы (один блок «Процент за расчёт») и реестр
+// (опт-ин из справочника + назначение схемы пофамильно, effective-dated).
+type EditEngScheme = { code: string; name: string; effectiveFrom: string; prevEffectiveFrom: string; params: any; isNew?: boolean };
+
+const firstOfThisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`; };
+
+export function EngineersTab() {
+    const { toast } = useToast();
+    const [loading, setLoading] = useState(true);
+    const [fieldCode, setFieldCode] = useState('');
+    const [defaultParams, setDefaultParams] = useState<any>(null);
+    const [schemes, setSchemes] = useState<EditEngScheme[]>([]);
+    const [roster, setRoster] = useState<{ itemCode: string; name: string; inRoster: boolean; schemeCode: string | null }[]>([]);
+    const [effectiveFrom, setEffectiveFrom] = useState(firstOfThisMonth);
+    const [savingScheme, setSavingScheme] = useState<string | null>(null);
+    const [savingRoster, setSavingRoster] = useState(false);
+
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const [eRes, bRes] = await Promise.all([fetch('/api/salary/engineers'), fetch('/api/salary/blocks')]);
+            const e = await eRes.json(); if (e.error) throw new Error(e.error);
+            const b = await bRes.json();
+            const blocks = Array.isArray(b) ? b : (b.blocks ?? []);
+            setDefaultParams(blocks.find((x: any) => x.code === 'procent_za_raschet')?.defaultParams ?? null);
+            setFieldCode(e.fieldCode || '');
+            setSchemes((e.schemes ?? []).map((s: any) => ({ code: s.code, name: s.name, effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.effectiveFrom, params: s.blocks?.[0]?.params ?? {} })));
+            setRoster((e.roster ?? []).map((r: any) => ({ itemCode: r.itemCode, name: r.name, inRoster: !!r.inRoster, schemeCode: r.schemeCode ?? null })));
+        } catch (err: any) { toast({ title: 'Ошибка', description: err.message, variant: 'destructive' }); }
+        finally { setLoading(false); }
+    }, [toast]);
+    useEffect(() => { load(); }, [load]);
+
+    const setScheme = (i: number, patch: Partial<EditEngScheme>) => setSchemes((ss) => ss.map((s, j) => (j === i ? { ...s, ...patch } : s)));
+    const addScheme = () => setSchemes((ss) => [...ss, { code: '', name: '', effectiveFrom, prevEffectiveFrom: '', params: defaultParams ?? {}, isNew: true }]);
+
+    const saveScheme = async (i: number) => {
+        const s = schemes[i];
+        if (!s.code.trim() || !s.name.trim()) { toast({ title: 'Нужны код и название схемы', variant: 'destructive' }); return; }
+        setSavingScheme(s.code || `new-${i}`);
+        try {
+            const res = await fetch('/api/salary/engineers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code.trim(), name: s.name.trim(), effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, params: s.params }) });
+            const j = await res.json(); if (j.error) throw new Error(j.error);
+            toast({ title: 'Схема сохранена' });
+            await load();
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSavingScheme(null); }
+    };
+
+    const deleteScheme = async (i: number) => {
+        const s = schemes[i];
+        if (s.isNew) { setSchemes((ss) => ss.filter((_, j) => j !== i)); return; }
+        if (!confirm(`Удалить схему «${s.name}»?`)) return;
+        try {
+            const res = await fetch('/api/salary/engineers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete_scheme', schemeCode: s.code }) });
+            const j = await res.json(); if (j.error) throw new Error(j.error);
+            toast({ title: 'Схема удалена' });
+            await load();
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+    };
+
+    const saveRoster = async () => {
+        if (roster.some((r) => r.inRoster && !r.schemeCode)) { toast({ title: 'У отмеченных инженеров не выбрана схема', variant: 'destructive' }); return; }
+        setSavingRoster(true);
+        try {
+            const rows = roster.filter((r) => r.inRoster && r.schemeCode).map((r) => ({ itemCode: r.itemCode, schemeCode: r.schemeCode }));
+            const res = await fetch('/api/salary/engineers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'roster', rows, effectiveFrom }) });
+            const j = await res.json(); if (j.error) throw new Error(j.error);
+            toast({ title: 'Реестр инженеров сохранён' });
+            await load();
+        } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
+        finally { setSavingRoster(false); }
+    };
+
+    if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+
+    const inputCls = 'border px-2 py-1 text-sm';
+    return (
+        <div className="space-y-4">
+            <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
+                Инженеры-расчётчики — <b>элементы справочника</b> (кастом-поле заказа <code>{fieldCode || 'inzhener_zakaza'}</code>), а не пользователи RetailCRM; инженера в заказе проставляет менеджер. Оплата = <b>% от суммы заказа × K срочности</b> (В просчёте → Согласование параметров), по заказам, дошедшим до производства.
+            </div>
+
+            {/* ── Схемы инженеров ── */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">Схемы инженеров</div>
+                    <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Новая схема</Button>
+                </div>
+                {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Нет схем. Создайте схему (ставка % и нормативы срочности), затем назначьте её инженерам в реестре ниже.</div>}
+                {schemes.map((s, i) => (
+                    <div key={i} className="border">
+                        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
+                            <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
+                            <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} disabled={!s.isNew} placeholder="код (латиница)" className={`${inputCls} w-40 disabled:bg-muted disabled:text-muted-foreground`} />
+                            <label className="flex items-center gap-1 text-xs text-muted-foreground">с <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className={inputCls} /></label>
+                            <Button size="sm" className="h-8 bg-slate-900 text-white hover:bg-slate-700" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
+                                {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} Сохранить
+                            </Button>
+                            <button onClick={() => deleteScheme(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                        <div className="p-3">
+                            <ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} />
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* ── Реестр инженеров ── */}
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <div className="text-sm font-semibold">Реестр инженеров</div>
+                    <label className="flex items-center gap-1 text-xs text-muted-foreground">назначить с <input type="date" value={effectiveFrom} onChange={(e) => setEffectiveFrom(e.target.value)} className={inputCls} /></label>
+                </div>
+                {roster.length === 0 ? (
+                    <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        Справочник инженеров не синхронизирован (поле <code>{fieldCode || 'inzhener_zakaza'}</code> ещё не подтянулось в базу). Запустите синхронизацию справочников <code>/api/sync/dictionaries</code> — список появится здесь автоматически.
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto border">
+                        <table className="w-full text-sm">
+                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="w-10 px-2 py-1.5">В ЗП</th><th className="px-2 py-1.5">Инженер</th><th className="px-2 py-1.5">Код</th><th className="px-2 py-1.5">Схема</th></tr></thead>
+                            <tbody>
+                                {roster.map((r, i) => (
+                                    <tr key={r.itemCode} className={`border-t ${r.inRoster ? '' : 'opacity-60'}`}>
+                                        <td className="px-2 py-1 text-center"><input type="checkbox" checked={r.inRoster} onChange={(e) => setRoster((rr) => rr.map((x, j) => (j === i ? { ...x, inRoster: e.target.checked } : x)))} className="h-4 w-4 accent-primary" /></td>
+                                        <td className="px-2 py-1">{r.name}</td>
+                                        <td className="px-2 py-1 text-muted-foreground">{r.itemCode}</td>
+                                        <td className="px-2 py-1">
+                                            <select value={r.schemeCode ?? ''} onChange={(e) => setRoster((rr) => rr.map((x, j) => (j === i ? { ...x, schemeCode: e.target.value || null } : x)))} disabled={!r.inRoster} className={`${inputCls} w-56 disabled:bg-muted`}>
+                                                <option value="">— выберите схему —</option>
+                                                {schemes.map((s) => <option key={s.code} value={s.code}>{s.name || s.code}</option>)}
+                                                {r.schemeCode && !schemes.some((s) => s.code === r.schemeCode) && <option value={r.schemeCode}>{r.schemeCode} (архив)</option>}
+                                            </select>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+                {roster.length > 0 && (
+                    <Button size="sm" className="h-9 bg-slate-900 px-4 text-white hover:bg-slate-700" onClick={saveRoster} disabled={savingRoster}>
+                        {savingRoster ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Save className="mr-1.5 h-4 w-4" />} Сохранить реестр
+                    </Button>
+                )}
+            </div>
         </div>
     );
 }

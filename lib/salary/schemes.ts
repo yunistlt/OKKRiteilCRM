@@ -72,6 +72,79 @@ export async function resolveManagerComp(asOf: string): Promise<Map<number, Mana
     return result;
 }
 
+export interface EngineerComp {
+    itemCode: string;
+    schemeCode: string;
+    blocks: BlockInstance[];
+}
+
+/** Карта item_code инженера → назначенная схема с блоками на дату asOf.
+ *  Инженеры НЕ пользователи CRM: реестр = опт-ин (salary_engineer_participant) И
+ *  назначение схемы (salary_engineer_comp, пофамильно, effective-dated). Схемы —
+ *  participant_kind='engineer'. Зеркалит resolveManagerComp, но ключ строковый. */
+export async function resolveEngineerComp(asOf: string): Promise<Map<string, EngineerComp>> {
+    // 1. Реестр инженеров = отмеченные участники И имеющие назначение схемы
+    const { data: partRows, error: partErr } = await supabase.from('salary_engineer_participant').select('item_code');
+    if (partErr) throw partErr;
+    const participants = new Set<string>(((partRows as any[]) ?? []).map((r) => String(r.item_code)));
+    if (participants.size === 0) return new Map();
+
+    const { data: compRows, error: compErr } = await supabase
+        .from('salary_engineer_comp')
+        .select('item_code,scheme_code,effective_from')
+        .lte('effective_from', asOf)
+        .order('effective_from', { ascending: false });
+    if (compErr) throw compErr;
+    const schemeByItem = new Map<string, string>();
+    for (const r of (compRows as any[]) ?? []) {
+        const code = String(r.item_code);
+        if (participants.has(code) && !schemeByItem.has(code)) schemeByItem.set(code, String(r.scheme_code));
+    }
+    if (schemeByItem.size === 0) return new Map();
+
+    // 2. Последняя версия каждой используемой схемы (на дату)
+    const codes = Array.from(new Set(schemeByItem.values()));
+    const { data: schemeRows, error: schemeErr } = await supabase
+        .from('salary_scheme')
+        .select('id,code,effective_from')
+        .in('code', codes)
+        .lte('effective_from', asOf)
+        .order('effective_from', { ascending: false });
+    if (schemeErr) throw schemeErr;
+    const schemeIdByCode = new Map<string, number>();
+    for (const s of (schemeRows as any[]) ?? []) {
+        if (!schemeIdByCode.has(s.code)) schemeIdByCode.set(s.code, Number(s.id));
+    }
+
+    // 3. Блоки этих версий
+    const schemeIds = Array.from(schemeIdByCode.values());
+    const blocksByScheme = new Map<number, BlockInstance[]>();
+    if (schemeIds.length) {
+        const { data: blockRows, error: blockErr } = await supabase
+            .from('salary_scheme_block')
+            .select('scheme_id,block_code,sort_order,params,enabled')
+            .in('scheme_id', schemeIds)
+            .order('sort_order', { ascending: true });
+        if (blockErr) throw blockErr;
+        for (const b of (blockRows as any[]) ?? []) {
+            if (b.enabled === false) continue;
+            const sid = Number(b.scheme_id);
+            const arr = blocksByScheme.get(sid) ?? [];
+            arr.push({ code: b.block_code, params: b.params ?? {} });
+            blocksByScheme.set(sid, arr);
+        }
+    }
+
+    // 4. Сборка
+    const result = new Map<string, EngineerComp>();
+    for (const [itemCode, code] of Array.from(schemeByItem)) {
+        const sid = schemeIdByCode.get(code);
+        if (sid == null) continue;
+        result.set(itemCode, { itemCode, schemeCode: code, blocks: blocksByScheme.get(sid) ?? [] });
+    }
+    return result;
+}
+
 // ── Чтение для UI ────────────────────────────────────────────────────────────
 
 export interface SchemeView {
@@ -82,11 +155,12 @@ export interface SchemeView {
 }
 
 /** Последние версии всех схем (на дату asOf) с их блоками — для конструктора. */
-export async function listSchemes(asOf: string): Promise<SchemeView[]> {
+export async function listSchemes(asOf: string, participantKind: 'manager' | 'engineer' = 'manager'): Promise<SchemeView[]> {
     const { data: schemeRows, error } = await supabase
         .from('salary_scheme')
         .select('id,code,name,effective_from')
         .is('archived_at', null)
+        .eq('participant_kind', participantKind)
         .lte('effective_from', asOf)
         .order('effective_from', { ascending: false });
     if (error) throw error;
@@ -136,11 +210,12 @@ export async function saveScheme(params: {
     prevEffectiveFrom?: string | null;
     blocks: { block_code: string; params: any; enabled?: boolean }[];
     actor: string | null;
+    participantKind?: 'manager' | 'engineer';
 }): Promise<void> {
-    const { code, name, effectiveFrom, prevEffectiveFrom, blocks, actor } = params;
+    const { code, name, effectiveFrom, prevEffectiveFrom, blocks, actor, participantKind = 'manager' } = params;
     const { data: upserted, error } = await supabase
         .from('salary_scheme')
-        .upsert({ code, name, effective_from: effectiveFrom, created_by: actor }, { onConflict: 'code,effective_from' })
+        .upsert({ code, name, effective_from: effectiveFrom, participant_kind: participantKind, created_by: actor }, { onConflict: 'code,effective_from' })
         .select('id')
         .single();
     if (error) throw error;
@@ -322,4 +397,92 @@ export async function getPlansForPeriod(year: number, month: number): Promise<Pe
         else personal.set(Number(r.manager_id), Number(r.target));
     }
     return { personal, department };
+}
+
+// ── Инженеры-расчётчики: справочник + реестр (опт-ин + назначение схемы) ──────
+
+/** Элементы справочника инженеров (item_code + имя) из retailcrm_dictionaries.
+ *  Источник — справочник кастом-поля fieldCode (по закону names-from-retailcrm).
+ *  Пусто, если поле/справочник ещё не синхронизированы (/api/sync/dictionaries). */
+export async function listEngineerDictionary(fieldCode: string): Promise<{ itemCode: string; name: string }[]> {
+    const { data: fieldRow } = await supabase
+        .from('retailcrm_custom_fields')
+        .select('dictionary')
+        .eq('entity', 'order')
+        .eq('code', fieldCode)
+        .maybeSingle();
+    const dictCode = (fieldRow?.dictionary as string) || '';
+    if (!dictCode) return [];
+    const { data } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code,item_name')
+        .eq('entity_type', 'customField')
+        .eq('dictionary_code', dictCode)
+        .order('item_name', { ascending: true });
+    return ((data as any[]) ?? []).map((r) => ({ itemCode: String(r.item_code), name: String(r.item_name || r.item_code) }));
+}
+
+export interface EngineerRosterRow {
+    itemCode: string;
+    name: string;
+    inRoster: boolean; // отмечен в опт-ине
+    schemeCode: string | null; // назначенная схема на дату
+}
+
+/** Реестр инженеров на дату: элементы справочника + флаг опт-ина + назначенная схема. */
+export async function listEngineerRoster(asOf: string, fieldCode: string): Promise<EngineerRosterRow[]> {
+    const dict = await listEngineerDictionary(fieldCode);
+    const { data: partRows } = await supabase.from('salary_engineer_participant').select('item_code');
+    const participants = new Set<string>(((partRows as any[]) ?? []).map((r) => String(r.item_code)));
+    const { data: compRows } = await supabase
+        .from('salary_engineer_comp')
+        .select('item_code,scheme_code,effective_from')
+        .lte('effective_from', asOf)
+        .order('effective_from', { ascending: false });
+    const schemeByItem = new Map<string, string>();
+    for (const r of (compRows as any[]) ?? []) {
+        const code = String(r.item_code);
+        if (!schemeByItem.has(code)) schemeByItem.set(code, String(r.scheme_code));
+    }
+    return dict.map((d) => ({
+        itemCode: d.itemCode,
+        name: d.name,
+        inRoster: participants.has(d.itemCode),
+        schemeCode: schemeByItem.get(d.itemCode) ?? null,
+    }));
+}
+
+/** Сохраняет реестр инженеров: полный replace опт-ина + назначения схем (effective-dated).
+ *  rows — только отмеченные инженеры (с выбранной схемой); остальные снимаются из реестра. */
+export async function saveEngineerRoster(params: {
+    rows: { itemCode: string; schemeCode: string }[];
+    effectiveFrom: string;
+    actor: string | null;
+}): Promise<void> {
+    const { rows, effectiveFrom, actor } = params;
+    // Опт-ин: полный replace (как менеджерский saveSalaryRoster).
+    await supabase.from('salary_engineer_participant').delete().neq('item_code', ' ');
+    if (rows.length) {
+        const { error } = await supabase
+            .from('salary_engineer_participant')
+            .insert(rows.map((r) => ({ item_code: r.itemCode, created_by: actor })));
+        if (error) throw error;
+    }
+    // Назначения схем на дату (upsert по item_code+effective_from).
+    for (const r of rows) {
+        if (!r.schemeCode) continue;
+        const { error } = await supabase
+            .from('salary_engineer_comp')
+            .upsert({ item_code: r.itemCode, scheme_code: r.schemeCode, effective_from: effectiveFrom, created_by: actor }, { onConflict: 'item_code,effective_from' });
+        if (error) throw error;
+    }
+    await supabase.from('salary_audit_log').insert({ entity: 'engineer_roster', entity_id: effectiveFrom, action: 'save', actor, old_value: null, new_value: { count: rows.length } });
+}
+
+/** Удаляет инженерную схему (все версии code); блоки — каскадом по FK. */
+export async function deleteEngineerScheme(params: { code: string; actor: string | null }): Promise<void> {
+    const { code, actor } = params;
+    const { error } = await supabase.from('salary_scheme').delete().eq('code', code).eq('participant_kind', 'engineer');
+    if (error) throw error;
+    await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'delete', actor, old_value: null, new_value: { participantKind: 'engineer' } });
 }

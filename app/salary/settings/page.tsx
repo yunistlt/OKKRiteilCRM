@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
-import { SchemesTab, RosterTab, PlansTab } from './ConstructorTabs';
+import { SchemesTab, RosterTab, PlansTab, EngineersTab } from './ConstructorTabs';
 import GradesTab from './GradesTab';
 import { useConsultantScreenHint } from '@/components/consultant/ConsultantScreenContext';
 
 const TABS = [
     ['schemes', 'Схемы (роли)'],
     ['roster', 'Реестр ОП'],
+    ['engineers', 'Инженеры ОП'],
     ['plans', 'Планы'],
     ['grades', 'Грейды'],
 ] as const;
@@ -32,6 +33,7 @@ export default function SalarySettingsPage() {
             </div>
             {tab === 'schemes' && <SchemesTab />}
             {tab === 'roster' && <RosterTab />}
+            {tab === 'engineers' && <EngineersTab />}
             {tab === 'plans' && <PlansTab />}
             {tab === 'grades' && <GradesTab />}
         </div>
