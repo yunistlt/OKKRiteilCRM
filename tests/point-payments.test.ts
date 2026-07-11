@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { extractInvoiceNumbers } from '@/lib/payments/matching';
 import { parseAmountToKopecks } from '@/lib/payments/types';
 import { normalizeTochkaPayment, isIncomingTochkaWebhook } from '@/lib/payments/tochka';
+import { normalizeStatementTransaction } from '@/lib/payments/tochka-statement';
 
 describe('extractInvoiceNumbers', () => {
   it('вытаскивает номер счёта из реального назначения', () => {
@@ -123,5 +124,41 @@ describe('normalizeTochkaPayment', () => {
   it('без paymentId или суммы — null', () => {
     expect(normalizeTochkaPayment({ webhookType: 'incomingPayment', amount: '10' }, true)).toBeNull();
     expect(normalizeTochkaPayment({ webhookType: 'incomingPayment', paymentId: '1' }, true)).toBeNull();
+  });
+});
+
+describe('normalizeStatementTransaction (выписка)', () => {
+  const account = '40702810320000187916/044525104';
+
+  it('нормализует входящую (Credit) транзакцию выписки', () => {
+    const txn = {
+      transactionId: 'cbs-tb;1369085641;1',
+      paymentId: 'payment-2026-07-10_3272017395',
+      creditDebitIndicator: 'Credit',
+      status: 'Booked',
+      documentNumber: '3685',
+      documentProcessDate: '2026-07-10',
+      description: 'ОПЛАТА ПО СЧЕТУ №53433',
+      Amount: { amount: 484898.3, currency: 'RUB' },
+      DebtorParty: { inn: '4632175267', name: 'ООО "АГРОПРОМСЕРВИС"', kpp: '463201001' },
+      DebtorAccount: { identification: '40702810718250001163' },
+    };
+    const n = normalizeStatementTransaction(txn, account);
+    expect(n).not.toBeNull();
+    expect(n!.externalPaymentId).toBe('payment-2026-07-10_3272017395');
+    expect(n!.amountKopecks).toBe(48489830);
+    expect(n!.payerInn).toBe('4632175267');
+    expect(n!.payerName).toContain('АГРОПРОМСЕРВИС');
+    expect(n!.purpose).toContain('53433');
+    expect(n!.signatureVerified).toBe(true);
+  });
+
+  it('исходящую (Debit) транзакцию игнорирует', () => {
+    const txn = {
+      paymentId: '1',
+      creditDebitIndicator: 'Debit',
+      Amount: { amount: 100, currency: 'RUB' },
+    };
+    expect(normalizeStatementTransaction(txn, account)).toBeNull();
   });
 });

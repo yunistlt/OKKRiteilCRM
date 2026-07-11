@@ -101,6 +101,32 @@ export default function PaymentsPage() {
     }
   }, []);
 
+  // Загрузка выписки за период (бэкофилл).
+  const [backfillFrom, setBackfillFrom] = useState('');
+  const [backfillTo, setBackfillTo] = useState('');
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<any>(null);
+
+  async function runBackfill() {
+    if (!backfillFrom || !backfillTo) return;
+    setBackfillBusy(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch('/api/payments/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: backfillFrom, to: backfillTo }),
+      });
+      const json = await res.json();
+      setBackfillResult(json);
+      if (res.ok) await load();
+    } catch (e: any) {
+      setBackfillResult({ error: e.message });
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
+
   async function webhookAction(action: 'subscribe' | 'test') {
     setWebhookBusy(true);
     try {
@@ -250,6 +276,59 @@ export default function PaymentsPage() {
                 </pre>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Загрузка выписки за период */}
+      <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
+        <div className="mb-2 font-semibold">📥 Загрузить выписку за период</div>
+        <p className="mb-3 text-sm text-gray-600">
+          Подтягивает исторические платежи из банковской выписки Точки. Требует OAuth-доступа
+          (по обычному ключу выписка может вернуть 501).
+        </p>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-gray-500">С</span>
+            <input
+              type="date"
+              value={backfillFrom}
+              onChange={(e) => setBackfillFrom(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none"
+            />
+          </label>
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-gray-500">По</span>
+            <input
+              type="date"
+              value={backfillTo}
+              onChange={(e) => setBackfillTo(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-violet-500 focus:outline-none"
+            />
+          </label>
+          <button
+            disabled={backfillBusy || !backfillFrom || !backfillTo}
+            onClick={runBackfill}
+            className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+          >
+            {backfillBusy ? 'Загружаю…' : 'Загрузить'}
+          </button>
+        </div>
+        {backfillResult && (
+          <div className="mt-3">
+            {backfillResult.needs_oauth && (
+              <div className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Выписка требует OAuth (JWT вернул 501). Нужно настроить OAuth+Consent в Точке.
+              </div>
+            )}
+            {typeof backfillResult.ingested === 'number' && (
+              <div className="mb-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                Загружено платежей: {backfillResult.ingested}. Обнови список ниже.
+              </div>
+            )}
+            <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
+              {JSON.stringify(backfillResult, null, 2)}
+            </pre>
           </div>
         )}
       </div>
