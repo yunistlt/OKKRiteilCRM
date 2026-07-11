@@ -74,6 +74,39 @@ export default function PaymentsPage() {
   const [manualNumber, setManualNumber] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
 
+  // Настройка вебхука Точки (у Точки нет UI — подключаем через её API нашим сервером).
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [webhookInfo, setWebhookInfo] = useState<any>(null);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+
+  const loadWebhookStatus = useCallback(async () => {
+    setWebhookBusy(true);
+    try {
+      const res = await fetch('/api/payments/subscribe', { cache: 'no-store' });
+      setWebhookInfo(await res.json());
+    } catch (e: any) {
+      setWebhookInfo({ error: e.message });
+    } finally {
+      setWebhookBusy(false);
+    }
+  }, []);
+
+  async function webhookAction(action: 'subscribe' | 'test') {
+    setWebhookBusy(true);
+    try {
+      const res = await fetch('/api/payments/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      setWebhookInfo(await res.json());
+    } catch (e: any) {
+      setWebhookInfo({ error: e.message });
+    } finally {
+      setWebhookBusy(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -141,6 +174,62 @@ export default function PaymentsPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Банковские платежи (Точка) и их разнос по заказам. Неоднозначные — на ручной разбор.
         </p>
+      </div>
+
+      {/* Настройка вебхука Точки */}
+      <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4">
+        <button
+          onClick={() => {
+            setSetupOpen((v) => !v);
+            if (!webhookInfo) loadWebhookStatus();
+          }}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <span className="font-semibold">⚙️ Подключение вебхука Точки</span>
+          <span className="text-gray-400">{setupOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {setupOpen && (
+          <div className="mt-3 space-y-3 border-t border-gray-100 pt-3">
+            <p className="text-sm text-gray-600">
+              У Точки нет кнопки для вебхуков — адрес приёма подключается через её API.
+              Кнопка ниже сделает это за вас (токен берётся из окружения сервера).
+            </p>
+            {webhookInfo?.our_webhook_url && (
+              <div className="text-xs text-gray-500">
+                Наш адрес приёма: <code className="rounded bg-gray-100 px-1">{webhookInfo.our_webhook_url}</code>
+              </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                disabled={webhookBusy}
+                onClick={() => webhookAction('subscribe')}
+                className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                Подключить вебхук
+              </button>
+              <button
+                disabled={webhookBusy}
+                onClick={() => webhookAction('test')}
+                className="rounded-lg bg-gray-100 px-4 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+              >
+                Тест доставки
+              </button>
+              <button
+                disabled={webhookBusy}
+                onClick={loadWebhookStatus}
+                className="rounded-lg bg-gray-100 px-4 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+              >
+                Проверить статус
+              </button>
+            </div>
+            {webhookInfo && (
+              <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
+                {JSON.stringify(webhookInfo.tochka ?? webhookInfo.result ?? webhookInfo, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
