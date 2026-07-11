@@ -6,6 +6,7 @@ import {
   createTochkaStatement,
   getTochkaStatement,
   normalizeStatementTransaction,
+  enrichTochkaRecipient,
 } from '@/lib/payments/tochka-statement';
 import { ingestPointPayment, processPointPayment } from '@/lib/payments/service';
 
@@ -101,6 +102,7 @@ export async function POST(req: NextRequest) {
       for (const txn of txns) {
         const normalized = normalizeStatementTransaction(txn, c.account);
         if (!normalized) continue;
+        await enrichTochkaRecipient(normalized);
         try {
           const { row, isNew } = await ingestPointPayment(normalized);
           accIngested++;

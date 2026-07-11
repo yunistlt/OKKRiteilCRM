@@ -3,6 +3,7 @@ import {
   decodeTochkaWebhookResilient,
   normalizeTochkaPayment,
 } from '@/lib/payments/tochka';
+import { enrichTochkaRecipient } from '@/lib/payments/tochka-statement';
 import { ingestPointPayment, processPointPayment } from '@/lib/payments/service';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true });
     }
 
+    await enrichTochkaRecipient(normalized);
     const { row, isNew } = await ingestPointPayment(normalized);
 
     // Фиксируем результат записи — чтобы видеть, что строка реально создана.

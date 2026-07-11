@@ -20,7 +20,9 @@ async function obFetch(method: string, path: string, body?: unknown) {
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-  const text = await res.text();
+  // Декодируем ПРИНУДИТЕЛЬНО как UTF-8: на /accounts и /customers Точка отдаёт
+  // charset=windows-1251, хотя тело — UTF-8; res.text() иначе выдаёт кракозябры.
+  const text = new TextDecoder('utf-8').decode(await res.arrayBuffer());
   let data: any = text;
   try {
     data = JSON.parse(text);
@@ -108,6 +110,38 @@ export async function getTochkaRecipientMap(): Promise<Map<string, { name: strin
     map.set(base, { name, inn });
   }
   return map;
+}
+
+// Кэш карты счетов в пределах тёплого инстанса (наши счета меняются редко).
+let _recipMapCache: { map: Map<string, { name: string | null; inn: string | null }>; at: number } | null = null;
+
+export async function getTochkaRecipientMapCached(
+  ttlMs = 3_600_000,
+): Promise<Map<string, { name: string | null; inn: string | null }>> {
+  if (_recipMapCache && Date.now() - _recipMapCache.at < ttlMs) return _recipMapCache.map;
+  const map = await getTochkaRecipientMap();
+  if (map.size > 0) _recipMapCache = { map, at: Date.now() };
+  return map;
+}
+
+/**
+ * Проставляет получателя (наше юрлицо) нормализованному платежу Точки по его счёту.
+ * No-op при ошибке/отсутствии — приём платежа не ломаем.
+ */
+export async function enrichTochkaRecipient(p: NormalizedPointPayment): Promise<void> {
+  if (p.recipientName) return;
+  const base = accountBase(p.accountId);
+  if (!base) return;
+  try {
+    const map = await getTochkaRecipientMapCached();
+    const rec = map.get(base);
+    if (rec?.name) {
+      p.recipientName = rec.name;
+      p.recipientInn = rec.inn ?? null;
+    }
+  } catch {
+    /* тихо пропускаем — получатель необязателен */
+  }
 }
 
 /** Создать выписку за период. Возвращает statementId. */

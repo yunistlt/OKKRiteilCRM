@@ -163,6 +163,25 @@ export default function PaymentsPage() {
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [backfillResult, setBackfillResult] = useState<any>(null);
 
+  // Разовый бэкофилл получателя по счетам Точки.
+  const [tochkaRecipBusy, setTochkaRecipBusy] = useState(false);
+  const [tochkaRecipResult, setTochkaRecipResult] = useState<any>(null);
+
+  async function fillTochkaRecipients() {
+    setTochkaRecipBusy(true);
+    setTochkaRecipResult(null);
+    try {
+      const res = await fetch('/api/payments/tochka/recipients', { method: 'POST' });
+      const json = await res.json();
+      setTochkaRecipResult(json);
+      if (res.ok) await load();
+    } catch (e: any) {
+      setTochkaRecipResult({ error: e.message });
+    } finally {
+      setTochkaRecipBusy(false);
+    }
+  }
+
   async function runBackfill() {
     if (!backfillFrom || !backfillTo) return;
     setBackfillBusy(true);
@@ -439,6 +458,28 @@ export default function PaymentsPage() {
               <ResultBox data={backfillResult} />
             </div>
           )}
+
+          {/* Разовый бэкофилл получателя (наше юрлицо) по счетам Точки */}
+          <div className="mt-3 border-t border-gray-100 pt-3">
+            <button
+              disabled={tochkaRecipBusy}
+              onClick={fillTochkaRecipients}
+              className="border border-gray-300 bg-white px-4 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+              title="Проставить наименование юрлица-получателя по счёту (из API Точки) для существующих платежей"
+            >
+              {tochkaRecipBusy ? 'Заполняю…' : 'Заполнить получателей'}
+            </button>
+            {tochkaRecipResult && (
+              <div className="mt-2 space-y-2">
+                {typeof tochkaRecipResult.updated === 'number' && (
+                  <div className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                    Проставлен получатель: {tochkaRecipResult.updated} платеж(ей).
+                  </div>
+                )}
+                <ResultBox data={tochkaRecipResult} />
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Т-Банк — счета и выписка */}
