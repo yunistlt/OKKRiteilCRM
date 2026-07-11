@@ -17,7 +17,8 @@ const BodySchema = z.object({
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
-const READY_STATUSES = new Set(['created', 'ready', 'booked', 'done', 'success']);
+// «Created» = запрос принят и ещё готовится; готово — только «Ready».
+const READY_STATUSES = new Set(['ready', 'done', 'success']);
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -46,47 +47,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'У ключа нет доступных счетов' }, { status: 400 });
     }
 
-    const details: Array<Record<string, any>> = [];
-    let ingested = 0;
+    // Фаза 1: создаём выписки по всем счетам (параллельно).
+    const created = await Promise.all(
+      accounts.map(async (accountId) => ({ accountId, ...(await createTochkaStatement(accountId, from, to)) })),
+    );
 
-    for (const accountId of accounts) {
-      const created = await createTochkaStatement(accountId, from, to);
+    // Если выписка требует OAuth — на JWT вернётся 501 по всем счетам.
+    if (created.every((c) => !c.statementId) && created.some((c) => c.status === 501)) {
+      return NextResponse.json(
+        {
+          error:
+            'Полная выписка требует OAuth (JWT возвращает 501). Настройте OAuth+Consent в Точке, чтобы тянуть исторические переводы.',
+          needs_oauth: true,
+          tochka: created[0]?.data,
+        },
+        { status: 501 },
+      );
+    }
 
-      // Полная выписка недоступна по JWT — нужен OAuth.
-      if (!created.statementId) {
-        if (created.status === 501) {
-          return NextResponse.json(
-            {
-              error:
-                'Полная выписка требует OAuth (JWT возвращает 501). Настройте OAuth+Consent в Точке, чтобы тянуть исторические переводы.',
-              needs_oauth: true,
-              account: accountId,
-              tochka: created.data,
-            },
-            { status: 501 },
-          );
-        }
-        details.push({ account: accountId, error: 'no statementId', status: created.status, tochka: created.data });
-        continue;
-      }
-
-      // Ждём готовности выписки (bounded polling).
-      let transactions: any[] = [];
+    // Фаза 2: ждём готовности (Ready) и забираем транзакции — параллельно по счетам.
+    const collect = async (accountId: string, statementId: string) => {
       let lastStatus: string | null = null;
-      for (let attempt = 0; attempt < 20; attempt++) {
-        const stmt = await getTochkaStatement(accountId, created.statementId);
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const stmt = await getTochkaStatement(accountId, statementId);
         lastStatus = stmt.stmtStatus;
-        if (stmt.transactions.length > 0 || (lastStatus && READY_STATUSES.has(lastStatus.toLowerCase()))) {
-          transactions = stmt.transactions;
-          break;
+        const ready = lastStatus && READY_STATUSES.has(lastStatus.toLowerCase());
+        if (ready || stmt.transactions.length > 0) {
+          return { transactions: stmt.transactions, lastStatus };
         }
         await sleep(3000);
       }
+      return { transactions: [] as any[], lastStatus };
+    };
 
+    const collected = await Promise.all(
+      created.map(async (c) => {
+        if (!c.statementId) {
+          return { account: c.accountId, error: 'no statementId', status: c.status, transactions: 0, ingested: 0 };
+        }
+        const { transactions, lastStatus } = await collect(c.accountId, c.statementId);
+        return { account: c.accountId, statement_id: c.statementId, statement_status: lastStatus, transactions, ingested: 0 };
+      }),
+    );
+
+    // Запись входящих (Credit) платежей. Идемпотентно по paymentId.
+    let ingested = 0;
+    const details: Array<Record<string, any>> = [];
+    for (const c of collected as any[]) {
       let accIngested = 0;
-      for (const txn of transactions) {
-        const normalized = normalizeStatementTransaction(txn, accountId);
-        if (!normalized) continue; // не входящий/без обязательных полей
+      const txns: any[] = Array.isArray(c.transactions) ? c.transactions : [];
+      for (const txn of txns) {
+        const normalized = normalizeStatementTransaction(txn, c.account);
+        if (!normalized) continue;
         try {
           await ingestPointPayment(normalized);
           accIngested++;
@@ -95,13 +107,13 @@ export async function POST(req: NextRequest) {
           /* пропускаем сбойную транзакцию */
         }
       }
-
       details.push({
-        account: accountId,
-        statement_id: created.statementId,
-        statement_status: lastStatus,
-        transactions: transactions.length,
+        account: c.account,
+        statement_id: c.statement_id,
+        statement_status: c.statement_status,
+        transactions: txns.length,
         ingested: accIngested,
+        ...(c.error ? { error: c.error, status: c.status } : {}),
       });
     }
 
