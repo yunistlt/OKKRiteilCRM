@@ -181,6 +181,61 @@ export default function PaymentsPage() {
     }
   }
 
+  // Т-Банк: проверка связи + ручная загрузка выписки за период.
+  const [tbankOpen, setTbankOpen] = useState(false);
+  const [tbankStatus, setTbankStatus] = useState<any>(null);
+  const [tbankStatusBusy, setTbankStatusBusy] = useState(false);
+  const [tbankFrom, setTbankFrom] = useState('');
+  const [tbankTo, setTbankTo] = useState('');
+  const [tbankBusy, setTbankBusy] = useState(false);
+  const [tbankResult, setTbankResult] = useState<any>(null);
+
+  async function checkTbank() {
+    setTbankStatusBusy(true);
+    setTbankStatus(null);
+    try {
+      const res = await fetch('/api/payments/tbank/status', { cache: 'no-store' });
+      setTbankStatus(await res.json());
+    } catch (e: any) {
+      setTbankStatus({ error: e.message });
+    } finally {
+      setTbankStatusBusy(false);
+    }
+  }
+
+  async function probeTbank() {
+    setTbankStatusBusy(true);
+    setTbankStatus(null);
+    try {
+      const res = await fetch('/api/payments/tbank/probe?days=3', { cache: 'no-store' });
+      setTbankStatus(await res.json());
+    } catch (e: any) {
+      setTbankStatus({ error: e.message });
+    } finally {
+      setTbankStatusBusy(false);
+    }
+  }
+
+  async function runTbankBackfill() {
+    if (!tbankFrom || !tbankTo) return;
+    setTbankBusy(true);
+    setTbankResult(null);
+    try {
+      const res = await fetch('/api/payments/tbank/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: tbankFrom, to: tbankTo }),
+      });
+      const json = await res.json();
+      setTbankResult(json);
+      if (res.ok) await load();
+    } catch (e: any) {
+      setTbankResult({ error: e.message });
+    } finally {
+      setTbankBusy(false);
+    }
+  }
+
   async function webhookAction(action: 'subscribe' | 'test') {
     setWebhookBusy(true);
     try {
@@ -380,6 +435,112 @@ export default function PaymentsPage() {
                 </div>
               )}
               <ResultBox data={backfillResult} />
+            </div>
+          )}
+        </div>
+
+        {/* Т-Банк — счета и выписка */}
+        <div className="border-t border-gray-200">
+          <button
+            onClick={() => setTbankOpen((v) => !v)}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+          >
+            <span className="text-sm font-semibold">🏦 Т-Банк — счета и выписка</span>
+            <span className="text-gray-400">{tbankOpen ? '▲' : '▼'}</span>
+          </button>
+
+          {tbankOpen && (
+            <div className="space-y-3 border-t border-gray-100 bg-gray-50 px-4 py-3">
+              <p className="text-sm text-gray-600">
+                Работает по токену (<code className="bg-gray-200 px-1">TBANK_API_TOKEN</code>). Выписка
+                тянется <b>автоматически по крону</b> раз в 15 минут. Ниже — ручная проверка связи и
+                загрузка выписки за произвольный период.
+              </p>
+
+              {/* Проверка связи + диагностика полей */}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  disabled={tbankStatusBusy}
+                  onClick={checkTbank}
+                  className="bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {tbankStatusBusy ? 'Проверяю…' : 'Проверить связь'}
+                </button>
+                <button
+                  disabled={tbankStatusBusy}
+                  onClick={probeTbank}
+                  className="border border-gray-300 bg-white px-4 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                  title="Показать сырьё первых операций рядом с нормализованным видом — сверить имена полей"
+                >
+                  Диагностика полей
+                </button>
+              </div>
+
+              {tbankStatus && (
+                <div className="space-y-2">
+                  {tbankStatus.configured === false && (
+                    <div className="border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      Токен Т-Банка не задан. Добавьте <code className="bg-amber-100 px-1">TBANK_API_TOKEN</code> в
+                      переменные окружения Vercel.
+                    </div>
+                  )}
+                  {tbankStatus.connected === true && (
+                    <div className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      Связь есть. Доступно счетов: {tbankStatus.accounts_count}.
+                    </div>
+                  )}
+                  {tbankStatus.connected === false && tbankStatus.configured && (
+                    <div className="border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                      Токен задан, но банк ответил ошибкой (см. ниже).
+                    </div>
+                  )}
+                  <ResultBox data={tbankStatus} />
+                </div>
+              )}
+
+              {/* Ручная загрузка выписки за период */}
+              <div className="border-t border-gray-200 pt-3">
+                <div className="mb-1 text-sm font-semibold">📥 Загрузить выписку Т-Банка за период</div>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-gray-500">С</span>
+                    <input
+                      type="date"
+                      value={tbankFrom}
+                      onChange={(e) => setTbankFrom(e.target.value)}
+                      className="border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs text-gray-500">По</span>
+                    <input
+                      type="date"
+                      value={tbankTo}
+                      onChange={(e) => setTbankTo(e.target.value)}
+                      className="border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    disabled={tbankBusy || !tbankFrom || !tbankTo}
+                    onClick={runTbankBackfill}
+                    className="bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {tbankBusy ? 'Загружаю…' : 'Загрузить'}
+                  </button>
+                </div>
+                {tbankResult && (
+                  <div className="mt-3 space-y-2">
+                    {typeof tbankResult.ingested === 'number' && (
+                      <div className="border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                        Загружено платежей: {tbankResult.ingested}
+                        {typeof tbankResult.matched === 'number' ? ` · привязано: ${tbankResult.matched}` : ''}
+                        {typeof tbankResult.pending === 'number' ? ` · на разбор: ${tbankResult.pending}` : ''}.
+                      </div>
+                    )}
+                    <ResultBox data={tbankResult} />
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

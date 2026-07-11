@@ -271,11 +271,19 @@
 - **Токен:** секрет уровня доступа к счёту. Только в `TBANK_API_TOKEN` (Vercel env), не в гит.
   Пока токен не задан — крон и probe деградируют мягко (no-op), ничего не падает.
 
+**UI (панель «🏦 Т-Банк — счета и выписка» на `/payments`):**
+- «Проверить связь» → `GET /api/payments/tbank/status` (список счетов по токену).
+- «Диагностика полей» → `GET /api/payments/tbank/probe?days=3` (сырьё vs нормализация).
+- «Загрузить выписку Т-Банка за период» → `POST /api/payments/tbank/backfill { from, to }`
+  (ручной бэкофилл; выписка T-API синхронная, без ожидания `Ready` как у Точки).
+
 ### Компоненты Т-Банка (файлы)
 | Слой | Файл |
 |------|------|
 | Клиент API + нормализация | `lib/payments/tbank.ts` |
 | Крон-поллинг выписки | `app/api/cron/system-jobs/tbank-statement-poll/route.ts` |
+| Проверка связи (счета) | `app/api/payments/tbank/status/route.ts` |
+| Ручной бэкофилл за период | `app/api/payments/tbank/backfill/route.ts` |
 | Диагностика полей | `app/api/payments/tbank/probe/route.ts` |
 
 ### ENV Т-Банка
