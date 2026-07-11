@@ -3,7 +3,7 @@ import {
   decodeTochkaWebhookResilient,
   normalizeTochkaPayment,
 } from '@/lib/payments/tochka';
-import { ingestPointPayment } from '@/lib/payments/service';
+import { ingestPointPayment, processPointPayment } from '@/lib/payments/service';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 
@@ -101,14 +101,27 @@ export async function POST(req: NextRequest) {
       amount_kopecks: normalized.amountKopecks,
     });
 
+    // Разносим сразу по событию: матчинг + проброс в RetailCRM (не ждём крон).
+    let processStatus = row.status;
+    if (isNew) {
+      try {
+        const res = await processPointPayment(row);
+        processStatus = res.status;
+      } catch (procErr) {
+        // Ошибку обработки не роняем в вебхук — платёж уже сохранён, крон подхватит ретрай.
+        console.error('[Tochka] processPointPayment failed:', procErr);
+      }
+    }
+
     await recordWorkerSuccess(WORKER_KEY, {
       payment_id: row.id,
       external_payment_id: normalized.externalPaymentId,
       is_new: isNew,
       signature_verified: signatureVerified,
+      status: processStatus,
     });
 
-    return NextResponse.json({ ok: true, payment_id: row.id, is_new: isNew });
+    return NextResponse.json({ ok: true, payment_id: row.id, is_new: isNew, status: processStatus });
   } catch (error: any) {
     await captureLastWebhook({
       at: new Date().toISOString(),
