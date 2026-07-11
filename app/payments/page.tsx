@@ -228,6 +228,17 @@ export default function PaymentsPage() {
                 {JSON.stringify(webhookInfo.tochka ?? webhookInfo.result ?? webhookInfo, null, 2)}
               </pre>
             )}
+
+            {webhookInfo?.last_webhook && (
+              <div>
+                <div className="mb-1 text-xs font-semibold text-gray-500">
+                  Последний вебхук, полученный от Точки ({webhookInfo.last_webhook.updated_at}):
+                </div>
+                <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-emerald-200">
+                  {JSON.stringify(webhookInfo.last_webhook, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         )}
       </div>

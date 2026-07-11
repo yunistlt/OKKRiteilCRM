@@ -5,6 +5,23 @@ import {
 } from '@/lib/payments/tochka';
 import { ingestPointPayment } from '@/lib/payments/service';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
+import { supabase } from '@/utils/supabase';
+
+// Диагностика: сохраняем сырьё последнего вебхука в sync_state, чтобы видеть,
+// что реально шлёт Точка (даже если приёмник не смог распознать платёж).
+async function captureLastWebhook(data: Record<string, any>) {
+  try {
+    const value = JSON.stringify(data).slice(0, 8000);
+    await supabase
+      .from('sync_state')
+      .upsert(
+        { key: 'payments.tochka_last_webhook', value, updated_at: new Date().toISOString() },
+        { onConflict: 'key' },
+      );
+  } catch {
+    /* диагностика не должна ломать приём */
+  }
+}
 
 // Публичный вебхук банка Точка (Точка.API): входящие платежи.
 // Приём тонкий: проверяем/декодируем JWT, нормализуем, идемпотентно сохраняем
@@ -37,6 +54,8 @@ export async function POST(req: NextRequest) {
     }
 
     const rawBody = (await req.text()).trim();
+    // Сразу фиксируем сырое тело — на случай, если это вообще не JWT.
+    await captureLastWebhook({ at: new Date().toISOString(), stage: 'raw_body', body: rawBody.slice(0, 4000) });
     if (!rawBody) {
       return NextResponse.json({ ok: false, error: 'empty body' }, { status: 400 });
     }
@@ -55,6 +74,14 @@ export async function POST(req: NextRequest) {
     const { payload, signatureVerified } = await decodeTochkaWebhookResilient(token);
 
     const normalized = normalizeTochkaPayment(payload, signatureVerified);
+    // Фиксируем декодированный payload и результат распознавания.
+    await captureLastWebhook({
+      at: new Date().toISOString(),
+      stage: 'decoded',
+      signature_verified: signatureVerified,
+      recognized: Boolean(normalized),
+      payload,
+    });
     if (!normalized) {
       // Не входящий платёж (исходящий/эквайринг/служебное) — просто подтверждаем.
       await recordWorkerSuccess(WORKER_KEY, { ignored: true });
