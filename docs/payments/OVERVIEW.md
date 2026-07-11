@@ -286,9 +286,23 @@
 | Ручной бэкофилл за период | `app/api/payments/tbank/backfill/route.ts` |
 | Диагностика полей | `app/api/payments/tbank/probe/route.ts` |
 
+### ⚠️ IP-whitelist Т-Банка → egress через VPS (ОБЯЗАТЕЛЬНО)
+Токен Т-Банка **IP-локирован**: при выпуске указываются IP, с которых пойдут запросы, и
+запрос с другого IP получает `403 FORBIDDEN`. У Vercel постоянного egress-IP нет → прямые
+вызовы из функций падают с 403. Поэтому вызовы Т-Банка **проксируются через наш VPS**
+(`5.42.111.117`, он же реверс-прокси РФ), IP которого внесён в whitelist токена:
+
+- На VPS в nginx добавлена `location /tbank-egress-<SECRET>/ → proxy_pass https://business.tbank.ru/`
+  (см. `ops/reverse-proxy/okk.zmksoft.com.conf`). Исходящее из nginx выходит с IP VPS.
+- В Vercel: `TBANK_API_BASE = https://okk.zmksoft.com/tbank-egress-<SECRET>/openapi/api`.
+  Код (`lib/payments/tbank.ts`) уже читает `TBANK_API_BASE` — менять код не нужно.
+- Секрет в пути — чтобы egress не был публично угадываем (downstream всё равно требует токен).
+  Реальный `<SECRET>` — только на VPS и в Vercel env, в репозиторий не коммитим.
+- Проверено: с IP VPS T-Банк отвечает `401` (нет токена), а не `403` — IP в whitelist корректно.
+
 ### ENV Т-Банка
 | Переменная | Назначение | Default |
 |------------|------------|---------|
 | `TBANK_API_TOKEN` | Bearer-токен T-API (счета + выписки) | — |
-| `TBANK_API_BASE` | База T-API | `https://business.tbank.ru/openapi/api` |
+| `TBANK_API_BASE` | База T-API — **указывать egress через VPS** (см. выше) | `https://business.tbank.ru/openapi/api` |
 | `TBANK_POLL_WINDOW_DAYS` | Окно опроса выписки (дней, с перекрытием) | `3` |

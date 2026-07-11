@@ -15,6 +15,16 @@ DPI-фильтрацией подсетей Vercel. Пользователи х�
 
 Plan B (туннель через зарубежный VPS) НЕ понадобился.
 
+## Egress-прокси Т-Банк API (добавлено 2026-07-11)
+
+Тот же VPS используется как **egress** для API Т-Банка: токен Т-Банка IP-локирован, а у
+Vercel постоянного исходящего IP нет. В nginx добавлен `location /tbank-egress-<SECRET>/`
+→ `proxy_pass https://business.tbank.ru/` — вызовы из Vercel выходят к банку с IP VPS
+(`5.42.111.117`, внесён в whitelist токена). Vercel env:
+`TBANK_API_BASE = https://okk.zmksoft.com/tbank-egress-<SECRET>/openapi/api`. Реальный
+`<SECRET>` живёт только на VPS и в Vercel env (в репозиторий не коммитим). Подробнее —
+`docs/payments/OVERVIEW.md` §13.
+
 ```
 Менеджер (РФ) ──HTTPS──► VPS в РФ (nginx) ──HTTPS──► Vercel
 ```
