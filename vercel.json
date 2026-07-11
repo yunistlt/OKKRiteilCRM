@@ -22,6 +22,10 @@
             "schedule": "*/15 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/tbank-statement-poll",
+            "schedule": "*/15 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/retailcrm-order-delta",
             "schedule": "*/1 * * * *"
         },

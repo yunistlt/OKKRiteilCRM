@@ -242,3 +242,45 @@
 
 Раннера миграций нет. Применить `migrations/20260711_point_payments.sql` напрямую к
 БД (`DATABASE_URL`), как остальные миграции проекта (см. корневой `CLAUDE.md`).
+
+---
+
+## 13. Второй источник — Т-Банк (T-API, выписка по крону)
+
+Т-Банк подключён **вторым источником** в ту же таблицу и тот же матчинг — `source='tbank'`
+рядом с `'tochka'`. Матчинг, проброс в RetailCRM, UI и таблица `point_payments` — **общие**;
+БД-миграция не нужна (`source` — свободный текст, уник. индекс `(source, external_payment_id)`).
+
+**Канал — только выписка, автоматически по крону** (у Т-Банка whitelist по IP оказался
+необязательным, работаем по Bearer-токену, как Точка по JWT).
+
+- **API (T-API):** база `https://business.tbank.ru/openapi/api`, авторизация `Authorization: Bearer <TBANK_API_TOKEN>`.
+  - Счета: `GET /v4/bank-accounts` (расчётные, 20-значные `accountNumber`).
+  - Выписка: `GET /v1/statement?accountNumber=&from=&to=` — курсорная пагинация (`cursor`/`nextCursor`,
+    до 5000 операций), `operationStatus=Transaction`. Входящие — `typeOfOperation=Credit`.
+- **Крон:** `app/api/cron/system-jobs/tbank-statement-poll` (раз в 15 мин, `vercel.json`). Тянет
+  скользящее окно `TBANK_POLL_WINDOW_DAYS` (по умолчанию 3 дня, с перекрытием — дубли отсекает
+  уник. индекс), нормализует входящие, `ingest` + сразу `processPointPayment` (матчинг + проброс).
+  Ретрай не-проброшенных берёт общий воркер `point-payment-ingest`.
+- **Fail-safe нормализация** (`lib/payments/tbank.ts`): направление операции читаем строго —
+  если операция **не однозначно входящая** или нет суммы/id, она **пропускается**, а не разносится
+  наугад. Имена полей операции — с фолбэками; точный формат сверяется на живом ответе.
+- **Диагностика полей:** `GET /api/payments/tbank/probe?days=3` (роль `admin`/`rop`) — показывает
+  сырьё операции рядом с нормализованным видом. Прогнать **после** установки токена, чтобы
+  убедиться, что направление/сумма/назначение/плательщик распознаются верно.
+- **Токен:** секрет уровня доступа к счёту. Только в `TBANK_API_TOKEN` (Vercel env), не в гит.
+  Пока токен не задан — крон и probe деградируют мягко (no-op), ничего не падает.
+
+### Компоненты Т-Банка (файлы)
+| Слой | Файл |
+|------|------|
+| Клиент API + нормализация | `lib/payments/tbank.ts` |
+| Крон-поллинг выписки | `app/api/cron/system-jobs/tbank-statement-poll/route.ts` |
+| Диагностика полей | `app/api/payments/tbank/probe/route.ts` |
+
+### ENV Т-Банка
+| Переменная | Назначение | Default |
+|------------|------------|---------|
+| `TBANK_API_TOKEN` | Bearer-токен T-API (счета + выписки) | — |
+| `TBANK_API_BASE` | База T-API | `https://business.tbank.ru/openapi/api` |
+| `TBANK_POLL_WINDOW_DAYS` | Окно опроса выписки (дней, с перекрытием) | `3` |

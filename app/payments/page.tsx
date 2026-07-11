@@ -54,6 +54,17 @@ const STATUS_STYLES: Record<string, string> = {
   failed: 'bg-red-100 text-red-800',
 };
 
+// Человекочитаемые имена источников платежа (в UI — только они, не коды).
+const SOURCE_LABELS: Record<string, string> = {
+  tochka: 'Точка',
+  tbank: 'Т-Банк',
+};
+
+const SOURCE_STYLES: Record<string, string> = {
+  tochka: 'bg-indigo-100 text-indigo-800',
+  tbank: 'bg-yellow-100 text-yellow-800',
+};
+
 const TABS: Array<{ key: string; label: string }> = [
   { key: 'pending_match', label: 'Требуют разбора' },
   { key: 'matched', label: 'Привязанные' },
@@ -425,9 +436,17 @@ export default function PaymentsPage() {
                   <tr key={p.id} className="border-b border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-blue-50">
                     {/* Статус */}
                     <td className="px-4 py-3 align-top">
-                      <span className={`inline-block px-2 py-0.5 text-xs font-semibold ${STATUS_STYLES[p.status] || 'bg-gray-100'}`}>
-                        {STATUS_LABELS[p.status] || p.status}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className={`inline-block px-2 py-0.5 text-xs font-semibold ${STATUS_STYLES[p.status] || 'bg-gray-100'}`}>
+                          {STATUS_LABELS[p.status] || p.status}
+                        </span>
+                        <span
+                          className={`inline-block px-2 py-0.5 text-[11px] font-semibold ${SOURCE_STYLES[p.source] || 'bg-gray-100 text-gray-600'}`}
+                          title="Источник платежа"
+                        >
+                          {SOURCE_LABELS[p.source] || p.source}
+                        </span>
+                      </div>
                       {!p.signature_verified && (
                         <span
                           className="mt-1 block w-fit bg-orange-100 px-2 py-0.5 text-[11px] font-semibold text-orange-700"
