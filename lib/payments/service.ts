@@ -197,8 +197,9 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
 
-  // Уведомление об оплате в Telegram — один раз на платёж (сбой не ломает разнос).
-  if (!row.notified_at && updated) {
+  // Уведомление об оплате в Telegram — только по разнесённым (привязанным к заказу)
+  // платежам, один раз на платёж. Неразобранные (pending_match) не шлём.
+  if (!row.notified_at && updated && (updated as PointPaymentRow).status === 'matched') {
     await notifyPaymentTelegram(updated as PointPaymentRow).catch((e) =>
       console.error('[payments] telegram notify failed:', e?.message || e),
     );
