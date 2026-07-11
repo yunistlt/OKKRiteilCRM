@@ -7,7 +7,7 @@ import {
   getTochkaStatement,
   normalizeStatementTransaction,
 } from '@/lib/payments/tochka-statement';
-import { ingestPointPayment } from '@/lib/payments/service';
+import { ingestPointPayment, processPointPayment } from '@/lib/payments/service';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -92,6 +92,8 @@ export async function POST(req: NextRequest) {
 
     // Запись входящих (Credit) платежей. Идемпотентно по paymentId.
     let ingested = 0;
+    let matched = 0;
+    let pending = 0;
     const details: Array<Record<string, any>> = [];
     for (const c of collected as any[]) {
       let accIngested = 0;
@@ -100,9 +102,15 @@ export async function POST(req: NextRequest) {
         const normalized = normalizeStatementTransaction(txn, c.account);
         if (!normalized) continue;
         try {
-          await ingestPointPayment(normalized);
+          const { row, isNew } = await ingestPointPayment(normalized);
           accIngested++;
           ingested++;
+          // Разносим сразу: матчинг + проброс в RetailCRM (не ждём крон).
+          if (isNew) {
+            const res = await processPointPayment(row).catch(() => ({ status: row.status }));
+            if (res.status === 'matched' || res.status === 'manual') matched++;
+            else pending++;
+          }
         } catch {
           /* пропускаем сбойную транзакцию */
         }
@@ -117,7 +125,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ ok: true, from, to, ingested, details });
+    return NextResponse.json({ ok: true, from, to, ingested, matched, pending, details });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

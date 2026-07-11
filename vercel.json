@@ -19,7 +19,7 @@
         },
         {
             "path": "/api/cron/system-jobs/point-payment-ingest",
-            "schedule": "*/1 * * * *"
+            "schedule": "*/15 * * * *"
         },
         {
             "path": "/api/cron/system-jobs/retailcrm-order-delta",
