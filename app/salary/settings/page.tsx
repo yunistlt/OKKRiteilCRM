@@ -11,7 +11,6 @@ import { useConsultantScreenHint } from '@/components/consultant/ConsultantScree
 const TABS = [
     ['schemes', 'Схемы (роли)'],
     ['roster', 'Реестр ОП'],
-    ['engineers', 'Инженеры ОП'],
     ['plans', 'Планы'],
     ['grades', 'Грейды'],
 ] as const;
@@ -31,9 +30,18 @@ export default function SalarySettingsPage() {
                     ))}
                 </div>
             </div>
-            {tab === 'schemes' && <SchemesTab />}
+            {tab === 'schemes' && (
+                <div className="space-y-6">
+                    <SchemesTab />
+                    {/* Роли инженеров-расчётчиков — на той же странице, отдельной секцией
+                        (не в менеджерском drag-drop конструкторе: у инженеров своя механика). */}
+                    <div className="border-t pt-4">
+                        <h2 className="mb-2 text-base font-semibold">Инженеры-расчётчики ОП</h2>
+                        <EngineersTab />
+                    </div>
+                </div>
+            )}
             {tab === 'roster' && <RosterTab />}
-            {tab === 'engineers' && <EngineersTab />}
             {tab === 'plans' && <PlansTab />}
             {tab === 'grades' && <GradesTab />}
         </div>

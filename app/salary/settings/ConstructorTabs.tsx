@@ -800,7 +800,7 @@ export function EngineersTab() {
 
     const saveScheme = async (i: number) => {
         const s = schemes[i];
-        if (!s.code.trim() || !s.name.trim()) { toast({ title: 'Нужны код и название схемы', variant: 'destructive' }); return; }
+        if (!s.code.trim() || !s.name.trim()) { toast({ title: 'Нужны код и название роли', variant: 'destructive' }); return; }
         setSavingScheme(s.code || `new-${i}`);
         try {
             const res = await fetch('/api/salary/engineers', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: s.code.trim(), name: s.name.trim(), effectiveFrom: s.effectiveFrom, prevEffectiveFrom: s.prevEffectiveFrom || null, params: s.params }) });
@@ -824,7 +824,7 @@ export function EngineersTab() {
     };
 
     const saveRoster = async () => {
-        if (roster.some((r) => r.inRoster && !r.schemeCode)) { toast({ title: 'У отмеченных инженеров не выбрана схема', variant: 'destructive' }); return; }
+        if (roster.some((r) => r.inRoster && !r.schemeCode)) { toast({ title: 'У отмеченных инженеров не выбрана роль', variant: 'destructive' }); return; }
         setSavingRoster(true);
         try {
             const rows = roster.filter((r) => r.inRoster && r.schemeCode).map((r) => ({ itemCode: r.itemCode, schemeCode: r.schemeCode }));
@@ -848,14 +848,14 @@ export function EngineersTab() {
             {/* ── Схемы инженеров ── */}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <div className="text-sm font-semibold">Схемы инженеров</div>
-                    <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Новая схема</Button>
+                    <div className="text-sm font-semibold">Роли инженеров</div>
+                    <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Добавить роль инженера</Button>
                 </div>
-                {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Нет схем. Создайте схему (ставка % и нормативы срочности), затем назначьте её инженерам в реестре ниже.</div>}
+                {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Ролей инженеров пока нет. Нажмите «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её инженерам в реестре ниже.</div>}
                 {schemes.map((s, i) => (
                     <div key={i} className="border">
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
-                            <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
+                            <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
                             <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} disabled={!s.isNew} placeholder="код (латиница)" className={`${inputCls} w-40 disabled:bg-muted disabled:text-muted-foreground`} />
                             <label className="flex items-center gap-1 text-xs text-muted-foreground">с <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className={inputCls} /></label>
                             <Button size="sm" className="h-8 bg-slate-900 text-white hover:bg-slate-700" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
@@ -883,7 +883,7 @@ export function EngineersTab() {
                 ) : (
                     <div className="overflow-x-auto border">
                         <table className="w-full text-sm">
-                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="w-10 px-2 py-1.5">В ЗП</th><th className="px-2 py-1.5">Инженер</th><th className="px-2 py-1.5">Код</th><th className="px-2 py-1.5">Схема</th></tr></thead>
+                            <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="w-10 px-2 py-1.5">В ЗП</th><th className="px-2 py-1.5">Инженер</th><th className="px-2 py-1.5">Код</th><th className="px-2 py-1.5">Роль</th></tr></thead>
                             <tbody>
                                 {roster.map((r, i) => (
                                     <tr key={r.itemCode} className={`border-t ${r.inRoster ? '' : 'opacity-60'}`}>
@@ -892,7 +892,7 @@ export function EngineersTab() {
                                         <td className="px-2 py-1 text-muted-foreground">{r.itemCode}</td>
                                         <td className="px-2 py-1">
                                             <select value={r.schemeCode ?? ''} onChange={(e) => setRoster((rr) => rr.map((x, j) => (j === i ? { ...x, schemeCode: e.target.value || null } : x)))} disabled={!r.inRoster} className={`${inputCls} w-56 disabled:bg-muted`}>
-                                                <option value="">— выберите схему —</option>
+                                                <option value="">— выберите роль —</option>
                                                 {schemes.map((s) => <option key={s.code} value={s.code}>{s.name || s.code}</option>)}
                                                 {r.schemeCode && !schemes.some((s) => s.code === r.schemeCode) && <option value={r.schemeCode}>{r.schemeCode} (архив)</option>}
                                             </select>
