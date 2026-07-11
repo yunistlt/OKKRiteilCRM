@@ -21,9 +21,17 @@ export async function GET(req: Request) {
             listSchemes(asOf),
             listAssignments(asOf),
             listArchivedSchemes(),
-            supabase.from('managers').select('id,first_name,last_name,active').order('id', { ascending: true }),
+            supabase.from('managers').select('id,first_name,last_name,active,raw_data').order('id', { ascending: true }),
         ]);
-        const managers = ((mgrs.data as any[]) ?? []).map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: m.active }));
+        // Показываем только пользователей, АКТИВНЫХ в самом RetailCRM (raw_data.active),
+        // а не по нашей колонке active (там есть системные строки, напр. «Администратор»).
+        // Уволенные/неактивные — мусор в реестре. Исключение: назначенные в реестр ЗП
+        // показываем всегда, даже если неактивны, чтобы не потерять их из расчёта.
+        const assignedIds = new Set((assignments as any[] ?? []).map((a) => Number(a.managerId)));
+        const crmActive = (m: any) => m?.raw_data?.active === true;
+        const managers = ((mgrs.data as any[]) ?? [])
+            .filter((m) => crmActive(m) || assignedIds.has(Number(m.id)))
+            .map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: crmActive(m) }));
         return NextResponse.json({ asOf, schemes, assignments, archived, managers });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
