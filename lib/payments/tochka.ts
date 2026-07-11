@@ -40,9 +40,10 @@ export interface DecodedTochkaWebhook {
 }
 
 /**
- * Проверяет и декодирует JWT вебхука Точки.
+ * Проверяет и декодирует JWT вебхука Точки (строгий режим).
  * Возвращает payload и флаг, была ли реально проверена подпись.
- * Бросает ошибку только если подпись сконфигурирована и НЕ прошла проверку.
+ * Бросает ошибку, если подпись сконфигурирована и НЕ прошла проверку
+ * (или тело не является JWT). Используется в тестах и как ядро resilient-обёртки.
  */
 export async function verifyAndDecodeTochkaWebhook(
   rawJwt: string,
@@ -71,6 +72,33 @@ export async function verifyAndDecodeTochkaWebhook(
   );
   const payload = decodeJwt(token) as any;
   return { payload, signatureVerified: false };
+}
+
+/**
+ * Устойчивый разбор вебхука для боевого приёма.
+ * Если проверка подписи не прошла по ЛЮБОЙ причине (неверный/неправильного формата
+ * ключ, сеть, поддельная подпись) — платёж НЕ теряется: он декодируется и помечается
+ * signatureVerified=false, то есть уходит в ручной разбор (авто-проброс запрещён).
+ * Бросает ошибку только если тело вовсе не JWT.
+ */
+export async function decodeTochkaWebhookResilient(
+  rawJwt: string,
+): Promise<DecodedTochkaWebhook> {
+  const token = rawJwt.trim();
+  if (!token || token.split('.').length !== 3) {
+    throw new Error('Invalid Tochka webhook: not a JWT');
+  }
+
+  try {
+    return await verifyAndDecodeTochkaWebhook(token);
+  } catch (err) {
+    console.warn(
+      `[Tochka] Проверка подписи вебхука не прошла (${(err as Error).message}). ` +
+        'Платёж принят как непроверенный — уйдёт в ручной разбор.',
+    );
+    const payload = decodeJwt(token) as any;
+    return { payload, signatureVerified: false };
+  }
 }
 
 // Схема полезной нагрузки вебхука Точки (входящий платёж).

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  verifyAndDecodeTochkaWebhook,
+  decodeTochkaWebhookResilient,
   normalizeTochkaPayment,
 } from '@/lib/payments/tochka';
 import { ingestPointPayment } from '@/lib/payments/service';
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const { payload, signatureVerified } = await verifyAndDecodeTochkaWebhook(token);
+    const { payload, signatureVerified } = await decodeTochkaWebhookResilient(token);
 
     const normalized = normalizeTochkaPayment(payload, signatureVerified);
     if (!normalized) {

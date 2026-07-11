@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { generateKeyPair, exportSPKI, SignJWT, exportPKCS8, importPKCS8 } from 'jose';
 import {
   verifyAndDecodeTochkaWebhook,
+  decodeTochkaWebhookResilient,
   normalizeTochkaPayment,
 } from '@/lib/payments/tochka';
 
@@ -76,5 +77,36 @@ describe('Tochka webhook — проверка подписи', () => {
 
   it('не-JWT тело → ошибка', async () => {
     await expect(verifyAndDecodeTochkaWebhook('не токен')).rejects.toThrow();
+  });
+});
+
+describe('Tochka webhook — устойчивый приём (resilient)', () => {
+  it('валидная подпись → verified=true', async () => {
+    process.env.TOCHKA_WEBHOOK_PUBLIC_KEY = publicPem;
+    const jwt = await signSample(privatePkcs8, SAMPLE);
+    const { signatureVerified } = await decodeTochkaWebhookResilient(jwt);
+    expect(signatureVerified).toBe(true);
+  });
+
+  it('НЕВЕРНЫЙ ключ в env → приём не падает, платёж помечается непроверенным', async () => {
+    // Имитируем именно тот кейс: в переменную вставлено не то (не PEM-ключ).
+    process.env.TOCHKA_WEBHOOK_PUBLIC_KEY = 'eyJhbGciOiJSUzI1NiJ9.не-ключ-а-токен';
+    const jwt = await signSample(privatePkcs8, SAMPLE);
+    const { payload, signatureVerified } = await decodeTochkaWebhookResilient(jwt);
+    expect(signatureVerified).toBe(false);
+    expect(payload.paymentId).toBe('10730323'); // payload всё равно разобран → уйдёт в ручной разбор
+  });
+
+  it('поддельная подпись → приём не падает, но verified=false', async () => {
+    process.env.TOCHKA_WEBHOOK_PUBLIC_KEY = publicPem;
+    const { privateKey: otherPriv } = await generateKeyPair('RS256', { extractable: true });
+    const otherPem = await exportPKCS8(otherPriv);
+    const forged = await signSample(otherPem, SAMPLE);
+    const { signatureVerified } = await decodeTochkaWebhookResilient(forged);
+    expect(signatureVerified).toBe(false);
+  });
+
+  it('не-JWT тело → всё же ошибка', async () => {
+    await expect(decodeTochkaWebhookResilient('мусор')).rejects.toThrow();
   });
 });
