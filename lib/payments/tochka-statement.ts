@@ -46,6 +46,70 @@ export async function getTochkaAccounts(): Promise<string[]> {
     .filter(Boolean) as string[];
 }
 
+/** Сырой ответ /accounts (для диагностики: есть ли имя владельца/customerCode). */
+export async function getTochkaAccountsRaw(): Promise<{ ok: boolean; status: number; data: any }> {
+  return obFetch('GET', 'accounts');
+}
+
+/** Сырой ответ по клиенту /customers/{customerCode} (юрлицо-владелец счёта). */
+export async function getTochkaCustomerRaw(customerCode: string): Promise<{ ok: boolean; status: number; data: any }> {
+  return obFetch('GET', `customers/${encodeURIComponent(customerCode)}`);
+}
+
+/** База 20-значного счёта из accountId вида "40702810.../044525104". */
+export function accountBase(accountId: string | null | undefined): string | null {
+  if (!accountId) return null;
+  const m = String(accountId).match(/\d{20}/);
+  return m ? m[0] : null;
+}
+
+/**
+ * Карта «счёт → юрлицо-получатель» для Точки: у платежей нет имени получателя в
+ * payload (в Open Banking владелец = сам запрошенный счёт), поэтому тянем из /accounts
+ * (+ /customers по customerCode). Ключ — база 20-значного счёта.
+ * Разбор защитный по именам полей; сверяется probe-роутом на живом ответе.
+ */
+export async function getTochkaRecipientMap(): Promise<Map<string, { name: string | null; inn: string | null }>> {
+  const map = new Map<string, { name: string | null; inn: string | null }>();
+  const res = await obFetch('GET', 'accounts');
+  if (!res.ok) return map;
+  const accounts: any[] = res.data?.Data?.Account || res.data?.Data?.accounts || [];
+
+  // Кэш клиентов, чтобы не дёргать одного customerCode многократно.
+  const customerCache = new Map<string, { name: string | null; inn: string | null }>();
+
+  for (const a of accounts) {
+    const base = accountBase(str(a?.accountId) || str(a?.id));
+    if (!base) continue;
+
+    // Имя может лежать прямо в аккаунте.
+    let name =
+      str(a?.legalName) || str(a?.companyName) || str(a?.name) || str(a?.Nickname) || str(a?.shortName) || null;
+    let inn = str(a?.inn) || str(a?.taxCode) || null;
+
+    // Иначе — по клиенту.
+    const cc = str(a?.customerCode) || str(a?.CustomerCode);
+    if ((!name || !inn) && cc) {
+      let cust = customerCache.get(cc);
+      if (!cust) {
+        const cr = await getTochkaCustomerRaw(cc);
+        const c = cr.ok ? cr.data?.Data?.Customer || cr.data?.Data || cr.data : null;
+        cust = {
+          name:
+            str(c?.legalName) || str(c?.shortName) || str(c?.fullName) || str(c?.companyName) || str(c?.name) || null,
+          inn: str(c?.inn) || str(c?.taxCode) || null,
+        };
+        customerCache.set(cc, cust);
+      }
+      name = name || cust.name;
+      inn = inn || cust.inn;
+    }
+
+    map.set(base, { name, inn });
+  }
+  return map;
+}
+
 /** Создать выписку за период. Возвращает statementId. */
 export async function createTochkaStatement(accountId: string, from: string, to: string): Promise<{ statementId: string | null; status: number; data: any }> {
   const res = await obFetch('POST', 'statements', {
