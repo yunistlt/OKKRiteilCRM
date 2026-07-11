@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder } from './matching';
+import { notifyPaymentTelegram } from './notify';
 import {
   createRetailCrmOrderPayment,
   toRetailCrmPaidAt,
@@ -15,7 +16,7 @@ const SELECT_COLUMNS =
   'recipient_name, recipient_inn, ' +
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
-  'retailcrm_synced_at, retailcrm_error, raw_payload, created_at, updated_at';
+  'retailcrm_synced_at, retailcrm_error, raw_payload, notified_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -194,6 +195,17 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
 
   if (autoMatch && updated) {
     await pushMatchedPaymentToCrm(updated as PointPaymentRow);
+  }
+
+  // Уведомление об оплате в Telegram — один раз на платёж (сбой не ломает разнос).
+  if (!row.notified_at && updated) {
+    await notifyPaymentTelegram(updated as PointPaymentRow).catch((e) =>
+      console.error('[payments] telegram notify failed:', e?.message || e),
+    );
+    await supabase
+      .from('point_payments')
+      .update({ notified_at: new Date().toISOString() })
+      .eq('id', row.id);
   }
 
   return { status: (updated as PointPaymentRow).status };
