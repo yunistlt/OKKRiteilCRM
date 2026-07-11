@@ -1,11 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
+import { supabase } from '@/utils/supabase';
 import {
   getOurWebhookUrl,
   getTochkaWebhooks,
   subscribeTochkaWebhook,
   testSendTochkaWebhook,
 } from '@/lib/payments/tochka-admin';
+
+// Последнее сырьё, полученное на наш вебхук (для диагностики формата Точки).
+async function getLastWebhook() {
+  try {
+    const { data } = await supabase
+      .from('sync_state')
+      .select('value, updated_at')
+      .eq('key', 'payments.tochka_last_webhook')
+      .maybeSingle();
+    if (!data?.value) return null;
+    try {
+      return { updated_at: data.updated_at, ...JSON.parse(data.value) };
+    } catch {
+      return { updated_at: data.updated_at, value: data.value };
+    }
+  } catch {
+    return null;
+  }
+}
 
 export const dynamic = 'force-dynamic';
 
@@ -19,8 +39,8 @@ export async function GET(req: NextRequest) {
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
     const ourUrl = getOurWebhookUrl(new URL(req.url).origin);
-    const current = await getTochkaWebhooks();
-    return NextResponse.json({ our_webhook_url: ourUrl, tochka: current });
+    const [current, lastWebhook] = await Promise.all([getTochkaWebhooks(), getLastWebhook()]);
+    return NextResponse.json({ our_webhook_url: ourUrl, tochka: current, last_webhook: lastWebhook });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
