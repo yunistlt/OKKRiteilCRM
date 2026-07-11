@@ -21,7 +21,7 @@
  * структура ниже основана на публичном описании их webhook-API.
  */
 
-const API_VERSION = '1.0';
+const API_VERSION = process.env.TOCHKA_API_VERSION || 'v1.0';
 const WEBHOOK_TYPES = ['incomingPayment', 'incomingSbpPayment', 'incomingSbpB2BPayment'];
 
 function decodeIssFromToken(token: string): string | null {
