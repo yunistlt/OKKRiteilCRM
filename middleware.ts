@@ -21,7 +21,8 @@ export async function middleware(request: NextRequest) {
         pathname === '/reset-password' ||
         pathname.startsWith('/invite') ||
         pathname.startsWith('/api/auth') ||
-        pathname.startsWith('/api/cron') || 
+        pathname.startsWith('/api/cron') ||
+        pathname.startsWith('/api/payments/tochka') ||
         pathname.startsWith('/api/sync') ||
         pathname.startsWith('/api/matching') ||
         pathname.startsWith('/api/monitoring') ||

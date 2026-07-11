@@ -18,6 +18,10 @@
             "schedule": "*/1 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/point-payment-ingest",
+            "schedule": "*/1 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/retailcrm-order-delta",
             "schedule": "*/1 * * * *"
         },
