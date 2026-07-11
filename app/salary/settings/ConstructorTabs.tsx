@@ -288,7 +288,7 @@ export function SchemesTab() {
         setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.map((b, j) => (j === bi ? { ...b, ...patch } : b)) } : s)));
     const save = async (s: EditScheme, si: number) => {
         const isEng = (s.kind ?? 'manager') === 'engineer';
-        if (isEng && (!s.code.trim() || !s.name.trim())) { toast({ title: 'Нужны код и название роли', variant: 'destructive' }); return; }
+        if (isEng && !s.name.trim()) { toast({ title: 'Укажите название роли', variant: 'destructive' }); return; }
         const blocks = s.blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }));
         const saveKey = s.code || `new-${si}`;
         setSaving(saveKey);
@@ -308,8 +308,9 @@ export function SchemesTab() {
         const grp = groups.find((g) => g.code === code);
         setSchemes((p) => [...p, { code, name: grp?.name ?? code, effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [], kind: 'manager' }]);
     };
-    // Инженерная роль — код задаётся вручную (инженеры не пользователи CRM). Пустая, блоки перетаскиваются из палитры.
-    const addEngineerScheme = () => setSchemes((p) => [...p, { code: '', name: '', effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [], kind: 'engineer', isNew: true }]);
+    // Инженерная роль — код генерируем автоматически (внутренний идентификатор, инженеры
+    // не пользователи CRM). Пользователь задаёт только название; блоки тащит из палитры.
+    const addEngineerScheme = () => setSchemes((p) => [...p, { code: `inzh_${Date.now().toString(36)}`, name: '', effectiveFrom: new Date().toISOString().slice(0, 10), prevEffectiveFrom: '', blocks: [], kind: 'engineer', isNew: true }]);
     const availableGroups = groups.filter((g) => !schemes.some((s) => s.code === g.code) && !archived.some((a) => a.code === g.code));
 
     // Удалить роль целиком. Если по ней уже считалась ЗП — бэкенд заархивирует (с возможностью восстановления).
@@ -558,10 +559,7 @@ export function SchemesTab() {
                         )}
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
                             {isEng ? (
-                                <>
-                                    <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className="h-8 min-w-[160px] flex-1 border px-2 text-sm font-semibold" title="Роль инженера-расчётчика" />
-                                    {s.isNew && <input value={s.code} onChange={(e) => setField(si, { code: e.target.value })} placeholder="код" className="h-8 w-24 border px-2 text-xs" title="Код роли (латиница)" />}
-                                </>
+                                <input value={s.name} onChange={(e) => setField(si, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className="h-8 min-w-[160px] flex-1 border px-2 text-sm font-semibold" title="Роль инженера-расчётчика" />
                             ) : (
                                 <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             )}
