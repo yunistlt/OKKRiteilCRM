@@ -603,6 +603,8 @@ export function SchemesTab() {
                         </div>
                     </div>
                 )}
+                {/* Роли инженеров-расчётчиков — в той же колонке, что и менеджерские роли. */}
+                <EngineerRolesSection />
             </div>
         </div>
         {simSchemeIdx != null && schemes[simSchemeIdx] && (
@@ -824,33 +826,28 @@ export function EngineerRolesSection() {
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
     };
 
-    if (loading) return <div className="flex justify-center p-6"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+    if (loading) return <div className="flex justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>;
 
-    const inputCls = 'border px-2 py-1 text-sm';
     return (
         <div className="space-y-2">
-            <div className="flex items-center justify-between">
-                <div>
-                    <div className="text-sm font-semibold">Роли инженеров-расчётчиков</div>
-                    <div className="text-[11px] text-muted-foreground">Оплата = % от суммы заказа × K срочности (В просчёте → Согласование параметров). Кому назначена — в «Реестр ОП».</div>
-                </div>
-                <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-4 w-4" /> Добавить роль инженера</Button>
+            <div className="flex items-center justify-between border-t pt-3">
+                <div className="text-xs font-semibold uppercase tracking-tight text-muted-foreground" title="Оплата = % от суммы заказа × K срочности (В просчёте → Согласование параметров). Кому назначена — в «Реестр ОП».">Роли инженеров-расчётчиков</div>
+                <Button size="sm" variant="outline" className="h-8" onClick={addScheme}><Plus className="mr-1 h-3.5 w-3.5" /> Добавить роль инженера</Button>
             </div>
-            {schemes.length === 0 && <div className="border bg-amber-50 px-3 py-2 text-xs text-amber-800">Ролей инженеров пока нет. Нажмите «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её инженерам во вкладке «Реестр ОП».</div>}
+            {schemes.length === 0 && <div className="border border-dashed p-3 text-center text-[11px] text-muted-foreground">Ролей инженеров пока нет. «Добавить роль инженера» (ставка % и нормативы срочности), затем назначьте её людям во вкладке «Реестр ОП».</div>}
             {schemes.map((s, i) => (
                 <div key={i} className="border">
-                    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-3 py-2">
-                        <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className={`${inputCls} min-w-[220px] flex-1 font-medium`} />
-                        <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} disabled={!s.isNew} placeholder="код (латиница)" className={`${inputCls} w-40 disabled:bg-muted disabled:text-muted-foreground`} />
-                        <label className="flex items-center gap-1 text-xs text-muted-foreground">с <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className={inputCls} /></label>
-                        <Button size="sm" className="h-8 bg-slate-900 text-white hover:bg-slate-700" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
-                            {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Save className="mr-1 h-4 w-4" />} Сохранить
+                    <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
+                        <input value={s.name} onChange={(e) => setScheme(i, { name: e.target.value })} placeholder="Название роли (напр. Инженер 4%)" className="h-8 min-w-[180px] flex-1 border px-2 text-sm font-semibold" />
+                        {s.isNew && <input value={s.code} onChange={(e) => setScheme(i, { code: e.target.value })} placeholder="код" className="h-8 w-28 border px-2 text-xs" />}
+                        <label className="ml-auto text-[11px] text-muted-foreground">с</label>
+                        <input type="date" value={s.effectiveFrom} onChange={(e) => setScheme(i, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
+                        <Button size="sm" className="h-8" onClick={() => saveScheme(i)} disabled={savingScheme != null}>
+                            {savingScheme === (s.code || `new-${i}`) ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Save className="mr-1 h-3.5 w-3.5" />} Сохранить
                         </Button>
-                        <button onClick={() => deleteScheme(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        <Button size="sm" variant="outline" className="h-8 px-2 text-red-600 hover:bg-red-50 hover:text-red-700" onClick={() => deleteScheme(i)} title="Удалить роль"><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
-                    <div className="p-3">
-                        <ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} />
-                    </div>
+                    <div className="p-2"><div className="border bg-white p-2"><ParamsForm params={s.params} onChange={(nv) => setScheme(i, { params: nv })} /></div></div>
                 </div>
             ))}
         </div>
