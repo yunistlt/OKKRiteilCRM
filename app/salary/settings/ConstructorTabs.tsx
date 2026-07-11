@@ -273,15 +273,10 @@ export function SchemesTab() {
     useEffect(() => { load(); }, [load]);
 
     const byCode = (code: string) => catalog.find((c) => c.code === code);
-    // Совместимость блока с типом роли: блок доступен роли, если его scope = 'any'
-    // либо совпадает с типом участника роли. Так одна палитра обслуживает все роли.
-    const blockFitsRole = (code: string, kind: EditScheme['kind']) => {
-        const scope = byCode(code)?.scope ?? 'manager';
-        return scope === 'any' || scope === (kind ?? 'manager');
-    };
+    // Любой блок можно добавить в любую роль (кроме уже добавленного) — что уместно,
+    // решает пользователь. Блоку без данных по этой роли расчёт просто даст 0.
     const addBlock = (si: number, code: string) => setSchemes((prev) => prev.map((s, i) => {
         if (i !== si || s.blocks.some((b) => b.block_code === code)) return s;
-        if (!blockFitsRole(code, s.kind)) return s; // несовместимый блок в роль не кладём
         return { ...s, blocks: [...s.blocks, { block_code: code, params: byCode(code)?.defaultParams ?? {}, raw: false, rawText: '', enabled: true }] };
     }));
     const removeBlock = (si: number, bi: number) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.filter((_, j) => j !== bi) } : s)));
@@ -550,16 +545,15 @@ export function SchemesTab() {
                   const saveKey = s.code || `new-${si}`;
                   const paletteDrag = !!drag?.fromPalette;          // тащим блок из палитры
                   const dup = paletteDrag && s.blocks.some((b) => b.block_code === drag!.fromPalette); // блок уже есть в роли
-                  const incompatible = paletteDrag && !dup && !blockFitsRole(drag!.fromPalette!, s.kind); // блок другого типа роли
                   const over = overScheme === si;
                   return (
                     <div key={`${s.kind ?? 'manager'}:${s.code || si}`}
                         onDragOver={(e) => { e.preventDefault(); if (paletteDrag) setOverScheme(si); }}
                         onDrop={() => { if (drag?.fromPalette) addBlock(si, drag.fromPalette); setDrag(null); setOverScheme(null); }}
-                        className={`border transition-[box-shadow,background-color] ${paletteDrag ? (dup || incompatible ? 'ring-1 ring-amber-300' : over ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'ring-1 ring-blue-300') : ''}`}>
+                        className={`border transition-[box-shadow,background-color] ${paletteDrag ? (dup ? 'ring-1 ring-amber-300' : over ? 'ring-2 ring-blue-500 bg-blue-50/40' : 'ring-1 ring-blue-300') : ''}`}>
                         {paletteDrag && (
-                            <div className={`px-2 py-1 text-center text-[10px] font-medium ${dup || incompatible ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
-                                {incompatible ? 'Блок не подходит этой роли' : dup ? 'Блок уже добавлен в эту роль' : over ? '↓ Отпустите, чтобы добавить в эту роль' : 'Можно перетащить сюда'}
+                            <div className={`px-2 py-1 text-center text-[10px] font-medium ${dup ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                                {dup ? 'Блок уже добавлен в эту роль' : over ? '↓ Отпустите, чтобы добавить в эту роль' : 'Можно перетащить сюда'}
                             </div>
                         )}
                         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-2 py-1.5">
