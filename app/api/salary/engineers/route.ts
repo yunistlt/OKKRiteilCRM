@@ -34,12 +34,17 @@ export async function PUT(req: Request) {
         if (!hasAnyRole(session, ['admin', 'rop'])) return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
         const body = await req.json();
         if (!body.code || !body.name || !body.effectiveFrom) return NextResponse.json({ error: 'Нужны code, name, effectiveFrom' }, { status: 400 });
+        // Роль инженера — композиция блоков (как менеджерская). Обратная совместимость:
+        // если пришёл только params — заворачиваем в единственный блок procent_za_raschet.
+        const blocks = Array.isArray(body.blocks)
+            ? body.blocks
+            : [{ block_code: 'procent_za_raschet', params: body.params ?? {} }];
         await saveScheme({
             code: String(body.code),
             name: String(body.name),
             effectiveFrom: String(body.effectiveFrom),
             prevEffectiveFrom: body.prevEffectiveFrom ? String(body.prevEffectiveFrom) : null,
-            blocks: [{ block_code: 'procent_za_raschet', params: body.params ?? {} }],
+            blocks,
             actor: session?.user?.email ?? null,
             participantKind: 'engineer',
         });
