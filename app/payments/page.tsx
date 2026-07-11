@@ -66,6 +66,42 @@ function formatMoney(kopecks: number, currency = 'RUB') {
   return rub.toLocaleString('ru-RU', { style: 'currency', currency, minimumFractionDigits: 2 });
 }
 
+// Кнопка «скопировать в один клик» для окон с результатом.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          /* clipboard недоступен */
+        }
+      }}
+      className="rounded-md bg-gray-700 px-2 py-1 text-xs font-semibold text-gray-100 hover:bg-gray-600"
+    >
+      {copied ? 'Скопировано ✓' : 'Копировать'}
+    </button>
+  );
+}
+
+// Окно с JSON + кнопкой копирования.
+function ResultBox({ data, tone = 'gray' }: { data: unknown; tone?: 'gray' | 'green' }) {
+  const text = JSON.stringify(data, null, 2);
+  return (
+    <div className="rounded-lg bg-gray-900 p-3">
+      <div className="mb-2 flex justify-end">
+        <CopyButton text={text} />
+      </div>
+      <pre className={`max-h-64 overflow-auto text-xs ${tone === 'green' ? 'text-emerald-200' : 'text-gray-100'}`}>
+        {text}
+      </pre>
+    </div>
+  );
+}
+
 // Ссылка на карточку заказа в RetailCRM (по внутреннему id, иначе по номеру).
 function crmOrderLink(crmUrl: string, orderId: number | null, orderNumber?: string | null): string | null {
   if (!crmUrl) return null;
@@ -261,9 +297,7 @@ export default function PaymentsPage() {
               </button>
             </div>
             {webhookInfo && (
-              <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
-                {JSON.stringify(webhookInfo.tochka ?? webhookInfo.result ?? webhookInfo, null, 2)}
-              </pre>
+              <ResultBox data={webhookInfo.tochka ?? webhookInfo.result ?? webhookInfo} />
             )}
 
             {webhookInfo?.last_webhook && (
@@ -271,9 +305,7 @@ export default function PaymentsPage() {
                 <div className="mb-1 text-xs font-semibold text-gray-500">
                   Последний вебхук, полученный от Точки ({webhookInfo.last_webhook.updated_at}):
                 </div>
-                <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-emerald-200">
-                  {JSON.stringify(webhookInfo.last_webhook, null, 2)}
-                </pre>
+                <ResultBox data={webhookInfo.last_webhook} tone="green" />
               </div>
             )}
           </div>
@@ -326,9 +358,7 @@ export default function PaymentsPage() {
                 Загружено платежей: {backfillResult.ingested}. Обнови список ниже.
               </div>
             )}
-            <pre className="max-h-64 overflow-auto rounded-lg bg-gray-900 p-3 text-xs text-gray-100">
-              {JSON.stringify(backfillResult, null, 2)}
-            </pre>
+            <ResultBox data={backfillResult} />
           </div>
         )}
       </div>
