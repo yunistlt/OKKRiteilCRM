@@ -204,6 +204,7 @@ export default function PaymentsPage() {
 
   // Т-Банк: проверка связи + ручная загрузка выписки за период.
   const [tbankOpen, setTbankOpen] = useState(false);
+  const [tochkaOpen, setTochkaOpen] = useState(false);
   const [tbankStatus, setTbankStatus] = useState<any>(null);
   const [tbankStatusBusy, setTbankStatusBusy] = useState(false);
   const [tbankFrom, setTbankFrom] = useState('');
@@ -348,7 +349,18 @@ export default function PaymentsPage() {
           </p>
         </div>
 
-        {/* Подключение вебхука Точки */}
+        {/* Точка — счета и выписка (сворачивается) */}
+        <div className="border-t border-gray-200">
+          <button
+            onClick={() => setTochkaOpen((v) => !v)}
+            className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-50"
+          >
+            <span className="text-sm font-semibold">🟣 Точка — счета и выписка</span>
+            <span className="text-gray-400">{tochkaOpen ? '▲' : '▼'}</span>
+          </button>
+        {tochkaOpen && (
+        <div className="bg-gray-50">
+        {/* Подключение вебхука Точки (сервисное) */}
         <div className="border-t border-gray-200">
           <button
             onClick={() => {
@@ -480,6 +492,9 @@ export default function PaymentsPage() {
               </div>
             )}
           </div>
+        </div>
+        </div>
+        )}
         </div>
 
         {/* Т-Банк — счета и выписка */}
