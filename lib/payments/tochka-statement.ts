@@ -10,7 +10,7 @@ const OB = 'open-banking/v1.0';
 
 async function obFetch(method: string, path: string, body?: unknown) {
   const { base, token } = getTochkaWebhookConfig();
-  const res = await fetch(`${base}/${path}`, {
+  const res = await fetch(`${base}/${OB}/${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
