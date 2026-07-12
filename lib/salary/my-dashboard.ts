@@ -377,13 +377,20 @@ function fmt(n: number): string {
     return Math.round(n).toLocaleString('ru-RU');
 }
 
-/** Фактически оплачено по засчитанным заказам / сумма заказов. Оплата — payments[status ∈ paid_statuses]. */
+/**
+ * Средний % предоплаты по ЗАСЧИТАННЫМ заказам. Взнос считается ПОЗАКАЗНО и
+ * ограничен суммой заказа (min(оплачено, сумма)) — предоплата по заказу не бывает
+ * >100% (защита от переплат и двойного учёта: счёт + перевод на ту же сумму).
+ * Оплата = payments[status ∈ paid_statuses]. Итог = Σ min(оплата, сумма) / Σ сумма.
+ */
 async function computePrepay(
     orderIds: number[],
     countedOrders: any[],
     asOf: string,
 ): Promise<MyDashboard['prepay']> {
     const policy = await getPrepayPolicy(asOf);
+    const sumById = new Map<number, number>();
+    for (const o of countedOrders) sumById.set(Number(o.id), Number(o.sum) || 0);
     const base = countedOrders.reduce((s, o) => s + (Number(o.sum) || 0), 0);
     if (!policy || orderIds.length === 0) {
         return { available: !!policy, thresholdPct: policy?.threshold_pct ?? null, paid: 0, base: round(base), pct: null, passed: null };
@@ -395,9 +402,12 @@ async function computePrepay(
     for (const o of (data as any[]) ?? []) {
         const payments = o?.raw_payload?.payments;
         if (!payments || typeof payments !== 'object') continue;
+        let paidOnOrder = 0;
         for (const p of Object.values(payments as Record<string, any>)) {
-            if (p && paidSet.has(String(p.status))) paid += Number(p.amount) || 0;
+            if (p && paidSet.has(String(p.status))) paidOnOrder += Number(p.amount) || 0;
         }
+        const orderSum = sumById.get(Number(o.order_id)) ?? 0;
+        paid += orderSum > 0 ? Math.min(paidOnOrder, orderSum) : paidOnOrder;
     }
     const pct = base > 0 ? round2((paid / base) * 100) : null;
     return {
