@@ -8,6 +8,7 @@ import { tintFor } from '@/lib/salary/sim-controls';
 import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FotSimulatorModal from './FotSimulatorModal';
+import EngineerFotSimulatorModal from './EngineerFotSimulatorModal';
 import BaseConfigTab from './BaseConfigTab';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
@@ -230,6 +231,7 @@ export function SchemesTab() {
     // Симуляция «что если» (песочница тарифов) — считает черновики на периоде, НЕ сохраняет.
     const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
     const [assignments, setAssignments] = useState<{ managerId: number; schemeCode: string }[]>([]); // реестр: кто в какой роли
+    const [engineerAssignments, setEngineerAssignments] = useState<{ itemCode: string; schemeCode: string }[]>([]); // инженеры: кто в какой роли
     const nowSim = new Date();
     const [simYear, setSimYear] = useState(nowSim.getFullYear());
     const [simMonth, setSimMonth] = useState(nowSim.getMonth() + 1);
@@ -267,6 +269,7 @@ export function SchemesTab() {
                 ...(sJson.schemes ?? []).map((s: any) => toEdit(s, 'manager')),
                 ...(eJson.schemes ?? []).map((s: any) => toEdit(s, 'engineer')),
             ]);
+            setEngineerAssignments(((eJson.roster ?? []) as any[]).filter((r) => r.inRoster && r.schemeCode).map((r) => ({ itemCode: String(r.itemCode), schemeCode: String(r.schemeCode) })));
         } catch (e: any) { toast({ title: 'Ошибка', description: e.message, variant: 'destructive' }); }
         finally { setLoading(false); }
     }, [toast]);
@@ -565,11 +568,13 @@ export function SchemesTab() {
                             )}
                             <label className="ml-auto text-[11px] text-muted-foreground">с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
-                            {!isEng && (() => {
-                                const assigned = assignments.filter((a) => a.schemeCode === s.code).length;
+                            {(() => {
+                                const assigned = isEng
+                                    ? engineerAssignments.filter((a) => a.schemeCode === s.code).length
+                                    : assignments.filter((a) => a.schemeCode === s.code).length;
                                 return (
                                     <Button size="sm" variant="outline" className="h-8 border-violet-300 text-violet-700 hover:bg-violet-50" onClick={() => setSimSchemeIdx(si)} disabled={assigned === 0}
-                                        title={assigned === 0 ? 'Нет менеджеров в этой роли (назначьте в «Реестр ОП»)' : 'Симулятор ФОТ: ползунки → мгновенный пересчёт'}>
+                                        title={assigned === 0 ? 'Нет людей в этой роли (назначьте в «Реестр ОП»)' : 'Симулятор ФОТ: ползунки → мгновенный пересчёт'}>
                                         <SlidersHorizontal className="mr-1 h-3.5 w-3.5" /> Симулятор ФОТ
                                     </Button>
                                 );
@@ -637,7 +642,16 @@ export function SchemesTab() {
                 )}
             </div>
         </div>
-        {simSchemeIdx != null && schemes[simSchemeIdx] && (
+        {simSchemeIdx != null && schemes[simSchemeIdx] && ((schemes[simSchemeIdx].kind ?? 'manager') === 'engineer' ? (
+            <EngineerFotSimulatorModal
+                schemeName={schemes[simSchemeIdx].name}
+                blocks={schemes[simSchemeIdx].blocks.map((b) => ({ block_code: b.block_code, params: b.params, enabled: b.enabled }))}
+                itemCodes={engineerAssignments.filter((a) => a.schemeCode === schemes[simSchemeIdx!].code).map((a) => a.itemCode)}
+                initialYear={simYear}
+                initialMonth={simMonth}
+                onClose={() => setSimSchemeIdx(null)}
+            />
+        ) : (
             <FotSimulatorModal
                 schemeCode={schemes[simSchemeIdx].code}
                 schemeName={schemes[simSchemeIdx].name}
@@ -647,7 +661,7 @@ export function SchemesTab() {
                 initialMonth={simMonth}
                 onClose={() => setSimSchemeIdx(null)}
             />
-        )}
+        ))}
       </CategoriesContext.Provider>
     );
 }
