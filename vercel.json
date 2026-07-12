@@ -18,6 +18,10 @@
             "schedule": "*/1 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/telphin-callback",
+            "schedule": "*/1 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/point-payment-ingest",
             "schedule": "*/15 * * * *"
         },
