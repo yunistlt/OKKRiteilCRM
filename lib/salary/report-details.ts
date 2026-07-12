@@ -107,6 +107,7 @@ export async function buildIncomingByManager(
 ): Promise<Record<number, IncomingOrderBrief[]>> {
     const config = await getConfigForPeriod(year, month);
     const exclusions: string[] = config.source_exclusions ?? [];
+    const excludedStatuses: string[] = config.conversion_excluded_statuses ?? [];
     const rule = config.tender_duplicate_rule;
     const reqRule = config.request_duplicate_rule;
     const { start, end } = monthBounds(year, month);
@@ -168,6 +169,7 @@ export async function buildIncomingByManager(
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
         if (exclusions.includes(om)) continue; // как в salary_incoming_counts
+        if (excludedStatuses.includes(String(o.status ?? ''))) continue; // спам — не заявка
         const mid = Number(o.manager_id);
         if (!mid) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);

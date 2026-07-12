@@ -44,6 +44,11 @@ export const SALARY_CONFIG_SCHEMAS = {
     request_duplicate_rule: z.object({
         duplicate_status: z.string().min(1),
     }),
+    // Статусы, полностью исключаемые из конверсии (числитель и знаменатель) — не заявки:
+    // спам и т.п. Безусловно, по коду статуса (в отличие от дублей — там нужны условия).
+    // Заводим списком, чтобы легко добавлять. Удаление заказа в RetailCRM до нас не доходит
+    // (синк — только upsert), поэтому спам помечают статусом, а не удаляют.
+    conversion_excluded_statuses: z.array(z.string().min(1)),
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),
