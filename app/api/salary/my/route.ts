@@ -79,6 +79,7 @@ export async function GET(req: Request) {
             managerId: Number(mid),
             row: rows[0] ?? null,
             teamRevenueNoVat: team.teamRevenueNoVat,
+            periodId: periodRow.id,
         });
 
         return NextResponse.json({

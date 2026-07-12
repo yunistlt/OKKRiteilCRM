@@ -124,8 +124,10 @@ export default function MySalaryPage() {
                             value={dash?.okk.personal != null ? `${dash.okk.personal}%` : '—'}
                             meta={dash?.okk.department != null ? `отдел ${dash.okk.department}%` : 'нет оценок'} />
                         <Kpi label="Конверсия"
-                            value={b.conversionDenominator ? `${Math.round(b.conversionPct ?? 0)}%` : '—'}
-                            meta={b.conversionDenominator ? `${b.conversionNumerator ?? 0} из ${b.conversionDenominator} заявок` : 'нет заявок'} />
+                            value={dash?.conversion.personalPct != null ? `${Math.round(dash.conversion.personalPct)}%` : '—'}
+                            meta={dash?.conversion.departmentPct != null
+                                ? `отдел ${Math.round(dash.conversion.departmentPct)}% · ${dash.conversion.numerator} из ${dash.conversion.denominator}`
+                                : dash?.conversion.denominator ? `${dash.conversion.numerator} из ${dash.conversion.denominator} заявок` : 'нет заявок'} />
                         <Kpi label="До конца месяца"
                             value={dash?.pace.isCurrentMonth ? `${dash.pace.calendarDaysLeft} дн.` : '—'}
                             meta={dash?.pace.requiredPerDay != null && dash.pace.isCurrentMonth ? `нужно ${num(dash.pace.requiredPerDay)} ₽/дн` : 'месяц завершён'} />

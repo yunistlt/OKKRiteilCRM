@@ -56,6 +56,12 @@ export interface MyDashboard {
         personal: number | null; // средний % скоринга менеджера (как на дашборде ОКК)
         department: number | null; // средний % по ОП
     };
+    conversion: {
+        personalPct: number | null;
+        numerator: number;
+        denominator: number;
+        departmentPct: number | null; // конверсия всего ОП за период (Σ числ / Σ знам)
+    };
     milestones: Milestone[];
     thresholds: Threshold[];
     grade: GradeInfo | null;
@@ -123,8 +129,9 @@ export async function buildMyDashboard(params: {
     managerId: number;
     row: any | null;
     teamRevenueNoVat: number; // истинная выручка отдела за период (Σ по всем строкам, buildTeamOrders)
+    periodId: number; // для конверсии отдела (Σ по всем строкам периода)
 }): Promise<MyDashboard> {
-    const { year, month, managerId, row, teamRevenueNoVat } = params;
+    const { year, month, managerId, row, teamRevenueNoVat, periodId } = params;
     const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
     const b = row?.breakdown ?? {};
     const contribs: ContribList = Array.isArray(b.blockContributions) ? b.blockContributions : [];
@@ -166,6 +173,16 @@ export async function buildMyDashboard(params: {
 
     // ── Скоринг ОКК: личный + отдела (та же формула, что дашборд ОКК) ───────────
     const okk = await computeOkkScoring(managerId);
+
+    // ── Конверсия: личная (из расчёта) + отдела (Σ по всем строкам периода) ──────
+    const convNum = Number(b.conversionNumerator) || 0;
+    const convDenom = Number(b.conversionDenominator) || 0;
+    const conversion = {
+        personalPct: convDenom > 0 ? round2(b.conversionPct != null ? Number(b.conversionPct) : (convNum / convDenom) * 100) : null,
+        numerator: convNum,
+        denominator: convDenom,
+        departmentPct: await computeDeptConversion(periodId),
+    };
 
     // ── Схема (тиры/ставки блоков) ─────────────────────────────────────────────
     const comp = (await resolveManagerComp(asOf)).get(managerId) ?? null;
@@ -324,10 +341,23 @@ export async function buildMyDashboard(params: {
         },
         prepay,
         okk,
+        conversion,
         milestones,
         thresholds,
         grade,
     };
+}
+
+/** Конверсия всего ОП за период: Σ числителей / Σ знаменателей по строкам расчёта. */
+async function computeDeptConversion(periodId: number): Promise<number | null> {
+    const { data } = await supabase.from('salary_calc').select('breakdown').eq('period_id', periodId);
+    let num = 0;
+    let denom = 0;
+    for (const r of (data as any[]) ?? []) {
+        num += Number(r.breakdown?.conversionNumerator) || 0;
+        denom += Number(r.breakdown?.conversionDenominator) || 0;
+    }
+    return denom > 0 ? round2((num / denom) * 100) : null;
 }
 
 /**
