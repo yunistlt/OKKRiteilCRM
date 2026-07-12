@@ -174,6 +174,11 @@ export async function updateConfig(params: {
 export const PREPAY_POLICY_SCHEMA = z.object({
     threshold_pct: z.number().nonnegative(),
     paid_statuses: z.array(z.string().min(1)).min(1), // коды статусов payments[*].status = «оплачено»
+    // Типы payments[*].type, считающиеся ВЫСТАВЛЕННЫМ СЧЁТОМ (не фактическим приходом денег).
+    // Банк-синхронизация пушит в заказ отдельный bank-transfer на ту же сумму, что и invoicejur —
+    // это задвоение. Поэтому фактический приход = реальные поступления (не-invoice типы), а счёт
+    // (invoice) учитывается только как фолбэк, если прихода в заказе нет (заказы до банк-синка).
+    invoice_types: z.array(z.string().min(1)).optional(), // по умолчанию ['invoicejur','invoicefiz']
 });
 export type PrepayPolicy = z.infer<typeof PREPAY_POLICY_SCHEMA>;
 

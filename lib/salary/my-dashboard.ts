@@ -396,16 +396,24 @@ async function computePrepay(
         return { available: !!policy, thresholdPct: policy?.threshold_pct ?? null, paid: 0, base: round(base), pct: null, passed: null };
     }
     const paidSet = new Set(policy.paid_statuses);
+    const invoiceTypes = new Set(policy.invoice_types ?? ['invoicejur', 'invoicefiz']);
     const { data, error } = await supabase.from('orders').select('order_id,raw_payload').in('order_id', orderIds);
     if (error) throw error;
     let paid = 0;
     for (const o of (data as any[]) ?? []) {
         const payments = o?.raw_payload?.payments;
         if (!payments || typeof payments !== 'object') continue;
-        let paidOnOrder = 0;
+        // Фактический приход = реальные поступления (не-invoice); счёт (invoice) — фолбэк,
+        // если прихода нет. Так снимается задвоение invoicejur + bank-transfer на ту же сумму.
+        let receipts = 0;
+        let invoices = 0;
         for (const p of Object.values(payments as Record<string, any>)) {
-            if (p && paidSet.has(String(p.status))) paidOnOrder += Number(p.amount) || 0;
+            if (!p || !paidSet.has(String(p.status))) continue;
+            const amount = Number(p.amount) || 0;
+            if (invoiceTypes.has(String(p.type))) invoices += amount;
+            else receipts += amount;
         }
+        const paidOnOrder = receipts > 0 ? receipts : invoices;
         const orderSum = sumById.get(Number(o.order_id)) ?? 0;
         paid += orderSum > 0 ? Math.min(paidOnOrder, orderSum) : paidOnOrder;
     }
