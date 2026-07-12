@@ -52,6 +52,10 @@ export interface MyDashboard {
         pct: number | null;
         passed: boolean | null;
     };
+    okk: {
+        personal: number | null; // средний % скоринга менеджера (как на дашборде ОКК)
+        department: number | null; // средний % по ОП
+    };
     milestones: Milestone[];
     thresholds: Threshold[];
     grade: GradeInfo | null;
@@ -156,6 +160,9 @@ export async function buildMyDashboard(params: {
 
     // ── Предоплата (фактически оплачено по засчитанным заказам) ────────────────
     const prepay = await computePrepay(countedOrderIds, countedOrders, asOf);
+
+    // ── Скоринг ОКК: личный + отдела (та же формула, что дашборд ОКК) ───────────
+    const okk = await computeOkkScoring(managerId);
 
     // ── Схема (тиры/ставки блоков) ─────────────────────────────────────────────
     const comp = (await resolveManagerComp(asOf)).get(managerId) ?? null;
@@ -313,10 +320,54 @@ export async function buildMyDashboard(params: {
             expectedPct,
         },
         prepay,
+        okk,
         milestones,
         thresholds,
         grade,
     };
+}
+
+/**
+ * Средний % скоринга ОКК менеджера и всего ОП — идентично дашборду ОКК
+ * (app/api/okk/scores): Math.round(AVG(deal_score_pct)). Личный — по заказам
+ * менеджера в рабочих статусах (status_settings.is_working, order_id < 99900000);
+ * отдела — по всем оценкам. Без фильтра по периоду, как и на дашборде ОКК.
+ */
+async function computeOkkScoring(managerId: number): Promise<MyDashboard['okk']> {
+    const avg = (rows: any[] | null) => {
+        const vals = (rows ?? []).map((s) => Number(s.deal_score_pct)).filter((v) => Number.isFinite(v));
+        return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null;
+    };
+
+    // Отдел: все оценки с непустым deal_score_pct
+    const { data: allScores } = await supabase
+        .from('okk_order_scores')
+        .select('deal_score_pct')
+        .not('deal_score_pct', 'is', null);
+    const department = avg(allScores as any[]);
+
+    // Личный: заказы менеджера в рабочих статусах → их оценки
+    const { data: settings } = await supabase.from('status_settings').select('code').eq('is_working', true);
+    const workingStatuses = ((settings as any[]) ?? []).map((s) => s.code);
+    let personal: number | null = null;
+    if (workingStatuses.length) {
+        const { data: mgrOrders } = await supabase
+            .from('orders')
+            .select('order_id')
+            .in('status', workingStatuses)
+            .lt('order_id', 99900000)
+            .eq('manager_id', managerId);
+        const ids = ((mgrOrders as any[]) ?? []).map((o) => o.order_id);
+        if (ids.length) {
+            const { data: scores } = await supabase
+                .from('okk_order_scores')
+                .select('deal_score_pct')
+                .in('order_id', ids)
+                .not('deal_score_pct', 'is', null);
+            personal = avg(scores as any[]);
+        }
+    }
+    return { personal, department };
 }
 
 function fmt(n: number): string {

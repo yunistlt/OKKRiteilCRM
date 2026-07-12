@@ -108,7 +108,7 @@ export default function MySalaryPage() {
             ) : (
                 <div className="space-y-4">
                     {/* ── KPI ─────────────────────────────────────────────── */}
-                    <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
                         <div className="bg-blue-600 p-4 text-white">
                             <div className="text-[11px] font-bold uppercase tracking-wide text-blue-100">{totalLabel}</div>
                             <div className="mt-1 text-3xl font-extrabold tabular-nums">{rub(row.total)}</div>
@@ -120,6 +120,9 @@ export default function MySalaryPage() {
                             value={dash?.plan.personalPct != null ? `${Math.round(dash.plan.personalPct)}%` : '—'}
                             valueClass={planColor(dash?.plan.personalPct, dash?.pace.expectedPct)}
                             meta={dash?.plan.personalTarget != null ? `${num(dash.plan.personalFact)} из ${num(dash.plan.personalTarget)} ₽` : 'план не задан'} />
+                        <Kpi label="Скоринг ОКК"
+                            value={dash?.okk.personal != null ? `${dash.okk.personal}%` : '—'}
+                            meta={dash?.okk.department != null ? `отдел ${dash.okk.department}%` : 'нет оценок'} />
                         <Kpi label="До конца месяца"
                             value={dash?.pace.isCurrentMonth ? `${dash.pace.calendarDaysLeft} дн.` : '—'}
                             meta={dash?.pace.requiredPerDay != null && dash.pace.isCurrentMonth ? `нужно ${num(dash.pace.requiredPerDay)} ₽/дн` : 'месяц завершён'} />
