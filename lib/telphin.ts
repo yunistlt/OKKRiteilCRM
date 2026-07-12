@@ -49,18 +49,57 @@ export async function getTelphinToken() {
     return data.access_token;
 }
 
+const TELPHIN_API = 'https://apiproxy.telphin.ru/api/ver1.0';
+
+// Числовой client_id аккаунта (НЕ ключ приложения) — Телфин требует его в пути REST-эндпоинтов.
+// Кэшируем на процесс: он не меняется.
+let cachedClientId: string | null = null;
+export async function getTelphinClientId(token: string): Promise<string> {
+    if (cachedClientId) return cachedClientId;
+    const res = await fetchTelphin(`${TELPHIN_API}/client/`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Telphin get client failed: ${res.status} ${await res.text()}`);
+    const data = await res.json();
+    const client = Array.isArray(data) ? data[0] : data;
+    const id = client?.client_id ?? client?.id;
+    if (!id) throw new Error(`Telphin client_id not found in /client/ response: ${JSON.stringify(data).slice(0, 300)}`);
+    cachedClientId = String(id);
+    return cachedClientId;
+}
+
+// Внутренний extension_id по короткому номеру добавочного (напр. 105 → 44xxxxx).
+const extensionIdCache = new Map<string, string>();
+export async function getTelphinExtensionId(token: string, clientId: string, extNumber: string): Promise<string> {
+    const cacheKey = `${clientId}:${extNumber}`;
+    const cached = extensionIdCache.get(cacheKey);
+    if (cached) return cached;
+    const res = await fetchTelphin(`${TELPHIN_API}/client/${clientId}/extension/`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error(`Telphin get extensions failed: ${res.status} ${await res.text()}`);
+    const data = await res.json();
+    const list: any[] = Array.isArray(data) ? data : (data?.extensions ?? []);
+    const match = list.find((e: any) => String(e.number ?? e.name ?? e.extension_number) === String(extNumber));
+    const id = match?.extension_id ?? match?.id;
+    if (!id) throw new Error(`Telphin extension ${extNumber} not found among ${list.length} extensions`);
+    const resolved = String(id);
+    extensionIdCache.set(cacheKey, resolved);
+    return resolved;
+}
+
 export async function initiateMakeCall(params: {
-    extensionId: string;
-    source: string;
-    destination: string;
+    extensionId: string;   // короткий номер добавочного-инициатора (напр. 105)
+    source: string;        // первое плечо — очередь ОП (напр. 200)
+    destination: string;   // второе плечо — телефон клиента
 }) {
     const token = await getTelphinToken();
-    const TELPHIN_KEY = process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID;
+    const clientId = await getTelphinClientId(token);
+    const extensionId = await getTelphinExtensionId(token, clientId, params.extensionId);
 
-    // API URL: https://apiproxy.telphin.ru/api/ver1.0/client/{client_id}/extension/{extension_id}/makecall
-    // Source: Number to call first (managers group)
-    // Destination: Number to call second (client)
-    const res = await fetchTelphin(`https://apiproxy.telphin.ru/api/ver1.0/client/${TELPHIN_KEY}/extension/${params.extensionId}/makecall`, {
+    // POST /api/ver1.0/client/{client_id}/extension/{extension_id}/makecall
+    // source — кого набрать первым (очередь ОП), destination — кого вторым (клиента)
+    const res = await fetchTelphin(`${TELPHIN_API}/client/${clientId}/extension/${extensionId}/makecall`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
