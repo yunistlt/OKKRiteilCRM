@@ -366,6 +366,7 @@ export async function createLeadInCrm(params: {
         bankAccount?: string | null;
         corrAccount?: string | null;
     } | null;
+    orderMethod?: string;
 }) {
     console.log('Creating lead in RetailCRM:', params);
     const isCorp = Boolean(params.corporateDetails?.isCorporate);
@@ -478,7 +479,7 @@ ${historyLog.split('\n').slice(-10).join('\n')}
     // 2. Create Order/Lead
     const orderData: any = {
         status: 'novyi-1', // Correct code for "Новый" from dictionary
-        orderMethod: 'live-chat',
+        orderMethod: params.orderMethod || 'live-chat',
         lastName: 'ИИ-Лид',
         firstName: params.corporateDetails?.contactName || params.name || 'Клиент',
         phone: params.phone,

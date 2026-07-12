@@ -16,6 +16,21 @@ const CORS_HEADERS = {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// Мгновенно запускает воркер авто-дозвона, чтобы обратный звонок стартовал за секунды,
+// а не ждал следующего тика крона. Ошибки глушим — крон подхватит задачу как страховка.
+async function kickTelphinCallbackWorker(): Promise<void> {
+    try {
+        if (!process.env.CRON_SECRET) return;
+        const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
+        await fetch(`${base}/api/cron/system-jobs/telphin-callback`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+        });
+    } catch (err) {
+        console.error('kickTelphinCallbackWorker failed (cron will pick it up):', err);
+    }
+}
+
 // External Supabase for LVZ Knowledge + catalog (marketing_products, webasyst_categories)
 const lvzSupabase = process.env.LVZ_SUPABASE_URL && process.env.LVZ_SUPABASE_ANON_KEY
     ? createClient(process.env.LVZ_SUPABASE_URL, process.env.LVZ_SUPABASE_ANON_KEY)
@@ -406,6 +421,17 @@ export async function POST(req: Request) {
                     status: 'pending'
                 })
             ]);
+
+            // Ставим задачу на авто-дозвон (Телфин: очередь ОП → менеджер → клиент)
+            await safeEnqueueSystemJob({
+                jobType: 'telphin_callback',
+                payload: { visitorId, phone: normalized, sessionId },
+                priority: 15,
+                idempotencyKey: `telphin_callback:${normalized}:${sessionId}`,
+            });
+            // Мгновенный «пинок» воркера, чтобы дозвон стартовал за секунды, а не ждал крон.
+            // Fire-and-forget: не блокируем ответ клиенту и глушим ошибки (крон — страховка).
+            void kickTelphinCallbackWorker();
 
             return NextResponse.json({ success: true, phone: normalized }, { headers: CORS_HEADERS });
         }

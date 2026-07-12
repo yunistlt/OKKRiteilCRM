@@ -71,9 +71,12 @@ export async function GET(req: NextRequest) {
             continue;
         }
 
-        // 2. Initiate the call via Telphin
-        const extensionId = process.env.TELPHIN_CALLBACK_EXTENSION || '101'; // Default or from env
-        const source = process.env.TELPHIN_CALLBACK_SOURCE || '100'; // The ring group
+        // 2. Initiate the call via Telphin.
+        // SOURCE — очередь ОП «Менеджеры ОП — обратный звонок» (№200, одновременный дозвон);
+        // EXTENSION — добавочный-инициатор вызова (не звонит сам). Боевые значения — в Vercel env,
+        // фолбэки ниже отражают реальный аккаунт UPQ46879 (см. заметку telphin-callback-queue-config).
+        const extensionId = process.env.TELPHIN_CALLBACK_EXTENSION || '105';
+        const source = process.env.TELPHIN_CALLBACK_SOURCE || '200';
 
         const telphinResult = await initiateMakeCall({
             extensionId,
@@ -97,7 +100,7 @@ export async function GET(req: NextRequest) {
         await supabase.from('widget_messages').insert({
             session_id: sessionId,
             role: 'system',
-            content: '📞 Голосовой менеджер Артем инициировал звонок. Соединяю вас с менеджером Юлей (доб. 106)...'
+            content: '📞 Соединяю вас с менеджером отдела продаж. Ожидайте звонка — телефон зазвонит в течение ~30 секунд.'
         });
 
         await completeSystemJob(job.id, {

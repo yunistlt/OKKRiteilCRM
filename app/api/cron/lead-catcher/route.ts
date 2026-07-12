@@ -244,6 +244,17 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                         });
                         orderNumber = String(existingOrderId);
                     } else {
+                        // Если у сессии есть заявка на обратный звонок — заказ в CRM
+                        // должен идти каналом «Заказ обратного звонка с сайта» (missed-call),
+                        // а не общим live-chat.
+                        const { data: callbackReq } = await supabase
+                            .from('widget_callback_requests')
+                            .select('id')
+                            .eq('session_id', session.id)
+                            .limit(1)
+                            .maybeSingle();
+                        const orderMethod = callbackReq ? 'missed-call' : 'live-chat';
+
                         const crmResult = await createLeadInCrm({
                             name: extractedData.name || session.nickname || 'Клиент из чата',
                             phone: extractedData.phone,
@@ -257,7 +268,8 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             visitedPages: [],
                             managerId: managerId,
                             corporateDetails: corpDetails,
-                            matchedCatalogProducts: enrichedCatalog
+                            matchedCatalogProducts: enrichedCatalog,
+                            orderMethod
                         });
                         orderNumber = crmResult.order?.number || crmResult.id?.toString();
                     }
