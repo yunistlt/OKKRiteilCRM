@@ -36,6 +36,14 @@ export const SALARY_CONFIG_SCHEMAS = {
         duplicate_status: z.string().min(1),
         reference_statuses: z.array(z.string().min(1)).min(1),
     }),
+    // Правило «Дубль заявки» (email+бот дубли, которые менеджер обязан переводить в
+    // статус-дубль с номером эталона и причиной). Исключается из ЧИСЛИТЕЛЯ и ЗНАМЕНАТЕЛЯ
+    // конверсии, только если: статус = duplicate_status И в комментарии есть номер
+    // существующего заказа-эталона И есть пояснительный текст (причина). Без совпадения
+    // суммы и статуса эталона (в отличие от тендерного правила). См. tender-duplicates.ts.
+    request_duplicate_rule: z.object({
+        duplicate_status: z.string().min(1),
+    }),
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),

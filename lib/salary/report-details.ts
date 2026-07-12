@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod } from '@/lib/salary/config';
-import { evaluateDuplicate, extractReferencedNumber, goodsCostBeforeDiscount } from '@/lib/salary/tender-duplicates';
+import { evaluateDuplicate, evaluateRequestDuplicate, extractReferencedNumber, goodsCostBeforeDiscount } from '@/lib/salary/tender-duplicates';
 
 // ============================================================================
 // Детализация расчётной ведомости заказами — отдаётся ВМЕСТЕ с отчётом
@@ -108,6 +108,7 @@ export async function buildIncomingByManager(
     const config = await getConfigForPeriod(year, month);
     const exclusions: string[] = config.source_exclusions ?? [];
     const rule = config.tender_duplicate_rule;
+    const reqRule = config.request_duplicate_rule;
     const { start, end } = monthBounds(year, month);
 
     let q = supabase
@@ -141,10 +142,11 @@ export async function buildIncomingByManager(
         .map((code) => refNameByCode.get(code) || code)
         .join(' / ');
 
-    // Эталоны дублей: собираем номера из комментариев и грузим одним запросом.
+    // Эталоны дублей (тендер + заявка): собираем номера из комментариев одним запросом.
     const refNumbers = new Set<string>();
     for (const o of (data as any[]) ?? []) {
-        if (String(o.status ?? '') !== rule.duplicate_status) continue;
+        const st = String(o.status ?? '');
+        if (st !== rule.duplicate_status && st !== reqRule.duplicate_status) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         if (num) refNumbers.add(num);
     }
@@ -169,15 +171,23 @@ export async function buildIncomingByManager(
         const mid = Number(o.manager_id);
         if (!mid) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
-        const verdict = evaluateDuplicate(
-            {
-                status: String(o.status ?? ''),
-                goodsCost: goodsCostBeforeDiscount(o.raw_payload),
-                managerComment: o.raw_payload?.managerComment ?? null,
-            },
-            num ? refByNumber.get(num) ?? null : null,
-            { rule, referenceStatusLabel },
-        );
+        const st = String(o.status ?? '');
+        const verdict =
+            st === reqRule.duplicate_status
+                ? evaluateRequestDuplicate(
+                      { status: st, managerComment: o.raw_payload?.managerComment ?? null },
+                      num ? refByNumber.has(num) : false,
+                      reqRule,
+                  )
+                : evaluateDuplicate(
+                      {
+                          status: st,
+                          goodsCost: goodsCostBeforeDiscount(o.raw_payload),
+                          managerComment: o.raw_payload?.managerComment ?? null,
+                      },
+                      num ? refByNumber.get(num) ?? null : null,
+                      { rule, referenceStatusLabel },
+                  );
         (byManager[mid] ??= []).push({
             id: Number(o.order_id),
             clientName: clientNameFromPayload(o.raw_payload),
