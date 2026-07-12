@@ -65,6 +65,7 @@ export interface MyDashboard {
     milestones: Milestone[];
     thresholds: Threshold[];
     grade: GradeInfo | null;
+    permanentThreshold: number | null; // порог сделок для «постоянного» клиента (для подписи в строках)
 }
 
 export interface Milestone {
@@ -170,6 +171,9 @@ export async function buildMyDashboard(params: {
 
     // ── Предоплата (фактически оплачено по засчитанным заказам) ────────────────
     const prepay = await computePrepay(countedOrderIds, countedOrders, asOf);
+
+    // Порог «постоянного» клиента (для подписи типа в строках заказов)
+    const permanentThreshold = await getPermanentThreshold(asOf);
 
     // ── Скоринг ОКК: личный + отдела (та же формула, что дашборд ОКК) ───────────
     const okk = await computeOkkScoring(managerId);
@@ -345,7 +349,21 @@ export async function buildMyDashboard(params: {
         milestones,
         thresholds,
         grade,
+        permanentThreshold,
     };
+}
+
+/** Порог сделок для «постоянного» клиента на дату (salary_config). null — не задан. */
+async function getPermanentThreshold(asOf: string): Promise<number | null> {
+    const { data } = await supabase
+        .from('salary_config')
+        .select('value')
+        .eq('key', 'permanent_client_threshold')
+        .lte('effective_from', asOf)
+        .order('effective_from', { ascending: false })
+        .limit(1);
+    const v = data?.[0]?.value;
+    return v != null && Number.isFinite(Number(v)) ? Number(v) : null;
 }
 
 /** Конверсия всего ОП за период: Σ числителей / Σ знаменателей по строкам расчёта. */

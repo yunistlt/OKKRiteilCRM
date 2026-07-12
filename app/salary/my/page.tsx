@@ -257,7 +257,7 @@ export default function MySalaryPage() {
                         const totalCounted = (b.counts?.new ?? 0) + (b.counts?.permanent ?? 0);
                         return (
                             <Section title={`Засчитанные заказы (${totalCounted || countedOrders.length || countedOrderIds.length})`}>
-                                <CountedOrdersSplit orders={countedOrders} fallbackIds={countedOrderIds} />
+                                <CountedOrdersSplit orders={countedOrders} fallbackIds={countedOrderIds} permanentThreshold={dash?.permanentThreshold} />
                             </Section>
                         );
                     })()}

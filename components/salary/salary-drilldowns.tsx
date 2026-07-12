@@ -19,13 +19,29 @@ const pluralRu = (n: number, one: string, few: string, many: string) => {
     return many;
 };
 
-// Тип заявки + (для постоянных) сколько закрытых сделок у клиента за всё время.
-const orderTypeLabel = (o: any) => {
+// Тип заявки + сколько заказов клиента дошло до «Передано в производство» (основа
+// классификации) и порог. Пишем в КАЖДОЙ строке, чтобы было понятно, почему новый/постоянный.
+// Эти же данные видны в карточке заказа в RetailCRM (история клиента).
+const orderTypeLabel = (o: any, threshold?: number | null) => {
     const base = ORDER_TYPE_LABEL[o?.type] ?? '—';
-    if (o?.type === 'permanent' && typeof o?.deals === 'number' && o.deals > 0) {
-        return `${base} · ${o.deals} ${pluralRu(o.deals, 'сделка', 'сделки', 'сделок')}`;
+    const deals = typeof o?.deals === 'number' ? o.deals : null;
+    const dealsTxt = deals != null ? `${deals} ${pluralRu(deals, 'сделка', 'сделки', 'сделок')} в произв.` : null;
+    const thr = typeof threshold === 'number' ? threshold : null;
+    if (o?.type === 'permanent') {
+        return dealsTxt ? `${base} · ${dealsTxt}` : base;
     }
+    // Новый: показываем сколько сделок и сколько нужно, чтобы стать постоянным.
+    if (dealsTxt && thr != null) return `${base} · ${dealsTxt} (постоянный при >${thr})`;
+    if (dealsTxt) return `${base} · ${dealsTxt}`;
     return base;
+};
+
+const orderTypeTitle = (o: any, threshold?: number | null) => {
+    const deals = typeof o?.deals === 'number' ? o.deals : null;
+    const thr = typeof threshold === 'number' ? threshold : null;
+    if (deals == null) return undefined;
+    const need = thr != null ? ` Постоянный — более ${thr} таких сделок.` : '';
+    return `Заказов клиента, доведённых до «Передано в производство»: ${deals}.${need} Считается по истории клиента, а не по полю «Способ» в RetailCRM.`;
 };
 
 const fmtDate = (s?: string) => {
@@ -57,9 +73,11 @@ function OrderLink({ id }: { id: number }) {
 export function CountedOrdersSplit({
     orders,
     fallbackIds,
+    permanentThreshold,
 }: {
     orders: any[];
     fallbackIds?: number[];
+    permanentThreshold?: number | null;
 }) {
     const hasDetails = Array.isArray(orders) && orders.length > 0;
     const ids = fallbackIds ?? [];
@@ -81,13 +99,13 @@ export function CountedOrdersSplit({
 
     return (
         <div className="space-y-3">
-            <OrdersTypeTable title="Постоянные клиенты" rows={permanent} />
-            <OrdersTypeTable title="Новые клиенты" rows={fresh} />
+            <OrdersTypeTable title="Постоянные клиенты" rows={permanent} threshold={permanentThreshold} />
+            <OrdersTypeTable title="Новые клиенты" rows={fresh} threshold={permanentThreshold} />
         </div>
     );
 }
 
-function OrdersTypeTable({ title, rows }: { title: string; rows: any[] }) {
+function OrdersTypeTable({ title, rows, threshold }: { title: string; rows: any[]; threshold?: number | null }) {
     const sum = rows.reduce((s, o) => s + (Number(o.sum) || 0), 0);
     return (
         <div>
@@ -115,7 +133,7 @@ function OrdersTypeTable({ title, rows }: { title: string; rows: any[] }) {
                                 <tr key={o.id} className="border-t">
                                     <td className="px-2 py-1.5"><OrderLink id={o.id} /></td>
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
-                                    <td className="px-2 py-1.5">{orderTypeLabel(o)}</td>
+                                    <td className="px-2 py-1.5" title={orderTypeTitle(o, threshold)}>{orderTypeLabel(o, threshold)}</td>
                                     <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
                                     <td className="px-2 py-1.5 text-right">{o.discountPct != null ? o.discountPct + '%' : '—'}</td>
                                     <td className="px-2 py-1.5">{fmtDate(o.enteredAt)}</td>
