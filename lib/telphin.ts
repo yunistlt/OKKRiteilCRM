@@ -97,23 +97,23 @@ export async function initiateMakeCall(params: {
     const clientId = await getTelphinClientId(token);
     const extensionId = await getTelphinExtensionId(token, clientId, params.extensionId);
 
-    // POST /api/ver1.0/client/{client_id}/extension/{extension_id}/makecall
-    // source — кого набрать первым (очередь ОП), destination — кого вторым (клиента)
-    const res = await fetchTelphin(`${TELPHIN_API}/client/${clientId}/extension/${extensionId}/makecall`, {
+    // POST /api/ver1.0/extension/{extension_id}/callback/
+    // src_num (массив) — первое плечо (очередь ОП), dst_num — второе плечо (клиент).
+    const res = await fetchTelphin(`${TELPHIN_API}/extension/${extensionId}/callback/`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-            source: params.source,
-            destination: params.destination
+            src_num: [params.source],
+            dst_num: params.destination
         })
     });
 
     if (!res.ok) {
         const text = await res.text();
-        throw new Error(`Telphin MakeCall Failed: ${res.status} ${text}`);
+        throw new Error(`Telphin Callback Failed: ${res.status} ${text} [ext=${extensionId} src=${params.source} dst=${params.destination}]`);
     }
 
     const data = await res.json();
