@@ -29,6 +29,22 @@ async function kickTelphinCallbackWorker(): Promise<void> {
     }
 }
 
+// Рабочие часы автодозвона (МСК, UTC+3). Вне окна не звоним — ставим задачу на следующее утро,
+// чтобы ночью не дёргать очередь (менеджеры не ответят, а клиента разбудим). Настраивается env.
+function callbackWindow(): { withinHours: boolean; availableAtIso?: string } {
+    const startH = parseInt(process.env.TELPHIN_CALLBACK_START_HOUR || '9', 10);
+    const endH = parseInt(process.env.TELPHIN_CALLBACK_END_HOUR || '21', 10);
+    const now = new Date();
+    const mskHour = (now.getUTCHours() + 3) % 24;
+    if (mskHour >= startH && mskHour < endH) return { withinHours: true };
+    // Ближайшее начало окна: startH МСК = (startH-3) UTC
+    const next = new Date(now);
+    next.setUTCMinutes(0, 0, 0);
+    next.setUTCHours((startH - 3 + 24) % 24);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return { withinHours: false, availableAtIso: next.toISOString() };
+}
+
 // External Supabase for LVZ Knowledge + catalog (marketing_products, webasyst_categories)
 const lvzSupabase = process.env.LVZ_SUPABASE_URL && process.env.LVZ_SUPABASE_ANON_KEY
     ? createClient(process.env.LVZ_SUPABASE_URL, process.env.LVZ_SUPABASE_ANON_KEY)
@@ -420,18 +436,29 @@ export async function POST(req: Request) {
                 })
             ]);
 
-            // Ставим задачу на авто-дозвон (Телфин: очередь ОП → менеджер → клиент)
+            // Ставим задачу на авто-дозвон (Телфин: очередь ОП → менеджер → клиент).
+            // Вне рабочих часов — откладываем на утро (available_at), ночью не звоним.
+            const win = callbackWindow();
             await safeEnqueueSystemJob({
                 jobType: 'telphin_callback',
                 payload: { visitorId, phone: normalized, sessionId },
                 priority: 15,
                 idempotencyKey: `telphin_callback:${normalized}:${sessionId}`,
+                availableAt: win.withinHours ? undefined : win.availableAtIso,
             });
-            // Мгновенный «пинок» воркера, чтобы дозвон стартовал за секунды, а не ждал крон.
-            // Fire-and-forget: не блокируем ответ клиенту и глушим ошибки (крон — страховка).
-            void kickTelphinCallbackWorker();
+            if (win.withinHours) {
+                // Мгновенный «пинок» воркера, чтобы дозвон стартовал за секунды, а не ждал крон.
+                // Fire-and-forget: не блокируем ответ клиенту и глушим ошибки (крон — страховка).
+                void kickTelphinCallbackWorker();
+            } else {
+                await supabase.from('widget_messages').insert({
+                    session_id: sessionId,
+                    role: 'system',
+                    content: '🌙 Сейчас нерабочее время. Заявку зафиксировали — менеджер перезвонит в рабочие часы.',
+                });
+            }
 
-            return NextResponse.json({ success: true, phone: normalized }, { headers: CORS_HEADERS });
+            return NextResponse.json({ success: true, phone: normalized, scheduled: !win.withinHours }, { headers: CORS_HEADERS });
         }
 
         if (!message) return NextResponse.json({ error: 'Message is required' }, { status: 400, headers: CORS_HEADERS });
