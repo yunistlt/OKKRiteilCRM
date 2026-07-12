@@ -20,12 +20,10 @@ const CORS_HEADERS = {
 // а не ждал следующего тика крона. Ошибки глушим — крон подхватит задачу как страховка.
 async function kickTelphinCallbackWorker(): Promise<void> {
     try {
-        if (!process.env.CRON_SECRET) return;
         const base = (process.env.NEXT_PUBLIC_APP_URL || 'https://okk.zmksoft.com').replace(/\/+$/, '');
-        await fetch(`${base}/api/cron/system-jobs/telphin-callback`, {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-        });
+        const headers: Record<string, string> = {};
+        if (process.env.CRON_SECRET) headers.Authorization = `Bearer ${process.env.CRON_SECRET}`;
+        await fetch(`${base}/api/cron/system-jobs/telphin-callback`, { method: 'GET', headers });
     } catch (err) {
         console.error('kickTelphinCallbackWorker failed (cron will pick it up):', err);
     }
