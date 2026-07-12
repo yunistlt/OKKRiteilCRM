@@ -389,9 +389,16 @@ async function computePrepay(
     asOf: string,
 ): Promise<MyDashboard['prepay']> {
     const policy = await getPrepayPolicy(asOf);
-    const sumById = new Map<number, number>();
-    for (const o of countedOrders) sumById.set(Number(o.id), Number(o.sum) || 0);
-    const base = countedOrders.reduce((s, o) => s + (Number(o.sum) || 0), 0);
+    // Всё считаем БЕЗ НДС — как и план. Знаменатель = выручка без НДС; оплату (приходит
+    // с НДС) приводим к без-НДС той же пропорцией заказа (revenueNoVat/sum). Процент при
+    // этом не меняется (числитель и знаменатель делятся на один НДС), но рубли — без НДС.
+    const noVatById = new Map<number, number>();
+    const grossById = new Map<number, number>();
+    for (const o of countedOrders) {
+        noVatById.set(Number(o.id), Number(o.revenueNoVat) || 0);
+        grossById.set(Number(o.id), Number(o.sum) || 0);
+    }
+    const base = countedOrders.reduce((s, o) => s + (Number(o.revenueNoVat) || 0), 0);
     if (!policy || orderIds.length === 0) {
         return { available: !!policy, thresholdPct: policy?.threshold_pct ?? null, paid: 0, base: round(base), pct: null, passed: null };
     }
@@ -413,9 +420,11 @@ async function computePrepay(
             if (invoiceTypes.has(String(p.type))) invoices += amount;
             else receipts += amount;
         }
-        const paidOnOrder = receipts > 0 ? receipts : invoices;
-        const orderSum = sumById.get(Number(o.order_id)) ?? 0;
-        paid += orderSum > 0 ? Math.min(paidOnOrder, orderSum) : paidOnOrder;
+        const paidGross = receipts > 0 ? receipts : invoices; // приход с НДС
+        const gross = grossById.get(Number(o.order_id)) ?? 0;
+        const noVat = noVatById.get(Number(o.order_id)) ?? 0;
+        const paidNoVat = gross > 0 ? paidGross * (noVat / gross) : paidGross; // → без НДС
+        paid += noVat > 0 ? Math.min(paidNoVat, noVat) : paidNoVat;
     }
     const pct = base > 0 ? round2((paid / base) * 100) : null;
     return {

@@ -160,13 +160,12 @@ export default function MySalaryPage() {
                     {/* ── Предоплата ──────────────────────────────────────── */}
                     {dash?.prepay.available && dash.prepay.pct != null && (
                         <Section title="Предоплата" hint={`фактически оплачено по засчитанным заказам · порог ≥ ${dash.prepay.thresholdPct}%`}>
-                            <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                                 <Tile label="Средний % предоплаты"
                                     value={`${Math.round(dash.prepay.pct)}%`}
                                     valueClass={dash.prepay.passed ? 'text-emerald-600' : 'text-red-600'}
-                                    meta={`норма ≥ ${dash.prepay.thresholdPct}%`} />
-                                <Tile label="Оплачено фактически" value={rub(dash.prepay.paid)} meta="поступления по счетам заказов" />
-                                <Tile label="Сумма засчитанных заказов" value={rub(dash.prepay.base)} meta={`${countedOrders.length} заказов · знаменатель`} />
+                                    meta={`норма ≥ ${dash.prepay.thresholdPct}% · без НДС`} />
+                                <Tile label="Оплачено фактически" value={rub(dash.prepay.paid)} meta={`из ${rub(dash.prepay.base)} по ${countedOrders.length} заказам · без НДС`} />
                             </div>
                             <div className="mt-2 border p-3">
                                 <ThinBar pct={dash.prepay.pct} mark={dash.prepay.thresholdPct ?? undefined} good={!!dash.prepay.passed} />
