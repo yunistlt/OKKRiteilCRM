@@ -122,8 +122,9 @@ export async function buildMyDashboard(params: {
     month: number;
     managerId: number;
     row: any | null;
+    teamRevenueNoVat: number; // истинная выручка отдела за период (Σ по всем строкам, buildTeamOrders)
 }): Promise<MyDashboard> {
-    const { year, month, managerId, row } = params;
+    const { year, month, managerId, row, teamRevenueNoVat } = params;
     const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
     const b = row?.breakdown ?? {};
     const contribs: ContribList = Array.isArray(b.blockContributions) ? b.blockContributions : [];
@@ -134,7 +135,9 @@ export async function buildMyDashboard(params: {
         ? b.countedOrderIds
         : countedOrders.map((o) => Number(o.id)).filter(Boolean);
     const personalFact = countedOrders.reduce((s, o) => s + (Number(o.revenueNoVat) || 0), 0);
-    const deptFact = Number(b.teamRevenueNoVat) || 0;
+    // Факт отдела — сумма выручки всех менеджеров периода (buildTeamOrders), а НЕ
+    // breakdown.teamRevenueNoVat строки: в открытом периоде она по строке = личный факт.
+    const deptFact = Number(teamRevenueNoVat) || 0;
 
     // ── Планы ────────────────────────────────────────────────────────────────
     const plans = await getPlansForPeriod(year, month);

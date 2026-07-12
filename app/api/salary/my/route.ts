@@ -73,7 +73,13 @@ export async function GET(req: Request) {
         const recalcState = await getRecalcState(periodRow.id, periodRow.status, year, month);
 
         // Приборная панель: план/темп/предоплата/рубежи/пороги/грейд поверх расчёта.
-        const dashboard = await buildMyDashboard({ year, month, managerId: Number(mid), row: rows[0] ?? null });
+        const dashboard = await buildMyDashboard({
+            year,
+            month,
+            managerId: Number(mid),
+            row: rows[0] ?? null,
+            teamRevenueNoVat: team.teamRevenueNoVat,
+        });
 
         return NextResponse.json({
             period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
