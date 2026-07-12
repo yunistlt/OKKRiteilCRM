@@ -4,6 +4,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-details';
 import { getRecalcState } from '@/lib/salary/recalc-state';
+import { buildMyDashboard } from '@/lib/salary/my-dashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +72,15 @@ export async function GET(req: Request) {
         // Устарел ли расчёт относительно изменений мотивации (нужен пересчёт).
         const recalcState = await getRecalcState(periodRow.id, periodRow.status, year, month);
 
+        // Приборная панель: план/темп/предоплата/рубежи/пороги/грейд поверх расчёта.
+        const dashboard = await buildMyDashboard({
+            year,
+            month,
+            managerId: Number(mid),
+            row: rows[0] ?? null,
+            teamRevenueNoVat: team.teamRevenueNoVat,
+        });
+
         return NextResponse.json({
             period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
             rows,
@@ -79,6 +89,7 @@ export async function GET(req: Request) {
             needsRecalc: recalcState.needsRecalc,
             recalcChangedAt: recalcState.changedAt,
             details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incoming: incomingByManager[Number(mid)] ?? [] },
+            dashboard,
         });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
