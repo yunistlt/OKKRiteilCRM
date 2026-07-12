@@ -82,10 +82,11 @@ export async function getTelphinExtensionId(token: string, clientId: string, ext
     const list: any[] = Array.isArray(data) ? data : (data?.extensions ?? []);
     if (!list.length) throw new Error('Telphin extension list empty');
     const num = String(extNumber);
-    // Короткий номер добавочного в API лежит в name/label (поля number нет). Ищем точное совпадение;
-    // если не нашли — берём любой валидный extension: инициатор вторичен, звонит очередь из src_num.
+    // Короткий номер лежит суффиксом в name формата "12037*105" (поля number нет). Матчим суффикс
+    // после '*', плюс label/id; если не нашли — любой валидный extension (инициатор вторичен, звонит src_num).
+    const shortOf = (name: any) => String(name ?? '').split('*').pop();
     const match = list.find((e: any) =>
-        [e.name, e.label, e.id, e.caller_id_name].map((v: any) => String(v)).includes(num)
+        shortOf(e.name) === num || [e.label, e.id, e.caller_id_name].map((v: any) => String(v)).includes(num)
     ) ?? list[0];
     const id = match?.id ?? match?.extension_id;
     if (!id) throw new Error(`Telphin extension id missing in list item: ${JSON.stringify(match).slice(0, 200)}`);
@@ -112,6 +113,10 @@ export async function initiateMakeCall(params: {
 
     // POST /api/ver1.0/extension/{extension_id}/callback/
     // src_num (массив) — первое плечо (очередь ОП), dst_num — второе плечо (клиент).
+    // Номера — только цифры (Телфин не принимает '+'). caller_id — компанийский DID, чтобы
+    // клиент видел узнаваемый номер (иначе Телфин ставит дефолт транка). Настраивается env.
+    const digits = (s: string) => String(s).replace(/[^\d]/g, '');
+    const callerId = process.env.TELPHIN_CALLBACK_CALLER_ID || '74993504490';
     const res = await fetchTelphin(`${TELPHIN_API}/extension/${extensionId}/callback/`, {
         method: 'POST',
         headers: {
@@ -119,8 +124,9 @@ export async function initiateMakeCall(params: {
             'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-            src_num: [params.source],
-            dst_num: params.destination
+            src_num: [digits(params.source)],
+            dst_num: digits(params.destination),
+            caller_id_number: callerId
         })
     });
 
