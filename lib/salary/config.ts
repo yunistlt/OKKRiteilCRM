@@ -168,6 +168,32 @@ export async function updateConfig(params: {
     });
 }
 
+// ── Политика % предоплаты (дашборд менеджера) ────────────────────────────────
+// Отдельный необязательный ключ конфига: НЕ входит в обязательный SALARY_CONFIG_SCHEMAS,
+// поэтому его отсутствие не роняет расчёт ЗП. Читается мягко (null, если не задан).
+export const PREPAY_POLICY_SCHEMA = z.object({
+    threshold_pct: z.number().nonnegative(),
+    paid_statuses: z.array(z.string().min(1)).min(1), // коды статусов payments[*].status = «оплачено»
+});
+export type PrepayPolicy = z.infer<typeof PREPAY_POLICY_SCHEMA>;
+
+/** Политика предоплаты на дату (последняя версия effective_from ≤ asOf). null — не настроена. */
+export async function getPrepayPolicy(asOf: string | Date = new Date()): Promise<PrepayPolicy | null> {
+    const asOfStr = typeof asOf === 'string' ? asOf : asOf.toISOString().slice(0, 10);
+    const { data, error } = await supabase
+        .from('salary_config')
+        .select('value,effective_from')
+        .eq('key', 'prepay_policy')
+        .lte('effective_from', asOfStr)
+        .order('effective_from', { ascending: false })
+        .limit(1);
+    if (error) throw error;
+    const raw = data?.[0]?.value;
+    if (raw == null) return null;
+    const parsed = PREPAY_POLICY_SCHEMA.safeParse(raw);
+    return parsed.success ? parsed.data : null;
+}
+
 /** История версий ключа (для UI «кто/когда/что менял»). */
 export async function listConfigHistory(key?: string) {
     let query = supabase
