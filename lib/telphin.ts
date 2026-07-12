@@ -80,9 +80,15 @@ export async function getTelphinExtensionId(token: string, clientId: string, ext
     if (!res.ok) throw new Error(`Telphin get extensions failed: ${res.status} ${await res.text()}`);
     const data = await res.json();
     const list: any[] = Array.isArray(data) ? data : (data?.extensions ?? []);
-    const match = list.find((e: any) => String(e.number ?? e.name ?? e.extension_number) === String(extNumber));
-    const id = match?.extension_id ?? match?.id;
-    if (!id) throw new Error(`Telphin extension ${extNumber} not found among ${list.length} extensions`);
+    if (!list.length) throw new Error('Telphin extension list empty');
+    const num = String(extNumber);
+    // Короткий номер добавочного в API лежит в name/label (поля number нет). Ищем точное совпадение;
+    // если не нашли — берём любой валидный extension: инициатор вторичен, звонит очередь из src_num.
+    const match = list.find((e: any) =>
+        [e.name, e.label, e.id, e.caller_id_name].map((v: any) => String(v)).includes(num)
+    ) ?? list[0];
+    const id = match?.id ?? match?.extension_id;
+    if (!id) throw new Error(`Telphin extension id missing in list item: ${JSON.stringify(match).slice(0, 200)}`);
     const resolved = String(id);
     extensionIdCache.set(cacheKey, resolved);
     return resolved;
