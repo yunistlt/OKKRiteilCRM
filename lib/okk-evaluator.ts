@@ -14,7 +14,6 @@ import OpenAI from 'openai';
 import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
-import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
 let _openai: OpenAI | null = null;
 const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide]));
@@ -33,9 +32,9 @@ const DEFAULT_SCRIPT_CRITERIA: ScriptCriterion[] = [
     { key: 'script_tz_confirmed', label: 'ТЗ подтверждено', ai_prompt: 'Параметры тех. задания (размеры, температура) подтверждены. (Есть - true, Нет - false)', scoring_basket: 'script' },
     { key: 'script_objection_general', label: 'Возражения', ai_prompt: 'Работа с возражениями. Если были возражения и отработаны — true. Если возражений НЕ было или они не отработаны — false.', scoring_basket: 'script' },
     { key: 'script_objection_delays', label: 'Задержки/конкуренты', ai_prompt: 'Выяснение причин задержек/сравнения. Если клиент тянет время — выяснил ли менеджер причину? (Да - true, Нет/Не спросил - false).', scoring_basket: 'script' },
-    { key: 'script_offer_best_tech', label: 'Аргументы: тех', ai_prompt: 'Работа с возражением по ТЕХ. ХАРАКТЕРИСТИКАМ. Ниже дано значение поля CRM «ТОП3 Проходим по тех. характеристикам». TRUE, только если: (1) менеджер выяснил у клиента конкурентность наших характеристик и получил ответ; (2) если конкурент лучше — отработал возражение; (3) поле CRM заполнено и не противоречит ответу. FALSE, если тему не подняли (reason: «параметр не выяснен у клиента»), ИЛИ вопрос задан, но поле CRM пустое (reason: «вопрос задан и ответ получен, но в CRM не внесено»), ИЛИ поле противоречит ответу клиента, ИЛИ возражение не отработано.', scoring_basket: 'script' },
-    { key: 'script_offer_best_terms', label: 'Аргументы: сроки', ai_prompt: 'Работа с возражением по СРОКАМ. Ниже дано значение поля CRM «ТОП3 Проходим по срокам». TRUE, только если: (1) менеджер выяснил у клиента конкурентность наших сроков и получил ответ; (2) если конкурент лучше — отработал возражение; (3) поле CRM заполнено и не противоречит ответу. FALSE, если тему не подняли (reason: «параметр не выяснен у клиента»), ИЛИ вопрос задан, но поле CRM пустое (reason: «вопрос задан и ответ получен, но в CRM не внесено»), ИЛИ поле противоречит ответу клиента, ИЛИ возражение не отработано.', scoring_basket: 'script' },
-    { key: 'script_offer_best_price', label: 'Аргументы: цена', ai_prompt: 'Работа с возражением по ЦЕНЕ. Ниже дано значение поля CRM «ТОП3 Проходим ли по цене». TRUE, только если: (1) менеджер выяснил у клиента конкурентность нашей цены и получил ответ; (2) если конкурент дешевле — отработал возражение; (3) поле CRM заполнено и не противоречит ответу. FALSE, если тему не подняли (reason: «параметр не выяснен у клиента»), ИЛИ вопрос задан, но поле CRM пустое (reason: «вопрос задан и ответ получен, но в CRM не внесено»), ИЛИ поле противоречит ответу клиента, ИЛИ возражение не отработано.', scoring_basket: 'script' },
+    { key: 'script_offer_best_tech', label: 'Аргументы: тех', ai_prompt: 'Аргументация через ТЕХНИЧЕСКИЕ преимущества. (Была - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_offer_best_terms', label: 'Аргументы: сроки', ai_prompt: 'Аргументы по СРОКАМ. (Были - true, Нет - false).', scoring_basket: 'script' },
+    { key: 'script_offer_best_price', label: 'Аргументы: цена', ai_prompt: 'Обоснование ЦЕНЫ. (Было - true, Нет - false).', scoring_basket: 'script' },
     { key: 'script_cross_sell', label: 'Кросс-продажа', ai_prompt: 'Предложение сопутствующих товаров. (Было - true, Нет - false).', scoring_basket: 'script' },
     { key: 'script_next_step_agreed', label: 'Следующий шаг', ai_prompt: 'Фиксация следующего шага с ДАТОЙ. (Есть дата след. касания - true, Нет - false).', scoring_basket: 'script' },
     { key: 'script_dialogue_management', label: 'Инициатива', ai_prompt: 'Менеджер держал инициативу. (Да - true, Нет/Плыл по течению - false).', scoring_basket: 'script' },
@@ -54,74 +53,6 @@ async function getActiveCriteria(): Promise<any[]> {
         return [];
     }
     return data || [];
-}
-
-// ── Критерии «Работа с возражениями» (ТОП3) ──
-// Оценивают всю цепочку: вопрос задан в звонке → возражение отработано → поле CRM
-// заполнено и не противоречит ответу клиента. Применяются только начиная со статуса
-// «Согласование параметров заказа» (na-soglasovanii) и на всех последующих.
-const OBJECTION_CRITERIA_KEYS = ['script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price'] as const;
-const APPROVAL_STATUS_CODE = 'na-soglasovanii'; // «Согласование параметров заказа»
-
-/**
- * Дошёл ли заказ до статуса «Согласование параметров заказа» (или дальше).
- * Основной источник — история статусов order_history_log (заказ хоть раз входил в na-soglasovanii,
- * даже если потом ушёл в отмену). Фолбэк для заказов без синка истории — текущий статус
- * на этапе согласования или позже по числовому ordering из справочника statuses.
- */
-async function reachedApprovalStatus(orderId: number, currentStatus: string | null): Promise<boolean> {
-    if (currentStatus === APPROVAL_STATUS_CODE) return true;
-    // 1) История статусов — канонический способ узнать «когда-либо был в статусе».
-    try {
-        const { data } = await supabase
-            .from('order_history_log')
-            .select('id')
-            .eq('retailcrm_order_id', orderId)
-            .eq('field', 'status')
-            .ilike('new_value', `%"code":"${APPROVAL_STATUS_CODE}"%`)
-            .limit(1);
-        if (data && data.length > 0) return true;
-    } catch (e) {
-        console.warn('[ОКК] order_history_log недоступна для гейта статуса:', (e as Error)?.message);
-    }
-    // 2) Фолбэк: у старых заказов история могла не синкнуться — считаем «дошёл», если ТЕКУЩИЙ
-    //    статус на этапе согласования или позже (по ordering). Спасает от ложно-отрицательных.
-    if (currentStatus) {
-        try {
-            const { data: rows } = await supabase
-                .from('statuses')
-                .select('code, ordering')
-                .in('code', [currentStatus, APPROVAL_STATUS_CODE]);
-            const cur = (rows || []).find((r: any) => r.code === currentStatus)?.ordering;
-            const appr = (rows || []).find((r: any) => r.code === APPROVAL_STATUS_CODE)?.ordering;
-            if (typeof cur === 'number' && typeof appr === 'number' && cur >= appr) return true;
-        } catch {
-            // гейт по истории уже отработал — молча выходим
-        }
-    }
-    return false;
-}
-
-/** Контекст для критериев «Работа с возражениями»: применимость по статусу + значения полей ТОП3. */
-type ObjectionContext = {
-    applicable: boolean;
-    fields: { tech: string; terms: string; price: string };
-};
-
-/** Собирает ObjectionContext: гейт по статусу + резолв ТОП3-полей заказа в человекочитаемые метки. */
-async function buildObjectionContext(orderId: number, order: any, currentStatus: string | null): Promise<ObjectionContext> {
-    const cf = (order?.raw_payload as any)?.customFields || {};
-    const codeTech = cf.top3_prokhodim_po_tekh_kharakteristikam;
-    const codeTerms = cf.top3_prokhodim_po_srokam1;
-    const codePrice = cf.top3_prokhodim_li_po_tsene2;
-    const NOT_FILLED = 'поле НЕ заполнено';
-    const [applicable, tech, terms, price] = await Promise.all([
-        reachedApprovalStatus(orderId, currentStatus),
-        codeTech ? resolveRetailCRMLabel('top3Specs', String(codeTech)) : Promise.resolve(NOT_FILLED),
-        codeTerms ? resolveRetailCRMLabel('top3Timing', String(codeTerms)) : Promise.resolve(NOT_FILLED),
-        codePrice ? resolveRetailCRMLabel('top3Price', String(codePrice)) : Promise.resolve(NOT_FILLED),
-    ]);
-    return { applicable, fields: { tech, terms, price } };
 }
 
 const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
@@ -980,7 +911,6 @@ export async function evaluateScript(
     annaInsights: any = null,
     callsContext?: { attempts?: number; transcribed?: number; status?: string | null },
     scriptCriteria?: ScriptCriterion[],
-    objectionContext?: ObjectionContext | null,
 ) {
     // Состав скрипт-критериев и их инструкции — из реестра okk_criteria (фолбэк на дефолты).
     const list = (scriptCriteria && scriptCriteria.length) ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA;
@@ -1063,12 +993,7 @@ ${criteriaText}
                     role: 'user',
                     content: `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
 ${annaInsights ? JSON.stringify(annaInsights, null, 2) : 'Данные аналитики по сделке отсутствуют.'}
-${objectionContext ? `
-ЗАПОЛНЕНИЕ ПОЛЕЙ CRM «ТОП3» (для критериев работы с возражениями — сверяй с ответами клиента в диалоге):
-- ТОП3 Проходим по тех. характеристикам: ${objectionContext.fields.tech}
-- ТОП3 Проходим по срокам: ${objectionContext.fields.terms}
-- ТОП3 Проходим ли по цене: ${objectionContext.fields.price}
-` : ''}
+
 ИСТОРИЯ ЗВОНКОВ:
 ${transcript.substring(0, 15000)}`
                 }
@@ -1088,15 +1013,6 @@ ${transcript.substring(0, 15000)}`
 
         const items: Record<string, { result: boolean | null; reason: string | null }> = {};
         for (const key of keys) items[key] = getVal(key);
-
-        // Гейт по статусу: если заказ ещё не дошёл до «Согласования параметров заказа»,
-        // критерии работы с возражениями не применяются (null — не штрафуем, вне знаменателя балла).
-        if (objectionContext && !objectionContext.applicable) {
-            const naReason = 'Заказ ещё не дошёл до статуса «Согласование параметров заказа» — критерий работы с возражениями пока не применяется (поля ТОП3 ещё не обязательны).';
-            for (const k of OBJECTION_CRITERIA_KEYS) {
-                if (k in items) items[k] = { result: null, reason: naReason };
-            }
-        }
 
         // Детерминированный расчёт: знаменатель — только применимые пункты (true|false) из корзины скрипта; null исключаются
         const applicable = scoredKeys.filter(k => items[k]?.result === true || items[k]?.result === false);
@@ -1335,15 +1251,12 @@ export async function evaluateOrder(orderId: number): Promise<void> {
         .map((c: any) => ({ key: c.key, label: c.label, ai_prompt: c.ai_prompt, scoring_basket: c.scoring_basket }));
     const scriptKeys = (scriptCriteria.length ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA).map((c) => c.key);
 
-    // Контекст для критериев «Работа с возражениями»: гейт по статусу + значения полей ТОП3 из CRM.
-    const objectionContext = await buildObjectionContext(orderId, facts._order, facts.order_status);
-
     // Максим оценивает скрипт (используя данные от Анны и реестр критериев)
     const script: any = await evaluateScript(facts._transcript, annaInsights, {
         attempts: facts.calls_attempts_count,
         transcribed: facts.calls_evaluated_count,
         status: facts.calls_status,
-    }, scriptCriteria, objectionContext);
+    }, scriptCriteria);
     const aiPipelineMeta = {
         degraded: Boolean(annaAnalysis.meta.degraded || script._meta?.degraded),
         insight: annaAnalysis.meta,
