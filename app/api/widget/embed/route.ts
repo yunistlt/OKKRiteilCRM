@@ -674,12 +674,52 @@ async function initWidget() {
         }, { passive: true });
     }
 
+    // ── Родная форма сайта «Обратный звонок» → наш автодозвон ────────────────────
+    // Форма Webasyst инжектится в рантайме и живёт отдельно от нас. Перехватываем её
+    // отправку (клик по кнопке / submit), достаём телефон и шлём в тот же apiCall('callback').
+    function hookNativeCallback() {
+        var lastSent = 0;
+        function onlyDigits(v) { var d = ''; v = (v || '') + ''; for (var k = 0; k < v.length; k++) { var c = v.charCodeAt(k); if (c >= 48 && c <= 57) d += v.charAt(k); } return d; }
+        function normPhone(v) { var d = onlyDigits(v); if (d.length === 11) { return '+7' + d.substring(1); } if (d.length === 10) { return '+7' + d; } return null; }
+        function callbackCtx(el) {
+            var node = el;
+            for (var i = 0; i < 10 && node; i++) {
+                var t = ((node.innerText || node.textContent || '') + '').toLowerCase();
+                if (t.indexOf('обратн') > -1 && t.indexOf('звон') > -1) return node;
+                node = node.parentElement;
+            }
+            return null;
+        }
+        function grabAndSend(fromEl) {
+            try {
+                if (fromEl.closest && fromEl.closest('#okk-lead-catcher-root')) return;
+                var ctx = callbackCtx(fromEl);
+                if (!ctx) return;
+                var inputs = ctx.querySelectorAll('input');
+                var phone = null;
+                for (var j = 0; j < inputs.length; j++) { var p = normPhone(inputs[j].value); if (p) { phone = p; break; } }
+                if (!phone) return;
+                var now = Date.now();
+                if (now - lastSent < 5000) return;
+                lastSent = now;
+                apiCall('callback', { name: 'Обратный звонок с сайта', phone: phone, company: null });
+            } catch (e) {}
+        }
+        document.addEventListener('click', function(e) {
+            var t = e.target;
+            var btn = (t && t.closest) ? t.closest('button, input[type=submit], input[type=button], a[role=button], a') : null;
+            if (btn) grabAndSend(btn);
+        }, true);
+        document.addEventListener('submit', function(e) { if (e.target) grabAndSend(e.target); }, true);
+    }
+
     // ── Boot ───────────────────────────────────────────────────────────────────
     restoreChat();
     await apiCall('init');
     lastMessageTimestamp = new Date().toISOString();
     localStorage.setItem('okk_lc_last_msg_time', lastMessageTimestamp);
     setupExitIntent();
+    hookNativeCallback();
     // Перепроверяем exit-intent при каждом возврате на страницу (bfcache/history navigation)
     window.addEventListener('pageshow', function() { setupExitIntent(); });
     setInterval(poll, WIDGET_CONFIG.pollingInterval);
