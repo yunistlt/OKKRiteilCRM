@@ -375,8 +375,8 @@ export default function ManagerSalarySimulatorModal({ managerId, managerName, ca
     );
 }
 
-function fmtUnit(unit: '₽' | '%' | '×' | 'шт') {
-    return (v: number) => unit === '×' ? '×' + v : unit === '%' ? v + '%' : unit === 'шт' ? v + ' шт' : formatNumberRu(Math.round(v)) + ' ₽';
+function fmtUnit(unit: '₽' | '%' | '×' | 'шт' | 'ч') {
+    return (v: number) => unit === '×' ? '×' + v : unit === '%' ? v + '%' : unit === 'ч' ? v + ' ч' : unit === 'шт' ? v + ' шт' : formatNumberRu(Math.round(v)) + ' ₽';
 }
 
 function Slider({ label, min, max, step, value, fmt, disabled, onChange }: { label: string; min: number; max: number; step: number; value: number; fmt: (v: number) => string; disabled?: boolean; onChange: (v: number) => void }) {

@@ -25,7 +25,7 @@ export function tintFor(code: string) {
     return BLOCK_TINTS[h % BLOCK_TINTS.length];
 }
 
-export type Range = { min: number; max: number; step: number; unit: '₽' | '%' | '×' | 'шт' };
+export type Range = { min: number; max: number; step: number; unit: '₽' | '%' | '×' | 'шт' | 'ч' };
 export type Control = { path: (string | number)[]; label: string; range: Range; value: number };
 
 // ── Диапазоны ползунков по смыслу параметра (ключ + код блока + контекст строки) ──
@@ -45,6 +45,12 @@ export function rangeFor(blockCode: string, key: string, rowMode?: string): Rang
             if (blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') return { min: 0, max: 200, step: 5, unit: '%' }; // порог % выполнения плана
             return { min: 0, max: 100, step: 1, unit: '%' }; // conv_bonus: порог конверсии
         case 'value': return rowMode === 'pct' ? { min: 0, max: 50, step: 0.5, unit: '%' } : { min: 0, max: 30000, step: 500, unit: '₽' };
+        // Инженер-расчётчик (блок procent_za_raschet)
+        case 'percent': return { min: 0, max: 20, step: 0.1, unit: '%' };
+        case 'normHours': return { min: 0, max: 240, step: 4, unit: 'ч' };
+        case 'maxRatio': return { min: 0, max: 3, step: 0.1, unit: '×' };
+        case 'kMissing': return { min: 0.5, max: 1.5, step: 0.05, unit: '×' };
+        case 'maxSum': return null; // порог суммы заказа — не ползунок (диапазон до млрд)
         case 'level': case 'prorate': return null; // не ползунки
         default: return { min: 0, max: 100000, step: 1000, unit: '₽' };
     }
@@ -66,6 +72,7 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
         if (blockCode === 'k_team' && item?.min != null) return `× при выручке ≥ ${formatNumberRu(item.min)} ₽`;
         if ((blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') && item?.min != null) return `× при выполнении ≥ ${item.min}%`;
         if (item?.level != null) return `× для грейда ${item.level}`;
+        if (item?.maxRatio != null) return `× при факт/норма ≤ ${item.maxRatio}`; // инженер: K срочности
         return 'Коэффициент';
     }
     const catName = (code?: string) => (code ? (categoryNames?.[code] ?? code) : '');
@@ -79,6 +86,11 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
         if (blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') return 'Порог выполнения, %';
         return 'Порог конверсии';
     }
+    // Инженер-расчётчик
+    if (key === 'percent') return 'Процент от суммы';
+    if (key === 'kMissing') return 'K при отсутствии таймера';
+    if (key === 'normHours') return item?.maxSum != null ? `Норма при сумме ≤ ${formatNumberRu(item.maxSum)} ₽` : 'Норматив, ч';
+    if (key === 'maxRatio') return 'Порог факт/норма';
     return key;
 }
 
@@ -128,5 +140,5 @@ export const BLOCK_NAMES: Record<string, string> = {
     plan_coef: 'Коэффициент по личному плану', dept_plan_coef: 'Коэффициент по плану отдела',
     volume_bonus: 'Бонус за объём', same_day_sale: 'Продажа в день обращения',
     script_bonus: 'Соблюдение скрипта', fast_contact_bonus: 'Скорость контакта', fields_bonus: 'Заполнение ТЗ',
-    grade_multiplier: 'Грейд-коэффициент',
+    grade_multiplier: 'Грейд-коэффициент', procent_za_raschet: 'Процент за расчёт',
 };
