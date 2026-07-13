@@ -1,35 +1,18 @@
 import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
+import { detectForeignProject, projectChatId } from './projects';
 
 // Уведомление об оплате в Telegram через отдельного бота (@okkzmk_bot).
-// Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN).
+// Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN). Чат выбирается по ПРОЕКТУ
+// платежа (см. projects.ts): ЗМКТЛ → чат ЗМК, столярка/консалтинг → свои чаты.
 // ENV:
-//   TELEGRAM_PAYMENTS_BOT_TOKEN — токен бота уведомлений об оплатах
-//   TELEGRAM_PAYMENTS_CHAT_ID   — чат по умолчанию (ЗМК, напр. -1001154166806)
-//   TELEGRAM_PAYMENTS_THREAD_ID — (опц.) топик форума для чата по умолчанию
-//   TELEGRAM_PAYMENTS_ROUTES    — (опц.) маршруты по ИНН получателя → свой чат,
-//       JSON: {"6321277326":"-4019652337"}. Платёж с таким получателем уходит в
-//       указанный чат и уведомляется НЕЗАВИСИМО от матча (другой проект, не ЗМК).
+//   TELEGRAM_PAYMENTS_BOT_TOKEN     — токен бота уведомлений
+//   TELEGRAM_PAYMENTS_CHAT_ID       — чат ЗМКТЛ (по умолчанию)
+//   TELEGRAM_PAYMENTS_THREAD_ID     — (опц.) топик форума для чата ЗМКТЛ
+//   TELEGRAM_PROJECT_STOLYARKA_CHAT — чат столярки
+//   TELEGRAM_PROJECT_CONSULTING_CHAT— чат консалтинга
 
 const SOURCE_LABELS: Record<string, string> = { tochka: 'Точка', tbank: 'Т-Банк' };
-
-// Карта «ИНН получателя → chat_id» из env (маршруты чужих проектов, напр. столярка/ПОБТ).
-function parseRoutes(): Record<string, string> {
-  try {
-    const raw = process.env.TELEGRAM_PAYMENTS_ROUTES;
-    if (!raw) return {};
-    const obj = JSON.parse(raw);
-    return obj && typeof obj === 'object' ? obj : {};
-  } catch {
-    return {};
-  }
-}
-
-/** Есть ли для получателя (по ИНН) отдельный маршрут-чат. */
-export function isRoutedRecipient(recipientInn: string | null | undefined): boolean {
-  if (!recipientInn) return false;
-  return Boolean(parseRoutes()[recipientInn]);
-}
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -109,11 +92,11 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
   if (!token) return; // не сконфигурировано — тихо пропускаем
 
-  // Выбор чата: по ИНН получателя (маршрут чужого проекта) или чат по умолчанию (ЗМК).
-  const routes = parseRoutes();
-  const routeChat = row.recipient_inn ? routes[row.recipient_inn] : undefined;
-  const routed = Boolean(routeChat);
-  const chatId = routeChat || process.env.TELEGRAM_PAYMENTS_CHAT_ID;
+  // Выбор чата по ПРОЕКТУ (по назначению платежа): столярка/консалтинг → свой чат,
+  // иначе ЗМКТЛ → чат по умолчанию.
+  const foreign = detectForeignProject(row.purpose);
+  const routed = Boolean(foreign);
+  const chatId = projectChatId(foreign ?? 'zmktl');
   if (!chatId) return;
 
   const body: Record<string, unknown> = {

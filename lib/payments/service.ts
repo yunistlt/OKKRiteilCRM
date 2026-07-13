@@ -1,7 +1,8 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder } from './matching';
-import { notifyPaymentTelegram, isRoutedRecipient } from './notify';
+import { notifyPaymentTelegram } from './notify';
+import { detectForeignProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
@@ -235,8 +236,12 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   const normalized = normalizedFromRow(row);
   const match = await matchPaymentToOrder(normalized);
 
-  // Авто-привязка разрешена только при проверенной подписи вебхука.
-  const autoMatch = match.status === 'matched' && normalized.signatureVerified;
+  // Проект платежа по назначению. Столярка/консалтинг в RetailCRM ЗМКТЛ не ведутся —
+  // даже если номер счёта случайно совпал с заказом ЗМКТЛ, НЕ привязываем (гард).
+  const foreignProject = detectForeignProject(normalized.purpose);
+
+  // Авто-привязка: уверенный матч + проверенная подпись И это НЕ чужой проект.
+  const autoMatch = match.status === 'matched' && normalized.signatureVerified && !foreignProject;
 
   const update: Record<string, any> = {
     match_method: match.method,
@@ -273,11 +278,10 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   }
 
   // Уведомление об оплате в Telegram — один раз на платёж:
-  //   • ЗМК — только по разнесённым (matched); неразобранные не шлём;
-  //   • получатель с маршрутом (другой проект, напр. столярка/ПОБТ) — всегда,
-  //     независимо от матча, в свой чат.
+  //   • ЗМКТЛ — только по разнесённым (matched); неразобранные не шлём;
+  //   • столярка/консалтинг (чужой проект) — всегда, независимо от матча, в свой чат.
   const u = updated as PointPaymentRow;
-  if (!row.notified_at && updated && (u.status === 'matched' || isRoutedRecipient(u.recipient_inn))) {
+  if (!row.notified_at && updated && (u.status === 'matched' || foreignProject !== null)) {
     await notifyPaymentTelegram(u, {
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,
