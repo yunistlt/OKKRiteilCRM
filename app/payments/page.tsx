@@ -75,12 +75,12 @@ const PROJECT_LABELS: Record<string, string> = {
 };
 
 // Вкладки: по проектам (kind='project') и по статусам (kind='status').
-type Tab = { kind: 'project' | 'status'; value: string; label: string };
+type Tab = { kind: 'project' | 'status' | 'review'; value: string; label: string };
 const TABS: Tab[] = [
   { kind: 'project', value: 'zmktl', label: 'ЗМКТЛ' },
   { kind: 'project', value: 'stolyarka', label: 'Столярка' },
   { kind: 'project', value: 'consulting', label: 'ПО/Консалтинг' },
-  { kind: 'status', value: 'pending_match', label: 'Требуют разбора' },
+  { kind: 'review', value: '', label: 'Требуют разбора' },
   { kind: 'status', value: 'ignored', label: 'Пропущенные' },
   { kind: 'status', value: '', label: 'Все' },
 ];
@@ -141,10 +141,11 @@ function crmOrderLink(crmUrl: string, orderId: number | null, orderNumber?: stri
 }
 
 export default function PaymentsPage() {
-  const [tab, setTab] = useState<Tab>(TABS[0]);
+  const [tab, setTab] = useState<Tab>(TABS.find((t) => t.kind === 'review') || TABS[0]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [projectSummary, setProjectSummary] = useState<Record<string, number>>({});
+  const [reviewCount, setReviewCount] = useState<number>(0);
   const [crmUrl, setCrmUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -289,13 +290,19 @@ export default function PaymentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const qs = tab.value ? `?${tab.kind === 'project' ? 'project' : 'status'}=${tab.value}` : '';
+      const qs =
+        tab.kind === 'review'
+          ? '?review=1'
+          : tab.value
+            ? `?${tab.kind === 'project' ? 'project' : 'status'}=${tab.value}`
+            : '';
       const res = await fetch(`/api/payments/list${qs}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка загрузки');
       setPayments(json.payments || []);
       setSummary(json.summary || {});
       setProjectSummary(json.projectSummary || {});
+      setReviewCount(json.reviewCount || 0);
       setCrmUrl(json.crm_url || '');
     } catch (e: any) {
       setError(e.message);
@@ -619,7 +626,14 @@ export default function PaymentsPage() {
         <div className="flex flex-wrap items-center gap-1 border-t border-gray-200 px-4 py-2">
           {TABS.map((t) => {
             const active = tab.kind === t.kind && tab.value === t.value;
-            const count = t.kind === 'project' ? projectSummary[t.value] : t.value ? summary[t.value] : 0;
+            const count =
+              t.kind === 'review'
+                ? reviewCount
+                : t.kind === 'project'
+                  ? projectSummary[t.value]
+                  : t.value
+                    ? summary[t.value]
+                    : 0;
             return (
               <button
                 key={`${t.kind}:${t.value || 'all'}`}
@@ -667,6 +681,8 @@ export default function PaymentsPage() {
             <tbody>
               {payments.map((p) => {
                 const link = crmOrderLink(crmUrl, p.matched_order_id, p.matched_order_number);
+                // Столярка/консалтинг не привязываются к заказам ЗМКТЛ — без «Привязать».
+                const isForeign = p.project === 'stolyarka' || p.project === 'consulting';
                 return (
                   <tr key={p.id} className="border-b border-gray-100 odd:bg-white even:bg-gray-50 hover:bg-blue-50">
                     {/* Статус */}
@@ -729,7 +745,7 @@ export default function PaymentsPage() {
                     {/* Назначение */}
                     <td className="px-4 py-3 align-top">
                       {p.purpose ? (
-                        <div className="max-w-[320px] truncate text-gray-700" title={p.purpose}>
+                        <div className="min-w-[280px] max-w-[440px] break-words text-gray-700">
                           {p.purpose}
                         </div>
                       ) : (
@@ -771,7 +787,7 @@ export default function PaymentsPage() {
                     <td className="px-4 py-3 align-top">
                       {actionable(p.status) ? (
                         <div className="space-y-2">
-                          {p.match_candidates && p.match_candidates.length > 0 && (
+                          {!isForeign && p.match_candidates && p.match_candidates.length > 0 && (
                             <div className="flex flex-wrap gap-1.5">
                               {p.match_candidates.map((c, i) => {
                                 const cLink = crmOrderLink(crmUrl, c.orderId, c.orderNumber);
@@ -803,19 +819,23 @@ export default function PaymentsPage() {
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <input
-                              value={manualNumber[p.id] || ''}
-                              onChange={(e) => setManualNumber((m) => ({ ...m, [p.id]: e.target.value }))}
-                              placeholder="Номер заказа"
-                              className="w-36 border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
-                            />
-                            <button
-                              disabled={busyId === p.id}
-                              onClick={() => assign(p.id, manualNumber[p.id] || '')}
-                              className="bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                            >
-                              Привязать
-                            </button>
+                            {!isForeign && (
+                              <>
+                                <input
+                                  value={manualNumber[p.id] || ''}
+                                  onChange={(e) => setManualNumber((m) => ({ ...m, [p.id]: e.target.value }))}
+                                  placeholder="Номер заказа"
+                                  className="w-36 border border-gray-300 px-2 py-1 text-sm focus:border-blue-600 focus:outline-none"
+                                />
+                                <button
+                                  disabled={busyId === p.id}
+                                  onClick={() => assign(p.id, manualNumber[p.id] || '')}
+                                  className="bg-blue-600 px-3 py-1 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  Привязать
+                                </button>
+                              </>
+                            )}
                             <button
                               disabled={busyId === p.id}
                               onClick={() => ignore(p.id)}

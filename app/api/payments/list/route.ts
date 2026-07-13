@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
     const project = searchParams.get('project');
+    const review = searchParams.get('review'); // «Требуют разбора»: pending + проект ЗМКТЛ/не определён
     const limit = Math.min(Number(searchParams.get('limit')) || 100, 500);
 
     let query = supabase
@@ -28,8 +29,13 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    if (status) query = query.eq('status', status);
-    if (project) query = query.eq('project', project);
+    if (review) {
+      // Столярка/консалтинг не требуют разбора (опознаны, живут в своих вкладках).
+      query = query.eq('status', 'pending_match').or('project.is.null,project.eq.zmktl');
+    } else {
+      if (status) query = query.eq('status', status);
+      if (project) query = query.eq('project', project);
+    }
 
     const { data, error } = await query;
     if (error) throw error;
@@ -41,14 +47,16 @@ export async function GET(req: NextRequest) {
       .limit(3000);
     const summary: Record<string, number> = {};
     const projectSummary: Record<string, number> = {};
+    let reviewCount = 0;
     (counts || []).forEach((r: any) => {
       summary[r.status] = (summary[r.status] || 0) + 1;
       if (r.project) projectSummary[r.project] = (projectSummary[r.project] || 0) + 1;
+      if (r.status === 'pending_match' && (!r.project || r.project === 'zmktl')) reviewCount++;
     });
 
     const crmUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
 
-    return NextResponse.json({ payments: data || [], summary, projectSummary, crm_url: crmUrl });
+    return NextResponse.json({ payments: data || [], summary, projectSummary, reviewCount, crm_url: crmUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
