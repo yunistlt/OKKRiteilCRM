@@ -55,6 +55,7 @@ function paymentsPageLink(): string {
 export interface NotifyOptions {
   movedToProduction?: boolean;
   productionStatusName?: string;
+  productionNotMovedReason?: string;
 }
 
 function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions): string {
@@ -89,9 +90,12 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
       : `№${esc(row.matched_order_number)}`;
     const synced = row.retailcrm_synced_at ? ' — проброшен в RetailCRM' : '';
     lines.push(`✅ Заказ ${order}${synced}`);
+    const num = esc(String(row.matched_order_number));
     if (opts.movedToProduction) {
       const name = opts.productionStatusName || 'Передано в производство';
-      lines.push(`🏭 Заказ №${esc(String(row.matched_order_number))} переведён в статус «${esc(name)}»`);
+      lines.push(`🏭 Заказ №${num} переведён в статус «${esc(name)}»`);
+    } else if (opts.productionNotMovedReason) {
+      lines.push(`❗ Заказ №${num} НЕ переведён в производство — ${esc(opts.productionNotMovedReason)}`);
     }
   } else {
     lines.push(`🟡 Требует ручного разбора — <a href="${paymentsPageLink()}">открыть</a>`);

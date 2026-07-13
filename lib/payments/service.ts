@@ -120,7 +120,7 @@ export async function ingestPointPayment(
 
 async function pushMatchedPaymentToCrm(
   row: PointPaymentRow,
-): Promise<{ movedToProduction: boolean; productionStatusName?: string }> {
+): Promise<{ movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string }> {
   const result = await createRetailCrmOrderPayment({
     orderId: row.matched_order_id,
     orderNumber: row.matched_order_number,
@@ -144,7 +144,11 @@ async function pushMatchedPaymentToCrm(
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
     const mv = await moveOrderToProductionAfterPayment(row.matched_order_id);
-    return { movedToProduction: mv.moved, productionStatusName: mv.statusName };
+    return {
+      movedToProduction: mv.moved,
+      productionStatusName: mv.statusName,
+      productionNotMovedReason: mv.notMovedReason,
+    };
   } else {
     await supabase
       .from('point_payments')
@@ -201,7 +205,9 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     .single();
   if (error) throw error;
 
-  let push: { movedToProduction: boolean; productionStatusName?: string } = { movedToProduction: false };
+  let push: { movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string } = {
+    movedToProduction: false,
+  };
   if (autoMatch && updated) {
     push = await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
@@ -215,6 +221,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     await notifyPaymentTelegram(u, {
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,
+      productionNotMovedReason: push.productionNotMovedReason,
     }).catch((e) => console.error('[payments] telegram notify failed:', e?.message || e));
     await supabase
       .from('point_payments')
