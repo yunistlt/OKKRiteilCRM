@@ -72,12 +72,56 @@ function toCandidate(row: any, reason: string): OrderMatchCandidate {
 }
 
 /**
+ * Не-клиентский кредит, который НЕ надо матчить/разбирать:
+ *  - 'internal' — перевод между своими счетами (плательщик = получатель, одно юрлицо);
+ *  - 'bank'     — банковская операция (депозит/проценты/возврат средств банка).
+ */
+const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат средств по/i;
+
+export function classifyNonCustomerPayment(
+  payment: NormalizedPointPayment,
+): 'internal' | 'bank' | null {
+  const payer = normalizeInn(payment.payerInn);
+  const recip = normalizeInn(payment.recipientInn);
+  if (payer && recip && payer === recip) return 'internal';
+  if (BANK_PURPOSE_RE.test(payment.purpose || '')) return 'bank';
+  return null;
+}
+
+/**
+ * Сверка кандидата-заказа с платежом по сигналам плательщика и суммы (номер — якорь).
+ *  - плательщик: ИНН плательщика = ИНН клиента заказа;
+ *  - сумма: платёж ≤ сумме заказа (полная/частичная) и точное совпадение.
+ * high  — совпал плательщик ИЛИ сумма ровно;
+ * medium— сумма укладывается (частичная), плательщик не подтверждён;
+ * low   — сумма больше заказа и плательщик не совпал (подозрительно).
+ */
+function scoreCandidate(
+  order: any,
+  payment: NormalizedPointPayment,
+): { confidence: 'high' | 'medium' | 'low'; payerMatch: boolean } {
+  const orderInn = orderPayerInn(order.raw_payload);
+  const payerInn = normalizeInn(payment.payerInn);
+  const payerMatch = Boolean(orderInn && payerInn && orderInn === payerInn);
+
+  const total = Number(order.totalsumm) || 0;
+  const amountRub = payment.amountKopecks / 100;
+  const amountExact = total > 0 && Math.abs(amountRub - total) <= 0.5;
+  const amountFits = total <= 0 || amountRub <= total + 0.5;
+
+  let confidence: 'high' | 'medium' | 'low';
+  if (payerMatch || amountExact) confidence = 'high';
+  else if (amountFits) confidence = 'medium';
+  else confidence = 'low';
+  return { confidence, payerMatch };
+}
+
+/**
  * Основной матч — по номеру заказа (orders.number), извлечённому из назначения.
  * Берём первого кандидата, для которого нашёлся ровно один заказ.
  */
-async function matchByOrderNumber(
-  invoiceNumbers: string[],
-): Promise<{ order: any } | { ambiguous: any[] } | null> {
+/** Заказы, найденные по извлечённым номерам счёта (первый номер, давший совпадения). */
+async function findOrdersByNumber(invoiceNumbers: string[]): Promise<any[]> {
   for (const num of invoiceNumbers) {
     const { data, error } = await supabase
       .from('orders')
@@ -85,11 +129,9 @@ async function matchByOrderNumber(
       .eq('number', num)
       .limit(5);
     if (error) throw error;
-    if (!data || data.length === 0) continue;
-    if (data.length === 1) return { order: data[0] };
-    return { ambiguous: data };
+    if (data && data.length > 0) return data;
   }
-  return null;
+  return [];
 }
 
 /**
@@ -120,9 +162,12 @@ async function matchByInnAmountDate(
 }
 
 /**
- * Полный матчинг платежа на заказ.
- * high-confidence (order_number, единственный заказ) → status 'matched'.
- * Всё остальное → 'pending_match' с кандидатами для ручного разбора.
+ * Полный матчинг платежа на заказ по сигналам: НОМЕР счёта (якорь) + плательщик + сумма.
+ *  1. По номеру находим заказ(ы). Один кандидат → сверяем плательщика/сумму (scoreCandidate):
+ *     high (совпал плательщик или сумма ровно) / medium (сумма укладывается) / low.
+ *     Несколько кандидатов → выбираем того, у кого совпал плательщик (иначе — в разбор).
+ *  2. Фолбэк без номера — ИНН плательщика + сумма заказа → medium.
+ *  3. Иначе — в очередь на разбор.
  */
 export async function matchPaymentToOrder(
   payment: NormalizedPointPayment,
@@ -140,46 +185,38 @@ export async function matchPaymentToOrder(
     candidates: [],
   };
 
-  // 1. Основной матч — по номеру заказа.
-  const byNumber = await matchByOrderNumber(invoiceNumbers);
-  if (byNumber && 'order' in byNumber) {
-    const order = byNumber.order;
-    return {
-      ...base,
-      status: 'matched',
-      method: 'order_number',
-      confidence: 'high',
-      matchedOrderId: order.order_id ?? null,
-      matchedOrderNumber: String(order.number ?? ''),
-      candidates: [toCandidate(order, 'order_number')],
-    };
+  const matched = (order: any, method: 'order_number' | 'inn_amount_date', confidence: 'high' | 'medium' | 'low') => ({
+    ...base,
+    status: 'matched' as const,
+    method,
+    confidence,
+    matchedOrderId: order.order_id ?? null,
+    matchedOrderNumber: String(order.number ?? ''),
+    candidates: [toCandidate(order, method)],
+  });
+
+  // 1. По номеру счёта → заказ.
+  const byNumber = await findOrdersByNumber(invoiceNumbers);
+  if (byNumber.length === 1) {
+    const { confidence } = scoreCandidate(byNumber[0], payment);
+    if (confidence === 'low') {
+      // Номер совпал, но сумма больше заказа и плательщик другой — на разбор.
+      return { ...base, candidates: [toCandidate(byNumber[0], 'order_number')] };
+    }
+    return matched(byNumber[0], 'order_number', confidence);
   }
-  if (byNumber && 'ambiguous' in byNumber) {
-    return {
-      ...base,
-      candidates: byNumber.ambiguous.map((r) => toCandidate(r, 'order_number')),
-    };
+  if (byNumber.length > 1) {
+    // Несколько заказов с таким номером — разрешаем по плательщику.
+    const byPayer = byNumber.filter((o) => scoreCandidate(o, payment).payerMatch);
+    if (byPayer.length === 1) return matched(byPayer[0], 'order_number', 'high');
+    return { ...base, candidates: byNumber.map((r) => toCandidate(r, 'order_number')) };
   }
 
-  // 2. Фолбэк — ИНН + сумма + дата.
+  // 2. Фолбэк — ИНН плательщика + сумма заказа.
   const fallback = await matchByInnAmountDate(payment);
-  if (fallback.length === 1) {
-    const order = fallback[0];
-    return {
-      ...base,
-      status: 'matched',
-      method: 'inn_amount_date',
-      confidence: 'medium',
-      matchedOrderId: order.order_id ?? null,
-      matchedOrderNumber: String(order.number ?? ''),
-      candidates: [toCandidate(order, 'inn_amount_date')],
-    };
-  }
+  if (fallback.length === 1) return matched(fallback[0], 'inn_amount_date', 'medium');
   if (fallback.length > 1) {
-    return {
-      ...base,
-      candidates: fallback.map((r) => toCandidate(r, 'inn_amount_date')),
-    };
+    return { ...base, candidates: fallback.map((r) => toCandidate(r, 'inn_amount_date')) };
   }
 
   // 3. Ничего не нашли — в очередь на разбор.

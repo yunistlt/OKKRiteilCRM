@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
-import { matchPaymentToOrder } from './matching';
+import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram } from './notify';
 import { detectForeignProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
@@ -234,14 +234,36 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   }
 
   const normalized = normalizedFromRow(row);
+
+  // 0. Не-клиентский кредит (перевод между своими счетами / банковская операция) —
+  // не матчим и не тащим в разбор, помечаем «Пропущено».
+  const nonCustomer = classifyNonCustomerPayment(normalized);
+  if (nonCustomer) {
+    await supabase
+      .from('point_payments')
+      .update({
+        status: 'ignored',
+        review_note:
+          nonCustomer === 'internal'
+            ? 'внутренний перевод (плательщик = получатель)'
+            : 'банковская операция (депозит/проценты/возврат банка)',
+        processed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+    return { status: 'ignored' };
+  }
+
   const match = await matchPaymentToOrder(normalized);
 
-  // Проект платежа по назначению. Столярка/консалтинг в RetailCRM ЗМКТЛ не ведутся —
-  // даже если номер счёта случайно совпал с заказом ЗМКТЛ, НЕ привязываем (гард).
+  // Проект по назначению — только для маршрута уведомления не-сматченных (столярка/
+  // консалтинг). Приоритет матча — по номеру+плательщику (не по ключевым словам).
   const foreignProject = detectForeignProject(normalized.purpose);
 
-  // Авто-привязка: уверенный матч + проверенная подпись И это НЕ чужой проект.
-  const autoMatch = match.status === 'matched' && normalized.signatureVerified && !foreignProject;
+  // Авто-привязка при уверенном матче. High (номер+плательщик/сумма) достаточно надёжен,
+  // чтобы привязать даже без проверенной подписи вебхука; medium — только при подписи.
+  const autoMatch =
+    match.status === 'matched' && (normalized.signatureVerified || match.confidence === 'high');
 
   const update: Record<string, any> = {
     match_method: match.method,

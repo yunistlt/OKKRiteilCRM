@@ -92,9 +92,10 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
   if (!token) return; // не сконфигурировано — тихо пропускаем
 
-  // Выбор чата по ПРОЕКТУ (по назначению платежа): столярка/консалтинг → свой чат,
-  // иначе ЗМКТЛ → чат по умолчанию.
-  const foreign = detectForeignProject(row.purpose);
+  // Выбор чата: сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе —
+  // по проекту из назначения (столярка/консалтинг → свой чат).
+  const matched = row.status === 'matched' || row.status === 'manual';
+  const foreign = matched ? null : detectForeignProject(row.purpose);
   const routed = Boolean(foreign);
   const chatId = projectChatId(foreign ?? 'zmktl');
   if (!chatId) return;
