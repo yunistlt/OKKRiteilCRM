@@ -7,6 +7,24 @@ import {
   createRetailCrmOrderPayment,
   toRetailCrmPaidAt,
 } from '@/lib/retailcrm/payments';
+import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
+
+// Статус нашего платежа: 'paid' (Оплачен полностью) если накопленная сумма банковских
+// платежей по заказу (включая этот) покрывает сумму заказа, иначе 'check-off-full'
+// (Частичная оплата). Счета (invoicejur) не считаем — это не поступления.
+function computePaymentStatus(order: any, thisAmountRub: number): 'paid' | 'check-off-full' {
+  const total = Number(order?.totalSumm);
+  if (!Number.isFinite(total) || total <= 0) return 'paid'; // нет суммы заказа — не гадаем
+  const bankType = process.env.RETAILCRM_BANK_PAYMENT_TYPE || 'bank-transfer';
+  let priorPaid = 0;
+  for (const p of Object.values(order?.payments || {})) {
+    const pp = p as any;
+    if (pp?.type === bankType && (pp?.status === 'paid' || pp?.status === 'check-off-full')) {
+      priorPaid += Number(pp.amount) || 0;
+    }
+  }
+  return priorPaid + thisAmountRub + 0.01 >= total ? 'paid' : 'check-off-full';
+}
 
 // Сервис распределения платежей: приём (идемпотентно) → матчинг → проброс в RetailCRM.
 
@@ -121,13 +139,20 @@ export async function ingestPointPayment(
 async function pushMatchedPaymentToCrm(
   row: PointPaymentRow,
 ): Promise<{ movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string }> {
+  const amountRub = kopecksToRubles(Number(row.amount_kopecks));
+
+  // Тянем заказ один раз: для статуса оплаты (полная/частичная) и для гарда производства.
+  const order = row.matched_order_id ? await fetchRetailCrmOrder(row.matched_order_id) : null;
+  const paymentStatus = computePaymentStatus(order, amountRub);
+
   const result = await createRetailCrmOrderPayment({
     orderId: row.matched_order_id,
     orderNumber: row.matched_order_number,
-    amountRub: kopecksToRubles(Number(row.amount_kopecks)),
+    amountRub,
     paidAt: toRetailCrmPaidAt(row.payment_datetime || row.payment_date),
     externalId: `${row.source}-${row.external_payment_id}`,
     comment: row.purpose || undefined,
+    status: paymentStatus,
   });
 
   if (result.success) {
@@ -143,7 +168,9 @@ async function pushMatchedPaymentToCrm(
 
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
-    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id);
+    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id, {
+      currentStatus: order?.status ?? null,
+    });
     return {
       movedToProduction: mv.moved,
       productionStatusName: mv.statusName,

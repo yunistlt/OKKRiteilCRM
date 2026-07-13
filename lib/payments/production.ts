@@ -45,12 +45,17 @@ export interface MoveToProductionResult {
  */
 export async function moveOrderToProductionAfterPayment(
   orderId: number | null | undefined,
+  opts: { currentStatus?: string | null } = {},
 ): Promise<MoveToProductionResult> {
   if (!orderId) return { moved: false, notMovedReason: 'нет id заказа' };
   try {
-    const order = await fetchRetailCrmOrder(orderId);
-    if (!order) return { moved: false, notMovedReason: 'заказ не найден в RetailCRM' };
-    const current = String(order.status || '');
+    // Текущий статус можно передать (если заказ уже фетчили) — иначе тянем сами.
+    let current = opts.currentStatus ? String(opts.currentStatus) : '';
+    if (!current) {
+      const order = await fetchRetailCrmOrder(orderId);
+      if (!order) return { moved: false, notMovedReason: 'заказ не найден в RetailCRM' };
+      current = String(order.status || '');
+    }
     const { set: blocked, prodName, names } = await loadStatusMeta();
     if (blocked.has(current)) {
       const curName = names[current] || current;

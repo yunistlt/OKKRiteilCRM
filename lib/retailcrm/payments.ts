@@ -13,6 +13,7 @@ export interface CreateRetailCrmPaymentInput {
   externalId: string;        // ключ идемпотентности (напр. tochka-<paymentId>)
   comment?: string | null;
   type?: string | null;      // код типа оплаты; иначе из env
+  status?: string | null;    // статус платежа: 'paid' (полн.) | 'check-off-full' (частичн.)
 }
 
 export interface CreateRetailCrmPaymentResult {
@@ -39,7 +40,7 @@ export async function createRetailCrmOrderPayment(
     externalId: input.externalId,
     amount: input.amountRub,
     type: getBankPaymentType(input.type),
-    status: 'paid',
+    status: input.status || 'paid',
     order,
   };
   if (input.paidAt) payment.paidAt = input.paidAt;
