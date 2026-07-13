@@ -1,7 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder } from './matching';
-import { notifyPaymentTelegram } from './notify';
+import { notifyPaymentTelegram, isRoutedRecipient } from './notify';
 import {
   createRetailCrmOrderPayment,
   toRetailCrmPaidAt,
@@ -197,10 +197,13 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
 
-  // Уведомление об оплате в Telegram — только по разнесённым (привязанным к заказу)
-  // платежам, один раз на платёж. Неразобранные (pending_match) не шлём.
-  if (!row.notified_at && updated && (updated as PointPaymentRow).status === 'matched') {
-    await notifyPaymentTelegram(updated as PointPaymentRow).catch((e) =>
+  // Уведомление об оплате в Telegram — один раз на платёж:
+  //   • ЗМК — только по разнесённым (matched); неразобранные не шлём;
+  //   • получатель с маршрутом (другой проект, напр. столярка/ПОБТ) — всегда,
+  //     независимо от матча, в свой чат.
+  const u = updated as PointPaymentRow;
+  if (!row.notified_at && updated && (u.status === 'matched' || isRoutedRecipient(u.recipient_inn))) {
+    await notifyPaymentTelegram(u).catch((e) =>
       console.error('[payments] telegram notify failed:', e?.message || e),
     );
     await supabase

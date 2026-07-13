@@ -1,14 +1,35 @@
 import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
 
-// Уведомление об оплате в Telegram-чат «Отдел продаж ЗМК» через отдельного бота
-// (@okkzmk_bot). Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN).
+// Уведомление об оплате в Telegram через отдельного бота (@okkzmk_bot).
+// Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN).
 // ENV:
 //   TELEGRAM_PAYMENTS_BOT_TOKEN — токен бота уведомлений об оплатах
-//   TELEGRAM_PAYMENTS_CHAT_ID   — id чата (напр. -1001154166806)
-//   TELEGRAM_PAYMENTS_THREAD_ID — (опц.) id топика форума; без него — в General
+//   TELEGRAM_PAYMENTS_CHAT_ID   — чат по умолчанию (ЗМК, напр. -1001154166806)
+//   TELEGRAM_PAYMENTS_THREAD_ID — (опц.) топик форума для чата по умолчанию
+//   TELEGRAM_PAYMENTS_ROUTES    — (опц.) маршруты по ИНН получателя → свой чат,
+//       JSON: {"6321277326":"-4019652337"}. Платёж с таким получателем уходит в
+//       указанный чат и уведомляется НЕЗАВИСИМО от матча (другой проект, не ЗМК).
 
 const SOURCE_LABELS: Record<string, string> = { tochka: 'Точка', tbank: 'Т-Банк' };
+
+// Карта «ИНН получателя → chat_id» из env (маршруты чужих проектов, напр. столярка/ПОБТ).
+function parseRoutes(): Record<string, string> {
+  try {
+    const raw = process.env.TELEGRAM_PAYMENTS_ROUTES;
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return obj && typeof obj === 'object' ? obj : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Есть ли для получателя (по ИНН) отдельный маршрут-чат. */
+export function isRoutedRecipient(recipientInn: string | null | undefined): boolean {
+  if (!recipientInn) return false;
+  return Boolean(parseRoutes()[recipientInn]);
+}
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -31,7 +52,7 @@ function paymentsPageLink(): string {
   return `${base}/payments`;
 }
 
-function buildMessage(row: PointPaymentRow): string {
+function buildMessage(row: PointPaymentRow, routed: boolean): string {
   const source = SOURCE_LABELS[row.source] || row.source;
   const lines: string[] = [];
   lines.push(`💰 <b>Оплата · ${esc(source)}</b>`);
@@ -48,7 +69,14 @@ function buildMessage(row: PointPaymentRow): string {
     lines.push(`📝 ${esc(purpose)}`);
   }
 
-  // Итог разноса.
+  // Для маршрутизированных получателей (другой проект, не ЗМК) не показываем
+  // терминологию разноса по заказам RetailCRM — просто факт поступления.
+  if (routed) {
+    lines.push(`ℹ️ Платёж в сервисе — <a href="${paymentsPageLink()}">открыть</a>`);
+    return lines.join('\n');
+  }
+
+  // Итог разноса (ЗМК).
   if ((row.status === 'matched' || row.status === 'manual') && row.matched_order_number) {
     const link = crmOrderLink(row.matched_order_id, row.matched_order_number);
     const order = link
@@ -66,17 +94,24 @@ function buildMessage(row: PointPaymentRow): string {
 /** Отправляет уведомление об оплате. No-op, если бот/чат не сконфигурированы. */
 export async function notifyPaymentTelegram(row: PointPaymentRow): Promise<void> {
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
-  const chatId = process.env.TELEGRAM_PAYMENTS_CHAT_ID;
-  if (!token || !chatId) return; // не сконфигурировано — тихо пропускаем
+  if (!token) return; // не сконфигурировано — тихо пропускаем
+
+  // Выбор чата: по ИНН получателя (маршрут чужого проекта) или чат по умолчанию (ЗМК).
+  const routes = parseRoutes();
+  const routeChat = row.recipient_inn ? routes[row.recipient_inn] : undefined;
+  const routed = Boolean(routeChat);
+  const chatId = routeChat || process.env.TELEGRAM_PAYMENTS_CHAT_ID;
+  if (!chatId) return;
 
   const body: Record<string, unknown> = {
     chat_id: chatId,
-    text: buildMessage(row),
+    text: buildMessage(row, routed),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   };
+  // Топик форума — только для чата по умолчанию (у маршрутных чатов свой).
   const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-  if (threadId) body.message_thread_id = Number(threadId);
+  if (!routed && threadId) body.message_thread_id = Number(threadId);
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',
