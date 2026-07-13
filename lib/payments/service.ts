@@ -5,14 +5,15 @@ import { notifyPaymentTelegram, isRoutedRecipient } from './notify';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
-  editRetailCrmPayment,
+  deleteRetailCrmPayment,
   toRetailCrmPaidAt,
 } from '@/lib/retailcrm/payments';
 import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
 
-// Единственный источник правды по оплатам — банковский синк (выписка). Любая оплаченная
-// запись на заказе, НЕ созданная нашим синком (нет externalId tochka-/tbank-), сбрасывается
-// в «Не оплачен», чтобы одна и та же оплата не задваивалась (напр. вручную помеченный счёт).
+// Единственный источник правды по оплатам — банковский синк (выписка). Дубль оплаты
+// (напр. вручную «оплаченный» счёт invoicejur на ту же сумму, что и наш банковский платёж)
+// УДАЛЯЕМ — статус не меняем. Удаляем только НЕ наши (без externalId tochka-/tbank-)
+// оплаченные записи, сумма которых совпадает с суммой банковского платежа (страховка).
 const RECEIVED_STATUSES = new Set(['paid', 'check-off-full', 'payment-start']);
 
 function isBankSyncPayment(p: any): boolean {
@@ -20,16 +21,21 @@ function isBankSyncPayment(p: any): boolean {
   return ext.startsWith('tochka-') || ext.startsWith('tbank-');
 }
 
-async function reconcileOrderPaymentsToBank(order: any): Promise<number> {
-  let unpaid = 0;
-  for (const p of Object.values(order?.payments || {})) {
-    const pp = p as any;
-    if (pp?.id && RECEIVED_STATUSES.has(pp?.status) && !isBankSyncPayment(pp)) {
-      const res = await editRetailCrmPayment(Number(pp.id), { status: 'not-paid' }).catch(() => ({ success: false }));
-      if (res.success) unpaid++;
+async function reconcileOrderPaymentsToBank(order: any, newBankAmountRub: number): Promise<number> {
+  const pays = Object.values(order?.payments || {}) as any[];
+  // Суммы, которые считаются «поступившими по банку»: существующие банковские + новый платёж.
+  const bankAmounts = new Set<number>([newBankAmountRub]);
+  for (const p of pays) {
+    if (isBankSyncPayment(p) && RECEIVED_STATUSES.has(p?.status)) bankAmounts.add(Number(p.amount));
+  }
+  let deleted = 0;
+  for (const p of pays) {
+    if (p?.id && RECEIVED_STATUSES.has(p?.status) && !isBankSyncPayment(p) && bankAmounts.has(Number(p.amount))) {
+      const res = await deleteRetailCrmPayment(Number(p.id)).catch(() => ({ success: false }));
+      if (res.success) deleted++;
     }
   }
-  return unpaid;
+  return deleted;
 }
 
 // Статус нашего платежа: 'paid' (Оплачен полностью) если накопленная сумма банковских
@@ -189,9 +195,9 @@ async function pushMatchedPaymentToCrm(
       })
       .eq('id', row.id);
 
-    // Банк — источник правды: сбрасываем чужие (не из синка) оплаченные записи на заказе,
+    // Банк — источник правды: удаляем чужие (не из синка) оплаченные дубли на заказе,
     // чтобы не задваивать деньги (напр. вручную «оплаченный» счёт). Не критично.
-    if (order) await reconcileOrderPaymentsToBank(order).catch(() => 0);
+    if (order) await reconcileOrderPaymentsToBank(order, amountRub).catch(() => 0);
 
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).

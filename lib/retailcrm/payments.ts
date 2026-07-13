@@ -69,18 +69,16 @@ export async function createRetailCrmOrderPayment(
   return { success: true, paymentId: result.id != null ? String(result.id) : null };
 }
 
-/** Редактирование существующего платежа заказа (напр. сброс статуса в 'not-paid'). */
-export async function editRetailCrmPayment(
+/** Удаление платежа заказа по id. */
+export async function deleteRetailCrmPayment(
   paymentId: number,
-  fields: { status?: string },
 ): Promise<{ success: boolean; error?: string }> {
   const { url: baseUrl, key: apiKey, site } = await getCrmConfig();
   const body = new URLSearchParams();
   body.append('by', 'id');
-  body.append('payment', JSON.stringify(fields));
   if (site) body.append('site', site);
 
-  const response = await fetch(`${baseUrl}/api/v5/orders/payments/${paymentId}/edit?apiKey=${apiKey}`, {
+  const response = await fetch(`${baseUrl}/api/v5/orders/payments/${paymentId}/delete?apiKey=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: body.toString(),
