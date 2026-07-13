@@ -52,7 +52,12 @@ function paymentsPageLink(): string {
   return `${base}/payments`;
 }
 
-function buildMessage(row: PointPaymentRow, routed: boolean): string {
+export interface NotifyOptions {
+  movedToProduction?: boolean;
+  productionStatusName?: string;
+}
+
+function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions): string {
   const source = SOURCE_LABELS[row.source] || row.source;
   const lines: string[] = [];
   lines.push(`💰 <b>Оплата · ${esc(source)}</b>`);
@@ -84,6 +89,10 @@ function buildMessage(row: PointPaymentRow, routed: boolean): string {
       : `№${esc(row.matched_order_number)}`;
     const synced = row.retailcrm_synced_at ? ' — проброшен в RetailCRM' : '';
     lines.push(`✅ Заказ ${order}${synced}`);
+    if (opts.movedToProduction) {
+      const name = opts.productionStatusName || 'Передано в производство';
+      lines.push(`🏭 Заказ №${esc(String(row.matched_order_number))} переведён в статус «${esc(name)}»`);
+    }
   } else {
     lines.push(`🟡 Требует ручного разбора — <a href="${paymentsPageLink()}">открыть</a>`);
   }
@@ -92,7 +101,7 @@ function buildMessage(row: PointPaymentRow, routed: boolean): string {
 }
 
 /** Отправляет уведомление об оплате. No-op, если бот/чат не сконфигурированы. */
-export async function notifyPaymentTelegram(row: PointPaymentRow): Promise<void> {
+export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOptions = {}): Promise<void> {
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
   if (!token) return; // не сконфигурировано — тихо пропускаем
 
@@ -105,7 +114,7 @@ export async function notifyPaymentTelegram(row: PointPaymentRow): Promise<void>
 
   const body: Record<string, unknown> = {
     chat_id: chatId,
-    text: buildMessage(row, routed),
+    text: buildMessage(row, routed, opts),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   };

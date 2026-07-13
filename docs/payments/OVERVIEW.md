@@ -355,3 +355,6 @@
 - Целевой статус — `RETAILCRM_PRODUCTION_STATUS` (env, по умолчанию `send-assembling`).
 - Поля оплаты (сумма, дата, статус «Оплачен полностью», комментарий) заполняет сам
   проброс — `createRetailCrmOrderPayment` (`status: 'paid'`).
+- **В Telegram-уведомление** добавляется строка «🏭 Заказ №… переведён в статус «…»»,
+  если перевод реально выполнен (результат `moveOrderToProductionAfterPayment` пробрасывается
+  через `pushMatchedPaymentToCrm` в `notifyPaymentTelegram`). Имя статуса — из справочника.

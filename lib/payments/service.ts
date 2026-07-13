@@ -118,7 +118,9 @@ export async function ingestPointPayment(
   return { row: existing as PointPaymentRow, isNew: false };
 }
 
-async function pushMatchedPaymentToCrm(row: PointPaymentRow): Promise<void> {
+async function pushMatchedPaymentToCrm(
+  row: PointPaymentRow,
+): Promise<{ movedToProduction: boolean; productionStatusName?: string }> {
   const result = await createRetailCrmOrderPayment({
     orderId: row.matched_order_id,
     orderNumber: row.matched_order_number,
@@ -141,7 +143,8 @@ async function pushMatchedPaymentToCrm(row: PointPaymentRow): Promise<void> {
 
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
-    await moveOrderToProductionAfterPayment(row.matched_order_id);
+    const mv = await moveOrderToProductionAfterPayment(row.matched_order_id);
+    return { movedToProduction: mv.moved, productionStatusName: mv.statusName };
   } else {
     await supabase
       .from('point_payments')
@@ -198,8 +201,9 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     .single();
   if (error) throw error;
 
+  let push: { movedToProduction: boolean; productionStatusName?: string } = { movedToProduction: false };
   if (autoMatch && updated) {
-    await pushMatchedPaymentToCrm(updated as PointPaymentRow);
+    push = await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
 
   // Уведомление об оплате в Telegram — один раз на платёж:
@@ -208,9 +212,10 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   //     независимо от матча, в свой чат.
   const u = updated as PointPaymentRow;
   if (!row.notified_at && updated && (u.status === 'matched' || isRoutedRecipient(u.recipient_inn))) {
-    await notifyPaymentTelegram(u).catch((e) =>
-      console.error('[payments] telegram notify failed:', e?.message || e),
-    );
+    await notifyPaymentTelegram(u, {
+      movedToProduction: push.movedToProduction,
+      productionStatusName: push.productionStatusName,
+    }).catch((e) => console.error('[payments] telegram notify failed:', e?.message || e));
     await supabase
       .from('point_payments')
       .update({ notified_at: new Date().toISOString() })
