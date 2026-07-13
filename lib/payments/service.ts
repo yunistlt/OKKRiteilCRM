@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder } from './matching';
 import { notifyPaymentTelegram, isRoutedRecipient } from './notify';
+import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
   toRetailCrmPaidAt,
@@ -137,6 +138,10 @@ async function pushMatchedPaymentToCrm(row: PointPaymentRow): Promise<void> {
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
+
+    // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
+    // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
+    await moveOrderToProductionAfterPayment(row.matched_order_id);
   } else {
     await supabase
       .from('point_payments')
