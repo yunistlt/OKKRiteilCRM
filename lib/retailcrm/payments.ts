@@ -47,26 +47,32 @@ export async function createRetailCrmOrderPayment(
   if (input.comment) payment.comment = input.comment;
 
   const requestUrl = `${baseUrl}/api/v5/orders/payments/create?apiKey=${apiKey}`;
-  const body = new URLSearchParams();
-  body.append('payment', JSON.stringify(payment));
-  if (site) body.append('site', site);
+  const post = async (pay: Record<string, any>) => {
+    const body = new URLSearchParams();
+    body.append('payment', JSON.stringify(pay));
+    if (site) body.append('site', site);
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+    });
+    const result = await response.json().catch(() => ({ success: false, errorMsg: 'invalid json' }));
+    const error = result.success
+      ? null
+      : result.errors
+        ? JSON.stringify(result.errors)
+        : result.errorMsg || `HTTP ${response.status}`;
+    return { success: Boolean(result.success), paymentId: result.id != null ? String(result.id) : null, error };
+  };
 
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
-
-  const result = await response.json().catch(() => ({ success: false, errorMsg: 'invalid json' }));
-
-  if (!result.success) {
-    const error = result.errors
-      ? JSON.stringify(result.errors)
-      : result.errorMsg || `HTTP ${response.status}`;
-    return { success: false, error };
+  let res = await post(payment);
+  // Страховка: если статус не поддержан для типа оплаты — повторяем с 'paid'.
+  if (!res.success && payment.status !== 'paid' && /payment status is not supported/i.test(res.error || '')) {
+    res = await post({ ...payment, status: 'paid' });
   }
 
-  return { success: true, paymentId: result.id != null ? String(result.id) : null };
+  if (!res.success) return { success: false, error: res.error };
+  return { success: true, paymentId: res.paymentId };
 }
 
 /** Удаление платежа заказа по id. */

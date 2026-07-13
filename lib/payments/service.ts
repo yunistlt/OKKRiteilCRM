@@ -228,9 +228,10 @@ async function pushMatchedPaymentToCrm(
  */
 export async function processPointPayment(row: PointPaymentRow): Promise<{ status: string }> {
   // Уже привязан, но не проброшен в CRM — повторяем только проброс.
-  if (row.status === 'matched' && row.matched_order_id && !row.retailcrm_synced_at) {
+  if ((row.status === 'matched' || row.status === 'manual') && row.matched_order_id && !row.retailcrm_synced_at) {
+    // Уже привязан (авто или вручную), но не проброшен — повторяем только проброс, не пере-матч.
     await pushMatchedPaymentToCrm(row);
-    return { status: 'matched' };
+    return { status: row.status };
   }
 
   const normalized = normalizedFromRow(row);
@@ -378,7 +379,11 @@ export async function claimProcessablePayments(limit = 10): Promise<PointPayment
   const { data, error } = await supabase
     .from('point_payments')
     .select(SELECT_COLUMNS)
-    .or('and(status.eq.pending_match,processed_at.is.null),and(status.eq.matched,retailcrm_synced_at.is.null)')
+    .or(
+      'and(status.eq.pending_match,processed_at.is.null),' +
+        'and(status.eq.matched,retailcrm_synced_at.is.null),' +
+        'and(status.eq.manual,retailcrm_synced_at.is.null)',
+    )
     .order('created_at', { ascending: true })
     .limit(limit);
   if (error) throw error;
