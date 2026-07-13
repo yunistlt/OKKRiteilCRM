@@ -5,9 +5,32 @@ import { notifyPaymentTelegram, isRoutedRecipient } from './notify';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
+  editRetailCrmPayment,
   toRetailCrmPaidAt,
 } from '@/lib/retailcrm/payments';
 import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
+
+// Единственный источник правды по оплатам — банковский синк (выписка). Любая оплаченная
+// запись на заказе, НЕ созданная нашим синком (нет externalId tochka-/tbank-), сбрасывается
+// в «Не оплачен», чтобы одна и та же оплата не задваивалась (напр. вручную помеченный счёт).
+const RECEIVED_STATUSES = new Set(['paid', 'check-off-full', 'payment-start']);
+
+function isBankSyncPayment(p: any): boolean {
+  const ext = typeof p?.externalId === 'string' ? p.externalId : '';
+  return ext.startsWith('tochka-') || ext.startsWith('tbank-');
+}
+
+async function reconcileOrderPaymentsToBank(order: any): Promise<number> {
+  let unpaid = 0;
+  for (const p of Object.values(order?.payments || {})) {
+    const pp = p as any;
+    if (pp?.id && RECEIVED_STATUSES.has(pp?.status) && !isBankSyncPayment(pp)) {
+      const res = await editRetailCrmPayment(Number(pp.id), { status: 'not-paid' }).catch(() => ({ success: false }));
+      if (res.success) unpaid++;
+    }
+  }
+  return unpaid;
+}
 
 // Статус нашего платежа: 'paid' (Оплачен полностью) если накопленная сумма банковских
 // платежей по заказу (включая этот) покрывает сумму заказа, иначе 'check-off-full'
@@ -165,6 +188,10 @@ async function pushMatchedPaymentToCrm(
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
+
+    // Банк — источник правды: сбрасываем чужие (не из синка) оплаченные записи на заказе,
+    // чтобы не задваивать деньги (напр. вручную «оплаченный» счёт). Не критично.
+    if (order) await reconcileOrderPaymentsToBank(order).catch(() => 0);
 
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).

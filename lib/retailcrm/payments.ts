@@ -69,6 +69,29 @@ export async function createRetailCrmOrderPayment(
   return { success: true, paymentId: result.id != null ? String(result.id) : null };
 }
 
+/** Редактирование существующего платежа заказа (напр. сброс статуса в 'not-paid'). */
+export async function editRetailCrmPayment(
+  paymentId: number,
+  fields: { status?: string },
+): Promise<{ success: boolean; error?: string }> {
+  const { url: baseUrl, key: apiKey, site } = await getCrmConfig();
+  const body = new URLSearchParams();
+  body.append('by', 'id');
+  body.append('payment', JSON.stringify(fields));
+  if (site) body.append('site', site);
+
+  const response = await fetch(`${baseUrl}/api/v5/orders/payments/${paymentId}/edit?apiKey=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const result = await response.json().catch(() => ({ success: false, errorMsg: 'invalid json' }));
+  if (!result.success) {
+    return { success: false, error: result.errors ? JSON.stringify(result.errors) : result.errorMsg || `HTTP ${response.status}` };
+  }
+  return { success: true };
+}
+
 /** Формат paidAt для RetailCRM из ISO/даты. */
 export function toRetailCrmPaidAt(date?: string | null): string | null {
   if (!date) return null;
