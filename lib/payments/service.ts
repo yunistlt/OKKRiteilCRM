@@ -281,8 +281,11 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     update.status = 'matched';
     update.matched_order_id = match.matchedOrderId;
     update.matched_order_number = match.matchedOrderNumber;
+  } else if (project === 'stolyarka' || project === 'consulting') {
+    // Чужой проект опознан (в RetailCRM ЗМКТЛ не ведётся) — действие не требуется.
+    update.status = 'recognized';
   } else {
-    // Не подтверждено (нет подписи) или неоднозначно — на ручной разбор.
+    // ЗМКТЛ/не определён без матча — на ручной разбор.
     update.status = 'pending_match';
   }
 

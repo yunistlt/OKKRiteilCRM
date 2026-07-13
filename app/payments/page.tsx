@@ -44,6 +44,7 @@ const STATUS_LABELS: Record<string, string> = {
   pending_match: 'Требуют разбора',
   matched: 'Привязанные',
   manual: 'Привязаны вручную',
+  recognized: 'Опознан',
   ignored: 'Пропущенные',
   failed: 'Ошибка',
 };
@@ -53,6 +54,7 @@ const STATUS_STYLES: Record<string, string> = {
   pending_match: 'bg-amber-100 text-amber-800',
   matched: 'bg-emerald-100 text-emerald-800',
   manual: 'bg-blue-100 text-blue-800',
+  recognized: 'bg-teal-100 text-teal-800',
   ignored: 'bg-gray-100 text-gray-600',
   failed: 'bg-red-100 text-red-800',
 };
