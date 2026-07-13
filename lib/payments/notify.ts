@@ -95,7 +95,7 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   // Выбор чата: сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе —
   // по проекту из назначения (столярка/консалтинг → свой чат).
   const matched = row.status === 'matched' || row.status === 'manual';
-  const foreign = matched ? null : detectForeignProject(row.purpose);
+  const foreign = matched ? null : detectForeignProject({ purpose: row.purpose, recipientInn: row.recipient_inn });
   const routed = Boolean(foreign);
   const chatId = projectChatId(foreign ?? 'zmktl');
   if (!chatId) return;

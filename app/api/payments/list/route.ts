@@ -6,12 +6,12 @@ export const dynamic = 'force-dynamic';
 
 const LIST_COLUMNS =
   'id, source, external_payment_id, amount_kopecks, currency, payment_date, purpose, ' +
-  'document_number, payer_name, payer_inn, recipient_name, recipient_inn, status, match_method, match_confidence, ' +
+  'document_number, payer_name, payer_inn, recipient_name, recipient_inn, status, project, match_method, match_confidence, ' +
   'extracted_invoice_number, match_candidates, matched_order_number, matched_order_id, ' +
   'retailcrm_payment_id, retailcrm_synced_at, retailcrm_error, signature_verified, ' +
   'reviewed_by, reviewed_at, created_at';
 
-// GET /api/payments/list?status=pending_match&limit=100
+// GET /api/payments/list?status=pending_match|project=zmktl&limit=100
 export async function GET(req: NextRequest) {
   try {
     const session = await getSession(req);
@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get('status');
+    const project = searchParams.get('project');
     const limit = Math.min(Number(searchParams.get('limit')) || 100, 500);
 
     let query = supabase
@@ -28,23 +29,26 @@ export async function GET(req: NextRequest) {
       .limit(limit);
 
     if (status) query = query.eq('status', status);
+    if (project) query = query.eq('project', project);
 
     const { data, error } = await query;
     if (error) throw error;
 
-    // Сводка по статусам для шапки.
+    // Сводки по статусам и по проектам для вкладок.
     const { data: counts } = await supabase
       .from('point_payments')
-      .select('status')
-      .limit(2000);
+      .select('status, project')
+      .limit(3000);
     const summary: Record<string, number> = {};
+    const projectSummary: Record<string, number> = {};
     (counts || []).forEach((r: any) => {
       summary[r.status] = (summary[r.status] || 0) + 1;
+      if (r.project) projectSummary[r.project] = (projectSummary[r.project] || 0) + 1;
     });
 
     const crmUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
 
-    return NextResponse.json({ payments: data || [], summary, crm_url: crmUrl });
+    return NextResponse.json({ payments: data || [], summary, projectSummary, crm_url: crmUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

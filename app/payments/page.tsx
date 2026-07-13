@@ -25,6 +25,7 @@ interface Payment {
   recipient_name: string | null;
   recipient_inn: string | null;
   status: string;
+  project: string | null;
   match_method: string | null;
   match_confidence: string | null;
   extracted_invoice_number: string | null;
@@ -67,12 +68,21 @@ const SOURCE_STYLES: Record<string, string> = {
   tbank: 'bg-yellow-100 text-yellow-800',
 };
 
-const TABS: Array<{ key: string; label: string }> = [
-  { key: 'pending_match', label: 'Требуют разбора' },
-  { key: 'matched', label: 'Привязанные' },
-  { key: 'manual', label: 'Вручную' },
-  { key: 'ignored', label: 'Пропущенные' },
-  { key: '', label: 'Все' },
+const PROJECT_LABELS: Record<string, string> = {
+  zmktl: 'ЗМКТЛ',
+  stolyarka: 'Столярка',
+  consulting: 'ПО/Консалтинг',
+};
+
+// Вкладки: по проектам (kind='project') и по статусам (kind='status').
+type Tab = { kind: 'project' | 'status'; value: string; label: string };
+const TABS: Tab[] = [
+  { kind: 'project', value: 'zmktl', label: 'ЗМКТЛ' },
+  { kind: 'project', value: 'stolyarka', label: 'Столярка' },
+  { kind: 'project', value: 'consulting', label: 'ПО/Консалтинг' },
+  { kind: 'status', value: 'pending_match', label: 'Требуют разбора' },
+  { kind: 'status', value: 'ignored', label: 'Пропущенные' },
+  { kind: 'status', value: '', label: 'Все' },
 ];
 
 // Сумма с разделителями разрядов и копейками (ru-RU) — «484 898,30 ₽».
@@ -131,9 +141,10 @@ function crmOrderLink(crmUrl: string, orderId: number | null, orderNumber?: stri
 }
 
 export default function PaymentsPage() {
-  const [tab, setTab] = useState<string>('pending_match');
+  const [tab, setTab] = useState<Tab>(TABS[0]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [summary, setSummary] = useState<Record<string, number>>({});
+  const [projectSummary, setProjectSummary] = useState<Record<string, number>>({});
   const [crmUrl, setCrmUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -278,12 +289,13 @@ export default function PaymentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const url = tab ? `/api/payments/list?status=${tab}` : '/api/payments/list';
-      const res = await fetch(url, { cache: 'no-store' });
+      const qs = tab.value ? `?${tab.kind === 'project' ? 'project' : 'status'}=${tab.value}` : '';
+      const res = await fetch(`/api/payments/list${qs}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка загрузки');
       setPayments(json.payments || []);
       setSummary(json.summary || {});
+      setProjectSummary(json.projectSummary || {});
       setCrmUrl(json.crm_url || '');
     } catch (e: any) {
       setError(e.message);
@@ -603,20 +615,24 @@ export default function PaymentsPage() {
           )}
         </div>
 
-        {/* Вкладки-фильтры по статусу */}
+        {/* Вкладки: проекты (ЗМКТЛ/Столярка/ПО) + статусы */}
         <div className="flex flex-wrap items-center gap-1 border-t border-gray-200 px-4 py-2">
-          {TABS.map((t) => (
-            <button
-              key={t.key || 'all'}
-              onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
-                tab === t.key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {t.label}
-              {t.key && summary[t.key] ? ` · ${summary[t.key]}` : ''}
-            </button>
-          ))}
+          {TABS.map((t) => {
+            const active = tab.kind === t.kind && tab.value === t.value;
+            const count = t.kind === 'project' ? projectSummary[t.value] : t.value ? summary[t.value] : 0;
+            return (
+              <button
+                key={`${t.kind}:${t.value || 'all'}`}
+                onClick={() => setTab(t)}
+                className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {t.label}
+                {count ? ` · ${count}` : ''}
+              </button>
+            );
+          })}
           <button
             onClick={load}
             className="ml-auto border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
@@ -665,6 +681,14 @@ export default function PaymentsPage() {
                         >
                           {SOURCE_LABELS[p.source] || p.source}
                         </span>
+                        {p.project && (
+                          <span
+                            className="inline-block bg-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700"
+                            title="Проект"
+                          >
+                            {PROJECT_LABELS[p.project] || p.project}
+                          </span>
+                        )}
                       </div>
                       {!p.signature_verified && (
                         <span

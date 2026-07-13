@@ -4,6 +4,7 @@ import {
   OrderMatchCandidate,
   PointPaymentMatchResult,
 } from './types';
+import { isInternalGroupTransfer } from './projects';
 
 /**
  * Извлекает номера счетов/договоров из назначения платежа.
@@ -81,9 +82,8 @@ const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат с�
 export function classifyNonCustomerPayment(
   payment: NormalizedPointPayment,
 ): 'internal' | 'bank' | null {
-  const payer = normalizeInn(payment.payerInn);
-  const recip = normalizeInn(payment.recipientInn);
-  if (payer && recip && payer === recip) return 'internal';
+  // Внутренний перевод между своими юрлицами группы (оба ИНН — свои), напр. субаренда.
+  if (isInternalGroupTransfer(payment.payerInn, payment.recipientInn)) return 'internal';
   if (BANK_PURPOSE_RE.test(payment.purpose || '')) return 'bank';
   return null;
 }

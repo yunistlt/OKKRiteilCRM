@@ -2,7 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram } from './notify';
-import { detectForeignProject } from './projects';
+import { classifyProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
@@ -257,14 +257,14 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
 
   const match = await matchPaymentToOrder(normalized);
 
-  // Проект по назначению — только для маршрута уведомления не-сматченных (столярка/
-  // консалтинг). Приоритет матча — по номеру+плательщику (не по ключевым словам).
-  const foreignProject = detectForeignProject(normalized.purpose);
-
   // Авто-привязка при уверенном матче. High (номер+плательщик/сумма) достаточно надёжен,
   // чтобы привязать даже без проверенной подписи вебхука; medium — только при подписи.
   const autoMatch =
     match.status === 'matched' && (normalized.signatureVerified || match.confidence === 'high');
+
+  // Проект: совпал заказ RetailCRM → ЗМКТЛ; иначе по назначению/получателю (столярка/консалтинг).
+  const signals = { purpose: normalized.purpose, recipientInn: normalized.recipientInn };
+  const project = classifyProject(signals, match.status === 'matched');
 
   const update: Record<string, any> = {
     match_method: match.method,
@@ -272,6 +272,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     extracted_invoice_number: match.extractedInvoiceNumber,
     extracted_invoice_numbers: match.extractedInvoiceNumbers,
     match_candidates: match.candidates,
+    project,
     processed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -304,7 +305,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   //   • ЗМКТЛ — только по разнесённым (matched); неразобранные не шлём;
   //   • столярка/консалтинг (чужой проект) — всегда, независимо от матча, в свой чат.
   const u = updated as PointPaymentRow;
-  if (!row.notified_at && updated && (u.status === 'matched' || foreignProject !== null)) {
+  if (!row.notified_at && updated && (u.status === 'matched' || project === 'stolyarka' || project === 'consulting')) {
     await notifyPaymentTelegram(u, {
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,
