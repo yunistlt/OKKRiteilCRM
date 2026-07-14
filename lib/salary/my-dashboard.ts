@@ -3,6 +3,7 @@ import { businessDaysInMonth } from '@/lib/salary/engine';
 import { pickTier } from '@/lib/salary/blocks/tiers';
 import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
 import { getPrepayPolicy } from '@/lib/salary/config';
+import { isBankSyncExternalId } from '@/lib/payments/types';
 import { resolveManagerGrades, resolveGradePolicy } from '@/lib/salary/grades';
 import type { BlockContribution } from '@/lib/salary/blocks/types';
 
@@ -458,14 +459,18 @@ async function computePrepay(
     for (const o of (data as any[]) ?? []) {
         const payments = o?.raw_payload?.payments;
         if (!payments || typeof payments !== 'object') continue;
-        // Фактический приход = реальные поступления (не-invoice); счёт (invoice) — фолбэк,
-        // если прихода нет. Так снимается задвоение invoicejur + bank-transfer на ту же сумму.
+        // Фактический приход = наши банк-синк-платежи (по externalId tochka-/tbank-); счёт,
+        // выставленный менеджером (invoice-тип без нашего externalId) — фолбэк, если прихода нет.
+        // Так снимается задвоение «счёт + банковский платёж» на ту же сумму. Признак — externalId,
+        // а не тип оплаты: наши платежи теперь идут типом invoicejur (как и счёт), различить можно
+        // только по externalId. Прочие не-invoice поступления (напр. наличные) тоже считаем приходом.
         let receipts = 0;
         let invoices = 0;
         for (const p of Object.values(payments as Record<string, any>)) {
             if (!p || !paidSet.has(String(p.status))) continue;
             const amount = Number(p.amount) || 0;
-            if (invoiceTypes.has(String(p.type))) invoices += amount;
+            if (isBankSyncExternalId(p.externalId)) receipts += amount;
+            else if (invoiceTypes.has(String(p.type))) invoices += amount;
             else receipts += amount;
         }
         const paidGross = receipts > 0 ? receipts : invoices; // приход с НДС

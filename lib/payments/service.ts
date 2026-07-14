@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { NormalizedPointPayment, kopecksToRubles } from './types';
+import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram } from './notify';
 import { classifyProject } from './projects';
@@ -18,8 +18,7 @@ import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
 const RECEIVED_STATUSES = new Set(['paid', 'check-off-full', 'payment-start']);
 
 function isBankSyncPayment(p: any): boolean {
-  const ext = typeof p?.externalId === 'string' ? p.externalId : '';
-  return ext.startsWith('tochka-') || ext.startsWith('tbank-');
+  return isBankSyncExternalId(p?.externalId);
 }
 
 async function reconcileOrderPaymentsToBank(order: any, newBankAmountRub: number): Promise<number> {
@@ -40,16 +39,17 @@ async function reconcileOrderPaymentsToBank(order: any, newBankAmountRub: number
 }
 
 // Статус нашего платежа: 'paid' (Оплачен полностью) если накопленная сумма банковских
-// платежей по заказу (включая этот) покрывает сумму заказа, иначе 'check-off-full'
-// (Частичная оплата). Счета (invoicejur) не считаем — это не поступления.
+// поступлений по заказу (включая этот) покрывает сумму заказа, иначе 'check-off-full'
+// (Частичная оплата). Считаем только НАШИ банк-синк-платежи (по externalId), а не по типу:
+// счёт менеджера (invoicejur без externalId) — это не поступление, и с тех пор как наши платежи
+// тоже invoicejur, различать их можно только по externalId, иначе счёт задвоит накопленную сумму.
 function computePaymentStatus(order: any, thisAmountRub: number): 'paid' | 'check-off-full' {
   const total = Number(order?.totalSumm);
   if (!Number.isFinite(total) || total <= 0) return 'paid'; // нет суммы заказа — не гадаем
-  const bankType = process.env.RETAILCRM_BANK_PAYMENT_TYPE || 'bank-transfer';
   let priorPaid = 0;
   for (const p of Object.values(order?.payments || {})) {
     const pp = p as any;
-    if (pp?.type === bankType && (pp?.status === 'paid' || pp?.status === 'check-off-full')) {
+    if (isBankSyncPayment(pp) && (pp?.status === 'paid' || pp?.status === 'check-off-full')) {
       priorPaid += Number(pp.amount) || 0;
     }
   }
