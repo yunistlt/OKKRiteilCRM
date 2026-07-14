@@ -8,6 +8,7 @@ import {
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 import { initiateMakeCall } from '@/lib/telphin';
+import { isValidRuMobile, callbackWindow } from '@/lib/callback-hours';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -52,6 +53,26 @@ export async function GET(req: NextRequest) {
       if (!phone || !visitorId) {
         await failSystemJob(job.id, 'Missing phone or visitorId', 3600); // Don't retry soon
         results.push({ job_id: job.id, status: 'failed_validation' });
+        continue;
+      }
+
+      // Предохранитель: не звоним по мусорным номерам (перехват форм ловил скрытые инпуты).
+      if (!isValidRuMobile(phone)) {
+        await supabase
+          .from('widget_callback_requests')
+          .update({ status: 'cancelled', last_error: 'invalid phone', updated_at: new Date().toISOString() })
+          .eq('visitor_id', visitorId).eq('phone', phone).in('status', ['pending']);
+        await completeSystemJob(job.id, { status: 'skipped_invalid_phone', phone });
+        results.push({ job_id: job.id, status: 'skipped_invalid_phone' });
+        continue;
+      }
+
+      // Гейт рабочих часов на уровне воркера — покрывает ВСЕ источники задач (форма, крон).
+      const win = callbackWindow();
+      if (!win.withinHours) {
+        const delaySec = Math.max(60, Math.floor((new Date(win.availableAtIso!).getTime() - Date.now()) / 1000));
+        await failSystemJob(job.id, 'off-hours: deferred to working window', delaySec);
+        results.push({ job_id: job.id, status: 'deferred_offhours' });
         continue;
       }
 

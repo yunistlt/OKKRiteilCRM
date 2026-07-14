@@ -3,6 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
 import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { callbackWindow, isValidRuMobile } from '@/lib/callback-hours';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import OpenAI from 'openai';
@@ -322,8 +323,10 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                         }
                     ]);
 
-                    // Инициируем звонок через очередь задач
-                    if (extractedData.phone) {
+                    // Инициируем звонок через очередь задач — только валидный РФ-мобильный,
+                    // вне рабочих часов откладываем на утро (гейт), ночью очередь не дёргаем.
+                    if (extractedData.phone && isValidRuMobile(extractedData.phone)) {
+                        const win = callbackWindow();
                         await safeEnqueueSystemJob({
                             jobType: 'telphin_callback',
                             payload: {
@@ -333,7 +336,8 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                                 crm_order_id: parseInt(orderNumber) || null
                             },
                             priority: 15,
-                            idempotencyKey: `telphin_callback:${extractedData.phone}:${session.id}`
+                            idempotencyKey: `telphin_callback:${extractedData.phone}:${session.id}`,
+                            availableAt: win.withinHours ? undefined : win.availableAtIso
                         });
                     }
 
