@@ -77,16 +77,20 @@ export async function GET(req: NextRequest) {
       }
 
       try {
-        // 1. Check if there's an active request to avoid double calling
-        const { data: activeRequest } = await supabase
+        // 1. Не звоним повторно, только если звонок на этот номер СЕЙЧАС в процессе
+        // (обновлён за последние ~2 мин). Статус calling_manager у нас не резолвится вебхуком,
+        // поэтому проверяем по времени — иначе он блокировал бы повторные звонки навсегда.
+        const activeThreshold = new Date(Date.now() - 120000).toISOString();
+        const { data: activeRequests } = await supabase
             .from('widget_callback_requests')
-            .select('*')
+            .select('id')
             .eq('visitor_id', visitorId)
             .eq('phone', phone)
             .in('status', ['calling_manager', 'calling_customer'])
-            .maybeSingle();
+            .gte('updated_at', activeThreshold)
+            .limit(1);
 
-        if (activeRequest) {
+        if (activeRequests && activeRequests.length) {
             await completeSystemJob(job.id, { status: 'skipped_active_call' });
             results.push({ job_id: job.id, status: 'skipped_active' });
             continue;

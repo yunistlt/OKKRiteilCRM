@@ -424,11 +424,14 @@ export async function POST(req: Request) {
             // Ставим задачу на авто-дозвон (Телфин: очередь ОП → менеджер → клиент).
             // Вне рабочих часов — откладываем на утро (available_at), ночью не звоним.
             const win = callbackWindow();
+            // Ключ анти-дубля с временным окном (~2 мин): двойной клик глушим, а повторный
+            // запрос позже (клиент не дозвонился → просит снова) — пропускаем как новый звонок.
+            const dedupeBucket = Math.floor(Date.now() / 120000);
             await safeEnqueueSystemJob({
                 jobType: 'telphin_callback',
                 payload: { visitorId, phone: normalized, sessionId },
                 priority: 15,
-                idempotencyKey: `telphin_callback:${normalized}:${sessionId}`,
+                idempotencyKey: `telphin_callback:${normalized}:${sessionId}:${dedupeBucket}`,
                 availableAt: win.withinHours ? undefined : win.availableAtIso,
             });
             if (win.withinHours) {
