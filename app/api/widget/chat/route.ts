@@ -5,7 +5,7 @@ import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/phone-utils';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
-import { callbackWindow, isValidRuMobile } from '@/lib/callback-hours';
+import { callbackWindow, isDialablePhone } from '@/lib/callback-hours';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
@@ -396,8 +396,8 @@ export async function POST(req: Request) {
             const { name, phone, company } = body as { name?: string; phone?: string; company?: string };
             const normalized = phone ? normalizePhone(phone) : null;
 
-            if (!name || !normalized || !isValidRuMobile(normalized)) {
-                return NextResponse.json({ error: 'Name and valid RU mobile phone are required' }, { status: 400, headers: CORS_HEADERS });
+            if (!name || !normalized || !isDialablePhone(normalized)) {
+                return NextResponse.json({ error: 'Name and valid phone are required' }, { status: 400, headers: CORS_HEADERS });
             }
 
             await Promise.all([

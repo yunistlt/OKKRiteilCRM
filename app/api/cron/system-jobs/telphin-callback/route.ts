@@ -8,7 +8,7 @@ import {
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { supabase } from '@/utils/supabase';
 import { initiateMakeCall } from '@/lib/telphin';
-import { isValidRuMobile, callbackWindow } from '@/lib/callback-hours';
+import { isDialablePhone, callbackWindow } from '@/lib/callback-hours';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
       }
 
       // Предохранитель: не звоним по мусорным номерам (перехват форм ловил скрытые инпуты).
-      if (!isValidRuMobile(phone)) {
+      if (!isDialablePhone(phone)) {
         await supabase
           .from('widget_callback_requests')
           .update({ status: 'cancelled', last_error: 'invalid phone', updated_at: new Date().toISOString() })

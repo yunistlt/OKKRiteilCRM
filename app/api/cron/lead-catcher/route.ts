@@ -3,7 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
 import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
-import { callbackWindow, isValidRuMobile } from '@/lib/callback-hours';
+import { callbackWindow, isDialablePhone } from '@/lib/callback-hours';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import OpenAI from 'openai';
@@ -325,7 +325,7 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
 
                     // Инициируем звонок через очередь задач — только валидный РФ-мобильный,
                     // вне рабочих часов откладываем на утро (гейт), ночью очередь не дёргаем.
-                    if (extractedData.phone && isValidRuMobile(extractedData.phone)) {
+                    if (extractedData.phone && isDialablePhone(extractedData.phone)) {
                         const win = callbackWindow();
                         await safeEnqueueSystemJob({
                             jobType: 'telphin_callback',

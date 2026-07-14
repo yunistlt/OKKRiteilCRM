@@ -584,7 +584,7 @@ async function initWidget() {
         hint.style.cssText = 'font-size:12px;line-height:1.35;color:#581c87;margin-bottom:10px;';
         var fieldStyle = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
         var nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Ваше имя...'; nameInp.style.cssText = fieldStyle;
-        var phoneInp = document.createElement('input'); phoneInp.type = 'tel'; phoneInp.placeholder = '+7 (___) ___-__-__'; phoneInp.style.cssText = fieldStyle;
+        var phoneInp = document.createElement('input'); phoneInp.type = 'tel'; phoneInp.placeholder = '+7 (___) ___-__-__'; phoneInp.value = '+7 '; phoneInp.style.cssText = fieldStyle;
         var companyInp = document.createElement('input'); companyInp.type = 'text'; companyInp.placeholder = 'Компания (необязательно)'; companyInp.style.cssText = fieldStyle;
         var submitBtn = document.createElement('button');
         submitBtn.textContent = 'Забронировать Алису Мини';
@@ -592,7 +592,8 @@ async function initWidget() {
         submitBtn.onclick = function() {
             var name = nameInp.value.trim(); var phone = phoneInp.value.trim(); var company = companyInp.value.trim();
             if (!name) { nameInp.style.borderColor = '#ef4444'; nameInp.focus(); return; }
-            if (!phone || !/^(\\+7|8|7)?[\\s\\-]?\\(?[489][0-9]{2}\\)?[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}$/.test(phone.replace(/\\s/g, ''))) { phoneInp.style.borderColor = '#ef4444'; phoneInp.focus(); return; }
+            var pd = phone.replace(/[^0-9]/g, '');
+            if (!phone || pd.length < 10 || pd.length > 12) { phoneInp.style.borderColor = '#ef4444'; phoneInp.focus(); return; }
             submitBtn.disabled = true; submitBtn.textContent = 'Отправляю...';
             localStorage.setItem(WIDGET_CONFIG.storageKeys.hasInteracted, 'true');
             apiCall('callback', { name: name, phone: phone, company: company || null }).then(function(resp) {
@@ -680,14 +681,24 @@ async function initWidget() {
     function hookNativeCallback() {
         var lastSent = 0;
         function onlyDigits(v) { var d = ''; v = (v || '') + ''; for (var k = 0; k < v.length; k++) { var c = v.charCodeAt(k); if (c >= 48 && c <= 57) d += v.charAt(k); } return d; }
-        // Строго российский мобильный: 8/7 + 10 цифр или 9 + 9 цифр → +79XXXXXXXXX. Иначе null.
+        var CIS_CODES = ['375', '380', '373', '374', '992', '993', '994', '995', '996', '998'];
+        // Телефон стран СНГ → +<код><номер>. РФ/Казахстан +7, Беларусь +375 и т.д. Иначе null (мусор).
         function normPhone(v) {
             var d = onlyDigits(v);
-            if (d.length === 11 && (d.charAt(0) === '8' || d.charAt(0) === '7')) { d = '7' + d.substring(1); }
-            else if (d.length === 10 && d.charAt(0) === '9') { d = '7' + d; }
-            else { return null; }
-            if (d.length === 11 && d.charAt(0) === '7' && d.charAt(1) === '9') { return '+' + d; }
+            if (d.length < 10 || d.length > 12) return null;
+            if (d.length === 11 && (d.charAt(0) === '8' || d.charAt(0) === '7')) return '+7' + d.substring(1);
+            if (d.length === 10 && '9348'.indexOf(d.charAt(0)) > -1) return '+7' + d;
+            for (var i = 0; i < CIS_CODES.length; i++) { if (d.indexOf(CIS_CODES[i]) === 0) return '+' + d; }
             return null;
+        }
+        // Настоящее поле телефона: type=tel, либо name/id/placeholder/class/autocomplete со словом «телефон».
+        function isPhoneInput(inp) {
+            if (inp.type === 'hidden' || inp.offsetParent === null) return false;
+            if (inp.type === 'tel') return true;
+            var hay = ((inp.name || '') + ' ' + (inp.id || '') + ' ' + (inp.placeholder || '') + ' ' + (inp.className || '') + ' ' + (inp.getAttribute('autocomplete') || '') + ' ' + (inp.getAttribute('inputmode') || '')).toLowerCase();
+            var kws = ['phone', 'tel', 'телефон', 'номер', 'mobile', 'моб'];
+            for (var i = 0; i < kws.length; i++) { if (hay.indexOf(kws[i]) > -1) return true; }
+            return false;
         }
         function callbackCtx(el) {
             var node = el;
@@ -707,8 +718,8 @@ async function initWidget() {
                 var phone = null;
                 for (var j = 0; j < inputs.length; j++) {
                     var inp = inputs[j];
-                    // только видимые поля ввода; скрытые (id товара/токены) игнорируем
-                    if (inp.type === 'hidden' || inp.offsetParent === null) continue;
+                    // только НАСТОЯЩЕЕ поле телефона (не скрытые id товара/токены/прочие инпуты)
+                    if (!isPhoneInput(inp)) continue;
                     var p = normPhone(inp.value);
                     if (p) { phone = p; break; }
                 }
