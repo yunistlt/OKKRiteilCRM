@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import {
   claimProcessablePayments,
   processPointPayment,
+  reconcileCrmPostings,
 } from '@/lib/payments/service';
 import { supabase } from '@/utils/supabase';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -26,9 +27,6 @@ export async function GET(req: NextRequest) {
     ensureAuthorized(req);
 
     const rows = await claimProcessablePayments(10);
-    if (!rows.length) {
-      return NextResponse.json({ ok: true, status: 'idle', processed: 0 });
-    }
 
     const results: Array<Record<string, any>> = [];
     for (const row of rows) {
@@ -48,8 +46,23 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    await recordWorkerSuccess(WORKER_KEY, { processed: results.length });
-    return NextResponse.json({ ok: true, status: 'processed', processed: results.length, results });
+    // Сверка проводок с RetailCRM — держим crm_posting честным (удалили/изменили/внесли вручную).
+    // Не критично и не трогает факт прихода; сбой не должен ронять воркер.
+    let reconciled = 0;
+    try {
+      reconciled = await reconcileCrmPostings(10);
+    } catch (e: any) {
+      console.error('[Tochka] reconcileCrmPostings failed:', e?.message || e);
+    }
+
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled });
+    return NextResponse.json({
+      ok: true,
+      status: results.length || reconciled ? 'processed' : 'idle',
+      processed: results.length,
+      reconciled,
+      results,
+    });
   } catch (error: any) {
     if (error.message !== 'Unauthorized') {
       await recordWorkerFailure(WORKER_KEY, error.message || 'point payment ingest route error');

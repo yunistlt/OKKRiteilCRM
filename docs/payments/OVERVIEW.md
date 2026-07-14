@@ -164,7 +164,31 @@
 `payer_name/_inn/_kpp/_account`, `status`, `match_method`, `match_confidence`,
 `extracted_invoice_number(s)`, `match_candidates`, `matched_order_number`,
 `matched_order_id`, `retailcrm_payment_id`, `retailcrm_synced_at`, `retailcrm_error`,
-`raw_payload`.
+`crm_posting`, `posting_checked_at`, `raw_payload`.
+
+### Два разных факта: ПРИХОД и ПРОВОДКА (ЗАКОН)
+
+Строка `point_payments` хранит два принципиально разных факта, и их нельзя смешивать:
+
+- **Приход денег на счёт** — факт из банка. **НЕИЗМЕНЕН**: `source`, `external_payment_id`,
+  `amount_kopecks`, `purpose`, `payer_*`, `payment_date`, `raw_payload`. Эти поля **никогда не
+  мутируются** после приёма (идемпотентный ingest). Деньги пришли — это навсегда.
+- **Проводка в RetailCRM** — изменяемое действие «занесли платёж на заказ». Его могут провести
+  мы (авто) или менеджер (вручную), удалить, переделать. Поля: `matched_order_id`,
+  `retailcrm_payment_id`, `retailcrm_synced_at`, **`crm_posting`**.
+
+`crm_posting` (миграция `20260714_point_payments_crm_posting.sql`) — честное состояние проводки:
+- `posted_auto` — провели мы (наш `externalId` `tochka-`/`tbank-` есть на заказе);
+- `posted_manual` — провёл менеджер вручную (нашего `externalId` нет, но на заказе есть оплата
+  на ту же сумму) — БД честно говорит «наш платёж удалён, но приход проведён руками»;
+- `not_posted` — на заказе нет ни нашей, ни ручной оплаты на эту сумму;
+- `NULL` — не применимо (не сматчен / чужой проект / ignored).
+
+**Сверка** (`reconcileCrmPostings`, вызывается из воркера `point-payment-ingest`) периодически
+перечитывает оплаты заказа из RetailCRM и проставляет `crm_posting`/`retailcrm_payment_id` по
+факту. Она **READ-ONLY** относительно CRM и факта прихода: не пере-пушит и не трогает поля прихода —
+только держит состояние проводки честным (когда менеджер удалил/изменил/внёс оплату вручную).
+`posting_checked_at` — когда сверяли последний раз (батч берёт давно не проверявшиеся).
 
 ### Статусы
 - `pending_match` — ждёт матчинга или ручного разбора

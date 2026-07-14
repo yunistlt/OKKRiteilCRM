@@ -56,6 +56,31 @@ function computePaymentStatus(order: any, thisAmountRub: number): 'paid' | 'chec
   return priorPaid + thisAmountRub + 0.01 >= total ? 'paid' : 'check-off-full';
 }
 
+export type CrmPosting = 'posted_auto' | 'posted_manual' | 'not_posted';
+
+// ЧЕСТНОЕ состояние ПРОВОДКИ платежа на заказе RetailCRM (отдельно от неизменного факта прихода).
+// Только читает заказ, ничего не мутирует. Логика:
+//   • наш externalId есть на заказе                       → posted_auto (проведено нами);
+//   • нашего нет, но есть НЕ наша оплата на ту же сумму    → posted_manual (провёл менеджер вручную);
+//   • ни нашей, ни ручной оплаты на эту сумму нет          → not_posted.
+export function computeCrmPosting(
+  order: any,
+  row: PointPaymentRow,
+): { posting: CrmPosting; crmPaymentId: string | null } {
+  const pays = Object.values(order?.payments || {}) as any[];
+  const ourExt = `${row.source}-${row.external_payment_id}`;
+  const ours = pays.find((p) => p?.externalId === ourExt);
+  if (ours) {
+    return { posting: 'posted_auto', crmPaymentId: ours.id != null ? String(ours.id) : row.retailcrm_payment_id ?? null };
+  }
+  const amountRub = kopecksToRubles(Number(row.amount_kopecks));
+  const manual = pays.find(
+    (p) => !isBankSyncPayment(p) && RECEIVED_STATUSES.has(p?.status) && Math.abs(Number(p?.amount) - amountRub) <= 0.5,
+  );
+  if (manual) return { posting: 'posted_manual', crmPaymentId: null };
+  return { posting: 'not_posted', crmPaymentId: null };
+}
+
 // Сервис распределения платежей: приём (идемпотентно) → матчинг → проброс в RetailCRM.
 
 const SELECT_COLUMNS =
@@ -65,7 +90,8 @@ const SELECT_COLUMNS =
   'recipient_name, recipient_inn, ' +
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
-  'retailcrm_synced_at, retailcrm_error, raw_payload, notified_at, created_at, updated_at';
+  'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
+  'raw_payload, notified_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -192,6 +218,9 @@ async function pushMatchedPaymentToCrm(
         retailcrm_payment_id: result.paymentId ?? null,
         retailcrm_synced_at: new Date().toISOString(),
         retailcrm_error: null,
+        // Проводку провели мы, только что — фиксируем честное состояние (сверка потом подтвердит/поправит).
+        crm_posting: 'posted_auto',
+        posting_checked_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
@@ -392,4 +421,47 @@ export async function claimProcessablePayments(limit = 10): Promise<PointPayment
     .limit(limit);
   if (error) throw error;
   return (data || []) as PointPaymentRow[];
+}
+
+/**
+ * Сверка ПРОВОДКИ с RetailCRM — чтобы БД не врала, когда проводку в CRM изменили/удалили/внесли
+ * вручную. READ-ONLY по отношению к CRM и к ФАКТУ прихода: обновляет только crm_posting /
+ * retailcrm_payment_id / posting_checked_at, НЕ пере-пушит и НЕ трогает поля прихода
+ * (source/amount/purpose/payer/raw_payload). Берём сматченные на заказ платежи, давно не
+ * проверявшиеся (posting_checked_at NULL/старые), небольшим батчем — со временем сверяются все.
+ */
+export async function reconcileCrmPostings(limit = 10): Promise<number> {
+  const { data, error } = await supabase
+    .from('point_payments')
+    .select(SELECT_COLUMNS)
+    .not('matched_order_id', 'is', null)
+    .order('posting_checked_at', { ascending: true, nullsFirst: true })
+    .limit(limit);
+  if (error) throw error;
+  const rows = (data || []) as PointPaymentRow[];
+
+  let reconciled = 0;
+  for (const row of rows) {
+    if (row.matched_order_id == null) continue; // страховка (фильтр уже отсёк null)
+    try {
+      const order = await fetchRetailCrmOrder(row.matched_order_id);
+      const { posting, crmPaymentId } = computeCrmPosting(order, row);
+      const patch: Record<string, any> = {
+        crm_posting: posting,
+        // Не держим протухший id, если нашего платежа на заказе больше нет (приход при этом неизменен).
+        retailcrm_payment_id: posting === 'posted_auto' ? crmPaymentId ?? row.retailcrm_payment_id ?? null : null,
+        posting_checked_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('point_payments').update(patch).eq('id', row.id);
+      reconciled++;
+    } catch {
+      // Сверка не критична: отмечаем попытку, чтобы не залипать на одной строке.
+      await supabase
+        .from('point_payments')
+        .update({ posting_checked_at: new Date().toISOString() })
+        .eq('id', row.id);
+    }
+  }
+  return reconciled;
 }

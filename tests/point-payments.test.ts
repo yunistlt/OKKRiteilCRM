@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { extractInvoiceNumbers } from '@/lib/payments/matching';
+import { computeCrmPosting } from '@/lib/payments/service';
 import { parseAmountToKopecks } from '@/lib/payments/types';
 import { normalizeTochkaPayment, isIncomingTochkaWebhook } from '@/lib/payments/tochka';
 import { normalizeStatementTransaction } from '@/lib/payments/tochka-statement';
@@ -46,6 +47,36 @@ describe('extractInvoiceNumbers', () => {
     expect(extractInvoiceNumbers(null)).toEqual([]);
     expect(extractInvoiceNumbers('')).toEqual([]);
     expect(extractInvoiceNumbers('Просто перевод без номера')).toEqual([]);
+  });
+});
+
+describe('computeCrmPosting (честное состояние проводки в RetailCRM)', () => {
+  const row: any = { source: 'tochka', external_payment_id: 'ABC', amount_kopecks: 16788542, retailcrm_payment_id: '999' };
+
+  it('наш externalId на заказе → posted_auto', () => {
+    const order = { payments: { 1: { id: 555, type: 'invoicejur', amount: 167885.42, status: 'check-off-full', externalId: 'tochka-ABC' } } };
+    expect(computeCrmPosting(order, row)).toEqual({ posting: 'posted_auto', crmPaymentId: '555' });
+  });
+
+  it('нашего нет, но есть ручная оплата на ту же сумму → posted_manual', () => {
+    // сумма отличается на 4 копейки (реальный кейс: счёт менеджера 167885.38 vs приход .42)
+    const order = { payments: { 1: { id: 51678, type: 'invoicejur', amount: 167885.38, status: 'check-off-full' } } };
+    expect(computeCrmPosting(order, row)).toEqual({ posting: 'posted_manual', crmPaymentId: null });
+  });
+
+  it('ни нашей, ни ручной оплаты на эту сумму → not_posted', () => {
+    const order = { payments: { 1: { id: 7, type: 'invoicejur', amount: 999.99, status: 'check-off-full' } } };
+    expect(computeCrmPosting(order, row)).toEqual({ posting: 'not_posted', crmPaymentId: null });
+  });
+
+  it('чужой банк-синк-платёж (другой externalId) не считается ручной проводкой → not_posted', () => {
+    const order = { payments: { 1: { id: 8, type: 'invoicejur', amount: 167885.42, status: 'check-off-full', externalId: 'tochka-OTHER' } } };
+    expect(computeCrmPosting(order, row)).toEqual({ posting: 'not_posted', crmPaymentId: null });
+  });
+
+  it('оплата не в статусе поступления не считается проводкой → not_posted', () => {
+    const order = { payments: { 1: { id: 9, type: 'invoicejur', amount: 167885.42, status: 'not-paid' } } };
+    expect(computeCrmPosting(order, row)).toEqual({ posting: 'not_posted', crmPaymentId: null });
   });
 });
 
