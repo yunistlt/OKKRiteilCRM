@@ -30,7 +30,7 @@ const REFERENCES: { path: string; key: string; entityType: string }[] = [
 ];
 
 export interface DictRow { entity_type: string; dictionary_code: string; item_code: string; item_name: string }
-export interface RefRow { entity_type: string; item_code: string; item_name: string }
+export interface RefRow { entity_type: string; item_code: string; item_name: string; active: boolean }
 export interface FieldRow {
     entity: string; code: string; name: string | null; type: string | null; dictionary: string | null;
     ordering: number | null; in_filter: boolean | null; in_list: boolean | null; display_area: string | null; raw: any;
@@ -116,7 +116,9 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
         if (!map || typeof map !== 'object') continue;
         for (const item of Object.values(map) as any[]) {
             if (item?.code == null) continue;
-            refRows.push({ entity_type: ref.entityType, item_code: String(item.code), item_name: item.name ?? String(item.code) });
+            // reference/* items отдают `active` (statuses, payment/delivery/order-methods,
+            // sites, stores, product-statuses). Если поле отсутствует — считаем активным.
+            refRows.push({ entity_type: ref.entityType, item_code: String(item.code), item_name: item.name ?? String(item.code), active: item.active ?? true });
         }
     }
 
@@ -125,7 +127,7 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
         const groups = await fetchAllPages(base, `/api/v5/user-groups?apiKey=${key}`, 'groups');
         for (const g of groups as any[]) {
             if (g?.code == null) continue;
-            refRows.push({ entity_type: 'userGroup', item_code: String(g.code), item_name: g.name ?? String(g.code) });
+            refRows.push({ entity_type: 'userGroup', item_code: String(g.code), item_name: g.name ?? String(g.code), active: g.active ?? true });
         }
     } catch {
         // метод недоступен — пропускаем
@@ -174,7 +176,7 @@ export async function syncRetailcrmCatalog(): Promise<{ dictionaries: number; di
         if (delErr) throw delErr;
         const rows = refRows
             .filter((r) => r.entity_type === et)
-            .map((r) => ({ entity_type: r.entity_type, dictionary_code: null, item_code: r.item_code, item_name: r.item_name, updated_at: now }));
+            .map((r) => ({ entity_type: r.entity_type, dictionary_code: null, item_code: r.item_code, item_name: r.item_name, active: r.active, updated_at: now }));
         for (let i = 0; i < rows.length; i += 500) {
             const { error } = await supabase.from('retailcrm_dictionaries').insert(rows.slice(i, i + 500));
             if (error) throw error;
