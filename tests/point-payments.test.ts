@@ -26,6 +26,22 @@ describe('extractInvoiceNumbers', () => {
     expect(res.indexOf('1007/2')).toBeLessThan(res.indexOf('1007'));
   });
 
+  it('сокращение «сч.» с точкой (реальный кейс, аванс за мебель)', () => {
+    expect(
+      extractInvoiceNumbers('Аванс по сч. 52721 от 06.07.2026 за мебель. Сумма 167885-42 НДС (5%) 7994-54'),
+    ).toEqual(['52721']);
+  });
+
+  it('сокращение «сч.» с номером через №', () => {
+    expect(extractInvoiceNumbers('Оплата по сч. №49001 за товар')).toEqual(['49001']);
+  });
+
+  it('номер расчётного счёта («р/сч 40802…») не считается номером счёта-заказа', () => {
+    expect(
+      extractInvoiceNumbers('Перевод на р/сч 40802810401500287892 без указания заказа'),
+    ).toEqual([]);
+  });
+
   it('пустое назначение — пустой массив', () => {
     expect(extractInvoiceNumbers(null)).toEqual([]);
     expect(extractInvoiceNumbers('')).toEqual([]);
