@@ -38,6 +38,28 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
     }
 }
 
+// Атомарно «столбит» напоминание через UNIQUE (session_id, type) с ON CONFLICT DO NOTHING.
+// Возвращает true ТОЛЬКО если запись создали мы — значит письмо можно отправлять.
+// false — напоминание уже существует ИЛИ вставка не удалась (нет таблицы, ошибка БД):
+// в обоих случаях НЕ отправляем. Это единственный дедуп — select-then-insert убран,
+// он давал гонку и молча слал заново, если запись не проходила.
+async function claimReminder(row: {
+    session_id: string;
+    type: 'abandoned_cart' | 'no_manager_reply' | 'reactivation';
+    recipient_email?: string | null;
+    manager_email?: string | null;
+}): Promise<boolean> {
+    const { data, error } = await supabase
+        .from('lead_reminders')
+        .upsert({ ...row, status: 'pending' }, { onConflict: 'session_id,type', ignoreDuplicates: true })
+        .select('id');
+    if (error) {
+        console.error('[lead-reminders] claim failed, skip send:', error.message);
+        return false;
+    }
+    return (data?.length ?? 0) > 0;
+}
+
 // ── Шаблон письма реактивации ─────────────────────────────────────────────
 function buildReactivationEmail(products: string[]): string {
     const rows = products.length > 0
@@ -123,75 +145,62 @@ export async function GET(req: NextRequest) {
     try {
         ensureAuthorized(req);
 
+        // Аварийный рубильник: LEAD_REMINDERS_DISABLED=true мгновенно глушит всю рассылку.
+        if (process.env.LEAD_REMINDERS_DISABLED === 'true') {
+            return NextResponse.json({ ok: true, disabled: true, results: null });
+        }
+
         const managerEmail = process.env.MANAGER_NOTIFICATION_EMAIL || process.env.SMTP_USER;
         const results = { abandoned_cart: 0, no_manager_reply: 0, reactivation: 0, errors: 0 };
 
-        // ── Сценарий 1: Брошенные товары (нет контакта, > 24ч) ───────────────
+        // ── Сценарий 1: Брошенные товары (нет контакта, 24ч–7д) ──────────────
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: abandonedSessions } = await supabase
+        const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const { data: abandonedSessions } = managerEmail ? await supabase
             .from('widget_sessions')
             .select('id, nickname, domain, geo_city, interested_products, utm_source')
             .eq('has_contacts', false)
             .not('interested_products', 'is', null)
             .lt('created_at', cutoff24h)
-            .limit(20);
+            .gte('created_at', cutoff7d)   // не трогаем старьё > 7 дней
+            .limit(20) : { data: [] };
 
         for (const session of abandonedSessions || []) {
-            // Проверяем нет ли уже такого напоминания
-            const { data: existing } = await supabase
-                .from('lead_reminders')
-                .select('id')
-                .eq('session_id', session.id)
-                .eq('type', 'abandoned_cart')
-                .single();
-            if (existing) continue;
-
-            // Записываем напоминание
-            const { error: insertErr } = await supabase.from('lead_reminders').insert({
+            // Атомарно столбим — только владелец записи отправляет письмо
+            const claimed = await claimReminder({
                 session_id: session.id,
                 type: 'abandoned_cart',
                 manager_email: managerEmail || null,
-                status: 'pending',
             });
-            if (insertErr) { results.errors++; continue; }
+            if (!claimed) continue;
 
-            // Отправляем уведомление менеджеру
-            if (managerEmail) {
-                const sent = await sendEmail(
-                    managerEmail,
-                    `🛒 Горячий лид — ${session.nickname || 'Аноним'} смотрел товары`,
-                    buildManagerAlertEmail('abandoned_cart', session)
-                );
-                await supabase.from('lead_reminders').update({
-                    status: sent ? 'sent' : 'failed',
-                    sent_at: sent ? new Date().toISOString() : null,
-                }).eq('session_id', session.id).eq('type', 'abandoned_cart');
+            const sent = await sendEmail(
+                managerEmail!,
+                `🛒 Горячий лид — ${session.nickname || 'Аноним'} смотрел товары`,
+                buildManagerAlertEmail('abandoned_cart', session)
+            );
+            await supabase.from('lead_reminders').update({
+                status: sent ? 'sent' : 'failed',
+                sent_at: sent ? new Date().toISOString() : null,
+            }).eq('session_id', session.id).eq('type', 'abandoned_cart');
 
-                if (sent) results.abandoned_cart++;
-            }
+            if (sent) results.abandoned_cart++;
         }
 
-        // ── Сценарий 2: Нет ответа менеджера > 4 часов ──────────────────────
+        // ── Сценарий 2: Нет ответа менеджера 4ч–7д ──────────────────────────
         const cutoff4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
 
-        // Ищем сессии, где последнее сообщение от user и оно > 4ч назад
-        const { data: staleSessions } = await supabase
+        // Ищем сессии, где последнее сообщение от user и оно 4ч–7д назад
+        const { data: staleSessions } = managerEmail ? await supabase
             .from('widget_sessions')
             .select('id, nickname, domain, geo_city, interested_products')
             .eq('is_human_takeover', false)
             .lt('updated_at', cutoff4h)
-            .limit(20);
+            .gte('updated_at', cutoff7d)   // не долбим по старью > 7 дней
+            .limit(20) : { data: [] };
 
         for (const session of staleSessions || []) {
-            const { data: existing } = await supabase
-                .from('lead_reminders')
-                .select('id')
-                .eq('session_id', session.id)
-                .eq('type', 'no_manager_reply')
-                .single();
-            if (existing) continue;
-
-            // Проверяем что последнее сообщение именно от пользователя
+            // Проверяем что последнее сообщение именно от пользователя (до захвата — дёшево отсеиваем)
             const { data: lastMsg } = await supabase
                 .from('widget_messages')
                 .select('role, created_at')
@@ -203,30 +212,28 @@ export async function GET(req: NextRequest) {
             if (!lastMsg || lastMsg.role !== 'user') continue;
             if (new Date(lastMsg.created_at).getTime() > Date.now() - 4 * 60 * 60 * 1000) continue;
 
-            await supabase.from('lead_reminders').insert({
+            const claimed = await claimReminder({
                 session_id: session.id,
                 type: 'no_manager_reply',
                 manager_email: managerEmail || null,
-                status: 'pending',
             });
+            if (!claimed) continue;
 
-            if (managerEmail) {
-                const sent = await sendEmail(
-                    managerEmail,
-                    `⏰ Клиент ${session.nickname || 'Аноним'} ждёт ответа > 4 часов`,
-                    buildManagerAlertEmail('no_manager_reply', session)
-                );
-                await supabase.from('lead_reminders').update({
-                    status: sent ? 'sent' : 'failed',
-                    sent_at: sent ? new Date().toISOString() : null,
-                }).eq('session_id', session.id).eq('type', 'no_manager_reply');
+            const sent = await sendEmail(
+                managerEmail!,
+                `⏰ Клиент ${session.nickname || 'Аноним'} ждёт ответа > 4 часов`,
+                buildManagerAlertEmail('no_manager_reply', session)
+            );
+            await supabase.from('lead_reminders').update({
+                status: sent ? 'sent' : 'failed',
+                sent_at: sent ? new Date().toISOString() : null,
+            }).eq('session_id', session.id).eq('type', 'no_manager_reply');
 
-                if (sent) results.no_manager_reply++;
-            }
+            if (sent) results.no_manager_reply++;
         }
 
-        // ── Сценарий 3: Реактивация (лид > 7 дней без движения, есть email) ─
-        const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        // ── Сценарий 3: Реактивация (лид остыл 7–30 дней назад, есть email) ─
+        const cutoff30d = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
         const { data: coldSessions } = await supabase
             .from('widget_sessions')
@@ -234,25 +241,18 @@ export async function GET(req: NextRequest) {
             .eq('has_contacts', true)
             .not('contact_email', 'is', null)
             .lt('updated_at', cutoff7d)
+            .gte('updated_at', cutoff30d)   // не реактивируем мёртвые лиды старше 30 дней
             .limit(20);
 
         for (const session of (coldSessions || []) as any[]) {
             if (!session.contact_email) continue;
 
-            const { data: existing } = await supabase
-                .from('lead_reminders')
-                .select('id')
-                .eq('session_id', session.id)
-                .eq('type', 'reactivation')
-                .single();
-            if (existing) continue;
-
-            await supabase.from('lead_reminders').insert({
+            const claimed = await claimReminder({
                 session_id: session.id,
                 type: 'reactivation',
                 recipient_email: session.contact_email,
-                status: 'pending',
             });
+            if (!claimed) continue;   // уже слали или не смогли застолбить — не спамим
 
             const products = (session.interested_products as string[] | null) || [];
             const sent = await sendEmail(
