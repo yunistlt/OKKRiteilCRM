@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/utils/supabase';
+import { formatIntRu, formatRub } from '@/lib/format';
 
 interface Session {
     id: string;
@@ -29,7 +30,29 @@ interface Session {
     contact_company?: string | null;
     crm_order_id?: number | null;
     crm_customer_id?: number | null;
+    channel?: ChannelKey;
 }
+
+type ChannelKey = 'chat' | 'call' | 'cart';
+type ViewKey = 'all' | ChannelKey;
+type MetricKey = 'dialogs' | 'contacts' | 'orders' | 'conversion';
+interface Metrics { dialogs: number; contacts: number; orders: number; conversion: number; }
+
+// Каналы захвата («ловцы»). Цвета — по голдам: смелые 100% заливки-акценты.
+const CHANNEL_META: Record<ViewKey, { label: string; short: string; sub: string; icon: string; color: string }> = {
+    all:  { label: 'Сводная',          short: 'Все',     sub: 'Все каналы',       icon: '📊', color: '#111827' },
+    chat: { label: 'Чат на сайте',     short: 'Чат',     sub: 'Диалоги с Еленой', icon: '💬', color: '#2563eb' },
+    call: { label: 'Обратный звонок',  short: 'Звонок',  sub: 'Заявки на дозвон', icon: '📞', color: '#16a34a' },
+    cart: { label: 'Заказ из корзины', short: 'Корзина', sub: 'Корзина на email', icon: '🛒', color: '#d97706' },
+};
+const CHANNEL_ORDER: ViewKey[] = ['all', 'chat', 'call', 'cart'];
+const METRIC_META: Record<MetricKey, { label: string; color: string }> = {
+    dialogs:    { label: 'Обращения',  color: '#4b5563' },
+    contacts:   { label: 'Контакты',   color: '#16a34a' },
+    orders:     { label: 'Заказы',     color: '#2563eb' },
+    conversion: { label: 'Конверсия',  color: '#7c3aed' },
+};
+const EMPTY_METRICS: Metrics = { dialogs: 0, contacts: 0, orders: 0, conversion: 0 };
 
 interface Message {
     id: string;
@@ -58,15 +81,14 @@ export default function LeadCatcherPage() {
     const [sending, setSending] = useState(false);
     const [notes, setNotes] = useState('');
     const [search, setSearch] = useState('');
-    const [totalContacts, setTotalContacts] = useState<number | null>(null);
-    const [totalSessionsCount, setTotalSessionsCount] = useState<number>(0);
-    const [totalOrdersCount, setTotalOrdersCount] = useState<number>(0);
     const [capturedContactsList, setCapturedContactsList] = useState<Session[]>([]);
     const [ordersMap, setOrdersMap] = useState<Record<number, any>>({});
-    
-    // Analytics Dynamics States
+
+    // Analytics states (разбивка по каналам захвата)
+    const [channel, setChannel] = useState<ViewKey>('all');
+    const [channelTotals, setChannelTotals] = useState<Record<string, Metrics>>({});
     const [selectedRange, setSelectedRange] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
-    const [selectedMetric, setSelectedMetric] = useState<'dialogs' | 'contacts' | 'orders' | 'conversion'>('dialogs');
+    const [selectedMetric, setSelectedMetric] = useState<MetricKey>('dialogs');
     const [analyticsData, setAnalyticsData] = useState<any[]>([]);
     const [analyticsLoading, setAnalyticsLoading] = useState(false);
     const [hoveredPointIdx, setHoveredPointIdx] = useState<number | null>(null);
@@ -85,8 +107,27 @@ export default function LeadCatcherPage() {
         try {
             const res = await fetch(`/api/lead-catcher/analytics?range=${selectedRange}`);
             const data = await res.json();
-            if (data.points) {
-                setAnalyticsData(data.points);
+            if (data.points) setAnalyticsData(data.points);
+            if (data.totals) setChannelTotals(data.totals);
+            if (data.contacts) {
+                setCapturedContactsList(data.contacts);
+                // Подтягиваем детали заказов для контактов, которых ещё нет в ordersMap.
+                const orderIds = Array.from(new Set(
+                    (data.contacts as Session[]).map((c) => c.crm_order_id).filter(Boolean)
+                )) as number[];
+                if (orderIds.length > 0) {
+                    try {
+                        const oRes = await fetch('/api/lead-catcher/orders-info', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ orderIds })
+                        });
+                        const oData = await oRes.json();
+                        if (oData.orders) setOrdersMap((prev) => ({ ...prev, ...oData.orders }));
+                    } catch (err) {
+                        console.error('Ошибка деталей заказов для аналитики:', err);
+                    }
+                }
             }
         } catch (err) {
             console.error('Ошибка загрузки аналитики:', err);
@@ -96,52 +137,18 @@ export default function LeadCatcherPage() {
     };
 
     const fetchSessions = async () => {
-        const [sessRes, countRes, totalRes, ordersCountRes, contactsListRes] = await Promise.all([
-            supabase
-                .from('widget_sessions')
-                .select('*')
-                .order('updated_at', { ascending: false })
-                .limit(100),
-            supabase
-                .from('widget_sessions')
-                .select('*', { count: 'exact', head: true })
-                .eq('has_contacts', true),
-            supabase
-                .from('widget_sessions')
-                .select('*', { count: 'exact', head: true }),
-            supabase
-                .from('widget_sessions')
-                .select('*', { count: 'exact', head: true })
-                .not('crm_order_id', 'is', null),
-            supabase
-                .from('widget_sessions')
-                .select('*')
-                .eq('has_contacts', true)
-                .order('created_at', { ascending: false })
-                .limit(50)
-        ]);
-        
-        if (countRes.count !== null) {
-            setTotalContacts(countRes.count);
-        }
-        if (totalRes.count !== null) {
-            setTotalSessionsCount(totalRes.count);
-        }
-        if (ordersCountRes.count !== null) {
-            setTotalOrdersCount(ordersCountRes.count);
-        }
-        if (contactsListRes.data) {
-            setCapturedContactsList(contactsListRes.data);
-        }
+        // Список слева (последние сессии) + детали их заказов. Итоги и таблица
+        // контактов теперь приходят из /api/lead-catcher/analytics (с меткой канала).
+        const sessRes = await supabase
+            .from('widget_sessions')
+            .select('*')
+            .order('updated_at', { ascending: false })
+            .limit(100);
 
         const sessData = sessRes.data || [];
-        const contactsList = contactsListRes.data || [];
-        const orderIds = Array.from(new Set([
-            ...sessData.map((s: any) => s.crm_order_id),
-            ...contactsList.map((c: any) => c.crm_order_id)
-        ].filter(Boolean))) as number[];
-
-        let newOrdersMap: Record<number, any> = {};
+        const orderIds = Array.from(new Set(
+            sessData.map((s: any) => s.crm_order_id).filter(Boolean)
+        )) as number[];
 
         if (orderIds.length > 0) {
             try {
@@ -152,13 +159,12 @@ export default function LeadCatcherPage() {
                 });
                 const data = await res.json();
                 if (data.orders) {
-                    newOrdersMap = data.orders;
+                    setOrdersMap((prev) => ({ ...prev, ...data.orders }));
                 }
             } catch (err) {
                 console.error('Ошибка получения деталей заказов через API:', err);
             }
         }
-        setOrdersMap(newOrdersMap);
 
         if (sessData.length > 0) {
             const sessionsWithPreview = await Promise.all(sessData.map(async (s: any) => {
@@ -288,69 +294,54 @@ export default function LeadCatcherPage() {
         setSessions((prev: Session[]) => prev.map((s: Session) => s.id === sessionId ? { ...s, is_human_takeover: !current } : s));
     };
 
-    // Math and SVG Calculations for dynamics chart
+    // Метрики выбранного канала для карточек KPI.
+    const activeTotals: Metrics = channelTotals[channel] || EMPTY_METRICS;
+    const contactsForChannel = useMemo(
+        () => channel === 'all' ? capturedContactsList : capturedContactsList.filter((c) => c.channel === channel),
+        [capturedContactsList, channel]
+    );
+
+    // --- Геометрия графика: одна линия на канал (в сводной — три). ---
     const chartWidth = 800;
     const chartHeight = 200;
     const paddingLeft = 45;
     const paddingRight = 20;
     const paddingTop = 20;
     const paddingBottom = 30;
-
     const usableWidth = chartWidth - paddingLeft - paddingRight;
     const usableHeight = chartHeight - paddingTop - paddingBottom;
 
-    const values = useMemo(() => analyticsData.map(p => {
-        if (selectedMetric === 'dialogs') return p.dialogs;
-        if (selectedMetric === 'contacts') return p.contacts;
-        if (selectedMetric === 'orders') return p.orders;
-        return p.conversion;
-    }), [analyticsData, selectedMetric]);
+    const chart = useMemo(() => {
+        const drawn: ChannelKey[] = channel === 'all' ? ['chat', 'call', 'cart'] : [channel];
+        const valAt = (p: any, ch: ChannelKey): number => (p?.[ch]?.[selectedMetric] ?? 0);
 
-    const maxVal = useMemo(() => {
-        const mv = Math.max(...values, 0);
-        return mv === 0 ? 10 : Math.ceil(mv * 1.15); // Add 15% headroom, fallback to 10
-    }, [values]);
+        const flat = analyticsData.flatMap((p) => drawn.map((ch) => valAt(p, ch)));
+        const rawMax = Math.max(0, ...flat);
+        const maxVal = rawMax === 0 ? 10 : rawMax * 1.15;
 
-    const svgPoints = useMemo(() => {
-        if (analyticsData.length === 0) return [];
-        return analyticsData.map((p, i) => {
-            const val = selectedMetric === 'dialogs' ? p.dialogs : 
-                        selectedMetric === 'contacts' ? p.contacts :
-                        selectedMetric === 'orders' ? p.orders : p.conversion;
-            const x = paddingLeft + (i * usableWidth) / Math.max(analyticsData.length - 1, 1);
-            const y = chartHeight - paddingBottom - (val / maxVal) * usableHeight;
-            return { x, y, val, label: p.label, raw: p };
+        const xOf = (i: number) => paddingLeft + (i * usableWidth) / Math.max(analyticsData.length - 1, 1);
+        const yOf = (v: number) => chartHeight - paddingBottom - (v / maxVal) * usableHeight;
+
+        const series = drawn.map((ch) => {
+            const color = channel === 'all' ? CHANNEL_META[ch].color : METRIC_META[selectedMetric].color;
+            const pts = analyticsData.map((p, i) => ({ x: xOf(i), y: yOf(valAt(p, ch)), val: valAt(p, ch), label: p.label }));
+            const line = pts.length ? `M ${pts.map((q) => `${q.x},${q.y}`).join(' L ')}` : '';
+            const area = pts.length
+                ? `M ${pts[0].x},${chartHeight - paddingBottom} L ${pts.map((q) => `${q.x},${q.y}`).join(' L ')} L ${pts[pts.length - 1].x},${chartHeight - paddingBottom} Z`
+                : '';
+            return { key: ch, color, pts, line, area };
         });
-    }, [analyticsData, selectedMetric, maxVal, usableWidth, usableHeight, chartHeight, paddingBottom]);
 
-    const linePath = useMemo(() => {
-        if (svgPoints.length === 0) return '';
-        return `M ${svgPoints.map(p => `${p.x},${p.y}`).join(' L ')}`;
-    }, [svgPoints]);
-
-    const areaPath = useMemo(() => {
-        if (svgPoints.length === 0) return '';
-        const firstX = svgPoints[0].x;
-        const lastX = svgPoints[svgPoints.length - 1].x;
-        const bottomY = chartHeight - paddingBottom;
-        return `M ${firstX},${bottomY} L ${svgPoints.map(p => `${p.x},${p.y}`).join(' L ')} L ${lastX},${bottomY} Z`;
-    }, [svgPoints, chartHeight, paddingBottom]);
-
-    const yGridLines = useMemo(() => {
-        const lines = [];
+        const yGrid = [] as { y: number; val: string | number }[];
         for (let i = 0; i <= 4; i++) {
-            const val = (maxVal / 4) * i;
-            const y = chartHeight - paddingBottom - (val / maxVal) * usableHeight;
-            lines.push({ y, val: selectedMetric === 'conversion' ? `${val.toFixed(1)}%` : Math.round(val) });
+            const v = (maxVal / 4) * i;
+            yGrid.push({ y: yOf(v), val: selectedMetric === 'conversion' ? `${v.toFixed(1)}%` : Math.round(v) });
         }
-        return lines;
-    }, [maxVal, chartHeight, paddingBottom, usableHeight, selectedMetric]);
+        const step = Math.max(1, Math.ceil(analyticsData.length / 8));
+        const xLabels = analyticsData.map((p, i) => ({ x: xOf(i), label: p.label, i })).filter((o) => o.i % step === 0);
 
-    const xLabels = useMemo(() => {
-        if (svgPoints.length === 0) return [];
-        const step = Math.max(1, Math.ceil(svgPoints.length / 8));
-        return svgPoints.filter((_, idx) => idx % step === 0);
-    }, [svgPoints]);
+        return { drawn, series, yGrid, xLabels, maxVal, single: channel !== 'all' };
+    }, [analyticsData, channel, selectedMetric, usableWidth, usableHeight]);
 
     const selectedSession = sessions.find((s: Session) => s.id === selectedSessionId);
     const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';    return (
@@ -676,324 +667,330 @@ export default function LeadCatcherPage() {
                         </div>
                     </>
                 ) : (
-                    <div className="flex-1 flex flex-col h-full bg-gray-50 overflow-y-auto p-8 space-y-8">
-                        <div>
-                            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Аналитика и Лиды</h2>
-                            <p className="text-xs text-gray-400 font-bold mt-1">ОБЗОР АКТИВНОСТИ ИИ-КОНСУЛЬТАНТА ЕЛЕНЫ</p>
-                        </div>
+                    <div className="flex-1 flex flex-col h-full bg-gray-100 overflow-y-auto">
+                        <div className="p-5 space-y-4">
+                            {/* Заголовок */}
+                            <div>
+                                <h2 className="text-2xl font-black text-gray-900 tracking-tight">Аналитика и Лиды</h2>
+                                <p className="text-[11px] text-gray-500 font-bold uppercase tracking-wider mt-1">Ловец лидов Елены · разбивка по каналам захвата</p>
+                            </div>
 
-                        {/* Metrics Cards */}
-                        <div className="grid grid-cols-4 gap-4">
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Всего диалогов</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-gray-900">{totalSessionsCount}</span>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-green-600">Захвачено контактов</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-green-600">{totalContacts || 0}</span>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-blue-600">Создано заказов</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-blue-600">{totalOrdersCount}</span>
-                                </div>
-                            </div>
-                            <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-between min-h-[110px]">
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-purple-600">Конверсия</span>
-                                <div className="flex items-baseline gap-2 mt-2">
-                                    <span className="text-3xl font-black text-purple-600">
-                                        {totalSessionsCount > 0 ? (((totalContacts || 0) / totalSessionsCount) * 100).toFixed(1) : 0}%
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Interactive Dynamics Chart Block */}
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col font-sans relative">
-                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                                <div>
-                                    <h3 className="text-sm font-black text-gray-900 uppercase tracking-wider">Динамика показателей</h3>
-                                    <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">АКТИВНОСТЬ ЛОВЦА ЛИДОВ И КОНВЕРСИЯ</p>
-                                </div>
-                                <div className="flex flex-wrap gap-2 items-center">
-                                    {/* Metric Selector */}
-                                    <div className="bg-gray-100 p-0.5 rounded-lg flex text-[10px] font-bold uppercase tracking-wider">
+                            {/* Переключатель каналов (навигация) */}
+                            <div className="flex flex-wrap border border-gray-300 bg-white w-max max-w-full">
+                                {CHANNEL_ORDER.map((c) => {
+                                    const active = channel === c;
+                                    const meta = CHANNEL_META[c];
+                                    return (
                                         <button
-                                            onClick={() => setSelectedMetric('dialogs')}
-                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'dialogs' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
+                                            key={c}
+                                            onClick={() => setChannel(c)}
+                                            className={`flex items-center gap-2 px-4 py-2.5 text-[13px] font-bold border-r border-gray-300 last:border-r-0 transition-colors duration-75 ${active ? 'text-white' : 'text-gray-600 hover:bg-gray-100'}`}
+                                            style={active ? { backgroundColor: meta.color } : undefined}
                                         >
-                                            Диалоги
+                                            <span className="text-[15px] leading-none">{meta.icon}</span>
+                                            {meta.label}
                                         </button>
-                                        <button
-                                            onClick={() => setSelectedMetric('contacts')}
-                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'contacts' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                                        >
-                                            Контакты
-                                        </button>
-                                        <button
-                                            onClick={() => setSelectedMetric('orders')}
-                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'orders' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                                        >
-                                            Заказы
-                                        </button>
-                                        <button
-                                            onClick={() => setSelectedMetric('conversion')}
-                                            className={`px-3 py-1.5 rounded-md transition-all ${selectedMetric === 'conversion' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                                        >
-                                            Конверсия (%)
-                                        </button>
-                                    </div>
-
-                                    {/* Range Selector */}
-                                    <div className="bg-gray-100 p-0.5 rounded-lg flex text-[10px] font-bold uppercase tracking-wider">
-                                        {(['week', 'month', 'quarter', 'year'] as const).map((r) => {
-                                            const labelMap = { week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' };
-                                            return (
-                                                <button
-                                                    key={r}
-                                                    onClick={() => setSelectedRange(r)}
-                                                    className={`px-3 py-1.5 rounded-md transition-all ${selectedRange === r ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
-                                                >
-                                                    {labelMap[r]}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+                                    );
+                                })}
                             </div>
 
-                            {analyticsLoading ? (
-                                <div className="h-[250px] flex items-center justify-center text-xs text-gray-400 italic">
-                                    Загрузка данных динамики...
-                                </div>
-                            ) : analyticsData.length === 0 ? (
-                                <div className="h-[250px] flex items-center justify-center text-xs text-gray-400 italic border border-dashed border-gray-200 rounded-xl">
-                                    Нет данных за выбранный период
-                                </div>
-                            ) : (
-                                <div className="relative w-full overflow-hidden">
-                                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto overflow-visible">
-                                        <defs>
-                                            <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'} stopOpacity="0.15" />
-                                                <stop offset="100%" stopColor={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'} stopOpacity="0.00" />
-                                            </linearGradient>
-                                        </defs>
-
-                                        {/* Y-Axis Grid Lines */}
-                                        {yGridLines.map((line, idx) => (
-                                            <g key={idx}>
-                                                <line
-                                                    x1={paddingLeft}
-                                                    y1={line.y}
-                                                    x2={chartWidth - paddingRight}
-                                                    y2={line.y}
-                                                    stroke="#F3F4F6"
-                                                    strokeWidth={1}
-                                                    strokeDasharray={idx === 0 ? '0' : '4 4'}
-                                                />
-                                                <text
-                                                    x={paddingLeft - 8}
-                                                    y={line.y + 3}
-                                                    textAnchor="end"
-                                                    className="fill-gray-400 font-bold text-[9px]"
-                                                >
-                                                    {line.val}
-                                                </text>
-                                            </g>
-                                        ))}
-
-                                        {/* Area Path */}
-                                        <path d={areaPath} fill="url(#chartGradient)" />
-
-                                        {/* Line Path */}
-                                        <path
-                                            d={linePath}
-                                            fill="none"
-                                            stroke={selectedMetric === 'contacts' ? '#22C55E' : selectedMetric === 'orders' ? '#2563EB' : selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'}
-                                            strokeWidth={2}
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                        />
-
-                                        {/* X-Axis Labels */}
-                                        {xLabels.map((pt, idx) => (
-                                            <g key={idx}>
-                                                <text
-                                                    x={pt.x}
-                                                    y={chartHeight - 8}
-                                                    textAnchor="middle"
-                                                    className="fill-gray-400 font-bold text-[9px]"
-                                                >
-                                                    {pt.label}
-                                                </text>
-                                                <line
-                                                    x1={pt.x}
-                                                    y1={chartHeight - paddingBottom}
-                                                    x2={pt.x}
-                                                    y2={chartHeight - paddingBottom + 4}
-                                                    stroke="#E5E7EB"
-                                                    strokeWidth={1}
-                                                />
-                                            </g>
-                                        ))}
-
-                                        {/* Interactive Hover Dots & Vertical Guide Line */}
-                                        {hoveredPointIdx !== null && svgPoints[hoveredPointIdx] && (
-                                            <line
-                                                x1={svgPoints[hoveredPointIdx].x}
-                                                y1={paddingTop}
-                                                x2={svgPoints[hoveredPointIdx].x}
-                                                y2={chartHeight - paddingBottom}
-                                                stroke="#E5E7EB"
-                                                strokeWidth={1.5}
-                                                strokeDasharray="2 2"
-                                            />
-                                        )}
-
-                                        {svgPoints.map((pt, idx) => (
-                                            <g key={idx}>
-                                                {/* Mouse Hover Hotspot (Wide Vertical Rectangle) */}
-                                                <rect
-                                                    x={pt.x - (usableWidth / Math.max(svgPoints.length - 1, 1)) / 2}
-                                                    y={paddingTop}
-                                                    width={usableWidth / Math.max(svgPoints.length - 1, 1)}
-                                                    height={usableHeight}
-                                                    fill="transparent"
-                                                    className="cursor-pointer"
-                                                    onMouseEnter={() => setHoveredPointIdx(idx)}
-                                                    onMouseLeave={() => setHoveredPointIdx(null)}
-                                                />
-                                                {/* Interactive Dot */}
-                                                <circle
-                                                    cx={pt.x}
-                                                    cy={pt.y}
-                                                    r={hoveredPointIdx === idx ? 5 : 3.5}
-                                                    fill="#FFFFFF"
-                                                    stroke={
-                                                        selectedMetric === 'contacts' ? '#22C55E' : 
-                                                        selectedMetric === 'orders' ? '#2563EB' : 
-                                                        selectedMetric === 'conversion' ? '#A855F7' : '#4B5563'
-                                                    }
-                                                    strokeWidth={hoveredPointIdx === idx ? 3 : 2}
-                                                    className="transition-all duration-150 pointer-events-none"
-                                                />
-                                            </g>
-                                        ))}
-                                    </svg>
-
-                                    {/* Tooltip Overlay */}
-                                    {hoveredPointIdx !== null && svgPoints[hoveredPointIdx] && (
-                                        <div
-                                            className="absolute bg-gray-900 text-white rounded-lg p-2.5 shadow-xl text-[10px] pointer-events-none z-30 flex flex-col gap-1 border border-gray-800"
-                                            style={{
-                                                left: `${((svgPoints[hoveredPointIdx].x - paddingLeft) / usableWidth) * 85 + 7}%`,
-                                                top: `${Math.max(10, svgPoints[hoveredPointIdx].y - 80)}px`,
-                                                transform: 'translateX(-50%)',
-                                            }}
-                                        >
-                                            <p className="font-black border-b border-gray-800 pb-1 text-gray-400">Период: {svgPoints[hoveredPointIdx].label}</p>
-                                            <div className="space-y-0.5 pt-1">
-                                                <p className="flex justify-between gap-4"><span>💬 Диалоги:</span> <span className="font-bold text-white">{svgPoints[hoveredPointIdx].raw.dialogs}</span></p>
-                                                <p className="flex justify-between gap-4"><span className="text-green-400">📞 Контакты:</span> <span className="font-bold text-green-400">{svgPoints[hoveredPointIdx].raw.contacts}</span></p>
-                                                <p className="flex justify-between gap-4"><span className="text-blue-400">📦 Заказы:</span> <span className="font-bold text-blue-400">{svgPoints[hoveredPointIdx].raw.orders}</span></p>
-                                                <p className="flex justify-between gap-4"><span className="text-purple-400">📈 Конверсия:</span> <span className="font-bold text-purple-400">{svgPoints[hoveredPointIdx].raw.conversion}%</span></p>
+                            {/* Карточки KPI выбранного канала */}
+                            {(() => {
+                                const t = activeTotals;
+                                const firstLabel = channel === 'call' ? 'Заявок на звонок' : channel === 'cart' ? 'Оформлений из корзины' : channel === 'chat' ? 'Диалогов' : 'Всего обращений';
+                                const contactLabel = channel === 'call' ? 'Дозвонов (контакт)' : 'Захвачено контактов';
+                                const cards = [
+                                    { label: firstLabel, value: formatIntRu(t.dialogs), color: '#111827' },
+                                    { label: contactLabel, value: formatIntRu(t.contacts), color: METRIC_META.contacts.color },
+                                    { label: 'Создано заказов', value: formatIntRu(t.orders), color: METRIC_META.orders.color },
+                                    { label: 'Конверсия в заказ', value: `${t.conversion}%`, color: METRIC_META.conversion.color },
+                                ];
+                                return (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-gray-300 border border-gray-300">
+                                        {cards.map((k, i) => (
+                                            <div key={i} className="bg-white p-4 flex flex-col justify-between min-h-[96px]">
+                                                <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">{k.label}</span>
+                                                <span className="text-[30px] leading-none font-black tabular-nums mt-3" style={{ color: k.color }}>{k.value}</span>
                                             </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Матрица сравнения каналов — только в сводной */}
+                            {channel === 'all' && (
+                                <div className="bg-white border border-gray-300">
+                                    <div className="px-4 py-3 border-b border-gray-300 flex items-center justify-between gap-3 flex-wrap">
+                                        <h3 className="text-[12px] font-black text-gray-900 uppercase tracking-wider">Разбивка по каналам</h3>
+                                        <span className="text-[10px] text-gray-400 font-bold uppercase">Итоги за всё время · клик — фильтр канала</span>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-[12px] border-collapse min-w-max">
+                                            <thead>
+                                                <tr className="bg-gray-100 text-gray-600 text-[10px] uppercase tracking-wider font-black">
+                                                    <th className="text-left px-4 py-2.5 border-b border-gray-300">Канал</th>
+                                                    <th className="text-right px-4 py-2.5 border-b border-gray-300">Обращения</th>
+                                                    <th className="text-right px-4 py-2.5 border-b border-gray-300">Контакты</th>
+                                                    <th className="text-right px-4 py-2.5 border-b border-gray-300">Заказы</th>
+                                                    <th className="text-right px-4 py-2.5 border-b border-gray-300">Конверсия</th>
+                                                    <th className="text-right px-4 py-2.5 border-b border-gray-300">Доля заказов</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(['chat', 'call', 'cart'] as ChannelKey[]).map((ch) => {
+                                                    const m = channelTotals[ch] || EMPTY_METRICS;
+                                                    const totalOrders = activeTotals.orders || 0;
+                                                    const share = totalOrders > 0 ? Math.round((m.orders / totalOrders) * 100) : 0;
+                                                    const meta = CHANNEL_META[ch];
+                                                    return (
+                                                        <tr key={ch} onClick={() => setChannel(ch)} className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 cursor-pointer">
+                                                            <td className="px-4 py-3 text-left">
+                                                                <span className="inline-flex items-center gap-2 font-bold text-gray-900">
+                                                                    <span className="w-2.5 h-2.5" style={{ backgroundColor: meta.color }}></span>
+                                                                    {meta.icon} {meta.label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right font-black tabular-nums text-gray-900">{formatIntRu(m.dialogs)}</td>
+                                                            <td className="px-4 py-3 text-right font-black tabular-nums text-gray-900">{formatIntRu(m.contacts)}</td>
+                                                            <td className="px-4 py-3 text-right font-black tabular-nums text-gray-900">{formatIntRu(m.orders)}</td>
+                                                            <td className="px-4 py-3 text-right font-black tabular-nums" style={{ color: METRIC_META.conversion.color }}>{m.conversion}%</td>
+                                                            <td className="px-4 py-3">
+                                                                <div className="flex items-center gap-2 justify-end">
+                                                                    <div className="w-20 h-2 bg-gray-200 overflow-hidden">
+                                                                        <div className="h-full" style={{ width: `${share}%`, backgroundColor: meta.color }}></div>
+                                                                    </div>
+                                                                    <span className="font-black tabular-nums text-gray-700 w-9 text-right">{share}%</span>
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* График динамики */}
+                            <div className="bg-white border border-gray-300">
+                                <div className="px-4 py-3 border-b border-gray-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-[12px] font-black text-gray-900 uppercase tracking-wider">Динамика показателей</h3>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase mt-0.5">{channel === 'all' ? 'Все каналы по выбранной метрике' : CHANNEL_META[channel].sub}</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 items-center">
+                                        {/* Выбор метрики */}
+                                        <div className="flex border border-gray-300 text-[10px] font-black uppercase tracking-wider">
+                                            {(['dialogs', 'contacts', 'orders', 'conversion'] as MetricKey[]).map((mk) => (
+                                                <button
+                                                    key={mk}
+                                                    onClick={() => setSelectedMetric(mk)}
+                                                    className={`px-3 py-1.5 border-r border-gray-300 last:border-r-0 transition-colors duration-75 ${selectedMetric === mk ? 'text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                    style={selectedMetric === mk ? { backgroundColor: METRIC_META[mk].color } : undefined}
+                                                >
+                                                    {METRIC_META[mk].label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/* Выбор периода */}
+                                        <div className="flex border border-gray-300 text-[10px] font-black uppercase tracking-wider">
+                                            {(['week', 'month', 'quarter', 'year'] as const).map((r) => {
+                                                const labelMap = { week: 'Неделя', month: 'Месяц', quarter: 'Квартал', year: 'Год' };
+                                                return (
+                                                    <button
+                                                        key={r}
+                                                        onClick={() => setSelectedRange(r)}
+                                                        className={`px-3 py-1.5 border-r border-gray-300 last:border-r-0 transition-colors duration-75 ${selectedRange === r ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                    >
+                                                        {labelMap[r]}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Легенда */}
+                                <div className="flex flex-wrap gap-4 px-4 pt-3">
+                                    {channel === 'all'
+                                        ? (['chat', 'call', 'cart'] as ChannelKey[]).map((ch) => (
+                                            <span key={ch} className="inline-flex items-center gap-2 text-[11px] font-bold text-gray-600">
+                                                <span className="w-3 h-[3px]" style={{ backgroundColor: CHANNEL_META[ch].color }}></span>
+                                                {CHANNEL_META[ch].icon} {CHANNEL_META[ch].label}
+                                            </span>
+                                        ))
+                                        : (
+                                            <span className="inline-flex items-center gap-2 text-[11px] font-bold text-gray-600">
+                                                <span className="w-3 h-[3px]" style={{ backgroundColor: METRIC_META[selectedMetric].color }}></span>
+                                                {METRIC_META[selectedMetric].label} — {CHANNEL_META[channel].label}
+                                            </span>
+                                        )}
+                                </div>
+
+                                <div className="p-4">
+                                    {analyticsLoading ? (
+                                        <div className="h-[240px] flex items-center justify-center text-xs text-gray-400">Загрузка данных динамики…</div>
+                                    ) : analyticsData.length === 0 ? (
+                                        <div className="h-[240px] flex items-center justify-center text-xs text-gray-400 border border-dashed border-gray-300">Нет данных за выбранный период</div>
+                                    ) : (
+                                        <div className="relative w-full overflow-hidden">
+                                            <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-auto overflow-visible">
+                                                {/* Сетка Y */}
+                                                {chart.yGrid.map((g, idx) => (
+                                                    <g key={idx}>
+                                                        <line x1={paddingLeft} y1={g.y} x2={chartWidth - paddingRight} y2={g.y} stroke="#E5E7EB" strokeWidth={1} />
+                                                        <text x={paddingLeft - 8} y={g.y + 3} textAnchor="end" className="fill-gray-400 font-bold text-[9px]">{g.val}</text>
+                                                    </g>
+                                                ))}
+                                                {/* Подписи X */}
+                                                {chart.xLabels.map((pt, idx) => (
+                                                    <text key={idx} x={pt.x} y={chartHeight - 8} textAnchor="middle" className="fill-gray-400 font-bold text-[9px]">{pt.label}</text>
+                                                ))}
+                                                {/* Линии-серии */}
+                                                {chart.series.map((s) => (
+                                                    <g key={s.key}>
+                                                        {chart.single && <path d={s.area} fill={s.color} opacity={0.08} />}
+                                                        <path d={s.line} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
+                                                        {s.pts.map((q, i) => (
+                                                            (chart.single || i === s.pts.length - 1 || hoveredPointIdx === i) ? (
+                                                                <circle key={i} cx={q.x} cy={q.y} r={hoveredPointIdx === i ? 4 : 2.6} fill="#FFFFFF" stroke={s.color} strokeWidth={2} />
+                                                            ) : null
+                                                        ))}
+                                                    </g>
+                                                ))}
+                                                {/* Направляющая при наведении */}
+                                                {hoveredPointIdx !== null && chart.series[0]?.pts[hoveredPointIdx] && (
+                                                    <line x1={chart.series[0].pts[hoveredPointIdx].x} y1={paddingTop} x2={chart.series[0].pts[hoveredPointIdx].x} y2={chartHeight - paddingBottom} stroke="#9CA3AF" strokeWidth={1} strokeDasharray="2 2" />
+                                                )}
+                                                {/* Зоны наведения */}
+                                                {analyticsData.map((_, idx) => {
+                                                    const x = paddingLeft + (idx * usableWidth) / Math.max(analyticsData.length - 1, 1);
+                                                    const w = usableWidth / Math.max(analyticsData.length - 1, 1);
+                                                    return <rect key={idx} x={x - w / 2} y={paddingTop} width={w} height={usableHeight} fill="transparent" className="cursor-pointer" onMouseEnter={() => setHoveredPointIdx(idx)} onMouseLeave={() => setHoveredPointIdx(null)} />;
+                                                })}
+                                            </svg>
+
+                                            {/* Тултип */}
+                                            {hoveredPointIdx !== null && analyticsData[hoveredPointIdx] && (() => {
+                                                const p = analyticsData[hoveredPointIdx];
+                                                const anchorX = paddingLeft + (hoveredPointIdx * usableWidth) / Math.max(analyticsData.length - 1, 1);
+                                                const fmtM = (v: number, m: MetricKey) => m === 'conversion' ? `${v}%` : formatIntRu(v);
+                                                const rows = channel === 'all'
+                                                    ? (['chat', 'call', 'cart'] as ChannelKey[]).map((ch) => ({ label: `${CHANNEL_META[ch].icon} ${CHANNEL_META[ch].label}`, val: fmtM(p[ch]?.[selectedMetric] ?? 0, selectedMetric), color: CHANNEL_META[ch].color }))
+                                                    : (['dialogs', 'contacts', 'orders', 'conversion'] as MetricKey[]).map((mk) => ({ label: METRIC_META[mk].label, val: fmtM(p[channel]?.[mk] ?? 0, mk), color: METRIC_META[mk].color }));
+                                                return (
+                                                    <div className="absolute bg-gray-900 text-white p-2.5 text-[10px] pointer-events-none z-30 flex flex-col gap-1 border border-gray-700" style={{ left: `${((anchorX - paddingLeft) / usableWidth) * 85 + 7}%`, top: 8, transform: 'translateX(-50%)' }}>
+                                                        <p className="font-black border-b border-gray-700 pb-1 text-gray-400">Период: {p.label}</p>
+                                                        <div className="space-y-0.5 pt-1">
+                                                            {rows.map((r, i) => (
+                                                                <p key={i} className="flex justify-between gap-4">
+                                                                    <span style={{ color: r.color }}>{r.label}</span>
+                                                                    <span className="font-bold" style={{ color: r.color }}>{r.val}</span>
+                                                                </p>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Contacts Table Block */}
-                        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col font-sans">
-                            <div className="px-4 py-3 bg-gray-900 text-white flex items-center justify-between">
-                                <h3 className="text-[11px] font-black uppercase tracking-wider">Список захваченных контактов</h3>
-                                <span className="text-[9px] text-gray-400 font-bold uppercase">Последние 50 записей</span>
                             </div>
-                            <div className="overflow-x-auto">
-                                <table className="w-full text-left border-collapse text-[11px] min-w-max">
-                                    <thead>
-                                        <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 font-semibold text-[10px] uppercase tracking-wider">
-                                            <th className="px-4 py-2.5 border-r border-gray-200">Имя посетителя</th>
-                                            <th className="px-4 py-2.5 border-r border-gray-200">Телефон / Email</th>
-                                            <th className="px-4 py-2.5 border-r border-gray-200">Локация / Сайт</th>
-                                            <th className="px-4 py-2.5 border-r border-gray-200">RetailCRM Заказ</th>
-                                            <th className="px-4 py-2.5 text-right">Дата / Время</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {capturedContactsList.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={5} className="px-4 py-12 text-center text-gray-400 italic">
-                                                    Контакты пока не собраны
-                                                </td>
+
+                            {/* Таблица захваченных контактов */}
+                            <div className="bg-white border border-gray-300">
+                                <div className="px-4 py-3 bg-gray-900 text-white flex items-center justify-between">
+                                    <h3 className="text-[11px] font-black uppercase tracking-wider">
+                                        Захваченные контакты{channel !== 'all' ? ` — ${CHANNEL_META[channel].label.toLowerCase()}` : ''}
+                                    </h3>
+                                    <span className="text-[9px] text-gray-400 font-bold uppercase">{contactsForChannel.length} записей</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-left border-collapse text-[11px] min-w-max">
+                                        <thead>
+                                            <tr className="bg-gray-100 border-b border-gray-300 text-gray-600 font-black text-[10px] uppercase tracking-wider">
+                                                <th className="px-4 py-2.5">Имя посетителя</th>
+                                                {channel === 'all' && <th className="px-4 py-2.5">Канал</th>}
+                                                <th className="px-4 py-2.5">Телефон / Email</th>
+                                                <th className="px-4 py-2.5">Локация / Сайт</th>
+                                                <th className="px-4 py-2.5">RetailCRM Заказ</th>
+                                                <th className="px-4 py-2.5 text-right">Дата / Время</th>
                                             </tr>
-                                        ) : (
-                                            capturedContactsList.map((item, idx) => {
-                                                const hasOrder = item.crm_order_id !== null && item.crm_order_id !== undefined;
-                                                const orderDetails = item.crm_order_id ? ordersMap[item.crm_order_id] : null;
-                                                const displayName = orderDetails?.customerName || item.nickname || 'Аноним';
-                                                const rowBg = idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50';
-                                                return (
-                                                    <tr 
-                                                        key={item.id} 
-                                                        onClick={() => setSelectedSessionId(item.id)}
-                                                        className={`hover:bg-yellow-50 cursor-pointer transition-all border-b border-gray-100 ${rowBg}`}
-                                                    >
-                                                        <td className="px-4 py-3 font-bold text-gray-900 border-r border-gray-200 align-top">
-                                                            {displayName}
-                                                        </td>
-                                                        <td className="px-4 py-3 space-y-0.5 border-r border-gray-200 align-top">
-                                                            {item.contact_phone && <p className="font-bold text-gray-700">{item.contact_phone}</p>}
-                                                            {item.contact_email && <p className="text-gray-400 font-medium">{item.contact_email}</p>}
-                                                            {!item.contact_phone && !item.contact_email && <span className="text-gray-300 italic">нет данных</span>}
-                                                        </td>
-                                                        <td className="px-4 py-3 border-r border-gray-200 align-top">
-                                                            <div className="flex flex-col">
-                                                                <span className="font-bold text-gray-700">{item.geo_city || '—'}</span>
-                                                                <span className="text-[9px] text-gray-400">{item.domain}</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-3 border-r border-gray-200 align-top" onClick={(e) => hasOrder && e.stopPropagation()}>
-                                                            {hasOrder ? (
-                                                                <div className="flex flex-col gap-1 min-w-[150px]">
-                                                                    <a 
-                                                                        href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`} 
-                                                                        target="_blank" 
-                                                                        rel="noopener noreferrer" 
-                                                                        className="text-blue-600 font-bold hover:text-blue-800 hover:underline text-[11px]"
-                                                                    >
-                                                                        #{item.crm_order_id} ↗
-                                                                    </a>
-                                                                    {orderDetails && (
-                                                                        <div className="text-[9px] text-gray-500 space-y-0.5 mt-0.5">
-                                                                            <div className="flex items-center gap-1">
-                                                                                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: orderDetails.statusColor || '#CBD5E1' }}></span>
-                                                                                <span className="font-bold text-gray-700">{orderDetails.statusName || 'Без статуса'}</span>
-                                                                            </div>
-                                                                            <p className="font-bold text-gray-800">Сумма: {orderDetails.amount?.toLocaleString() || 0} руб.</p>
-                                                                            <p className="text-gray-400">Менеджер: {orderDetails.managerName || '—'}</p>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ) : (
-                                                                <span className="text-gray-300 italic text-[10px]">в очереди...</span>
+                                        </thead>
+                                        <tbody>
+                                            {contactsForChannel.length === 0 ? (
+                                                <tr>
+                                                    <td colSpan={channel === 'all' ? 6 : 5} className="px-4 py-12 text-center text-gray-400">
+                                                        Контакты пока не собраны
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                contactsForChannel.map((item, idx) => {
+                                                    const hasOrder = item.crm_order_id !== null && item.crm_order_id !== undefined;
+                                                    const orderDetails = item.crm_order_id ? ordersMap[item.crm_order_id] : null;
+                                                    const displayName = orderDetails?.customerName || item.contact_name || item.nickname || 'Аноним';
+                                                    const chMeta = CHANNEL_META[(item.channel || 'chat') as ViewKey];
+                                                    return (
+                                                        <tr
+                                                            key={item.id}
+                                                            onClick={() => setSelectedSessionId(item.id)}
+                                                            className={`hover:bg-blue-50 cursor-pointer border-b border-gray-200 ${idx % 2 === 1 ? 'bg-gray-50' : 'bg-white'}`}
+                                                        >
+                                                            <td className="px-4 py-3 font-bold text-gray-900 align-top">{displayName}</td>
+                                                            {channel === 'all' && (
+                                                                <td className="px-4 py-3 align-top">
+                                                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-black text-white whitespace-nowrap" style={{ backgroundColor: chMeta.color }}>
+                                                                        {chMeta.icon} {chMeta.short}
+                                                                    </span>
+                                                                </td>
                                                             )}
-                                                        </td>
-                                                        <td className="px-4 py-3 text-right text-gray-400 font-medium align-top">
-                                                            {new Date(item.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })
-                                        )}
-                                    </tbody>
-                                </table>
+                                                            <td className="px-4 py-3 space-y-0.5 align-top">
+                                                                {item.contact_phone && <p className="font-bold text-gray-700">{item.contact_phone}</p>}
+                                                                {item.contact_email && <p className="text-gray-400 font-medium">{item.contact_email}</p>}
+                                                                {!item.contact_phone && !item.contact_email && <span className="text-gray-300 italic">нет данных</span>}
+                                                            </td>
+                                                            <td className="px-4 py-3 align-top">
+                                                                <div className="flex flex-col">
+                                                                    <span className="font-bold text-gray-700">{item.geo_city || '—'}</span>
+                                                                    <span className="text-[9px] text-gray-400">{item.domain}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-3 align-top" onClick={(e) => hasOrder && e.stopPropagation()}>
+                                                                {hasOrder ? (
+                                                                    <div className="flex flex-col gap-1 min-w-[150px]">
+                                                                        <a
+                                                                            href={`https://zmktlt.retailcrm.ru/orders/${item.crm_order_id}/edit`}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="text-blue-600 font-bold hover:underline text-[11px]"
+                                                                        >
+                                                                            #{item.crm_order_id} ↗
+                                                                        </a>
+                                                                        {orderDetails && (
+                                                                            <div className="text-[9px] text-gray-500 space-y-0.5 mt-0.5">
+                                                                                <div className="flex items-center gap-1">
+                                                                                    <span className="w-1.5 h-1.5" style={{ backgroundColor: orderDetails.statusColor || '#CBD5E1' }}></span>
+                                                                                    <span className="font-bold text-gray-700">{orderDetails.statusName || 'Без статуса'}</span>
+                                                                                </div>
+                                                                                <p className="font-bold text-gray-800">Сумма: {formatRub(orderDetails.amount || 0)}</p>
+                                                                                <p className="text-gray-400">Менеджер: {orderDetails.managerName || '—'}</p>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-gray-300 italic text-[10px]">в очереди…</span>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-4 py-3 text-right text-gray-400 font-medium align-top">
+                                                                {new Date(item.created_at).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
