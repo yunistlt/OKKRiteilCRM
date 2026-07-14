@@ -5,6 +5,7 @@ import { createLeadInCrm } from '@/lib/retailcrm/leads';
 import { createClient } from '@supabase/supabase-js';
 import { normalizePhone } from '@/lib/phone-utils';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
+import { callbackWindow, isValidRuMobile } from '@/lib/callback-hours';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
@@ -27,22 +28,6 @@ async function kickTelphinCallbackWorker(): Promise<void> {
     } catch (err) {
         console.error('kickTelphinCallbackWorker failed (cron will pick it up):', err);
     }
-}
-
-// Рабочие часы автодозвона (МСК, UTC+3). Вне окна не звоним — ставим задачу на следующее утро,
-// чтобы ночью не дёргать очередь (менеджеры не ответят, а клиента разбудим). Настраивается env.
-function callbackWindow(): { withinHours: boolean; availableAtIso?: string } {
-    const startH = parseInt(process.env.TELPHIN_CALLBACK_START_HOUR || '9', 10);
-    const endH = parseInt(process.env.TELPHIN_CALLBACK_END_HOUR || '21', 10);
-    const now = new Date();
-    const mskHour = (now.getUTCHours() + 3) % 24;
-    if (mskHour >= startH && mskHour < endH) return { withinHours: true };
-    // Ближайшее начало окна: startH МСК = (startH-3) UTC
-    const next = new Date(now);
-    next.setUTCMinutes(0, 0, 0);
-    next.setUTCHours((startH - 3 + 24) % 24);
-    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
-    return { withinHours: false, availableAtIso: next.toISOString() };
 }
 
 // External Supabase for LVZ Knowledge + catalog (marketing_products, webasyst_categories)
@@ -411,8 +396,8 @@ export async function POST(req: Request) {
             const { name, phone, company } = body as { name?: string; phone?: string; company?: string };
             const normalized = phone ? normalizePhone(phone) : null;
 
-            if (!name || !normalized) {
-                return NextResponse.json({ error: 'Name and valid phone are required' }, { status: 400, headers: CORS_HEADERS });
+            if (!name || !normalized || !isValidRuMobile(normalized)) {
+                return NextResponse.json({ error: 'Name and valid RU mobile phone are required' }, { status: 400, headers: CORS_HEADERS });
             }
 
             await Promise.all([

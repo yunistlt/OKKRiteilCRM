@@ -680,7 +680,15 @@ async function initWidget() {
     function hookNativeCallback() {
         var lastSent = 0;
         function onlyDigits(v) { var d = ''; v = (v || '') + ''; for (var k = 0; k < v.length; k++) { var c = v.charCodeAt(k); if (c >= 48 && c <= 57) d += v.charAt(k); } return d; }
-        function normPhone(v) { var d = onlyDigits(v); if (d.length === 11) { return '+7' + d.substring(1); } if (d.length === 10) { return '+7' + d; } return null; }
+        // Строго российский мобильный: 8/7 + 10 цифр или 9 + 9 цифр → +79XXXXXXXXX. Иначе null.
+        function normPhone(v) {
+            var d = onlyDigits(v);
+            if (d.length === 11 && (d.charAt(0) === '8' || d.charAt(0) === '7')) { d = '7' + d.substring(1); }
+            else if (d.length === 10 && d.charAt(0) === '9') { d = '7' + d; }
+            else { return null; }
+            if (d.length === 11 && d.charAt(0) === '7' && d.charAt(1) === '9') { return '+' + d; }
+            return null;
+        }
         function callbackCtx(el) {
             var node = el;
             for (var i = 0; i < 10 && node; i++) {
@@ -697,7 +705,13 @@ async function initWidget() {
                 if (!ctx) return;
                 var inputs = ctx.querySelectorAll('input');
                 var phone = null;
-                for (var j = 0; j < inputs.length; j++) { var p = normPhone(inputs[j].value); if (p) { phone = p; break; } }
+                for (var j = 0; j < inputs.length; j++) {
+                    var inp = inputs[j];
+                    // только видимые поля ввода; скрытые (id товара/токены) игнорируем
+                    if (inp.type === 'hidden' || inp.offsetParent === null) continue;
+                    var p = normPhone(inp.value);
+                    if (p) { phone = p; break; }
+                }
                 if (!phone) return;
                 var now = Date.now();
                 if (now - lastSent < 5000) return;
