@@ -69,6 +69,19 @@ export function kopecksToRubles(kopecks: number): number {
 }
 
 /**
+ * Платёж на заказе создан нашим банк-синком (Точка/Т-Банк) — определяется по externalId
+ * вида `tochka-…` / `tbank-…`. Это «фактический приход денег», в отличие от выставленного
+ * менеджером счёта (invoicejur без externalId). Признак не зависит от кода типа оплаты,
+ * поэтому переживает смену типа (bank-transfer → invoicejur) без изменения логики.
+ */
+export function isBankSyncExternalId(externalId: unknown): boolean {
+  return (
+    typeof externalId === 'string' &&
+    (externalId.startsWith('tochka-') || externalId.startsWith('tbank-'))
+  );
+}
+
+/**
  * Парсит сумму из строки/числа. Точка присылает рубли (напр. "484898.30" или 484898.3),
  * иногда в назначении встречается формат "484898-30" (дефис вместо разделителя копеек).
  */

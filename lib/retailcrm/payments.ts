@@ -3,7 +3,11 @@ import { getCrmConfig } from './leads';
 // Создание платежа на заказе в RetailCRM v5.
 // Метод: POST /api/v5/orders/payments/create (form-encoded, apiKey в query).
 // Тип платежа берётся из RETAILCRM_BANK_PAYMENT_TYPE (код из справочника payment-types),
-// по умолчанию 'bank-transfer'. externalId делает операцию идемпотентной на стороне CRM.
+// по умолчанию 'invoicejur' («Оплата по счету») — единственный активный безналичный тип в этой
+// CRM и «по умолчанию в API»; bank-transfer здесь выключен и несовместим с доставкой tk.
+// «Фактический приход» отличается от счёта менеджера не типом, а нашим externalId (см.
+// isBankSyncExternalId в lib/payments/types) — поэтому зарплатный расчёт от смены типа не страдает.
+// externalId делает операцию идемпотентной на стороне CRM.
 
 export interface CreateRetailCrmPaymentInput {
   orderId?: number | null;   // id заказа в RetailCRM (orders.order_id) — предпочтительно
@@ -23,7 +27,7 @@ export interface CreateRetailCrmPaymentResult {
 }
 
 function getBankPaymentType(explicit?: string | null): string {
-  return explicit || process.env.RETAILCRM_BANK_PAYMENT_TYPE || 'bank-transfer';
+  return explicit || process.env.RETAILCRM_BANK_PAYMENT_TYPE || 'invoicejur';
 }
 
 export async function createRetailCrmOrderPayment(
