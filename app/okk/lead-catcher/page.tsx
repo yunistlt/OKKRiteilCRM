@@ -86,6 +86,7 @@ export default function LeadCatcherPage() {
 
     // Analytics states (разбивка по каналам захвата)
     const [channel, setChannel] = useState<ViewKey>('all');
+    const [dialogsOpen, setDialogsOpen] = useState(false); // модалка «Живые диалоги» (канал «Чат на сайте»)
     const [channelTotals, setChannelTotals] = useState<Record<string, Metrics>>({});
     const [selectedRange, setSelectedRange] = useState<'week' | 'month' | 'quarter' | 'year'>('week');
     const [selectedMetric, setSelectedMetric] = useState<MetricKey>('dialogs');
@@ -344,35 +345,44 @@ export default function LeadCatcherPage() {
     }, [analyticsData, channel, selectedMetric, usableWidth, usableHeight]);
 
     const selectedSession = sessions.find((s: Session) => s.id === selectedSessionId);
-    const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';    return (
-        <div className="flex h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
-            {/* Lead List Sidebar */}
-            <div className="w-96 border-r bg-white flex flex-col shadow-lg z-20">
-                <div className="p-6 border-b bg-gray-900 text-white">
-                    <div className="flex justify-between items-center">
-                        <h1 className="text-xl font-black flex items-center gap-2">
-                            <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.5)]"></span> 
-                            Ловец Лидов
-                        </h1>
-                        <a 
-                            href="/settings/widget" 
-                            className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors text-gray-300 hover:text-white"
-                            title="Настройки виджета"
-                        >
-                            <span>⚙️</span> Настройки
-                        </a>
-                    </div>
-                    <div className="mt-4">
-                        <input 
-                            type="text" 
-                            placeholder="Поиск по имени или городу..." 
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="w-full bg-gray-800 border-none rounded-xl py-2 px-4 text-xs text-white placeholder-gray-500 outline-none focus:ring-1 focus:ring-blue-500 transition-all"
-                        />
-                    </div>
+    const getInitials = (name: string | null) => name ? name.split(' ').map((n: string) => n[0]).join('').slice(-2).toUpperCase() : '??';
+    const onlineCount = sessions.filter((s) => isOnline(s.updated_at)).length;
+    return (
+        <div className="flex flex-col h-[calc(100vh-80px)] bg-gray-100 overflow-hidden font-sans">
+            {/* Модалка «Живые диалоги»: список диалогов + переписка. Открывается кнопкой на канале «Чат на сайте». */}
+            {dialogsOpen && (
+                <div className="fixed inset-0 z-[100] bg-black/60" onClick={() => setDialogsOpen(false)}>
+                    <div className="absolute inset-4 md:inset-6 bg-white border border-gray-300 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                        {/* Шапка модалки */}
+                        <div className="bg-gray-900 text-white flex items-center gap-3 px-5 py-3.5 flex-none">
+                            <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></span>
+                            <h2 className="text-[15px] font-black flex items-center gap-2">
+                                Живые диалоги
+                                <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 uppercase tracking-wider">💬 Чат на сайте</span>
+                            </h2>
+                            <span className="text-[11px] text-gray-400 font-bold ml-1">{onlineCount} онлайн · {formatIntRu(sessions.length)} в списке</span>
+                            <button onClick={() => setDialogsOpen(false)} className="ml-auto w-8 h-8 grid place-items-center border border-gray-700 text-gray-300 hover:bg-gray-800 text-lg leading-none">✕</button>
+                        </div>
+                        <div className="flex-1 flex min-h-0">
+                            {/* Список диалогов */}
+                            <div className="w-96 border-r border-gray-300 bg-white flex flex-col min-h-0">
+                <div className="p-3 border-b border-gray-300 flex items-center gap-2">
+                    <input
+                        type="text"
+                        placeholder="Поиск по имени или городу…"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="flex-1 bg-gray-100 border border-gray-300 py-2 px-3 text-xs text-gray-800 placeholder-gray-400 outline-none focus:border-blue-500"
+                    />
+                    <a
+                        href="/settings/widget"
+                        title="Настройки виджета"
+                        className="w-9 h-9 flex-none grid place-items-center border border-gray-300 text-gray-500 hover:bg-gray-100 text-sm"
+                    >
+                        ⚙️
+                    </a>
                 </div>
-                
+
                 <div className="flex-1 overflow-y-auto no-scrollbar">
                     {loading ? (
                         <div className="p-10 text-center text-gray-300 animate-pulse font-bold uppercase text-[10px]">Синхронизация...</div>
@@ -433,8 +443,8 @@ export default function LeadCatcherPage() {
                 </div>
             </div>
 
-            {/* Main Content Area */}
-            <div className="flex-1 flex flex-col relative bg-white">
+                            {/* Переписка выбранного диалога */}
+                            <div className="flex-1 flex flex-col relative bg-white min-w-0">
                 {selectedSession ? (
                     <>
                         {/* Session Header */}
@@ -666,7 +676,19 @@ export default function LeadCatcherPage() {
                             </div>
                         </div>
                     </>
-                ) : (
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-400 text-sm font-bold px-6 text-center">
+                                        Выберите диалог слева, чтобы открыть переписку
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Аналитика — на всю ширину, всегда видна */}
+            <div className="flex-1 flex flex-col relative bg-white overflow-hidden">
                     <div className="flex-1 flex flex-col h-full bg-gray-100 overflow-y-auto">
                         <div className="p-5 space-y-4">
                             {/* Заголовок */}
@@ -693,6 +715,31 @@ export default function LeadCatcherPage() {
                                     );
                                 })}
                             </div>
+
+                            {/* Живые диалоги — вход в инбокс (только канал «Чат на сайте») */}
+                            {channel === 'chat' && (
+                                <div className="flex items-stretch border border-gray-300 bg-white">
+                                    <div className="w-1.5 bg-blue-600 flex-none"></div>
+                                    <div className="flex items-center gap-4 p-4 flex-1 flex-wrap">
+                                        <div className="w-11 h-11 bg-blue-50 text-blue-600 grid place-items-center text-xl flex-none">💬</div>
+                                        <div className="min-w-0">
+                                            <h3 className="text-[15px] font-black text-gray-900">Живые диалоги</h3>
+                                            <p className="text-xs text-gray-500 font-semibold mt-0.5">Переписки посетителей с Еленой · перехват и ответ вручную</p>
+                                        </div>
+                                        <div className="flex gap-6 ml-auto">
+                                            <div>
+                                                <div className="text-xl font-black text-green-600 leading-none tabular-nums">{onlineCount}</div>
+                                                <div className="text-[10px] font-black uppercase tracking-wide text-gray-400 mt-1">онлайн</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xl font-black text-gray-900 leading-none tabular-nums">{formatIntRu((channelTotals.chat || EMPTY_METRICS).dialogs)}</div>
+                                                <div className="text-[10px] font-black uppercase tracking-wide text-gray-400 mt-1">всего</div>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setDialogsOpen(true)} className="bg-blue-600 text-white text-[13px] font-black px-6 py-3 hover:bg-blue-700 transition-colors whitespace-nowrap">Открыть диалоги →</button>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* Карточки KPI выбранного канала */}
                             {(() => {
@@ -994,7 +1041,6 @@ export default function LeadCatcherPage() {
                             </div>
                         </div>
                     </div>
-                )}
             </div>
         </div>
     );
