@@ -233,6 +233,7 @@ async function pushMatchedPaymentToCrm(
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
     const mv = await moveOrderToProductionAfterPayment(row.matched_order_id, {
       currentStatus: order?.status ?? null,
+      site: order?.site ?? null,
     });
     return {
       movedToProduction: mv.moved,

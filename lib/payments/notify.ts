@@ -1,6 +1,12 @@
 import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
 import { detectForeignProject, projectChatId } from './projects';
+import { supabase } from '@/utils/supabase';
+
+// Снабженец проекта ЗМК (константа): его тег ставим в каждое уведомление об оплате.
+// Личность — запись в managers (по умолчанию id 13, Лариса Хоменко); сам ник берём из
+// managers.raw_data.telegram_username, поэтому появится в сообщении сразу, как только он там задан.
+const SUPPLY_MANAGER_ID = process.env.TELEGRAM_PAYMENTS_SUPPLY_MANAGER_ID || '13';
 
 // Уведомление об оплате в Telegram через отдельного бота (@okkzmk_bot).
 // Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN). Чат выбирается по ПРОЕКТУ
@@ -39,6 +45,45 @@ export interface NotifyOptions {
   movedToProduction?: boolean;
   productionStatusName?: string;
   productionNotMovedReason?: string;
+  /** Тег менеджера сделки, напр. «@nick» или ФИО (заполняется резолвером перед отправкой). */
+  managerTag?: string | null;
+  /** Тег снабженца (Лариса), напр. «@nick». Пусто, пока ник не задан в managers. */
+  supplyTag?: string | null;
+}
+
+// Тег участника по его managers.id: @ник, если задан telegram_username; иначе ФИО (без пинга);
+// null — если записи нет вовсе. Используется и для менеджера сделки, и для снабженца.
+async function managerTagById(managerId: string | number | null): Promise<string | null> {
+  if (managerId == null) return null;
+  const { data } = await supabase
+    .from('managers')
+    .select('first_name, last_name, raw_data')
+    .eq('id', String(managerId))
+    .maybeSingle();
+  if (!data) return null;
+  const tg = (data as any).raw_data?.telegram_username;
+  if (tg) return `@${String(tg).replace(/^@/, '')}`;
+  const name = [(data as any).first_name, (data as any).last_name].filter(Boolean).join(' ').trim();
+  return name ? esc(name) : null;
+}
+
+// Менеджер, ведущий сделку: matched_order_number → orders.manager_id → managers.
+async function resolveDealManagerTag(row: PointPaymentRow): Promise<string | null> {
+  const num = row.matched_order_number;
+  if (!num) return null;
+  const { data: ord } = await supabase
+    .from('orders')
+    .select('manager_id')
+    .eq('number', String(num))
+    .limit(1)
+    .maybeSingle();
+  return managerTagById((ord as any)?.manager_id ?? null);
+}
+
+// Снабженец (Лариса): показываем только если у него задан @ник — иначе строку опускаем.
+async function resolveSupplyTag(): Promise<string | null> {
+  const tag = await managerTagById(SUPPLY_MANAGER_ID);
+  return tag && tag.startsWith('@') ? tag : null;
 }
 
 function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions): string {
@@ -84,6 +129,10 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
     lines.push(`🟡 Требует ручного разбора — <a href="${paymentsPageLink()}">открыть</a>`);
   }
 
+  // Ответственные по сделке ЗМК: менеджер и снабженец. Теги (@ник) пингуют их в чате.
+  if (opts.managerTag) lines.push(`👔 Менеджер: ${opts.managerTag}`);
+  if (opts.supplyTag) lines.push(`📦 Снабжение: ${opts.supplyTag}`);
+
   return lines.join('\n');
 }
 
@@ -100,9 +149,16 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   const chatId = projectChatId(foreign ?? 'zmktl');
   if (!chatId) return;
 
+  // Теги ответственных — только для ЗМК (у чужих проектов нет заказа/снабженца ЗМК).
+  const tagOpts: NotifyOptions = { ...opts };
+  if (!routed) {
+    tagOpts.managerTag = opts.managerTag ?? (await resolveDealManagerTag(row).catch(() => null));
+    tagOpts.supplyTag = opts.supplyTag ?? (await resolveSupplyTag().catch(() => null));
+  }
+
   const body: Record<string, unknown> = {
     chat_id: chatId,
-    text: buildMessage(row, routed, opts),
+    text: buildMessage(row, routed, tagOpts),
     parse_mode: 'HTML',
     disable_web_page_preview: true,
   };

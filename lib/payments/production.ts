@@ -45,23 +45,29 @@ export interface MoveToProductionResult {
  */
 export async function moveOrderToProductionAfterPayment(
   orderId: number | null | undefined,
-  opts: { currentStatus?: string | null } = {},
+  opts: { currentStatus?: string | null; site?: string | null } = {},
 ): Promise<MoveToProductionResult> {
   if (!orderId) return { moved: false, notMovedReason: 'нет id заказа' };
   try {
-    // Текущий статус можно передать (если заказ уже фетчили) — иначе тянем сами.
+    // Текущий статус и site можно передать (если заказ уже фетчили) — иначе тянем сами.
+    // site обязателен: orders/edit отклоняет чужой site заказа (см. updateExistingOrderInCrm).
     let current = opts.currentStatus ? String(opts.currentStatus) : '';
-    if (!current) {
+    let site = opts.site ? String(opts.site) : '';
+    if (!current || !site) {
       const order = await fetchRetailCrmOrder(orderId);
       if (!order) return { moved: false, notMovedReason: 'заказ не найден в RetailCRM' };
-      current = String(order.status || '');
+      if (!current) current = String(order.status || '');
+      if (!site) site = String(order.site || '');
     }
     const { set: blocked, prodName, names } = await loadStatusMeta();
     if (blocked.has(current)) {
       const curName = names[current] || current;
       return { moved: false, notMovedReason: `уже в статусе «${curName}»` };
     }
-    await updateExistingOrderInCrm(orderId, { status: PRODUCTION_STATUS });
+    const res = await updateExistingOrderInCrm(orderId, { status: PRODUCTION_STATUS }, site || undefined);
+    if (!res.success) {
+      return { moved: false, notMovedReason: `RetailCRM отклонил перевод: ${res.errorMsg || 'неизвестная ошибка'}` };
+    }
     return { moved: true, statusName: prodName };
   } catch (e: any) {
     return { moved: false, notMovedReason: `ошибка RetailCRM: ${String(e?.message || e).slice(0, 150)}` };
