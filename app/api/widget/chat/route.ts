@@ -550,17 +550,22 @@ export async function POST(req: Request) {
             }
         }
 
+        // Берём 10 ПОСЛЕДНИХ сообщений (desc + reverse), а не 10 самых старых.
+        // Текущее сообщение клиента уже записано в widget_messages выше, поэтому оно
+        // окажется последним в истории — второй раз в запрос его НЕ добавляем (иначе дубль).
         const { data: history } = await supabase
             .from('widget_messages')
             .select('role, content')
             .eq('session_id', sessionId)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
             .limit(10);
 
-        const chatHistory = history?.map((h: any) => ({
-            role: h.role,
-            content: h.content
-        })) || [];
+        const chatHistory = (history || [])
+            .reverse()
+            .map((h: any) => ({
+                role: h.role,
+                content: h.content
+            }));
 
         let systemPrompt = SYSTEM_PROMPT_TEMPLATE
             .replace('{{domain}}', visitorData?.domain || '')
@@ -606,7 +611,7 @@ export async function POST(req: Request) {
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
-            messages: [{ role: 'system', content: systemPrompt }, ...chatHistory, { role: 'user', content: message }],
+            messages: [{ role: 'system', content: systemPrompt }, ...chatHistory],
             temperature: 0.7
         });
         await recordAiUsage({ agentId: AiAgent.ELENA, model: response.model, usage: response.usage, purpose: 'widget_chat' });
