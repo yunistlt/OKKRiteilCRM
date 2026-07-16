@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { fetchRetailCrmOrder } from './orders';
 
 export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -578,35 +579,49 @@ export async function updateExistingOrderInCrm(orderId: number, params: {
     customFields?: Record<string, any>;
     firstName?: string;
     managerId?: number | null;
-}) {
+}, site?: string): Promise<{ success: boolean; errorMsg?: string }> {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
 
     // Всё пишем одним вызовом orders/edit (единственный метод, доступный API-ключу).
     // Сводку квалификации (noteText) кладём в managerComment («Комментарий оператора») —
     // отдельный метод orders/notes/create этому ключу недоступен (404), а edit проходит.
-    if (params.status || params.customFields || params.firstName || params.managerId || params.noteText) {
-        const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}${configSite ? `&site=${configSite}` : ''}`;
-        const body = new URLSearchParams();
-        const orderData: any = {};
-        if (params.status) orderData.status = params.status;
-        if (params.customFields) orderData.customFields = params.customFields;
-        if (params.firstName) orderData.firstName = params.firstName;
-        if (params.managerId) orderData.managerId = params.managerId;
-        if (params.noteText) orderData.managerComment = params.noteText;
+    if (!(params.status || params.customFields || params.firstName || params.managerId || params.noteText)) {
+        return { success: true };
+    }
 
-        body.append('order', JSON.stringify(orderData));
-        if (configSite) body.append('site', configSite);
-        body.append('by', 'id');
+    // orders/{id}/edit?by=id СТРОГО требует site, которому принадлежит заказ, а НЕ фиксированный
+    // RETAILCRM_SITE: при несовпадении RetailCRM отвечает {success:false,errorMsg:"Not found"}.
+    // Заказы приходят из разных магазинов (zmktlt-ru-admin, ao-zvto, …), поэтому берём реальный
+    // site заказа: передан вызывающим (если заказ уже фетчили) — иначе резолвим GET-запросом.
+    let editSite = site;
+    if (!editSite) {
+        const order = await fetchRetailCrmOrder(orderId).catch(() => null);
+        editSite = (order?.site as string | undefined) || configSite;
+    }
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body.toString()
-        });
-        const result = await response.json();
-        if (!result.success) {
-            console.error(`Failed to update order ${orderId}:`, result);
-        }
+    const url = `${baseUrl}/api/v5/orders/${orderId}/edit?apiKey=${apiKey}&site=${encodeURIComponent(editSite)}`;
+    const body = new URLSearchParams();
+    const orderData: any = {};
+    if (params.status) orderData.status = params.status;
+    if (params.customFields) orderData.customFields = params.customFields;
+    if (params.firstName) orderData.firstName = params.firstName;
+    if (params.managerId) orderData.managerId = params.managerId;
+    if (params.noteText) orderData.managerComment = params.noteText;
+
+    body.append('order', JSON.stringify(orderData));
+    body.append('site', editSite);
+    body.append('by', 'id');
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    });
+    const result = await response.json();
+    if (!result.success) {
+        console.error(`Failed to update order ${orderId}:`, result);
+        const errorMsg = result.errorMsg || (result.errors ? JSON.stringify(result.errors) : `HTTP ${response.status}`);
+        return { success: false, errorMsg };
     }
 
     return { success: true };
