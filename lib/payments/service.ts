@@ -38,23 +38,15 @@ async function reconcileOrderPaymentsToBank(order: any, newBankAmountRub: number
   return deleted;
 }
 
-// Статус нашего платежа: 'paid' (Оплачен полностью) если накопленная сумма банковских
-// поступлений по заказу (включая этот) покрывает сумму заказа, иначе 'check-off-full'
-// (Частичная оплата). Считаем только НАШИ банк-синк-платежи (по externalId), а не по типу:
-// счёт менеджера (invoicejur без externalId) — это не поступление, и с тех пор как наши платежи
-// тоже invoicejur, различать их можно только по externalId, иначе счёт задвоит накопленную сумму.
-function computePaymentStatus(order: any, thisAmountRub: number): 'paid' | 'check-off-full' {
-  const total = Number(order?.totalSumm);
-  if (!Number.isFinite(total) || total <= 0) return 'paid'; // нет суммы заказа — не гадаем
-  let priorPaid = 0;
-  for (const p of Object.values(order?.payments || {})) {
-    const pp = p as any;
-    if (isBankSyncPayment(pp) && (pp?.status === 'paid' || pp?.status === 'check-off-full')) {
-      priorPaid += Number(pp.amount) || 0;
-    }
-  }
-  return priorPaid + thisAmountRub + 0.01 >= total ? 'paid' : 'check-off-full';
-}
+// Статус нашего платежа — всегда 'paid' (Оплачен полностью). Банковское поступление —
+// это ПОЛНОСТЬЮ полученные деньги по своей строке платежа, а не «частичная оплата» заказа
+// (частичность заказа RetailCRM выводит сам из суммы завершённых платежей vs суммы заказа).
+// ВАЖНО: статус 'check-off-full' («Частичная оплата») в RetailCRM имеет paymentComplete=false,
+// т.е. считается НЕОПЛАЧЕННЫМ. RetailCRM запрещает держать >1 неоплаченного платежа на заказе
+// («leave only one unpaid cash payment») и на этом отклоняет ЛЮБОЙ orders/edit — в т.ч. перевод
+// в производство: если рядом висит неоплаченный счёт менеджера, наша «частичная» оплата даёт
+// второй неоплаченный платёж и блокирует смену статуса. Помечая приход как 'paid', оставляем
+// неоплаченным максимум счёт менеджера (один) — правило проходит, заказ переводится.
 
 export type CrmPosting = 'posted_auto' | 'posted_manual' | 'not_posted';
 
@@ -197,9 +189,8 @@ async function pushMatchedPaymentToCrm(
 ): Promise<{ movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string }> {
   const amountRub = kopecksToRubles(Number(row.amount_kopecks));
 
-  // Тянем заказ один раз: для статуса оплаты (полная/частичная) и для гарда производства.
+  // Тянем заказ один раз: для сверки дублей оплат и для гарда производства (статус/site).
   const order = row.matched_order_id ? await fetchRetailCrmOrder(row.matched_order_id) : null;
-  const paymentStatus = computePaymentStatus(order, amountRub);
 
   const result = await createRetailCrmOrderPayment({
     orderId: row.matched_order_id,
@@ -208,7 +199,8 @@ async function pushMatchedPaymentToCrm(
     paidAt: toRetailCrmPaidAt(row.payment_datetime || row.payment_date),
     externalId: `${row.source}-${row.external_payment_id}`,
     comment: row.purpose || undefined,
-    status: paymentStatus,
+    // Приход = полностью полученные деньги → 'paid' (см. пояснение выше про правило RetailCRM).
+    status: 'paid',
   });
 
   if (result.success) {
