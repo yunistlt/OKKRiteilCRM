@@ -37,6 +37,18 @@ salary_calc (legacy-колонки + breakdown.blockContributions)  →  GET /ap
 Файлы: `lib/salary/metrics.ts` (сбор), `lib/salary/schemes.ts` (резолв схем/планов),
 `lib/salary/blocks/*` (каталог+compose), `lib/salary/engine.ts` (оркестрация+персист).
 
+**Чтение расчёта — единый `loadPeriodView` (`lib/salary/period-view.ts`):**
+- **Открытый период — считается НА ЛЕТУ** при каждом заходе (`calculatePeriod`, без
+  записи в БД). Заказы, ушедшие в производство только что, сразу в ведомости — без ручной
+  кнопки «Пересчитать» и без Vercel-крона. `needsRecalc` для открытого периода всегда `false`.
+- **Закрытый период — из снимка** `salary_calc`/`salary_engineer_calc` (неизменяем, инвариант 6).
+- Все потребители читают через `loadPeriodView` (единый источник, snapshot и live — одной формы
+  через `salaryResultToCalcRow`): список `/api/salary`, «Моя ЗП» `/api/salary/my`, экспорт,
+  AI-консультант `consultant-tools.ts`. Раскрытие заказов (`buildTeamOrders`) и конверсия отдела
+  (`my-dashboard`) кормятся live-строками. `includeEngineers:false` на «горячих» роутах (/my, консультант).
+- `salary_calc` теперь пишется только `recalcAndPersist` (кнопка «Пересчитать») и при закрытии —
+  это снимок на момент закрытия, не источник для открытого периода.
+
 ## 4. Бонус-блоки (каталог)
 Блок = дескриптор в коде (`code, name, methodology, kind, group, multiplierScope?, requiredMetrics, paramSchema`)
 + чистая `compute(m, params, ctx) → {amount|multiplier, explain, dataFill}`. Параметры (числа) — из БД.

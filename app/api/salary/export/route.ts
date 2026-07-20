@@ -3,9 +3,11 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { listSchemes } from '@/lib/salary/schemes';
+import { loadPeriodView } from '@/lib/salary/period-view';
 import * as XLSX from 'xlsx';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // открытый период считается на лету
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const ORDER_TYPE_LABEL: Record<string, string> = { new: 'Новый', permanent: 'Постоянный' };
@@ -29,16 +31,10 @@ export async function GET(req: Request) {
         const year = Number(m[1]);
         const month = Number(m[2]);
 
-        const { data: periodRow } = await supabase
-            .from('salary_period')
-            .select('id,status')
-            .eq('year', year)
-            .eq('month', month)
-            .maybeSingle();
-        if (!periodRow) return NextResponse.json({ error: 'Период не рассчитан' }, { status: 404 });
-
-        const { data: calcRows } = await supabase.from('salary_calc').select('*').eq('period_id', periodRow.id);
-        const rows = (calcRows as any[]) ?? [];
+        // Открытый период — расчёт на лету; закрытый — снимок (единый источник).
+        const view = await loadPeriodView(year, month);
+        if (view.status === 'none') return NextResponse.json({ error: 'Период не рассчитан' }, { status: 404 });
+        const rows = view.rows as any[];
 
         // Имя схемы (= группа из RetailCRM), а не код роли — закон «только человеческий язык»
         const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -61,7 +57,7 @@ export async function GET(req: Request) {
             'Новых', 'Постоянных', 'Конверсия %', 'Скоринг ОКК', 'Скидка %', 'Маржа', 'Состав (блоки)',
         ];
         const aoa: any[][] = [
-            [`Расчёт ЗП ОП — ${MONTHS[month - 1]} ${year} (${periodRow.status === 'closed' ? 'закрыт' : 'открыт'})`],
+            [`Расчёт ЗП ОП — ${MONTHS[month - 1]} ${year} (${view.status === 'closed' ? 'закрыт' : 'открыт'})`],
             [],
             header,
         ];
