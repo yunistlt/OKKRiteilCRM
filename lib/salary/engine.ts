@@ -341,12 +341,13 @@ async function ensureOpenPeriod(year: number, month: number): Promise<number> {
     return created.id;
 }
 
-/** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
-export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
-    const periodId = await ensureOpenPeriod(year, month);
-    const calc = await calculatePeriod(year, month);
-
-    const rows = calc.results.map((r) => ({
+/**
+ * Строка salary_calc-формы из результата расчёта. Единый маппер и для персиста
+ * (recalcAndPersist / close), и для чтения открытого периода «на лету» (period-view),
+ * чтобы snapshot и live были байт-в-байт одной формы.
+ */
+export function salaryResultToCalcRow(r: SalaryResult, periodId: number, computedAt: string) {
+    return {
         period_id: periodId,
         manager_id: r.managerId,
         oklad: r.oklad,
@@ -359,8 +360,17 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
         total: r.total,
         margin_info: r.marginInfo,
         breakdown: r.breakdown,
-        computed_at: new Date().toISOString(),
-    }));
+        computed_at: computedAt,
+    };
+}
+
+/** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
+export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
+    const periodId = await ensureOpenPeriod(year, month);
+    const calc = await calculatePeriod(year, month);
+
+    const computedAt = new Date().toISOString();
+    const rows = calc.results.map((r) => salaryResultToCalcRow(r, periodId, computedAt));
 
     if (rows.length) {
         const { error } = await supabase.from('salary_calc').upsert(rows, { onConflict: 'period_id,manager_id' });

@@ -6,11 +6,13 @@ import { buildTeamOrders, buildIncomingByManager } from '@/lib/salary/report-det
 import { getRecalcState } from '@/lib/salary/recalc-state';
 import { getResolvedConfig } from '@/lib/salary/config';
 import { listEngineerDictionary } from '@/lib/salary/schemes';
+import { loadPeriodView } from '@/lib/salary/period-view';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // открытый период считается на лету
 
 // GET /api/salary?period=YYYY-MM
-// Возвращает сохранённый расчёт периода по менеджерам + статус периода.
+// Открытый период — расчёт на лету из боевых данных; закрытый — зафиксированный снимок.
 // admin/rop — все строки; manager — только своя (по retail_crm_manager_id).
 export async function GET(req: Request) {
     try {
@@ -28,35 +30,25 @@ export async function GET(req: Request) {
         const year = Number(m[1]);
         const month = Number(m[2]);
 
-        const { data: periodRow } = await supabase
-            .from('salary_period')
-            .select('id,status,closed_at,closed_by')
-            .eq('year', year)
-            .eq('month', month)
-            .maybeSingle();
-
-        if (!periodRow) {
+        const view = await loadPeriodView(year, month);
+        if (view.status === 'none') {
             return NextResponse.json({ period: { year, month, status: 'none' }, rows: [], total: 0 });
         }
 
-        let query = supabase.from('salary_calc').select('*').eq('period_id', periodRow.id);
-
-        // Менеджер видит только свою строку
+        // Менеджер видит только свою строку; admin/rop — все.
         const role = session?.user?.role;
         const isManagerOnly = role === 'manager';
+        let respRows = view.rows;
         if (isManagerOnly) {
             const mid = session?.user?.retail_crm_manager_id;
             if (mid == null) {
-                return NextResponse.json({ period: { year, month, status: periodRow.status }, rows: [], total: 0 });
+                return NextResponse.json({ period: { year, month, status: view.status }, rows: [], total: 0 });
             }
-            query = query.eq('manager_id', mid);
+            respRows = view.rows.filter((r) => Number(r.manager_id) === Number(mid));
         }
 
-        const { data: calcRows, error } = await query;
-        if (error) throw error;
-
         // Имена менеджеров
-        const managerIds = Array.from(new Set((calcRows ?? []).map((r: any) => r.manager_id)));
+        const managerIds = Array.from(new Set(respRows.map((r) => r.manager_id)));
         const namesById = new Map<number, string>();
         if (managerIds.length) {
             const { data: mgrs } = await supabase
@@ -68,37 +60,37 @@ export async function GET(req: Request) {
             }
         }
 
-        const rows = (calcRows ?? []).map((r: any) => ({ ...r, manager_name: namesById.get(r.manager_id) || `#${r.manager_id}` }));
-        const total = rows.reduce((s: number, r: any) => s + Number(r.total || 0), 0);
+        const rows = respRows.map((r) => ({ ...r, manager_name: namesById.get(r.manager_id) || `#${r.manager_id}` }));
+        const total = rows.reduce((s, r) => s + Number(r.total || 0), 0);
 
         // Детализация показателей заказами — отдаём вместе с отчётом (без ленивых дозапросов).
-        // teamOrders — весь отдел (из сохранённых расчётов); incoming — по тем менеджерам, что в ответе.
-        const team = await buildTeamOrders(periodRow.id);
-        const incomingManagerIds = (rows as any[]).map((r) => Number(r.manager_id));
+        // teamOrders — весь отдел (для открытого периода — live-строки); incoming — по менеджерам ответа.
+        const team = await buildTeamOrders(view.periodId!, view.rows);
+        const incomingManagerIds = rows.map((r) => Number(r.manager_id));
         const incomingByManager = await buildIncomingByManager(year, month, incomingManagerIds);
 
-        // Устарел ли расчёт относительно изменений мотивации (нужен пересчёт).
-        const recalcState = await getRecalcState(periodRow.id, periodRow.status, year, month);
+        // Открытый период считается на лету → всегда актуален (пересчёт не требуется).
+        // Закрытый — сверяем снимок с изменениями мотивации.
+        const recalcState = view.live
+            ? { needsRecalc: false, changedAt: null as string | null }
+            : await getRecalcState(view.periodId!, view.status, year, month);
 
         // Инженеры-расчётчики (только для admin/rop; менеджер видит лишь свою строку).
         let engineers: any[] = [];
         let engineersTotal = 0;
-        if (!isManagerOnly) {
-            const { data: engRows } = await supabase.from('salary_engineer_calc').select('*').eq('period_id', periodRow.id);
-            if ((engRows as any[])?.length) {
-                let nameByCode = new Map<string, string>();
-                try {
-                    const cfg = await getResolvedConfig(`${year}-${String(month).padStart(2, '0')}-01`);
-                    const dict = await listEngineerDictionary(cfg.engineer_field.code);
-                    nameByCode = new Map(dict.map((d) => [d.itemCode, d.name]));
-                } catch { /* справочник не синкнут — покажем item_code */ }
-                engineers = (engRows as any[]).map((r) => ({ ...r, engineer_name: nameByCode.get(r.item_code) || r.item_code }));
-                engineersTotal = engineers.reduce((s, r) => s + Number(r.total || 0), 0);
-            }
+        if (!isManagerOnly && view.engineerRows.length) {
+            let nameByCode = new Map<string, string>();
+            try {
+                const cfg = await getResolvedConfig(`${year}-${String(month).padStart(2, '0')}-01`);
+                const dict = await listEngineerDictionary(cfg.engineer_field.code);
+                nameByCode = new Map(dict.map((d) => [d.itemCode, d.name]));
+            } catch { /* справочник не синкнут — покажем item_code */ }
+            engineers = view.engineerRows.map((r) => ({ ...r, engineer_name: nameByCode.get(r.item_code) || r.item_code }));
+            engineersTotal = engineers.reduce((s, r) => s + Number(r.total || 0), 0);
         }
 
         return NextResponse.json({
-            period: { year, month, status: periodRow.status, closed_at: periodRow.closed_at, closed_by: periodRow.closed_by },
+            period: { year, month, status: view.status, closed_at: view.closedAt, closed_by: view.closedBy },
             rows,
             total,
             isManagerOnly,

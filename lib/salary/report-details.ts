@@ -57,12 +57,23 @@ function clientNameFromPayload(p: any): string | null {
     return nick || custFio || contactFio || null;
 }
 
-/** Заказы отдела (из чего сложилась выручка отдела) — из сохранённых расчётов периода. */
-export async function buildTeamOrders(periodId: number): Promise<TeamOrders> {
-    const { data: rows } = await supabase
-        .from('salary_calc')
-        .select('manager_id,breakdown')
-        .eq('period_id', periodId);
+/**
+ * Заказы отдела (из чего сложилась выручка отдела). По умолчанию — из снимка
+ * salary_calc; для открытого периода вызывающий передаёт live-строки (preloadedRows),
+ * чтобы раскрытие показывало актуальные заказы, а не устаревший снимок.
+ */
+export async function buildTeamOrders(
+    periodId: number,
+    preloadedRows?: { manager_id: number; breakdown: any }[],
+): Promise<TeamOrders> {
+    const rows =
+        preloadedRows ??
+        (
+            await supabase
+                .from('salary_calc')
+                .select('manager_id,breakdown')
+                .eq('period_id', periodId)
+        ).data;
 
     const managerIds = Array.from(new Set((rows ?? []).map((r: any) => Number(r.manager_id))));
     const namesById = new Map<number, string>();

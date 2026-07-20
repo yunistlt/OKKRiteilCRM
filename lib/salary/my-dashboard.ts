@@ -131,8 +131,9 @@ export async function buildMyDashboard(params: {
     row: any | null;
     teamRevenueNoVat: number; // истинная выручка отдела за период (Σ по всем строкам, buildTeamOrders)
     periodId: number; // для конверсии отдела (Σ по всем строкам периода)
+    periodRows?: { breakdown: any }[]; // live-строки открытого периода (иначе конверсия отдела читается из снимка)
 }): Promise<MyDashboard> {
-    const { year, month, managerId, row, teamRevenueNoVat, periodId } = params;
+    const { year, month, managerId, row, teamRevenueNoVat, periodId, periodRows } = params;
     const asOf = `${year}-${String(month).padStart(2, '0')}-01`;
     const b = row?.breakdown ?? {};
     const contribs: ContribList = Array.isArray(b.blockContributions) ? b.blockContributions : [];
@@ -185,7 +186,7 @@ export async function buildMyDashboard(params: {
         personalPct: convDenom > 0 ? round2(b.conversionPct != null ? Number(b.conversionPct) : (convNum / convDenom) * 100) : null,
         numerator: convNum,
         denominator: convDenom,
-        departmentPct: await computeDeptConversion(periodId),
+        departmentPct: await computeDeptConversion(periodId, periodRows),
     };
 
     // ── Схема (тиры/ставки блоков) ─────────────────────────────────────────────
@@ -367,8 +368,10 @@ async function getPermanentThreshold(asOf: string): Promise<number | null> {
 }
 
 /** Конверсия всего ОП за период: Σ числителей / Σ знаменателей по строкам расчёта. */
-async function computeDeptConversion(periodId: number): Promise<number | null> {
-    const { data } = await supabase.from('salary_calc').select('breakdown').eq('period_id', periodId);
+async function computeDeptConversion(periodId: number, preloadedRows?: { breakdown: any }[]): Promise<number | null> {
+    const data =
+        preloadedRows ??
+        (await supabase.from('salary_calc').select('breakdown').eq('period_id', periodId)).data;
     let num = 0;
     let denom = 0;
     for (const r of (data as any[]) ?? []) {
