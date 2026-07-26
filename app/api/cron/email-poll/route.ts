@@ -138,6 +138,55 @@ async function findClientOrderNumberInSubject(subject?: string | null, email?: s
     return String(mine[0].number);
 }
 
+/** Домен наших исходящих (из ящика секретаря). Нужен, чтобы опознать цитату нашего письма. */
+function ourOutboundDomain(): string | null {
+    const addr = process.env.IMAP_USER || process.env.SMTP_USER || '';
+    const dom = addr.split('@')[1]?.trim().toLowerCase();
+    return dom || null;
+}
+
+// Хосты почтовых релеев, через которые уходят НАШИ письма по заказам (RetailCRM). Инфраструктура
+// интеграции, а не бизнес-данные — держим списком здесь. Если письмо — ответ (In-Reply-To/References)
+// на сообщение с такого хоста, значит клиент отвечает на наше письмо по существующему заказу.
+const OUTBOUND_RELAY_HINTS = /@[^\s>]*(mlgnr\.com|rcrm-tech\.ru|retailcrm)/i;
+
+/**
+ * Признак «письмо — ОТВЕТ клиента на НАШЕ исходящее» (переписка по существующему заказу).
+ * Холодный новый лид процитировать нас не может — поэтому это надёжный признак, что заявку плодить
+ * не нужно, ДАЖЕ если ИИ уверенно видит «новую заявку». Два независимых сигнала:
+ *   1) In-Reply-To / References указывают на наш почтовый релей или наш домен — заголовок-ответ;
+ *   2) тело содержит строку-цитату нашего исходящего: «…@наш-домен пишет:», «<…@наш-домен>:»,
+ *      «От/Кому: …@наш-домен» или цитату «> …@наш-домен».
+ *
+ * Инцидент 23.07.2026 (53987 «пока нет инфо» / 53986): голый «Re:» без тега [#N/N] и без номера
+ * заказа в теме, confidence 0.9 — ни один прежний признак не срабатывал, а письмо цитировало наше
+ * же follow-up-письмо («Ваш запрос актуален? КП во вложении»). Заводились дубли-заявки.
+ */
+function repliesToOurOutbound(
+    e: { inReplyTo?: string | null; refs?: string | string[] | null; bodyText?: string | null; bodyHtml?: string | null },
+    ourDomain: string | null
+): boolean {
+    // 1) Заголовки треда (машинный, самый надёжный сигнал).
+    const refs = Array.isArray(e.refs) ? e.refs.join(' ') : (e.refs || '');
+    const headers = `${e.inReplyTo || ''} ${refs}`;
+    if (headers.trim()) {
+        if (OUTBOUND_RELAY_HINTS.test(headers)) return true;
+        if (ourDomain && new RegExp(`@[^\\s>]*${ourDomain.replace(/\./g, '\\.')}`, 'i').test(headers)) return true;
+    }
+    // 2) Цитата нашего письма в теле.
+    if (!ourDomain) return false;
+    const body = (e.bodyText && e.bodyText.trim()) ? e.bodyText : stripHtml(e.bodyHtml);
+    if (!body) return false;
+    const d = ourDomain.replace(/\./g, '\\.');
+    const quotePatterns = [
+        new RegExp(String.raw`\S*@${d}\b[^\n]{0,40}(пишет|wrote)\s*:`, 'i'),   // "…, rop@zmktlt.ru пишет:"
+        new RegExp(String.raw`(^|\n)\s*(от|from|кому|to)\s*:[^\n]*@${d}`, 'i'), // От:/Кому: …@zmktlt.ru
+        new RegExp(String.raw`(^|\n)\s*>[^\n]*@${d}`, 'i'),                     // цитата "> …@zmktlt.ru"
+        new RegExp(String.raw`@${d}["'»<>\s]*:`, 'i'),                          // "<rop@zmktlt.ru>:"
+    ];
+    return quotePatterns.some((r) => r.test(body));
+}
+
 export async function GET(req: Request) {
     const cronAuthorized = hasCronAuthorization(req);
     const session = cronAuthorized ? null : await getSession();
@@ -265,7 +314,7 @@ export async function GET(req: Request) {
 
         const { data: pending } = await supabase
             .from('incoming_emails')
-            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at')
+            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, in_reply_to, email_refs')
             .eq('status', 'new')
             .order('received_at', { ascending: true })
             .limit(CLASSIFY_BATCH);
@@ -322,6 +371,13 @@ export async function GET(req: Request) {
                     const crmTag = hasCrmOrderTag(e.subject);
                     const bareRe = !crmTag && isReplyThread(e.subject);
                     const noteFor = (route: string) => route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
+                    // Голый «Re:»/«Fwd:» + письмо ЦИТИРУЕТ наше исходящее (заголовок-ответ на наш релей
+                    // или наш домен в теле-цитате) — надёжный признак переписки по существующему заказу
+                    // даже без тега [#N/N] и без номера в теме (инцидент 23.07.2026, 53987/53986).
+                    const repliesToOurThread = (bareRe || isForwarded) && repliesToOurOutbound(
+                        { inReplyTo: e.in_reply_to, refs: e.email_refs, bodyText: e.body_text, bodyHtml: e.body_html },
+                        ourOutboundDomain()
+                    );
                     // Голый «Re:» + номер существующего заказа этого же клиента в теме — такой же
                     // надёжный признак переписки, как CRM-тег (см. findClientOrderNumberInSubject).
                     subjectOrderNum = (bareRe && (v.route === 'new_request' || v.route === 'not_request'))
@@ -340,6 +396,14 @@ export async function GET(req: Request) {
                         // уверенности ИИ (менеджер вписала номер руками, тега [#N/N] в ветке нет).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
+                    } else if (repliesToOurThread && (v.route === 'new_request' || v.route === 'not_request')) {
+                        // «Re:»/«Fwd:» + письмо цитирует НАШЕ исходящее, но номера заказа в теме нет
+                        // (иначе сработала бы ветка subjectOrderNum выше). Это ответ клиента в уже
+                        // существующей переписке, а НЕ новая заявка — не плодим дубль, ДАЖЕ если ИИ
+                        // уверен (холодный лид процитировать нас не может). К заказу не привязываем
+                        // (явного номера нет). Инцидент 23.07.2026: 53987 («пока нет инфо»), 53986.
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по существующему заказу (ответ на наше письмо, без номера в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
                     } else if (bareRe && v.route === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
                         // Голый «Re:» + НЕуверенная новая заявка → считаем перепиской по старой ветке.
                         // При уверенной новой заявке (≥ порога) НЕ перебиваем ИИ — заводим заказ (клиент
