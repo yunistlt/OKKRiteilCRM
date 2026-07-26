@@ -4,6 +4,7 @@ import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts
 import { enrichWithLivePrice } from '@/lib/webasyst';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { callbackWindow, isDialablePhone } from '@/lib/callback-hours';
+import { normalizePhone } from '@/lib/phone-utils';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import OpenAI from 'openai';
@@ -325,20 +326,38 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
 
                     // Инициируем звонок через очередь задач — только валидный РФ-мобильный,
                     // вне рабочих часов откладываем на утро (гейт), ночью очередь не дёргаем.
-                    if (extractedData.phone && isDialablePhone(extractedData.phone)) {
-                        const win = callbackWindow();
-                        await safeEnqueueSystemJob({
-                            jobType: 'telphin_callback',
-                            payload: {
-                                visitorId: session.visitor_id,
-                                phone: extractedData.phone,
-                                sessionId: session.id,
-                                crm_order_id: parseInt(orderNumber) || null
-                            },
-                            priority: 15,
-                            idempotencyKey: `telphin_callback:${extractedData.phone}:${session.id}`,
-                            availableAt: win.withinHours ? undefined : win.availableAtIso
-                        });
+                    // Телефон нормализуем тем же normalizePhone, что и путь формы (chat/route),
+                    // чтобы ключ идемпотентности и предохранитель воркера совпадали по формату (+7…).
+                    const dialPhone = normalizePhone(extractedData.phone);
+                    if (dialPhone && isDialablePhone(dialPhone)) {
+                        // Антидубль между источниками: если по этой сессии дозвон уже инициирован
+                        // формой обратного звонка (воркер перевёл заявку из pending в calling_*/completed),
+                        // второй набор не ставим — иначе клиенту, с которым уже говорят, уходит повторный звонок.
+                        const { data: alreadyDialed } = await supabase
+                            .from('widget_callback_requests')
+                            .select('id')
+                            .eq('session_id', session.id)
+                            .in('status', ['calling_manager', 'calling_customer', 'completed'])
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (alreadyDialed) {
+                            console.log(`[lead-catcher] session ${session.id}: callback already initiated by form, skipping duplicate dial`);
+                        } else {
+                            const win = callbackWindow();
+                            await safeEnqueueSystemJob({
+                                jobType: 'telphin_callback',
+                                payload: {
+                                    visitorId: session.visitor_id,
+                                    phone: dialPhone,
+                                    sessionId: session.id,
+                                    crm_order_id: parseInt(orderNumber) || null
+                                },
+                                priority: 15,
+                                idempotencyKey: `telphin_callback:${dialPhone}:${session.id}`,
+                                availableAt: win.withinHours ? undefined : win.availableAtIso
+                            });
+                        }
                     }
 
                     results.push({ sessionId: session.id, status: 'success', data: extractedData });
