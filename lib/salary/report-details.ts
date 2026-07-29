@@ -1,6 +1,16 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod } from '@/lib/salary/config';
-import { evaluateDuplicate, evaluateRequestDuplicate, extractReferencedNumber, goodsCostBeforeDiscount } from '@/lib/salary/tender-duplicates';
+import {
+    evaluateDuplicate,
+    evaluateRequestDuplicate,
+    extractReferencedNumber,
+    isNotOurProduct,
+    isTenderDuplicate,
+    orderItemKeys,
+    resolveDuplicateRoot,
+    MAX_DUPLICATE_CHAIN_DEPTH,
+    type ReferencedOrder,
+} from '@/lib/salary/tender-duplicates';
 
 // ============================================================================
 // Детализация расчётной ведомости заказами — отдаётся ВМЕСТЕ с отчётом
@@ -121,7 +131,12 @@ export async function buildIncomingByManager(
     const excludedStatuses: string[] = config.conversion_excluded_statuses ?? [];
     const rule = config.tender_duplicate_rule;
     const reqRule = config.request_duplicate_rule;
+    const notOurRule = config.not_our_product_rule;
+    const reasonField = config.cancel_reason_field.code;
+    const closing = config.closing_status.code;
     const { start, end } = monthBounds(year, month);
+    const cancelReasonOf = (payload: any): string | null =>
+        (payload?.customFields?.[reasonField] as string | undefined) ?? null;
 
     let q = supabase
         .from('orders')
@@ -154,25 +169,64 @@ export async function buildIncomingByManager(
         .map((code) => refNameByCode.get(code) || code)
         .join(' / ');
 
-    // Эталоны дублей (тендер + заявка): собираем номера из комментариев одним запросом.
-    const refNumbers = new Set<string>();
+    // Эталоны дублей (тендер + заявка). Цепочку «дубль дубля» разворачиваем
+    // итеративно: если доставший эталон сам оказался дублем — добираем ЕГО эталон,
+    // иначе до первоисточника не дойти (реальный кейс 53886 → 53873 → 53478).
+    const refByNumber = new Map<string, ReferencedOrder>();
+    let pending = new Set<string>();
     for (const o of (data as any[]) ?? []) {
         const st = String(o.status ?? '');
-        if (st !== rule.duplicate_status && st !== reqRule.duplicate_status) continue;
+        const isDup = isTenderDuplicate({ status: st, cancelReason: cancelReasonOf(o.raw_payload) }, rule);
+        if (!isDup && st !== reqRule.duplicate_status) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
-        if (num) refNumbers.add(num);
+        if (num) pending.add(num);
     }
-    const refByNumber = new Map<string, { status: string; goodsCost: number }>();
-    if (refNumbers.size) {
+    const refOrderIds: number[] = [];
+    for (let depth = 0; depth <= MAX_DUPLICATE_CHAIN_DEPTH && pending.size; depth++) {
         const { data: refs } = await supabase
             .from('orders')
-            .select('number,status,raw_payload')
-            .in('number', Array.from(refNumbers));
+            .select('order_id,number,status,raw_payload')
+            .in('number', Array.from(pending));
+        const next = new Set<string>();
         for (const r of (refs as any[]) ?? []) {
-            refByNumber.set(String(r.number), {
+            const ref: ReferencedOrder = {
+                number: String(r.number),
                 status: String(r.status ?? ''),
-                goodsCost: goodsCostBeforeDiscount(r.raw_payload),
-            });
+                cancelReason: cancelReasonOf(r.raw_payload),
+                managerComment: r.raw_payload?.managerComment ?? null,
+                itemKeys: orderItemKeys(r.raw_payload),
+                // текущий статус = производство; историю добираем ниже одним запросом
+                wonProduction: String(r.status ?? '') === closing,
+            };
+            refByNumber.set(ref.number, ref);
+            if (r.order_id != null) refOrderIds.push(Number(r.order_id));
+            if (!isTenderDuplicate(ref, rule)) continue;
+            const nextNum = extractReferencedNumber(ref.managerComment);
+            if (nextNum && !refByNumber.has(nextNum)) next.add(nextNum);
+        }
+        pending = next;
+    }
+
+    // Эталон мог уйти в производство и поехать дальше по воронке (отгружен, выполнен) —
+    // текущего статуса мало, смотрим историю перехода в closing-статус. Та же канва,
+    // что у членства в числителе (salary_counted_orders).
+    if (refOrderIds.length) {
+        const { data: hist } = await supabase
+            .from('order_history_log')
+            .select('retailcrm_order_id')
+            .eq('field', 'status')
+            .like('new_value', `%"code":"${closing}"%`)
+            .in('retailcrm_order_id', refOrderIds);
+        const wonIds = new Set<number>(((hist as any[]) ?? []).map((h) => Number(h.retailcrm_order_id)));
+        if (wonIds.size) {
+            const { data: wonRows } = await supabase
+                .from('orders')
+                .select('number')
+                .in('order_id', Array.from(wonIds));
+            for (const w of (wonRows as any[]) ?? []) {
+                const ref = refByNumber.get(String(w.number));
+                if (ref) ref.wonProduction = true;
+            }
         }
     }
 
@@ -180,25 +234,31 @@ export async function buildIncomingByManager(
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
         if (exclusions.includes(om)) continue; // как в salary_incoming_counts
-        if (excludedStatuses.includes(String(o.status ?? ''))) continue; // спам — не заявка
+        const st = String(o.status ?? '');
+        if (excludedStatuses.includes(st)) continue; // спам — не заявка
+        const cancelReason = cancelReasonOf(o.raw_payload);
+        // Не наша продукция — не заявка на наш товар, в знаменателе не участвует
+        // (в RPC исключается так же, поэтому и списка тут быть не должно).
+        if (isNotOurProduct({ status: st, cancelReason }, notOurRule)) continue;
         const mid = Number(o.manager_id);
         if (!mid) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
-        const st = String(o.status ?? '');
+        const seed = num ? refByNumber.get(num) ?? null : null;
         const verdict =
             st === reqRule.duplicate_status
                 ? evaluateRequestDuplicate(
                       { status: st, managerComment: o.raw_payload?.managerComment ?? null },
-                      num ? refByNumber.has(num) : false,
+                      !!seed,
                       reqRule,
                   )
                 : evaluateDuplicate(
                       {
                           status: st,
-                          goodsCost: goodsCostBeforeDiscount(o.raw_payload),
+                          cancelReason,
                           managerComment: o.raw_payload?.managerComment ?? null,
+                          itemKeys: orderItemKeys(o.raw_payload),
                       },
-                      num ? refByNumber.get(num) ?? null : null,
+                      seed ? resolveDuplicateRoot(seed, refByNumber, rule) : null,
                       { rule, referenceStatusLabel },
                   );
         (byManager[mid] ??= []).push({
