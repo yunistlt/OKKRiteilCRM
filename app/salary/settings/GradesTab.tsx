@@ -17,9 +17,14 @@ const CRITERION_LABELS: Record<string, string> = {
 };
 const MODE_LABELS: Record<string, string> = { absolute: 'Порог', dept_rank: 'Топ отдела' };
 const COMPARATORS: Record<string, string> = { gte: '≥ не меньше', lte: '≤ не больше' };
+// Режим механики грейдов.
+const GRADE_MODE_LABELS: Record<string, string> = { streak: 'Накопление (месяцы подряд)', monthly_prize: 'Приз месяца' };
 
 type Criterion = { metric: string; mode: 'absolute' | 'dept_rank'; comparator?: 'gte' | 'lte'; threshold?: number; rank?: number; required: boolean };
-type Policy = { floorLevel: number; topLevel: number; lookbackMonths: number; promoteAfterMonths: number; demoteAfterMonths: number; cohort: 'scheme' | 'register'; criteria: Criterion[] };
+type Prize = { gate: { metric: string; comparator: 'gte' | 'lte'; threshold: number }; tiebreak: string[] };
+type Policy = { mode?: 'streak' | 'monthly_prize'; floorLevel: number; topLevel: number; lookbackMonths: number; promoteAfterMonths: number; demoteAfterMonths: number; cohort: 'scheme' | 'register'; criteria: Criterion[]; prize?: Prize };
+
+const DEFAULT_PRIZE: Prize = { gate: { metric: 'plan_attainment', comparator: 'gte', threshold: 100 }, tiebreak: ['okk_total_score', 'conversion', 'avg_check'] };
 
 const inputCls = 'h-8 border px-2 text-xs';
 
@@ -99,18 +104,47 @@ export default function GradesTab() {
 
     const setP = (patch: Partial<Policy>) => setPolicy((p) => (p ? { ...p, ...patch } : p));
     const setCriterion = (i: number, patch: Partial<Criterion>) => setPolicy((p) => (p ? { ...p, criteria: p.criteria.map((c, j) => (j === i ? { ...c, ...patch } : c)) } : p));
+    // Приз месяца: гейт и приоритет показателей (порядок в массиве = приоритет).
+    const prize = policy?.prize ?? DEFAULT_PRIZE;
+    const setPrize = (patch: Partial<Prize>) => setP({ prize: { ...prize, ...patch } });
+    const setGate = (patch: Partial<Prize['gate']>) => setPrize({ gate: { ...prize.gate, ...patch } });
+    const setTiebreakAt = (i: number, metric: string) => setPrize({ tiebreak: prize.tiebreak.map((m, j) => (j === i ? metric : m)) });
+    const moveTiebreak = (i: number, delta: number) => {
+        const next = [...prize.tiebreak];
+        const j = i + delta;
+        if (j < 0 || j >= next.length) return;
+        [next[i], next[j]] = [next[j], next[i]];
+        setPrize({ tiebreak: next });
+    };
+    const removeTiebreak = (i: number) => setPrize({ tiebreak: prize.tiebreak.filter((_, j) => j !== i) });
+    const addTiebreak = () => {
+        const free = Object.keys(CRITERION_LABELS).find((m) => !prize.tiebreak.includes(m));
+        if (free) setPrize({ tiebreak: [...prize.tiebreak, free] });
+    };
 
     if (loading) return <div className="flex justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
     // data.managers — уже реестр ОП (только те, кому считается ЗП); фильтровать не нужно.
     const managers = (data?.managers ?? []);
+    const isPrize = (policy?.mode ?? 'streak') === 'monthly_prize';
 
     return (
         <div className="space-y-4">
             <div className="border bg-muted/30 px-3 py-2 text-[11px] leading-snug text-muted-foreground">
-                Грейд — авто-повышающийся ранг менеджера: <b>{policy?.topLevel ?? 1}</b> высший … <b>{policy?.floorLevel ?? 3}</b> низший (ниже не падает).
-                Растёт за выполнение показателей <b>{policy?.promoteAfterMonths ?? 3}</b> мес. подряд, откатывается за невыполнение <b>{policy?.demoteAfterMonths ?? 2}</b> мес. подряд.
-                Множитель к переменной части задаётся блоком «Грейд-коэффициент» в схеме. Пересчёт идёт по последнему закрытому месяцу (закрытые периоды не меняются).
+                {isPrize ? (
+                    <>
+                        Грейд — <b>приз по итогам месяца</b>: <b>{policy?.topLevel ?? 1}</b> высший … <b>{policy?.floorLevel ?? 3}</b> низший.
+                        Гейт — «{CRITERION_LABELS[prize.gate.metric] ?? prize.gate.metric} {prize.gate.comparator === 'lte' ? '≤' : '≥'} {prize.gate.threshold}»;
+                        среди прошедших первое место по приоритету показателей получает высший грейд, второе — следующий, остальные и не прошедшие гейт — низший.
+                        Гейт не прошёл никто → все на низшем. Грейд переустанавливается КАЖДЫЙ месяц, накопления нет.
+                    </>
+                ) : (
+                    <>
+                        Грейд — авто-повышающийся ранг менеджера: <b>{policy?.topLevel ?? 1}</b> высший … <b>{policy?.floorLevel ?? 3}</b> низший (ниже не падает).
+                        Растёт за выполнение показателей <b>{policy?.promoteAfterMonths ?? 3}</b> мес. подряд, откатывается за невыполнение <b>{policy?.demoteAfterMonths ?? 2}</b> мес. подряд.
+                    </>
+                )}{' '}
+                Множитель к переменной части задаётся блоком «Грейд-коэффициент» в схеме. Пересчёт идёт по итогам последнего отработанного месяца, грейд действует со следующего.
             </div>
 
             {/* ── Текущие грейды ── */}
@@ -147,9 +181,9 @@ export default function GradesTab() {
 
             {/* ── Пересчёт ── */}
             <section>
-                <div className="mb-1 text-xs font-semibold uppercase tracking-tight">Пересчёт по закрытому месяцу</div>
+                <div className="mb-1 text-xs font-semibold uppercase tracking-tight">Пересчёт по итогам месяца</div>
                 <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="text-muted-foreground">Последний закрытый месяц:</span>
+                    <span className="text-muted-foreground">По итогам месяца:</span>
                     <select value={recMonth} onChange={(e) => setRecMonth(Number(e.target.value))} className={inputCls}>{MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}</select>
                     <select value={recYear} onChange={(e) => setRecYear(Number(e.target.value))} className={inputCls}>{[recYear - 1, recYear, recYear + 1].map((yy) => <option key={yy} value={yy}>{yy}</option>)}</select>
                     <Button size="sm" className="h-8" onClick={recompute} disabled={recomputing}>{recomputing ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />} Пересчитать</Button>
@@ -158,7 +192,7 @@ export default function GradesTab() {
                 {recResult && (recResult.rows ?? []).length > 0 && (
                     <div className="mt-2 overflow-x-auto border">
                         <table className="w-full text-xs">
-                            <thead className="bg-muted/50 text-left text-muted-foreground"><tr><th className="px-2 py-1">Менеджер</th><th className="px-2 py-1">Было</th><th className="px-2 py-1">Стало</th><th className="px-2 py-1">Стрик ✓</th><th className="px-2 py-1">Стрик ✗</th></tr></thead>
+                            <thead className="bg-muted/50 text-left text-muted-foreground"><tr><th className="px-2 py-1">Менеджер</th><th className="px-2 py-1">Было</th><th className="px-2 py-1">Стало</th>{isPrize ? <><th className="px-2 py-1">Гейт</th><th className="px-2 py-1">Место</th></> : <><th className="px-2 py-1">Стрик ✓</th><th className="px-2 py-1">Стрик ✗</th></>}</tr></thead>
                             <tbody>
                                 {(recResult.rows ?? []).map((r: any) => {
                                     const m = (data?.managers ?? []).find((x: any) => x.id === r.managerId);
@@ -167,8 +201,17 @@ export default function GradesTab() {
                                             <td className="px-2 py-1">{m?.name ?? `#${r.managerId}`}</td>
                                             <td className="px-2 py-1">{r.prevLevel}</td>
                                             <td className="px-2 py-1 font-semibold">{r.newLevel}{r.change < 0 ? ' ↑' : r.change > 0 ? ' ↓' : ''}</td>
-                                            <td className="px-2 py-1">{r.qualStreak}</td>
-                                            <td className="px-2 py-1">{r.failStreak}</td>
+                                            {isPrize ? (
+                                                <>
+                                                    <td className="px-2 py-1">{r.gatePassed ? 'прошёл' : 'не прошёл'}</td>
+                                                    <td className="px-2 py-1">{r.place == null ? '—' : r.place === 1 ? '1 — приз' : r.place}</td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="px-2 py-1">{r.qualStreak}</td>
+                                                    <td className="px-2 py-1">{r.failStreak}</td>
+                                                </>
+                                            )}
                                         </tr>
                                     );
                                 })}
@@ -183,17 +226,67 @@ export default function GradesTab() {
                 <section>
                     <div className="mb-1 text-xs font-semibold uppercase tracking-tight">Политика грейдов</div>
                     <div className="space-y-2 border bg-white p-3">
+                        <label className="flex items-center gap-2 text-xs">Режим
+                            <select value={policy.mode ?? 'streak'} onChange={(e) => setP({ mode: e.target.value as any, prize: e.target.value === 'monthly_prize' ? (policy.prize ?? DEFAULT_PRIZE) : policy.prize })} className={inputCls}>
+                                {Object.entries(GRADE_MODE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                            </select>
+                        </label>
+
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                             <label className="flex items-center justify-between gap-2 text-xs">Высший грейд<NumberInput value={policy.topLevel} onChange={(v) => setP({ topLevel: v ?? 1 })} className={`${inputCls} w-20 text-right`} /></label>
                             <label className="flex items-center justify-between gap-2 text-xs">Низший грейд (пол)<NumberInput value={policy.floorLevel} onChange={(v) => setP({ floorLevel: v ?? 3 })} className={`${inputCls} w-20 text-right`} /></label>
-                            <label className="flex items-center justify-between gap-2 text-xs">Глубина окна, мес.<NumberInput value={policy.lookbackMonths} onChange={(v) => setP({ lookbackMonths: v ?? 6 })} className={`${inputCls} w-20 text-right`} /></label>
-                            <label className="flex items-center justify-between gap-2 text-xs">+1 за N мес. подряд<NumberInput value={policy.promoteAfterMonths} onChange={(v) => setP({ promoteAfterMonths: v ?? 3 })} className={`${inputCls} w-20 text-right`} /></label>
-                            <label className="flex items-center justify-between gap-2 text-xs">−1 за N мес. подряд<NumberInput value={policy.demoteAfterMonths} onChange={(v) => setP({ demoteAfterMonths: v ?? 2 })} className={`${inputCls} w-20 text-right`} /></label>
+                            {!isPrize && <label className="flex items-center justify-between gap-2 text-xs">Глубина окна, мес.<NumberInput value={policy.lookbackMonths} onChange={(v) => setP({ lookbackMonths: v ?? 6 })} className={`${inputCls} w-20 text-right`} /></label>}
+                            {!isPrize && <label className="flex items-center justify-between gap-2 text-xs">+1 за N мес. подряд<NumberInput value={policy.promoteAfterMonths} onChange={(v) => setP({ promoteAfterMonths: v ?? 3 })} className={`${inputCls} w-20 text-right`} /></label>}
+                            {!isPrize && <label className="flex items-center justify-between gap-2 text-xs">−1 за N мес. подряд<NumberInput value={policy.demoteAfterMonths} onChange={(v) => setP({ demoteAfterMonths: v ?? 2 })} className={`${inputCls} w-20 text-right`} /></label>}
                             <label className="flex items-center justify-between gap-2 text-xs">Когорта сравнения
                                 <select value={policy.cohort} onChange={(e) => setP({ cohort: e.target.value as any })} className={inputCls}><option value="scheme">Та же роль</option><option value="register">Весь реестр</option></select>
                             </label>
                         </div>
 
+                        {isPrize ? (
+                            <>
+                                <div className="mt-1 text-[11px] font-medium text-muted-foreground">Гейт — кого вообще допускаем к призу</div>
+                                <div className="flex flex-wrap items-center gap-1 text-xs">
+                                    <select value={prize.gate.metric} onChange={(e) => setGate({ metric: e.target.value })} className={inputCls}>
+                                        {Object.entries(CRITERION_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                    </select>
+                                    <select value={prize.gate.comparator} onChange={(e) => setGate({ comparator: e.target.value as any })} className={inputCls}>
+                                        {Object.entries(COMPARATORS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                    </select>
+                                    <NumberInput value={prize.gate.threshold} onChange={(v) => setGate({ threshold: v ?? 0 })} className={`${inputCls} w-24 text-right`} />
+                                </div>
+
+                                <div className="mt-1 text-[11px] font-medium text-muted-foreground">Приоритет показателей — кто из прошедших лучший (первый решает, при равенстве следующий)</div>
+                                <div className="border">
+                                    <table className="w-full text-xs">
+                                        <thead className="bg-muted/50 text-left text-muted-foreground"><tr><th className="px-2 py-1 w-10">№</th><th className="px-2 py-1">Показатель</th><th className="px-2 py-1 w-28">Порядок</th></tr></thead>
+                                        <tbody>
+                                            {prize.tiebreak.map((metric, i) => (
+                                                <tr key={metric} className="border-t">
+                                                    <td className="px-2 py-1 text-muted-foreground">{i + 1}</td>
+                                                    <td className="px-2 py-1">
+                                                        <select value={metric} onChange={(e) => setTiebreakAt(i, e.target.value)} className={inputCls}>
+                                                            {Object.entries(CRITERION_LABELS).filter(([v]) => v === metric || !prize.tiebreak.includes(v)).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-2 py-1">
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => moveTiebreak(i, -1)} disabled={i === 0} className="h-7 w-7 border text-xs disabled:opacity-30 hover:bg-accent">↑</button>
+                                                            <button onClick={() => moveTiebreak(i, 1)} disabled={i === prize.tiebreak.length - 1} className="h-7 w-7 border text-xs disabled:opacity-30 hover:bg-accent">↓</button>
+                                                            <button onClick={() => removeTiebreak(i)} disabled={prize.tiebreak.length <= 1} className="h-7 w-7 border text-xs disabled:opacity-30 hover:bg-accent">✕</button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                {prize.tiebreak.length < Object.keys(CRITERION_LABELS).length && (
+                                    <button onClick={addTiebreak} className="border px-2 py-1 text-[11px] hover:bg-accent">+ Добавить показатель</button>
+                                )}
+                            </>
+                        ) : (
+                        <>
                         <div className="mt-1 text-[11px] font-medium text-muted-foreground">Критерии выполнения месяца</div>
                         <div className="border">
                             <table className="w-full text-xs">
@@ -221,6 +314,8 @@ export default function GradesTab() {
                                 </tbody>
                             </table>
                         </div>
+                        </>
+                        )}
 
                         <div className="flex items-center gap-2 pt-1">
                             <span className="text-[11px] text-muted-foreground">Действует с</span>
