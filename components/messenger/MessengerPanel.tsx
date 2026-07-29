@@ -13,9 +13,12 @@ import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import type { MessengerChat, MessengerParticipant } from './types';
 import { supabaseBrowser } from '@/utils/supabase-browser';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
 
 export default function MessengerPanel() {
     const router = useRouter();
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const searchParams = useSearchParams();
     const searchInputRef = useRef<HTMLInputElement | null>(null);
     const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
@@ -292,10 +295,12 @@ export default function MessengerPanel() {
                             <p className="mt-1 text-red-600">{chatsError}</p>
                             <button
                                 type="button"
-                                onClick={fetchChats}
-                                className="mt-3 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700"
+                                onClick={() => run('retry-chats', fetchChats)}
+                                disabled={isPending('retry-chats')}
+                                aria-busy={isPending('retry-chats') || undefined}
+                                className="mt-3 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                Повторить
+                                {isPending('retry-chats') ? 'Загружаем…' : 'Повторить'}
                             </button>
                         </div>
                     ) : (

@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { getPresets, savePreset, deletePreset, type Preset } from '@/app/actions/presets';
 import { NumberInput } from '@/components/ui/NumberInput';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import Spinner from '@/components/ui/Spinner';
 
 interface PriorityOrder {
     id: number;
@@ -30,6 +32,8 @@ interface PriorityOrder {
 }
 
 export const PriorityDashboard = () => {
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const [orders, setOrders] = useState<PriorityOrder[]>([]);
     const [activeManagers, setActiveManagers] = useState<{ id: number, name: string }[]>([]);
     const [activeStatuses, setActiveStatuses] = useState<{ code: string, name: string, group_name: string }[]>([]);
@@ -226,8 +230,9 @@ export const PriorityDashboard = () => {
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
                         Фильтры
                     </Button>
-                    <Button variant="outline" size="sm" onClick={fetchOrders}>
-                        Обновить
+                    <Button variant="outline" size="sm" onClick={fetchOrders} disabled={loading} aria-busy={loading || undefined}>
+                        {loading && <Spinner className="mr-2" />}
+                        {loading ? 'Обновляем…' : 'Обновить'}
                     </Button>
                 </div>
             </div>
@@ -289,11 +294,13 @@ export const PriorityDashboard = () => {
                                     >
                                         <span className="font-medium text-gray-700 group-hover:text-blue-700">{preset.name}</span>
                                         <button
-                                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 hover:text-red-600 rounded-full transition-all"
-                                            onClick={(e) => handleDeletePreset(e, preset.id)}
+                                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-100 hover:text-red-600 rounded-full transition-all disabled:opacity-100 disabled:cursor-not-allowed"
+                                            onClick={(e) => { e.stopPropagation(); void run(`preset:${preset.id}`, () => handleDeletePreset(e, preset.id)); }}
+                                            disabled={isPending(`preset:${preset.id}`)}
+                                            aria-busy={isPending(`preset:${preset.id}`) || undefined}
                                             title="Удалить"
                                         >
-                                            <X className="w-3 h-3" />
+                                            {isPending(`preset:${preset.id}`) ? <Spinner className="h-3 w-3" /> : <X className="w-3 h-3" />}
                                         </button>
                                     </div>
                                 ))}
@@ -415,10 +422,13 @@ export const PriorityDashboard = () => {
                         <div className="flex justify-end pt-2 border-t border-gray-100 md:border-transparent mt-2 md:mt-0">
                             <Button
                                 onClick={() => fetchOrders()}
+                                disabled={loading}
+                                aria-busy={loading || undefined}
                                 className="w-full md:w-auto font-semibold shadow-md active:scale-95 transition-transform bg-primary hover:bg-primary/90"
                                 size="lg"
                             >
-                                Показать заказы
+                                {loading && <Spinner className="mr-2" />}
+                                {loading ? 'Загружаем заказы…' : 'Показать заказы'}
                             </Button>
                         </div>
                     </CardContent>

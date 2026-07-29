@@ -6,9 +6,12 @@ import { updateRuleStatus, updateRuleParams } from '@/app/actions/rules';
 import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
 import NewRuleModal from './new-rule-modal';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
 
 export default function RuleCard({ rule, violationCount, roleNames = {} }: { rule: any, violationCount: number, roleNames?: Record<string, string> }) {
     const targetRoles: string[] = Array.isArray(rule.target_roles) ? rule.target_roles : [];
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const [isLoading, setIsLoading] = useState(false);
     const [params, setParams] = useState(rule.parameters);
     const [auditStatus, setAuditStatus] = useState(rule.parameters?.audit_status || 'idle');
@@ -224,8 +227,10 @@ export default function RuleCard({ rule, violationCount, roleNames = {} }: { rul
                             </span>
                         )}
                         <button
-                            onClick={handleNotifyToggle}
-                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors ${notifyTelegram
+                            onClick={() => run('notify', handleNotifyToggle)}
+                            disabled={isPending('notify')}
+                            aria-busy={isPending('notify') || undefined}
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors disabled:cursor-not-allowed ${notifyTelegram
                                 ? 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'
                                 : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100 grayscale'}`}
                             title={notifyTelegram ? 'Уведомления в Telegram включены' : 'Уведомления отключены'}
@@ -276,7 +281,9 @@ export default function RuleCard({ rule, violationCount, roleNames = {} }: { rul
 
                         <button
                             onClick={handleRunAudit}
-                            className="text-gray-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all flex items-center gap-1 group"
+                            disabled={isLoading}
+                            aria-busy={isLoading || undefined}
+                            className="text-gray-400 hover:text-indigo-600 p-1 rounded-lg hover:bg-indigo-50 transition-all flex items-center gap-1 group disabled:opacity-50 disabled:cursor-not-allowed"
                             title="Семён: Проверить историю (Audit)"
                         >
                             <img src="/images/agents/semen.png" alt="Semen" className="w-6 h-6 rounded-lg border border-gray-100 group-hover:border-indigo-200 transition-colors shadow-sm" />
@@ -293,8 +300,10 @@ export default function RuleCard({ rule, violationCount, roleNames = {} }: { rul
                         </button>
 
                         <button
-                            onClick={handleNotifyToggle}
-                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors ${notifyTelegram
+                            onClick={() => run('notify', handleNotifyToggle)}
+                            disabled={isPending('notify')}
+                            aria-busy={isPending('notify') || undefined}
+                            className={`text-[10px] px-2 py-0.5 rounded font-bold border flex items-center gap-1 transition-colors disabled:cursor-not-allowed ${notifyTelegram
                                 ? 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100'
                                 : 'bg-gray-50 text-gray-400 border-gray-100 hover:bg-gray-100 grayscale'}`}
                             title={notifyTelegram ? 'Уведомления в Telegram включены' : 'Уведомления отключены'}
