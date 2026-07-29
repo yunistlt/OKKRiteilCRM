@@ -290,6 +290,12 @@ export async function collectPeriodMetrics(
         p_closing: closing,
         p_req_status: config.request_duplicate_rule.duplicate_status,
         p_excluded_statuses: config.conversion_excluded_statuses,
+        p_not_our_statuses: config.not_our_product_rule.statuses,
+        p_not_our_reasons: config.not_our_product_rule.cancel_reasons,
+        p_reason_field: config.cancel_reason_field.code,
+        p_dup_status: config.tender_duplicate_rule.duplicate_status,
+        p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
+        p_dup_reasons: config.tender_duplicate_rule.duplicate_cancel_reasons,
     });
     if (rowsErr) throw rowsErr;
     const rows = (rowsData as CountedOrderRow[]) ?? [];
@@ -317,6 +323,11 @@ export async function collectPeriodMetrics(
         p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
         p_req_status: config.request_duplicate_rule.duplicate_status,
         p_excluded_statuses: config.conversion_excluded_statuses,
+        p_dup_reasons: config.tender_duplicate_rule.duplicate_cancel_reasons,
+        p_not_our_statuses: config.not_our_product_rule.statuses,
+        p_not_our_reasons: config.not_our_product_rule.cancel_reasons,
+        p_reason_field: config.cancel_reason_field.code,
+        p_closing: closing,
     });
     if (incErr) throw incErr;
     const incomingByManager = new Map<number, number>();
