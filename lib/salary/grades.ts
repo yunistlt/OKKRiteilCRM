@@ -33,15 +33,45 @@ const gradeCriterionSchema = z.object({
     required: z.boolean().default(true),
 });
 
-export const GRADE_POLICY_SCHEMA = z.object({
-    floorLevel: z.number().int().positive(), // низший грейд (по умолч. 3) — ниже не падаем
-    topLevel: z.number().int().positive(), //  высший грейд (по умолч. 1)
-    lookbackMonths: z.number().int().positive(), // глубина анализа
-    promoteAfterMonths: z.number().int().positive(), // месяцев выполнения подряд → +1
-    demoteAfterMonths: z.number().int().positive(), //  месяцев невыполнения подряд → −1
-    cohort: z.enum(['scheme', 'register']), // с кем сравнивать dept_rank-критерии
-    criteria: z.array(gradeCriterionSchema).min(1),
+// Режим механики:
+//  streak        — грейд как накопленное СОСТОЯНИЕ: N месяцев выполнения подряд → +1, невыполнения → −1.
+//  monthly_prize — грейд как МЕСЯЧНЫЙ ПРИЗ: каждый месяц переустанавливается заново по итогам
+//                  предыдущего. Гейт (обычно выполнение личного плана) отсекает участников,
+//                  среди прошедших место определяется приоритетом показателей: 1-е место → topLevel,
+//                  2-е → topLevel+1 и т.д.; не прошёл гейт → floorLevel. Никто не прошёл → все на пол.
+export const GRADE_MODES = ['streak', 'monthly_prize'] as const;
+export type GradeMode = (typeof GRADE_MODES)[number];
+
+const prizeSchema = z.object({
+    gate: z.object({
+        metric: z.enum(GRADE_CRITERION_METRICS),
+        comparator: z.enum(['gte', 'lte']).default('gte'),
+        threshold: z.number(),
+    }),
+    // Приоритет показателей: сравниваем по первому, при равенстве — по следующему.
+    tiebreak: z.array(z.enum(GRADE_CRITERION_METRICS)).min(1),
 });
+
+export const GRADE_POLICY_SCHEMA = z
+    .object({
+        mode: z.enum(GRADE_MODES).default('streak'), // дефолт = старое поведение (совместимость)
+        floorLevel: z.number().int().positive(), // низший грейд (по умолч. 3) — ниже не падаем
+        topLevel: z.number().int().positive(), //  высший грейд (по умолч. 1)
+        lookbackMonths: z.number().int().positive(), // глубина анализа (только streak)
+        promoteAfterMonths: z.number().int().positive(), // месяцев выполнения подряд → +1 (только streak)
+        demoteAfterMonths: z.number().int().positive(), //  месяцев невыполнения подряд → −1 (только streak)
+        cohort: z.enum(['scheme', 'register']), // с кем сравнивать: внутри роли или весь реестр
+        criteria: z.array(gradeCriterionSchema).default([]), // критерии месяца (только streak)
+        prize: prizeSchema.optional(), // параметры приза (только monthly_prize)
+    })
+    .superRefine((p, ctx) => {
+        if (p.mode === 'streak' && p.criteria.length === 0) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['criteria'], message: 'Для режима «накопление» нужен хотя бы один критерий' });
+        }
+        if (p.mode === 'monthly_prize' && !p.prize) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['prize'], message: 'Для режима «приз месяца» нужны гейт и приоритет показателей' });
+        }
+    });
 
 export type GradeCriterion = z.infer<typeof gradeCriterionSchema>;
 export type GradePolicy = z.infer<typeof GRADE_POLICY_SCHEMA>;
@@ -174,6 +204,114 @@ export function evaluateMonth(
     return result;
 }
 
+// ── Приз месяца (чистая логика, тестируемая) ─────────────────────────────────
+
+export interface PrizeEntrant {
+    managerId: number;
+    cohort: string;
+    gateValue: number;
+    gatePassed: boolean;
+    scores: number[]; // значения показателей в порядке приоритета (сравниваются лексикографически)
+}
+export interface PrizeAssignment {
+    managerId: number;
+    level: number;
+    place: number | null; // место среди прошедших гейт (1 = приз); null — гейт не прошёл
+    gatePassed: boolean;
+}
+
+/**
+ * Распределение грейдов месячным призом. Гейт не прошёл → floorLevel. Прошедшие
+ * сортируются по приоритету показателей (первый решает, при равенстве — следующий),
+ * место k → уровень `topLevel + k - 1`, но не ниже floorLevel. Сравнение идёт
+ * ВНУТРИ когорты (роль или весь реестр — задаётся политикой). При полном равенстве
+ * показателей порядок детерминирован по managerId, чтобы прогон был воспроизводим.
+ */
+export function assignMonthlyPrize(policy: GradePolicy, entrants: PrizeEntrant[]): PrizeAssignment[] {
+    const placeById = new Map<number, number>();
+    const cohorts = new Set(entrants.map((e) => e.cohort));
+    for (const cohort of Array.from(cohorts)) {
+        const passed = entrants
+            .filter((e) => e.cohort === cohort && e.gatePassed)
+            .sort((a, b) => {
+                const len = Math.max(a.scores.length, b.scores.length);
+                for (let i = 0; i < len; i++) {
+                    const diff = (b.scores[i] ?? 0) - (a.scores[i] ?? 0);
+                    if (diff !== 0) return diff;
+                }
+                return a.managerId - b.managerId;
+            });
+        passed.forEach((e, i) => placeById.set(e.managerId, i + 1));
+    }
+    return entrants.map((e) => {
+        const place = placeById.get(e.managerId) ?? null;
+        const level = place == null ? policy.floorLevel : Math.min(policy.floorLevel, policy.topLevel + place - 1);
+        return { managerId: e.managerId, level, place, gatePassed: e.gatePassed };
+    });
+}
+
+export interface PrizeMonthEval extends PrizeAssignment {
+    schemeCode: string | null;
+    criteria: CriterionEval[]; // гейт + показатели приоритета (для прозрачности отчёта)
+}
+
+/**
+ * Оценка месяца в режиме приза: считает гейт и показатели приоритета по реестру
+ * (менеджер без метрик за месяц = нули → гейт не прошёл, уходит на пол) и раздаёт места.
+ */
+export function evaluatePrizeMonth(
+    policy: GradePolicy,
+    managers: ManagerMetrics[],
+    comp: Map<number, { schemeCode: string }>,
+    planByManager: Map<number, number>,
+): PrizeMonthEval[] {
+    const prize = policy.prize;
+    if (!prize) throw new Error('Политика грейдов в режиме «приз месяца» без параметров приза (gate/tiebreak)');
+    const metricsById = new Map(managers.map((m) => [m.managerId, m]));
+    const cohortKey = (managerId: number) => (policy.cohort === 'scheme' ? comp.get(managerId)?.schemeCode ?? '∅' : 'all');
+    const comparator = prize.gate.comparator ?? 'gte';
+
+    const entrants: PrizeEntrant[] = [];
+    const valuesById = new Map<number, { gate: number; scores: number[] }>();
+    for (const managerId of Array.from(comp.keys())) {
+        const m = metricsById.get(managerId);
+        const planTarget = planByManager.get(managerId) ?? null;
+        const val = (metric: GradeCriterionMetric) => (m ? criterionValue(metric, m, planTarget) : 0);
+        const gateValue = val(prize.gate.metric);
+        const scores = prize.tiebreak.map((metric) => val(metric));
+        const gatePassed = comparator === 'lte' ? gateValue <= prize.gate.threshold : gateValue >= prize.gate.threshold;
+        entrants.push({ managerId, cohort: cohortKey(managerId), gateValue, gatePassed, scores });
+        valuesById.set(managerId, { gate: gateValue, scores });
+    }
+
+    const assignments = assignMonthlyPrize(policy, entrants);
+    return assignments.map((a) => {
+        const v = valuesById.get(a.managerId)!;
+        const criteria: CriterionEval[] = [
+            {
+                metric: prize.gate.metric,
+                label: GRADE_CRITERION_LABELS[prize.gate.metric],
+                mode: 'absolute',
+                value: v.gate,
+                passed: a.gatePassed,
+                required: true,
+                threshold: prize.gate.threshold,
+                comparator,
+            },
+            ...prize.tiebreak.map((metric, i) => ({
+                metric,
+                label: GRADE_CRITERION_LABELS[metric],
+                mode: 'dept_rank' as const,
+                value: v.scores[i],
+                passed: a.place === 1,
+                required: false,
+                rank: i + 1, // позиция показателя в приоритете, не место менеджера
+            })),
+        ];
+        return { ...a, schemeCode: comp.get(a.managerId)?.schemeCode ?? null, criteria };
+    });
+}
+
 // ── Стрик-логика (чистая, тестируемая) ───────────────────────────────────────
 
 /**
@@ -242,11 +380,14 @@ export interface GradeRecomputeRow {
     change: number;
     qualStreak: number;
     failStreak: number;
+    place?: number | null; // только monthly_prize: место среди прошедших гейт
+    gatePassed?: boolean; //  только monthly_prize
 }
 export interface GradeRecomputeResult {
     throughYear: number;
     throughMonth: number;
     effectiveFrom: string;
+    mode: GradeMode;
     rows: GradeRecomputeRow[];
 }
 
@@ -266,6 +407,10 @@ export async function recomputeGrades(
     const policy = await resolveGradePolicy(throughStart);
     const eff = addMonths(throughYear, throughMonth, 1);
     const effectiveFrom = monthStart(eff.year, eff.month);
+
+    if (policy.mode === 'monthly_prize') {
+        return recomputeMonthlyPrize({ policy, throughYear, throughMonth, throughStart, effectiveFrom, actor });
+    }
 
     // 1. Помесячная оценка по окну (от throughMonth назад на lookbackMonths)
     const evalByMonth: { year: number; month: number; evals: ManagerMonthEval[] }[] = [];
@@ -329,7 +474,75 @@ export async function recomputeGrades(
         new_value: { throughMonth: throughStart, changed: ledgerWrites.length, managers: rows.length },
     });
 
-    return { throughYear, throughMonth, effectiveFrom, rows };
+    return { throughYear, throughMonth, effectiveFrom, mode: policy.mode, rows };
+}
+
+/**
+ * Пересчёт в режиме «приз месяца»: смотрим ТОЛЬКО месяц M (истории не нужно —
+ * грейд переустанавливается заново), пишем леджер по ВСЕМ менеджерам реестра,
+ * а не только по изменившимся: грейд, не подтверждённый новым месяцем, обязан
+ * скатиться на пол, поэтому строка нужна каждому и каждый месяц.
+ */
+async function recomputeMonthlyPrize(args: {
+    policy: GradePolicy;
+    throughYear: number;
+    throughMonth: number;
+    throughStart: string;
+    effectiveFrom: string;
+    actor: string | null;
+}): Promise<GradeRecomputeResult> {
+    const { policy, throughYear, throughMonth, throughStart, effectiveFrom, actor } = args;
+
+    const [pm, compMap, plans, prevGrades] = await Promise.all([
+        collectPeriodMetrics(throughYear, throughMonth),
+        resolveManagerComp(throughStart),
+        getPlansForPeriod(throughYear, throughMonth),
+        resolveManagerGrades(throughStart),
+    ]);
+    const comp = new Map(Array.from(compMap.values()).map((c) => [c.managerId, { schemeCode: c.schemeCode }]));
+    const evals = evaluatePrizeMonth(policy, pm.managers, comp, plans.personal);
+
+    // кэш оценок (прозрачность отчёта): qualified = прошёл гейт
+    const evalRows = evals.map((e) => ({
+        year: throughYear,
+        month: throughMonth,
+        manager_id: e.managerId,
+        scheme_code: e.schemeCode,
+        qualified: e.gatePassed,
+        detail: { mode: 'monthly_prize', place: e.place, level: e.level, criteria: e.criteria },
+    }));
+    if (evalRows.length) {
+        const { error } = await supabase.from('salary_grade_eval').upsert(evalRows, { onConflict: 'year,month,manager_id' });
+        if (error) throw error;
+    }
+
+    const rows: GradeRecomputeRow[] = evals.map((e) => {
+        const prevLevel = prevGrades.get(e.managerId) ?? policy.floorLevel;
+        return { managerId: e.managerId, prevLevel, newLevel: e.level, change: e.level - prevLevel, qualStreak: 0, failStreak: 0, place: e.place, gatePassed: e.gatePassed };
+    });
+    const ledgerWrites = evals.map((e) => ({
+        manager_id: e.managerId,
+        grade_level: e.level,
+        effective_from: effectiveFrom,
+        source: 'auto',
+        reason: { mode: 'monthly_prize', place: e.place, gatePassed: e.gatePassed, throughMonth: throughStart },
+        created_by: actor,
+    }));
+    if (ledgerWrites.length) {
+        const { error } = await supabase.from('salary_grade').upsert(ledgerWrites, { onConflict: 'manager_id,effective_from' });
+        if (error) throw error;
+    }
+
+    await supabase.from('salary_audit_log').insert({
+        entity: 'grade',
+        entity_id: effectiveFrom,
+        action: 'recompute',
+        actor,
+        old_value: null,
+        new_value: { mode: 'monthly_prize', throughMonth: throughStart, managers: rows.length, winners: rows.filter((r) => r.place === 1).length },
+    });
+
+    return { throughYear, throughMonth, effectiveFrom, mode: policy.mode, rows };
 }
 
 // ── Ручной оверрайд и чтение для UI ──────────────────────────────────────────
