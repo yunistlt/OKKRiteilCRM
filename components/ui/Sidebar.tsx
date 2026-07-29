@@ -27,6 +27,9 @@ export default function Sidebar() {
     const { user, permissionRules } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+    // Пункт, по которому только что кликнули: подсвечиваем сразу, не дожидаясь
+    // серверного рендера следующей страницы (иначе кажется, что кнопка не работает).
+    const [pendingHref, setPendingHref] = useState<string | null>(null);
     const isMessengerRoute = pathname.startsWith('/messenger');
     const avatarSrc = resolveMessengerAvatarSrc(user?.avatar_url);
     const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim() || user?.username || 'User';
@@ -35,7 +38,15 @@ export default function Sidebar() {
     // Close mobile sidebar on route change
     useEffect(() => {
         setIsMobileOpen(false);
-    }, [pathname]);
+        setPendingHref(null);
+    }, [pathname, searchParams]);
+
+    // Страховка: если переход завис (сеть/ошибка) — снять индикатор, чтобы меню не залипло
+    useEffect(() => {
+        if (!pendingHref) return;
+        const timer = setTimeout(() => setPendingHref(null), 30000);
+        return () => clearTimeout(timer);
+    }, [pendingHref]);
 
     useEffect(() => {
         const handleOpenMobileSidebar = () => {
@@ -146,6 +157,13 @@ export default function Sidebar() {
         return true;
     };
 
+    const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+        // ctrl/cmd/shift/alt-клик и не левая кнопка — открытие в новой вкладке, переход не начинается
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        if (isActive(href)) return; // уже на этой странице — переход не начнётся
+        setPendingHref(href);
+    };
+
     return (
         <>
             {/* Mobile Toggle Button (Floating) */}
@@ -196,26 +214,35 @@ export default function Sidebar() {
                             )}
                             <div className="space-y-1">
                                 {group.items.map((item, iIdx) => {
-                                    const active = isActive(item.href);
+                                    const pending = pendingHref === item.href;
+                                    // Пока идёт переход — подсветка сразу переезжает на нажатый пункт
+                                    const active = pendingHref ? pending : isActive(item.href);
                                     return (
                                         <Link
                                             key={iIdx}
                                             href={item.href}
+                                            onClick={(event) => handleNavClick(event, item.href)}
+                                            aria-busy={pending || undefined}
                                             className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
-                                                active 
-                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+                                                active
+                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                                                 : 'text-gray-400 hover:bg-white/5 hover:text-white'
                                             }`}
                                         >
-                                            <span className={`text-xl transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
-                                                {item.icon}
+                                            <span className={`relative text-xl transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
+                                                <span className={pending ? 'opacity-20' : ''}>{item.icon}</span>
+                                                {pending && (
+                                                    <span className="absolute inset-0 flex items-center justify-center">
+                                                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                                    </span>
+                                                )}
                                             </span>
                                             {(!isCollapsed || isMobileOpen) && (
                                                 <span className="truncate">{item.name}</span>
                                             )}
 
                                             {/* Agent Badge if exists */}
-                                            {(!isCollapsed || isMobileOpen) && item.agent && (
+                                            {(!isCollapsed || isMobileOpen) && !pending && item.agent && (
                                                 <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <img 
                                                         src={`/images/agents/${item.agent}.png`} 
