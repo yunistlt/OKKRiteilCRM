@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
 
 // --- Types ---
 
@@ -183,6 +184,8 @@ type RealtimePipelineOverride = 'inherit' | 'enabled' | 'disabled';
 type TelphinLegacyCompatOverride = 'inherit' | 'enabled' | 'disabled';
 
 export default function SystemStatusPage() {
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     // --- State: Sync Monitor ---
     const [syncStatuses, setSyncStatuses] = useState<SyncServiceStatus[]>([]);
     const [allRules, setAllRules] = useState<RuleItem[]>([]);
@@ -1171,10 +1174,12 @@ export default function SystemStatusPage() {
                                         </td>
                                         <td className="px-5 py-2 text-right">
                                             <button
-                                                onClick={() => runService(s.service)}
-                                                className={`px-3 py-1 rounded-lg font-black uppercase tracking-widest active:scale-95 text-[8px] ${s.status === 'ok' ? 'bg-gray-100 text-gray-800 hover:bg-blue-600 hover:text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                                                onClick={() => run(`svc:${s.service}`, () => runService(s.service))}
+                                                disabled={isPending(`svc:${s.service}`)}
+                                                aria-busy={isPending(`svc:${s.service}`) || undefined}
+                                                className={`px-3 py-1 rounded-lg font-black uppercase tracking-widest active:scale-95 text-[8px] disabled:opacity-50 disabled:cursor-not-allowed ${s.status === 'ok' ? 'bg-gray-100 text-gray-800 hover:bg-blue-600 hover:text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
                                             >
-                                                ▶ ЗАПУСТИТЬ
+                                                {isPending(`svc:${s.service}`) ? '⏳ ЗАПУСКАЕМ…' : '▶ ЗАПУСТИТЬ'}
                                             </button>
                                         </td>
                                     </tr>
@@ -1259,8 +1264,13 @@ export default function SystemStatusPage() {
                             <span>{dbStats?.skippedCalls || 0}</span>
                         </div>
                     </div>
-                    <button onClick={fetchTranscriptionDetails} className="w-full py-1.5 bg-purple-50 text-purple-600 text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white">
-                        ОЧЕРЕДЬ
+                    <button
+                        onClick={fetchTranscriptionDetails}
+                        disabled={loadingDetails}
+                        aria-busy={loadingDetails || undefined}
+                        className="w-full py-1.5 bg-purple-50 text-purple-600 text-[8px] font-black uppercase tracking-widest hover:bg-purple-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {loadingDetails ? 'ЗАГРУЖАЕМ…' : 'ОЧЕРЕДЬ'}
                     </button>
                 </div>
 
@@ -1336,7 +1346,14 @@ export default function SystemStatusPage() {
                                 className="w-10 bg-gray-800 border-none rounded px-1 py-0.5 text-[10px] font-bold text-white text-right"
                             />
                         </div>
-                        <button onClick={saveSettings} className="w-full py-1 bg-blue-600 rounded text-[8px] font-black uppercase">СОХРАНИТЬ</button>
+                        <button
+                            onClick={saveSettings}
+                            disabled={savingSettings}
+                            aria-busy={savingSettings || undefined}
+                            className="w-full py-1 bg-blue-600 rounded text-[8px] font-black uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {savingSettings ? 'СОХРАНЯЕМ…' : 'СОХРАНИТЬ'}
+                        </button>
                     </div>
                     <div className="pt-2 border-t border-gray-800">
                         <button

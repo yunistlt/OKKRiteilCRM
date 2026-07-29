@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/utils/supabase';
 import { formatIntRu, formatRub } from '@/lib/format';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import Spinner from '@/components/ui/Spinner';
 
 interface Session {
     id: string;
@@ -72,6 +74,8 @@ interface Event {
 }
 
 export default function LeadCatcherPage() {
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const [sessions, setSessions] = useState<Session[]>([]);
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
@@ -473,15 +477,20 @@ export default function LeadCatcherPage() {
                                         </div>
                                     </div>
                                     <div className="flex gap-3">
-                                        <button 
-                                            onClick={() => toggleTakeover(selectedSession.id, selectedSession.is_human_takeover)}
-                                            className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                                                selectedSession.is_human_takeover 
-                                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-green-200' 
+                                        <button
+                                            onClick={() => run(`takeover:${selectedSession.id}`, () => toggleTakeover(selectedSession.id, selectedSession.is_human_takeover))}
+                                            disabled={isPending(`takeover:${selectedSession.id}`)}
+                                            aria-busy={isPending(`takeover:${selectedSession.id}`) || undefined}
+                                            className={`flex items-center gap-2 px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed ${
+                                                selectedSession.is_human_takeover
+                                                ? 'bg-green-500 text-white hover:bg-green-600 shadow-green-200'
                                                 : 'bg-orange-600 text-white hover:bg-orange-700 shadow-orange-200'
                                             }`}
                                         >
-                                            {selectedSession.is_human_takeover ? 'Вернуть ИИ' : 'Перехватить диалог'}
+                                            {isPending(`takeover:${selectedSession.id}`) && <Spinner />}
+                                            {isPending(`takeover:${selectedSession.id}`)
+                                                ? 'Переключаем…'
+                                                : selectedSession.is_human_takeover ? 'Вернуть ИИ' : 'Перехватить диалог'}
                                         </button>
                                     </div>
                                 </div>

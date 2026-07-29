@@ -7,9 +7,13 @@ import PushNotificationsCard from '@/components/messenger/PushNotificationsCard'
 import { prepareAvatarFileForUpload } from '@/lib/messenger/avatar-client';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { uploadFileToSignedStorageUrl } from '@/lib/supabase-browser';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import Spinner from '@/components/ui/Spinner';
 
 export default function ProfilePage() {
     const router = useRouter();
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { refresh } = useAuth();
 
@@ -280,13 +284,19 @@ export default function ProfilePage() {
             {/* Actions */}
             <div className="flex items-center justify-between gap-4">
                 <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 px-6 py-3 text-sm font-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-2xl transition-all border border-red-100"
+                    onClick={() => run('logout', handleLogout)}
+                    disabled={isPending('logout')}
+                    aria-busy={isPending('logout') || undefined}
+                    className="flex items-center gap-2 px-6 py-3 text-sm font-black text-red-500 hover:text-red-700 hover:bg-red-50 rounded-2xl transition-all border border-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Выйти из аккаунта
+                    {isPending('logout') ? (
+                        <Spinner className="h-4 w-4" />
+                    ) : (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
+                    )}
+                    {isPending('logout') ? 'Выходим…' : 'Выйти из аккаунта'}
                 </button>
 
                 <button

@@ -16,7 +16,7 @@
 | :--- | :--- | :--- |
 | [GOLD_DATABASE_SQL.md](./GOLD_DATABASE_SQL.md) | База данных и SQL | Схемы таблиц, PostgreSQL, типы данных, Soft Deletes. |
 | [GOLD_UI_TABLES.md](./GOLD_UI_TABLES.md) | **Пользовательские таблицы** | Верстка, UX, фильтры, Sticky Header, зебра, индикаторы статусов. |
-| [GOLD_DESIGN_UX.md](./GOLD_DESIGN_UX.md) | Дизайн и UI | Metro Design, цвета, отступы, шрифты, отсутствие скруглений. |
+| [GOLD_DESIGN_UX.md](./GOLD_DESIGN_UX.md) | Дизайн и UI | Metro Design, цвета, отступы, шрифты, отсутствие скруглений, мгновенный отклик на клик. |
 | [GOLD_SECURITY_STANDARDS.md](./GOLD_SECURITY_STANDARDS.md) | Безопасность | Auth, Middleware, RBAC, защита роутов. |
 | [GOLD_API_AND_BACKEND.md](./GOLD_API_AND_BACKEND.md) | Бэкенд и API | Next.js API, Server Actions, форматы JSON-ответов, валидация. |
 | [GOLD_FRONTEND_ARCHITECTURE.md](./GOLD_FRONTEND_ARCHITECTURE.md) | Архитектура фронтенда | React-компоненты, структура папок, состояние. |

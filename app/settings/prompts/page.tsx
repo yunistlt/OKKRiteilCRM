@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Loader2, Save, Play } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
 
 interface AiPrompt {
     key: string;
@@ -21,6 +22,8 @@ export default function AiPromptsPage() {
     const [loading, setLoading] = useState(true);
     const [testing, setTesting] = useState(false);
     const { toast } = useToast();
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
 
     // Fetch prompts on load
     useEffect(() => {
@@ -101,8 +104,14 @@ export default function AiPromptsPage() {
                                 />
                             </div>
                             <div className="flex justify-end space-x-2">
-                                <Button onClick={() => handleSave(prompt)} className="flex items-center gap-2">
-                                    <Save className="h-4 w-4" /> Сохранить
+                                <Button
+                                    onClick={() => run(`save:${prompt.key}`, () => handleSave(prompt))}
+                                    disabled={isPending(`save:${prompt.key}`)}
+                                    aria-busy={isPending(`save:${prompt.key}`) || undefined}
+                                    className="flex items-center gap-2"
+                                >
+                                    {isPending(`save:${prompt.key}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    {isPending(`save:${prompt.key}`) ? 'Сохраняем…' : 'Сохранить'}
                                 </Button>
                             </div>
                         </CardContent>
