@@ -66,6 +66,7 @@ export interface ManagerMetrics {
     fieldsFilledShare: number | null; // доля заказов с полученным ТЗ, %, null если нет оценок
     conversion: { numerator: number; denominator: number; pct: number; eligible: boolean };
     workedDays: number | null; // отработанные дни (для пропорции оклада); null = полный месяц
+    absenceDays?: number; // рабочих дней отсутствия за период (отпуск и т.п.); нет/0 — не отсутствовал
     marginTotal: number;
     engineerOrders?: EngineerOrder[]; // ТОЛЬКО для участников-инженеров (см. collectEngineerMetrics); менеджерские блоки игнорируют
 }
@@ -78,6 +79,31 @@ export interface PeriodMetrics {
 }
 
 // ── Чистые помощники (тестируются на реальных строках) ───────────────────────
+
+/** Рабочих дней (пн–пт) в месяце — база для пропорции оклада и отсутствий. */
+export function businessDaysInMonth(year: number, month: number): number {
+    let count = 0;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dow = new Date(year, month - 1, d).getDay();
+        if (dow !== 0 && dow !== 6) count++;
+    }
+    return count;
+}
+
+/** Рабочих дней (пн–пт) в отрезке [from, to] включительно, обрезанном по месяцу. */
+export function businessDaysInRange(year: number, month: number, from: string, to: string): number {
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd = new Date(year, month, 0);
+    const start = new Date(Math.max(new Date(`${from}T00:00:00`).getTime(), monthStart.getTime()));
+    const end = new Date(Math.min(new Date(`${to}T00:00:00`).getTime(), monthEnd.getTime()));
+    let count = 0;
+    for (const d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dow = d.getDay();
+        if (dow !== 0 && dow !== 6) count++;
+    }
+    return count;
+}
 
 /** Делитель НДС по ставке из конфига; для none/null/неизвестного → 1. */
 export function vatDivisor(vatRate: unknown, ndsRules: SalaryConfig['nds_normalization']['rules']): number {
@@ -154,10 +180,13 @@ export function buildPeriodMetrics(input: {
     fieldsByManager?: Map<number, number>;
     dutyByManager: Map<number, number>;
     workedDaysByManager?: Map<number, number>;
+    absenceDaysByManager?: Map<number, number>;
     config: SalaryConfig;
 }): PeriodMetrics {
     const { year, month, rows, clientDeals, incomingByManager, qualityByManager, dutyByManager, config } = input;
     const workedDaysByManager = input.workedDaysByManager ?? new Map<number, number>();
+    const absenceDaysByManager = input.absenceDaysByManager ?? new Map<number, number>();
+    const businessDays = businessDaysInMonth(year, month);
     const scriptByManager = input.scriptByManager ?? new Map<number, number>();
     const fastContactByManager = input.fastContactByManager ?? new Map<number, number>();
     const fieldsByManager = input.fieldsByManager ?? new Map<number, number>();
@@ -255,7 +284,16 @@ export function buildPeriodMetrics(input: {
             fastContactShare: fastContactByManager.get(managerId) ?? null,
             fieldsFilledShare: fieldsByManager.get(managerId) ?? null,
             conversion,
-            workedDays: workedDaysByManager.has(managerId) ? workedDaysByManager.get(managerId)! : null,
+            // Табель (salary_duty) — приоритетный источник: если РОП проставил дни руками,
+            // они и считаются. Табеля нет → отработанные дни выводим из отсутствий
+            // (рабочие дни месяца минус рабочие дни отпуска). Нет ни того, ни другого → null
+            // (полный месяц, оклад не режется).
+            workedDays: workedDaysByManager.has(managerId)
+                ? workedDaysByManager.get(managerId)!
+                : absenceDaysByManager.get(managerId)
+                    ? Math.max(0, businessDays - absenceDaysByManager.get(managerId)!)
+                    : null,
+            absenceDays: absenceDaysByManager.get(managerId) ?? 0,
             marginTotal,
         });
     }
@@ -389,6 +427,25 @@ export async function collectPeriodMetrics(
         }
     }
 
+    // 5a. Отсутствия (отпуск и т.п.) — ЕДИНЫЙ источник: модуль распределения заявок
+    // («Катерина», таблица email_intake_absences, UI «Отпуска/отсутствия»). Второго
+    // журнала отпусков в ЗП не заводим: оклад режется по тем же отметкам, по которым
+    // менеджер выпадает из распределения новых клиентов.
+    const absenceDaysByManager = new Map<number, number>();
+    const monthLastDay = new Date(year, month, 0).toISOString().slice(0, 10);
+    const { data: absenceRows, error: absenceErr } = await supabase
+        .from('email_intake_absences')
+        .select('manager_id,start_date,end_date')
+        .lte('start_date', monthLastDay)
+        .gte('end_date', start);
+    if (absenceErr) throw absenceErr;
+    for (const a of (absenceRows as { manager_id: number; start_date: string; end_date: string }[]) ?? []) {
+        if (a.manager_id == null) continue;
+        const mid = Number(a.manager_id);
+        const days = businessDaysInRange(year, month, String(a.start_date).slice(0, 10), String(a.end_date).slice(0, 10));
+        if (days > 0) absenceDaysByManager.set(mid, (absenceDaysByManager.get(mid) ?? 0) + days);
+    }
+
     return buildPeriodMetrics({
         year,
         month,
@@ -400,6 +457,7 @@ export async function collectPeriodMetrics(
         fastContactByManager,
         fieldsByManager,
         dutyByManager,
+        absenceDaysByManager,
         workedDaysByManager,
         config,
     });

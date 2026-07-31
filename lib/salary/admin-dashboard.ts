@@ -154,6 +154,7 @@ export async function buildAdminDashboard(params: {
     const blockByManager = new Map<string, Record<number, number | null>>();
     const multByManager = new Map<string, Record<number, { k: number | null; effect: number }>>();
     const bracketBaseById = new Map<number, number>(); // премии+переменные до множителей
+    const okladNotes: { managerId: number; name: string; explain: string; diff: number }[] = [];
 
     const fotTotal = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
 
@@ -208,6 +209,19 @@ export async function buildAdminDashboard(params: {
             const map = multByManager.get(c.code) ?? {};
             map[managerId] = effects.get(c.code) ?? { k: c.multiplier ?? 1, effect: 0 };
             multByManager.set(c.code, map);
+        }
+
+        // Урезанный оклад (отпуск/табель) — руководителю это надо видеть сразу, иначе
+        // выглядит как ошибка расчёта. Пояснение берём из explain блока.
+        const okladContrib = contribs.find((c) => c.code === 'oklad');
+        const okladParam = Number(comps.get(managerId)?.blocks.find((b) => b.code === 'oklad')?.params?.oklad) || 0;
+        if (okladContrib && okladParam > 0 && Number(okladContrib.amount) < okladParam - 1) {
+            okladNotes.push({
+                managerId,
+                name: r.manager_name || `#${managerId}`,
+                explain: okladContrib.explain,
+                diff: round(okladParam - Number(okladContrib.amount)),
+            });
         }
 
         const prepay = await computePrepayForOrders(countedIds, countedOrders, asOf).catch(() => null);
@@ -314,6 +328,14 @@ export async function buildAdminDashboard(params: {
         gradePolicy,
         prepayThresholdPct,
     });
+    for (const n of okladNotes) {
+        alerts.unshift({
+            code: `oklad:${n.managerId}`,
+            level: 'info',
+            title: `${n.name}: оклад за неполный месяц — −${fmtRub(n.diff)}`,
+            detail: `${n.explain}. Дни отсутствия берутся из отпусков в модуле распределения заявок; ручной табель, если он заполнен, имеет приоритет.`,
+        });
+    }
 
     return {
         managers,

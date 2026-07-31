@@ -30,10 +30,14 @@ const oklad: BonusBlock<{ oklad: number; prorate?: boolean }> = {
     compute(m, p, ctx) {
         const proration = p.prorate !== false && m.workedDays != null && ctx.businessDays > 0 ? Math.min(1, m.workedDays / ctx.businessDays) : 1;
         const amount = round2(p.oklad * proration);
+        // Отсутствие (отпуск) поясняем явно — иначе урезанный оклад выглядит ошибкой.
+        const absence = (m.absenceDays ?? 0) > 0 ? `, отсутствие ${m.absenceDays} дн.` : '';
         return {
             amount,
-            explain: proration < 1 ? `Оклад ${rub(p.oklad)} × ${Math.round(proration * 100)}% дней = ${rub(amount)}` : `Оклад ${rub(p.oklad)}`,
-            dataFill: { required: 1, present: m.workedDays != null ? 1 : 1, pct: 1 },
+            explain: proration < 1
+                ? `Оклад ${rub(p.oklad)} × ${m.workedDays} из ${ctx.businessDays} рабочих дней${absence} = ${rub(amount)}`
+                : `Оклад ${rub(p.oklad)}`,
+            dataFill: { required: 1, present: 1, pct: 1 },
         };
     },
 };
