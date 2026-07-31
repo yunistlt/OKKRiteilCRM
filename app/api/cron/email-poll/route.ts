@@ -16,7 +16,7 @@ import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
@@ -136,6 +136,50 @@ async function findClientOrderNumberInSubject(subject?: string | null, email?: s
     // Несколько номеров в теме — берём самый свежий (больший) заказ.
     mine.sort((a: any, b: any) => Number(b.number) - Number(a.number));
     return String(mine[0].number);
+}
+
+/**
+ * CRM-тег [#N/NNNNN] в теме указывает на ДАВНО ЗАКРЫТЫЙ заказ → тег «протух».
+ * Обычно тег — жёсткий признак живой переписки по сделке (CRM сама его вешает). Но клиент может
+ * переслать (Fwd:) свою же ветку многолетней давности с НОВЫМ запросом — «актуализируйте цену по
+ * ранее заказанному». Тогда тег про старую сделку, а письмо — новая заявка.
+ *
+ * Протухшим считаем ТОЛЬКО при обоих условиях сразу (осознанно консервативно, чтобы не плодить
+ * дубли по живым веткам):
+ *   1) по заказу давно НЕТ ДВИЖЕНИЯ: последняя смена статуса (raw_payload.statusUpdatedAt, фолбэк —
+ *      дата создания) старше `staleDays` (email_intake_config.crm_tag_stale_days). Берём движение,
+ *      а не возраст заказа: сделка может тянуться год и оставаться живой (заказ 45228 создан 490
+ *      дней назад, но статус менялся вчера — тег живой);
+ *   2) статус заказа не помечен рабочим (status_settings.is_working = true) — тендер и другие
+ *      долгоиграющие рабочие статусы оставляют тег жёстким даже без движения. Справочник неполный
+ *      (в нём нет `otgruzen`/`complete`/`send-assembling`), поэтому это страховка, а не основной
+ *      критерий — основной критерий пункт 1.
+ *
+ * Инцидент 30.07.2026: «Fwd: [#2/25609] … по заказу № 25609» (заказ от 14.03.2023, статус complete,
+ * движения с июля 2023) — запрос актуальной цены на стеллажи ушёл в reply_thread, заказ не создан.
+ */
+async function findStaleTaggedOrder(
+    subject: string | null | undefined,
+    staleDays: number
+): Promise<{ number: string; idleDays: number; status: string | null } | null> {
+    if (!subject) return null;
+    const num = parseOrderNumberFromSubject(subject);
+    if (!num) return null;
+    const { data } = await supabase.from('orders').select('number, status, created_at, raw_payload').eq('number', num).limit(1);
+    const ord = data?.[0];
+    if (!ord) return null; // заказа нет в базе — судить не о чем, тег оставляем жёстким
+    // statusUpdatedAt приходит из CRM без таймзоны («2023-07-06 12:57:42») — приводим к ISO-виду.
+    const rawMoved = ord.raw_payload?.statusUpdatedAt;
+    const movedAt = rawMoved ? new Date(String(rawMoved).replace(' ', 'T')) : null;
+    const lastMove = (movedAt && !Number.isNaN(movedAt.getTime()))
+        ? movedAt
+        : (ord.created_at ? new Date(ord.created_at) : null);
+    if (!lastMove || Number.isNaN(lastMove.getTime())) return null;
+    const idleDays = Math.floor((Date.now() - lastMove.getTime()) / 86400000);
+    if (idleDays < staleDays) return null;
+    const { data: st } = await supabase.from('status_settings').select('is_working').eq('code', ord.status || '').maybeSingle();
+    if (st?.is_working === true) return null; // заказ в рабочем статусе — переписка живая
+    return { number: String(ord.number), idleDays, status: ord.status || null };
 }
 
 /** Домен наших исходящих (из ящика секретаря). Нужен, чтобы опознать цитату нашего письма. */
@@ -310,7 +354,7 @@ export async function GET(req: Request) {
         const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, blocked: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
         const { data: cfg } = await supabase.from('email_intake_config').select('create_orders').maybeSingle();
         const createOrders = Boolean(cfg?.create_orders); // false = сухой прогон заказов
-        const [forwardEnabled, routes, orderBlocklist, noreplyAllowlist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist(), getNoreplyAllowlist()]);
+        const [forwardEnabled, routes, orderBlocklist, noreplyAllowlist, crmTagStaleDays] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist(), getNoreplyAllowlist(), getCrmTagStaleDays()]);
 
         const { data: pending } = await supabase
             .from('incoming_emails')
@@ -383,7 +427,17 @@ export async function GET(req: Request) {
                     subjectOrderNum = (bareRe && (v.route === 'new_request' || v.route === 'not_request'))
                         ? await findClientOrderNumberInSubject(e.subject, custEmail)
                         : null;
-                    if (crmTag && (v.route === 'new_request' || v.route === 'procurement')) {
+                    // Тег указывает на давно закрытый заказ — переписка по нему не идёт (см.
+                    // findStaleTaggedOrder). Проверяем ДО остальных правил: у пересланной старой
+                    // ветки сработали бы и тег, и repliesToOurThread (в теле цитата нашего письма).
+                    const staleTag = crmTag && v.route === 'new_request'
+                        ? await findStaleTaggedOrder(e.subject, crmTagStaleDays)
+                        : null;
+                    if (staleTag) {
+                        // Не перебиваем ИИ: это новое обращение по старой сделке — заводим заказ.
+                        emailType = 'new_request';
+                        reasoning = `Тег [#…] на давно закрытом заказе №${staleTag.number} (без движения ${staleTag.idleDays} дн.) — считаем новым обращением | ${v.reasoning}`;
+                    } else if (crmTag && (v.route === 'new_request' || v.route === 'procurement')) {
                         // Тег заказа — жёсткая переписка независимо от уверенности ИИ.
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(v.route)} | ${v.reasoning}`;

@@ -16,16 +16,18 @@ interface Props {
     initialForwardEnabled: boolean;
     initialOrderBlocklist: string[];
     initialNoreplyAllowlist: string[];
+    initialCrmTagStaleDays: number;
     canEdit: boolean;
 }
 
-export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, initialOrderBlocklist, initialNoreplyAllowlist, canEdit }: Props) {
+export default function RoutesSettings({ initialRoutes, initialCreateOrders, initialForwardEnabled, initialOrderBlocklist, initialNoreplyAllowlist, initialCrmTagStaleDays, canEdit }: Props) {
     const router = useRouter();
     const [routes, setRoutes] = useState<RouteRow[]>(initialRoutes.map((r) => ({ ...r, email: r.email || '' })));
     const [createOrders, setCreateOrders] = useState(initialCreateOrders);
     const [forwardEnabled, setForwardEnabled] = useState(initialForwardEnabled);
     const [blocklist, setBlocklist] = useState((initialOrderBlocklist || []).join('\n'));
     const [noreplyAllow, setNoreplyAllow] = useState((initialNoreplyAllowlist || []).join('\n'));
+    const [staleDays, setStaleDays] = useState(String(initialCrmTagStaleDays || 180));
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
@@ -47,6 +49,7 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                     forward_enabled: forwardEnabled,
                     order_blocklist: blocklist.split('\n').map((s) => s.trim()).filter(Boolean),
                     noreply_allowlist: noreplyAllow.split('\n').map((s) => s.trim()).filter(Boolean),
+                    crm_tag_stale_days: Number(staleDays) || 180,
                 }),
             });
             const data = await res.json();
@@ -149,6 +152,28 @@ export default function RoutesSettings({ initialRoutes, initialCreateOrders, ini
                     placeholder={'webasyst.biz'}
                     className="mt-3 w-full max-w-md border border-slate-300 px-3 py-2 font-mono text-sm text-slate-900 outline-none focus:border-sky-500 disabled:bg-slate-50 disabled:text-slate-500"
                 />
+            </div>
+
+            {/* Порог «протухшего» тега заказа */}
+            <div className="mt-6 border-t border-slate-100 pt-5">
+                <div className="text-sm font-bold text-slate-800">Считать тег заказа в теме устаревшим, если заказ старше</div>
+                <p className="mt-1 text-xs text-slate-500">
+                    Тег <code className="bg-slate-100 px-1">[#2/25609]</code> RetailCRM вешает сама на переписку по заказу —
+                    по такому письму Катерина заказ не заводит. Но клиент может переслать свою же ветку многолетней
+                    давности с новым запросом («актуализируйте цену»). Если заказ из тега старше этого срока
+                    <b> и</b> его статус не рабочий, письмо считается новым обращением и заказ создаётся.
+                </p>
+                <div className="mt-3 flex items-center gap-2">
+                    <input
+                        type="number"
+                        min={1}
+                        value={staleDays}
+                        disabled={!canEdit}
+                        onChange={(e) => setStaleDays(e.target.value)}
+                        className="w-28 border border-slate-300 px-3 py-1.5 text-sm text-slate-900 outline-none focus:border-sky-500 disabled:bg-slate-50 disabled:text-slate-500"
+                    />
+                    <span className="text-sm text-slate-600">дней</span>
+                </div>
             </div>
 
             {canEdit ? (

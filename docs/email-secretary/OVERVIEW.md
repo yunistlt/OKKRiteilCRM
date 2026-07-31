@@ -1,7 +1,7 @@
 # Катерина — секретарь приёма почты (email-секретарь)
 
 > **Канонический as-built обзор. Будущие чаты по Катерине начинают ОТСЮДА** (прочитать до погружения в код).
-> Если код разошёлся с документом — обнови документ. Обновлён: 26.07.2026.
+> Если код разошёлся с документом — обнови документ. Обновлён: 31.07.2026.
 
 Катерина — ИИ-агент, который разбирает входящую электронную почту компании. Новые заявки она
 заводит в RetailCRM заказом (с вложениями) и назначает менеджера, письма для смежных отделов
@@ -39,6 +39,19 @@
   - **CRM-тег `[#N/NNNNN]`** (`hasCrmOrderTag`) — НАДЁЖНЫЙ (CRM сам вешает его на переписку по заказу):
     - `new_request` → **`reply_thread`** (не плодим дубль), `procurement` → **`reply_thread`** (не в снабжение),
       `not_request` при теге → **`reply_thread`** (отказы «неактуально»/«нет финансирования» по заказу).
+    - **Исключение: тег «протух»** (`findStaleTaggedOrder` в крон-роуте). Клиент пересылает свою же
+      ветку многолетней давности с НОВЫМ запросом («актуализируйте цену по ранее заказанному») — тег
+      тогда про давно закрытую сделку. Если ИИ видит `new_request`, а по заказу из тега **нет движения**
+      дольше `email_intake_config.crm_tag_stale_days` (по умолч. **180** дней, правится в UI Катерины)
+      **И** его статус не помечен рабочим (`status_settings.is_working`) — тег НЕ перебивает ИИ,
+      **заводим заказ**. Возраст меряем по последней смене статуса (`raw_payload.statusUpdatedAt`,
+      фолбэк — дата создания), а не по дате создания: сделка может тянуться год и быть живой.
+      `status_settings` неполон (нет `otgruzen`/`complete`/`send-assembling`) — это страховка, а не
+      основной критерий. Проверка идёт ПЕРВОЙ: у пересланной старой ветки иначе сработали бы и тег,
+      и `repliesToOurThread` (в теле цитата нашего письма).
+      Инцидент 30.07.2026 — «Fwd: [#2/25609] … по заказу № 25609» (заказ от 14.03.2023, `complete`,
+      без движения с июля 2023): запрос актуальной цены на стеллажи ушёл в переписку, заказ не создан.
+      На истории за 180 дней правило меняет вердикт у 6 писем из 149 — все реальные новые запросы.
   - **Голый `Re:` без тега** (`isReplyThread` без `hasCrmOrderTag`) — СЛАБЫЙ (постоянный клиент часто
     отвечает на старое письмо, начиная НОВЫЙ запрос КП/счёта):
     - `procurement` → **`reply_thread`** («Re:» на наш заказ туда не шлём);
@@ -127,7 +140,8 @@
 
 ## Тумблеры/настройки (`email_intake_config`, singleton)
 
-`create_orders` (заказы), `forward_enabled` (пересылка), `balance_window_days` (7), `order_blocklist`
+`create_orders` (заказы), `forward_enabled` (пересылка), `balance_window_days` (7),
+`crm_tag_stale_days` (180 — порог «протухшего» CRM-тега), `order_blocklist`
 (text[] адресов/доменов → метка `blocked`), `noreply_allowlist` (text[] исключений из noreply-фильтра,
 засеян `webasyst.biz`), `load_exclude_status_codes`. Всё правится в UI, не в коде.
 
@@ -140,7 +154,7 @@
   Здесь же `findClientOrderNumberInSubject` (номер заказа клиента из темы «Re:», сверка с `orders` по email)
   и `repliesToOurOutbound`/`ourOutboundDomain` (детектор «ответ на наше исходящее» по заголовкам треда и цитате в теле).
 - `lib/email/classify.ts` — `classifyRoute`, `isReplyThread`, `hasCrmOrderTag`, `isNoReplySender`, `stripHtml`, `documentAttachmentNames`, `DEFAULT_SYSTEM_PROMPT`, `loadSecretaryPrompt`.
-- `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`.
+- `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`, `getCrmTagStaleDays`.
 - `lib/email/assign.ts` — пул, баланс, история, `getManagersOnLeave`, `getAbsences`, `resolveAssignment`.
 - `lib/email/imap.ts` — `fetchNewEmails` (read-only), `fetchEmailContentByUid` (докачка вложений).
 - `lib/retailcrm/leads.ts` — `createEmailLead`, `getCrmConfig` (exported). `lib/retailcrm/files.ts` — `attachEmailFilesToOrder`.
