@@ -1,0 +1,35 @@
+-- ============================================================================
+-- Индекс по номеру заказа: orders (number).
+--
+-- ИНЦИДЕНТ 2026-07-31: «Зарплата ОП» перестала открываться —
+-- GET /api/salary отдавал 500 «canceling statement due to statement timeout»
+-- (57014), на странице «Не удалось загрузить данные».
+--
+-- Почему сломалось только сейчас. Открытый период с 20260720 считается НА ЛЕТУ
+-- (lib/salary/period-view.ts), а 20260729_salary_duplicate_by_items переписала
+-- знаменатель конверсии: правомочность «Дубля на тендер» проверяется поиском
+-- эталона ПО НОМЕРУ (salary_incoming_counts → salary_tender_duplicate_root).
+-- Индекса по orders.number не было (только id/order_id/status/site/client_id),
+-- поэтому на каждый заказ-дубль шёл полный seq scan по orders с чтением
+-- raw_payload:
+--
+--   Seq Scan on orders r (actual time=851.865..851.865 rows=1 loops=62)
+--     Filter: r.number = salary_tender_duplicate_root(...)
+--     Buffers: shared hit=14403652
+--
+-- Замеры salary_incoming_counts на боевых данных: май 59 с, июнь 119 с,
+-- июль 54 с — при statement_timeout в 10 с падало всё, что читает открытый
+-- период (ведомость, «Моя зарплата», экспорт, консультант по ЗП).
+-- После индекса: июль 0,5 с, полный расчёт периода 2–4 с.
+--
+-- salary_tender_duplicate_root — STABLE и от строки r не зависит, поэтому
+-- значение вычисляется один раз на скан и уходит в index qual: seq scan
+-- заменяется index scan. Правки SQL-функций не потребовалось.
+--
+-- На прод индекс уже наложен CREATE INDEX CONCURRENTLY (без блокировки
+-- записи). Здесь обычный CREATE INDEX: раннер гонит файл одним запросом,
+-- то есть в неявной транзакции, где CONCURRENTLY запрещён. IF NOT EXISTS —
+-- на проде no-op, на чистой базе создаст.
+-- ============================================================================
+
+CREATE INDEX IF NOT EXISTS idx_orders_number ON public.orders (number);

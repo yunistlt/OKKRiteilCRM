@@ -230,6 +230,13 @@ total = base
 `salary_incoming_counts`,
 `salary_client_deal_counts`.
 
+**Индекс `orders (number)` обязателен** (`20260731_orders_number_index.sql`). Правило «Дубль на тендер» ищет эталон по
+НОМЕРУ заказа (`salary_incoming_counts` → `salary_tender_duplicate_root`), а открытый период считается на лету на каждый
+заход в ведомость. Без индекса каждый дубль давал полный seq scan по `orders` с чтением `raw_payload`:
+`salary_incoming_counts` — 54–119 с против 0,5 с с индексом. Инцидент 2026-07-31: `GET /api/salary` падал с 500
+«canceling statement due to statement timeout» (57014), ведомость показывала «Не удалось загрузить данные»; лежали
+заодно «Моя зарплата», экспорт и консультант по ЗП. **Добавляешь поиск заказа по новому полю — проверь, есть ли индекс.**
+
 > Миграции применяются вручную (нет раннера). Применять к той же БД, что и у прода (project `lywtzgntmibdpgoijbty`).
 > `.env.local` локально содержит только `DATABASE_URL` (нет SUPABASE-ключей → PostgREST-путь локально не воспроизводится;
 > расчёт против БД гоняется raw-скриптами через `DATABASE_URL`).
@@ -237,7 +244,7 @@ total = base
 ## 8. API (`app/api/salary/*`, RBAC: admin/rop; `/my` и карточка заказа — ещё manager)
 | Метод/маршрут | Назначение |
 |---|---|
-| `GET /api/salary?period=YYYY-MM` | сохранённый расчёт периода (+ статус). manager — только своя строка |
+| `GET /api/salary?period=YYYY-MM` | расчёт периода (+ статус): открытый — на лету, закрытый — снимок. manager — только своя строка |
 | `POST /api/salary/recalc {year,month}` | пересчёт из боевых данных + запись `salary_calc` (удаляет строки выбывших из реестра) |
 | `POST /api/salary/close` | закрыть период |
 | `GET /api/salary/export?period=` | Excel |
