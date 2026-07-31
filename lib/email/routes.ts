@@ -66,6 +66,28 @@ export async function getCrmTagStaleDays(): Promise<number> {
 }
 
 /**
+ * Окно тред-дедупа (дни): письмо продолжает почтовый тред, по которому заказ уже создан за этот
+ * срок → новый заказ не заводим. Хранится в БД (zero-hardcode), дефолт 14 дней.
+ * На истории дальше 7 дней новых дублей не ловится, поэтому окно короткое.
+ */
+export async function getThreadDedupDays(): Promise<number> {
+    const { data } = await supabase.from('email_intake_config').select('thread_dedup_days').maybeSingle();
+    const n = Number(data?.thread_dedup_days);
+    return Number.isFinite(n) && n > 0 ? n : 14;
+}
+
+/**
+ * Окно мягкой пометки «возможно дубль» (дни): у клиента уже есть заказ за этот срок. Заказ всё
+ * равно создаём — по разметке менеджеров такие письма в половине случаев законные новые заявки,
+ * автоматически их не отличить. Хранится в БД, дефолт 14 дней.
+ */
+export async function getDuplicateHintDays(): Promise<number> {
+    const { data } = await supabase.from('email_intake_config').select('duplicate_hint_days').maybeSingle();
+    const n = Number(data?.duplicate_hint_days);
+    return Number.isFinite(n) && n > 0 ? n : 14;
+}
+
+/**
  * Отправитель в списке (исключений на заказ ИЛИ noreply-исключений)? Запись с «@» — точный адрес;
  * без «@» — домен (совпадает сам домен и его поддомены). Регистр игнорируется.
  */

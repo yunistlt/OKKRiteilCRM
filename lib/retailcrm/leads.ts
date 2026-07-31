@@ -319,6 +319,38 @@ export async function createEmailLead(params: {
         console.error('Error running duplicate check:', dupErr);
     }
 
+    // Мягкая пометка «возможно дубль»: у клиента уже есть заказ за последние N дней.
+    // Заказ всё равно создаём — по разметке менеджеров (78 дублей из 399 заказов секретаря за
+    // 60 дней) такие письма примерно в половине случаев оказываются ЗАКОННОЙ новой заявкой, и
+    // автоматически отличить их нельзя: ни сходство текста (медиана 0.79 у дублей против 0.80 у
+    // законных), ни совпадение темы (47% против 39%) не разделяют. Поэтому решение оставляем
+    // менеджеру, но показываем ему предыдущий заказ сразу в карточке, чтобы не искать вручную.
+    let recentHint = '';
+    if (!duplicateOfNumber && params.email) {
+        try {
+            const { getDuplicateHintDays } = await import('@/lib/email/routes');
+            const hintDays = await getDuplicateHintDays();
+            const since = new Date(Date.now() - hintDays * 86400000).toISOString();
+            const { data: recent } = await supabase
+                .from('orders')
+                .select('number, created_at')
+                // Регистр email в CRM не нормализован; lower() в фильтр не завернуть (иначе не
+                // сработает индекс idx_orders_raw_email_created) — сравниваем оба варианта.
+                .in('raw_payload->>email', Array.from(new Set([params.email.trim(), params.email.trim().toLowerCase()])))
+                .gte('created_at', since)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            const prev = recent?.[0];
+            if (prev) {
+                const days = Math.floor((Date.now() - new Date(prev.created_at).getTime()) / 86400000);
+                const when = days === 0 ? 'сегодня' : `${days} дн. назад`;
+                recentHint = `возможно дубль ${prev.number} (заявка того же клиента ${when}) — проверьте`;
+            }
+        } catch (hintErr) {
+            console.error('Error running recent-order hint:', hintErr);
+        }
+    }
+
     const attNames = (params.attachmentNames || []).filter(Boolean);
     const bodyPart = (params.bodySnippet || '').trim()
         || (attNames.length ? 'Тело письма пустое — суть во вложении (прикреплено к заказу).' : 'не распознано — открыть письмо');
@@ -349,6 +381,8 @@ ${bodyPart}${attLine}${duplicateReason}`;
     }
     if (duplicateOfNumber) {
         orderData.managerComment = `дубль ${duplicateOfNumber}`;
+    } else if (recentHint) {
+        orderData.managerComment = recentHint;
     }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 

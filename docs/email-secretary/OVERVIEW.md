@@ -1,7 +1,7 @@
 # Катерина — секретарь приёма почты (email-секретарь)
 
 > **Канонический as-built обзор. Будущие чаты по Катерине начинают ОТСЮДА** (прочитать до погружения в код).
-> Если код разошёлся с документом — обнови документ. Обновлён: 31.07.2026.
+> Если код разошёлся с документом — обнови документ. Обновлён: 31.07.2026 (тред-дедуп).
 
 Катерина — ИИ-агент, который разбирает входящую электронную почту компании. Новые заявки она
 заводит в RetailCRM заказом (с вложениями) и назначает менеджера, письма для смежных отделов
@@ -35,6 +35,23 @@
   (`email_intake_config.noreply_allowlist`, `getNoreplyAllowlist`): адреса/домены-роботы, которые
   несут реальные лиды (сайт-магазин **webasyst.biz**: «Новый заказ», формы «Заказать звонок») —
   их НЕ отсекаем, а классифицируем как обычно и заводим заказ. Правится в UI.
+- **Тред-дедуп (проверяется ПЕРВЫМ).** Письмо продолжает почтовый тред (пересечение
+  `Message-ID`/`In-Reply-To`/`References`), по которому заказ уже создан за `thread_dedup_days`
+  (по умолч. **14** дней) → `reply_thread`, второй заказ не заводим; письмо привязывается к тому
+  заказу, а его **вложения прикрепляются к нему** (иначе ТЗ из файла потерялось бы).
+  `findOrderByEmailThread` в крон-роуте.
+  **Почему только тред.** За 60 дней менеджеры пометили «Дубль заявки» 78 из 399 заказов секретаря
+  (20%). Калибровка на этой разметке: сходство текста писем НЕ разделяет дубль и законную повторную
+  заявку того же клиента (медиана 0.79 против 0.80 — при любом пороге ~50/50), совпадение темы тоже
+  (47% против 39%). Разделяет только общий тред: 21% у дублей против 4% у законных. На истории
+  правило срабатывает 13 раз за 60 дней — 10 реальных дублей и 3 письма, которые ушли бы в
+  существующий заказ (не теряются: менеджер видит их в карточке). Дальше 7 дней окно ничего нового
+  не ловит.
+- **Мягкая пометка «возможно дубль»** (`createEmailLead`). Если у клиента уже есть заказ за
+  `duplicate_hint_days` (по умолч. **14** дней) — заказ всё равно **создаём** (иначе теряем законные
+  повторные заявки, их около половины), но в `managerComment` пишем «возможно дубль №… — проверьте».
+  Покрывает 28% заказов секретаря и содержит 71% всех дублей — менеджер видит предыдущий заказ сразу,
+  не ища вручную. Приоритет: тендерный дубль (`findTenderDuplicate`) важнее мягкой пометки.
 - **Переписка по заказу.** Различаем ДВА признака (у них разная сила):
   - **CRM-тег `[#N/NNNNN]`** (`hasCrmOrderTag`) — НАДЁЖНЫЙ (CRM сам вешает его на переписку по заказу):
     - `new_request` → **`reply_thread`** (не плодим дубль), `procurement` → **`reply_thread`** (не в снабжение),
@@ -141,7 +158,8 @@
 ## Тумблеры/настройки (`email_intake_config`, singleton)
 
 `create_orders` (заказы), `forward_enabled` (пересылка), `balance_window_days` (7),
-`crm_tag_stale_days` (180 — порог «протухшего» CRM-тега), `order_blocklist`
+`crm_tag_stale_days` (180 — порог «протухшего» CRM-тега),
+`thread_dedup_days` (14 — окно тред-дедупа), `duplicate_hint_days` (14 — окно пометки «возможно дубль»), `order_blocklist`
 (text[] адресов/доменов → метка `blocked`), `noreply_allowlist` (text[] исключений из noreply-фильтра,
 засеян `webasyst.biz`), `load_exclude_status_codes`. Всё правится в UI, не в коде.
 
@@ -154,7 +172,7 @@
   Здесь же `findClientOrderNumberInSubject` (номер заказа клиента из темы «Re:», сверка с `orders` по email)
   и `repliesToOurOutbound`/`ourOutboundDomain` (детектор «ответ на наше исходящее» по заголовкам треда и цитате в теле).
 - `lib/email/classify.ts` — `classifyRoute`, `isReplyThread`, `hasCrmOrderTag`, `isNoReplySender`, `stripHtml`, `documentAttachmentNames`, `DEFAULT_SYSTEM_PROMPT`, `loadSecretaryPrompt`.
-- `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`, `getCrmTagStaleDays`.
+- `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`, `getCrmTagStaleDays`, `getThreadDedupDays`, `getDuplicateHintDays`.
 - `lib/email/assign.ts` — пул, баланс, история, `getManagersOnLeave`, `getAbsences`, `resolveAssignment`.
 - `lib/email/imap.ts` — `fetchNewEmails` (read-only), `fetchEmailContentByUid` (докачка вложений).
 - `lib/retailcrm/leads.ts` — `createEmailLead`, `getCrmConfig` (exported). `lib/retailcrm/files.ts` — `attachEmailFilesToOrder`.
