@@ -10,6 +10,8 @@ import DutyModal from './DutyModal';
 import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
+import AdminDashboard from './AdminDashboard';
+import type { AdminDashboard as AdminDashboardData } from '@/lib/salary/admin-dashboard';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -45,7 +47,8 @@ export default function SalaryDashboard() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number } | null>(null);
+    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number; dashboard?: AdminDashboardData | null } | null>(null);
+    const [tab, setTab] = useState<'dashboard' | 'sheet'>('dashboard');
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -154,6 +157,20 @@ export default function SalaryDashboard() {
         <div className="w-full space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold">Зарплата ОП</h1>
+                <div className="flex border border-input">
+                    <button
+                        onClick={() => setTab('dashboard')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Дашборд
+                    </button>
+                    <button
+                        onClick={() => setTab('sheet')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'sheet' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Ведомость
+                    </button>
+                </div>
                 <div className="ml-auto flex items-center gap-2">
                     <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
@@ -224,6 +241,22 @@ export default function SalaryDashboard() {
                             ? 'Не удалось загрузить данные. Обновите страницу или повторите позже.'
                             : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
+            ) : tab === 'dashboard' ? (
+                data?.dashboard ? (
+                    <AdminDashboard
+                        dash={data.dashboard}
+                        monthLabel={`${MONTHS[month - 1]} ${year}`}
+                        isOpen={!closed}
+                        onOpenManager={(id) => {
+                            const r = rows.find((x) => Number(x.manager_id) === Number(id));
+                            if (r) setReportManager(r);
+                        }}
+                    />
+                ) : (
+                    <div className="border border-dashed p-12 text-center text-sm text-muted-foreground">
+                        Панель не собралась — показатели периода недоступны. Откройте вкладку «Ведомость».
+                    </div>
+                )
             ) : (() => {
                 // Колонки таблицы — динамически из блоков назначенных схем (никакого хардкода).
                 // Союз блоков по всем менеджерам в порядке появления; фолбэк на legacy для старых расчётов.
@@ -268,7 +301,7 @@ export default function SalaryDashboard() {
             })()}
 
             {/* ── Инженеры-расчётчики ── */}
-            {!loading && (data?.engineers?.length ?? 0) > 0 && (
+            {tab === 'sheet' && !loading && (data?.engineers?.length ?? 0) > 0 && (
                 <div className="mt-6 space-y-2">
                     <div className="flex items-center gap-2">
                         <h2 className="text-sm font-semibold">Инженеры-расчётчики</h2>
