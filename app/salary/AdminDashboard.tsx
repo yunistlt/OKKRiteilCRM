@@ -72,23 +72,23 @@ export default function AdminDashboard({
                 <Section title="Выполнение плана" hint="факт — по заказам, перешедшим «в производство», без НДС">
                     <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(320px,1fr))' }}>
                         {t.planDept != null && (
-                            <div className="border bg-card p-3">
+                            <div className="border border-slate-300 bg-white p-3">
                                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                                     <div>
                                         <span className="text-xl font-extrabold tabular-nums">{rub(t.revenueNoVat)}</span>{' '}
-                                        <span className="text-xs text-muted-foreground">/ {rub(t.planDept)} — план отдела</span>
+                                        <span className="text-xs text-slate-500">/ {rub(t.planDept)} — план отдела</span>
                                     </div>
                                     <Badge ok={(t.planDeptPct ?? 0) >= 100}>{pct(t.planDeptPct)}</Badge>
                                 </div>
                                 {/* Вклад каждого менеджера в план отдела */}
-                                <div className="relative my-2 flex h-4 border bg-muted">
+                                <div className="relative my-2 flex h-4 border border-slate-300 bg-slate-200">
                                     {ms.map((m) => (
                                         <span key={m.managerId} title={`${m.name}: ${rub(m.revenueNoVat)}`}
                                             style={{ width: `${Math.max(0, Math.min(100, (m.revenueNoVat / (t.planDept || 1)) * 100))}%`, background: colorById.get(m.managerId) }} />
                                     ))}
-                                    <span className="absolute -top-1 bottom-[-4px] w-0.5 bg-foreground" style={{ left: '100%' }} />
+                                    <span className="absolute -top-1 bottom-[-4px] w-0.5 bg-slate-900" style={{ left: '100%' }} />
                                 </div>
-                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
                                     {ms.map((m) => (
                                         <span key={m.managerId}>
                                             <i className="mr-1 inline-block h-2 w-2 align-middle" style={{ background: colorById.get(m.managerId) }} />
@@ -96,7 +96,7 @@ export default function AdminDashboard({
                                         </span>
                                     ))}
                                 </div>
-                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground [&_b]:text-foreground">
+                                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500 [&_b]:text-slate-900">
                                     {t.planDeptRemaining != null && <span>Осталось <b>{rub(t.planDeptRemaining)}</b></span>}
                                     {dash.pace.requiredPerDay != null && dash.pace.isCurrentMonth && (
                                         <span>Нужно <b>{rub(dash.pace.requiredPerDay)}/раб. день</b></span>
@@ -104,20 +104,20 @@ export default function AdminDashboard({
                                 </div>
                             </div>
                         )}
-                        <div className="border bg-card p-3">
-                            <div className="mb-2 text-xs text-muted-foreground">Личные планы</div>
+                        <div className="border border-slate-300 bg-white p-3">
+                            <div className="mb-2 text-xs text-slate-500">Личные планы</div>
                             {ms.map((m) => (
                                 <div key={m.managerId} className="grid items-center gap-2 border-b py-1.5 last:border-b-0"
                                     style={{ gridTemplateColumns: 'minmax(120px,1.2fr) minmax(80px,2fr) minmax(96px,auto)' }}>
                                     <div className="truncate text-[13px] font-semibold" title={m.name}>{m.name}</div>
-                                    <div className="relative flex h-2.5 border bg-muted">
+                                    <div className="relative flex h-2.5 border border-slate-300 bg-slate-200">
                                         <span className={(m.planPct ?? 0) >= 100 ? 'bg-emerald-600' : (m.planPct ?? 0) >= (dash.pace.expectedPct - 1) ? 'bg-amber-500' : 'bg-red-600'}
                                             style={{ width: `${Math.max(0, Math.min(100, m.planPct ?? 0))}%` }} />
-                                        <span className="absolute -top-1 bottom-[-4px] w-0.5 bg-foreground" style={{ left: '100%' }} />
+                                        <span className="absolute -top-1 bottom-[-4px] w-0.5 bg-slate-900" style={{ left: '100%' }} />
                                     </div>
                                     <div className="text-right text-[12px] tabular-nums">
                                         <b>{pct(m.planPct)}</b>{' '}
-                                        <span className="text-muted-foreground">{short(m.revenueNoVat)} / {short(m.planTarget)}</span>
+                                        <span className="text-slate-500">{short(m.revenueNoVat)} / {short(m.planTarget)}</span>
                                     </div>
                                 </div>
                             ))}
@@ -128,9 +128,9 @@ export default function AdminDashboard({
 
             {/* ── Структура ФОТ ───────────────────────────────────────────── */}
             <Section title="Из чего сложился ФОТ" hint="каждое начисление — своей строкой, каждый коэффициент — своей, с эффектом в рублях">
-                <div className="overflow-x-auto border">
+                <div className="overflow-x-auto border border-slate-300">
                     <table className="w-full text-[13px]">
-                        <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">
                             <tr>
                                 <th className="p-2 text-left">Блок мотивации</th>
                                 <th className="whitespace-nowrap p-2 text-right">Сумма</th>
@@ -144,18 +144,18 @@ export default function AdminDashboard({
                             {dash.blocks.map((b) => (
                                 <tr key={b.code} className="border-t">
                                     <td className="p-2">{b.name}</td>
-                                    <td className={`whitespace-nowrap p-2 text-right tabular-nums ${b.total ? '' : 'text-muted-foreground'}`}>{rub(b.total)}</td>
-                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-muted-foreground">
+                                    <td className={`whitespace-nowrap p-2 text-right tabular-nums ${b.total ? '' : 'text-slate-500'}`}>{rub(b.total)}</td>
+                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-slate-500">
                                         {t.fot > 0 ? pct((b.total / t.fot) * 100, 1) : '—'}
                                     </td>
                                     {ms.map((m) => (
-                                        <td key={m.managerId} className={`whitespace-nowrap p-2 text-right tabular-nums ${b.byManager[m.managerId] == null ? 'text-muted-foreground/50' : b.byManager[m.managerId] ? '' : 'text-muted-foreground'}`}>
+                                        <td key={m.managerId} className={`whitespace-nowrap p-2 text-right tabular-nums ${b.byManager[m.managerId] == null ? 'text-slate-300' : b.byManager[m.managerId] ? '' : 'text-slate-500'}`}>
                                             {b.byManager[m.managerId] == null ? '—' : rub(b.byManager[m.managerId])}
                                         </td>
                                     ))}
                                 </tr>
                             ))}
-                            <tr className="border-t bg-muted/20 font-semibold">
+                            <tr className="border-t bg-slate-50 font-semibold">
                                 <td className="p-2">Начислено до коэффициентов</td>
                                 <td className="whitespace-nowrap p-2 text-right tabular-nums">{rub(t.grossBeforeMultipliers)}</td>
                                 <td className="p-2" />
@@ -167,24 +167,24 @@ export default function AdminDashboard({
                                 <tr key={mu.code} className="border-t">
                                     <td className="p-2">
                                         {mu.name}
-                                        <span className="ml-2 text-[11px] text-muted-foreground">
+                                        <span className="ml-2 text-[11px] text-slate-500">
                                             {mu.scope === 'premia' ? 'множит премию' : 'множит переменную часть'}
                                         </span>
                                     </td>
-                                    <td className={`whitespace-nowrap p-2 text-right font-semibold tabular-nums ${mu.totalEffect < 0 ? 'text-red-600' : mu.totalEffect > 0 ? 'text-emerald-600' : 'text-muted-foreground'}`}>
+                                    <td className={`whitespace-nowrap p-2 text-right font-semibold tabular-nums ${mu.totalEffect < 0 ? 'text-red-600' : mu.totalEffect > 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
                                         {mu.totalEffect > 0 ? '+' : ''}{rub(mu.totalEffect)}
                                     </td>
-                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-muted-foreground">
+                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-slate-500">
                                         {t.fot > 0 ? pct((mu.totalEffect / t.fot) * 100, 1) : '—'}
                                     </td>
                                     {ms.map((m) => {
                                         const cell = mu.byManager[m.managerId];
                                         return (
                                             <td key={m.managerId} className="whitespace-nowrap p-2 text-right tabular-nums">
-                                                {cell?.k == null ? <span className="text-muted-foreground/50">—</span> : (
+                                                {cell?.k == null ? <span className="text-slate-300">—</span> : (
                                                     <>
                                                         <span className="font-semibold">{mult(cell.k)}</span>{' '}
-                                                        <span className={cell.effect < 0 ? 'text-red-600' : cell.effect > 0 ? 'text-emerald-600' : 'text-muted-foreground'}>
+                                                        <span className={cell.effect < 0 ? 'text-red-600' : cell.effect > 0 ? 'text-emerald-600' : 'text-slate-500'}>
                                                             {cell.effect > 0 ? '+' : ''}{rub(cell.effect)}
                                                         </span>
                                                     </>
@@ -195,7 +195,7 @@ export default function AdminDashboard({
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="border-t bg-muted/30 font-semibold">
+                        <tfoot className="border-t bg-slate-50 font-semibold">
                             <tr>
                                 <td className="p-2">ФОТ менеджеров</td>
                                 <td className="whitespace-nowrap p-2 text-right tabular-nums">{rub(t.fot)}</td>
@@ -209,7 +209,7 @@ export default function AdminDashboard({
                                     <td className="p-2">Инженеры-расчётчики</td>
                                     <td className="whitespace-nowrap p-2 text-right tabular-nums">{rub(t.engineersFot)}</td>
                                     <td className="p-2" />
-                                    <td className="p-2 text-right text-[11px] font-normal text-muted-foreground" colSpan={ms.length}>
+                                    <td className="p-2 text-right text-[11px] font-normal text-slate-500" colSpan={ms.length}>
                                         ФОТ всего {rub(t.fotAll)}
                                     </td>
                                 </tr>
@@ -217,16 +217,16 @@ export default function AdminDashboard({
                         </tfoot>
                     </table>
                 </div>
-                <div className="mt-1 text-[11px] text-muted-foreground">
+                <div className="mt-1 text-[11px] text-slate-500">
                     Коэффициенты умножают премию и переменную часть, но не оклад и не разовые выплаты. Эффект — сколько рублей коэффициент добавил или снял.
                 </div>
             </Section>
 
             {/* ── Сравнение менеджеров ────────────────────────────────────── */}
             <Section title="Менеджеры — сравнение" hint="клик по строке — подробный отчёт с формулой и заказами">
-                <div className="overflow-x-auto border">
+                <div className="overflow-x-auto border border-slate-300">
                     <table className="w-full text-[13px]">
-                        <thead className="bg-muted/50 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <thead className="bg-slate-100 text-[10px] uppercase tracking-wide text-slate-500">
                             <tr>
                                 <th className="p-2 text-left">Менеджер</th>
                                 <th className="whitespace-nowrap p-2 text-right">Выручка</th>
@@ -243,18 +243,18 @@ export default function AdminDashboard({
                         </thead>
                         <tbody>
                             {ms.map((m) => (
-                                <tr key={m.managerId} className="cursor-pointer border-t hover:bg-muted/30"
+                                <tr key={m.managerId} className="cursor-pointer border-t hover:bg-slate-50"
                                     onClick={() => onOpenManager(m.managerId)} title="Открыть подробный отчёт">
                                     <td className="p-2">
                                         <div className="font-semibold">{m.name}</div>
-                                        {m.schemeName && <div className="text-[11px] text-muted-foreground">{m.schemeName}</div>}
+                                        {m.schemeName && <div className="text-[11px] text-slate-500">{m.schemeName}</div>}
                                     </td>
                                     <td className="whitespace-nowrap p-2 text-right tabular-nums">{short(m.revenueNoVat)} ₽</td>
                                     <td className={`whitespace-nowrap p-2 text-right font-semibold tabular-nums ${planClass(m, dash.pace.expectedPct)}`}>{pct(m.planPct)}</td>
                                     <td className="whitespace-nowrap p-2 text-right tabular-nums">{formatIntRu(m.orders)}</td>
                                     <td className="whitespace-nowrap p-2 text-right tabular-nums">
                                         {pct(m.conversionPct)}
-                                        <span className="ml-1 text-[11px] text-muted-foreground">{m.conversionNum}/{m.conversionDen}</span>
+                                        <span className="ml-1 text-[11px] text-slate-500">{m.conversionNum}/{m.conversionDen}</span>
                                     </td>
                                     <td className="whitespace-nowrap p-2 text-right tabular-nums">{pct(m.qualityScore)}</td>
                                     <td className={`whitespace-nowrap p-2 text-right tabular-nums ${m.prepayPassed === false ? 'bg-red-50 font-semibold text-red-600' : m.prepayPassed ? 'text-emerald-600' : ''}`}>
@@ -262,12 +262,12 @@ export default function AdminDashboard({
                                     </td>
                                     {dash.grade && <td className="whitespace-nowrap p-2 text-right tabular-nums">{m.grade ?? '—'} / {dash.grade.floor}</td>}
                                     <td className="whitespace-nowrap p-2 text-right font-semibold tabular-nums">{rub(m.total)}</td>
-                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-muted-foreground">{pct(m.fotSharePct)}</td>
-                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-muted-foreground">{pct(m.salaryToRevenuePct, 1)}</td>
+                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-slate-500">{pct(m.fotSharePct)}</td>
+                                    <td className="whitespace-nowrap p-2 text-right tabular-nums text-slate-500">{pct(m.salaryToRevenuePct, 1)}</td>
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="border-t bg-muted/30 font-semibold">
+                        <tfoot className="border-t bg-slate-50 font-semibold">
                             <tr>
                                 <td className="p-2">Отдел</td>
                                 <td className="whitespace-nowrap p-2 text-right tabular-nums">{short(t.revenueNoVat)} ₽</td>
@@ -285,7 +285,7 @@ export default function AdminDashboard({
                     </table>
                 </div>
                 {t.prepayThresholdPct != null && (
-                    <div className="mt-1 text-[11px] text-muted-foreground">
+                    <div className="mt-1 text-[11px] text-slate-500">
                         Предоплата: норма ≥ {pct(t.prepayThresholdPct)} по засчитанным заказам. Цвет — отношение к порогу из схемы менеджера, не к средней по отделу.
                     </div>
                 )}
@@ -297,9 +297,9 @@ export default function AdminDashboard({
                     <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))' }}>
                         {dash.alerts.map((a) => (
                             <div key={a.code}
-                                className={`border border-l-[3px] bg-card p-3 ${a.level === 'bad' ? 'border-l-red-600' : a.level === 'warn' ? 'border-l-amber-500' : 'border-l-blue-600'}`}>
+                                className={`border border-slate-300 border-l-[3px] bg-white p-3 ${a.level === 'bad' ? 'border-l-red-600' : a.level === 'warn' ? 'border-l-amber-500' : 'border-l-blue-600'}`}>
                                 <div className="text-[13px] font-semibold">{a.title}</div>
-                                <div className="mt-1 text-[12px] text-muted-foreground">{a.detail}</div>
+                                <div className="mt-1 text-[12px] text-slate-500">{a.detail}</div>
                             </div>
                         ))}
                     </div>
@@ -309,7 +309,7 @@ export default function AdminDashboard({
             {/* ── Динамика ────────────────────────────────────────────────── */}
             {dash.history.length > 1 && (
                 <Section title="Динамика" hint="периоды с расчётом · ФОТ менеджеров и выручка отдела">
-                    <div className="border bg-card p-3">
+                    <div className="border border-slate-300 bg-white p-3">
                         <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${dash.history.length},minmax(0,1fr))` }}>
                             {dash.history.map((h) => {
                                 const maxRev = Math.max(...dash.history.map((x) => x.revenue), 1);
@@ -321,14 +321,14 @@ export default function AdminDashboard({
                                             <span className="flex-1 bg-slate-400" style={{ height: `${(h.fot / maxFot) * 100}%` }} title={`ФОТ ${rub(h.fot)}`} />
                                         </div>
                                         <div className="text-center text-[12px] font-bold tabular-nums">{pct(h.ratioPct, 1)}</div>
-                                        <div className="truncate text-center text-[11px] text-muted-foreground">
+                                        <div className="truncate text-center text-[11px] text-slate-500">
                                             {MONTHS_SHORT[h.month - 1]} · {short(h.revenue)} / {short(h.fot)}
                                         </div>
                                     </div>
                                 );
                             })}
                         </div>
-                        <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                        <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500">
                             <span><i className="mr-1 inline-block h-2 w-2 bg-blue-600 align-middle" />Выручка отдела</span>
                             <span><i className="mr-1 inline-block h-2 w-2 bg-slate-400 align-middle" />ФОТ менеджеров</span>
                             <span>Число под столбцами — зарплатоёмкость. Ряды масштабированы каждый к своему максимуму.</span>
@@ -360,7 +360,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
         <section>
             <div className="mb-1.5 flex items-baseline gap-2">
                 <h2 className="text-[11px] font-bold uppercase tracking-wide">{title}</h2>
-                {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
+                {hint && <span className="text-[11px] text-slate-500">{hint}</span>}
             </div>
             {children}
         </section>
@@ -369,10 +369,10 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 function Kpi({ label, value, meta }: { label: string; value: string; meta?: string }) {
     return (
-        <div className="border bg-card p-3">
-            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="border border-slate-300 bg-white p-3">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</div>
             <div className="mt-1 text-2xl font-extrabold tabular-nums">{value}</div>
-            {meta && <div className="mt-1 text-[11px] text-muted-foreground">{meta}</div>}
+            {meta && <div className="mt-1 text-[11px] text-slate-500">{meta}</div>}
         </div>
     );
 }
