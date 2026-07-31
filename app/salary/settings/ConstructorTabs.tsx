@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
 import { tintFor } from '@/lib/salary/sim-controls';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal, ArrowDownNarrowWide } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FotSimulatorModal from './FotSimulatorModal';
 import EngineerFotSimulatorModal from './EngineerFotSimulatorModal';
@@ -144,6 +144,9 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
 function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => void }) {
     // «От» (порог) всегда первой колонкой — читается как «От N → коэффициент/бонус».
     const keys = Array.from(new Set(value.flatMap((r) => Object.keys(r ?? {})))).sort((a, b) => (a === 'min' ? -1 : b === 'min' ? 1 : 0));
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const [overIdx, setOverIdx] = useState<number | null>(null);
+    const [armed, setArmed] = useState<number | null>(null); // строка «взята» за ручку — только тогда она draggable
     const setCell = (i: number, k: string, v: any) => onChange(value.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
     // Новая строка с типобезопасными дефолтами по образцу существующих строк.
     const addRow = () => {
@@ -158,15 +161,56 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
         onChange([...value, blank]);
     };
     const delRow = (i: number) => onChange(value.filter((_, j) => j !== i));
+
+    // Порядок строк — дело владельца схемы: на расчёт он не влияет (ступень выбирается
+    // по наибольшему подходящему порогу), но читать таблицу удобнее в своём порядке.
+    // Перетаскивание — только за ручку, иначе нельзя было бы выделять текст в полях.
+    const move = (from: number, to: number) => {
+        if (from === to || from < 0 || to < 0 || from >= value.length || to >= value.length) return;
+        const next = value.slice();
+        const [row] = next.splice(from, 1);
+        next.splice(to, 0, row);
+        onChange(next);
+    };
+    const sortAsc = () => onChange(value.slice().sort((a, b) => (Number(a?.min) || 0) - (Number(b?.min) || 0)));
+    const sortable = keys.includes('min') && value.length > 1;
+
     return (
         <div className="border">
             <table className="w-full text-xs">
                 <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>{keys.map((k) => <th key={k} className="px-3 py-1.5 text-right font-medium">{labelFor(k)}</th>)}<th className="w-9" /></tr>
+                    <tr>
+                        <th className="w-7" />
+                        {keys.map((k) => <th key={k} className="px-3 py-1.5 text-right font-medium">{labelFor(k)}</th>)}
+                        <th className="w-9" />
+                    </tr>
                 </thead>
                 <tbody>
                     {value.map((row, i) => (
-                        <tr key={i} className="border-t odd:bg-white even:bg-muted/20 hover:bg-accent">
+                        <tr
+                            key={i}
+                            draggable={armed === i}
+                            onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                            onDragEnd={() => { setDragIdx(null); setOverIdx(null); setArmed(null); }}
+                            onDragOver={(e) => { if (dragIdx == null) return; e.preventDefault(); setOverIdx(i); }}
+                            onDrop={(e) => { e.preventDefault(); if (dragIdx != null) move(dragIdx, i); setDragIdx(null); setOverIdx(null); setArmed(null); }}
+                            className={`border-t odd:bg-white even:bg-muted/20 hover:bg-accent ${dragIdx === i ? 'opacity-40' : ''} ${overIdx === i && dragIdx !== i ? 'outline outline-2 -outline-offset-2 outline-blue-600' : ''}`}
+                        >
+                            <td className="px-1 py-1.5 text-center align-middle">
+                                <button
+                                    onMouseDown={() => setArmed(i)}
+                                    onMouseUp={() => setArmed(null)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'ArrowUp') { e.preventDefault(); move(i, i - 1); }
+                                        if (e.key === 'ArrowDown') { e.preventDefault(); move(i, i + 1); }
+                                    }}
+                                    title="Перетащите, чтобы поменять порядок · ↑ / ↓ с клавиатуры"
+                                    aria-label="Переместить строку"
+                                    className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                                >
+                                    <GripVertical className="h-3.5 w-3.5" />
+                                </button>
+                            </td>
                             {keys.map((k) => (
                                 <td key={k} className="px-3 py-1.5">
                                     <ScalarField pkey={k} value={row?.[k]} full onChange={(v) => setCell(i, k, v)} />
@@ -177,7 +221,14 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
                     ))}
                 </tbody>
             </table>
-            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
+            <div className="flex border-t">
+                <button onClick={addRow} className="flex flex-1 items-center justify-center gap-1 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
+                {sortable && (
+                    <button onClick={sortAsc} title="Расставить строки по возрастанию порога" className="flex items-center justify-center gap-1 border-l px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent">
+                        <ArrowDownNarrowWide className="h-3 w-3" /> По возрастанию
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
