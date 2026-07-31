@@ -95,19 +95,23 @@ function summarize(params: any): string {
 
 // ── Редактор параметров блока (поля вместо сырого JSON) ──────────────────────
 const inputCls = 'h-7 border px-2 text-xs';
+// Поля внутри таблиц ступеней: без собственной рамки (её роль играет сетка таблицы),
+// рамка проявляется только при наведении и фокусе — golds: «можно убрать рамку — убрать».
+const cellInputCls = 'h-7 w-full border border-transparent bg-transparent px-2 text-xs hover:border-input focus:border-primary focus:outline-none';
 
-function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean }) {
+function ScalarField({ pkey, value, onChange, full, bare }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean; bare?: boolean }) {
     const categories = useContext(CategoriesContext);
+    const base = bare ? cellInputCls : inputCls;
     if (pkey === 'comparator' && typeof value === 'string') {
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {Object.entries(COMPARATORS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
     }
     if (pkey === 'mode' && typeof value === 'string') {
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {Object.entries(CATEGORY_MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
@@ -115,7 +119,7 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
     if (pkey === 'metric' && typeof value === 'string') {
         const known = value in DISCOUNT_METRICS;
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {!known && value ? <option value={value}>{value}</option> : null}
                 {Object.entries(DISCOUNT_METRICS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -124,7 +128,7 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
     if (pkey === 'category') {
         const known = categories.some((c) => c.code === value);
         return (
-            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 <option value="">— выберите категорию —</option>
                 {!known && value ? <option value={String(value)}>{String(value)} (нет в словаре)</option> : null}
                 {categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
@@ -135,9 +139,9 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
         return <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-primary" />;
     }
     if (typeof value === 'number') {
-        return <NumberInput value={Number.isFinite(value) ? value : 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${inputCls} ${full ? 'w-full' : 'w-28'} text-right`} />;
+        return <NumberInput value={Number.isFinite(value) ? value : 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${base} ${full ? 'w-full' : 'w-28'} text-right`} />;
     }
-    return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} w-full`} />;
+    return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${base} w-full`} />;
 }
 
 // Таблица для массива объектов вида {min,k} / {min,bonus} (пороги). По GOLD_UI_TABLES.
@@ -176,13 +180,13 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
     const sortable = keys.includes('min') && value.length > 1;
 
     return (
-        <div className="border">
+        <div>
             <table className="w-full text-xs">
-                <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>
+                <thead className="text-muted-foreground">
+                    <tr className="border-b">
+                        <th className="w-5" />
+                        {keys.map((k) => <th key={k} className="px-2 pb-1 text-right text-[10px] font-bold uppercase tracking-wide">{labelFor(k)}</th>)}
                         <th className="w-7" />
-                        {keys.map((k) => <th key={k} className="px-3 py-1.5 text-right font-medium">{labelFor(k)}</th>)}
-                        <th className="w-9" />
                     </tr>
                 </thead>
                 <tbody>
@@ -194,9 +198,9 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
                             onDragEnd={() => { setDragIdx(null); setOverIdx(null); setArmed(null); }}
                             onDragOver={(e) => { if (dragIdx == null) return; e.preventDefault(); setOverIdx(i); }}
                             onDrop={(e) => { e.preventDefault(); if (dragIdx != null) move(dragIdx, i); setDragIdx(null); setOverIdx(null); setArmed(null); }}
-                            className={`border-t odd:bg-white even:bg-muted/20 hover:bg-accent ${dragIdx === i ? 'opacity-40' : ''} ${overIdx === i && dragIdx !== i ? 'outline outline-2 -outline-offset-2 outline-blue-600' : ''}`}
+                            className={`border-b last:border-b-0 hover:bg-muted/40 ${dragIdx === i ? 'opacity-40' : ''} ${overIdx === i && dragIdx !== i ? 'outline outline-2 -outline-offset-2 outline-primary' : ''}`}
                         >
-                            <td className="px-1 py-1.5 text-center align-middle">
+                            <td className="py-0.5 text-center align-middle">
                                 <button
                                     onMouseDown={() => setArmed(i)}
                                     onMouseUp={() => setArmed(null)}
@@ -212,19 +216,19 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
                                 </button>
                             </td>
                             {keys.map((k) => (
-                                <td key={k} className="px-3 py-1.5">
-                                    <ScalarField pkey={k} value={row?.[k]} full onChange={(v) => setCell(i, k, v)} />
+                                <td key={k} className="py-0.5">
+                                    <ScalarField pkey={k} value={row?.[k]} full bare onChange={(v) => setCell(i, k, v)} />
                                 </td>
                             ))}
-                            <td className="px-2 py-1.5 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
+                            <td className="py-0.5 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600" title="Удалить строку"><Trash2 className="h-3.5 w-3.5" /></button></td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <div className="flex border-t">
-                <button onClick={addRow} className="flex flex-1 items-center justify-center gap-1 py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
+            <div className="flex items-center gap-3 pt-1">
+                <button onClick={addRow} className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
                 {sortable && (
-                    <button onClick={sortAsc} title="Расставить строки по возрастанию порога" className="flex items-center justify-center gap-1 border-l px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent">
+                    <button onClick={sortAsc} title="Расставить строки по возрастанию порога" className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
                         <ArrowDownNarrowWide className="h-3 w-3" /> По возрастанию
                     </button>
                 )}
@@ -243,7 +247,7 @@ function ParamsForm({ params, onChange }: { params: any; onChange: (v: any) => v
         <div className="space-y-1.5">
             {Object.entries(params).map(([k, v]) => {
                 if (Array.isArray(v)) {
-                    return <div key={k}><div className="mb-0.5 text-[11px] font-medium text-muted-foreground">{labelFor(k)}</div><TierTable value={v} onChange={(nv) => set(k, nv)} /></div>;
+                    return <div key={k}><div className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{labelFor(k)}</div><TierTable value={v} onChange={(nv) => set(k, nv)} /></div>;
                 }
                 if (v && typeof v === 'object') {
                     return (
@@ -666,7 +670,7 @@ export function SchemesTab() {
                                             {isOpen && (
                                                 <div className="space-y-1.5 px-2 pb-2 pl-7">
                                                     {meta && <div className="text-[10px] leading-snug text-muted-foreground">{meta.methodology}</div>}
-                                                    <div className="border bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>
+                                                    <div className="bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>
                                                 </div>
                                             )}
                                         </div>
