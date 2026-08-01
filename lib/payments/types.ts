@@ -10,7 +10,8 @@ export type PointPaymentStatus =
 export type PointPaymentMatchMethod =
   | 'order_number'        // точный номер счёта из назначения = номер заказа
   | 'order_number_fuzzy'  // похожий номер (обрезанная/перепутанная цифра) + 2 подтверждающих сигнала
-  | 'inn_amount_date'     // ИНН плательщика + сумма заказа
+  | 'inn_signals'         // заказ контрагента по ИНН + 2 подтверждающих сигнала
+  | 'inn_amount_date'     // ИНН плательщика + точная сумма заказа (старый фолбэк)
   | 'manual';             // привязал человек
 
 export type PointPaymentMatchConfidence = 'high' | 'medium' | 'low';
