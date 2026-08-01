@@ -136,6 +136,73 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
   return lines.join('\n');
 }
 
+/**
+ * Дайджест «деньги пришли, но не разнесены» — одним сообщением в чат ЗМКТЛ.
+ * Отдельно от уведомления о разнесённой оплате: там платёж уже привязан к заказу,
+ * тут наоборот — никто не знает, чьи это деньги, и заказ не двигается в производство.
+ * No-op, если бот/чат не сконфигурированы или список пуст.
+ */
+export async function notifyPendingPaymentsTelegram(
+    rows: PointPaymentRow[],
+    opts: { totalCount: number; totalKopecks: number },
+): Promise<void> {
+    const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
+    if (!token || rows.length === 0) return;
+    const chatId = projectChatId('zmktl');
+    if (!chatId) return;
+
+    const MAX_ROWS = 10;
+    const lines: string[] = [];
+    lines.push(`🟡 <b>Требуют разбора: ${opts.totalCount} ${plural(opts.totalCount, 'поступление', 'поступления', 'поступлений')}</b>`);
+    lines.push(`<b>${esc(formatRub(opts.totalKopecks))}</b> не привязано к заказам`);
+    lines.push('');
+    for (const r of rows.slice(0, MAX_ROWS)) {
+        const date = r.payment_date ? String(r.payment_date).slice(0, 10).split('-').reverse().slice(0, 2).join('.') : '—';
+        const payer = r.payer_name ? esc(r.payer_name) : 'плательщик не указан';
+        const invoice = r.extracted_invoice_number ? ` · счёт №${esc(String(r.extracted_invoice_number))}` : '';
+        const days = daysSince(r.payment_date);
+        const age = days != null && days >= 3 ? ` · висит ${days} дн.` : '';
+        lines.push(`• ${date} · <b>${esc(formatRub(Number(r.amount_kopecks)))}</b> · ${payer}${invoice}${age}`);
+    }
+    if (opts.totalCount > MAX_ROWS) lines.push(`…и ещё ${opts.totalCount - MAX_ROWS}`);
+    lines.push('');
+    lines.push(`Пока платёж не привязан к заказу, он не проведён в CRM и заказ не уходит в производство.`);
+    lines.push(`🔗 <a href="${paymentsPageLink()}">Разобрать поступления</a>`);
+
+    const body: Record<string, unknown> = {
+        chat_id: chatId,
+        text: lines.join('\n'),
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+    };
+    const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
+    if (threadId) body.message_thread_id = Number(threadId);
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+        throw new Error(`Telegram pending notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+}
+
+function plural(n: number, one: string, few: string, many: string): string {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return one;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+    return many;
+}
+
+function daysSince(date: string | null): number | null {
+    if (!date) return null;
+    const t = new Date(String(date).slice(0, 10)).getTime();
+    if (!Number.isFinite(t)) return null;
+    return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+
 /** Отправляет уведомление об оплате. No-op, если бот/чат не сконфигурированы. */
 export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOptions = {}): Promise<void> {
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
