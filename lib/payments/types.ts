@@ -7,7 +7,11 @@ export type PointPaymentStatus =
   | 'ignored'       // намеренно пропущен (не наш платёж / возврат)
   | 'failed';       // ошибка обработки
 
-export type PointPaymentMatchMethod = 'order_number' | 'inn_amount_date' | 'manual';
+export type PointPaymentMatchMethod =
+  | 'order_number'        // точный номер счёта из назначения = номер заказа
+  | 'order_number_fuzzy'  // похожий номер (обрезанная/перепутанная цифра) + 2 подтверждающих сигнала
+  | 'inn_amount_date'     // ИНН плательщика + сумма заказа
+  | 'manual';             // привязал человек
 
 export type PointPaymentMatchConfidence = 'high' | 'medium' | 'low';
 

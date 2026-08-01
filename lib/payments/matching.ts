@@ -169,7 +169,10 @@ async function matchByInnAmountDate(
  *     high (совпал плательщик или сумма ровно) / medium (сумма укладывается) / low.
  *     Несколько кандидатов → выбираем того, у кого совпал плательщик (иначе — в разбор).
  *  2. Фолбэк без номера — ИНН плательщика + сумма заказа → medium.
- *  3. Иначе — в очередь на разбор.
+ *  3. Похожий номер (обрезанная/перепутанная цифра) — привязываем ТОЛЬКО при двух
+ *     независимых подтверждающих сигналах (ИНН / сумма / доля предоплаты / дата счёта /
+ *     название клиента). Один сигнал → кандидат на подтверждение человеком.
+ *  4. Иначе — в очередь на разбор.
  */
 export async function matchPaymentToOrder(
   payment: NormalizedPointPayment,
@@ -187,7 +190,7 @@ export async function matchPaymentToOrder(
     candidates: [],
   };
 
-  const matched = (order: any, method: 'order_number' | 'inn_amount_date', confidence: 'high' | 'medium' | 'low') => ({
+  const matched = (order: any, method: 'order_number' | 'order_number_fuzzy' | 'inn_amount_date', confidence: 'high' | 'medium' | 'low') => ({
     ...base,
     status: 'matched' as const,
     method,
@@ -221,6 +224,126 @@ export async function matchPaymentToOrder(
     return { ...base, candidates: fallback.map((r) => toCandidate(r, 'inn_amount_date')) };
   }
 
-  // 3. Ничего не нашли — в очередь на разбор.
+  // 3. Номер с опечаткой (обрезанная/перепутанная цифра). Сам по себе похожий номер —
+  //    НЕ основание для привязки: нужно ДВА независимых подтверждающих сигнала
+  //    (ИНН / сумма / доля предоплаты / дата счёта / имя плательщика). Один сигнал —
+  //    отдаём как кандидата на подтверждение человеком.
+  const fuzzy = await findOrdersByFuzzyNumber(invoiceNumbers);
+  if (fuzzy.length) {
+    const scored = fuzzy
+      .map((o) => ({ order: o, signals: confirmingSignals(o, payment) }))
+      .sort((a, b) => b.signals.length - a.signals.length);
+    const confirmed = scored.filter((s) => s.signals.length >= 2);
+    if (confirmed.length === 1) {
+      const only = confirmed[0];
+      const conf = only.signals.includes('ИНН плательщика') ? 'high' : 'medium';
+      return {
+        ...matched(only.order, 'order_number_fuzzy', conf),
+        candidates: [toCandidate(only.order, `похожий номер · ${only.signals.join(', ')}`)],
+      };
+    }
+    // Ноль подтверждённых или несколько — человеку, но уже с готовыми кандидатами.
+    const hints = scored
+      .filter((s) => s.signals.length > 0)
+      .slice(0, 5)
+      .map((s) => toCandidate(s.order, `похожий номер · ${s.signals.join(', ')}`));
+    if (hints.length) return { ...base, candidates: hints };
+  }
+
+  // 4. Ничего не нашли — в очередь на разбор.
   return base;
+}
+
+/**
+ * Заказы с ПОХОЖИМ номером: обрезанная цифра («5333» → 53338) или одна перепутанная
+ * («53348» → 53338). Одним запросом через OR-набор LIKE-шаблонов, чтобы не бить базу
+ * по разу на вариант. Только для номеров из 4+ цифр — иначе шаблон ловит пол-базы.
+ */
+async function findOrdersByFuzzyNumber(invoiceNumbers: string[]): Promise<any[]> {
+  for (const raw of invoiceNumbers) {
+    const num = String(raw).replace(/\D/g, '');
+    if (num.length < 4) continue;
+    const patterns = new Set<string>();
+    patterns.add(`${num}_`); // потеряна последняя цифра: 5333 → 53338
+    patterns.add(`_${num}`); // потеряна первая цифра
+    for (let i = 0; i < num.length; i++) {
+      patterns.add(`${num.slice(0, i)}_${num.slice(i + 1)}`); // одна цифра перепутана
+    }
+    const or = Array.from(patterns).map((p) => `number.like.${p}`).join(',');
+    const { data, error } = await supabase
+      .from('orders')
+      .select('order_id, number, status, totalsumm, created_at, raw_payload')
+      .or(or)
+      .neq('number', num)
+      .limit(20);
+    if (error) throw error;
+    if (data && data.length) return data;
+  }
+  return [];
+}
+
+// Типовые доли предоплаты (%) — «70 пред / 30 перед отгрузкой» и подобные схемы.
+// Настраивается через env, чтобы не править код под новую схему расчётов.
+const PREPAY_SHARES = (process.env.PAYMENTS_PREPAY_SHARES || '30,50,70,100')
+  .split(',')
+  .map((s) => Number(s.trim()))
+  .filter((n) => Number.isFinite(n) && n > 0);
+
+/**
+ * Независимые подтверждающие сигналы «этот платёж про этот заказ».
+ * Возвращает человекочитаемые названия сработавших — они же идут в сообщение оператору.
+ */
+function confirmingSignals(order: any, payment: NormalizedPointPayment): string[] {
+  const signals: string[] = [];
+  const amountRub = payment.amountKopecks / 100;
+  const total = Number(order.totalsumm) || 0;
+
+  const orderInn = orderPayerInn(order.raw_payload);
+  const payerInn = normalizeInn(payment.payerInn);
+  if (orderInn && payerInn && orderInn === payerInn) signals.push('ИНН плательщика');
+
+  if (total > 0 && Math.abs(amountRub - total) <= 0.5) {
+    signals.push('сумма заказа');
+  } else if (total > 0 && amountRub < total) {
+    const sharePct = (amountRub / total) * 100;
+    const hit = PREPAY_SHARES.find((s) => Math.abs(sharePct - s) <= 0.5);
+    if (hit) signals.push(`${hit}% суммы заказа`);
+  }
+
+  // Дата счёта из назначения («от 13.07.2026») рядом с датой создания заказа.
+  const invoiceDate = extractInvoiceDate(payment.purpose);
+  const created = order.created_at ? new Date(order.created_at) : null;
+  if (invoiceDate && created) {
+    const days = Math.abs(invoiceDate.getTime() - created.getTime()) / 86400000;
+    if (days <= 3) signals.push('дата счёта');
+  }
+
+  // Имя плательщика ≈ имя клиента в заказе (по нормализованной подстроке).
+  const client = String(
+    order.raw_payload?.customer?.nickName ||
+      [order.raw_payload?.customer?.firstName, order.raw_payload?.customer?.lastName].filter(Boolean).join(' ') ||
+      '',
+  );
+  if (payment.payerName && client && namesLookAlike(payment.payerName, client)) signals.push('название клиента');
+
+  return signals;
+}
+
+/** «Оплата по счету № 5333 от 13.07.2026» → Date(2026-07-13). */
+function extractInvoiceDate(purpose?: string | null): Date | null {
+  if (!purpose) return null;
+  const m = /от\s+(\d{2})[.\-/](\d{2})[.\-/](\d{4})/.exec(String(purpose));
+  if (!m) return null;
+  const d = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+/** Грубое сравнение названий: без ООО/кавычек/регистра, вхождение значимой части. */
+function namesLookAlike(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/(ооо|оао|зао|ип|пао|общество с ограниченной ответственностью)/g, '').replace(/[^a-zа-яё0-9]/gi, '');
+  const na = norm(a);
+  const nb = norm(b);
+  if (na.length < 4 || nb.length < 4) return false;
+  return na.includes(nb) || nb.includes(na);
 }

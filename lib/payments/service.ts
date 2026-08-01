@@ -1,7 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
-import { notifyPaymentTelegram, notifyPendingPaymentsTelegram } from './notify';
+import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
 import { classifyProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
@@ -233,14 +233,20 @@ async function pushMatchedPaymentToCrm(
       productionNotMovedReason: mv.notMovedReason,
     };
   } else {
+    const reason = result.error ?? 'unknown RetailCRM error';
     await supabase
       .from('point_payments')
       .update({
-        retailcrm_error: result.error ?? 'unknown RetailCRM error',
+        retailcrm_error: reason,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
-    throw new Error(`RetailCRM payment create failed: ${result.error}`);
+    // Деньги есть, а в CRM их нет — молчать нельзя: зовём ответственных за разбор.
+    // Уведомление не должно подменять исходную ошибку, поэтому глушим его сбой.
+    await notifyPaymentPushErrorTelegram(row, reason).catch((e) =>
+      console.error('[payments] push error notify failed:', e?.message || e),
+    );
+    throw new Error(`RetailCRM payment create failed: ${reason}`);
   }
 }
 

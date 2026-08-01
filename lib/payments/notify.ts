@@ -163,11 +163,20 @@ export async function notifyPendingPaymentsTelegram(
         const days = daysSince(r.payment_date);
         const age = days != null && days >= 3 ? ` · висит ${days} дн.` : '';
         lines.push(`• ${date} · <b>${esc(formatRub(Number(r.amount_kopecks)))}</b> · ${payer}${invoice}${age}`);
+        // Подсказка «похоже на заказ №…»: матчинг нашёл кандидатов, но уверенности не хватило.
+        for (const c of (Array.isArray(r.match_candidates) ? r.match_candidates : []).slice(0, 2)) {
+            const num = esc(String(c?.orderNumber ?? ''));
+            if (!num) continue;
+            const why = c?.reason ? ` (${esc(String(c.reason))})` : '';
+            lines.push(`   🔵 похоже на заказ №${num}${why}`);
+        }
     }
     if (opts.totalCount > MAX_ROWS) lines.push(`…и ещё ${opts.totalCount - MAX_ROWS}`);
     lines.push('');
     lines.push(`Пока платёж не привязан к заказу, он не проведён в CRM и заказ не уходит в производство.`);
     lines.push(`🔗 <a href="${paymentsPageLink()}">Разобрать поступления</a>`);
+    const reviewers = await resolveReviewTags().catch(() => []);
+    if (reviewers.length) lines.push(`🧾 Разбор: ${reviewers.join(' ')}`);
 
     const body: Record<string, unknown> = {
         chat_id: chatId,
@@ -186,6 +195,58 @@ export async function notifyPendingPaymentsTelegram(
     if (!res.ok) {
         throw new Error(`Telegram pending notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
     }
+}
+
+/**
+ * Кого звать на разбор неразобранных поступлений и на сбой проводки: РОП + бухгалтер.
+ * Личности — записи в managers (id в env), ник берётся из managers.raw_data.telegram_username,
+ * поэтому @пинг появится сразу, как только ник там задан; до этого — просто ФИО.
+ */
+async function resolveReviewTags(): Promise<string[]> {
+    const ids = (process.env.TELEGRAM_PAYMENTS_REVIEW_MANAGER_IDS || '102,356')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    const tags = await Promise.all(ids.map((id) => managerTagById(id).catch(() => null)));
+    return tags.filter((t): t is string => Boolean(t));
+}
+
+/**
+ * Сбой проводки: платёж привязан к заказу, но RetailCRM его не принял. Деньги в системе
+ * есть, в CRM их нет и заказ не поедет в производство — это надо чинить руками, поэтому
+ * зовём тех же, кто разбирает поступления.
+ */
+export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error: string): Promise<void> {
+    const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
+    if (!token) return;
+    const chatId = projectChatId('zmktl');
+    if (!chatId) return;
+
+    const lines: string[] = [];
+    lines.push(`❗ <b>Оплата не проведена в CRM</b>`);
+    lines.push(`<b>${esc(formatRub(Number(row.amount_kopecks)))}</b>${row.payer_name ? ` · ${esc(row.payer_name)}` : ''}`);
+    if (row.matched_order_number) {
+        const link = crmOrderLink(row.matched_order_id, row.matched_order_number);
+        lines.push(`Заказ ${link ? `<a href="${link}">№${esc(row.matched_order_number)}</a>` : `№${esc(row.matched_order_number)}`} — статус не изменится, пока оплата не проведена`);
+    }
+    lines.push(`Причина: ${esc(String(error).slice(0, 300))}`);
+    lines.push(`🔗 <a href="${paymentsPageLink()}">Открыть платёж</a>`);
+    const reviewers = await resolveReviewTags().catch(() => []);
+    if (reviewers.length) lines.push(`🧾 ${reviewers.join(' ')}`);
+
+    const body: Record<string, unknown> = {
+        chat_id: chatId,
+        text: lines.join('\n'),
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+    };
+    const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
+    if (threadId) body.message_thread_id = Number(threadId);
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
 }
 
 function plural(n: number, one: string, few: string, many: string): string {
