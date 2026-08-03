@@ -30,7 +30,7 @@ const PARAM_LABELS: Record<string, string> = {
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
     rate: 'Ставка, ₽',
     // Доплата за повторную покупку (блок repeat_client_bonus)
-    ordinal: 'Какая покупка клиента', minDaysBetween: 'Мин. дней между покупками',
+    ordinal: 'Какая покупка клиента',
     thresholdPct: 'Порог, %', perPercent: 'Ставка за 1% сверх плана, ₽',
     rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
     // Инженер-расчётчик (блок procent_za_raschet)

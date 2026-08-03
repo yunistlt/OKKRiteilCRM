@@ -16,10 +16,10 @@ const CTX: BlockComputeContext = {
 };
 
 // Пороги как в дефолте конструктора: 3-я покупка 10 000 ₽, 6-я 15 000 ₽.
-const PARAMS = { tiers: [{ ordinal: 3, bonus: 10000 }, { ordinal: 6, bonus: 15000 }], minDaysBetween: 14 };
+const PARAMS = { tiers: [{ ordinal: 3, bonus: 10000 }, { ordinal: 6, bonus: 15000 }] };
 
 let seq = 0;
-function order(clientOrdinal: number | null, daysSincePrevPurchase: number | null): CountedOrder {
+function order(clientOrdinal: number | null): CountedOrder {
     seq += 1;
     return {
         orderId: seq,
@@ -33,7 +33,6 @@ function order(clientOrdinal: number | null, daysSincePrevPurchase: number | nul
         createdAt: '2026-08-01T00:00:00Z',
         totalsumm: 500000,
         clientOrdinal,
-        daysSincePrevPurchase,
         goodsBase: 0,
         discountAmount: 0,
         discountPct: 0,
@@ -64,58 +63,41 @@ const run = (orders: CountedOrder[], params = PARAMS) => block.compute(metrics(o
 
 describe('Доплата за повторную покупку', () => {
     it('платит за покупку из списка', () => {
-        expect(run([order(3, 120)]).amount).toBe(10000);
-        expect(run([order(6, 90)]).amount).toBe(15000);
+        expect(run([order(3)]).amount).toBe(10000);
+        expect(run([order(6)]).amount).toBe(15000);
     });
 
     it('не платит за покупки вне списка', () => {
         // 1-я, 2-я, 4-я не заданы в порогах — доплаты нет.
-        expect(run([order(1, null), order(2, 60), order(4, 30)]).amount).toBe(0);
+        expect(run([order(1), order(2), order(4)]).amount).toBe(0);
     });
 
     it('суммирует несколько сработавших покупок за месяц', () => {
-        const r = run([order(3, 120), order(3, 200), order(6, 90)]);
+        const r = run([order(3), order(3), order(6)]);
         expect(r.amount).toBe(35000);
         expect(r.explain).toContain('2×3-я покупка');
     });
 
-    it('отсекает дробление: покупка раньше минимального разрыва не платится', () => {
-        // Реальный кейс: три накладные одним днём дают «постоянного клиента» даром.
-        const r = run([order(3, 0)]);
-        expect(r.amount).toBe(0);
-        expect(r.explain).toContain('малого разрыва');
-    });
-
-    it('на границе разрыва покупка засчитывается', () => {
-        expect(run([order(3, 14)]).amount).toBe(10000);
-        expect(run([order(3, 13.9)]).amount).toBe(0);
-    });
-
-    it('при нулевом разрыве в настройках проверка не применяется', () => {
-        const r = run([order(3, 0)], { ...PARAMS, minDaysBetween: 0 });
-        expect(r.amount).toBe(10000);
-    });
-
     it('заказ без клиента не ломает расчёт и виден в заполненности данных', () => {
-        const r = run([order(null, null), order(3, 120)]);
+        const r = run([order(null), order(3)]);
         expect(r.amount).toBe(10000);
         expect(r.dataFill).toEqual({ required: 2, present: 1, pct: 0.5 });
     });
 
     it('пустой список порогов = блок ничего не начисляет', () => {
-        const r = run([order(3, 120)], { tiers: [], minDaysBetween: 14 });
+        const r = run([order(3)], { tiers: [] });
         expect(r.amount).toBe(0);
     });
 
     it('бизнес может назначить доплату за любую покупку, включая 2-ю', () => {
-        const r = run([order(2, 45)], { tiers: [{ ordinal: 2, bonus: 3000 }], minDaysBetween: 14 });
+        const r = run([order(2)], { tiers: [{ ordinal: 2, bonus: 3000 }] });
         expect(r.amount).toBe(3000);
         expect(r.tariff?.[0].label).toBe('За 2-ю покупку клиента');
     });
 
     it('схема параметров отвергает нулевой и дробный номер покупки', () => {
-        expect(block.paramSchema.safeParse({ tiers: [{ ordinal: 0, bonus: 100 }], minDaysBetween: 0 }).success).toBe(false);
-        expect(block.paramSchema.safeParse({ tiers: [{ ordinal: 2.5, bonus: 100 }], minDaysBetween: 0 }).success).toBe(false);
+        expect(block.paramSchema.safeParse({ tiers: [{ ordinal: 0, bonus: 100 }] }).success).toBe(false);
+        expect(block.paramSchema.safeParse({ tiers: [{ ordinal: 2.5, bonus: 100 }] }).success).toBe(false);
         expect(block.paramSchema.safeParse(PARAMS).success).toBe(true);
     });
 });

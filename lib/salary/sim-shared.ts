@@ -22,9 +22,7 @@ export interface SimManagerBase {
     /**
      * Сколько заказов baseline-месяца были N-й покупкой клиента: номер покупки → доля
      * от всех заказов (0..1). Нужно, чтобы симулятор ФОТ не занижал фонд на блоке
-     * repeat_client_bonus. Разрыв между покупками в срез не переносится — при
-     * масштабировании объёма его взять неоткуда, поэтому симуляция считает все
-     * повторные покупки правомочными: это ВЕРХНЯЯ оценка вклада блока.
+     * repeat_client_bonus.
      */
     repeatOrdinalShares: Record<number, number>;
     discountMetricValue: number | null;
@@ -79,7 +77,6 @@ export function toSimBase(m: ManagerMetrics, share: number, grade: number | null
  * Раздаёт синтетическим заказам номера покупок клиента по долям baseline-месяца:
  * при масштабировании объёма повторные покупки растут вместе с заказами.
  * Возвращает массив длины n, где элемент — номер покупки или null (первая/неизвестно).
- * Разрыв между покупками не моделируется (в срезе его нет) — см. repeatOrdinalShares.
  */
 export function assignOrdinals(n: number, shares: Record<number, number>): (number | null)[] {
     const out: (number | null)[] = Array.from({ length: n }, () => null);
@@ -110,7 +107,7 @@ export function buildScaledMetrics(b: SimManagerBase, s: number): ManagerMetrics
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
-        clientOrdinal: ordinals2[i], daysSincePrevPurchase: null,
+        clientOrdinal: ordinals2[i],
     }));
     const denom = Math.round(b.conversionDenominator * s);
     return {
@@ -196,7 +193,7 @@ export function buildMetricsFromInputs(b: SimManagerBase, inp: SimManagerInputs)
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
-        clientOrdinal: ordinalsN[i], daysSincePrevPurchase: null,
+        clientOrdinal: ordinalsN[i],
     }));
     // Категории: сохраняем baseline-микс, масштабируем числом заказов; выручку нормируем к totalRev.
     const ratio = b.baseOrders > 0 ? N / b.baseOrders : 0;

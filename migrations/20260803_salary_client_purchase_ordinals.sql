@@ -8,11 +8,9 @@
 -- Разбор данных за 2025-01…2026-08 (scratch/probe-final.mjs):
 --   покупка 1 — 823 клиента, 2-я — 128, 3-я — 35, 6-я — 6.
 --   За последние 12 мес: вторых 90, третьих 24, шестых 3, менеджеров 4.
---   Медиана между 1-й и 3-й покупкой — 118 дней.
---   ВАЖНО: 3 из 35 третьих покупок случились в тот же день, что и первая, ещё
---   одна — в пределах недели. Один заказ, разбитый на три накладные, даёт
---   «постоянного клиента» мгновенно. Поэтому вместе с номером покупки отдаём
---   и разрыв до предыдущей — блок отсекает по минимальному интервалу.
+--
+-- Интервал между покупками намеренно не учитывается: по решению бизнеса важен
+-- сам факт возврата клиента, а не скорость возврата.
 --
 -- Что считается покупкой — ровно то же, что членством в числителе конверсии
 -- (salary_counted_orders): заказ, вошедший в закрывающий статус, по истории
@@ -29,12 +27,13 @@
 -- ============================================================================
 
 DROP FUNCTION IF EXISTS public.salary_client_purchase_ordinals(timestamptz, timestamptz, text);
+DROP FUNCTION IF EXISTS public.salary_client_purchase_ordinals(timestamp with time zone, timestamp with time zone, text);
 CREATE OR REPLACE FUNCTION public.salary_client_purchase_ordinals(
     p_start timestamptz,
     p_end timestamptz,
     p_closing text
 )
-RETURNS TABLE(order_id bigint, client_id bigint, ordinal bigint, days_since_prev numeric)
+RETURNS TABLE(order_id bigint, client_id bigint, ordinal bigint)
 LANGUAGE sql STABLE AS $$
     WITH hist AS (
         SELECT h.retailcrm_order_id AS oid, min(h.occurred_at) AS d
@@ -75,15 +74,11 @@ LANGUAGE sql STABLE AS $$
         -- Тай-брейк по oid: две покупки одной секундой должны нумероваться
         -- детерминированно, иначе доплата «прыгает» между заказами при пересчёте.
         SELECT p.oid, p.cid, p.entered_at,
-               row_number() OVER (PARTITION BY p.cid ORDER BY p.entered_at, p.oid) AS rn,
-               lag(p.entered_at) OVER (PARTITION BY p.cid ORDER BY p.entered_at, p.oid) AS prev_at
+               row_number() OVER (PARTITION BY p.cid ORDER BY p.entered_at, p.oid) AS rn
         FROM purchases p
         WHERE p.cid IS NOT NULL
     )
-    SELECT r.oid, r.cid, r.rn,
-           CASE WHEN r.prev_at IS NULL THEN NULL
-                ELSE EXTRACT(EPOCH FROM (r.entered_at - r.prev_at)) / 86400.0
-           END
+    SELECT r.oid, r.cid, r.rn
     FROM ranked r
     WHERE r.entered_at >= p_start AND r.entered_at < p_end;
 $$;
