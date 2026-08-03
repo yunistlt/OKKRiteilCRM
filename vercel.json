@@ -66,6 +66,10 @@
             "schedule": "*/2 * * * *"
         },
         {
+            "path": "/api/cron/system-jobs/salary-estimate-classify",
+            "schedule": "*/15 * * * *"
+        },
+        {
             "path": "/api/cron/system-jobs/score-refresh",
             "schedule": "*/1 * * * *"
         },
