@@ -8,7 +8,9 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import ManagerSalarySimulatorModal from '../ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
+import BlockBreakdown from '@/components/salary/BlockBreakdown';
 import type { MyDashboard } from '@/lib/salary/my-dashboard';
+import type { BlockContribution } from '@/lib/salary/blocks/types';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -69,6 +71,7 @@ export default function MySalaryPage() {
     }, [year, month, load, toast]);
 
     const b = row?.breakdown || {};
+    const contribs: BlockContribution[] = Array.isArray(b.blockContributions) ? b.blockContributions : [];
     const countedOrders: any[] = Array.isArray(b.countedOrders) ? b.countedOrders : [];
     const countedOrderIds: number[] = Array.isArray(b.countedOrderIds) ? b.countedOrderIds : [];
     const incoming: any[] = Array.isArray(details?.incoming) ? details.incoming : [];
@@ -199,33 +202,27 @@ export default function MySalaryPage() {
                     )}
 
                     {/* ── Из чего сложится ЗП ──────────────────────────────── */}
+                    {/* Строки — по блокам назначенной схемы (с тарифами), фолбэк на legacy-поля. */}
                     <Section title={isOpen ? 'Из чего сложится ЗП' : 'Из чего сложилась ЗП'} hint={isOpen ? 'прогноз по текущим данным месяца' : undefined}>
-                        <div className="border">
-                            <table className="w-full text-sm">
-                                <tbody>
-                                    <Line label="Оклад" value={rub(row.oklad)} sub={b.okladProration != null && b.okladProration < 1 ? `${Math.round(b.okladProration * 100)}% месяца` : undefined} />
-                                    <Line label={`Премия за заявки (${(b.counts?.new ?? 0) + (b.counts?.permanent ?? 0)} шт.)`} value={rub(row.premia_zayavki)} sub={`× К_качества ${row.k_quality}`} />
-                                    {(() => {
-                                        const contribs: any[] = Array.isArray(b.blockContributions) ? b.blockContributions : [];
-                                        const cat = contribs.find((c) => c.code === 'premia_categorii');
-                                        const coef = contribs.find((c) => c.code === 'coef_categorii');
-                                        return (
-                                            <>
-                                                {cat && cat.amount ? <Line label="Премия за категории товаров" value={rub(cat.amount)} sub={`× К_качества ${row.k_quality}`} /> : null}
-                                                {coef && coef.multiplier != null && coef.multiplier !== 1 ? <Line label="Коэффициент за категории" value={`× ${coef.multiplier}`} sub="множитель переменной части" /> : null}
-                                            </>
-                                        );
-                                    })()}
-                                    <Line label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`} />
-                                    <Line label="Бонус за скидочную дисциплину" value={rub(row.discount_bonus)} sub={b.discountValue != null ? `скидка ${b.discountValue}%` : undefined} />
-                                    <Line label="К_команды (множитель переменной части)" value={`× ${row.k_team}`} />
-                                    <tr className="border-t-2 font-semibold">
-                                        <td className="py-2">Итого к выплате</td>
-                                        <td className="py-2 text-right text-lg">{rub(row.total)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                        {contribs.length > 0 ? (
+                            <BlockBreakdown contributions={contribs} total={Number(row.total) || 0} defaultOpen />
+                        ) : (
+                            <div className="border">
+                                <table className="w-full text-sm">
+                                    <tbody>
+                                        <Line label="Оклад" value={rub(row.oklad)} sub={b.okladProration != null && b.okladProration < 1 ? `${Math.round(b.okladProration * 100)}% месяца` : undefined} />
+                                        <Line label={`Премия за заявки (${(b.counts?.new ?? 0) + (b.counts?.permanent ?? 0)} шт.)`} value={rub(row.premia_zayavki)} sub={`× К_качества ${row.k_quality}`} />
+                                        <Line label="Конв-бонус" value={rub(row.conv_bonus)} sub={`конверсия ${b.conversionPct ?? 0}%`} />
+                                        <Line label="Бонус за скидочную дисциплину" value={rub(row.discount_bonus)} sub={b.discountValue != null ? `скидка ${b.discountValue}%` : undefined} />
+                                        <Line label="К_команды (множитель переменной части)" value={`× ${row.k_team}`} />
+                                        <tr className="border-t-2 font-semibold">
+                                            <td className="py-2">Итого к выплате</td>
+                                            <td className="py-2 text-right text-lg">{rub(row.total)}</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
                     </Section>
 
                     {/* ── Дотяни до порога ────────────────────────────────── */}

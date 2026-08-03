@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { round2, pickTier } from '@/lib/salary/blocks/tiers';
+import { tierLines, thresholdLine } from '@/lib/salary/blocks/tariff';
 import { fullFill, type BonusBlock, type DataFill } from '@/lib/salary/blocks/types';
 import type { ManagerMetrics } from '@/lib/salary/metrics';
 
@@ -31,6 +32,7 @@ const planAttainment: BonusBlock<{ thresholdPct: number; bonus: number }> = {
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: noPlan ? 'Личный план не задан → 0' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}% (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
+            tariff: [thresholdLine(`Выполнение личного плана ≥ ${round2(p.thresholdPct)}%`, p.bonus, passed)],
             dataFill: fill,
         };
     },
@@ -55,6 +57,7 @@ const planAccelerator: BonusBlock<{ perPercent: number }> = {
         return {
             amount,
             explain: noPlan ? 'Личный план не задан → 0' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}%, перевыполнение ${round2(over)}% × ${rub(p.perPercent)} = ${rub(amount)}`,
+            tariff: [{ label: 'За каждый % сверх 100% личного плана', value: rub(p.perPercent), active: over > 0 }],
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -83,6 +86,7 @@ const planCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
             multiplier: mult,
             amount: 0,
             explain: noPlan ? 'Личный план не задан → ×1' : `Факт ${rub(fact)} / план ${rub(target!)} = ${Math.round(att)}% → ×${mult}`,
+            tariff: tierLines(p.tiers, (min) => `${round2(min)}% личного плана`, (t) => `×${t.k}`, noPlan ? null : att),
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -108,6 +112,7 @@ const deptPlanCoef: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
             multiplier: mult,
             amount: 0,
             explain: noPlan ? 'План отдела не задан → ×1' : `Факт отдела ${rub(fact)} / план отдела ${rub(target!)} = ${Math.round(att)}% → ×${mult}`,
+            tariff: tierLines(p.tiers, (min) => `${round2(min)}% плана отдела`, (t) => `×${t.k}`, noPlan ? null : att),
             dataFill: { required: 1, present: noPlan ? 0 : 1, pct: noPlan ? 0 : 1 },
         };
     },
@@ -128,6 +133,7 @@ const volumeBonus: BonusBlock<{ threshold: number; bonus: number }> = {
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: `Выручка ${rub(rev)} ${passed ? '≥' : '<'} ${rub(p.threshold)} → ${passed ? rub(p.bonus) : '0'}`,
+            tariff: [thresholdLine(`Личная выручка без НДС ≥ ${rub(p.threshold)}`, p.bonus, passed)],
             dataFill: fullFill(1),
         };
     },
@@ -155,6 +161,7 @@ const sameDaySale: BonusBlock<{ rate: number }> = {
         return {
             amount,
             explain: `${count} заказ(ов) в день обращения × ${rub(p.rate)} = ${rub(amount)}`,
+            tariff: [{ label: 'За заказ, переданный в производство в день обращения', value: rub(p.rate), active: count > 0 }],
             dataFill: { required: m.countedOrders.length, present: withDates, pct: m.countedOrders.length ? withDates / m.countedOrders.length : 1 },
         };
     },
@@ -175,6 +182,7 @@ const scriptBonus: BonusBlock<{ thresholdPct: number; bonus: number }> = {
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: v == null ? 'Нет оценок скрипта → 0' : `Скрипт ${Math.round(v)}% (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
+            tariff: [thresholdLine(`Соблюдение скрипта ≥ ${round2(p.thresholdPct)}%`, p.bonus, passed)],
             dataFill: { required: 1, present: v != null ? 1 : 0, pct: v != null ? 1 : 0 },
         };
     },
@@ -195,6 +203,7 @@ const fastContactBonus: BonusBlock<{ thresholdPct: number; bonus: number }> = {
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: v == null ? 'Нет данных по скорости → 0' : `Быстрый контакт у ${Math.round(v)}% (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
+            tariff: [thresholdLine(`Доля заявок в работе < 1 дня ≥ ${round2(p.thresholdPct)}%`, p.bonus, passed)],
             dataFill: { required: 1, present: v != null ? 1 : 0, pct: v != null ? 1 : 0 },
         };
     },
@@ -215,6 +224,7 @@ const fieldsBonus: BonusBlock<{ thresholdPct: number; bonus: number }> = {
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: v == null ? 'Нет данных по ТЗ → 0' : `ТЗ получено у ${Math.round(v)}% (порог ${p.thresholdPct}%) → ${passed ? rub(p.bonus) : '0'}`,
+            tariff: [thresholdLine(`Доля заказов с полученным ТЗ ≥ ${round2(p.thresholdPct)}%`, p.bonus, passed)],
             dataFill: { required: 1, present: v != null ? 1 : 0, pct: v != null ? 1 : 0 },
         };
     },
@@ -242,6 +252,9 @@ const gradeMultiplier: BonusBlock<{ tiers: { level: number; k: number }[] }> = {
             multiplier: mult,
             amount: 0,
             explain: level == null ? 'Грейд не назначен → ×1' : `Грейд ${level} → ×${mult}`,
+            tariff: [...p.tiers]
+                .sort((a, b) => a.level - b.level)
+                .map((t) => ({ label: `Грейд ${t.level}`, value: `×${t.k}`, active: t.level === level })),
             dataFill: { required: 1, present: level == null ? 0 : 1, pct: level == null ? 0 : 1 },
         };
     },
@@ -306,6 +319,16 @@ const percentZaRaschet: BonusBlock<{
         return {
             amount: round2(amount),
             explain: `Заказов: ${n} · ${p.percent}% от суммы · K_срочности у ${withTimer}/${n} (нет данных → ×${p.kMissing})`,
+            tariff: [
+                { label: 'Процент от суммы заказа', value: `${round2(p.percent)}%` },
+                ...[...p.slaNormy]
+                    .sort((a, b) => a.maxSum - b.maxSum)
+                    .map((s) => ({ label: `Норматив расчёта: заказ до ${rub(s.maxSum)}`, value: `${round2(s.normHours)} ч` })),
+                ...[...p.kTiers]
+                    .sort((a, b) => a.maxRatio - b.maxRatio)
+                    .map((t) => ({ label: `K_срочности: факт до ${round2(t.maxRatio)}× норматива`, value: `×${t.k}` })),
+                { label: 'Нет данных таймера', value: `×${p.kMissing}`, active: withTimer < n },
+            ],
             dataFill: { required: n, present: withTimer, pct: n ? withTimer / n : 1 },
         };
     },
