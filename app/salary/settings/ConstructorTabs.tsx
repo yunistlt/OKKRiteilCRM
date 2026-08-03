@@ -38,6 +38,8 @@ const PARAM_LABELS: Record<string, string> = {
     kTiers: 'K срочности (по факт/норма)', maxRatio: 'Отношение факт/норма до', kMissing: 'K при отсутствии данных таймера',
 };
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
+// Дата версии для интерфейса: 2026-08-01 → 01.08.2026 (в UI только человеческий формат).
+const ruDate = (iso: string) => String(iso ?? '').slice(0, 10).split('-').reverse().join('.');
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
 // Режимы начисления премии за категорию товара (блок premia_categorii).
 const CATEGORY_MODES: Record<string, string> = { sum: 'Сумма, ₽', pct: '% от продажи' };
@@ -291,6 +293,8 @@ export function SchemesTab() {
     // Симуляция «что если» (песочница тарифов) — считает черновики на периоде, НЕ сохраняет.
     const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
     const [assignments, setAssignments] = useState<{ managerId: number; schemeCode: string }[]>([]); // реестр: кто в какой роли
+    // Все версии ролей (код роли → версии, новые сверху) — история мотивации.
+    const [versions, setVersions] = useState<Record<string, any[]>>({});
     const [engineerAssignments, setEngineerAssignments] = useState<{ itemCode: string; schemeCode: string }[]>([]); // инженеры: кто в какой роли
     const nowSim = new Date();
     const [simYear, setSimYear] = useState(nowSim.getFullYear());
@@ -320,6 +324,7 @@ export function SchemesTab() {
             setArchived(sJson.archived ?? []);
             setManagers(sJson.managers ?? []);
             setAssignments(sJson.assignments ?? []);
+            setVersions(sJson.versions ?? {});
             const toEdit = (s: any, kind: 'manager' | 'engineer'): EditScheme => ({
                 code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10), prevEffectiveFrom: String(s.effectiveFrom).slice(0, 10), kind,
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
@@ -347,6 +352,17 @@ export function SchemesTab() {
         if (i !== si) return s; const arr = [...s.blocks]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return { ...s, blocks: arr };
     }));
     const setField = (si: number, patch: Partial<EditScheme>) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, ...patch } : s)));
+    /** Открыть в карточке другую версию роли — посмотреть, что действовало с той даты. */
+    const openVersion = (si: number, code: string, effectiveFrom: string) => {
+        const v = (versions[code] ?? []).find((x: any) => x.effectiveFrom === effectiveFrom);
+        if (!v) return;
+        setField(si, {
+            effectiveFrom: v.effectiveFrom,
+            prevEffectiveFrom: v.effectiveFrom,
+            name: v.name ?? '',
+            blocks: (v.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
+        });
+    };
     const patchBlock = (si: number, bi: number, patch: Partial<SchemeBlock>) =>
         setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.map((b, j) => (j === bi ? { ...b, ...patch } : b)) } : s)));
     const save = async (s: EditScheme, si: number) => {
@@ -626,8 +642,30 @@ export function SchemesTab() {
                             ) : (
                                 <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             )}
-                            <label className="ml-auto text-[11px] text-muted-foreground">с</label>
+                            {/* История мотивации: какая версия роли действовала на какую дату.
+                                Выбор версии открывает её состав блоков — так видно, по каким
+                                правилам считался прошлый месяц. */}
+                            {(versions[s.code]?.length ?? 0) > 1 && (
+                                <select
+                                    value={s.prevEffectiveFrom || ''}
+                                    onChange={(e) => openVersion(si, s.code, e.target.value)}
+                                    className="ml-auto h-8 border px-2 text-xs"
+                                    title="Версия мотивации: показать, что действовало с этой даты"
+                                >
+                                    {versions[s.code].map((v: any) => (
+                                        <option key={v.effectiveFrom} value={v.effectiveFrom}>
+                                            версия с {ruDate(v.effectiveFrom)}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                            <label className={`${(versions[s.code]?.length ?? 0) > 1 ? '' : 'ml-auto'} text-[11px] text-muted-foreground`}>с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
+                            {s.prevEffectiveFrom && s.effectiveFrom !== s.prevEffectiveFrom && (
+                                <span className="bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700" title="Прошлые периоды продолжат считаться по прежней версии">
+                                    новая версия; с {ruDate(s.prevEffectiveFrom)} останется как есть
+                                </span>
+                            )}
                             {(() => {
                                 const assigned = isEng
                                     ? engineerAssignments.filter((a) => a.schemeCode === s.code).length
