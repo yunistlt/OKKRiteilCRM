@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
+import { tierLines, thresholdLine } from '@/lib/salary/blocks/tariff';
 import { fullFill, type BonusBlock } from '@/lib/salary/blocks/types';
 
 // ============================================================================
@@ -37,6 +38,10 @@ const oklad: BonusBlock<{ oklad: number; prorate?: boolean }> = {
             explain: proration < 1
                 ? `Оклад ${rub(p.oklad)} × ${m.workedDays} из ${ctx.businessDays} рабочих дней${absence} = ${rub(amount)}`
                 : `Оклад ${rub(p.oklad)}`,
+            tariff: [
+                { label: 'Оклад за полный месяц', value: rub(p.oklad) },
+                { label: 'Пропорция по отработанным дням', value: p.prorate !== false ? 'да' : 'нет' },
+            ],
             dataFill: { required: 1, present: 1, pct: 1 },
         };
     },
@@ -60,6 +65,10 @@ const premiaZayavki: BonusBlock<{ rates: { new: number; permanent: number } }> =
         return {
             amount: round2(amount),
             explain: `Новых ${c.new}×${rub(p.rates.new)} + Постоянных ${c.permanent}×${rub(p.rates.permanent)} = ${rub(amount)}`,
+            tariff: [
+                { label: 'Новый клиент', value: `${rub(p.rates.new)} за заявку`, active: c.new > 0 },
+                { label: 'Постоянный клиент', value: `${rub(p.rates.permanent)} за заявку`, active: c.permanent > 0 },
+            ],
             dataFill: fullFill(total),
         };
     },
@@ -102,6 +111,13 @@ const premiaCategorii: BonusBlock<{ rows: { category: string; mode: 'sum' | 'pct
         return {
             amount: round2(amount),
             explain: parts.length ? `${parts.join(' + ')} = ${rub(amount)}` : 'Нет заявок по заданным категориям',
+            tariff: p.rows
+                .filter((r) => r.category)
+                .map((r) => ({
+                    label: catName(r.category),
+                    value: r.mode === 'sum' ? `${rub(r.value)} за заявку` : `${round2(r.value)}% от продажи`,
+                    active: (m.countsByCategory[r.category] ?? 0) > 0,
+                })),
             dataFill: fullFill(p.rows.length),
         };
     },
@@ -136,6 +152,13 @@ const coefCategorii: BonusBlock<{ rows: { category: string; coef: number }[] }> 
             multiplier: mult,
             amount: 0,
             explain: parts.length ? parts.join(', ') : 'Нет заявок по заданным категориям → ×1',
+            tariff: p.rows
+                .filter((r) => r.category)
+                .map((r) => ({
+                    label: `Есть заявки: ${catName(r.category)}`,
+                    value: `×${r.coef}`,
+                    active: (m.countsByCategory[r.category] ?? 0) > 0,
+                })),
             dataFill: fullFill(p.rows.length),
         };
     },
@@ -157,6 +180,7 @@ const kQuality: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
             multiplier: mult,
             amount: 0,
             explain: m.qualityAvgScore == null ? 'Нет оценок ОКК → ×1' : `Скоринг ${Math.round(m.qualityAvgScore)} → ×${mult}`,
+            tariff: tierLines(p.tiers, (min) => `${round2(min)}% скоринга`, (t) => `×${t.k}`, m.qualityAvgScore ?? null),
             dataFill: { required: 1, present: m.qualityAvgScore == null ? 0 : 1, pct: m.qualityAvgScore == null ? 0 : 1 },
         };
     },
@@ -177,6 +201,10 @@ const convBonus: BonusBlock<{ tiers: { min: number; bonus: number }[]; minZayavk
         return {
             amount: round2(bonus),
             explain: `Конверсия ${m.conversion.numerator}/${m.conversion.denominator} = ${round2(m.conversion.pct)}%${eligible ? '' : ' (нет допуска)'} → ${rub(bonus)}`,
+            tariff: [
+                ...tierLines(p.tiers, (min) => `${round2(min)}% конверсии`, (t) => rub(t.bonus), eligible ? m.conversion.pct : null),
+                { label: 'Минимум входящих заявок для допуска', value: `${p.minZayavki} шт.`, active: eligible },
+            ],
             dataFill: { required: 1, present: m.conversion.denominator > 0 ? 1 : 0, pct: m.conversion.denominator > 0 ? 1 : 0 },
         };
     },
@@ -197,6 +225,7 @@ const discountBonus: BonusBlock<{ metric: string; comparator: 'lte' | 'gte'; thr
         return {
             amount: round2(passed ? p.bonus : 0),
             explain: `${discountMetricName(p.metric)}: ${v != null ? round2(v) + '%' : '—'} ${p.comparator === 'lte' ? '≤' : '≥'} ${p.threshold} → ${passed ? rub(p.bonus) : '0 (порог не пройден)'}`,
+            tariff: [thresholdLine(`${discountMetricName(p.metric)} ${p.comparator === 'lte' ? '≤' : '≥'} ${round2(p.threshold)}%`, p.bonus, passed)],
             dataFill: { required: 1, present: v != null ? 1 : 0, pct: v != null ? 1 : 0 },
         };
     },
@@ -218,6 +247,7 @@ const kTeam: BonusBlock<{ tiers: { min: number; k: number }[] }> = {
             multiplier: mult,
             amount: 0,
             explain: `Выручка отдела ${rub(ctx.teamRevenueNoVat)} → ×${mult}`,
+            tariff: tierLines(p.tiers, (min) => rub(min), (t) => `×${t.k}`, ctx.teamRevenueNoVat),
             dataFill: fullFill(1),
         };
     },
