@@ -167,6 +167,102 @@ const sameDaySale: BonusBlock<{ rate: number }> = {
     },
 };
 
+// ── Доплата за повторную покупку клиента ────────────────────────────────────
+// Цель: платить не за поток заявок, а за возврат клиента — за то, что разовый
+// покупатель становится постоянным. Пороги задаются списком: «за какую по счёту
+// покупку сколько платим». Бизнес сам решает, платить за 2-ю, 3-ю, 6-ю или любую
+// другую — блок не знает про конкретные номера, они приходят в params.
+//
+// Номер покупки считается на момент входа заказа в производство
+// (RPC salary_client_purchase_ordinals), поэтому задним числом не меняется.
+//
+// minDaysBetween — защита от дробления: один крупный заказ, разбитый на три
+// накладные, иначе мгновенно даёт «постоянного клиента» и доплату. В истории
+// такие случаи есть (3 третьих покупки из 35 — в тот же день, что и первая),
+// поэтому проверка не теоретическая. 0 = не проверять.
+const repeatClientBonus: BonusBlock<{
+    tiers: { ordinal: number; bonus: number }[];
+    minDaysBetween: number;
+}> = {
+    code: 'repeat_client_bonus',
+    name: 'Доплата за повторную покупку',
+    methodology:
+        'За каждый заказ, который стал для клиента N-й покупкой, начисляется своя доплата. ' +
+        'Номер покупки считается по всем заказам клиента, переданным в производство, на момент этого заказа. ' +
+        'Список «какая покупка → сколько ₽» задаётся здесь: можно платить за 2-ю, 3-ю, 6-ю — за любые. ' +
+        'Покупки, между которыми прошло меньше указанного числа дней, не засчитываются (защита от дробления одного заказа).',
+    kind: 'variable',
+    group: 'flat',
+    requiredMetrics: ['counted_orders', 'client_purchase_ordinal'],
+    paramSchema: z.object({
+        tiers: z.array(z.object({ ordinal: z.number().int().positive(), bonus: z.number().nonnegative() })),
+        minDaysBetween: z.number().nonnegative(),
+    }),
+    compute(m, p) {
+        const byOrdinal = new Map<number, number>();
+        for (const t of p.tiers ?? []) byOrdinal.set(Number(t.ordinal), Number(t.bonus) || 0);
+
+        let amount = 0;
+        let withOrdinal = 0;
+        let skippedTooFast = 0;
+        const hits = new Map<number, number>(); // номер покупки → сколько раз засчитан
+
+        for (const o of m.countedOrders) {
+            if (o.clientOrdinal == null) continue;
+            withOrdinal += 1;
+            const bonus = byOrdinal.get(o.clientOrdinal);
+            if (bonus == null) continue;
+            // Первая покупка разрыва не имеет — для неё интервал не проверяем.
+            if (
+                p.minDaysBetween > 0 &&
+                o.daysSincePrevPurchase != null &&
+                o.daysSincePrevPurchase < p.minDaysBetween
+            ) {
+                skippedTooFast += 1;
+                continue;
+            }
+            amount += bonus;
+            hits.set(o.clientOrdinal, (hits.get(o.clientOrdinal) ?? 0) + 1);
+        }
+
+        const parts = Array.from(hits.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([ord, n]) => `${n}×${ord}-я покупка (${rub(byOrdinal.get(ord) ?? 0)})`);
+        const explain = parts.length
+            ? `${parts.join(' + ')} = ${rub(amount)}` +
+              (skippedTooFast ? `; не засчитано из-за малого разрыва: ${skippedTooFast}` : '')
+            : skippedTooFast
+              ? `Повторных покупок нет; не засчитано из-за малого разрыва: ${skippedTooFast}`
+              : 'Повторных покупок из списка нет → 0';
+
+        return {
+            amount: round2(amount),
+            explain,
+            tariff: [
+                ...[...(p.tiers ?? [])]
+                    .sort((a, b) => a.ordinal - b.ordinal)
+                    .map((t) => ({
+                        label: `За ${t.ordinal}-ю покупку клиента`,
+                        value: rub(t.bonus),
+                        active: (hits.get(Number(t.ordinal)) ?? 0) > 0,
+                    })),
+                ...(p.minDaysBetween > 0
+                    ? [{
+                          label: 'Минимальный разрыв между покупками',
+                          value: `${round2(p.minDaysBetween)} дн.`,
+                          active: skippedTooFast > 0,
+                      }]
+                    : []),
+            ],
+            dataFill: {
+                required: m.countedOrders.length,
+                present: withOrdinal,
+                pct: m.countedOrders.length ? withOrdinal / m.countedOrders.length : 1,
+            },
+        };
+    },
+};
+
 // ── Качество ОКК: соблюдение скрипта ────────────────────────────────────────
 const scriptBonus: BonusBlock<{ thresholdPct: number; bonus: number }> = {
     code: 'script_bonus',
@@ -342,6 +438,7 @@ export const EXTRA_BLOCKS: BonusBlock[] = [
     deptPlanCoef,
     volumeBonus,
     sameDaySale,
+    repeatClientBonus,
     scriptBonus,
     fastContactBonus,
     fieldsBonus,

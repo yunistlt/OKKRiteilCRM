@@ -34,6 +34,9 @@ export const DEFAULT_BLOCK_PARAMS: Record<string, any> = {
     dept_plan_coef: { tiers: [{ min: 110, k: 1.15 }, { min: 100, k: 1.0 }, { min: 0, k: 0.9 }] },
     volume_bonus: { threshold: 3000000, bonus: 10000 },
     same_day_sale: { rate: 500 },
+    // Пороги — плейсхолдер под текущую задачу бизнеса (доплата за 3-ю и 6-ю покупку).
+    // Строки добавляются/удаляются в конструкторе: платить можно за любую по счёту.
+    repeat_client_bonus: { tiers: [{ ordinal: 3, bonus: 10000 }, { ordinal: 6, bonus: 15000 }], minDaysBetween: 14 },
     script_bonus: { thresholdPct: 80, bonus: 5000 },
     fast_contact_bonus: { thresholdPct: 80, bonus: 5000 },
     fields_bonus: { thresholdPct: 80, bonus: 3000 },

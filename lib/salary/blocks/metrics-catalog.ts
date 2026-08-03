@@ -33,6 +33,7 @@ export const METRICS_CATALOG: Record<string, MetricDef> = {
     plan_personal: { code: 'plan_personal', label: 'Личный план (выручка без НДС)', source: 'salary_plan', availability: 'full' },
     plan_department: { code: 'plan_department', label: 'Общий план отдела', source: 'salary_plan', availability: 'full' },
     order_created_date: { code: 'order_created_date', label: 'Дата обращения (создания заказа)', source: 'orders.created_at', availability: 'full' },
+    client_purchase_ordinal: { code: 'client_purchase_ordinal', label: 'Какая по счёту покупка клиента', source: 'salary_client_purchase_ordinals (история покупок клиента)', availability: 'full' },
     order_cancel: { code: 'order_cancel', label: 'Отмена заказа', source: 'orders.customFields.prichiny_otmeny', availability: 'full' },
     manager_grade: { code: 'manager_grade', label: 'Грейд менеджера', source: 'salary_grade (авто-ранг по истории)', availability: 'full' },
     engineer_orders: { code: 'engineer_orders', label: 'Заказы инженера-расчётчика (сумма + время расчёта)', source: 'salary_engineer_orders (customFields.inzhener_zakaza + order_history_log)', availability: 'full' },
