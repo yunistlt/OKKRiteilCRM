@@ -79,14 +79,48 @@ export function toSimBase(m: ManagerMetrics, share: number, grade: number | null
  * Возвращает массив длины n, где элемент — номер покупки или null (первая/неизвестно).
  */
 export function assignOrdinals(n: number, shares: Record<number, number>): (number | null)[] {
+    const counts: Record<number, number> = {};
+    for (const ord of Object.keys(shares).map(Number)) counts[ord] = Math.round((shares[ord] ?? 0) * n);
+    return assignOrdinalsByCount(n, counts);
+}
+
+/**
+ * То же, но количества заданы явно (штуками), а не долями — для ползунков
+ * «сколько вторых/третьих покупок» в симуляторе ФОТ. Больше, чем есть заказов,
+ * назначить нельзя: повторная покупка — это тоже заказ.
+ */
+export function assignOrdinalsByCount(n: number, counts: Record<number, number>): (number | null)[] {
     const out: (number | null)[] = Array.from({ length: n }, () => null);
     let cursor = 0;
     // По возрастанию номера — чтобы результат не зависел от порядка ключей объекта.
-    for (const ord of Object.keys(shares).map(Number).sort((a, b) => a - b)) {
-        const count = Math.round((shares[ord] ?? 0) * n);
+    for (const ord of Object.keys(counts).map(Number).sort((a, b) => a - b)) {
+        const count = Math.max(0, Math.round(counts[ord] ?? 0));
         for (let i = 0; i < count && cursor < n; i++, cursor++) out[cursor] = ord;
     }
     return out;
+}
+
+/**
+ * Делит количество повторных покупок отдела между менеджерами пропорционально
+ * их доле в выручке. Остаток от округления отдаём тем, у кого дробная часть
+ * больше (метод наибольших остатков), иначе сумма по менеджерам разошлась бы с
+ * тем, что выставил пользователь ползунком.
+ */
+export function splitCountByShare(total: number, shares: number[]): number[] {
+    const sum = shares.reduce((a, b) => a + b, 0);
+    if (total <= 0 || sum <= 0) return shares.map(() => 0);
+    const exact = shares.map((sh) => (total * sh) / sum);
+    const base = exact.map((v) => Math.floor(v));
+    let left = total - base.reduce((a, b) => a + b, 0);
+    const order = exact
+        .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+        .sort((a, b) => b.frac - a.frac);
+    for (const { i } of order) {
+        if (left <= 0) break;
+        base[i] += 1;
+        left -= 1;
+    }
+    return base;
 }
 
 const scaleRec = (rec: Record<string, number>, mult: number, round: boolean) => {
@@ -96,12 +130,15 @@ const scaleRec = (rec: Record<string, number>, mult: number, round: boolean) => 
 };
 
 /** Построить масштабированные метрики менеджера для фактора s (рост объёма при том же среднем чеке/миксе). */
-export function buildScaledMetrics(b: SimManagerBase, s: number): ManagerMetrics {
+export function buildScaledMetrics(b: SimManagerBase, s: number, repeatCounts?: Record<number, number>): ManagerMetrics {
     const N2 = Math.max(0, Math.round(b.baseOrders * s));
     const targetRev = b.baseRevenue * s;
     const avg = N2 > 0 ? targetRev / N2 : 0;
     const sameDay2 = Math.round(b.sameDayShare * N2);
-    const ordinals2 = assignOrdinals(N2, b.repeatOrdinalShares ?? {});
+    // Явные количества (ползунки «сколько вторых/третьих покупок») важнее долей baseline.
+    const ordinals2 = repeatCounts
+        ? assignOrdinalsByCount(N2, repeatCounts)
+        : assignOrdinals(N2, b.repeatOrdinalShares ?? {});
     const orders: CountedOrder[] = Array.from({ length: N2 }, (_, i) => ({
         orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
         type: 'new' as OrderType, category: null,
@@ -135,6 +172,12 @@ export interface SimScenario {
     month: number;
     baseTeamRevenue: number; // выручка baseline (для фактора масштаба)
     categoryNames?: Record<string, string>; // код категории → человеческое имя (для explain)
+    /**
+     * Сценарий «сколько повторных покупок сделает отдел»: номер покупки → количество.
+     * Задаётся ползунками симулятора ФОТ и делится между менеджерами по их доле.
+     * Не задан — повторные покупки масштабируются вместе с объёмом (доли baseline).
+     */
+    repeatCounts?: Record<number, number>;
 }
 
 export interface SimManagerResult { id: number; name: string; total: number; personalRev: number; attainmentPct: number; kTeam: number; gatePass: boolean }
@@ -227,6 +270,12 @@ export interface SimManagerScenario {
     year: number;
     month: number;
     categoryNames?: Record<string, string>; // код категории → человеческое имя (для explain)
+    /**
+     * Сценарий «сколько повторных покупок сделает отдел»: номер покупки → количество.
+     * Задаётся ползунками симулятора ФОТ и делится между менеджерами по их доле.
+     * Не задан — повторные покупки масштабируются вместе с объёмом (доли baseline).
+     */
+    repeatCounts?: Record<number, number>;
 }
 
 export interface SimManagerScenarioResult {
@@ -274,8 +323,18 @@ export function computeScenarioFot(blocks: BlockInstance[], bases: SimManagerBas
     const s = sc.baseTeamRevenue > 0 ? sc.teamRevenue / sc.baseTeamRevenue : 1;
     const perManager: SimManagerResult[] = [];
     let total = 0;
-    for (const b of bases) {
-        const m = buildScaledMetrics(b, s);
+    // Повторные покупки отдела делим между менеджерами пропорционально доле в выручке.
+    const shares = bases.map((b) => b.share);
+    const repeatByManager: Record<number, number>[] = bases.map(() => ({}));
+    if (sc.repeatCounts) {
+        for (const [ord, cnt] of Object.entries(sc.repeatCounts)) {
+            const parts = splitCountByShare(Number(cnt) || 0, shares);
+            parts.forEach((p, i) => { if (p > 0) repeatByManager[i][Number(ord)] = p; });
+        }
+    }
+    for (let bi = 0; bi < bases.length; bi++) {
+        const b = bases[bi];
+        const m = buildScaledMetrics(b, s, sc.repeatCounts ? repeatByManager[bi] : undefined);
         const personalRev = m.countedOrders.reduce((a, o) => a + o.revenueNoVat, 0);
         const planTarget = sc.deptPlan > 0 ? sc.deptPlan * b.share : 0;
         const ctx: BlockComputeContext = {
