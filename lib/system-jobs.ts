@@ -22,7 +22,24 @@ export type SystemJobType =
   | 'nightly_reconciliation'
   | 'legal_contract_analyze'
   | 'legal_contract_scan'
-  | 'telphin_callback';
+  | 'telphin_callback'
+  | 'salary_estimate_classify';
+
+/**
+ * Классификация заказа по диалогу: смета ли это (запрос цены под бюджет далёкого
+ * будущего). Вердикт нужен правилу конверсии для заказов, где смета опознана
+ * только по тексту комментария. Идемпотентность — по заказу: перерасчёт одного и
+ * того же заказа смысла не имеет, пока не появились новые звонки.
+ */
+export async function enqueueSalaryEstimateClassifyJob(orderId: number, source: string) {
+  return safeEnqueueSystemJob({
+    jobType: 'salary_estimate_classify',
+    payload: { order_id: orderId, source },
+    priority: 80, // ниже оперативных: на расчёт ЗП влияет к концу месяца, не сейчас
+    idempotencyKey: `salary_estimate_classify:${orderId}`,
+    maxAttempts: 3,
+  });
+}
 
 // Enqueue job для асинхронного анализа контракта
 export async function enqueueLegalContractAnalyzeJob(reviewId: number) {
@@ -76,6 +93,7 @@ const AI_DEPENDENT_JOB_TYPES = new Set<SystemJobType>([
   'call_transcription',
   'call_semantic_rules',
   'order_insight_refresh',
+  'salary_estimate_classify',
 ]);
 
 function isMissingRelationError(error: any) {

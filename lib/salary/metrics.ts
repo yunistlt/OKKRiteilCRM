@@ -334,6 +334,10 @@ export async function collectPeriodMetrics(
         p_dup_status: config.tender_duplicate_rule.duplicate_status,
         p_ref_statuses: config.tender_duplicate_rule.reference_statuses,
         p_dup_reasons: config.tender_duplicate_rule.duplicate_cancel_reasons,
+        p_est_statuses: config.estimate_rule.statuses,
+        p_est_reasons: config.estimate_rule.cancel_reasons,
+        p_est_patterns: config.estimate_rule.comment_patterns,
+        p_est_min_conf: config.estimate_rule.min_confidence,
     });
     if (rowsErr) throw rowsErr;
     const rows = (rowsData as CountedOrderRow[]) ?? [];
@@ -366,6 +370,10 @@ export async function collectPeriodMetrics(
         p_not_our_reasons: config.not_our_product_rule.cancel_reasons,
         p_reason_field: config.cancel_reason_field.code,
         p_closing: closing,
+        p_est_statuses: config.estimate_rule.statuses,
+        p_est_reasons: config.estimate_rule.cancel_reasons,
+        p_est_patterns: config.estimate_rule.comment_patterns,
+        p_est_min_conf: config.estimate_rule.min_confidence,
     });
     if (incErr) throw incErr;
     const incomingByManager = new Map<number, number>();
