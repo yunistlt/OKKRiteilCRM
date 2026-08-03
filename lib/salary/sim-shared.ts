@@ -19,6 +19,14 @@ export interface SimManagerBase {
     countsByCategory: Record<string, number>;
     revenueByCategory: Record<string, number>;
     sameDayShare: number; // доля «в день обращения» (0..1)
+    /**
+     * Сколько заказов baseline-месяца были N-й покупкой клиента: номер покупки → доля
+     * от всех заказов (0..1). Нужно, чтобы симулятор ФОТ не занижал фонд на блоке
+     * repeat_client_bonus. Разрыв между покупками в срез не переносится — при
+     * масштабировании объёма его взять неоткуда, поэтому симуляция считает все
+     * повторные покупки правомочными: это ВЕРХНЯЯ оценка вклада блока.
+     */
+    repeatOrdinalShares: Record<number, number>;
     discountMetricValue: number | null;
     qualityAvgScore: number | null;
     qualityScriptPct: number | null;
@@ -45,6 +53,16 @@ export function toSimBase(m: ManagerMetrics, share: number, grade: number | null
         countsByCategory: m.countsByCategory,
         revenueByCategory: m.revenueByCategory,
         sameDayShare: baseOrders > 0 ? sameDay / baseOrders : 0,
+        repeatOrdinalShares: (() => {
+            const counts: Record<number, number> = {};
+            for (const o of m.countedOrders) {
+                if (o.clientOrdinal == null || o.clientOrdinal < 2) continue; // 1-я покупка повтором не является
+                counts[o.clientOrdinal] = (counts[o.clientOrdinal] ?? 0) + 1;
+            }
+            const shares: Record<number, number> = {};
+            for (const [ord, n] of Object.entries(counts)) shares[Number(ord)] = baseOrders > 0 ? n / baseOrders : 0;
+            return shares;
+        })(),
         discountMetricValue: m.discountMetricValue,
         qualityAvgScore: m.qualityAvgScore,
         qualityScriptPct: m.qualityScriptPct,
@@ -55,6 +73,23 @@ export function toSimBase(m: ManagerMetrics, share: number, grade: number | null
         grade,
         planTarget,
     };
+}
+
+/**
+ * Раздаёт синтетическим заказам номера покупок клиента по долям baseline-месяца:
+ * при масштабировании объёма повторные покупки растут вместе с заказами.
+ * Возвращает массив длины n, где элемент — номер покупки или null (первая/неизвестно).
+ * Разрыв между покупками не моделируется (в срезе его нет) — см. repeatOrdinalShares.
+ */
+export function assignOrdinals(n: number, shares: Record<number, number>): (number | null)[] {
+    const out: (number | null)[] = Array.from({ length: n }, () => null);
+    let cursor = 0;
+    // По возрастанию номера — чтобы результат не зависел от порядка ключей объекта.
+    for (const ord of Object.keys(shares).map(Number).sort((a, b) => a - b)) {
+        const count = Math.round((shares[ord] ?? 0) * n);
+        for (let i = 0; i < count && cursor < n; i++, cursor++) out[cursor] = ord;
+    }
+    return out;
 }
 
 const scaleRec = (rec: Record<string, number>, mult: number, round: boolean) => {
@@ -69,11 +104,13 @@ export function buildScaledMetrics(b: SimManagerBase, s: number): ManagerMetrics
     const targetRev = b.baseRevenue * s;
     const avg = N2 > 0 ? targetRev / N2 : 0;
     const sameDay2 = Math.round(b.sameDayShare * N2);
+    const ordinals2 = assignOrdinals(N2, b.repeatOrdinalShares ?? {});
     const orders: CountedOrder[] = Array.from({ length: N2 }, (_, i) => ({
         orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
+        clientOrdinal: ordinals2[i], daysSincePrevPurchase: null,
     }));
     const denom = Math.round(b.conversionDenominator * s);
     return {
@@ -153,11 +190,13 @@ export function buildMetricsFromInputs(b: SimManagerBase, inp: SimManagerInputs)
     const avg = Math.max(0, inp.avgCheck);
     const totalRev = N * avg;
     const sameDay2 = Math.round(Math.max(0, Math.min(1, inp.sameDayShare)) * N);
+    const ordinalsN = assignOrdinals(N, b.repeatOrdinalShares ?? {});
     const orders: CountedOrder[] = Array.from({ length: N }, (_, i) => ({
         orderId: -(i + 1), managerId: b.id, clientId: null, clientName: null, deals: 0,
         type: 'new' as OrderType, category: null,
         enteredAt: '2026-01-15', createdAt: i < sameDay2 ? '2026-01-15' : '2026-01-10',
         totalsumm: avg, goodsBase: avg, discountAmount: 0, discountPct: 0, revenueNoVat: avg, margin: 0,
+        clientOrdinal: ordinalsN[i], daysSincePrevPurchase: null,
     }));
     // Категории: сохраняем baseline-микс, масштабируем числом заказов; выручку нормируем к totalRev.
     const ratio = b.baseOrders > 0 ? N / b.baseOrders : 0;

@@ -43,6 +43,28 @@ export interface CountedOrder extends OrderFinance {
     enteredAt: string;
     createdAt: string; // дата обращения (создания заказа) — для блока «продажа в день обращения»
     totalsumm: number; // сумма заказа (raw_payload/orders.totalsumm), для отчёта по менеджеру
+    /**
+     * Какая это по счёту покупка клиента НА МОМЕНТ входа заказа в производство
+     * (1 = первая). Для блока «Доплата за повторную покупку». null = клиента в
+     * заказе нет, номер не определить.
+     */
+    clientOrdinal: number | null;
+    /** Дней с предыдущей покупки этого клиента; null у первой. Антифрод по дроблению. */
+    daysSincePrevPurchase: number | null;
+}
+
+/** Строка RPC salary_client_purchase_ordinals. */
+export interface PurchaseOrdinalRow {
+    order_id: number;
+    client_id: number | null;
+    ordinal: number;
+    days_since_prev: number | null;
+}
+
+/** Номер покупки и разрыв до предыдущей — в форме, удобной блокам. */
+export interface PurchaseOrdinal {
+    ordinal: number;
+    daysSincePrev: number | null;
 }
 
 /** Заказ, засчитываемый инженеру-расчётчику: сумма + длительность работы расчётчика. */
@@ -181,9 +203,12 @@ export function buildPeriodMetrics(input: {
     dutyByManager: Map<number, number>;
     workedDaysByManager?: Map<number, number>;
     absenceDaysByManager?: Map<number, number>;
+    /** Номер покупки клиента по заказу (RPC salary_client_purchase_ordinals). */
+    ordinalsByOrder?: Map<number, PurchaseOrdinal>;
     config: SalaryConfig;
 }): PeriodMetrics {
     const { year, month, rows, clientDeals, incomingByManager, qualityByManager, dutyByManager, config } = input;
+    const ordinalsByOrder = input.ordinalsByOrder ?? new Map<number, PurchaseOrdinal>();
     const workedDaysByManager = input.workedDaysByManager ?? new Map<number, number>();
     const absenceDaysByManager = input.absenceDaysByManager ?? new Map<number, number>();
     const businessDays = businessDaysInMonth(year, month);
@@ -215,6 +240,8 @@ export function buildPeriodMetrics(input: {
             enteredAt: row.entered_at,
             createdAt: row.created_at,
             totalsumm: Number(row.totalsumm ?? 0) || 0,
+            clientOrdinal: ordinalsByOrder.get(Number(row.order_id))?.ordinal ?? null,
+            daysSincePrevPurchase: ordinalsByOrder.get(Number(row.order_id))?.daysSincePrev ?? null,
             ...fin,
         };
         teamRevenueNoVat += fin.revenueNoVat;
@@ -342,6 +369,23 @@ export async function collectPeriodMetrics(
     if (rowsErr) throw rowsErr;
     const rows = (rowsData as CountedOrderRow[]) ?? [];
 
+    // 1a. Номер покупки клиента по каждому заказу периода (блок «Доплата за
+    //     повторную покупку»). Считается на момент входа в производство, поэтому
+    //     задним числом не мигает. Разрыв до предыдущей покупки — антифрод по дроблению.
+    const ordinalsByOrder = new Map<number, PurchaseOrdinal>();
+    const { data: ordData, error: ordErr } = await supabase.rpc('salary_client_purchase_ordinals', {
+        p_start: start,
+        p_end: end,
+        p_closing: closing,
+    });
+    if (ordErr) throw ordErr;
+    for (const r of (ordData as PurchaseOrdinalRow[]) ?? []) {
+        ordinalsByOrder.set(Number(r.order_id), {
+            ordinal: Number(r.ordinal),
+            daysSincePrev: r.days_since_prev == null ? null : Number(r.days_since_prev),
+        });
+    }
+
     // 2. История сделок по клиентам (для new/permanent)
     const clientIds = Array.from(new Set(rows.map((r) => r.client_id).filter((x): x is number => x != null)));
     const clientDeals = new Map<number, number>();
@@ -467,6 +511,7 @@ export async function collectPeriodMetrics(
         dutyByManager,
         absenceDaysByManager,
         workedDaysByManager,
+        ordinalsByOrder,
         config,
     });
 }

@@ -29,6 +29,8 @@ const PARAM_LABELS: Record<string, string> = {
     tiers: 'Пороги', min: 'От', k: 'Коэффициент ×', bonus: 'Бонус, ₽',
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
     rate: 'Ставка, ₽',
+    // Доплата за повторную покупку (блок repeat_client_bonus)
+    ordinal: 'Какая покупка клиента', minDaysBetween: 'Мин. дней между покупками',
     thresholdPct: 'Порог, %', perPercent: 'Ставка за 1% сверх плана, ₽',
     rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
     // Инженер-расчётчик (блок procent_za_raschet)
@@ -159,6 +161,9 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
             let v: any = 0;
             if (k === 'mode') v = 'sum';
             else if (k === 'coef') v = 1;
+            // Номер покупки — следующий по счёту: ноль схема не примет (нужно
+            // целое ≥ 1), а вручную набирать очевидное значение незачем.
+            else if (k === 'ordinal') v = Math.max(0, ...value.map((r) => Number(r?.ordinal) || 0)) + 1;
             else if (typeof sample[k] === 'string') v = '';
             return { ...a, [k]: v };
         }, {} as Record<string, any>);
@@ -226,7 +231,7 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
                 </tbody>
             </table>
             <div className="flex items-center gap-3 pt-1">
-                <button onClick={addRow} className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
+                <button onClick={addRow} className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : keys.includes('ordinal') ? 'Добавить доплату' : 'Добавить порог'}</button>
                 {sortable && (
                     <button onClick={sortAsc} title="Расставить строки по возрастанию порога" className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
                         <ArrowDownNarrowWide className="h-3 w-3" /> По возрастанию
