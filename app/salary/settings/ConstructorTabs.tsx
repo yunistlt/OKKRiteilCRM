@@ -40,6 +40,27 @@ const PARAM_LABELS: Record<string, string> = {
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
 // Дата версии для интерфейса: 2026-08-01 → 01.08.2026 (в UI только человеческий формат).
 const ruDate = (iso: string) => String(iso ?? '').slice(0, 10).split('-').reverse().join('.');
+/** Календарный день перед датой: конец действия версии = день до начала следующей. */
+const prevDay = (iso: string) => {
+    const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return iso;
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+};
+/**
+ * Подпись версии роли: «с 01.02.2026 по 31.07.2026». Версии приходят от новых к
+ * старым, поэтому конец действия — день до начала предыдущей в списке.
+ * У самой свежей версии конца нет: она либо действует сейчас, либо ещё впереди.
+ */
+function versionLabel(list: { effectiveFrom: string }[], index: number): string {
+    const from = ruDate(list[index].effectiveFrom);
+    const next = list[index - 1]; // более поздняя версия
+    if (next) return `версия с ${from} по ${ruDate(prevDay(next.effectiveFrom))}`;
+    const today = new Date().toISOString().slice(0, 10);
+    return list[index].effectiveFrom > today
+        ? `версия с ${from} — ещё не вступила`
+        : `версия с ${from} — действует сейчас`;
+}
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
 // Режимы начисления премии за категорию товара (блок premia_categorii).
 const CATEGORY_MODES: Record<string, string> = { sum: 'Сумма, ₽', pct: '% от продажи' };
@@ -296,9 +317,19 @@ export function SchemesTab() {
     // Все версии ролей (код роли → версии, новые сверху) — история мотивации.
     const [versions, setVersions] = useState<Record<string, any[]>>({});
     const [engineerAssignments, setEngineerAssignments] = useState<{ itemCode: string; schemeCode: string }[]>([]); // инженеры: кто в какой роли
-    const nowSim = new Date();
-    const [simYear, setSimYear] = useState(nowSim.getFullYear());
-    const [simMonth, setSimMonth] = useState(nowSim.getMonth() + 1);
+    // Baseline для симуляций — ПРЕДЫДУЩИЙ месяц, а не текущий. Симулятор ФОТ
+    // масштабирует базовый месяц до заданной выручки, и на первых числах это даёт
+    // чушь: 3 августа в базе было 2 заказа на 210 тыс ₽, до 13,5 млн они
+    // домножались в 64 раза — премия за заявки и доплата за повторную покупку
+    // раздувались до сотен тысяч. Прошлый месяц всегда полный.
+    const simDefault = (() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+    })();
+    const [simYear, setSimYear] = useState(simDefault.year);
+    const [simMonth, setSimMonth] = useState(simDefault.month);
     const [simulating, setSimulating] = useState(false);
     const [simResult, setSimResult] = useState<any | null>(null);
     const [showOverrides, setShowOverrides] = useState(false); // раскрыта ли панель подмен ролей/планов
@@ -652,9 +683,9 @@ export function SchemesTab() {
                                     className="ml-auto h-8 border px-2 text-xs"
                                     title="Версия мотивации: показать, что действовало с этой даты"
                                 >
-                                    {versions[s.code].map((v: any) => (
+                                    {versions[s.code].map((v: any, vi: number) => (
                                         <option key={v.effectiveFrom} value={v.effectiveFrom}>
-                                            версия с {ruDate(v.effectiveFrom)}
+                                            {versionLabel(versions[s.code], vi)}
                                         </option>
                                     ))}
                                 </select>
