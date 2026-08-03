@@ -317,9 +317,19 @@ export function SchemesTab() {
     // Все версии ролей (код роли → версии, новые сверху) — история мотивации.
     const [versions, setVersions] = useState<Record<string, any[]>>({});
     const [engineerAssignments, setEngineerAssignments] = useState<{ itemCode: string; schemeCode: string }[]>([]); // инженеры: кто в какой роли
-    const nowSim = new Date();
-    const [simYear, setSimYear] = useState(nowSim.getFullYear());
-    const [simMonth, setSimMonth] = useState(nowSim.getMonth() + 1);
+    // Baseline для симуляций — ПРЕДЫДУЩИЙ месяц, а не текущий. Симулятор ФОТ
+    // масштабирует базовый месяц до заданной выручки, и на первых числах это даёт
+    // чушь: 3 августа в базе было 2 заказа на 210 тыс ₽, до 13,5 млн они
+    // домножались в 64 раза — премия за заявки и доплата за повторную покупку
+    // раздувались до сотен тысяч. Прошлый месяц всегда полный.
+    const simDefault = (() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+    })();
+    const [simYear, setSimYear] = useState(simDefault.year);
+    const [simMonth, setSimMonth] = useState(simDefault.month);
     const [simulating, setSimulating] = useState(false);
     const [simResult, setSimResult] = useState<any | null>(null);
     const [showOverrides, setShowOverrides] = useState(false); // раскрыта ли панель подмен ролей/планов
