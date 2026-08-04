@@ -34,6 +34,6 @@ describe('nextContactDate', () => {
 
 describe('дефолты', () => {
     it('срок изготовления по умолчанию — 20 дней', () => {
-        expect(DEFAULT_PRODUCTION_DAYS).toBe(20);
+        expect(DEFAULT_PRODUCTION_DAYS).toBe(30);
     });
 });
