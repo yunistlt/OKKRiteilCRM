@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2, Plus, Trash2, X } from 'lucide-react';
+import { CalendarCheck, Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import { businessDaysInMonth } from '@/lib/salary/calendar';
 
 // ============================================================================
 // Табель отработанных дней. Ручной ввод ПЕРЕБИВАЕТ автоматический расчёт по
@@ -31,6 +32,10 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
     const [saving, setSaving] = useState(false);
     const { toast } = useToast();
     const { run, isPending } = useAsyncAction();
+
+    // Норма рабочих дней периода — для кнопки «Проставить полный месяц».
+    const [periodYear, periodMonth] = period.split('-').map(Number);
+    const monthNorm = businessDaysInMonth(periodYear, periodMonth);
 
     const [mgr, setMgr] = useState<number | ''>('');
     const [date, setDate] = useState('');
@@ -75,6 +80,44 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Не удалось добавить');
             setDate('');
+            load();
+        } catch (e: any) {
+            toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    /**
+     * Проставить выбранному менеджеру полный месяц: прежние записи «отработанный
+     * день» за период удаляем и пишем одну на норму рабочих дней. Именно замена,
+     * а не добавление, — иначе повторный клик удвоил бы табель.
+     */
+    const fillFullMonth = async () => {
+        if (!mgr) {
+            toast({ title: 'Выберите менеджера', variant: 'destructive' });
+            return;
+        }
+        setSaving(true);
+        try {
+            const mine = rows.filter((r) => r.manager_id === mgr && r.kind === 'worked_day');
+            for (const r of mine) {
+                const del = await fetch(`/api/salary/duty?id=${r.id}`, { method: 'DELETE' });
+                if (!del.ok) throw new Error('Не удалось очистить прежние записи');
+            }
+            const res = await fetch('/api/salary/duty', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    manager_id: mgr,
+                    work_date: `${period}-01`,
+                    kind: 'worked_day',
+                    shifts: monthNorm,
+                }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Не удалось проставить месяц');
+            toast({ title: `Проставлен полный месяц: ${monthNorm} дн.` });
             load();
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
@@ -156,6 +199,17 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
                             >
                                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                                 {saving ? 'Добавляем…' : 'Добавить день'}
+                            </button>
+                        </div>
+                        <div className="flex items-end">
+                            <button
+                                onClick={fillFullMonth}
+                                disabled={saving || !mgr}
+                                title={`Заменить табель менеджера на норму месяца — ${monthNorm} рабочих дней (пн–пт, без учёта праздников)`}
+                                className="flex h-9 items-center justify-center gap-1.5 border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                <CalendarCheck className="h-4 w-4" />
+                                Полный месяц ({monthNorm} дн.)
                             </button>
                         </div>
                     </div>

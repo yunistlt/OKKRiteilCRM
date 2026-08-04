@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
+import { businessDaysInMonth } from '@/lib/salary/calendar';
 
 // ============================================================================
 // Слой сбора расчётных метрик ЗП за период. Реляционная часть — в RPC
@@ -94,15 +95,9 @@ export interface PeriodMetrics {
 // ── Чистые помощники (тестируются на реальных строках) ───────────────────────
 
 /** Рабочих дней (пн–пт) в месяце — база для пропорции оклада и отсутствий. */
-export function businessDaysInMonth(year: number, month: number): number {
-    let count = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dow = new Date(year, month - 1, d).getDay();
-        if (dow !== 0 && dow !== 6) count++;
-    }
-    return count;
-}
+// Норма рабочих дней месяца живёт в lib/salary/calendar.ts — тем же счётом
+// пользуется табель в интерфейсе (там supabase импортировать нельзя).
+export { businessDaysInMonth };
 
 /** Рабочих дней (пн–пт) в отрезке [from, to] включительно, обрезанном по месяцу. */
 export function businessDaysInRange(year: number, month: number, from: string, to: string): number {
