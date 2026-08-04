@@ -15,6 +15,7 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
+import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
@@ -443,8 +444,16 @@ export async function GET(req: Request) {
                 if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
+                    // Досье из CRM: проверяем факты (есть ли заказ с номером из письма, история клиента)
+                    // ДО обращения к ИИ и отдаём их вместе с письмом — решение по фактам, а не по словам.
+                    const crmDossier = await buildCrmDossier({
+                        fromEmail: e.from_email,
+                        subject: e.subject,
+                        body: (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
+                        contactEmail: leadContact.email || null,
+                    });
                     v = await classifyRoute(
-                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta },
+                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta, crmDossier },
                         prompt
                     );
                     // Сбой анализа (например, недоступен OpenAI): НЕ финализируем письмо — оставляем

@@ -14,7 +14,13 @@
 1. Читает ящик `rop@zmktlt.ru` по IMAP только-чтение (флаги `\Seen` не трогает; RetailCRM читает тот
    же ящик независимо). Инкремент по IMAP UID (`email_ingest_state`), старый архив не разбирает.
 2. Складывает новые письма в `incoming_emails` (дедуп по `message_id`/uid).
-3. По каждому письму со `status='new'` выбирает **один маршрут** и выполняет действие.
+3. Перед ИИ собирает **справку из CRM** (`lib/email/dossier.ts`, `buildCrmDossier`) — детерминированные
+   факты: есть ли в `orders` заказ с номером из темы/тела (дата, статус, сумма, менеджер, состав),
+   сколько заказов у клиента по e-mail, как раньше классифицировались письма с этого адреса.
+   Справка идёт в user-сообщение классификатора, промпт велит доверять ей больше формулировок письма.
+   Инцидент 04.08.2026: «Новый заказ 1005469» (уведомление магазина) ушёл в бухгалтерию как
+   «существующая сделка» — заказа с таким номером в CRM нет и не было, заявка потерялась.
+4. По каждому письму со `status='new'` выбирает **один маршрут** и выполняет действие.
 
 ## Маршруты (типы `email_type`)
 
@@ -172,6 +178,7 @@
   Здесь же `findClientOrderNumberInSubject` (номер заказа клиента из темы «Re:», сверка с `orders` по email)
   и `repliesToOurOutbound`/`ourOutboundDomain` (детектор «ответ на наше исходящее» по заголовкам треда и цитате в теле).
 - `lib/email/classify.ts` — `classifyRoute`, `isReplyThread`, `hasCrmOrderTag`, `isNoReplySender`, `stripHtml`, `documentAttachmentNames`, `DEFAULT_SYSTEM_PROMPT`, `loadSecretaryPrompt`.
+- `lib/email/dossier.ts` — `buildCrmDossier` (справка из CRM к письму), `extractOrderCandidates` (номера-кандидаты из темы/тела).
 - `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`, `getCrmTagStaleDays`, `getThreadDedupDays`, `getDuplicateHintDays`.
 - `lib/email/assign.ts` — пул, баланс, история, `getManagersOnLeave`, `getAbsences`, `resolveAssignment`.
 - `lib/email/imap.ts` — `fetchNewEmails` (read-only), `fetchEmailContentByUid` (докачка вложений).
