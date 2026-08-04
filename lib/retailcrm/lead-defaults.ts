@@ -33,7 +33,7 @@ export const DICT_PURCHASE_FORM = 'type_customer';
 export const UNSPECIFIED_ITEM_CODE = 'trebuetsya-utochnit';
 
 /** Срок изготовления по умолчанию: бот реального не знает, менеджер уточнит. */
-export const DEFAULT_PRODUCTION_DAYS = 20;
+export const DEFAULT_PRODUCTION_DAYS = 30;
 
 /** Офис в Тольятти (UTC+4); сервер Vercel живёт в UTC. */
 export const OFFICE_UTC_OFFSET_HOURS = 4;

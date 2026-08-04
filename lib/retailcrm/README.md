@@ -37,7 +37,7 @@
 | Сфера деятельности | `sfera_deiatelnosti` | подсказка бота или `trebuetsya-utochnit` |
 | Форма закупки | `typ_customer_margin` | подсказка бота или `trebuetsya-utochnit` |
 | Дата следующего контакта | `data_kontakta` | сегодня; после 17:00 по Тольятти (UTC+4) — завтра |
-| Срок изготовления, дней | `srok_izgot` | 20 |
+| Срок изготовления, дней | `srok_izgot` | 30 |
 | Категория товара / форма закупки у клиента | `kategoria_klienta`, `kategoria_klienta_po_vidu` | `trebuetsya-utochnit` |
 
 Первые четыре поля заказа и оба поля клиента в CRM **обязательные** — без них менеджер
