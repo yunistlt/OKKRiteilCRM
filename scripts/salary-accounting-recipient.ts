@@ -7,7 +7,8 @@
 //
 // Почему так: Bot API не умеет писать в личку по @username — нужен числовой
 // chat_id, а он появляется только после того, как человек нажал Start у бота.
-import 'dotenv/config';
+import { config } from 'dotenv';
+config({ path: '.env.local' });
 import postgres from 'postgres';
 
 const TOKEN = process.env.TELEGRAM_SALARY_BOT_TOKEN
