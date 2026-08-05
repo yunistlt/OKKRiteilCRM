@@ -37,6 +37,9 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
     const [teamRevenue, setTeamRevenue] = useState(0);
     const [deptPlan, setDeptPlan] = useState(0);
     const [categoryNames, setCategoryNames] = useState<Record<string, string>>({});
+    // Сценарий «сколько повторных покупок сделает отдел»: номер покупки → штук.
+    // null = ползунки ещё не трогали, повторные масштабируются вместе с объёмом.
+    const [repeatCounts, setRepeatCounts] = useState<Record<number, number> | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true); setError(null);
@@ -50,6 +53,7 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
             setTeamRevenue(j.baseTeamRev || 12_000_000);
             setDeptPlan(j.deptPlan || j.baseTeamRev || 12_000_000);
             setCategoryNames(j.categoryNames ?? {});
+            setRepeatCounts(null);
         } catch (e: any) { setError(e.message); }
         finally { setLoading(false); }
     }, [year, month, managerIds]);
@@ -62,8 +66,8 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
 
     const result = useMemo(() => {
         if (!bases.length) return { perManager: [], total: 0 };
-        return computeScenarioFot(enabledBlocks, bases, { teamRevenue, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames });
-    }, [enabledBlocks, bases, teamRevenue, deptPlan, businessDays, year, month, baseTeamRev, categoryNames]);
+        return computeScenarioFot(enabledBlocks, bases, { teamRevenue, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames, repeatCounts: repeatCounts ?? undefined });
+    }, [enabledBlocks, bases, teamRevenue, deptPlan, businessDays, year, month, baseTeamRev, categoryNames, repeatCounts]);
 
     // Кривая ФОТ по выручке (для графика) — пересчитывается при любой правке.
     const curve = useMemo(() => {
@@ -72,16 +76,40 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
         const pts: { rev: number; total: number }[] = [];
         for (let i = 0; i <= 28; i++) {
             const rev = (maxR / 28) * i;
-            const r = computeScenarioFot(enabledBlocks, bases, { teamRevenue: rev, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames });
+            const r = computeScenarioFot(enabledBlocks, bases, { teamRevenue: rev, deptPlan, businessDays, year, month, baseTeamRevenue: baseTeamRev, categoryNames, repeatCounts: repeatCounts ?? undefined });
             pts.push({ rev, total: r.total });
         }
         return pts;
-    }, [enabledBlocks, bases, deptPlan, businessDays, year, month, baseTeamRev, categoryNames]);
+    }, [enabledBlocks, bases, deptPlan, businessDays, year, month, baseTeamRev, categoryNames, repeatCounts]);
 
     const setControl = (blockIdx: number, path: (string | number)[], value: number) =>
         setBlocks((prev) => prev.map((b, i) => (i === blockIdx ? { ...b, params: setAtPath(b.params, path, value) } : b)));
 
-    const reset = () => setBlocks(initialBlocks.map((b) => ({ ...b, params: structuredClone(b.params ?? {}) })));
+    const reset = () => { setBlocks(initialBlocks.map((b) => ({ ...b, params: structuredClone(b.params ?? {}) }))); setRepeatCounts(null); };
+
+    // Пороги блока «Доплата за повторную покупку» из ЧЕРНОВИКА схемы: правишь
+    // список порогов — меняется и набор ползунков сценария.
+    const repeatTiers: { ordinal: number; bonus: number }[] = useMemo(() => {
+        const b = blocks.find((x) => x.block_code === 'repeat_client_bonus' && x.enabled !== false);
+        const tiers = Array.isArray(b?.params?.tiers) ? b!.params.tiers : [];
+        return [...tiers]
+            .map((t: any) => ({ ordinal: Number(t?.ordinal) || 0, bonus: Number(t?.bonus) || 0 }))
+            .filter((t) => t.ordinal > 0)
+            .sort((a, b2) => a.ordinal - b2.ordinal);
+    }, [blocks]);
+
+    // Сколько повторных покупок было в baseline-месяце (отдел целиком) — стартовое
+    // положение ползунков и опора для их максимума.
+    const baseRepeat: Record<number, number> = useMemo(() => {
+        const out: Record<number, number> = {};
+        for (const b of bases) {
+            for (const [ord, share] of Object.entries(b.repeatOrdinalShares ?? {})) {
+                out[Number(ord)] = (out[Number(ord)] ?? 0) + Math.round((share as number) * b.baseOrders);
+            }
+        }
+        return out;
+    }, [bases]);
+    const effectiveRepeat = repeatCounts ?? baseRepeat;
 
     const attainment = deptPlan > 0 ? (teamRevenue / deptPlan) * 100 : 0;
     const costPct = teamRevenue > 0 ? (result.total / teamRevenue) * 100 : 0;
@@ -117,6 +145,21 @@ export default function FotSimulatorModal({ schemeCode, schemeName, blocks: init
                                 <div className="p-2">
                                     <Slider label="Выручка отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.6, 30_000_000)} step={250_000} value={teamRevenue} onChange={setTeamRevenue} />
                                     <Slider label="План отдела" unit="₽" min={0} max={Math.max(baseTeamRev * 2.2, 24_000_000)} step={250_000} value={deptPlan} onChange={setDeptPlan} />
+                                    {/* Сколько повторных покупок сделает отдел — по одному ползунку
+                                        на каждый порог из блока «Доплата за повторную покупку».
+                                        Объёмом это не выводится: возврат клиента — отдельное усилие. */}
+                                    {repeatTiers.map((t) => (
+                                        <Slider
+                                            key={t.ordinal}
+                                            label={`${t.ordinal}-х покупок клиента`}
+                                            unit="шт"
+                                            min={0}
+                                            max={Math.max(20, baseRepeat[t.ordinal] ? baseRepeat[t.ordinal] * 4 : 20)}
+                                            step={1}
+                                            value={effectiveRepeat[t.ordinal] ?? 0}
+                                            onChange={(v) => setRepeatCounts({ ...effectiveRepeat, [t.ordinal]: v })}
+                                        />
+                                    ))}
                                     <div className="mt-1 flex gap-3 text-[11px] text-muted-foreground">
                                         <span>Выполнение: <b className={attainment >= 90 ? 'text-emerald-700' : 'text-red-600'}>{Math.round(attainment)}%</b></span>
                                         <span>ФОТ/выручка: <b>{costPct.toFixed(2)}%</b></span>

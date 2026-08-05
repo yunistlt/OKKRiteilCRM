@@ -10,6 +10,8 @@ import { pickTier } from '@/lib/salary/blocks/tiers';
 import type { ManagerMetrics } from '@/lib/salary/metrics';
 import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
 
+// Разделитель разрядов в ru-RU — неразрывный пробел (toLocaleString).
+const NBSP = '\u00a0';
 const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 
 // Значения = сид «Продавца» (migrations/20260610_salary_schemes.sql) = текущий salary_config.
@@ -172,6 +174,40 @@ describe('блочный движок ≡ прежняя формула (пре�
         // premia_zayavki больше НЕ платит печь → только new: 3×1000 = 3000
         expect(got.premiaZayavki).toBe(3000);
         expect(got.total).toBe(3000);
+    });
+
+    // Тариф — ставки/пороги/ступени из параметров схемы, которые видит менеджер в отчёте.
+    // Гейт: числа берутся из params (не из метрик) и активная ступень отмечается фактом месяца.
+    it('тариф: ставки премии за заявки с отметкой действующих', () => {
+        const m = mkMetrics({ countsByType: { new: 3, permanent: 0 } });
+        const got = computeManagerSalary(m, [{ code: 'premia_zayavki', params: { rates: { new: 2000, permanent: 1000 } } }], baseCtx, 'test');
+        const tariff = findContrib(got, 'premia_zayavki')!.tariff!;
+        expect(tariff).toHaveLength(2);
+        expect(tariff[0]).toMatchObject({ label: 'Новый клиент', value: `2${NBSP}000 ₽ за заявку`, active: true });
+        expect(tariff[1]).toMatchObject({ label: 'Постоянный клиент', value: `1${NBSP}000 ₽ за заявку`, active: false });
+    });
+
+    it('тариф: шкала К_команды по возрастанию, действует ступень по выручке отдела', () => {
+        const ctx: BlockComputeContext = { ...baseCtx, teamRevenueNoVat: 17000000 };
+        const got = computeManagerSalary(mkMetrics({}), [{ code: 'k_team', params: { tiers: CFG.k_team_tiers } }], ctx, 'test');
+        const tariff = findContrib(got, 'k_team')!.tariff!;
+        expect(tariff.map((t) => t.value)).toEqual(['×0.5', '×1', '×1.15', '×1.3']);
+        expect(tariff.filter((t) => t.active).map((t) => t.value)).toEqual(['×1.15']);
+    });
+
+    it('тариф: порог скидочной дисциплины отмечен пройденным', () => {
+        const m = mkMetrics({ discountMetricValue: 3.11 });
+        const got = computeManagerSalary(m, [{ code: 'discount_bonus', params: CFG.discount_bonus }], baseCtx, 'test');
+        const tariff = findContrib(got, 'discount_bonus')!.tariff!;
+        expect(tariff).toHaveLength(1);
+        expect(tariff[0]).toMatchObject({ label: 'Средневзвешенный % скидки ≤ 5%', value: `5${NBSP}000 ₽`, active: true });
+    });
+
+    it('тариф: нет данных метрики → действующая ступень не отмечается', () => {
+        const got = computeManagerSalary(mkMetrics({ qualityAvgScore: null }), [{ code: 'k_quality', params: { tiers: CFG.k_quality_tiers } }], baseCtx, 'test');
+        const tariff = findContrib(got, 'k_quality')!.tariff!;
+        expect(tariff).toHaveLength(CFG.k_quality_tiers.length);
+        expect(tariff.some((t) => t.active)).toBe(false);
     });
 
     it('оператор: только оклад 15 000, без переменной части', () => {

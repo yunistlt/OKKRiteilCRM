@@ -1,7 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
-import { notifyPaymentTelegram } from './notify';
+import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
 import { classifyProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
@@ -83,7 +83,7 @@ const SELECT_COLUMNS =
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
-  'raw_payload, notified_at, created_at, updated_at';
+  'raw_payload, notified_at, pending_notified_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -233,14 +233,20 @@ async function pushMatchedPaymentToCrm(
       productionNotMovedReason: mv.notMovedReason,
     };
   } else {
+    const reason = result.error ?? 'unknown RetailCRM error';
     await supabase
       .from('point_payments')
       .update({
-        retailcrm_error: result.error ?? 'unknown RetailCRM error',
+        retailcrm_error: reason,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
-    throw new Error(`RetailCRM payment create failed: ${result.error}`);
+    // Деньги есть, а в CRM их нет — молчать нельзя: зовём ответственных за разбор.
+    // Уведомление не должно подменять исходную ошибку, поэтому глушим его сбой.
+    await notifyPaymentPushErrorTelegram(row, reason).catch((e) =>
+      console.error('[payments] push error notify failed:', e?.message || e),
+    );
+    throw new Error(`RetailCRM payment create failed: ${reason}`);
   }
 }
 
@@ -378,6 +384,50 @@ export async function assignPointPaymentToOrder(params: {
 
   await pushMatchedPaymentToCrm(row as PointPaymentRow);
   return { status: 'manual' };
+}
+
+/**
+ * Напоминание в Telegram о неразобранных поступлениях (status='pending_match').
+ *
+ * Зачем: уведомление об оплате уходит только по РАЗНЕСЁННЫМ платежам, поэтому деньги,
+ * которые не удалось привязать к заказу, лежали в очереди молча (инцидент 01.08.2026:
+ * приход 331 834,58 ₽ от 22.07 висел десять дней, заказ 53338 не ушёл в производство).
+ *
+ * Шлём ОДНИМ дайджестом на все висящие платежи, а не письмом на каждый: очередь читают
+ * как список дел. Повторяем не чаще, чем раз в PAYMENTS_PENDING_REMIND_HOURS (по умолч. 24 ч),
+ * иначе крон каждые 15 минут превратит напоминание в спам. Возвращает число строк в дайджесте.
+ */
+export async function notifyPendingForReview(): Promise<number> {
+  const remindHours = Number(process.env.PAYMENTS_PENDING_REMIND_HOURS || 24);
+  const cutoff = new Date(Date.now() - remindHours * 3600_000).toISOString();
+
+  const { data, error } = await supabase
+    .from('point_payments')
+    .select(SELECT_COLUMNS)
+    .eq('status', 'pending_match')
+    .order('amount_kopecks', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  const pending = (data || []) as PointPaymentRow[];
+  if (!pending.length) return 0;
+
+  // Напоминаем, только если есть хоть один «созревший» — новый или давно не напоминавшийся.
+  const due = pending.filter((r) => !r.pending_notified_at || String(r.pending_notified_at) < cutoff);
+  if (!due.length) return 0;
+
+  await notifyPendingPaymentsTelegram(pending, {
+    totalCount: pending.length,
+    totalKopecks: pending.reduce((s, r) => s + Number(r.amount_kopecks || 0), 0),
+  });
+
+  // Отметку ставим всем висящим — тогда очередь напоминает о себе целиком раз в сутки,
+  // а не капает отдельным сообщением на каждый новый платёж.
+  await supabase
+    .from('point_payments')
+    .update({ pending_notified_at: new Date().toISOString() })
+    .in('id', pending.map((r) => r.id));
+
+  return pending.length;
 }
 
 /** Пометить платёж как намеренно пропущенный (не наш / возврат). */

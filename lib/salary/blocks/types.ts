@@ -39,10 +39,20 @@ export interface BlockComputeContext {
     categoryNames?: Record<string, string>; // код категории RetailCRM → человеческое имя (для explain)
 }
 
+// Строка тарифа блока — ставка/порог/ступень ИЗ ПАРАМЕТРОВ схемы (БД), человеческим
+// языком. Отвечает на вопрос «по каким числам мне считают мотивацию»; explain
+// отвечает «что получилось в этом месяце». active — ступень/ставка, по которой шёл расчёт.
+export interface TariffLine {
+    label: string; // «Новый клиент», «от 3 000 000 ₽»
+    value: string; // «3 000 ₽ за заявку», «×1.1»
+    active?: boolean;
+}
+
 export interface BlockResult {
     amount: number; // ₽ для аддитивных/штрафных/базовых; 0 для чистых множителей
     multiplier?: number; // для kind === 'multiplier'
     explain: string; // человекочитаемая строка для отчёта
+    tariff?: TariffLine[]; // ставки/пороги/шкала блока (из params) — для отчёта менеджеру
     dataFill: DataFill;
 }
 
@@ -75,6 +85,7 @@ export interface BlockContribution {
     amount: number;
     multiplier?: number;
     explain: string;
+    tariff?: TariffLine[];
     dataFill: DataFill;
 }
 

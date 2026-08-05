@@ -7,6 +7,7 @@ import { getRecalcState } from '@/lib/salary/recalc-state';
 import { getResolvedConfig } from '@/lib/salary/config';
 import { listEngineerDictionary } from '@/lib/salary/schemes';
 import { loadPeriodView } from '@/lib/salary/period-view';
+import { buildAdminDashboard } from '@/lib/salary/admin-dashboard';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // открытый период считается на лету
@@ -89,11 +90,29 @@ export async function GET(req: Request) {
             engineersTotal = engineers.reduce((s, r) => s + Number(r.total || 0), 0);
         }
 
+        // Панель руководителя (вкладка «Дашборд») — только admin/rop. Считается поверх
+        // уже посчитанных строк периода; если упадёт — ведомость всё равно отдаём.
+        let dashboard: any = null;
+        if (!isManagerOnly && rows.length) {
+            try {
+                dashboard = await buildAdminDashboard({
+                    year,
+                    month,
+                    rows,
+                    teamRevenueNoVat: team.teamRevenueNoVat,
+                    engineersFot: engineersTotal,
+                });
+            } catch (e: any) {
+                console.error('[salary] buildAdminDashboard failed:', e?.message);
+            }
+        }
+
         return NextResponse.json({
             period: { year, month, status: view.status, closed_at: view.closedAt, closed_by: view.closedBy },
             rows,
             total,
             isManagerOnly,
+            dashboard,
             needsRecalc: recalcState.needsRecalc,
             recalcChangedAt: recalcState.changedAt,
             details: { teamOrders: team.orders, teamRevenueNoVat: team.teamRevenueNoVat, incomingByManager },

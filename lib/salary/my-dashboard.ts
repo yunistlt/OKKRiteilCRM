@@ -172,7 +172,7 @@ export async function buildMyDashboard(params: {
     const expectedPct = businessDaysTotal > 0 ? round2((businessDaysElapsed / businessDaysTotal) * 100) : 0;
 
     // ── Предоплата (фактически оплачено по засчитанным заказам) ────────────────
-    const prepay = await computePrepay(countedOrderIds, countedOrders, asOf);
+    const prepay = await computePrepayForOrders(countedOrderIds, countedOrders, asOf);
 
     // Порог «постоянного» клиента (для подписи типа в строках заказов)
     const permanentThreshold = await getPermanentThreshold(asOf);
@@ -435,7 +435,7 @@ function fmt(n: number): string {
  * >100% (защита от переплат и двойного учёта: счёт + перевод на ту же сумму).
  * Оплата = payments[status ∈ paid_statuses]. Итог = Σ min(оплата, сумма) / Σ сумма.
  */
-async function computePrepay(
+export async function computePrepayForOrders(
     orderIds: number[],
     countedOrders: any[],
     asOf: string,

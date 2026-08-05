@@ -67,7 +67,7 @@ function emptyBase(id: number, grade: number | null, planTarget: number | null):
     return {
         id, name: '', share: 0, baseRevenue: 0, baseOrders: 0,
         countsByType: { new: 0, permanent: 0 }, countsByCategory: {}, revenueByCategory: {},
-        sameDayShare: 0, discountMetricValue: null, qualityAvgScore: null, qualityScriptPct: null,
+        sameDayShare: 0, repeatOrdinalShares: {}, discountMetricValue: null, qualityAvgScore: null, qualityScriptPct: null,
         fastContactShare: null, fieldsFilledShare: null, conversionPct: 0, conversionDenominator: 0,
         grade, planTarget,
     };
