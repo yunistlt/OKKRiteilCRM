@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
-import { assignManagerScheme, deleteOrArchiveScheme, listArchivedSchemes, listAssignments, listSchemes, restoreScheme, saveScheme, unassignManager } from '@/lib/salary/schemes';
+import { assignManagerScheme, deleteOrArchiveScheme, listArchivedSchemes, listAssignments, listSchemeVersions, listSchemes, restoreScheme, saveScheme, unassignManager } from '@/lib/salary/schemes';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +17,13 @@ export async function GET(req: Request) {
         const session = await getSession();
         if (!hasAnyRole(session, ['admin', 'rop'])) return NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 });
         const asOf = asOfParam(req);
-        const [schemes, assignments, archived, mgrs] = await Promise.all([
+        const [schemes, assignments, archived, mgrs, versions] = await Promise.all([
             listSchemes(asOf),
             listAssignments(asOf),
             listArchivedSchemes(),
             supabase.from('managers').select('id,first_name,last_name,active,raw_data').order('id', { ascending: true }),
+            // Все версии ролей — для просмотра истории мотивации («что действовало в июле»).
+            listSchemeVersions('manager'),
         ]);
         // Показываем только пользователей, АКТИВНЫХ в самом RetailCRM (raw_data.active),
         // а не по нашей колонке active (там есть системные строки, напр. «Администратор»).
@@ -32,7 +34,7 @@ export async function GET(req: Request) {
         const managers = ((mgrs.data as any[]) ?? [])
             .filter((m) => crmActive(m) || assignedIds.has(Number(m.id)))
             .map((m) => ({ id: Number(m.id), name: [m.first_name, m.last_name].filter(Boolean).join(' ') || `#${m.id}`, active: crmActive(m) }));
-        return NextResponse.json({ asOf, schemes, assignments, archived, managers });
+        return NextResponse.json({ asOf, schemes, assignments, archived, managers, versions });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

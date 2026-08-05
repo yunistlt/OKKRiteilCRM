@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { NumberInput } from '@/components/ui/NumberInput';
 import { formatNumberRu } from '@/lib/format';
 import { tintFor } from '@/lib/salary/sim-controls';
-import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal } from 'lucide-react';
+import { Loader2, Plus, Trash2, GripVertical, Save, ChevronRight, ChevronDown, Info, Check, FlaskConical, SlidersHorizontal, ArrowDownNarrowWide } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import FotSimulatorModal from './FotSimulatorModal';
 import EngineerFotSimulatorModal from './EngineerFotSimulatorModal';
@@ -29,6 +29,8 @@ const PARAM_LABELS: Record<string, string> = {
     tiers: 'Пороги', min: 'От', k: 'Коэффициент ×', bonus: 'Бонус, ₽',
     minZayavki: 'Мин. входящих', metric: 'Метрика', comparator: 'Сравнение', threshold: 'Порог',
     rate: 'Ставка, ₽',
+    // Доплата за повторную покупку (блок repeat_client_bonus)
+    ordinal: 'Какая покупка клиента',
     thresholdPct: 'Порог, %', perPercent: 'Ставка за 1% сверх плана, ₽',
     rows: 'Категории товара', category: 'Категория', mode: 'Начисление', value: 'Ставка ₽ / %', coef: 'Коэффициент ×',
     // Инженер-расчётчик (блок procent_za_raschet)
@@ -36,6 +38,29 @@ const PARAM_LABELS: Record<string, string> = {
     kTiers: 'K срочности (по факт/норма)', maxRatio: 'Отношение факт/норма до', kMissing: 'K при отсутствии данных таймера',
 };
 const labelFor = (k: string) => PARAM_LABELS[k] ?? k;
+// Дата версии для интерфейса: 2026-08-01 → 01.08.2026 (в UI только человеческий формат).
+const ruDate = (iso: string) => String(iso ?? '').slice(0, 10).split('-').reverse().join('.');
+/** Календарный день перед датой: конец действия версии = день до начала следующей. */
+const prevDay = (iso: string) => {
+    const d = new Date(`${String(iso).slice(0, 10)}T00:00:00Z`);
+    if (Number.isNaN(d.getTime())) return iso;
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+};
+/**
+ * Подпись версии роли: «с 01.02.2026 по 31.07.2026». Версии приходят от новых к
+ * старым, поэтому конец действия — день до начала предыдущей в списке.
+ * У самой свежей версии конца нет: она либо действует сейчас, либо ещё впереди.
+ */
+function versionLabel(list: { effectiveFrom: string }[], index: number): string {
+    const from = ruDate(list[index].effectiveFrom);
+    const next = list[index - 1]; // более поздняя версия
+    if (next) return `версия с ${from} по ${ruDate(prevDay(next.effectiveFrom))}`;
+    const today = new Date().toISOString().slice(0, 10);
+    return list[index].effectiveFrom > today
+        ? `версия с ${from} — ещё не вступила`
+        : `версия с ${from} — действует сейчас`;
+}
 const COMPARATORS: Record<string, string> = { lte: '≤ не больше', gte: '≥ не меньше' };
 // Режимы начисления премии за категорию товара (блок premia_categorii).
 const CATEGORY_MODES: Record<string, string> = { sum: 'Сумма, ₽', pct: '% от продажи' };
@@ -95,19 +120,23 @@ function summarize(params: any): string {
 
 // ── Редактор параметров блока (поля вместо сырого JSON) ──────────────────────
 const inputCls = 'h-7 border px-2 text-xs';
+// Поля внутри таблиц ступеней: без собственной рамки (её роль играет сетка таблицы),
+// рамка проявляется только при наведении и фокусе — golds: «можно убрать рамку — убрать».
+const cellInputCls = 'h-7 w-full border border-transparent bg-transparent px-2 text-xs hover:border-input focus:border-primary focus:outline-none';
 
-function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean }) {
+function ScalarField({ pkey, value, onChange, full, bare }: { pkey: string; value: any; onChange: (v: any) => void; full?: boolean; bare?: boolean }) {
     const categories = useContext(CategoriesContext);
+    const base = bare ? cellInputCls : inputCls;
     if (pkey === 'comparator' && typeof value === 'string') {
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {Object.entries(COMPARATORS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
     }
     if (pkey === 'mode' && typeof value === 'string') {
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {Object.entries(CATEGORY_MODES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
         );
@@ -115,7 +144,7 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
     if (pkey === 'metric' && typeof value === 'string') {
         const known = value in DISCOUNT_METRICS;
         return (
-            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={value} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 {!known && value ? <option value={value}>{value}</option> : null}
                 {Object.entries(DISCOUNT_METRICS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
@@ -124,7 +153,7 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
     if (pkey === 'category') {
         const known = categories.some((c) => c.code === value);
         return (
-            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} ${full ? 'w-full' : ''}`}>
+            <select value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${base} ${full ? 'w-full' : ''}`}>
                 <option value="">— выберите категорию —</option>
                 {!known && value ? <option value={String(value)}>{String(value)} (нет в словаре)</option> : null}
                 {categories.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
@@ -135,15 +164,18 @@ function ScalarField({ pkey, value, onChange, full }: { pkey: string; value: any
         return <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-primary" />;
     }
     if (typeof value === 'number') {
-        return <NumberInput value={Number.isFinite(value) ? value : 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${inputCls} ${full ? 'w-full' : 'w-28'} text-right`} />;
+        return <NumberInput value={Number.isFinite(value) ? value : 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange(v ?? 0)} className={`${base} ${full ? 'w-full' : 'w-28'} text-right`} />;
     }
-    return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${inputCls} w-full`} />;
+    return <input value={String(value ?? '')} onChange={(e) => onChange(e.target.value)} className={`${base} w-full`} />;
 }
 
 // Таблица для массива объектов вида {min,k} / {min,bonus} (пороги). По GOLD_UI_TABLES.
 function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => void }) {
     // «От» (порог) всегда первой колонкой — читается как «От N → коэффициент/бонус».
     const keys = Array.from(new Set(value.flatMap((r) => Object.keys(r ?? {})))).sort((a, b) => (a === 'min' ? -1 : b === 'min' ? 1 : 0));
+    const [dragIdx, setDragIdx] = useState<number | null>(null);
+    const [overIdx, setOverIdx] = useState<number | null>(null);
+    const [armed, setArmed] = useState<number | null>(null); // строка «взята» за ручку — только тогда она draggable
     const setCell = (i: number, k: string, v: any) => onChange(value.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
     // Новая строка с типобезопасными дефолтами по образцу существующих строк.
     const addRow = () => {
@@ -152,32 +184,83 @@ function TierTable({ value, onChange }: { value: any[]; onChange: (v: any[]) => 
             let v: any = 0;
             if (k === 'mode') v = 'sum';
             else if (k === 'coef') v = 1;
+            // Номер покупки — следующий по счёту: ноль схема не примет (нужно
+            // целое ≥ 1), а вручную набирать очевидное значение незачем.
+            else if (k === 'ordinal') v = Math.max(0, ...value.map((r) => Number(r?.ordinal) || 0)) + 1;
             else if (typeof sample[k] === 'string') v = '';
             return { ...a, [k]: v };
         }, {} as Record<string, any>);
         onChange([...value, blank]);
     };
     const delRow = (i: number) => onChange(value.filter((_, j) => j !== i));
+
+    // Порядок строк — дело владельца схемы: на расчёт он не влияет (ступень выбирается
+    // по наибольшему подходящему порогу), но читать таблицу удобнее в своём порядке.
+    // Перетаскивание — только за ручку, иначе нельзя было бы выделять текст в полях.
+    const move = (from: number, to: number) => {
+        if (from === to || from < 0 || to < 0 || from >= value.length || to >= value.length) return;
+        const next = value.slice();
+        const [row] = next.splice(from, 1);
+        next.splice(to, 0, row);
+        onChange(next);
+    };
+    const sortAsc = () => onChange(value.slice().sort((a, b) => (Number(a?.min) || 0) - (Number(b?.min) || 0)));
+    const sortable = keys.includes('min') && value.length > 1;
+
     return (
-        <div className="border">
+        <div>
             <table className="w-full text-xs">
-                <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>{keys.map((k) => <th key={k} className="px-3 py-1.5 text-right font-medium">{labelFor(k)}</th>)}<th className="w-9" /></tr>
+                <thead className="text-muted-foreground">
+                    <tr className="border-b">
+                        <th className="w-5" />
+                        {keys.map((k) => <th key={k} className="px-2 pb-1 text-right text-[10px] font-bold uppercase tracking-wide">{labelFor(k)}</th>)}
+                        <th className="w-7" />
+                    </tr>
                 </thead>
                 <tbody>
                     {value.map((row, i) => (
-                        <tr key={i} className="border-t odd:bg-white even:bg-muted/20 hover:bg-accent">
+                        <tr
+                            key={i}
+                            draggable={armed === i}
+                            onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; setDragIdx(i); }}
+                            onDragEnd={() => { setDragIdx(null); setOverIdx(null); setArmed(null); }}
+                            onDragOver={(e) => { if (dragIdx == null) return; e.preventDefault(); setOverIdx(i); }}
+                            onDrop={(e) => { e.preventDefault(); if (dragIdx != null) move(dragIdx, i); setDragIdx(null); setOverIdx(null); setArmed(null); }}
+                            className={`border-b last:border-b-0 hover:bg-muted/40 ${dragIdx === i ? 'opacity-40' : ''} ${overIdx === i && dragIdx !== i ? 'outline outline-2 -outline-offset-2 outline-primary' : ''}`}
+                        >
+                            <td className="py-0.5 text-center align-middle">
+                                <button
+                                    onMouseDown={() => setArmed(i)}
+                                    onMouseUp={() => setArmed(null)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'ArrowUp') { e.preventDefault(); move(i, i - 1); }
+                                        if (e.key === 'ArrowDown') { e.preventDefault(); move(i, i + 1); }
+                                    }}
+                                    title="Перетащите, чтобы поменять порядок · ↑ / ↓ с клавиатуры"
+                                    aria-label="Переместить строку"
+                                    className="cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+                                >
+                                    <GripVertical className="h-3.5 w-3.5" />
+                                </button>
+                            </td>
                             {keys.map((k) => (
-                                <td key={k} className="px-3 py-1.5">
-                                    <ScalarField pkey={k} value={row?.[k]} full onChange={(v) => setCell(i, k, v)} />
+                                <td key={k} className="py-0.5">
+                                    <ScalarField pkey={k} value={row?.[k]} full bare onChange={(v) => setCell(i, k, v)} />
                                 </td>
                             ))}
-                            <td className="px-2 py-1.5 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button></td>
+                            <td className="py-0.5 text-center"><button onClick={() => delRow(i)} className="text-muted-foreground hover:text-red-600" title="Удалить строку"><Trash2 className="h-3.5 w-3.5" /></button></td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-            <button onClick={addRow} className="flex w-full items-center justify-center gap-1 border-t py-1.5 text-[11px] text-muted-foreground hover:bg-accent"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : 'Добавить порог'}</button>
+            <div className="flex items-center gap-3 pt-1">
+                <button onClick={addRow} className="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"><Plus className="h-3 w-3" /> {keys.includes('category') ? 'Добавить категорию' : keys.includes('ordinal') ? 'Добавить доплату' : 'Добавить порог'}</button>
+                {sortable && (
+                    <button onClick={sortAsc} title="Расставить строки по возрастанию порога" className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
+                        <ArrowDownNarrowWide className="h-3 w-3" /> По возрастанию
+                    </button>
+                )}
+            </div>
         </div>
     );
 }
@@ -192,7 +275,7 @@ function ParamsForm({ params, onChange }: { params: any; onChange: (v: any) => v
         <div className="space-y-1.5">
             {Object.entries(params).map(([k, v]) => {
                 if (Array.isArray(v)) {
-                    return <div key={k}><div className="mb-0.5 text-[11px] font-medium text-muted-foreground">{labelFor(k)}</div><TierTable value={v} onChange={(nv) => set(k, nv)} /></div>;
+                    return <div key={k}><div className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{labelFor(k)}</div><TierTable value={v} onChange={(nv) => set(k, nv)} /></div>;
                 }
                 if (v && typeof v === 'object') {
                     return (
@@ -231,10 +314,22 @@ export function SchemesTab() {
     // Симуляция «что если» (песочница тарифов) — считает черновики на периоде, НЕ сохраняет.
     const [managers, setManagers] = useState<{ id: number; name: string }[]>([]);
     const [assignments, setAssignments] = useState<{ managerId: number; schemeCode: string }[]>([]); // реестр: кто в какой роли
+    // Все версии ролей (код роли → версии, новые сверху) — история мотивации.
+    const [versions, setVersions] = useState<Record<string, any[]>>({});
     const [engineerAssignments, setEngineerAssignments] = useState<{ itemCode: string; schemeCode: string }[]>([]); // инженеры: кто в какой роли
-    const nowSim = new Date();
-    const [simYear, setSimYear] = useState(nowSim.getFullYear());
-    const [simMonth, setSimMonth] = useState(nowSim.getMonth() + 1);
+    // Baseline для симуляций — ПРЕДЫДУЩИЙ месяц, а не текущий. Симулятор ФОТ
+    // масштабирует базовый месяц до заданной выручки, и на первых числах это даёт
+    // чушь: 3 августа в базе было 2 заказа на 210 тыс ₽, до 13,5 млн они
+    // домножались в 64 раза — премия за заявки и доплата за повторную покупку
+    // раздувались до сотен тысяч. Прошлый месяц всегда полный.
+    const simDefault = (() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1;
+        return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+    })();
+    const [simYear, setSimYear] = useState(simDefault.year);
+    const [simMonth, setSimMonth] = useState(simDefault.month);
     const [simulating, setSimulating] = useState(false);
     const [simResult, setSimResult] = useState<any | null>(null);
     const [showOverrides, setShowOverrides] = useState(false); // раскрыта ли панель подмен ролей/планов
@@ -260,6 +355,7 @@ export function SchemesTab() {
             setArchived(sJson.archived ?? []);
             setManagers(sJson.managers ?? []);
             setAssignments(sJson.assignments ?? []);
+            setVersions(sJson.versions ?? {});
             const toEdit = (s: any, kind: 'manager' | 'engineer'): EditScheme => ({
                 code: s.code, name: s.name, effectiveFrom: String(s.effectiveFrom).slice(0, 10), prevEffectiveFrom: String(s.effectiveFrom).slice(0, 10), kind,
                 blocks: (s.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
@@ -287,6 +383,17 @@ export function SchemesTab() {
         if (i !== si) return s; const arr = [...s.blocks]; const [m] = arr.splice(from, 1); arr.splice(to, 0, m); return { ...s, blocks: arr };
     }));
     const setField = (si: number, patch: Partial<EditScheme>) => setSchemes((p) => p.map((s, i) => (i === si ? { ...s, ...patch } : s)));
+    /** Открыть в карточке другую версию роли — посмотреть, что действовало с той даты. */
+    const openVersion = (si: number, code: string, effectiveFrom: string) => {
+        const v = (versions[code] ?? []).find((x: any) => x.effectiveFrom === effectiveFrom);
+        if (!v) return;
+        setField(si, {
+            effectiveFrom: v.effectiveFrom,
+            prevEffectiveFrom: v.effectiveFrom,
+            name: v.name ?? '',
+            blocks: (v.blocks ?? []).map((b: any) => ({ block_code: b.block_code, params: b.params ?? {}, raw: false, rawText: '', enabled: b.enabled !== false })),
+        });
+    };
     const patchBlock = (si: number, bi: number, patch: Partial<SchemeBlock>) =>
         setSchemes((p) => p.map((s, i) => (i === si ? { ...s, blocks: s.blocks.map((b, j) => (j === bi ? { ...b, ...patch } : b)) } : s)));
     const save = async (s: EditScheme, si: number) => {
@@ -566,8 +673,30 @@ export function SchemesTab() {
                             ) : (
                                 <span className="text-sm font-semibold px-1" title="Роль (группа RetailCRM)">{s.name}</span>
                             )}
-                            <label className="ml-auto text-[11px] text-muted-foreground">с</label>
+                            {/* История мотивации: какая версия роли действовала на какую дату.
+                                Выбор версии открывает её состав блоков — так видно, по каким
+                                правилам считался прошлый месяц. */}
+                            {(versions[s.code]?.length ?? 0) > 1 && (
+                                <select
+                                    value={s.prevEffectiveFrom || ''}
+                                    onChange={(e) => openVersion(si, s.code, e.target.value)}
+                                    className="ml-auto h-8 border px-2 text-xs"
+                                    title="Версия мотивации: показать, что действовало с этой даты"
+                                >
+                                    {versions[s.code].map((v: any, vi: number) => (
+                                        <option key={v.effectiveFrom} value={v.effectiveFrom}>
+                                            {versionLabel(versions[s.code], vi)}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                            <label className={`${(versions[s.code]?.length ?? 0) > 1 ? '' : 'ml-auto'} text-[11px] text-muted-foreground`}>с</label>
                             <input type="date" value={s.effectiveFrom} onChange={(e) => setField(si, { effectiveFrom: e.target.value })} className="h-8 border px-2 text-xs" />
+                            {s.prevEffectiveFrom && s.effectiveFrom !== s.prevEffectiveFrom && (
+                                <span className="bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700" title="Прошлые периоды продолжат считаться по прежней версии">
+                                    новая версия; с {ruDate(s.prevEffectiveFrom)} останется как есть
+                                </span>
+                            )}
                             {(() => {
                                 const assigned = isEng
                                     ? engineerAssignments.filter((a) => a.schemeCode === s.code).length
@@ -615,7 +744,7 @@ export function SchemesTab() {
                                             {isOpen && (
                                                 <div className="space-y-1.5 px-2 pb-2 pl-7">
                                                     {meta && <div className="text-[10px] leading-snug text-muted-foreground">{meta.methodology}</div>}
-                                                    <div className="border bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>
+                                                    <div className="bg-white p-2"><ParamsForm params={b.params} onChange={(nv) => patchBlock(si, bi, { params: nv })} /></div>
                                                 </div>
                                             )}
                                         </div>

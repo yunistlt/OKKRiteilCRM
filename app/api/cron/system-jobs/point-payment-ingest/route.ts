@@ -3,6 +3,7 @@ import {
   claimProcessablePayments,
   processPointPayment,
   reconcileCrmPostings,
+  notifyPendingForReview,
 } from '@/lib/payments/service';
 import { supabase } from '@/utils/supabase';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -55,12 +56,22 @@ export async function GET(req: NextRequest) {
       console.error('[Tochka] reconcileCrmPostings failed:', e?.message || e);
     }
 
-    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled });
+    // Напоминание о неразобранных поступлениях: деньги пришли, но не привязаны к заказу —
+    // значит, не проведены в CRM и заказ не уходит в производство. Не критично для воркера.
+    let pendingNotified = 0;
+    try {
+      pendingNotified = await notifyPendingForReview();
+    } catch (e: any) {
+      console.error('[payments] notifyPendingForReview failed:', e?.message || e);
+    }
+
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified });
     return NextResponse.json({
       ok: true,
-      status: results.length || reconciled ? 'processed' : 'idle',
+      status: results.length || reconciled || pendingNotified ? 'processed' : 'idle',
       processed: results.length,
       reconciled,
+      pendingNotified,
       results,
     });
   } catch (error: any) {

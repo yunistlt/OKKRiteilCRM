@@ -49,8 +49,19 @@ export const SALARY_CONFIG_SCHEMAS = {
         cancel_reasons: z.array(z.string().min(1)),
     }),
     // Код кастом-поля заказа с причиной отмены (справочник RetailCRM). Отсюда его
-    // берут правила дублей и «не нашей продукции» — по образцу engineer_field.
+    // берут правила дублей, «не нашей продукции» и «сметы» — по образцу engineer_field.
     cancel_reason_field: z.object({ code: z.string().min(1) }),
+    // «Смета» — клиент не покупает, а запрашивает цену для закладки в бюджет на
+    // далёкое будущее. Не потерянная продажа, из конверсии исключается целиком.
+    // Работает только внутри statuses; ветка по cancel_reasons самодостаточна,
+    // ветка по comment_patterns требует подтверждения вердиктом ИИ по диалогу
+    // (order_estimate_verdicts, порог min_confidence). См. lib/salary/estimates.ts.
+    estimate_rule: z.object({
+        statuses: z.array(z.string().min(1)),
+        cancel_reasons: z.array(z.string().min(1)),
+        comment_patterns: z.array(z.string().min(1)),
+        min_confidence: z.number().min(0).max(1),
+    }),
     // Правило «Дубль заявки» (email+бот дубли, которые менеджер обязан переводить в
     // статус-дубль с номером эталона и причиной). Исключается из ЧИСЛИТЕЛЯ и ЗНАМЕНАТЕЛЯ
     // конверсии, только если: статус = duplicate_status И в комментарии есть номер

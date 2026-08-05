@@ -10,6 +10,9 @@ import DutyModal from './DutyModal';
 import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
+import AdminDashboard from './AdminDashboard';
+import BlockBreakdown from '@/components/salary/BlockBreakdown';
+import type { AdminDashboard as AdminDashboardData } from '@/lib/salary/admin-dashboard';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -45,7 +48,8 @@ export default function SalaryDashboard() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number } | null>(null);
+    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number; dashboard?: AdminDashboardData | null } | null>(null);
+    const [tab, setTab] = useState<'dashboard' | 'sheet'>('dashboard');
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
@@ -189,6 +193,20 @@ export default function SalaryDashboard() {
         <div className="w-full space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold">Зарплата ОП</h1>
+                <div className="flex border border-input">
+                    <button
+                        onClick={() => setTab('dashboard')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Дашборд
+                    </button>
+                    <button
+                        onClick={() => setTab('sheet')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'sheet' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Ведомость
+                    </button>
+                </div>
                 <div className="ml-auto flex items-center gap-2">
                     <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
@@ -265,6 +283,22 @@ export default function SalaryDashboard() {
                             ? 'Не удалось загрузить данные. Обновите страницу или повторите позже.'
                             : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
+            ) : tab === 'dashboard' ? (
+                data?.dashboard ? (
+                    <AdminDashboard
+                        dash={data.dashboard}
+                        monthLabel={`${MONTHS[month - 1]} ${year}`}
+                        isOpen={!closed}
+                        onOpenManager={(id) => {
+                            const r = rows.find((x) => Number(x.manager_id) === Number(id));
+                            if (r) setReportManager(r);
+                        }}
+                    />
+                ) : (
+                    <div className="border border-dashed p-12 text-center text-sm text-muted-foreground">
+                        Панель не собралась — показатели периода недоступны. Откройте вкладку «Ведомость».
+                    </div>
+                )
             ) : (() => {
                 // Колонки таблицы — динамически из блоков назначенных схем (никакого хардкода).
                 // Союз блоков по всем менеджерам в порядке появления; фолбэк на legacy для старых расчётов.
@@ -309,7 +343,7 @@ export default function SalaryDashboard() {
             })()}
 
             {/* ── Инженеры-расчётчики ── */}
-            {!loading && (data?.engineers?.length ?? 0) > 0 && (
+            {tab === 'sheet' && !loading && (data?.engineers?.length ?? 0) > 0 && (
                 <div className="mt-6 space-y-2">
                     <div className="flex items-center gap-2">
                         <h2 className="text-sm font-semibold">Инженеры-расчётчики</h2>
@@ -390,12 +424,7 @@ function EngineerReportModal({ r, monthLabel, onClose }: { r: EngineerRow; month
                     </div>
                 </div>
                 <div className="space-y-4 overflow-y-auto p-4 text-sm">
-                    {contributions.map((c, i) => (
-                        <div key={i} className="border-l-2 pl-2">
-                            <div className="font-medium">{c.name}: {rub(c.amount || 0)}</div>
-                            {c.explain && <div className="text-xs text-muted-foreground">{c.explain}</div>}
-                        </div>
-                    ))}
+                    {contributions.length > 0 && <BlockBreakdown contributions={contributions} total={Number(r.total) || 0} totalLabel="Итого" />}
                     <div>
                         <div className="mb-2 font-semibold">Заказы ({orders.length})</div>
                         <div className="overflow-x-auto border">
@@ -527,37 +556,24 @@ function ManagerReportModal({
                 {/* Тело (скролл) */}
                 <div className="space-y-4 overflow-y-auto p-4 text-sm">
                     {/* Как сложилась сумма — по блокам назначенной схемы (фолбэк на legacy-поля) */}
-                    <div className="border bg-muted/20 p-3 text-xs">
+                    <div className="text-xs">
                         <div className="mb-2 flex items-center gap-2 font-semibold">
                             Как сложилась сумма
                         </div>
                         {Array.isArray(b.blockContributions) && b.blockContributions.length > 0 ? (
-                            <div className="space-y-1">
-                                {b.blockContributions.map((c: any, i: number) => (
-                                    <div key={i} className="flex items-baseline justify-between gap-3 border-b border-dashed py-0.5 last:border-0">
-                                        <div>
-                                            <span className="font-medium">{c.name}</span>
-                                            <span className="ml-2 text-muted-foreground">{c.explain}</span>
-                                            {c.dataFill && c.dataFill.pct < 1 && (
-                                                <span className="ml-2 bg-amber-100 px-1 text-[10px] text-amber-700">данные {Math.round(c.dataFill.pct * 100)}%</span>
-                                            )}
-                                        </div>
-                                        <div className="whitespace-nowrap font-medium">
-                                            {c.kind === 'multiplier' ? `×${c.multiplier}` : rub(c.amount)}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                            <BlockBreakdown contributions={b.blockContributions} total={Number(r.total) || 0} totalLabel="Итого" />
                         ) : (
-                            <div className="grid gap-1 md:grid-cols-2">
-                                <div>Оклад ({Math.round((b.okladProration ?? 1) * 100)}%): <b>{rub(r.oklad)}</b></div>
-                                <div>Премия за заявки: {rub(r.premia_zayavki)} × К_кач {r.k_quality}</div>
-                                <div>Конв-бонус: {rub(r.conv_bonus)}</div>
-                                <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
-                                <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
+                            <div className="border bg-muted/20 p-3">
+                                <div className="grid gap-1 md:grid-cols-2">
+                                    <div>Оклад ({Math.round((b.okladProration ?? 1) * 100)}%): <b>{rub(r.oklad)}</b></div>
+                                    <div>Премия за заявки: {rub(r.premia_zayavki)} × К_кач {r.k_quality}</div>
+                                    <div>Конв-бонус: {rub(r.conv_bonus)}</div>
+                                    <div>Скидка-бонус: {rub(r.discount_bonus)}</div>
+                                    <div>Переменная часть × К_команды {r.k_team}: <b>{rub(b.variablePart ?? 0)}</b></div>
+                                </div>
+                                <div className="mt-2 border-t pt-2 font-semibold">Итого: {rub(r.total)}</div>
                             </div>
                         )}
-                        <div className="mt-2 border-t pt-2 font-semibold">Итого: {rub(r.total)}</div>
                     </div>
 
                     {/* Три блока детализации */}

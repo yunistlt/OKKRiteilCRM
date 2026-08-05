@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { supabase } from '@/utils/supabase';
 import { getManagerPool, getManagerNames, getBalanceWindowDays, getRecentAssignmentCounts } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled, getOrderBlocklist, getNoreplyAllowlist, getCrmTagStaleDays } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, getOrderBlocklist, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays, getDuplicateHintDays } from '@/lib/email/routes';
 import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import RoutesSettings from './RoutesSettings';
@@ -70,7 +70,7 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
     const dryRun = !cfg?.create_orders;
 
     // 2b) маршруты пересылки в отделы и режим пересылки
-    const [routes, forwardEnabled, orderBlocklist, noreplyAllowlist, crmTagStaleDays, session] = await Promise.all([getDepartmentRoutes(), isForwardEnabled(), getOrderBlocklist(), getNoreplyAllowlist(), getCrmTagStaleDays(), getSession()]);
+    const [routes, forwardEnabled, orderBlocklist, noreplyAllowlist, crmTagStaleDays, threadDedupDays, duplicateHintDays, session] = await Promise.all([getDepartmentRoutes(), isForwardEnabled(), getOrderBlocklist(), getNoreplyAllowlist(), getCrmTagStaleDays(), getThreadDedupDays(), getDuplicateHintDays(), getSession()]);
     const routeList = ['accounting', 'logistics', 'legal', 'procurement'].map((d) => routes[d]).filter(Boolean);
     const canEditSettings = hasAnyRole(session, ['admin', 'rop']);
 
@@ -226,6 +226,8 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                 initialOrderBlocklist={orderBlocklist}
                 initialNoreplyAllowlist={noreplyAllowlist}
                 initialCrmTagStaleDays={crmTagStaleDays}
+                initialThreadDedupDays={threadDedupDays}
+                initialDuplicateHintDays={duplicateHintDays}
                 canEdit={canEditSettings}
             />
 

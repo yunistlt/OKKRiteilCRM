@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
-import { collectEngineerMetrics, collectPeriodMetrics, type EngineerOrder, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
+import { businessDaysInMonth, collectEngineerMetrics, collectPeriodMetrics, type EngineerOrder, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
 import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
 import { getPlansForPeriod, listSchemes, resolveEngineerComp, resolveManagerComp, type EngineerComp, type PeriodPlans } from '@/lib/salary/schemes';
@@ -71,16 +71,10 @@ export interface PeriodSalary {
     results: SalaryResult[];
 }
 
-/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада. */
-export function businessDaysInMonth(year: number, month: number): number {
-    let count = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dow = new Date(year, month - 1, d).getDay();
-        if (dow !== 0 && dow !== 6) count++;
-    }
-    return count;
-}
+/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада.
+ *  Реализация одна, в metrics.ts (там же считаются дни отсутствия); тут ре-экспорт,
+ *  чтобы не плодить второй календарь. */
+export { businessDaysInMonth };
 
 /** Пустые метрики для менеджера из реестра без активности (оператор → только оклад). */
 function zeroMetrics(managerId: number): ManagerMetrics {

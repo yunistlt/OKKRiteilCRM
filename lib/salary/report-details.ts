@@ -11,6 +11,7 @@ import {
     MAX_DUPLICATE_CHAIN_DEPTH,
     type ReferencedOrder,
 } from '@/lib/salary/tender-duplicates';
+import { evaluateEstimate, hasEstimateMarker, type EstimateVerdictRow } from '@/lib/salary/estimates';
 
 // ============================================================================
 // Детализация расчётной ведомости заказами — отдаётся ВМЕСТЕ с отчётом
@@ -28,7 +29,7 @@ export interface IncomingOrderBrief {
     source: string | null; // имя источника заявки (orderMethod) из справочника RetailCRM
     createdAt: string;
     sum: number;
-    // Дубль на тендер: excluded — правомочный дубль, исключён из знаменателя
+    // Дубль на тендер или смета: excluded — заказ исключён из знаменателя
     // конверсии; dupNote — причина (русская) для пометки в ведомости.
     excluded?: boolean;
     dupNote?: string | null;
@@ -132,6 +133,7 @@ export async function buildIncomingByManager(
     const rule = config.tender_duplicate_rule;
     const reqRule = config.request_duplicate_rule;
     const notOurRule = config.not_our_product_rule;
+    const estimateRule = config.estimate_rule;
     const reasonField = config.cancel_reason_field.code;
     const closing = config.closing_status.code;
     const { start, end } = monthBounds(year, month);
@@ -230,6 +232,35 @@ export async function buildIncomingByManager(
         }
     }
 
+    // Вердикты ИИ по «сметам» — одним запросом на всех кандидатов (заказ в статусе
+    // правила с текстовым маркером). Ветка «причина отмены = Смета» вердикта не
+    // требует, поэтому кандидатов заведомо немного.
+    const estimateCandidateIds: number[] = [];
+    for (const o of (data as any[]) ?? []) {
+        if (!estimateRule.statuses.includes(String(o.status ?? ''))) continue;
+        const marked = hasEstimateMarker(
+            {
+                managerComment: o.raw_payload?.managerComment ?? null,
+                customerComment: o.raw_payload?.customerComment ?? null,
+            },
+            estimateRule,
+        );
+        if (marked && o.order_id != null) estimateCandidateIds.push(Number(o.order_id));
+    }
+    const estimateVerdicts = new Map<number, EstimateVerdictRow>();
+    if (estimateCandidateIds.length) {
+        const { data: verdictRows } = await supabase
+            .from('order_estimate_verdicts')
+            .select('retailcrm_order_id,is_estimate,confidence')
+            .in('retailcrm_order_id', estimateCandidateIds);
+        for (const v of (verdictRows as any[]) ?? []) {
+            estimateVerdicts.set(Number(v.retailcrm_order_id), {
+                is_estimate: v.is_estimate ?? null,
+                confidence: v.confidence == null ? null : Number(v.confidence),
+            });
+        }
+    }
+
     const byManager: Record<number, IncomingOrderBrief[]> = {};
     for (const o of (data as any[]) ?? []) {
         const om = String(o.raw_payload?.orderMethod ?? '');
@@ -242,6 +273,32 @@ export async function buildIncomingByManager(
         if (isNotOurProduct({ status: st, cancelReason }, notOurRule)) continue;
         const mid = Number(o.manager_id);
         if (!mid) continue;
+        // Смета проверяется до дублей: заказ в «Согласовании отмены» с причиной
+        // «Смета» дублем быть не может, а причина исключения должна быть та, что
+        // сработала в RPC. Показываем такой заказ в списке помеченным (excluded),
+        // а не прячем — менеджеру должно быть видно, почему он не в конверсии.
+        const estimate = evaluateEstimate(
+            {
+                status: st,
+                cancelReason,
+                managerComment: o.raw_payload?.managerComment ?? null,
+                customerComment: o.raw_payload?.customerComment ?? null,
+            },
+            estimateVerdicts.get(Number(o.order_id)) ?? null,
+            estimateRule,
+        );
+        if (estimate.isEstimate) {
+            (byManager[mid] ??= []).push({
+                id: Number(o.order_id),
+                clientName: clientNameFromPayload(o.raw_payload),
+                source: om ? methodName.get(om) || om : null,
+                createdAt: o.created_at,
+                sum: Number(o.totalsumm ?? 0) || 0,
+                excluded: estimate.excluded,
+                dupNote: estimate.reason,
+            });
+            continue;
+        }
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         const seed = num ? refByNumber.get(num) ?? null : null;
         const verdict =

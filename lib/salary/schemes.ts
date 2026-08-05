@@ -154,6 +154,51 @@ export interface SchemeView {
     blocks: { block_code: string; sort_order: number; params: any; enabled: boolean }[];
 }
 
+/**
+ * ВСЕ версии схем с блоками, сгруппированные по коду роли (новые сверху) — для
+ * просмотра истории мотивации в конструкторе: «что действовало в июле».
+ * В отличие от listSchemes, по дате не фильтрует: показываем и будущие версии
+ * (мотивация, включённая с 1-го числа следующего месяца, — обычное дело).
+ */
+export async function listSchemeVersions(
+    participantKind: 'manager' | 'engineer' = 'manager',
+): Promise<Record<string, SchemeView[]>> {
+    const { data: schemeRows, error } = await supabase
+        .from('salary_scheme')
+        .select('id,code,name,effective_from')
+        .is('archived_at', null)
+        .eq('participant_kind', participantKind)
+        .order('effective_from', { ascending: false });
+    if (error) throw error;
+
+    const rows = (schemeRows as any[]) ?? [];
+    const blocksByScheme = new Map<number, SchemeView['blocks']>();
+    if (rows.length) {
+        const { data: blockRows } = await supabase
+            .from('salary_scheme_block')
+            .select('scheme_id,block_code,sort_order,params,enabled')
+            .in('scheme_id', rows.map((s) => Number(s.id)))
+            .order('sort_order', { ascending: true });
+        for (const b of (blockRows as any[]) ?? []) {
+            const sid = Number(b.scheme_id);
+            const arr = blocksByScheme.get(sid) ?? [];
+            arr.push({ block_code: b.block_code, sort_order: b.sort_order, params: b.params ?? {}, enabled: b.enabled !== false });
+            blocksByScheme.set(sid, arr);
+        }
+    }
+
+    const byCode: Record<string, SchemeView[]> = {};
+    for (const s of rows) {
+        (byCode[s.code] ??= []).push({
+            code: s.code,
+            name: s.name,
+            effectiveFrom: String(s.effective_from).slice(0, 10),
+            blocks: blocksByScheme.get(Number(s.id)) ?? [],
+        });
+    }
+    return byCode;
+}
+
 /** Последние версии всех схем (на дату asOf) с их блоками — для конструктора. */
 export async function listSchemes(asOf: string, participantKind: 'manager' | 'engineer' = 'manager'): Promise<SchemeView[]> {
     const { data: schemeRows, error } = await supabase
@@ -226,21 +271,15 @@ export async function saveScheme(params: {
         const { error: bErr } = await supabase.from('salary_scheme_block').insert(rows);
         if (bErr) throw bErr;
     }
-    // Перенос даты: удаляем исходную версию этой же схемы, если дата сменилась.
-    if (prevEffectiveFrom && prevEffectiveFrom !== effectiveFrom) {
-        const { data: oldRows } = await supabase
-            .from('salary_scheme')
-            .select('id')
-            .eq('code', code)
-            .eq('effective_from', prevEffectiveFrom)
-            .is('archived_at', null);
-        for (const old of (oldRows as any[]) ?? []) {
-            const oldId = Number(old.id);
-            if (oldId === schemeId) continue;
-            await supabase.from('salary_scheme_block').delete().eq('scheme_id', oldId);
-            await supabase.from('salary_scheme').delete().eq('id', oldId);
-        }
-    }
+    // Смена даты = НОВАЯ версия, прежняя остаётся жить. Раньше исходная версия
+    // здесь удалялась («перенос даты»), и это ломало главный инвариант модуля:
+    // прошлый период должен считаться по тем правилам, что действовали тогда.
+    // Реальный сценарий: у роли одна версия с 01.02.2026, ей меняют дату на
+    // 01.08.2026, чтобы включить новую доплату с августа, — и февраль–июль
+    // остаются вообще без схемы, менеджеры выпадают из реестра, ведомость за
+    // июль обнуляется. Версии копятся, выбор действующей — по effective_from
+    // (см. listSchemes/resolveManagerComp), поэтому «лишних» строк не создаётся:
+    // на каждую дату действует ровно одна.
     await supabase.from('salary_audit_log').insert({ entity: 'scheme', entity_id: code, action: 'save', actor, old_value: prevEffectiveFrom ? { effectiveFrom: prevEffectiveFrom } : null, new_value: { name, effectiveFrom, blocks } });
 }
 

@@ -37,6 +37,9 @@ const OWN_INNS = new Set(
 // Консалтинг/ПО billed через ИП Теренков.
 const CONSULTING_INN = normInn(process.env.PAYMENT_CONSULTING_INN || '632101044652');
 
+// ООО «ЗМК» — юрлицо проекта ЗМКТЛ (заказы RetailCRM).
+const ZMK_INN = normInn(process.env.PAYMENT_ZMK_INN || '6324017492');
+
 // Маркетплейс-выплаты (Ozon и пр.) — это выручка столярки.
 const MARKETPLACE_RE =
   /интернет решени|уч\.?\s*упл\.?\s*комис|по реестру|озон|ozon|wildberries|вайлдберриз|маркетплейс|яндекс\s*маркет/i;
@@ -50,9 +53,19 @@ const DEFAULT_KEYWORDS: Record<ForeignProject, string[]> = {
   consulting: [
     'цех-успех', 'цех успех', 'цехуспех', 'внедрен', 'абонент', 'подписк', 'лиценз',
     'доработк', 'консалт', 'консультац', 'программ', 'доступ к по', 'доступа к по',
-    'по за', 'срм', 'crm', 'автоматизац', 'сопровожден', 'услуг',
+    'срм', 'crm', 'автоматизац', 'сопровожден', 'услуг',
   ],
 };
+
+// Ключ ищем как начало СЛОВА, а не подстроку в середине: иначе «доплата ПО ЗАказу»
+// ловилась ключом «по за» и уезжала в чат консалтинга (инцидент 2026-08-04, платёж 6650).
+function matchesKeyword(purpose: string, key: string): boolean {
+  const re = new RegExp(`(^|[^0-9a-zа-яё])${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  return re.test(purpose);
+}
+
+// Явная ссылка на заказ RetailCRM в назначении — это ЗМКТЛ, каким бы ни было остальное.
+const ORDER_REF_RE = /заказ[а-я]*\s*№/i;
 
 function keywordsFor(key: ForeignProject): string[] {
   const raw = process.env[`TELEGRAM_PROJECT_${key.toUpperCase()}_KEYWORDS`];
@@ -81,11 +94,15 @@ export interface ProjectSignals {
  */
 export function detectForeignProject(s: ProjectSignals): ForeignProject | null {
   const p = (s.purpose || '').toLowerCase();
+  const inn = normInn(s.recipientInn);
   if (MARKETPLACE_RE.test(p)) return 'stolyarka';
-  if (normInn(s.recipientInn) === CONSULTING_INN || keywordsFor('consulting').some((k) => p.includes(k))) {
+  // Получатель — ООО «ЗМК» либо в назначении есть «заказ №»: это ЗМКТЛ, в чужой проект
+  // по ключевым словам не уводим.
+  if (inn === ZMK_INN || ORDER_REF_RE.test(p)) return null;
+  if (inn === CONSULTING_INN || keywordsFor('consulting').some((k) => matchesKeyword(p, k))) {
     return 'consulting';
   }
-  if (keywordsFor('stolyarka').some((k) => p.includes(k))) return 'stolyarka';
+  if (keywordsFor('stolyarka').some((k) => matchesKeyword(p, k))) return 'stolyarka';
   return null;
 }
 
