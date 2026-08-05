@@ -24,7 +24,8 @@ export async function GET(req: Request) {
         return new NextResponse(new Blob([book.buffer]), {
             headers: {
                 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Disposition': `attachment; filename="${book.filename}"`,
+                // Имя файла кириллицей — только через filename* (RFC 5987), иначе битые символы.
+                'Content-Disposition': `attachment; filename="payroll_${period}.xlsx"; filename*=UTF-8''${encodeURIComponent(book.filename)}`,
             },
         });
     } catch (e: any) {

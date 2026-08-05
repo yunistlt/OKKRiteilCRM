@@ -51,11 +51,14 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Период не закрыт — сначала закройте период' }, { status: 400 });
         }
 
+        // Тегаем получателей по нику — в группе иначе никто не заметит файл.
+        const tags = recipients.map((r) => r.username).filter(Boolean).map((u) => `@${u}`).join(' ');
         const caption = [
             `<b>Расчётная ведомость ЗП ОП — ${book.periodLabel}</b>`,
             `Период закрыт. Менеджеров: ${book.managers}. ФОТ отдела: <b>${rub(book.fot)}</b>.`,
+            tags ? `На согласование: ${tags}` : '',
             `Отправил: ${actor || 'система'}`,
-        ].join('\n');
+        ].filter(Boolean).join('\n');
 
         const sent: string[] = [];
         const failed: { name: string; error: string }[] = [];

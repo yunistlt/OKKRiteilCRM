@@ -14,12 +14,15 @@ async function main() {
     console.log('Период:', book.periodLabel, '| статус:', book.status, '| менеджеров:', book.managers, '| ФОТ:', Math.round(book.fot).toLocaleString('ru-RU'));
     if (book.status !== 'closed') throw new Error('Период не закрыт');
 
+    const recipients = await getAccountingRecipients();
+    const tags = recipients.map((r) => r.username).filter(Boolean).map((u) => `@${u}`).join(' ');
     const caption = [
         `<b>Расчётная ведомость ЗП ОП — ${book.periodLabel}</b>`,
         `Период закрыт. Менеджеров: ${book.managers}. ФОТ отдела: <b>${Math.round(book.fot).toLocaleString('ru-RU')} ₽</b>.`,
-    ].join('\n');
+        tags ? `На согласование: ${tags}` : '',
+    ].filter(Boolean).join('\n');
 
-    for (const r of await getAccountingRecipients()) {
+    for (const r of recipients) {
         await sendTelegramDocument({
             chatId: r.chat_id,
             filename: book.filename,
