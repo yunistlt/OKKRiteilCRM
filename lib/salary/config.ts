@@ -229,6 +229,33 @@ export async function getPrepayPolicy(asOf: string | Date = new Date()): Promise
     return parsed.success ? parsed.data : null;
 }
 
+// ── Получатели расчётной ведомости в Telegram ────────────────────────────────
+// Тоже необязательный ключ конфига (не влияет на расчёт). Ник — только для подписи
+// и понимания «кому»; отправка возможна ТОЛЬКО по chat_id (Bot API не умеет слать
+// в личку по @username — id появляется после того, как человек нажал Start у бота).
+export const ACCOUNTING_RECIPIENT_SCHEMA = z.object({
+    name: z.string().min(1), // ФИО для подписи в аудите/UI
+    chat_id: z.string().min(1),
+    username: z.string().optional(), // @ник — для тега, необязателен
+    thread_id: z.string().optional(), // топик форума, если чат-группа
+});
+export type AccountingRecipient = z.infer<typeof ACCOUNTING_RECIPIENT_SCHEMA>;
+
+/** Получатели ведомости на дату. [] — не настроены. */
+export async function getAccountingRecipients(asOf: string | Date = new Date()): Promise<AccountingRecipient[]> {
+    const asOfStr = typeof asOf === 'string' ? asOf : asOf.toISOString().slice(0, 10);
+    const { data, error } = await supabase
+        .from('salary_config')
+        .select('value,effective_from')
+        .eq('key', 'accounting_recipients')
+        .lte('effective_from', asOfStr)
+        .order('effective_from', { ascending: false })
+        .limit(1);
+    if (error) throw error;
+    const parsed = z.array(ACCOUNTING_RECIPIENT_SCHEMA).safeParse(data?.[0]?.value);
+    return parsed.success ? parsed.data : [];
+}
+
 /** История версий ключа (для UI «кто/когда/что менял»). */
 export async function listConfigHistory(key?: string) {
     let query = supabase

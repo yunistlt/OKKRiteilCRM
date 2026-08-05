@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X, FlaskConical } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, Send, X, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
@@ -50,6 +50,7 @@ export default function SalaryDashboard() {
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
     const [reopening, setReopening] = useState(false);
+    const [sending, setSending] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
     const [reportEngineer, setReportEngineer] = useState<EngineerRow | null>(null);
     const [simManager, setSimManager] = useState<{ id: number; name: string } | null>(null);
@@ -148,6 +149,30 @@ export default function SalaryDashboard() {
         }
     };
 
+    const sendToAccounting = async () => {
+        if (!confirm(`Отправить расчётную ведомость за ${MONTHS[month - 1]} ${year} в бухгалтерию (Telegram)?`)) return;
+        setSending(true);
+        try {
+            const res = await fetch('/api/salary/send-to-accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, month }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Ошибка отправки');
+            const failed = (json.failed ?? []) as { name: string; error: string }[];
+            toast({
+                title: 'Ведомость отправлена',
+                description: `Кому: ${(json.sent ?? []).join(', ')}${failed.length ? `. Не доставлено: ${failed.map((f) => f.name).join(', ')}` : ''}`,
+                variant: failed.length ? 'destructive' : undefined,
+            });
+        } catch (e: any) {
+            toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
+        } finally {
+            setSending(false);
+        }
+    };
+
     const rows = data?.rows ?? [];
 
     return (
@@ -180,6 +205,12 @@ export default function SalaryDashboard() {
                         <Button variant="destructive" size="sm" onClick={closePeriod} disabled={closing}>
                             {closing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
                             Закрыть период
+                        </Button>
+                    )}
+                    {closed && (
+                        <Button variant="outline" size="sm" onClick={sendToAccounting} disabled={sending}>
+                            {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                            В бухгалтерию
                         </Button>
                     )}
                     {closed && isAdmin && (
