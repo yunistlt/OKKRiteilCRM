@@ -247,7 +247,8 @@ total = base
 | `GET /api/salary?period=YYYY-MM` | расчёт периода (+ статус): открытый — на лету, закрытый — снимок. manager — только своя строка |
 | `POST /api/salary/recalc {year,month}` | пересчёт из боевых данных + запись `salary_calc` (удаляет строки выбывших из реестра) |
 | `POST /api/salary/close` | закрыть период |
-| `GET /api/salary/export?period=` | Excel |
+| `GET /api/salary/export?period=` | Excel (книга собирается в `lib/salary/export.ts`) |
+| `POST /api/salary/send-to-accounting {year,month}` | отправить xlsx-ведомость **закрытого** периода в Telegram бухгалтерии |
 | `GET/POST/DELETE /api/salary/duty` | дежурства |
 | `GET/PUT /api/salary/config` | базовый конфиг |
 | `GET /api/salary/blocks` | каталог блоков + доступность данных (для конструктора) |
@@ -259,7 +260,16 @@ total = base
 ## 9. UI (`app/salary/*`)
 - **`/salary`** — дашборд: таблица по менеджерам; клик по строке → **модалка отчёта** (формула, детализация,
   список засчитанных заказов с кликабельными номерами → карточка заказа в ОКК). Кнопки: Дежурства, Настройки
-  мотивации, Excel, Пересчитать, Закрыть период.
+  мотивации, Excel, Пересчитать, Закрыть период, **В бухгалтерию** (только на закрытом периоде).
+
+### 9a. Отправка ведомости в бухгалтерию (Telegram)
+- Файл — та же книга, что и по кнопке Excel (`lib/salary/export.ts`), плюс подпись: период, число менеджеров, ФОТ, кто отправил.
+- Только **закрытый** период: открытый — черновик, цифры ещё поедут.
+- Получатели — `salary_config.accounting_recipients` (массив `{name, chat_id, username?, thread_id?}`), берутся на **сегодня**, а не на дату периода.
+- Bot API не умеет писать в личку по `@username` — нужен числовой `chat_id`, он появляется после `/start` у бота.
+  Настройка: `npx tsx scripts/salary-accounting-recipient.ts list` → `... set "ФИО" <chat_id> <ник>`.
+- Бот: `TELEGRAM_SALARY_BOT_TOKEN` → `TELEGRAM_PAYMENTS_BOT_TOKEN` → `TELEGRAM_BOT_TOKEN` (первый заданный).
+- Каждая отправка пишется в `salary_audit_log` (`action: 'send_to_accounting'`, кому ушло / кому нет).
 - **`/salary/my`** — менеджеру: своя ЗП + засчитанные заказы (кликабельны).
 - **`/salary/settings`** — «Настройки мотивации», вкладки: **Схемы** (drag-drop конструктор: палитра блоков →
   карточка схемы, редактор параметров полями) · **Реестр ОП** (назначение схем) · **Планы** ·
