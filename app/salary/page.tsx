@@ -110,7 +110,7 @@ export default function SalaryDashboard() {
     };
 
     const closePeriod = async () => {
-        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}?\n\nПосле закрытия расчёт замораживается: пересчёт по нему недоступен. Изменить закрытый период можно только переоткрыв его (доступно администратору).`)) return;
+        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}?\n\nСразу после закрытия расчётная ведомость автоматически уйдёт в чат бухгалтерии.\n\nПосле закрытия расчёт замораживается: пересчёт по нему недоступен. Изменить закрытый период можно только переоткрыв его (доступно администратору).`)) return;
         setClosing(true);
         try {
             const res = await fetch('/api/salary/close', {
@@ -120,7 +120,17 @@ export default function SalaryDashboard() {
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Ошибка закрытия');
-            toast({ title: 'Период закрыт', description: `${MONTHS[month - 1]} ${year}` });
+            // Ведомость уходит в бухгалтерию автоматически при закрытии; если не ушла —
+            // говорим об этом прямо, чтобы не пришлось догадываться (есть ручная кнопка).
+            const d = json.delivery;
+            const delivered = d?.ok
+                ? `Ведомость отправлена: ${(d.sent ?? []).join(', ')}`
+                : `Ведомость НЕ отправлена: ${d?.skipped || (d?.failed ?? []).map((f: any) => `${f.name} — ${f.error}`).join('; ') || 'причина неизвестна'}. Отправьте кнопкой «В бухгалтерию».`;
+            toast({
+                title: 'Период закрыт',
+                description: `${MONTHS[month - 1]} ${year}. ${delivered}`,
+                variant: d?.ok ? undefined : 'destructive',
+            });
             fetchData();
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
@@ -150,7 +160,7 @@ export default function SalaryDashboard() {
     };
 
     const sendToAccounting = async () => {
-        if (!confirm(`Отправить расчётную ведомость за ${MONTHS[month - 1]} ${year} в бухгалтерию (Telegram)?`)) return;
+        if (!confirm(`Отправить расчётную ведомость за ${MONTHS[month - 1]} ${year} в бухгалтерию (Telegram)?\n\nПри закрытии периода она уже уходила автоматически — это повторная отправка.`)) return;
         setSending(true);
         try {
             const res = await fetch('/api/salary/send-to-accounting', {

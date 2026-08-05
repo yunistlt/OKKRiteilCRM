@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { recalcAndPersist } from '@/lib/salary/engine';
+import { sendPayrollToAccounting } from '@/lib/salary/notify-accounting';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -45,7 +46,16 @@ export async function POST(req: Request) {
             new_value: { status: 'closed', closed_at: closedAt },
         });
 
-        return NextResponse.json({ ok: true, status: 'closed', closed_at: closedAt });
+        // 3. Автоотправка ведомости в бухгалтерию. Не бросает: провал Telegram не должен
+        // отменять уже состоявшееся закрытие — UI покажет результат, есть ручной дубль-кнопка.
+        const delivery = await sendPayrollToAccounting({
+            year: Number(year),
+            month: Number(month),
+            actor,
+            trigger: 'close',
+        });
+
+        return NextResponse.json({ ok: true, status: 'closed', closed_at: closedAt, delivery });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 400 });
     }
