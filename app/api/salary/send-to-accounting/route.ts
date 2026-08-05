@@ -33,8 +33,9 @@ export async function POST(req: Request) {
         if (!year || !month) return NextResponse.json({ error: 'Нужны year и month' }, { status: 400 });
         const actor = session?.user?.email ?? null;
 
-        const asOf = `${year}-${String(Number(month)).padStart(2, '0')}-01`;
-        const recipients = await getAccountingRecipients(asOf);
+        // Получатели — НЕ параметр расчёта: берём актуальный список на сегодня, а не
+        // на дату периода (иначе июльская ведомость не увидела бы список, заведённый в августе).
+        const recipients = await getAccountingRecipients();
         if (!recipients.length) {
             return NextResponse.json(
                 { error: 'Получатели ведомости не настроены (salary_config.accounting_recipients). Бухгалтер должен один раз написать боту, чтобы у него появился chat_id.' },
