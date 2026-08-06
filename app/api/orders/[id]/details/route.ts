@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,12 +51,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             calls = callsData || [];
         }
 
-        // 3. Fetch Communications (Emails, Messages from raw_order_events)
+        // 3. Коммуникации (письма, сообщения, комментарии) — из истории заказа
+        //    (order_history_log; raw_order_events заморожена, см. lib/order-events.ts)
         const { data: events } = await supabase
-            .from('raw_order_events')
-            .select('event_type, raw_payload, occurred_at')
+            .from('order_history_log')
+            .select('field, old_value, new_value, occurred_at')
             .eq('retailcrm_order_id', order.order_id)
-            .or('event_type.ilike.%email%,event_type.ilike.%message%,event_type.ilike.%comment%')
+            .or(COMMUNICATION_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
             .order('occurred_at', { ascending: false })
             .limit(10);
 
@@ -63,52 +65,47 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         const emails = events?.map(e => ({
             id: e.occurred_at, // use timestamp as id
             date: e.occurred_at,
-            type: e.event_type,
-            text: e.raw_payload?.text || e.raw_payload?.message || e.raw_payload?.newValue || JSON.stringify(e.raw_payload),
-            source: e.raw_payload?.source || 'unknown'
+            type: e.field,
+            text: formatEventValue(e.new_value),
+            source: 'retailcrm'
         })) || [];
 
-        // 4. Fetch Order History (Using raw_order_events as order_history_log is deprecated)
+        // 4. История изменений заказа — канонический order_history_log
         const { data: rawHistory } = await supabase
-            .from('raw_order_events')
-            .select(`
-                event_type, raw_payload, occurred_at
-            `)
+            .from('order_history_log')
+            .select('field, old_value, new_value, occurred_at, user_data')
             .eq('retailcrm_order_id', order.order_id)
             .order('occurred_at', { ascending: false });
 
-        const formatVal = (v: any) => {
-            if (v === null || v === undefined) return '';
-            if (typeof v === 'object') {
-                return v.name || v.text || v.code || JSON.stringify(v);
+        // Автора изменения CRM отдаёт как {id}; имя подставляем из справочника
+        // менеджеров, иначе в интерфейсе будет голый код (закон: только
+        // человеческий язык).
+        const historyUserIds = Array.from(
+            new Set(((rawHistory as any[]) ?? [])
+                .map((h) => h.user_data?.id)
+                .filter((id: any) => id != null)
+                .map(Number)),
+        );
+        const userNames = new Map<number, { firstName: string; lastName: string }>();
+        if (historyUserIds.length) {
+            const { data: mgrs } = await supabase
+                .from('managers')
+                .select('id, first_name, last_name')
+                .in('id', historyUserIds);
+            for (const m of (mgrs as any[]) ?? []) {
+                userNames.set(Number(m.id), { firstName: m.first_name || '', lastName: m.last_name || '' });
             }
-            return String(v);
-        };
+        }
 
-        // Map raw_order_events back to the expected structure for the frontend
-        const history = rawHistory?.map(h => {
-            const payload = h.raw_payload || {};
-            // If it's a simple change event with oldValue/newValue
-            if (payload.oldValue !== undefined || payload.newValue !== undefined) {
-                return {
-                    field: h.event_type,
-                    old_value: formatVal(payload.oldValue),
-                    new_value: formatVal(payload.newValue),
-                    user_data: { firstName: 'RetailCRM', lastName: 'Sync' }, // Mocking user since it's not in raw_events usually, or extract if available
-                    occurred_at: h.occurred_at
-                };
-            }
-            // For other events like comments, order creation
-            return {
-                field: h.event_type,
-                old_value: null,
-                new_value: typeof payload.text === 'string' ? payload.text :
-                    typeof payload.message === 'string' ? payload.message :
-                        Object.keys(payload).length > 0 ? 'Событие: ' + Object.keys(payload).join(', ') : 'Событие зафиксировано',
-                user_data: { firstName: 'Система', lastName: '' },
-                occurred_at: h.occurred_at
-            };
-        }) || [];
+        const history = ((rawHistory as any[]) ?? []).map((h) => ({
+            field: h.field,
+            old_value: formatEventValue(h.old_value),
+            new_value: formatEventValue(h.new_value),
+            user_data: h.user_data?.id != null
+                ? userNames.get(Number(h.user_data.id)) ?? { firstName: 'RetailCRM', lastName: '' }
+                : { firstName: 'Система', lastName: '' },
+            occurred_at: h.occurred_at,
+        }));
 
         // 5. Fetch AI Priority Analysis
         const { data: priority } = await supabase

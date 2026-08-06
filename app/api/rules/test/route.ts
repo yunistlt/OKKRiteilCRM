@@ -264,36 +264,40 @@ export async function POST(request: Request) {
             // NEW: If it's an ORDER rule with a checklist, it needs an event to trigger if using Logic Blocks
             if (rule.entity_type === 'order' || rule.entity_type === 'event') {
                 console.log('[RuleTest] Inserting auxiliary transcription event...');
-                await supabase.from('raw_order_events').upsert({
+                // Пишем в order_history_log — движок правил читает историю оттуда
+                // (см. lib/order-events.ts). Синтетическим записям даём
+                // ОТРИЦАТЕЛЬНЫЙ retailcrm_history_id: реальные id из CRM
+                // положительные, пересечься не может.
+                await supabase.from('order_history_log').upsert({
+                    retailcrm_history_id: -(testOrderId * 10 + 1),
                     retailcrm_order_id: testOrderId,
-                    event_type: 'new_call_transcribed',
+                    field: 'new_call_transcribed',
                     occurred_at: eventTime.toISOString(),
-                    manager_id: managerId,
-                    raw_payload: { call_id: syntheticCallId, transcript: mockTranscript },
-                    source: 'synthetic_test'
-                });
+                    user_data: { id: managerId },
+                    old_value: 'null',
+                    new_value: JSON.stringify({ call_id: syntheticCallId, transcript: mockTranscript }),
+                }, { onConflict: 'retailcrm_history_id' });
             }
         } else {
             const humanName = codeToName.get(newValue) || newValue;
             console.log(`[RuleTest] Upserting Event... Field: ${fieldName}, Value: ${newValue} (${humanName})`);
             steps.push(`📑 Эмулировано событие "${eventType}" для заказа`);
-            const { error: eventErr } = await supabase.from('raw_order_events').upsert({
+            // Поле истории: смена статуса в order_history_log называется 'status'
+            // (движок опознаёт её через toLegacyEventRow), остальные — как есть.
+            const historyField = eventType === 'status_changed' ? 'status' : eventType;
+            const { error: eventErr } = await supabase.from('order_history_log').upsert({
+                retailcrm_history_id: -(testOrderId * 10 + 2),
                 retailcrm_order_id: testOrderId,
-                event_type: eventType,
+                field: historyField,
                 occurred_at: eventTime.toISOString(),
-                // Ensure manager_id is present
-                manager_id: managerId,
-                raw_payload: {
-                    field: fieldName,
-                    newValue: fieldName === 'status' ? { code: newValue, name: humanName } : newValue,
-                    oldValue: fieldName === 'status' ? { code: 'work', name: 'Work' } : 'prev_value',
-                    status: { code: newValue, name: humanName },
-                    newValue_code: newValue,
-                    newValue_name: humanName,
-                    _sync_metadata: { order_statusUpdatedAt: eventTime.toISOString() }
-                },
-                source: 'synthetic_test'
-            });
+                user_data: { id: managerId },
+                old_value: fieldName === 'status'
+                    ? JSON.stringify({ code: 'work', name: 'Work' })
+                    : 'prev_value',
+                new_value: fieldName === 'status'
+                    ? JSON.stringify({ code: newValue, name: humanName })
+                    : String(newValue),
+            }, { onConflict: 'retailcrm_history_id' });
             if (eventErr) throw new Error(`Event upsert failed: ${eventErr.message}`);
         }
 
@@ -351,7 +355,7 @@ export async function POST(request: Request) {
         // 6. Cleanup
         console.log(`[RuleTest] Cleaning up synthetic data...`);
         await supabase.from('okk_violations').delete().eq('order_id', testOrderId);
-        await supabase.from('raw_order_events').delete().eq('retailcrm_order_id', testOrderId);
+        await supabase.from('order_history_log').delete().eq('retailcrm_order_id', testOrderId);
         await supabase.from('order_metrics').delete().eq('retailcrm_order_id', testOrderId);
         await supabase.from('call_order_matches').delete().eq('retailcrm_order_id', testOrderId);
         if (syntheticCallId) {

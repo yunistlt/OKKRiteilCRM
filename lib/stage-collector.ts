@@ -1,5 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Сбор улик и истории изменений заказа из RetailCRM.
 import { supabase } from '@/utils/supabase';
+import { fetchOrderEvents, formatEventValue, parseEventValue } from '@/lib/order-events';
 
 export interface Interaction {
     type: 'call' | 'comment' | 'field_change';
@@ -52,53 +53,46 @@ export async function collectStageEvidence(orderId: number, status: string, entr
         .map((m: any) => m.raw_telphin_calls as any)
         .filter((c: any) => c && c.started_at >= entryTime && c.started_at <= end);
 
-    // 2. Fetch History (from raw_order_events for richer context)
-    const { data: rawEvents } = await supabase
-        .from('raw_order_events')
-        .select('*')
-        .eq('retailcrm_order_id', orderId)
-        .order('occurred_at', { ascending: true });
+    // 2. История изменений заказа — канонический источник order_history_log
+    //    (см. lib/order-events.ts: raw_order_events заморожена с апреля 2026).
+    const events = await fetchOrderEvents(orderId);
 
     const interactions: Interaction[] = [];
     let contact_date_shifts = 0;
     let was_shipped_hint = false;
 
-    if (rawEvents) {
-        rawEvents.forEach((e: any) => {
-            const time = e.occurred_at;
-            const type = e.event_type;
-            const payload = e.raw_payload || {};
+    for (const e of events) {
+        const time = e.occurredAt;
+        const type = e.field;
 
-            // Count date shifts (if possible from payload)
-            if (type === 'custom_data_kontakta' || (type.includes('change') && payload.field === 'custom_data_kontakta')) {
-                contact_date_shifts++;
-            }
+        if (type === 'custom_data_kontakta') {
+            contact_date_shifts++;
+        }
 
-            // Evidence collection (within requested status timeframe)
-            if (time >= entryTime && time <= end) {
-                if (type.includes('comment') || type.includes('message') || type.includes('email')) {
-                    const text = payload.text || payload.newValue || payload.value;
-                    if (text) {
-                        const val = text.toLowerCase();
-                        if (val.includes('отгружен') || val.includes('упд') || val.includes('отгруз')) {
-                            was_shipped_hint = true;
-                        }
-                        interactions.push({
-                            type: 'comment',
-                            timestamp: time,
-                            content: text
-                        });
+        // Evidence collection (within requested status timeframe)
+        if (time >= entryTime && time <= end) {
+            if (type.includes('comment') || type.includes('message') || type.includes('email')) {
+                const text = formatEventValue(e.newValue);
+                if (text) {
+                    const val = text.toLowerCase();
+                    if (val.includes('отгружен') || val.includes('упд') || val.includes('отгруз')) {
+                        was_shipped_hint = true;
                     }
-                } else if (type.includes('status')) {
                     interactions.push({
-                        type: 'field_change',
+                        type: 'comment',
                         timestamp: time,
-                        content: `Статус изменен: ${payload.oldValue} -> ${payload.newValue}`,
-                        metadata: payload
+                        content: text
                     });
                 }
+            } else if (type.includes('status')) {
+                interactions.push({
+                    type: 'field_change',
+                    timestamp: time,
+                    content: `Статус изменен: ${formatEventValue(e.oldValue)} -> ${formatEventValue(e.newValue)}`,
+                    metadata: { oldValue: parseEventValue(e.oldValue), newValue: parseEventValue(e.newValue) }
+                });
             }
-        });
+        }
     }
 
     // Add calls

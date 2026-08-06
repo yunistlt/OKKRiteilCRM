@@ -10,6 +10,7 @@
 
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Тройная проверка качества, оценка звонков и сценариев.
 import { supabase } from '@/utils/supabase';
+import { countOrderEventsByField, COMMENT_FIELD_PATTERNS, EMAIL_FIELD_PATTERNS } from '@/lib/order-events';
 import OpenAI from 'openai';
 import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
@@ -133,8 +134,8 @@ const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
     field_expected_amount: ['orders.raw_payload.customFields.expected_amount', 'orders.raw_payload.totalSumm'],
     field_purchase_form: ['orders.raw_payload.customFields.typ_customer_margin', 'orders.raw_payload.customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete'],
     field_sphere_correct: ['orders.raw_payload.customFields.sfera_deiatelnosti'],
-    mandatory_comments: ['raw_order_events.event_type'],
-    email_sent_no_answer: ['raw_order_events.event_type', 'raw_telphin_calls.direction', 'raw_telphin_calls.transcript'],
+    mandatory_comments: ['order_history_log.field'],
+    email_sent_no_answer: ['order_history_log.field', 'raw_telphin_calls.direction', 'raw_telphin_calls.transcript'],
     lead_in_work_lt_1_day: ['orders.created_at', 'raw_telphin_calls.started_at', 'order_history_log.occurred_at'],
     next_contact_not_overdue: ['orders.raw_payload.customFields.next_contact_date', 'orders.raw_payload.customFields.data_kontakta'],
     lead_in_work_lt_1_day_after_tz: ['orders.updated_at', 'orders.raw_payload.customFields'],
@@ -696,12 +697,8 @@ export async function collectFacts(orderId: number) {
     const field_sphere_correct = !!(raw?.customFields?.sfera_deiatelnosti || raw?.customFields?.sphere_of_activity || raw?.customFields?.industry);
 
     // V: Обязательные комментарии — есть ли события с комментариями
-    const { count: commentCount } = await supabase
-        .from('raw_order_events')
-        .select('event_id', { count: 'exact', head: true })
-        .eq('retailcrm_order_id', orderId)
-        .ilike('event_type', '%comment%');
-    const mandatory_comments = (commentCount || 0) > 0;
+    const commentCount = await countOrderEventsByField(orderId, COMMENT_FIELD_PATTERNS);
+    const mandatory_comments = commentCount > 0;
 
     // W: Письма при неответе
     // Недозвоны - это все исходящие, которые НЕ попали в список connectedCalls
@@ -719,13 +716,9 @@ export async function collectFacts(orderId: number) {
         email_reason = "Семён: Дозвон состоялся (подтверждено ИИ), отправка письма не требовалась.";
     } else {
         // Звонков не было вообще, либо все попали на автоответчик/недозвон.
-        const { count: emailCount } = await supabase
-            .from('raw_order_events')
-            .select('event_id', { count: 'exact', head: true })
-            .eq('retailcrm_order_id', orderId)
-            .ilike('event_type', '%email%');
+        const emailCount = await countOrderEventsByField(orderId, EMAIL_FIELD_PATTERNS);
 
-        const hasEmails = (emailCount || 0) > 0;
+        const hasEmails = emailCount > 0;
         email_sent_no_answer = hasEmails;
 
         if (missedCalls.length > 0) {

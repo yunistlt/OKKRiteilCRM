@@ -47,23 +47,9 @@ export async function GET(request: Request) {
             const suffix = normalized.replace(/\D/g, '').slice(-7);
             log(`Suffix for search: ${suffix}`);
 
-            // A. Search in RAW_ORDER_EVENTS
-            // This is the primary method used in lib/call-matching.ts
-            log(`Searching raw_order_events for phone_normalized=${normalized}...`);
-            const { data: events, error: evError } = await supabase
-                .from('raw_order_events')
-                .select('retailcrm_order_id, phone_normalized')
-                .or(`phone_normalized.eq.${normalized},additional_phone_normalized.eq.${normalized}`)
-                .order('occurred_at', { ascending: false })
-                .limit(5);
-
-            if (evError) log(`Events Error: ${evError.message}`);
-            log(`Events found: ${events?.length || 0}`);
-            if (events && events.length > 0) {
-                log(`Example event matches: ${JSON.stringify(events[0])}`);
-            }
-
-            // B. Search in ORDERS (Fallback)
+            // Кандидатов ищем только в ORDERS: денормализованных телефонов в
+            // истории нет, а raw_order_events заморожена (см. lib/order-events.ts).
+            // Поиск по заказам
             log(`Searching orders for phone ILIKE %${suffix}...`);
             const { data: orders, error: ordError } = await supabase
                 .from('orders')
