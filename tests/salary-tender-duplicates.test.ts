@@ -44,6 +44,7 @@ function ref(params: {
     managerComment?: string;
     cancelReason?: string | null;
     wonProduction?: boolean;
+    wasReferenceStatus?: boolean;
 }): ReferencedOrder {
     return {
         number: params.number,
@@ -52,6 +53,7 @@ function ref(params: {
         managerComment: params.managerComment ?? null,
         itemKeys: orderItemKeys({ items: params.items }),
         wonProduction: params.wonProduction ?? false,
+        wasReferenceStatus: params.wasReferenceStatus ?? false,
     };
 }
 
@@ -296,5 +298,72 @@ describe('не наша продукция', () => {
     it('обычная отмена по цене не считается «не нашей продукцией»', () => {
         expect(isNotOurProduct({ status: 'soglasovanie-otmeny', cancelReason: 'ne-ustroila-tsena' }, NOT_OUR)).toBe(false);
         expect(isNotOurProduct({ status: 'tender', cancelReason: null }, NOT_OUR)).toBe(false);
+    });
+});
+
+// ============================================================================
+// Признак «тендер/дубль» из истории статусов (миграция 20260806).
+// Кейсы из разбора августа 2026: правило опиралось на ТЕКУЩИЙ статус, поэтому
+// движение эталона или дубля по воронке возвращало дубли в конверсию задним
+// числом. RULE_HIST — версия конфига с 2026-08-01 (use_status_history).
+// ============================================================================
+const RULE_HIST: TenderDuplicateRule = { ...RULE, use_status_history: true };
+const CTX_HIST: DuplicateContext = { ...CTX, rule: RULE_HIST };
+
+describe('признак из истории статусов', () => {
+    const goods = [item('ШС.ШСО.9.1980.1200.640', 2, 100_000)];
+    const duplicate = () => dup({ items: goods, managerComment: 'дубль 53481' });
+
+    it('эталон уведён в отмену («не выиграли тендер») — дубль остаётся исключённым', () => {
+        const root = ref({
+            number: '53481',
+            status: 'soglasovanie-otmeny',
+            items: goods,
+            wasReferenceStatus: true,
+        });
+        expect(evaluateDuplicate(duplicate(), root, CTX_HIST).excluded).toBe(true);
+        // Без включённого правила (закрытый период) поведение прежнее.
+        expect(evaluateDuplicate(duplicate(), root, CTX).excluded).toBe(false);
+    });
+
+    it('эталон уведён в «Счёт выставлен» (тендер выигран) — дубль остаётся исключённым', () => {
+        const root = ref({
+            number: '53481',
+            status: 'schet-vystavlen',
+            items: goods,
+            wasReferenceStatus: true,
+        });
+        expect(evaluateDuplicate(duplicate(), root, CTX_HIST).excluded).toBe(true);
+    });
+
+    it('заказ, никогда не бывший тендером, эталоном не становится', () => {
+        const root = ref({ number: '53481', status: 'soglasovanie-otmeny', items: goods });
+        expect(evaluateDuplicate(duplicate(), root, CTX_HIST).excluded).toBe(false);
+    });
+
+    it('дубль увели в «Согласование отмены» без причины отмены — всё ещё дубль', () => {
+        const order = {
+            ...dup({ status: 'soglasovanie-otmeny', items: goods, managerComment: 'дубль 53481' }),
+            wasDuplicateStatus: true,
+        };
+        expect(isTenderDuplicate(order, RULE_HIST)).toBe(true);
+        expect(isTenderDuplicate(order, RULE)).toBe(false);
+    });
+
+    it('53464: дубль ожил и ушёл в производство — снова полноценная заявка', () => {
+        const order = {
+            ...dup({ status: 'send-assembling', items: goods, managerComment: 'дубль 53481' }),
+            wasDuplicateStatus: true,
+            wonProduction: true,
+        };
+        expect(isTenderDuplicate(order, RULE_HIST)).toBe(false);
+    });
+
+    it('53681: дубль сам стал тендером — не дубль, а эталон', () => {
+        const order = {
+            ...dup({ status: 'ozhidanie-vykhoda-tendera', items: goods, managerComment: 'дубль 53481' }),
+            wasDuplicateStatus: true,
+        };
+        expect(isTenderDuplicate(order, RULE_HIST)).toBe(false);
     });
 });
