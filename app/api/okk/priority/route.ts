@@ -144,12 +144,17 @@ export async function GET(request: Request) {
             .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(*)')
             .in('retailcrm_order_id', orderIds);
 
-        // Fetch Events (Emails)
+        // Письма по заказу. Источник — история заказа (order_history_log;
+        // raw_order_events заморожена, см. lib/order-events.ts).
+        // ВНИМАНИЕ: RetailCRM не отдаёт в истории факт ОТПРАВКИ письма — поля
+        // 'mail_send' нет ни одной записи ни в старой, ни в новой таблице.
+        // Поэтому признак «письмо отправлено» сейчас не наполняется ничем и в
+        // интерфейсе помечен как не работающий (см. PriorityDashboard).
         const { data: events } = await supabase
-            .from('raw_order_events')
-            .select('retailcrm_order_id, event_type, occurred_at')
+            .from('order_history_log')
+            .select('retailcrm_order_id, field, occurred_at')
             .in('retailcrm_order_id', orderIds)
-            .eq('event_type', 'mail_send');
+            .eq('field', 'mail_send');
 
         // --- 7. PROCESS ORDERS ---
         const todayDate = new Date().toISOString().split('T')[0];

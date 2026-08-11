@@ -36,6 +36,12 @@ export interface TenderDuplicateRule {
     reference_statuses: string[];
     /** Причины отмены, равносильные статусу «Дубль на тендер» (дубль отменили). */
     duplicate_cancel_reasons: string[];
+    /**
+     * Признак «тендер»/«дубль» брать и из ИСТОРИИ статусов, а не только из
+     * текущего (см. wasDuplicateStatus / wasReferenceStatus). Включается версией
+     * конфига с 2026-08-01; закрытые периоды считаются по-старому.
+     */
+    use_status_history?: boolean;
 }
 
 /** «Не наша продукция» — заявка не на наш товар, из конверсии исключается целиком. */
@@ -69,6 +75,18 @@ export interface DuplicateOrderInput {
     cancelReason: string | null | undefined;
     /** Ключи позиций «артикул|количество» — см. orderItemKeys(). */
     itemKeys: Set<string>;
+    /**
+     * Заказ КОГДА-ЛИБО был в статусе «Дубль на тендер» (история order_history_log).
+     * Нужен, когда дубль увели из статуса дубля — например в «Согласование
+     * отмены», где причину отмены ещё не проставили.
+     */
+    wasDuplicateStatus?: boolean;
+    /**
+     * Заказ выиграл — уходил в производство (closing-статус). У дубля это признак
+     * того, что он ОЖИЛ и стал реальной продажей: тогда «был дублем» не
+     * применяется. За июнь–июль таких 4 из 37 (53464 на 382 768 ₽ и др.).
+     */
+    wonProduction?: boolean;
 }
 
 /** Заказ-эталон: то же самое плюс номер (нужен для текста причины и цепочки). */
@@ -81,6 +99,13 @@ export interface ReferencedOrder extends DuplicateOrderInput {
      * числителе (история перехода в closing-статус либо текущий статус).
      */
     wonProduction: boolean;
+    /**
+     * Эталон КОГДА-ЛИБО был в «тендерном» статусе. Тендер, ушедший в отмену
+     * («не выиграли») или вперёд по воронке («Счёт выставлен»), тендером быть не
+     * перестал — дубли по нему остаются дублями. Без этого признака вердикт
+     * зависел от того, куда эталон уехал к моменту расчёта.
+     */
+    wasReferenceStatus?: boolean;
 }
 
 // Должен совпадать с regexp_match(..., 'i') в миграции.
@@ -167,14 +192,25 @@ export function itemsIntersect(a: Set<string>, b: Set<string>): boolean {
     return false;
 }
 
-/** Заказ помечен как дубль на тендер: статусом либо причиной отмены. */
+/**
+ * Заказ помечен как дубль на тендер: статусом, причиной отмены либо — при
+ * use_status_history — тем, что КОГДА-ЛИБО был в статусе дубля.
+ *
+ * У ветки по истории есть исключение: «был дублем» ≠ «дубль навсегда». Заказ,
+ * который после статуса дубля ожил — ушёл в производство или сам стал тендером —
+ * остаётся полноценной заявкой. Иначе реальная продажа выпала бы и из
+ * знаменателя, и из числителя (премии). Зеркалит SQL в миграции 20260806.
+ */
 export function isTenderDuplicate(
-    order: Pick<DuplicateOrderInput, 'status' | 'cancelReason'>,
+    order: Pick<DuplicateOrderInput, 'status' | 'cancelReason' | 'wasDuplicateStatus' | 'wonProduction'>,
     rule: TenderDuplicateRule,
 ): boolean {
     if (order.status === rule.duplicate_status) return true;
     const reason = order.cancelReason ? String(order.cancelReason) : '';
-    return !!reason && (rule.duplicate_cancel_reasons ?? []).includes(reason);
+    if (!!reason && (rule.duplicate_cancel_reasons ?? []).includes(reason)) return true;
+    if (!rule.use_status_history || !order.wasDuplicateStatus) return false;
+    if (order.wonProduction) return false;
+    return !rule.reference_statuses.includes(order.status);
 }
 
 /** Заявка не на нашу продукцию: статусом либо причиной отмены. */
@@ -254,8 +290,11 @@ export function evaluateDuplicate(
     const refNominative = root.number === num ? `эталон №${num}` : `первоисточник №${root.number}${viaChain}`;
     const refGenitive = root.number === num ? `эталона №${num}` : `первоисточника №${root.number}${viaChain}`;
 
-    // Правомочен либо ещё живой тендер, либо уже выигранный (эталон в производстве).
-    if (!rule.reference_statuses.includes(root.status) && !root.wonProduction) {
+    // Правомочен либо ещё живой тендер, либо уже выигранный (эталон в производстве),
+    // либо тендер, который уже увели дальше — в отмену («не выиграли») или на счёт:
+    // тендером он от этого быть не перестал (ветка по истории, use_status_history).
+    const refWasTender = !!rule.use_status_history && !!root.wasReferenceStatus;
+    if (!rule.reference_statuses.includes(root.status) && !root.wonProduction && !refWasTender) {
         return {
             isDuplicate: true,
             excluded: false,

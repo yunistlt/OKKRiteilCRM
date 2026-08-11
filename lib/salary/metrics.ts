@@ -355,6 +355,10 @@ export async function collectPeriodMetrics(
         p_est_reasons: config.estimate_rule.cancel_reasons,
         p_est_patterns: config.estimate_rule.comment_patterns,
         p_est_min_conf: config.estimate_rule.min_confidence,
+        // Признак «тендер/дубль» — из истории статусов, а не только из текущего
+        // (см. миграцию 20260806). Включается версией конфига, поэтому закрытые
+        // периоды пересчитываются как были закрыты.
+        p_use_history: config.tender_duplicate_rule.use_status_history ?? false,
     });
     if (rowsErr) throw rowsErr;
     const rows = (rowsData as CountedOrderRow[]) ?? [];
@@ -405,6 +409,10 @@ export async function collectPeriodMetrics(
         p_est_reasons: config.estimate_rule.cancel_reasons,
         p_est_patterns: config.estimate_rule.comment_patterns,
         p_est_min_conf: config.estimate_rule.min_confidence,
+        // Признак «тендер/дубль» — из истории статусов, а не только из текущего
+        // (см. миграцию 20260806). Включается версией конфига, поэтому закрытые
+        // периоды пересчитываются как были закрыты.
+        p_use_history: config.tender_duplicate_rule.use_status_history ?? false,
     });
     if (incErr) throw incErr;
     const incomingByManager = new Map<number, number>();

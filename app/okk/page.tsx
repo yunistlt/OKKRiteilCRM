@@ -341,11 +341,11 @@ const DEFAULT_COL_GROUPS: Group[] = [
             },
             {
                 key: 'mandatory_comments', label: 'Обязательные комментарии МОПов в сделке', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Есть хоть одно событие-комментарий по заказу', data: 'raw_order_events (event_type ILIKE %comment%)' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Есть хоть одно событие-комментарий по заказу', data: 'order_history_log (field ILIKE %comment%)' }
             },
             {
                 key: 'email_sent_no_answer', label: 'В случае отсутствия ответа — направление писем клиенту', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Если есть звонки без ответа (duration=0) — проверяет наличие email события', data: 'raw_telphin_calls.duration_sec=0 → raw_order_events (email)' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Если есть звонки без ответа (duration=0) — проверяет наличие email события', data: 'raw_telphin_calls.duration_sec=0 → order_history_log (field ILIKE %email%)' }
             },
         ]
     },

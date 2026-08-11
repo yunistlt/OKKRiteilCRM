@@ -171,6 +171,62 @@ export async function buildIncomingByManager(
         .map((code) => refNameByCode.get(code) || code)
         .join(' / ');
 
+    // ── Признаки из ИСТОРИИ статусов (order_history_log) ─────────────────────
+    // Текущего статуса мало: эталон уезжает в отмену («не выиграли») или вперёд
+    // («Счёт выставлен»), дубль — в «Согласование отмены». Без истории вердикт
+    // менялся задним числом вслед за движением заказов. Зеркалит
+    // salary_order_was_in_statuses / salary_order_won_production в SQL.
+    const historyCodes = Array.from(
+        new Set([closing, rule.duplicate_status, ...rule.reference_statuses]),
+    );
+    const statusHistoryCache = new Map<number, Set<string>>();
+    const loadStatusHistory = async (orderIds: number[]): Promise<void> => {
+        const missing = orderIds.filter((id) => Number.isFinite(id) && !statusHistoryCache.has(id));
+        if (!missing.length) return;
+        for (const id of missing) statusHistoryCache.set(id, new Set());
+        const { data: hist } = await supabase
+            .from('order_history_log')
+            .select('retailcrm_order_id,new_value')
+            .eq('field', 'status')
+            .in('retailcrm_order_id', missing)
+            .range(0, 99999);
+        for (const h of (hist as any[]) ?? []) {
+            const raw = String(h.new_value ?? '');
+            const set = statusHistoryCache.get(Number(h.retailcrm_order_id));
+            if (!set) continue;
+            for (const code of historyCodes) {
+                if (raw.includes(`"code":"${code}"`)) set.add(code);
+            }
+        }
+    };
+    // Был ли заказ когда-либо в одном из статусов (или находится в нём сейчас).
+    const wasInStatuses = (orderId: number, status: string, codes: string[]): boolean => {
+        if (codes.includes(status)) return true;
+        const seen = statusHistoryCache.get(orderId);
+        return !!seen && codes.some((code) => seen.has(code));
+    };
+
+    const orderIds = ((data as any[]) ?? [])
+        .map((o) => Number(o.order_id))
+        .filter((id) => Number.isFinite(id));
+    if (rule.use_status_history && orderIds.length) await loadStatusHistory(orderIds);
+
+    // Заказ периода в объёме правила дублей — с признаками из истории.
+    const dupInputOf = (o: any) => {
+        const id = Number(o.order_id);
+        const st = String(o.status ?? '');
+        return {
+            status: st,
+            cancelReason: cancelReasonOf(o.raw_payload),
+            managerComment: o.raw_payload?.managerComment ?? null,
+            itemKeys: orderItemKeys(o.raw_payload),
+            wasDuplicateStatus: rule.use_status_history
+                ? wasInStatuses(id, st, [rule.duplicate_status])
+                : false,
+            wonProduction: wasInStatuses(id, st, [closing]),
+        };
+    };
+
     // Эталоны дублей (тендер + заявка). Цепочку «дубль дубля» разворачиваем
     // итеративно: если доставший эталон сам оказался дублем — добираем ЕГО эталон,
     // иначе до первоисточника не дойти (реальный кейс 53886 → 53873 → 53478).
@@ -178,58 +234,45 @@ export async function buildIncomingByManager(
     let pending = new Set<string>();
     for (const o of (data as any[]) ?? []) {
         const st = String(o.status ?? '');
-        const isDup = isTenderDuplicate({ status: st, cancelReason: cancelReasonOf(o.raw_payload) }, rule);
+        const isDup = isTenderDuplicate(dupInputOf(o), rule);
         if (!isDup && st !== reqRule.duplicate_status) continue;
         const num = extractReferencedNumber(o.raw_payload?.managerComment);
         if (num) pending.add(num);
     }
-    const refOrderIds: number[] = [];
     for (let depth = 0; depth <= MAX_DUPLICATE_CHAIN_DEPTH && pending.size; depth++) {
         const { data: refs } = await supabase
             .from('orders')
             .select('order_id,number,status,raw_payload')
             .in('number', Array.from(pending));
+        // История эталонов нужна ДО разбора цепочки: звено, которое увели из
+        // статуса дубля, иначе примут за первоисточник и обход оборвётся.
+        await loadStatusHistory(((refs as any[]) ?? []).map((r) => Number(r.order_id)));
         const next = new Set<string>();
         for (const r of (refs as any[]) ?? []) {
+            const refId = Number(r.order_id);
+            const refStatus = String(r.status ?? '');
             const ref: ReferencedOrder = {
                 number: String(r.number),
-                status: String(r.status ?? ''),
+                status: refStatus,
                 cancelReason: cancelReasonOf(r.raw_payload),
                 managerComment: r.raw_payload?.managerComment ?? null,
                 itemKeys: orderItemKeys(r.raw_payload),
-                // текущий статус = производство; историю добираем ниже одним запросом
-                wonProduction: String(r.status ?? '') === closing,
+                // Эталон мог уйти в производство и поехать дальше по воронке
+                // (отгружен, выполнен) — смотрим и текущий статус, и историю.
+                wonProduction: wasInStatuses(refId, refStatus, [closing]),
+                wasDuplicateStatus: rule.use_status_history
+                    ? wasInStatuses(refId, refStatus, [rule.duplicate_status])
+                    : false,
+                wasReferenceStatus: rule.use_status_history
+                    ? wasInStatuses(refId, refStatus, rule.reference_statuses)
+                    : false,
             };
             refByNumber.set(ref.number, ref);
-            if (r.order_id != null) refOrderIds.push(Number(r.order_id));
             if (!isTenderDuplicate(ref, rule)) continue;
             const nextNum = extractReferencedNumber(ref.managerComment);
             if (nextNum && !refByNumber.has(nextNum)) next.add(nextNum);
         }
         pending = next;
-    }
-
-    // Эталон мог уйти в производство и поехать дальше по воронке (отгружен, выполнен) —
-    // текущего статуса мало, смотрим историю перехода в closing-статус. Та же канва,
-    // что у членства в числителе (salary_counted_orders).
-    if (refOrderIds.length) {
-        const { data: hist } = await supabase
-            .from('order_history_log')
-            .select('retailcrm_order_id')
-            .eq('field', 'status')
-            .like('new_value', `%"code":"${closing}"%`)
-            .in('retailcrm_order_id', refOrderIds);
-        const wonIds = new Set<number>(((hist as any[]) ?? []).map((h) => Number(h.retailcrm_order_id)));
-        if (wonIds.size) {
-            const { data: wonRows } = await supabase
-                .from('orders')
-                .select('number')
-                .in('order_id', Array.from(wonIds));
-            for (const w of (wonRows as any[]) ?? []) {
-                const ref = refByNumber.get(String(w.number));
-                if (ref) ref.wonProduction = true;
-            }
-        }
     }
 
     // Вердикты ИИ по «сметам» — одним запросом на всех кандидатов (заказ в статусе
@@ -309,12 +352,7 @@ export async function buildIncomingByManager(
                       reqRule,
                   )
                 : evaluateDuplicate(
-                      {
-                          status: st,
-                          cancelReason,
-                          managerComment: o.raw_payload?.managerComment ?? null,
-                          itemKeys: orderItemKeys(o.raw_payload),
-                      },
+                      dupInputOf(o),
                       seed ? resolveDuplicateRoot(seed, refByNumber, rule) : null,
                       { rule, referenceStatusLabel },
                   );

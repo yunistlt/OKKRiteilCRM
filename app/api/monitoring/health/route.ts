@@ -39,13 +39,16 @@ export async function GET() {
         const now = new Date();
         const checks: HealthCheckItem[] = [];
 
-        // 1. Check History Sync Freshness
+        // 1. Свежесть истории заказов. Источник — order_history_log (воркер
+        //    retailcrm-history-delta); raw_order_events заморожена с апреля 2026,
+        //    и мониторинг по ней показывал вечный «CRITICAL» вместо реальной
+        //    картины. См. lib/order-events.ts.
         const { data: lastEvent, error } = await supabase
-            .from('raw_order_events')
+            .from('order_history_log')
             .select('occurred_at')
             .order('occurred_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (error) throw error;
 
@@ -64,17 +67,17 @@ export async function GET() {
             if (lagMinutes > 120) {
                 isHealthy = false;
                 message = `CRITICAL: History Sync stalled! Last event was ${lagMinutes} minutes ago (${lastEvent.occurred_at}).`;
-                pushCheck(checks, { name: 'raw_order_events', healthy: false, message, severity: 'critical' });
+                pushCheck(checks, { name: 'order_history_log', healthy: false, message, severity: 'critical' });
 
                 // TODO: Integrate Telegram/Email alert here
                 // await sendAdminAlert(message);
             } else {
-                pushCheck(checks, { name: 'raw_order_events', healthy: true, message: `Lag ${lagMinutes} min`, severity: 'ok' });
+                pushCheck(checks, { name: 'order_history_log', healthy: true, message: `Lag ${lagMinutes} min`, severity: 'ok' });
             }
         } else {
             isHealthy = false;
             message = 'CRITICAL: No events found in database.';
-            pushCheck(checks, { name: 'raw_order_events', healthy: false, message, severity: 'critical' });
+            pushCheck(checks, { name: 'order_history_log', healthy: false, message, severity: 'critical' });
         }
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();

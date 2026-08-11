@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
 import { runInsightAnalysis } from '@/lib/insight-agent';
@@ -63,23 +64,17 @@ async function getAuditContext(orderId: number) {
         // 2. Fetch Latest Communications (Emails/Messages) from History
         // We look for 'customer_comment' or fields that often contain inbound text
         const { data: comms } = await supabase
-            .from('raw_order_events')
-            .select('event_type, raw_payload')
+            .from('order_history_log')
+            .select('field, new_value')
             .eq('retailcrm_order_id', orderId)
-            .or('event_type.ilike.%comment%,event_type.ilike.%message%,event_type.ilike.%email%')
+            .or(COMMUNICATION_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
             .order('occurred_at', { ascending: false })
             .limit(3);
 
         if (comms && comms.length > 0) {
-            // Pick most informative inbound one
-            const inboundComm = comms.find((c: any) =>
-                String(c.raw_payload?.source).toLowerCase() === 'user' ||
-                String(c.event_type).includes('customer')
-            );
-            if (inboundComm) {
-                const payload = inboundComm.raw_payload;
-                latestEmailText = payload?.newValue || payload?.text || payload?.value || JSON.stringify(payload);
-            }
+            // Берём входящее: комментарий клиента информативнее правок менеджера.
+            const inboundComm = comms.find((c: any) => String(c.field).includes('customer')) ?? comms[0];
+            latestEmailText = formatEventValue(inboundComm.new_value) || null;
         }
 
     } catch (auditErr) {

@@ -1,5 +1,6 @@
 import { ConsultantOrder, OrderEvidence } from '@/lib/okk-consultant';
 import { supabase } from '@/utils/supabase';
+import { countOrderEventsByField, COMMENT_FIELD_PATTERNS, EMAIL_FIELD_PATTERNS } from '@/lib/order-events';
 
 const CONTEXT_CACHE_TTL_MS = 1000 * 60 * 2;
 
@@ -71,22 +72,14 @@ export async function loadConsultantEvidence(orderId: number, historyLimit: numb
     if (cached) return cached;
 
     const [
-        { count: commentCount },
-        { count: emailCount },
+        commentCount,
+        emailCount,
         { data: callRows },
         { data: historyRows },
         { data: orderRow },
     ] = await Promise.all([
-        supabase
-            .from('raw_order_events')
-            .select('event_id', { count: 'exact', head: true })
-            .eq('retailcrm_order_id', orderId)
-            .ilike('event_type', '%comment%'),
-        supabase
-            .from('raw_order_events')
-            .select('event_id', { count: 'exact', head: true })
-            .eq('retailcrm_order_id', orderId)
-            .ilike('event_type', '%email%'),
+        countOrderEventsByField(orderId, COMMENT_FIELD_PATTERNS),
+        countOrderEventsByField(orderId, EMAIL_FIELD_PATTERNS),
         supabase
             .from('call_order_matches')
             .select('raw_telphin_calls(direction, transcript, started_at, duration_sec, recording_url)')

@@ -20,7 +20,9 @@ function resolveServiceUrl(serviceName: string) {
     if (serviceName.includes('Score Refresh Queue')) return '/api/cron/system-jobs/score-refresh';
     if (serviceName.includes('Insight Refresh Queue')) return '/api/cron/system-jobs/order-insight-refresh';
     if (serviceName.includes('Transcription Queue')) return '/api/cron/system-jobs/transcription';
-    if (serviceName.includes('History Fallback')) return '/api/sync/history?force=true';
+    // Ручной запуск истории заказов — только штатный воркер: легаси-fallback
+    // /api/sync/history удалён (писал в замороженную raw_order_events).
+    if (serviceName.includes('История заказов')) return '/api/cron/system-jobs/retailcrm-history-delta';
     if (serviceName.includes('Rule Engine')) return '/api/rules/execute?force=true';
     if (serviceName.includes('Priorities Refresh')) return '/api/analysis/priorities/refresh?force=true';
     if (serviceName.includes('AI Insight Agent')) return '/api/analysis/insights/run?force=true';
