@@ -474,6 +474,18 @@ export async function GET(req: Request) {
                     //  переписке пересылать можно (вопрос по счёту/доставке/договору реально нужен отделу).
                     const crmTag = hasCrmOrderTag(e.subject);
                     const bareRe = !crmTag && isReplyThread(e.subject);
+                    // Конкретный НОВЫЙ запрос на просчёт в теле (позиция + количество/характеристики).
+                    // Сильнее двух вещей:
+                    //  1) ошибочной бухгалтерии — в бухгалтерию только вопросы по ДОКУМЕНТАМ;
+                    //  2) слабых признаков переписки (ответ в нашей ветке, голый «Re:») — клиент
+                    //     отвечает на старое письмо, начиная новый запрос.
+                    // Инцидент 11.08.2026: «RE: RE: Запрос КП 51672 … с НДС 5%» с запросом цены на
+                    // Топтыжку 4 (20 шт, Нефтеюганск) ушёл в бухгалтерию, заявка не создалась.
+                    const newInquiry = v.newInquiry === true;
+                    const aiRoute: string = (v.route === 'accounting' && newInquiry) ? 'new_request' : v.route;
+                    if (aiRoute !== v.route) {
+                        reasoning = `Запрос цены/сроков на конкретную позицию — это заявка, не бухгалтерия | ${v.reasoning}`;
+                    }
                     const noteFor = (route: string) => route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
                     // Голый «Re:»/«Fwd:» + письмо ЦИТИРУЕТ наше исходящее (заголовок-ответ на наш релей
                     // или наш домен в теле-цитате) — надёжный признак переписки по существующему заказу
@@ -484,7 +496,7 @@ export async function GET(req: Request) {
                     );
                     // Голый «Re:» + номер существующего заказа этого же клиента в теме — такой же
                     // надёжный признак переписки, как CRM-тег (см. findClientOrderNumberInSubject).
-                    subjectOrderNum = (bareRe && (v.route === 'new_request' || v.route === 'not_request'))
+                    subjectOrderNum = (bareRe && (aiRoute === 'new_request' || aiRoute === 'not_request'))
                         ? await findClientOrderNumberInSubject(e.subject, custEmail)
                         : null;
                     // Тег указывает на давно закрытый заказ — переписка по нему не идёт (см.
@@ -492,10 +504,10 @@ export async function GET(req: Request) {
                     // ветки сработали бы и тег, и repliesToOurThread (в теле цитата нашего письма).
                     // Тред-дедуп проверяем ПЕРВЫМ: если по этой же переписке заказ уже заведён,
                     // разбирать письмо как новую заявку незачем — какими бы ни были тег и «Re:».
-                    threadOrder = v.route === 'new_request'
+                    threadOrder = aiRoute === 'new_request'
                         ? await findOrderByEmailThread(e, threadDedupDays)
                         : null;
-                    const staleTag = !threadOrder && crmTag && v.route === 'new_request'
+                    const staleTag = !threadOrder && crmTag && aiRoute === 'new_request'
                         ? await findStaleTaggedOrder(e.subject, crmTagStaleDays)
                         : null;
                     if (threadOrder) {
@@ -505,40 +517,40 @@ export async function GET(req: Request) {
                         // Не перебиваем ИИ: это новое обращение по старой сделке — заводим заказ.
                         emailType = 'new_request';
                         reasoning = `Тег [#…] на давно закрытом заказе №${staleTag.number} (без движения ${staleTag.idleDays} дн.) — считаем новым обращением | ${v.reasoning}`;
-                    } else if (crmTag && (v.route === 'new_request' || v.route === 'procurement')) {
+                    } else if (crmTag && (aiRoute === 'new_request' || aiRoute === 'procurement')) {
                         // Тег заказа — жёсткая переписка независимо от уверенности ИИ.
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(v.route)} | ${v.reasoning}`;
-                    } else if (bareRe && v.route === 'procurement') {
+                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (bareRe && aiRoute === 'procurement') {
                         // Снабжение по «Re:» на наш заказ — это переписка по нашей сделке, не новое предложение.
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (Re: без тега) — не пересылаем в снабжение | ${v.reasoning}`;
-                    } else if (bareRe && subjectOrderNum && (v.route === 'new_request' || v.route === 'not_request')) {
+                    } else if (bareRe && subjectOrderNum && !newInquiry && (aiRoute === 'new_request' || aiRoute === 'not_request')) {
                         // «Re:» + номер заказа этого клиента в теме → переписка по нему независимо от
                         // уверенности ИИ (менеджер вписала номер руками, тега [#N/N] в ветке нет).
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
-                    } else if (repliesToOurThread && (v.route === 'new_request' || v.route === 'not_request')) {
+                        reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (repliesToOurThread && !newInquiry && (aiRoute === 'new_request' || aiRoute === 'not_request')) {
                         // «Re:»/«Fwd:» + письмо цитирует НАШЕ исходящее, но номера заказа в теме нет
                         // (иначе сработала бы ветка subjectOrderNum выше). Это ответ клиента в уже
                         // существующей переписке, а НЕ новая заявка — не плодим дубль, ДАЖЕ если ИИ
                         // уверен (холодный лид процитировать нас не может). К заказу не привязываем
                         // (явного номера нет). Инцидент 23.07.2026: 53987 («пока нет инфо»), 53986.
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по существующему заказу (ответ на наше письмо, без номера в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
-                    } else if (bareRe && v.route === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
+                        reasoning = `Переписка по существующему заказу (ответ на наше письмо, без номера в теме) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (bareRe && !newInquiry && aiRoute === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
                         // Голый «Re:» + НЕуверенная новая заявка → считаем перепиской по старой ветке.
                         // При уверенной новой заявке (≥ порога) НЕ перебиваем ИИ — заводим заказ (клиент
                         // просто ответил на прежнее письмо новым запросом).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (Re: без тега) — заказ не создаём | ${v.reasoning}`;
-                    } else if (v.route === 'not_request' && crmTag) {
+                    } else if (aiRoute === 'not_request' && crmTag) {
                         // ИИ счёл «не заявка», но в теме тег заказа [#N/N] — это переписка по заказу,
                         // а не «не заявка» (отказы «неактуально»/«нет финансирования» по заказу).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (тег [#…]) — ${v.reasoning}`;
                     } else {
-                        emailType = v.route;
+                        emailType = aiRoute;
                     }
                     // Источник-робот с лидами (webasyst): если ИИ счёл «не заявка», но в теле есть контакт
                     // клиента (заявка с сайта, форма «Заказать звонок») — это всё равно лид → заводим заказ.
