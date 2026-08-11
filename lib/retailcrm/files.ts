@@ -53,6 +53,24 @@ async function bindFileToOrder(fileId: number, filename: string, orderId: number
  * Прикрепляет вложения письма к заказу RetailCRM. Best-effort: ошибка на отдельном файле
  * не прерывает остальные и НЕ роняет создание заказа — возвращаем счётчики/ошибки для лога.
  */
+/**
+ * RetailCRM отвергает имена файлов со спецсимволами: files/{id}/edit отвечает
+ * «This value contains a character "~" that is not allowed». Такие имена приходят от Outlook
+ * (вложенные картинки подписи: `~WRD0004.jpg`), и файл не прикреплялся к заказу.
+ * Чистим имя до безопасного набора, расширение сохраняем.
+ */
+function safeFilename(raw: string | null | undefined, index: number): string {
+    const name = (raw || '').trim();
+    const cleaned = name
+        .replace(/[\\/:*?"<>|~^%#&{}$!'`+=@]/g, '_')
+        .replace(/\s+/g, ' ')
+        .replace(/_{2,}/g, '_')
+        .replace(/^[._ ]+/, '')
+        .slice(0, 120)
+        .trim();
+    return cleaned || `attachment_${index + 1}`;
+}
+
 export async function attachEmailFilesToOrder(
     orderId: number,
     files: EmailFile[]
@@ -69,7 +87,7 @@ export async function attachEmailFilesToOrder(
             errors.push(`${f.filename || `файл_${i + 1}`}: >20МБ — пропущен`);
             continue;
         }
-        const filename = (f.filename && f.filename.trim()) || `attachment_${i + 1}`;
+        const filename = safeFilename(f.filename, i);
         try {
             const id = await uploadFile(content, f.contentType || 'application/octet-stream');
             await bindFileToOrder(id, filename, orderId);
