@@ -4,6 +4,7 @@ import { computeCrmPosting } from '@/lib/payments/service';
 import { parseAmountToKopecks } from '@/lib/payments/types';
 import { normalizeTochkaPayment, isIncomingTochkaWebhook } from '@/lib/payments/tochka';
 import { normalizeStatementTransaction } from '@/lib/payments/tochka-statement';
+import { detectForeignProject } from '@/lib/payments/projects';
 
 describe('extractInvoiceNumbers', () => {
   it('вытаскивает номер счёта из реального назначения', () => {
@@ -207,5 +208,29 @@ describe('normalizeStatementTransaction (выписка)', () => {
       Amount: { amount: 100, currency: 'RUB' },
     };
     expect(normalizeStatementTransaction(txn, account)).toBeNull();
+  });
+});
+
+describe('detectForeignProject (маркетплейс по плательщику)', () => {
+  it('Ozon по названию плательщика — столярка, хотя назначение обезличено', () => {
+    expect(
+      detectForeignProject({
+        purpose: 'Оплата за тов. по дог. ИР-2367069/25 от 28.11.2025 согл.сч.№№:44966523 от 05.08.26.',
+        payerName: 'ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "ИНТЕРНЕТ РЕШЕНИЯ"',
+        payerInn: '7704217370',
+        recipientInn: '6321277326',
+      }),
+    ).toBe('stolyarka');
+  });
+
+  it('обычный клиент ЗМК с тем же назначением остаётся в разборе', () => {
+    expect(
+      detectForeignProject({
+        purpose: 'Оплата за тов. согл.сч.№ 44966523',
+        payerName: 'ООО "РОМАШКА"',
+        payerInn: '1234567890',
+        recipientInn: '6324017492',
+      }),
+    ).toBeNull();
   });
 });

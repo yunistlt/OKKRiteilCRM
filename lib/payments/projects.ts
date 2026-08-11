@@ -44,6 +44,14 @@ const ZMK_INN = normInn(process.env.PAYMENT_ZMK_INN || '6324017492');
 const MARKETPLACE_RE =
   /интернет решени|уч\.?\s*упл\.?\s*комис|по реестру|озон|ozon|wildberries|вайлдберриз|маркетплейс|яндекс\s*маркет/i;
 
+// ИНН маркетплейсов-плательщиков: 7704217370 — ООО «Интернет Решения» (Ozon).
+const MARKETPLACE_INNS = new Set(
+  (process.env.PAYMENT_MARKETPLACE_INNS || '7704217370')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+
 const DEFAULT_KEYWORDS: Record<ForeignProject, string[]> = {
   stolyarka: [
     'столярк', 'берёз', 'берез', 'дуб', 'ясен', 'бук', 'массив', 'фанер', 'дерев',
@@ -86,6 +94,9 @@ export function isInternalGroupTransfer(
 export interface ProjectSignals {
   purpose?: string | null;
   recipientInn?: string | null;
+  /** Плательщик: у маркетплейсов признак только в названии/ИНН, назначение обезличено. */
+  payerName?: string | null;
+  payerInn?: string | null;
 }
 
 /**
@@ -95,7 +106,12 @@ export interface ProjectSignals {
 export function detectForeignProject(s: ProjectSignals): ForeignProject | null {
   const p = (s.purpose || '').toLowerCase();
   const inn = normInn(s.recipientInn);
-  if (MARKETPLACE_RE.test(p)) return 'stolyarka';
+  // Маркетплейс ищем и в плательщике: Ozon платит «за тов. по дог. …» без опознавательных
+  // слов в назначении, вся зацепка — название/ИНН плательщика (инцидент 2026-08-10, платёж 7633).
+  const payer = (s.payerName || '').toLowerCase();
+  if (MARKETPLACE_RE.test(p) || MARKETPLACE_RE.test(payer) || MARKETPLACE_INNS.has(normInn(s.payerInn))) {
+    return 'stolyarka';
+  }
   // Получатель — ООО «ЗМК» либо в назначении есть «заказ №»: это ЗМКТЛ, в чужой проект
   // по ключевым словам не уводим.
   if (inn === ZMK_INN || ORDER_REF_RE.test(p)) return null;
