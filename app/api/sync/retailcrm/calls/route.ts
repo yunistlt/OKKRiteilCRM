@@ -35,16 +35,41 @@ export async function GET(request: Request) {
         }
 
         // После ингеста — авторитетная пересвязка звонок→заказ из RetailCRM в call_order_matches
-        // (наполняет RC-привязки, убирает конфликтующие эвристические догадки). Best-effort:
-        // сбой реконсиляции не должен валить успешный ингест.
+        // (наполняет RC-привязки, убирает конфликтующие эвристические догадки).
+        // ?since=ISO — окно разбора (по умолчанию функция берёт 7 дней). Большое
+        // окно нужно только для разового бэкфилла, штатный прогон идёт по хвосту:
+        // раньше окна не было, функция перебирала всю историю и падала по
+        // statement timeout — см. миграцию 20260811.
+        const sinceParam = searchParams.get('since');
         let reconcile: any = null;
         try {
-            const { data, error } = await supabase.rpc('reconcile_retailcrm_call_matches');
+            const { data, error } = await supabase.rpc('reconcile_retailcrm_call_matches',
+                sinceParam ? { p_since: sinceParam } : {});
             if (error) throw error;
             reconcile = Array.isArray(data) ? data[0] : data;
         } catch (e: any) {
+            // Молчаливый catch стоил двух месяцев: крон рапортовал успех, а привязок
+            // не появлялось. Ошибку кладём в sync_state — она видна в /settings/status.
             console.error('[RetailcrmCallsSync] reconcile failed:', e?.message);
             reconcile = { error: e?.message || 'reconcile failed' };
+            await supabase.from('sync_state').upsert(
+                {
+                    key: 'retailcrm_calls_reconcile_last_error',
+                    value: e?.message || 'reconcile failed',
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key' },
+            );
+        }
+        if (!reconcile?.error) {
+            await supabase.from('sync_state').upsert(
+                {
+                    key: 'retailcrm_calls_reconcile_last_success_at',
+                    value: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                },
+                { onConflict: 'key' },
+            );
         }
 
         return NextResponse.json({ ...result, reconcile });
