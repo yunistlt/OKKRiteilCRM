@@ -291,7 +291,12 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     match.status === 'matched' && (normalized.signatureVerified || match.confidence === 'high');
 
   // Проект: совпал заказ RetailCRM → ЗМКТЛ; иначе по назначению/получателю (столярка/консалтинг).
-  const signals = { purpose: normalized.purpose, recipientInn: normalized.recipientInn };
+  const signals = {
+    purpose: normalized.purpose,
+    recipientInn: normalized.recipientInn,
+    payerName: normalized.payerName,
+    payerInn: normalized.payerInn,
+  };
   const project = classifyProject(signals, match.status === 'matched');
 
   const update: Record<string, any> = {
