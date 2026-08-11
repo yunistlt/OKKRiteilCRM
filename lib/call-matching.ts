@@ -214,7 +214,24 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
 export async function saveMatches(matches: MatchResult[]): Promise<void> {
     if (matches.length === 0) return;
 
-    const records = matches.map(m => ({
+    // Приоритет источников: RetailCRM > ручная привязка > эвристика.
+    // Если у звонка уже есть привязка из CRM (telephony/calls отдаёт orderNumber)
+    // или проставленная человеком, догадка «по последним 7 цифрам» не должна её
+    // ни перебивать, ни добавлять к ней ещё заказов: сверка за май–август
+    // показала, что эвристика ошибается в 19% случаев и вешает один звонок
+    // сразу на несколько прошлых заказов клиента. См. lib/retailcrm/calls.ts.
+    const callIds = Array.from(new Set(matches.map((m) => m.telphin_call_id)));
+    const { data: authoritative } = await supabase
+        .from('call_order_matches')
+        .select('telphin_call_id')
+        .in('telphin_call_id', callIds)
+        .in('match_type', ['retailcrm', 'manual']);
+    const locked = new Set(((authoritative as any[]) ?? []).map((r) => r.telphin_call_id));
+
+    const fresh = matches.filter((m) => !locked.has(m.telphin_call_id));
+    if (fresh.length === 0) return;
+
+    const records = fresh.map(m => ({
         telphin_call_id: m.telphin_call_id,
         retailcrm_order_id: m.retailcrm_order_id,
         match_type: m.match_type,
