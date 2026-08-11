@@ -61,8 +61,10 @@ async function bindFileToOrder(fileId: number, filename: string, orderId: number
  */
 function safeFilename(raw: string | null | undefined, index: number): string {
     const name = (raw || '').trim();
+    // Белый список: RetailCRM ругается на любой «неразрешённый» символ (видели «~» и «№»),
+    // полного перечня в API нет — поэтому оставляем только буквы, цифры и безопасную пунктуацию.
     const cleaned = name
-        .replace(/[\\/:*?"<>|~^%#&{}$!'`+=@]/g, '_')
+        .replace(/[^A-Za-zА-Яа-яЁё0-9 ._()-]/g, '_')
         .replace(/\s+/g, ' ')
         .replace(/_{2,}/g, '_')
         .replace(/^[._ ]+/, '')
