@@ -132,6 +132,10 @@
         {
             "path": "/api/cron/email-poll",
             "schedule": "*/5 * * * *"
+        },
+        {
+            "path": "/api/cron/ai-balance-watch",
+            "schedule": "0 * * * *"
         }
     ]
 }
