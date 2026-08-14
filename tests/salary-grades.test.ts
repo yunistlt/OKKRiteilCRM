@@ -1,9 +1,10 @@
 /**
- * Тесты грейдов: чистая стрик-логика (повышение/откат/пол/потолок) и помесячная
- * оценка критериев (dept_rank внутри когорты + absolute-порог). Без БД.
+ * Тесты грейдов: чистая стрик-логика (повышение/откат/пол/потолок), помесячная
+ * оценка критериев (dept_rank внутри когорты + absolute-порог) и режим «приз
+ * месяца» (гейт + приоритет показателей + пол). Без БД.
  */
 import { describe, it, expect } from 'vitest';
-import { decideGrade, evaluateMonth, type GradePolicy } from '@/lib/salary/grades';
+import { assignMonthlyPrize, decideGrade, evaluateMonth, evaluatePrizeMonth, type GradePolicy } from '@/lib/salary/grades';
 import type { ManagerMetrics } from '@/lib/salary/metrics';
 
 const POLICY: GradePolicy = {
@@ -114,5 +115,124 @@ describe('evaluateMonth — оценка месяца', () => {
         const res = evaluateMonth(POLICY, managers, comp, plans);
         expect(res[0].criteria.find((c) => c.metric === 'conversion')!.passed).toBe(false);
         expect(res[0].qualified).toBe(false);
+    });
+});
+
+// ── Приз месяца ─────────────────────────────────────────────────────────────
+// Гейт (выполнение личного плана) отсекает участников; среди прошедших место
+// решает приоритет показателей: ОКК → конверсия → средний чек.
+const PRIZE_POLICY: GradePolicy = {
+    mode: 'monthly_prize',
+    floorLevel: 3,
+    topLevel: 1,
+    lookbackMonths: 6,
+    promoteAfterMonths: 3,
+    demoteAfterMonths: 2,
+    cohort: 'register',
+    criteria: [],
+    prize: {
+        gate: { metric: 'plan_attainment', comparator: 'gte', threshold: 100 },
+        tiebreak: ['okk_total_score', 'conversion', 'avg_check'],
+    },
+};
+
+describe('evaluatePrizeMonth — приз месяца', () => {
+    const comp = new Map([
+        [10, { schemeCode: 'seller' }],
+        [20, { schemeCode: 'seller' }],
+        [30, { schemeCode: 'seller' }],
+    ]);
+    const plans = new Map([[10, 100], [20, 100], [30, 100]]);
+    const byId = (res: { managerId: number }[], id: number) => res.find((r) => r.managerId === id)!;
+
+    it('гейт не прошёл никто → все на полу, приза нет', () => {
+        const managers = [
+            make(10, { revenue: 90, quality: 60 }),
+            make(20, { revenue: 80, quality: 55 }),
+            make(30, { revenue: 50, quality: 50 }),
+        ];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(res.every((r) => r.level === 3)).toBe(true);
+        expect(res.every((r) => r.place === null)).toBe(true);
+    });
+
+    it('прошли двое → приз и второе место, не прошедший на полу', () => {
+        const managers = [
+            make(10, { revenue: 130, quality: 50 }),
+            make(20, { revenue: 120, quality: 40 }),
+            make(30, { revenue: 90, quality: 99 }), // ОКК лучший, но план не сделан → вне игры
+        ];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(byId(res, 10)).toMatchObject({ place: 1, level: 1, gatePassed: true });
+        expect(byId(res, 20)).toMatchObject({ place: 2, level: 2, gatePassed: true });
+        expect(byId(res, 30)).toMatchObject({ place: null, level: 3, gatePassed: false });
+    });
+
+    it('приоритет показателей: первый решает, конверсия не спасает', () => {
+        const managers = [
+            make(10, { revenue: 110, quality: 40, conversionPct: 90 }),
+            make(20, { revenue: 110, quality: 50, conversionPct: 10 }),
+        ];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(byId(res, 20).place).toBe(1);
+        expect(byId(res, 10).place).toBe(2);
+    });
+
+    it('при равенстве первого показателя решает следующий', () => {
+        const managers = [
+            make(10, { revenue: 110, quality: 50, conversionPct: 20 }),
+            make(20, { revenue: 110, quality: 50, conversionPct: 30 }),
+        ];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(byId(res, 20).place).toBe(1);
+        expect(byId(res, 10).place).toBe(2);
+    });
+
+    it('уровень не уходит ниже пола: третье место уже на полу', () => {
+        const managers = [
+            make(10, { revenue: 130, quality: 60 }),
+            make(20, { revenue: 130, quality: 50 }),
+            make(30, { revenue: 130, quality: 40 }),
+        ];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(byId(res, 30)).toMatchObject({ place: 3, level: 3 });
+    });
+
+    it('менеджер реестра без метрик за месяц уходит на пол', () => {
+        const managers = [make(10, { revenue: 130, quality: 60 })];
+        const res = evaluatePrizeMonth(PRIZE_POLICY, managers, comp, plans);
+        expect(res).toHaveLength(3); // считаем по реестру, а не по тем, у кого есть заказы
+        expect(byId(res, 20)).toMatchObject({ place: null, level: 3, gatePassed: false });
+    });
+
+    it('когорта «та же роль»: в каждой роли свой приз', () => {
+        const policy: GradePolicy = { ...PRIZE_POLICY, cohort: 'scheme' };
+        const compByRole = new Map([
+            [10, { schemeCode: 'seller' }],
+            [20, { schemeCode: 'seller' }],
+            [30, { schemeCode: 'operator' }],
+        ]);
+        const managers = [
+            make(10, { revenue: 130, quality: 60 }),
+            make(20, { revenue: 130, quality: 50 }),
+            make(30, { revenue: 130, quality: 10 }), // слабее всех, но один в своей роли
+        ];
+        const res = evaluatePrizeMonth(policy, managers, compByRole, plans);
+        expect(byId(res, 10).place).toBe(1);
+        expect(byId(res, 30).place).toBe(1); // приз внутри роли operator
+        expect(byId(res, 30).level).toBe(1);
+    });
+});
+
+describe('assignMonthlyPrize — чистая раздача мест', () => {
+    it('при полном равенстве показателей порядок детерминирован (по managerId)', () => {
+        const entrants = [
+            { managerId: 20, cohort: 'all', gateValue: 120, gatePassed: true, scores: [50, 30] },
+            { managerId: 10, cohort: 'all', gateValue: 120, gatePassed: true, scores: [50, 30] },
+        ];
+        const a = assignMonthlyPrize(PRIZE_POLICY, entrants);
+        const b = assignMonthlyPrize(PRIZE_POLICY, [...entrants].reverse());
+        expect(a.find((r) => r.managerId === 10)!.place).toBe(1);
+        expect(b.find((r) => r.managerId === 10)!.place).toBe(1);
     });
 });

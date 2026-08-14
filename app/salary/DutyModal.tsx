@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Loader2, Plus, Trash2, X } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
 
 interface DutyRow {
     id: number;
@@ -24,6 +25,8 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const { toast } = useToast();
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
 
     const [mgr, setMgr] = useState<number | ''>('');
     const [date, setDate] = useState('');
@@ -122,7 +125,15 @@ export default function DutyModal({ period, monthLabel, onClose }: { period: str
                                     <td className="p-2">{KIND_LABEL[d.kind] || d.kind}</td>
                                     <td className="p-2 text-right">{d.shifts}</td>
                                     <td className="p-2 text-right">
-                                        <button onClick={() => remove(d.id)} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                                        <button
+                                            onClick={() => run(`del:${d.id}`, () => remove(d.id))}
+                                            disabled={isPending(`del:${d.id}`)}
+                                            aria-busy={isPending(`del:${d.id}`) || undefined}
+                                            title="Удалить запись"
+                                            className="text-muted-foreground hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isPending(`del:${d.id}`) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                        </button>
                                     </td>
                                 </tr>
                             ))}
