@@ -7,6 +7,8 @@ import ChatAvatar from './ChatAvatar';
 import ChatMembersModal from './ChatMembersModal';
 import { getInitials } from './chat-identity';
 import { useStatusNames } from '@/components/useStatusNames';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import Spinner from '@/components/ui/Spinner';
 import type {
     MessengerAttachment,
     MessengerChat,
@@ -38,6 +40,9 @@ type MessagesResponse = {
 export default function MessageView({ chatId, highlightedMessageId, currentUserId, chatName, chatAvatarUrl, participants, chatType, contextOrder, onBack, onMembersChanged, onLeftChat, onDeletedChat }: MessageViewProps) {
     const pageSize = 50;
     const statusName = useStatusNames();
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    // isPending переименован: внутри рендера сообщений уже есть локальный флаг с таким именем
+    const { run, isPending: isActionPending } = useAsyncAction();
     const [messages, setMessages] = useState<MessengerMessage[]>([]);
     const [pendingMessages, setPendingMessages] = useState<MessengerMessage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -465,11 +470,13 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                                                     {canDelete && (
                                                         <button
                                                             type="button"
-                                                            onClick={() => handleDeleteMessage(msg.id)}
-                                                            className="absolute right-3 top-3 text-xs font-semibold text-slate-400 transition hover:text-rose-600"
+                                                            onClick={() => run(`msg-del:${msg.id}`, () => handleDeleteMessage(msg.id))}
+                                                            disabled={isActionPending(`msg-del:${msg.id}`)}
+                                                            aria-busy={isActionPending(`msg-del:${msg.id}`) || undefined}
+                                                            className="absolute right-3 top-3 text-xs font-semibold text-slate-400 transition hover:text-rose-600 disabled:cursor-not-allowed"
                                                             title="Удалить сообщение"
                                                         >
-                                                            ✕
+                                                            {isActionPending(`msg-del:${msg.id}`) ? <Spinner className="h-3 w-3 text-rose-600" /> : '✕'}
                                                         </button>
                                                     )}
 

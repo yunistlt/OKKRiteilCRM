@@ -8,8 +8,12 @@ import {
     reconcileCurrentPushSubscription,
 } from '@/lib/messenger/push-client';
 import type { MessengerChat, MessengerPushSubscriptionSettings, MessengerPushSubscriptionSummary } from './types';
+import { useAsyncAction } from '@/components/ui/useAsyncAction';
+import Spinner from '@/components/ui/Spinner';
 
 export default function PushNotificationsCard({ selectedChatId, selectedChatType }: { selectedChatId: string | null; selectedChatType?: MessengerChat['type'] }) {
+    // Мгновенный отклик на клик (golds/GOLD_DESIGN_UX.md §2)
+    const { run, isPending } = useAsyncAction();
     const [status, setStatus] = useState<'idle' | 'loading' | 'enabled' | 'unsupported' | 'not-configured'>('idle');
     const [error, setError] = useState<string | null>(null);
     const [subscriptions, setSubscriptions] = useState<MessengerPushSubscriptionSummary[]>([]);
@@ -298,14 +302,19 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Статус доставки</div>
                         <button
                             type="button"
-                            onClick={handleToggleEnabled}
-                            className={`mt-2 rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                            onClick={() => run('push:enabled', handleToggleEnabled)}
+                            disabled={isPending('push:enabled')}
+                            aria-busy={isPending('push:enabled') || undefined}
+                            className={`mt-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed ${
                                 activeSettings.enabled === false
                                     ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
                                     : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
                             }`}
                         >
-                            {activeSettings.enabled === false ? 'Уведомления на паузе' : 'Уведомления активны'}
+                            {isPending('push:enabled') && <Spinner className="h-3 w-3" />}
+                            {isPending('push:enabled')
+                                ? 'Сохраняем…'
+                                : activeSettings.enabled === false ? 'Уведомления на паузе' : 'Уведомления активны'}
                         </button>
                     </div>
 
@@ -320,13 +329,16 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                                 <button
                                     key={option.value}
                                     type="button"
-                                    onClick={() => handleChangeDeliveryMode(option.value as NonNullable<MessengerPushSubscriptionSettings['delivery_mode']>)}
-                                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                                    onClick={() => run(`push:delivery:${option.value}`, () => handleChangeDeliveryMode(option.value as NonNullable<MessengerPushSubscriptionSettings['delivery_mode']>))}
+                                    disabled={isPending(`push:delivery:${option.value}`)}
+                                    aria-busy={isPending(`push:delivery:${option.value}`) || undefined}
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
                                         (activeSettings.delivery_mode || 'all') === option.value
                                             ? 'bg-slate-900 text-white'
                                             : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                                     }`}
                                 >
+                                    {isPending(`push:delivery:${option.value}`) && <Spinner className="h-3 w-3" />}
                                     {option.label}
                                 </button>
                             ))}
@@ -344,13 +356,16 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                                 <button
                                     key={option.value}
                                     type="button"
-                                    onClick={() => handleChangePreviewMode(option.value as NonNullable<MessengerPushSubscriptionSettings['preview_mode']>)}
-                                    className={`rounded-full px-3 py-1 text-[11px] font-semibold transition ${
+                                    onClick={() => run(`push:preview:${option.value}`, () => handleChangePreviewMode(option.value as NonNullable<MessengerPushSubscriptionSettings['preview_mode']>))}
+                                    disabled={isPending(`push:preview:${option.value}`)}
+                                    aria-busy={isPending(`push:preview:${option.value}`) || undefined}
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
                                         (activeSettings.preview_mode || 'full') === option.value
                                             ? 'bg-slate-900 text-white'
                                             : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-100'
                                     }`}
                                 >
+                                    {isPending(`push:preview:${option.value}`) && <Spinner className="h-3 w-3" />}
                                     {option.label}
                                 </button>
                             ))}
@@ -364,10 +379,15 @@ export default function PushNotificationsCard({ selectedChatId, selectedChatType
                             </div>
                             <button
                                 type="button"
-                                onClick={handleToggleCurrentChatMute}
-                                className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-100 sm:w-auto sm:py-1.5"
+                                onClick={() => run('push:mute', handleToggleCurrentChatMute)}
+                                disabled={isPending('push:mute')}
+                                aria-busy={isPending('push:mute') || undefined}
+                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60 disabled:cursor-not-allowed sm:w-auto sm:py-1.5"
                             >
-                                {isCurrentChatMuted ? 'Снять mute с текущего чата' : 'Mute текущий чат'}
+                                {isPending('push:mute') && <Spinner className="h-3 w-3" />}
+                                {isPending('push:mute')
+                                    ? 'Сохраняем…'
+                                    : isCurrentChatMuted ? 'Снять mute с текущего чата' : 'Mute текущий чат'}
                             </button>
                         </div>
                     )}
