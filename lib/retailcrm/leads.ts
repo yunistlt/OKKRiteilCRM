@@ -161,6 +161,24 @@ export async function createCorporateCustomerInCrm(details: {
 }
 
 /**
+ * Заявка из веб-формы без ТЗ (обратный звонок / контактная форма): в теле только
+ * телефон + согласие на обработку ПДн + страница, откуда пришли; вложений нет.
+ * Сравнивать в тендер-дедупе нечего — иначе разные клиенты с одной страницы товара
+ * склеиваются в «дубль». Признак: нет вложений И тело имеет разметку веб-формы.
+ */
+function isFormWithoutTZ(params: {
+    subject?: string;
+    bodySnippet?: string;
+    attachmentNames?: string[];
+    attachmentText?: string;
+}): boolean {
+    if ((params.attachmentNames || []).filter(Boolean).length > 0) return false;
+    if ((params.attachmentText || '').trim().length > 0) return false;
+    const haystack = `${params.subject || ''}\n${params.bodySnippet || ''}`.toLowerCase();
+    return /с какой страницы|согласие на обработку|обратн\w* звонок|заказать звонок|перезвон/i.test(haystack);
+}
+
+/**
  * Создать заявку по входящему ПИСЬМУ (AI-секретарь «Катерина»).
  * Статус «Новая» (novyi-1). Менеджер назначается сразу, если передан.
  * Возвращает id и номер созданного заказа.
@@ -260,18 +278,25 @@ export async function createEmailLead(params: {
     let duplicateOfNumber: string | null = null;
     
     try {
-        const { findTenderDuplicate } = await import('./tender-duplicates');
-        const dupResult = await findTenderDuplicate({
-            bodyText: params.bodySnippet || '',
-            attachmentText: params.attachmentText || '',
-            attachmentNames: params.attachmentNames || [],
-            deliveryAddress: params.corporateDetails?.address || null
-        });
+        if (isFormWithoutTZ(params)) {
+            // Веб-форма без ТЗ (обратный звонок / контактная форма): тело — телефон
+            // + согласие + страница, сравнивать нечего. Тендер-дедуп не запускаем,
+            // иначе разные клиенты с одной страницы товара склеиваются в «дубль».
+            console.log('[Tender Duplicate] Пропуск: заявка из веб-формы без ТЗ');
+        } else {
+            const { findTenderDuplicate } = await import('./tender-duplicates');
+            const dupResult = await findTenderDuplicate({
+                bodyText: params.bodySnippet || '',
+                attachmentText: params.attachmentText || '',
+                attachmentNames: params.attachmentNames || [],
+                deliveryAddress: params.corporateDetails?.address || null
+            });
 
-        if (dupResult) {
-            assignedManagerId = dupResult.managerId;
-            duplicateOfNumber = dupResult.refOrderNumber;
-            duplicateReason = `\n\n⚠️ ДУБЛИКАТ ТЕНДЕРА: обнаружен дублирующий запрос на тендер (ранее создан заказ №${dupResult.refOrderNumber}, ответственный менеджер назначен автоматически)`;
+            if (dupResult) {
+                assignedManagerId = dupResult.managerId;
+                duplicateOfNumber = dupResult.refOrderNumber;
+                duplicateReason = `\n\n⚠️ ДУБЛИКАТ ТЕНДЕРА: обнаружен дублирующий запрос на тендер (ранее создан заказ №${dupResult.refOrderNumber}, ответственный менеджер назначен автоматически)`;
+            }
         }
     } catch (dupErr) {
         console.error('Error running duplicate check:', dupErr);
@@ -345,7 +370,6 @@ export async function createLeadInCrm(params: {
     email?: string;
     telegram?: string;
     query_summary: string;
-    gifts?: string[];
     domain?: string;
     utm?: any;
     items?: string[];
@@ -447,23 +471,12 @@ export async function createLeadInCrm(params: {
         historyLog = params.history.map(h => `${h.role === 'user' ? 'Клиент' : 'ИИ'}: ${h.content}`).join('\n');
     }
 
-    const giftsInfo = params.gifts && params.gifts.length > 0
-        ? params.gifts.map(g => {
-            if (g === 'free_installation') return '🎁 Бесплатный монтаж + КП на фирменном бланке';
-            if (g === 'alice_speaker') return '🎁 Яндекс Станция Алиса Мини';
-            return g;
-        }).join('\n')
-        : 'нет';
-
     const catalogBlock = formatMatchedCatalogProducts(params.matchedCatalogProducts);
 
     const managerComment = `🔥 НОВЫЙ ЛИД ИЗ ИИ-ЧАТА
 
 📍 ГЕО: ${cityStr}
 📱 КОНТАКТЫ: ${telegramStr || params.phone || params.email || 'указаны в карточке'}
-
-🎁 ПОДАРКИ (зафиксировала Елена):
-${giftsInfo}
 
 📝 СУТЬ ЗАПРОСА (Анализ от Семёна):
 ${params.query_summary}

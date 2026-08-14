@@ -27,6 +27,11 @@ export const maxDuration = 300;
 const FOLDER = 'INBOX';
 const MAX_BATCH = 30;          // письма за один заход (бережно к Yandex/OpenAI)
 const CLASSIFY_BATCH = 30;     // классифицируем не больше N писем за заход
+// Порог доверия «новой заявке» при ГОЛОМ «Re:» (без CRM-тега [#N/N]). Постоянный клиент часто
+// отвечает на старое письмо, начиная НОВЫЙ запрос (КП/счёт) — голый «Re:» это слабый признак.
+// Если ИИ уверенно (≥ порога) видит новую заявку — доверяем телу и заводим заказ. CRM-тег [#N/N]
+// остаётся жёстким признаком переписки независимо от уверенности.
+const BARE_RE_NEW_REQUEST_TRUST = 0.7;
 
 async function setAgentStatus(status: string, task: string) {
     try {
@@ -96,6 +101,41 @@ async function forwardToDepartment(opts: {
         replyTo: fromEmail || undefined,
         attachments,
     });
+}
+
+/**
+ * Голый «Re:» без CRM-тега: ищем в ТЕМЕ номер заказа ЭТОГО ЖЕ клиента. Менеджеры часто вписывают
+ * номер в тему руками («Re: Запрос КП 53929 КП с НДС 5%…»), и тег [#N/N] в ветке отсутствует —
+ * надёжный признак переписки не срабатывает, а ИИ уверенно видит «новую заявку».
+ *
+ * Номер отдаём ТОЛЬКО если такой заказ есть в базе И принадлежит тому же email — иначе случайное
+ * число из темы (год, сумма) привязало бы письмо к чужому заказу.
+ *
+ * Инцидент 21.07.2026: три ответа клиента в ветке заказа 53929 («доп.скидка?», «обрешётка нужна?»,
+ * «по торгам не прошли») завели три заказа-дубля 53940/53941/53947 — confidence был 0.9–1.0,
+ * порог BARE_RE_NEW_REQUEST_TRUST не спасал.
+ */
+async function findClientOrderNumberInSubject(subject?: string | null, email?: string | null): Promise<string | null> {
+    if (!subject || !email) return null;
+    // Отдельно стоящие числа 4–6 цифр: не куски телефона/ИНН и не дробные суммы.
+    const nums = Array.from(new Set(subject.match(/(?<![\d.,])\d{4,6}(?![\d.,])/g) || []));
+    if (nums.length === 0) return null;
+    const { data } = await supabase
+        .from('orders')
+        .select('number, raw_payload')
+        .in('number', nums)
+        .limit(20);
+    if (!data || data.length === 0) return null;
+    const target = email.trim().toLowerCase();
+    const mine = data.filter((o: any) => {
+        const p = o?.raw_payload || {};
+        const emails = [p.email, p.customer?.email].filter(Boolean).map((x: string) => String(x).trim().toLowerCase());
+        return emails.includes(target);
+    });
+    if (mine.length === 0) return null;
+    // Несколько номеров в теме — берём самый свежий (больший) заказ.
+    mine.sort((a: any, b: any) => Number(b.number) - Number(a.number));
+    return String(mine[0].number);
 }
 
 export async function GET(req: Request) {
@@ -239,6 +279,7 @@ export async function GET(req: Request) {
                 let assignedManagerId: number | null = null;
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
                 let v: any = null;
+                let subjectOrderNum: string | null = null; // номер заказа клиента, найденный в теме «Re:»
 
                 // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
                 // а не в From. Тянем email/телефон/имя для карточки и назначения.
@@ -271,19 +312,43 @@ export async function GET(req: Request) {
                     }
                     confidence = v.confidence;
                     reasoning = v.reasoning;
-                    // Переписку по существующему заказу (Re/тег CRM) обрабатываем особо:
-                    //  - new_request: НЕ плодим новый заказ (это ответ по уже существующему);
-                    //  - procurement: НЕ шлём в снабжение. Снабжение = НОВЫЕ предложения поставщиков НАМ;
-                    //    холодное предложение не приходит как «Re:» на наш заказ — это переписка по нашей сделке.
-                    // Бухгалтерию/логистику/юриста по переписке по заказу пересылать можно (вопрос по
-                    // счёту/доставке/договору существующего заказа реально нужен профильному отделу).
-                    if (isReplyThread(e.subject) && (v.route === 'new_request' || v.route === 'procurement')) {
+                    // Переписку по существующему заказу обрабатываем особо. Различаем два признака:
+                    //  - CRM-тег [#N/N] (crmTag) — НАДЁЖНЫЙ: CRM сам вешает его на переписку по заказу;
+                    //  - голый «Re:» без тега (bareRe) — СЛАБЫЙ: постоянный клиент часто отвечает на
+                    //    старое письмо, начиная НОВЫЙ запрос (КП/счёт).
+                    //  new_request: не плодим дубль заказа; procurement: не шлём в снабжение (холодное
+                    //  предложение не приходит как «Re:» на наш заказ). Бухгалтерию/логистику/юриста по
+                    //  переписке пересылать можно (вопрос по счёту/доставке/договору реально нужен отделу).
+                    const crmTag = hasCrmOrderTag(e.subject);
+                    const bareRe = !crmTag && isReplyThread(e.subject);
+                    const noteFor = (route: string) => route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
+                    // Голый «Re:» + номер существующего заказа этого же клиента в теме — такой же
+                    // надёжный признак переписки, как CRM-тег (см. findClientOrderNumberInSubject).
+                    subjectOrderNum = (bareRe && (v.route === 'new_request' || v.route === 'not_request'))
+                        ? await findClientOrderNumberInSubject(e.subject, custEmail)
+                        : null;
+                    if (crmTag && (v.route === 'new_request' || v.route === 'procurement')) {
+                        // Тег заказа — жёсткая переписка независимо от уверенности ИИ.
                         emailType = 'reply_thread';
-                        const note = v.route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
-                        reasoning = `Переписка по существующему заказу (Re/тег) — ${note} | ${v.reasoning}`;
-                    } else if (v.route === 'not_request' && hasCrmOrderTag(e.subject)) {
-                        // ИИ счёл «не заявка», но в теме тег заказа [#N/N] (CRM вешает его на переписку
-                        // по заказу) — это переписка по существующему заказу, а не «не заявка».
+                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(v.route)} | ${v.reasoning}`;
+                    } else if (bareRe && v.route === 'procurement') {
+                        // Снабжение по «Re:» на наш заказ — это переписка по нашей сделке, не новое предложение.
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по существующему заказу (Re: без тега) — не пересылаем в снабжение | ${v.reasoning}`;
+                    } else if (bareRe && subjectOrderNum && (v.route === 'new_request' || v.route === 'not_request')) {
+                        // «Re:» + номер заказа этого клиента в теме → переписка по нему независимо от
+                        // уверенности ИИ (менеджер вписала номер руками, тега [#N/N] в ветке нет).
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
+                    } else if (bareRe && v.route === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
+                        // Голый «Re:» + НЕуверенная новая заявка → считаем перепиской по старой ветке.
+                        // При уверенной новой заявке (≥ порога) НЕ перебиваем ИИ — заводим заказ (клиент
+                        // просто ответил на прежнее письмо новым запросом).
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по существующему заказу (Re: без тега) — заказ не создаём | ${v.reasoning}`;
+                    } else if (v.route === 'not_request' && crmTag) {
+                        // ИИ счёл «не заявка», но в теме тег заказа [#N/N] — это переписка по заказу,
+                        // а не «не заявка» (отказы «неактуально»/«нет финансирования» по заказу).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (тег [#…]) — ${v.reasoning}`;
                     } else {
@@ -317,10 +382,11 @@ export async function GET(req: Request) {
 
                 // Разрешаем существующий заказ для переписки
                 if (emailType === 'reply_thread') {
-                    let orderNum: string | null = null;
+                    // 0. Номер заказа этого же клиента, уже найденный в теме (сверен с базой по email)
+                    let orderNum: string | null = subjectOrderNum;
 
                     // 1. Проверяем тему на наличие CRM-тега [#N/NNNNN]
-                    if (e.subject) {
+                    if (!orderNum && e.subject) {
                         orderNum = parseOrderNumberFromSubject(e.subject);
                     }
 
@@ -341,6 +407,10 @@ export async function GET(req: Request) {
                         if (m) orderNum = m[1];
                     }
 
+                    // Привязываем ТОЛЬКО по явному номеру заказа (тег [#N/N] / номер в теме или теле).
+                    // Фолбэк «последний заказ клиента по email» убран: он ложно привязывал НОВЫЙ запрос
+                    // постоянного клиента к его старому заказу (инцидент: письмо-запрос КП уходило в
+                    // «переписку по №…» вместо новой заявки). Нет явного номера → заказ не привязываем.
                     let resolvedOrder: { id: number; number: string } | null = null;
                     if (orderNum) {
                         const { data } = await supabase
@@ -351,28 +421,6 @@ export async function GET(req: Request) {
                             .maybeSingle();
                         if (data) {
                             resolvedOrder = { id: Number(data.id), number: String(data.number) };
-                        }
-                    }
-
-                    // 5. Фолбэк: если заказ всё ещё не определён, ищем последний заказ клиента по email
-                    if (!resolvedOrder && custEmail) {
-                        const eClean = custEmail.trim().toLowerCase();
-                        const paths = ['raw_payload->contact->>email', 'raw_payload->>email', 'raw_payload->customer->>email'];
-                        let bestOrder: { id: number; number: string; createdAt: string } | null = null;
-                        for (const path of paths) {
-                            const { data } = await supabase
-                                .from('orders')
-                                .select('id, number, created_at')
-                                .ilike(path, eClean)
-                                .order('created_at', { ascending: false })
-                                .limit(1);
-                            const row = (data || [])[0] as any;
-                            if (row && (!bestOrder || new Date(row.created_at) > new Date(bestOrder.createdAt))) {
-                                bestOrder = { id: Number(row.id), number: String(row.number), createdAt: row.created_at };
-                            }
-                        }
-                        if (bestOrder) {
-                            resolvedOrder = { id: bestOrder.id, number: bestOrder.number };
                         }
                     }
 

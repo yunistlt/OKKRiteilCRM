@@ -290,7 +290,7 @@ export async function POST(req: Request) {
             const phaseLabel = specs?.phase ? `${specs.phase} В`  : '';
             const priceStr = price ? price.toLocaleString('ru-RU') + ' руб.' : '';
 
-            const greeting = `Отличный выбор! 🔥 Вы подобрали СНОЛЭКС ${tempLabel} / ${volLabel} (${phaseLabel}) — ориентировочная цена ${priceStr} с учётом НДС.\n\n🎁 Шаг 1: оставьте email — отправлю КП на фирменном бланке и зафиксирую дополнительные 12 месяцев гарантии.\n🎁 Шаг 2: после email оставьте телефон — подарю умную колонку Яндекс Станция Алиса Мини и закреплю бесплатный шеф-монтаж.`;
+            const greeting = `Отличный выбор! Вы подобрали СНОЛЭКС ${tempLabel} / ${volLabel} (${phaseLabel}) — ориентировочная цена ${priceStr} с учётом НДС.\n\nЧтобы инженер-технолог подготовил официальное КП с финальным расчётом и техническим паспортом изделия, оставьте, пожалуйста, email — пришлю предложение на фирменном бланке.`;
 
             await supabase.from('widget_messages').insert({
                 session_id: sessionId,
@@ -492,36 +492,9 @@ export async function POST(req: Request) {
             }).eq('id', sessionId);
         }
 
-        // Жёсткий сценарий лид-капчера: сначала email (КП + гарантия), затем телефон (Алиса Мини + шеф-монтаж)
-        if (emailMatch && !normalizedPhone) {
-            const email = emailMatch[0];
-            const emailReply = `✅ Email ${email} зафиксировала. Отправляю официальное КП и технический паспорт изделия на почту. Также закрепила за вами дополнительную гарантию 12 месяцев.\n\n🎁 Следующий шаг: оставьте телефон для связи — зафиксирую подарок Яндекс Станцию Алиса Мини и бесплатный шеф-монтаж (удаленная пусконаладка инженером).`;
-            await supabase.from('widget_messages').insert({
-                session_id: sessionId,
-                role: 'assistant',
-                content: emailReply,
-            });
-            return NextResponse.json({ reply: emailReply }, { headers: CORS_HEADERS });
-        }
-
-        if (normalizedPhone) {
-            const emailInDb = session?.contact_email;
-            const hasEmail = emailInDb || emailMatch;
-
-            let phoneReply = '';
-            if (hasEmail) {
-                phoneReply = `🔥 Отлично! Телефон ${normalizedPhone} зафиксировала. Полный пакет бонусов (Яндекс Станция Алиса Мини, бесплатный шеф-монтаж и расширенная гарантия 24 месяца) закреплен за вами!\n\nМенеджер свяжется с вами в течение 15 минут для подтверждения деталей.`;
-            } else {
-                phoneReply = `🔥 Отлично! Телефон ${normalizedPhone} зафиксировала. Запланировала звонок менеджера в течение 15 минут и закрепила за вами бесплатный шеф-монтаж.\n\n🎁 Следующий шаг: напишите ваш email — я отправлю туда КП, технический паспорт изделия и зафиксирую подарок Яндекс Станцию Алиса Мини.`;
-            }
-
-            await supabase.from('widget_messages').insert({
-                session_id: sessionId,
-                role: 'assistant',
-                content: phoneReply,
-            });
-            return NextResponse.json({ reply: phoneReply }, { headers: CORS_HEADERS });
-        }
+        // Контакты уже молча сохранены выше (contact_phone/contact_email, заявка на звонок).
+        // НЕ перехватываем управление скриптом — Елена продолжает консультацию по скрипту
+        // квалификации через LLM; ниже дадим ей подсказку коротко подтвердить контакт.
 
         const embeddingRes = await openai.embeddings.create({
             model: 'text-embedding-3-small',
@@ -612,6 +585,22 @@ export async function POST(req: Request) {
             const ordersCount = Number(crmOrder?.customer?.ordersCount ?? 0);
             if (ordersCount > 1) {
                 systemPrompt += `\n\nПОСТОЯННЫЙ КЛИЕНТ: этот клиент уже работал с нами (прошлых заказов: ${ordersCount}). НЕ спрашивай ИНН/название компании (вопрос 4), с кем он сравнивает предложение (вопрос 6) и форму закупки (вопрос 7) — эти данные о клиенте у нас уже есть. Квалифицируй ТОЛЬКО по текущей заявке, закрой всего 4 вопроса: (1) желаемый срок установки, (2) ориентировочный бюджет, (3) что принципиально важно при выборе, (5) наличие готового ТЗ. Больше вопросов из общего списка не задавай.`;
+            }
+        }
+
+        // Клиент оставил контакт в этом сообщении — контакт УЖЕ сохранён в системе.
+        // Просим Елену коротко подтвердить его и продолжить консультацию/квалификацию,
+        // НЕ переспрашивая тот же контакт и не обрывая диалог на «оставьте телефон».
+        if (normalizedPhone || emailMatch) {
+            const hasPhone = Boolean(normalizedPhone || session?.contact_phone);
+            const hasEmail = Boolean(emailMatch || session?.contact_email);
+            const captured = [normalizedPhone ? 'телефон' : null, emailMatch ? 'email' : null].filter(Boolean).join(' и ');
+            systemPrompt += `\n\nКОНТАКТ ПОЛУЧЕН: клиент только что оставил ${captured}. Он УЖЕ надёжно сохранён в системе — НЕ проси его повторно и не благодари подчёркнуто. Коротко, одной фразой, подтверди, что зафиксировала (при email — инженер-технолог пришлёт официальное КП на почту; при телефоне — менеджер свяжется для уточнения деталей), и СРАЗУ продолжай консультацию и квалификацию по скрипту (задай следующий незакрытый вопрос). Не превращай ответ в форму сбора контактов.`;
+            if (!hasEmail) {
+                systemPrompt += ` Email пока нет — позже, по ходу диалога, ненавязчиво предложи оставить email, чтобы прислать КП (но не сейчас, если это оборвёт мысль).`;
+            }
+            if (!hasPhone) {
+                systemPrompt += ` Телефона пока нет — при удобном моменте предложи оставить телефон для оперативной связи менеджера.`;
             }
         }
 

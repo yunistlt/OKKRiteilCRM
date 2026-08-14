@@ -104,12 +104,7 @@ export async function GET(req: Request) {
                         2. Ключевые требования (материал, сроки).
                         3. Куда нужна доставка (город).
                         4. Были ли прикреплены файлы (ТЗ).
-                        
-                        В поле gifts укажи подарки, которые зафиксировала Елена:
-                        - Если есть email: "free_installation" (бесплатный монтаж + КП на бланке)
-                        - Если есть телефон: "alice_speaker" (Яндекс Станция Алиса Мини)
-                        - Если оба контакта: массив ["free_installation", "alice_speaker"]
-                        
+
                         Верни строго JSON:
                         {
                             "name": "Имя клиента",
@@ -117,7 +112,6 @@ export async function GET(req: Request) {
                             "email": "Email",
                             "telegram": "Ник в Telegram",
                             "query_summary": "Структурированная выжимка потребностей клиента",
-                            "gifts": ["free_installation"] или ["alice_speaker"] или ["free_installation", "alice_speaker"] или [],
                             "corporate_details": {
                                 "is_corporate": true/false, // true, если в диалоге есть упоминание названия компании, ИНН или реквизитов
                                 "company_name": "Название компании (например: ООО «Нейровет»)", // null, если нет
@@ -186,22 +180,11 @@ export async function GET(req: Request) {
 
                     let orderNumber: string;
                     if (existingOrderId) {
-                        const giftsInfo = extractedData.gifts && extractedData.gifts.length > 0
-                            ? extractedData.gifts.map((g: string) => {
-                                if (g === 'free_installation') return '🎁 Бесплатный монтаж + КП на фирменном бланке';
-                                if (g === 'alice_speaker') return '🎁 Яндекс Станция Алиса Мини';
-                                return g;
-                            }).join('\n')
-                            : 'нет';
-
                         const qualification = extractedData.qualification || {};
                         const managerComment = `🔥 ИНФОРМАЦИЯ ИЗ ИИ-ЧАТА (КВАЛИФИКАЦИЯ)
 
 📍 ГЕО: ${session.geo_city || 'не определен'}
 📱 КОНТАКТЫ: ${extractedData.telegram ? `Telegram: ${extractedData.telegram}` : ''} ${extractedData.phone || ''} ${extractedData.email || ''}
-
-🎁 ПОДАРКИ (зафиксировала Елена):
-${giftsInfo}
 
 📝 СУТЬ ЗАПРОСА (Анализ от Семёна):
 ${extractedData.query_summary}
@@ -262,7 +245,6 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                             email: extractedData.email,
                             telegram: extractedData.telegram,
                             query_summary: extractedData.query_summary,
-                            gifts: Array.isArray(extractedData.gifts) ? extractedData.gifts : [],
                             domain: 'zmktlt.ru',
                             city: session.geo_city,
                             history: messages,

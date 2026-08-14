@@ -105,11 +105,23 @@ function buildReactivationEmail(products: string[]): string {
 // ── Шаблон уведомления менеджеру ──────────────────────────────────────────
 function buildManagerAlertEmail(type: 'abandoned_cart' | 'no_manager_reply', session: any): string {
     const title = type === 'abandoned_cart'
-        ? '🛒 Горячий лид — смотрел товары, контакт не оставил'
+        ? '⚠️ Лид с контактом не попал в CRM — заказ не создан'
         : '⏰ Клиент ждёт ответа уже > 4 часов';
 
     const products = (session.interested_products as string[] | null)?.join(', ') || '—';
     const adminUrl = `https://okk.zmksoft.com/okk/lead-catcher`;
+
+    // Уведомляем только по лидам с контактом, поэтому контакты — первым блоком
+    const contactRow = (label: string, value: string | null | undefined) => value
+        ? `<tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;width:140px;">${label}</td><td style="padding:8px 12px;font-weight:600;border-bottom:1px solid #f1f5f9;">${value}</td></tr>`
+        : '';
+    const contacts = [
+        contactRow('Имя', session.contact_name),
+        contactRow('Телефон', session.contact_phone),
+        contactRow('Email', session.contact_email),
+        contactRow('Компания', session.contact_company),
+        contactRow('Заказ в CRM', session.crm_order_number),
+    ].join('');
 
     return `<!DOCTYPE html>
 <html lang="ru">
@@ -124,6 +136,8 @@ function buildManagerAlertEmail(type: 'abandoned_cart' | 'no_manager_reply', ses
         </td></tr>
         <tr><td style="padding:28px 32px;">
           <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:24px;">
+            <tr style="background:#f8fafc;"><th colspan="2" style="padding:10px 12px;text-align:left;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Контакты клиента</th></tr>
+            ${contacts}
             <tr style="background:#f8fafc;"><th colspan="2" style="padding:10px 12px;text-align:left;font-size:13px;color:#64748b;border-bottom:1px solid #e2e8f0;">Данные посетителя</th></tr>
             <tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;width:140px;">Никнейм</td><td style="padding:8px 12px;font-weight:600;border-bottom:1px solid #f1f5f9;">${session.nickname || 'Аноним'}</td></tr>
             <tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">Город</td><td style="padding:8px 12px;font-weight:600;border-bottom:1px solid #f1f5f9;">${session.geo_city || '—'}</td></tr>
@@ -153,16 +167,21 @@ export async function GET(req: NextRequest) {
         const managerEmail = process.env.MANAGER_NOTIFICATION_EMAIL || process.env.SMTP_USER;
         const results = { abandoned_cart: 0, no_manager_reply: 0, reactivation: 0, errors: 0 };
 
-        // ── Сценарий 1: Брошенные товары (нет контакта, 24ч–7д) ──────────────
+        // ── Сценарий 1: Контакт есть, а заказа в CRM нет (24ч–7д) ───────────
+        // Лид-катчер сам заводит заказ по каждой контактной сессии, поэтому письмо
+        // «клиент оставил контакт» — дубль карточки в CRM. Шлём только СБОЙ: контакт
+        // получен, а заказ не создался (за 30 дней таких было 2 — узнать было неоткуда).
+        // Ориентир — crm_order_id: is_lead_created лид-катчер ставит и просто «обработано».
         const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const cutoff7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
         const { data: abandonedSessions } = managerEmail ? await supabase
             .from('widget_sessions')
-            .select('id, nickname, domain, geo_city, interested_products, utm_source')
-            .eq('has_contacts', false)
-            .not('interested_products', 'is', null)
+            .select('id, nickname, domain, geo_city, interested_products, utm_source, contact_name, contact_phone, contact_email, contact_company, crm_order_number')
+            .eq('has_contacts', true)
+            .is('crm_order_id', null)
             .lt('created_at', cutoff24h)
             .gte('created_at', cutoff7d)   // не трогаем старьё > 7 дней
+            .order('created_at', { ascending: true })
             .limit(20) : { data: [] };
 
         for (const session of abandonedSessions || []) {
@@ -176,7 +195,7 @@ export async function GET(req: NextRequest) {
 
             const sent = await sendEmail(
                 managerEmail!,
-                `🛒 Горячий лид — ${session.nickname || 'Аноним'} смотрел товары`,
+                `⚠️ Лид ${(session as any).contact_name || (session as any).contact_phone || (session as any).contact_email || session.nickname || 'Аноним'} не попал в CRM — заказ не создан`,
                 buildManagerAlertEmail('abandoned_cart', session)
             );
             await supabase.from('lead_reminders').update({
@@ -190,13 +209,16 @@ export async function GET(req: NextRequest) {
         // ── Сценарий 2: Нет ответа менеджера 4ч–7д ──────────────────────────
         const cutoff4h = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
 
-        // Ищем сессии, где последнее сообщение от user и оно 4ч–7д назад
+        // Ищем сессии, где последнее сообщение от user и оно 4ч–7д назад.
+        // Тоже только с контактом: без контакта менеджеру некуда отвечать, а объём — сотни в сутки.
         const { data: staleSessions } = managerEmail ? await supabase
             .from('widget_sessions')
-            .select('id, nickname, domain, geo_city, interested_products')
+            .select('id, nickname, domain, geo_city, interested_products, contact_name, contact_phone, contact_email, contact_company, crm_order_number')
             .eq('is_human_takeover', false)
+            .eq('has_contacts', true)
             .lt('updated_at', cutoff4h)
             .gte('updated_at', cutoff7d)   // не долбим по старью > 7 дней
+            .order('updated_at', { ascending: true })
             .limit(20) : { data: [] };
 
         for (const session of staleSessions || []) {
@@ -221,7 +243,7 @@ export async function GET(req: NextRequest) {
 
             const sent = await sendEmail(
                 managerEmail!,
-                `⏰ Клиент ${session.nickname || 'Аноним'} ждёт ответа > 4 часов`,
+                `⏰ Клиент ${(session as any).contact_name || session.nickname || 'Аноним'} ждёт ответа > 4 часов`,
                 buildManagerAlertEmail('no_manager_reply', session)
             );
             await supabase.from('lead_reminders').update({
