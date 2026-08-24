@@ -117,6 +117,56 @@ export async function findCorporateCustomerInCrm(filter: { email?: string; phone
     return null;
 }
 
+/**
+ * Найти ВСЕ корпоративные карточки по одному признаку — для подсказки менеджеру.
+ * Возвращает список, а не первого: общий ящик тендерной площадки висит на десятках
+ * разных компаний (`tender@sportmoda.ru` — 28 карточек), и привязываться к нему нельзя.
+ */
+async function lookupCorporateCustomers(filter: { email?: string; phone?: string }) {
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const param = filter.email
+        ? `filter[email]=${encodeURIComponent(filter.email)}`
+        : filter.phone
+            ? `filter[phone]=${encodeURIComponent(filter.phone)}`
+            : null;
+    if (!param) return [];
+
+    try {
+        const response = await fetch(`${baseUrl}/api/v5/customers-corporate?apiKey=${apiKey}&${param}`);
+        const data = await response.json();
+        if (data.success && Array.isArray(data.customersCorporate)) return data.customersCorporate;
+    } catch (err) {
+        console.error('Failed to lookup corporate customers in CRM:', err);
+    }
+    return [];
+}
+
+/**
+ * Подсказка менеджеру: карточка клиента, похоже, уже есть, но по основному ключу не нашлась.
+ * Бот НЕ привязывается к ней сам — совпадение по почте или телефону слишком часто ложное
+ * (общий ящик посредника, личный номер снабженца, работающего на несколько фирм).
+ *
+ * Слова «дубль»/«дубл» в тексте быть не должно: комментарий заказа разбирается фильтром
+ * тендерных дублей (`(?:дубль|дубл|dubl)\D*(\d{3,6})`), и заказ вылетел бы из премии.
+ */
+async function buildExistingCustomerHint(keys: { email?: string | null; phone?: string | null }) {
+    for (const [label, filter] of [
+        ['почта', { email: keys.email || undefined }],
+        ['телефон', { phone: keys.phone || undefined }],
+    ] as const) {
+        if (!filter.email && !filter.phone) continue;
+        const found = await lookupCorporateCustomers(filter);
+        // Ровно одна карточка — осмысленная подсказка. Несколько — общий контакт, молчим.
+        if (found.length === 1) {
+            const card = found[0];
+            const name = card.nickName ? ` (${card.nickName})` : '';
+            return `❗ Возможно, клиент уже есть в базе: карточка ${card.id}${name} — совпал ${label}. `
+                + 'Проверьте, объедините карточки и укажите ИНН.';
+        }
+    }
+    return null;
+}
+
 export async function createCorporateCustomerInCrm(details: {
     companyName: string;
     inn?: string | null;
@@ -190,7 +240,9 @@ export type CorporateLeadDetails = {
  * Клиенты у нас корпоративные всегда (B2B), поэтому ищем по ИНН → email → телефону
  * и заводим нового, если не нашли. Название компании, если бот его не распознал,
  * ставим «Требуется уточнить» (название берём из справочника CRM, не выдумываем).
- * Вернёт null, если завести контрагента не удалось — вызывающий откатится на физлицо.
+ * Вернёт null в id, если завести контрагента не удалось — вызывающий откатится на физлицо.
+ * Вместе с id отдаёт hint: карточка, похожая на этого клиента по почте или телефону, но не
+ * найденная по основному ключу. Бот к ней не привязывается — только подсказывает менеджеру.
  */
 async function ensureCorporateCustomerId(
     params: {
@@ -201,7 +253,7 @@ async function ensureCorporateCustomerId(
         fieldHints?: LeadFieldHints;
     },
     site: string
-): Promise<number | null> {
+): Promise<{ id: number | null; hint: string | null }> {
     const details = params.details || null;
     const phone = details?.contactPhone || params.phone || null;
     const email = params.email || null;
@@ -215,7 +267,7 @@ async function ensureCorporateCustomerId(
                 .eq('inn', details.inn)
                 .eq('is_corporate', true)
                 .maybeSingle();
-            if (data) return Number(data.id);
+            if (data) return { id: Number(data.id), hint: null };
         } catch (err) {
             console.error('Error finding corporate customer in Supabase:', err);
         }
@@ -227,15 +279,20 @@ async function ensureCorporateCustomerId(
         email: email || undefined,
         phone: phone || undefined,
     });
-    if (existing) return existing.id;
+    if (existing) return { id: existing.id, hint: null };
 
-    // в. Заводим нового контрагента.
+    // в. Не нашли — но, возможно, карточка есть, просто без ИНН (он заполнен лишь у четверти
+    // карточек). Ищем похожую по почте и телефону ТОЛЬКО ради подсказки менеджеру: привязываться
+    // по этим ключам нельзя, общий ящик посредника висит на десятках разных компаний.
+    const hint = await buildExistingCustomerHint({ email, phone });
+
+    // г. Заводим нового контрагента.
     const companyName = details?.companyName
         || params.name
         || (await unspecifiedLabel());
-    if (!companyName) return null;
+    if (!companyName) return { id: null, hint };
 
-    return createCorporateCustomerInCrm({
+    const createdId = await createCorporateCustomerInCrm({
         companyName,
         inn: details?.inn,
         kpp: details?.kpp,
@@ -249,6 +306,8 @@ async function ensureCorporateCustomerId(
         corrAccount: details?.corrAccount,
         fieldHints: params.fieldHints,
     }, site);
+
+    return { id: createdId, hint };
 }
 
 /**
@@ -271,13 +330,15 @@ export async function createEmailLead(params: {
     const { site } = await getCrmConfig();
 
     // Клиент всегда корпоративный (B2B): контрагента ищем/заводим по ИНН, email, телефону.
-    let customerId: number | null = await ensureCorporateCustomerId({
+    const customerLookup = await ensureCorporateCustomerId({
         details: params.corporateDetails,
         name: params.corporateDetails?.contactName || params.name,
         phone: params.phone,
         email: params.email,
         fieldHints: params.fieldHints,
     }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
     let isCorp = customerId !== null;
 
     if (!customerId) {
@@ -384,6 +445,11 @@ ${bodyPart}${attLine}${duplicateReason}`;
     } else if (recentHint) {
         orderData.managerComment = recentHint;
     }
+    if (existingCustomerHint) {
+        orderData.managerComment = orderData.managerComment
+            ? `${orderData.managerComment}\n${existingCustomerHint}`
+            : existingCustomerHint;
+    }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
     const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
@@ -446,13 +512,15 @@ export async function createLeadInCrm(params: {
     };
 
     // 1. Клиент всегда корпоративный (B2B)
-    let customerId: number | null = await ensureCorporateCustomerId({
+    const customerLookup = await ensureCorporateCustomerId({
         details: params.corporateDetails,
         name: params.corporateDetails?.contactName || params.name,
         phone: params.phone,
         email: params.email,
         fieldHints,
     }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
     let isCorp = customerId !== null;
 
     if (!customerId) {
@@ -524,6 +592,7 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         phone: params.phone,
         email: params.email,
         customerComment: managerComment,
+        ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
         source: {
             source: params.utm?.source || 'ai-widget',
             medium: params.utm?.medium || 'chat',
@@ -575,11 +644,13 @@ export async function createSecretaryLead(params: {
     const { site } = await getCrmConfig();
 
     // 1. Клиент всегда корпоративный (B2B): ищем контрагента по телефону, иначе заводим
-    let customerId: number | null = await ensureCorporateCustomerId({
+    const customerLookup = await ensureCorporateCustomerId({
         name: params.name,
         phone: params.phone,
         fieldHints: params.fieldHints,
     }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
     let isCorp = customerId !== null;
 
     if (!customerId) {
@@ -609,6 +680,7 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
         firstName: params.name || 'Клиент',
         phone: params.phone,
         customerComment: comment,
+        ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
         source: { source: 'telphin-secretary' },
         // Обязательные поля карточки: без них менеджер не сохранит заказ.
         customFields: await buildLeadOrderCustomFields(params.fieldHints),
