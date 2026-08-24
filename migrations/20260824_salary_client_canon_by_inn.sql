@@ -42,7 +42,9 @@ DECLARE
     v_changed bigint;
     v_iter    int := 0;
 BEGIN
-    -- Рёбра графа: карточка ↔ каждый её ключ (ИНН контрагента, id компании).
+    -- Рёбра графа: карточка ↔ ИНН её контрагента. Компания (company.id) —
+    -- только запасной ключ для карточек, у которых ИНН не выгружен ни в одном
+    -- заказе: связывать по ней карточки с ИНН значит стягивать разные юрлица.
     CREATE TEMP TABLE _edges ON COMMIT DROP AS
     WITH base AS (
         SELECT
@@ -59,14 +61,24 @@ BEGIN
                 ), '\D', '', 'g'), '') AS inn,
             NULLIF(o.raw_payload->'company'->>'id', '') AS company_id
         FROM public.orders o
+    ),
+    b2 AS (
+        SELECT cust_id,
+               CASE WHEN inn ~ '^[0-9]{10,12}$' THEN inn END AS inn,
+               CASE WHEN company_id ~ '^[0-9]+$' THEN company_id END AS company_id
+        FROM base
+        WHERE cust_id IS NOT NULL
+    ),
+    has_inn AS (
+        SELECT DISTINCT cust_id FROM b2 WHERE inn IS NOT NULL
     )
-    SELECT DISTINCT cust_id, k AS group_key
-    FROM base,
-         LATERAL (VALUES
-             (CASE WHEN inn ~ '^[0-9]{10,12}$'  THEN 'inn:'  || inn END),
-             (CASE WHEN company_id ~ '^[0-9]+$' THEN 'comp:' || company_id END)
-         ) AS v(k)
-    WHERE cust_id IS NOT NULL AND k IS NOT NULL;
+    SELECT DISTINCT cust_id, 'inn:' || inn AS group_key
+    FROM b2 WHERE inn IS NOT NULL
+    UNION
+    SELECT DISTINCT b2.cust_id, 'comp:' || b2.company_id
+    FROM b2
+    WHERE b2.company_id IS NOT NULL
+      AND b2.cust_id NOT IN (SELECT cust_id FROM has_inn);
 
     CREATE INDEX ON _edges (group_key);
     CREATE INDEX ON _edges (cust_id);
