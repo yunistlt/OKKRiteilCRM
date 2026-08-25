@@ -286,6 +286,7 @@ export const SCRIPT_SCORE_KEYS = [
     'script_next_step_agreed',
     'script_dialogue_management',
     'script_confident_speech',
+    'script_other_products',
 ] as const;
 
 const CRITERION_GUIDES: CriterionGuide[] = [

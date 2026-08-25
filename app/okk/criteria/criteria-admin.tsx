@@ -10,6 +10,7 @@ type Criterion = {
     agent: string | null; agent_emoji: string | null; eval_method: string;
     ai_prompt: string | null; params: any; scoring_basket: string | null;
     how_tip: string | null; data_tip: string | null; sort_order: number; is_active: boolean;
+    na_gate: string | null;
 };
 
 const EVAL_METHODS: Record<string, string> = {
@@ -20,6 +21,13 @@ const EVAL_METHODS: Record<string, string> = {
 };
 const BASKETS: Record<string, string> = { '': 'Не входит в балл', deal: 'Балл сделки', script: 'Балл скрипта' };
 const TYPES: Record<string, string> = { bool: 'Да/Нет', text: 'Текст', num: 'Число' };
+// С какого момента жизни заказа правило вообще применяется. Пока гейт не пройден,
+// критерий не оценивается и в балл не идёт (система ставит «не применяется»).
+const GATES: Record<string, string> = {
+    '': 'Всегда',
+    approval_status: 'С «Согласования параметров заказа»',
+    production_or_cancel: 'К передаче в производство или отмене',
+};
 
 const inputCls = 'w-full border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-indigo-500 transition-colors';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1';
@@ -40,7 +48,7 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                 label: draft.label, category: draft.category, type: draft.type,
                 agent: draft.agent, agent_emoji: draft.agent_emoji, eval_method: draft.eval_method,
                 ai_prompt: draft.ai_prompt, scoring_basket: draft.scoring_basket || null,
-                how_tip: draft.how_tip, data_tip: draft.data_tip,
+                how_tip: draft.how_tip, data_tip: draft.data_tip, na_gate: draft.na_gate || null,
             });
             router.refresh();
         } catch (e: any) { alert('Ошибка сохранения: ' + e.message); }
@@ -72,6 +80,7 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                         <span className="text-sm font-medium text-gray-900 truncate">{c.agent_emoji} {c.label}</span>
                         <span className="text-[10px] font-mono text-gray-400">{c.key}</span>
                         {c.scoring_basket && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c.scoring_basket === 'deal' ? 'bg-green-50 text-green-700' : 'bg-purple-50 text-purple-700'}`}>{c.scoring_basket === 'deal' ? 'СДЕЛКА' : 'СКРИПТ'}</span>}
+                        {c.na_gate && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">{GATES[c.na_gate] || c.na_gate}</span>}
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{EVAL_METHODS[c.eval_method] || c.eval_method}</span>
                         {c.eval_method === 'native' && <span className="text-[9px] text-amber-600 italic">расчёт в коде</span>}
                     </div>
@@ -113,6 +122,12 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                         </select>
                     </div>
                     <div>
+                        <label className={labelCls}>Когда применяется</label>
+                        <select value={draft.na_gate || ''} onChange={e => set('na_gate', e.target.value)} className={inputCls}>
+                            {Object.entries(GATES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                    </div>
+                    <div>
                         <label className={labelCls}>Агент</label>
                         <input value={draft.agent || ''} onChange={e => set('agent', e.target.value)} placeholder="Максим / Семён / Игорь" className={inputCls} />
                     </div>
@@ -147,14 +162,14 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
 
 function AddForm({ onDone }: { onDone: () => void }) {
     const router = useRouter();
-    const [d, setD] = useState({ key: '', label: '', category: '', type: 'bool', eval_method: 'ai_script', scoring_basket: '', agent: 'Максим', agent_emoji: '🤓', ai_prompt: '' });
+    const [d, setD] = useState({ key: '', label: '', category: '', type: 'bool', eval_method: 'ai_script', scoring_basket: '', agent: 'Максим', agent_emoji: '🤓', ai_prompt: '', na_gate: '' });
     const [busy, setBusy] = useState(false);
     const set = (k: string, v: any) => setD(p => ({ ...p, [k]: v }));
 
     const create = async () => {
         setBusy(true);
         try {
-            await createCriterion({ ...d, scoring_basket: d.scoring_basket || null });
+            await createCriterion({ ...d, scoring_basket: d.scoring_basket || null, na_gate: d.na_gate || null });
             onDone();
             router.refresh();
         } catch (e: any) { alert('Ошибка: ' + e.message); setBusy(false); }
@@ -185,6 +200,12 @@ function AddForm({ onDone }: { onDone: () => void }) {
                 <label className={labelCls}>Корзина балла</label>
                 <select value={d.scoring_basket} onChange={e => set('scoring_basket', e.target.value)} className={inputCls}>
                     {Object.entries(BASKETS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+            </div>
+            <div className="col-span-2">
+                <label className={labelCls}>Когда применяется</label>
+                <select value={d.na_gate} onChange={e => set('na_gate', e.target.value)} className={inputCls}>
+                    {Object.entries(GATES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
             </div>
             {d.eval_method === 'ai_script' && (

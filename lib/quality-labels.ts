@@ -15,7 +15,7 @@ const QUALITY_CRITERION_LABELS: Record<string, string> = {
     email_sent_no_answer: 'При отсутствии ответа клиенту отправлено письмо',
     script_greeting: 'Приветствие клиента и представление сотрудника',
     script_call_purpose: 'Обозначена цель звонка',
-    script_company_info: 'Выяснено, чем занимается организация',
+    script_company_info: 'Выяснена деятельность компании',
     script_lpr_identified: 'Выявлено лицо, принимающее решение',
     script_budget_confirmed: 'Подтверждён бюджет',
     script_urgency_identified: 'Выявлена срочность покупки',
@@ -23,13 +23,14 @@ const QUALITY_CRITERION_LABELS: Record<string, string> = {
     script_tz_confirmed: 'Подтверждены параметры ТЗ',
     script_objection_general: 'Проведена работа с возражениями',
     script_objection_delays: 'При затягивании сроков выяснены конкуренты',
-    script_offer_best_tech: 'Отработано преимущество по тех. характеристикам',
-    script_offer_best_terms: 'Отработано преимущество по срокам',
-    script_offer_best_price: 'Отработано преимущество по цене',
+    script_offer_best_tech: 'Тех. характеристики устраивают клиента',
+    script_offer_best_terms: 'Сроки устраивают клиента',
+    script_offer_best_price: 'Цена устраивает клиента',
     script_cross_sell: 'Выполнена кросс-продажа',
     script_next_step_agreed: 'Согласован следующий шаг',
     script_dialogue_management: 'Менеджер управлял диалогом',
-    script_confident_speech: 'Уверенная и грамотная речь'
+    script_confident_speech: 'Уверенная и грамотная речь',
+    script_other_products: 'Выяснено, что ещё закупает клиент'
 };
 
 export function formatQualityCriterionLabel(key: string): string {
