@@ -268,7 +268,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
         status: 'ignored',
         review_note:
           nonCustomer === 'internal'
-            ? 'внутренний перевод (плательщик = получатель)'
+            ? 'внутренний перевод (плательщик — своё юрлицо)'
             : 'банковская операция (депозит/проценты/возврат банка)',
         processed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
