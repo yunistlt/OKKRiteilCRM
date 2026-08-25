@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GoalKind, ShtabMinus, ShtabRazbor, ShtabState } from '@/lib/shtab/types';
+import type { GoalKind, ShtabMinus, ShtabPost, ShtabProject, ShtabRazbor, ShtabState } from '@/lib/shtab/types';
 
 // Состояние Штаба и запись в базу.
 //
@@ -165,12 +165,146 @@ export function useShtab() {
         [flush],
     );
 
+    // ── проекты ────────────────────────────────────────────────────────────
+    const patchRazborLocal = useCallback((id: number, patch: (r: ShtabRazbor) => ShtabRazbor) => {
+        setState((prev) => (prev ? { ...prev, razbory: prev.razbory.map((r) => (r.id === id ? patch(r) : r)) } : prev));
+    }, []);
+
+    const addProject = useCallback(
+        async (title: string) => {
+            const id = activeIdRef.current;
+            if (!id) return;
+            const created = await request<ShtabProject>('/api/shtab/project', {
+                method: 'POST',
+                body: JSON.stringify({ razbor_id: id, title }),
+            });
+            patchRazborLocal(id, (r) => ({ ...r, projects: [...r.projects, created] }));
+        },
+        [patchRazborLocal],
+    );
+
+    // Правки проекта уходят той же пачкой с задержкой, что и текст разбора:
+    // имя ответственного набирают по букве.
+    const projectTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+    const patchProject = useCallback(
+        (projectId: number, patch: Partial<ShtabProject>) => {
+            const id = activeIdRef.current;
+            if (!id) return;
+            patchRazborLocal(id, (r) => ({
+                ...r,
+                projects: r.projects.map((p) => (p.id === projectId ? { ...p, ...patch } : p)),
+            }));
+
+            const timers = projectTimers.current;
+            const prev = timers.get(projectId);
+            if (prev) clearTimeout(prev);
+            timers.set(
+                projectId,
+                setTimeout(() => {
+                    timers.delete(projectId);
+                    setSaveStatus('saving');
+                    request<ShtabProject>(`/api/shtab/project/${projectId}`, {
+                        method: 'PATCH',
+                        body: JSON.stringify(patch),
+                    })
+                        .then(() => setSaveStatus('saved'))
+                        .catch(() => setSaveStatus('error'));
+                }, SAVE_DELAY_MS),
+            );
+        },
+        [patchRazborLocal],
+    );
+
+    const removeProject = useCallback(
+        async (projectId: number) => {
+            const id = activeIdRef.current;
+            if (!id) return;
+            await request(`/api/shtab/project/${projectId}`, { method: 'DELETE' });
+            patchRazborLocal(id, (r) => ({ ...r, projects: r.projects.filter((p) => p.id !== projectId) }));
+        },
+        [patchRazborLocal],
+    );
+
+    // ── посты ──────────────────────────────────────────────────────────────
+    const addPost = useCallback(async (title: string, areaCode: string | null) => {
+        const created = await request<ShtabPost>('/api/shtab/post', {
+            method: 'POST',
+            body: JSON.stringify({ title, area_code: areaCode }),
+        });
+        setState((prev) => (prev ? { ...prev, posts: [...prev.posts, created] } : prev));
+    }, []);
+
+    const postTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+    const patchPost = useCallback((postId: number, patch: Partial<ShtabPost>) => {
+        setState((prev) =>
+            prev ? { ...prev, posts: prev.posts.map((p) => (p.id === postId ? { ...p, ...patch } : p)) } : prev,
+        );
+        const timers = postTimers.current;
+        const prev = timers.get(postId);
+        if (prev) clearTimeout(prev);
+        timers.set(
+            postId,
+            setTimeout(() => {
+                timers.delete(postId);
+                setSaveStatus('saving');
+                request<ShtabPost>(`/api/shtab/post/${postId}`, { method: 'PATCH', body: JSON.stringify(patch) })
+                    .then(() => setSaveStatus('saved'))
+                    .catch(() => setSaveStatus('error'));
+            }, SAVE_DELAY_MS),
+        );
+    }, []);
+
+    const removePost = useCallback(async (postId: number) => {
+        await request(`/api/shtab/post/${postId}`, { method: 'DELETE' });
+        setState((prev) => (prev ? { ...prev, posts: prev.posts.filter((p) => p.id !== postId) } : prev));
+    }, []);
+
+    /**
+     * Принять стратегию: разбор закрывается вместе с отмеченными минусами одной
+     * транзакцией на стороне базы. Перед этим дописываем несохранённые правки —
+     * иначе закрытый разбор остался бы без последнего абзаца стратегии.
+     */
+    const closeRazbor = useCallback(
+        async (minusIds: number[]) => {
+            const id = activeIdRef.current;
+            if (!id) return 0;
+            await flush();
+            const res = await request<{ closed_minuses: number }>(`/api/shtab/razbor/${id}/close`, {
+                method: 'POST',
+                body: JSON.stringify({ minus_ids: minusIds }),
+            });
+            setState((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          razbory: prev.razbory.map((r) =>
+                              r.id === id ? { ...r, status: 'done', closes_minus_ids: minusIds } : r,
+                          ),
+                          minuses: prev.minuses.map((m) => (minusIds.includes(m.id) ? { ...m, done: true } : m)),
+                      }
+                    : prev,
+            );
+            return res.closed_minuses;
+        },
+        [flush],
+    );
+
     const saveGoals = useCallback(async (goals: Partial<Record<GoalKind, string>>) => {
         const saved = await request<Record<GoalKind, string>>('/api/shtab/goals', {
             method: 'PUT',
             body: JSON.stringify(goals),
         });
         setState((prev) => (prev ? { ...prev, goals: saved } : prev));
+    }, []);
+
+    // Отложенные правки проектов и постов не должны уехать вместе с вкладкой.
+    useEffect(() => {
+        const projects = projectTimers.current;
+        const posts = postTimers.current;
+        return () => {
+            projects.forEach(clearTimeout);
+            posts.forEach(clearTimeout);
+        };
     }, []);
 
     return {
@@ -185,6 +319,13 @@ export function useShtab() {
         newRazbor,
         openRazbor,
         saveGoals,
+        addProject,
+        patchProject,
+        removeProject,
+        addPost,
+        patchPost,
+        removePost,
+        closeRazbor,
     };
 }
 

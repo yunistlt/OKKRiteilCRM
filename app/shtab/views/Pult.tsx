@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { RAZBOR_STEPS, razborProgress, topArea } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
 import Sparkline from '../Sparkline';
@@ -7,17 +8,25 @@ import { STATS } from '../stats';
 import type { Stat } from '../stats';
 import type { ViewProps } from '../nav';
 
-function StatCard({ stat }: { stat: Stat }) {
-    const v = verdict(stat.data);
-    const last = stat.data[stat.data.length - 1];
+type StatsResponse = { series: Record<string, number[]>; errors: Record<string, string> };
+
+function StatCard({ stat, live, failed }: { stat: Stat; live: number[] | null; failed: boolean }) {
+    // Живой ряд — только из ответа маршрута. Демонстрационный ряд подставляется
+    // исключительно метрикам без источника, чтобы карточка не была пустой.
+    const data = stat.source === 'api' ? (live ?? []) : (stat.sample ?? []);
+    const last = data.length > 0 ? data[data.length - 1] : null;
+    const v = verdict(data);
+
     return (
         <div className="stat">
             <div className="stat-name">{stat.name}</div>
-            <div className="stat-val">{last.toFixed(stat.dp)}</div>
+            <div className="stat-val">{last === null ? '—' : last.toFixed(stat.dp)}</div>
             <div className="stat-unit">{stat.unit}</div>
             <div className="stat-foot">
-                <span className={`verdict v-${v.kind}`}>{v.title}</span>
-                <Sparkline data={stat.data} kind={v.kind} />
+                <span className={`verdict v-${failed ? 'thin' : v.kind}`}>
+                    {failed ? 'источник не отвечает' : v.title}
+                </span>
+                {data.length > 1 && !failed ? <Sparkline data={data} kind={v.kind} /> : null}
             </div>
             <div className="stat-src">{stat.src}</div>
         </div>
@@ -26,14 +35,34 @@ function StatCard({ stat }: { stat: Stat }) {
 
 export default function Pult({ shtab, go }: ViewProps) {
     const { state, active } = shtab;
+    const [stats, setStats] = useState<StatsResponse | null>(null);
+    const [statsFailed, setStatsFailed] = useState(false);
+
+    useEffect(() => {
+        let alive = true;
+        fetch('/api/shtab/stats')
+            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+            .then((data: StatsResponse) => alive && setStats(data))
+            .catch(() => alive && setStatsFailed(true));
+        return () => {
+            alive = false;
+        };
+    }, []);
+
     if (!state) return null;
 
     const top = topArea(state.areas, state.minuses);
     const openCount = state.minuses.filter((m) => !m.done).length;
     const step = Math.min(razborProgress(active) + 1, RAZBOR_STEPS);
 
-    const week = STATS.filter((s) => s.period === 'week');
-    const month = STATS.filter((s) => s.period === 'month');
+    const card = (s: Stat) => (
+        <StatCard
+            key={s.key}
+            stat={s}
+            live={stats?.series[s.key] ?? null}
+            failed={s.source === 'api' && (statsFailed || Boolean(stats?.errors[s.key]))}
+        />
+    );
 
     return (
         <>
@@ -70,19 +99,15 @@ export default function Pult({ shtab, go }: ViewProps) {
                     <div className="block-label">
                         <span className="eyebrow">Статистики · неделя</span>
                     </div>
-                    <div className="statgrid">
-                        {week.map((s) => (
-                            <StatCard key={s.name} stat={s} />
-                        ))}
-                    </div>
+                    <div className="statgrid">{STATS.filter((s) => s.period === 'week').map(card)}</div>
                     <div className="block-label">
                         <span className="eyebrow">Статистики · месяц</span>
                     </div>
-                    <div className="statgrid">
-                        {month.map((s) => (
-                            <StatCard key={s.name} stat={s} />
-                        ))}
-                    </div>
+                    <div className="statgrid">{STATS.filter((s) => s.period === 'month').map(card)}</div>
+                    <p className="hint" style={{ marginTop: 10 }}>
+                        Подключён один источник — приход группы по выпискам Точки и Т‑Банка. Остальные строки ждут
+                        коннекторов; у каждой подписано, откуда придут числа.
+                    </p>
                 </div>
             </div>
         </>

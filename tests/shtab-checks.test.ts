@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
     FALLBACK_AREA,
     checkGoal,
+    checkPostStatistic,
+    checkProject,
     checkResourceName,
     checkSituation,
     checkWhy,
     guessArea,
 } from '@/lib/shtab/checks';
-import { buildStrategyDraft } from '@/lib/shtab/strategy';
-import { topArea } from '@/lib/shtab/types';
+import { buildStrategyDraft, projectDraftsFromResources } from '@/lib/shtab/strategy';
+import { closedByRazbor, topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 
 describe('checkWhy', () => {
@@ -176,5 +178,92 @@ describe('buildStrategyDraft', () => {
 
     it('на пустой карте черновика нет', () => {
         expect(buildStrategyDraft([], 'Цель', 'Рост')).toBe('');
+    });
+});
+
+describe('checkProject', () => {
+    it('без ответственного и без срока — это пожелание', () => {
+        expect(checkProject('', null)?.kind).toBe('bad');
+    });
+
+    it('поодиночке пропущенные поля — предупреждение', () => {
+        expect(checkProject('', '2026-09-30')?.kind).toBe('warn');
+        expect(checkProject('Петров', null)?.kind).toBe('warn');
+        expect(checkProject('Петров', '  ')?.kind).toBe('warn');
+    });
+
+    it('имя и дата на месте — молчит', () => {
+        expect(checkProject('Петров', '2026-09-30')).toBeNull();
+    });
+});
+
+describe('checkPostStatistic', () => {
+    it('пост без статистики не пропускает', () => {
+        expect(checkPostStatistic('')?.kind).toBe('bad');
+        expect(checkPostStatistic('   ')?.kind).toBe('bad');
+    });
+
+    it('дорогую в подсчёте статистику помечает', () => {
+        // Такую собирают руками, посчитают дважды и бросят.
+        expect(checkPostStatistic('индекс удовлетворённости по опросу клиентов')?.kind).toBe('warn');
+        expect(checkPostStatistic('экспертная оценка руководителя')?.kind).toBe('warn');
+    });
+
+    it('дешёвую и объективную пропускает', () => {
+        expect(checkPostStatistic('Оснащённость комплектующими на начало недели, %')).toBeNull();
+        expect(checkPostStatistic('Количество рекламаций за неделю')).toBeNull();
+    });
+});
+
+describe('projectDraftsFromResources', () => {
+    it('делает по проекту на отсутствующий ресурс, в порядке очереди', () => {
+        expect(
+            projectDraftsFromResources([
+                { ordinal: 0, missing: 'Вторая камера полимеризации.', available: ['180 тыс. руб.'] },
+                { ordinal: 1, missing: 'Обученный оператор', available: [] },
+            ]),
+        ).toEqual(['Обеспечить: Вторая камера полимеризации', 'Обеспечить: Обученный оператор']);
+    });
+
+    it('пустые карточки пропускает', () => {
+        expect(projectDraftsFromResources([{ ordinal: 0, missing: '   ', available: [] }])).toEqual([]);
+        expect(projectDraftsFromResources([])).toEqual([]);
+    });
+});
+
+describe('closedByRazbor', () => {
+    const base = {
+        area_code: 'production',
+        minus_id: null,
+        situation: '',
+        why: '',
+        check_inside: null,
+        check_res: null,
+        check_relief: null,
+        goal_fix: '',
+        goal_grow: '',
+        strategy: '',
+        created_at: '2026-08-25T09:00:00Z',
+        resources: [],
+        projects: [],
+    };
+
+    it('находит разбор, закрывший минус', () => {
+        const razbory = [
+            { ...base, id: 1, status: 'done' as const, closes_minus_ids: [10, 11] },
+            { ...base, id: 2, status: 'draft' as const, closes_minus_ids: [12] },
+        ];
+        expect(closedByRazbor(10, razbory)?.id).toBe(1);
+        expect(closedByRazbor(11, razbory)?.id).toBe(1);
+    });
+
+    it('незакрытый разбор минус не закрывает', () => {
+        const razbory = [{ ...base, id: 2, status: 'draft' as const, closes_minus_ids: [12] }];
+        expect(closedByRazbor(12, razbory)).toBeNull();
+    });
+
+    it('минус, закрытый руками, ни к какому разбору не привязан', () => {
+        const razbory = [{ ...base, id: 1, status: 'done' as const, closes_minus_ids: [10] }];
+        expect(closedByRazbor(99, razbory)).toBeNull();
     });
 });

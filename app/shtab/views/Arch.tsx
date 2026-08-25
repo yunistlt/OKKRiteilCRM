@@ -48,6 +48,16 @@ export default function Arch({ shtab, go }: ViewProps) {
                                     <small>{r.why || 'причина не найдена'}</small>
                                 </div>
                                 <div className="row">
+                                    {r.closes_minus_ids.length > 0 ? (
+                                        <span className="eyebrow" title="минусов закрыто этой стратегией">
+                                            −{r.closes_minus_ids.length}
+                                        </span>
+                                    ) : null}
+                                    {r.projects.length > 0 ? (
+                                        <span className="eyebrow" title="проектов">
+                                            {r.projects.length} пр.
+                                        </span>
+                                    ) : null}
                                     <span className={`status ${cls}`}>{label}</span>
                                     {isActive ? null : (
                                         <button

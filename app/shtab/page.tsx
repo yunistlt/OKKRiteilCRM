@@ -12,6 +12,7 @@ import Minus from './views/Minus';
 import Razbor from './views/Razbor';
 import Karta from './views/Karta';
 import Strat from './views/Strat';
+import Projects from './views/Projects';
 import Arch from './views/Arch';
 import Celi from './views/Celi';
 import TamaraTab from './views/TamaraTab';
@@ -29,6 +30,7 @@ const VIEWS: Record<ViewId, (props: ViewProps) => JSX.Element | null> = {
     razbor: Razbor,
     karta: Karta,
     strat: Strat,
+    projects: Projects,
     arch: Arch,
     celi: Celi,
     tamara: TamaraTab,
@@ -91,6 +93,9 @@ export default function ShtabPage() {
                                 <span className="badge">{state.minuses.filter((m) => !m.done).length}</span>
                             ) : null}
                             {id === 'arch' && state ? <span className="badge">{state.razbory.length}</span> : null}
+                            {id === 'projects' && shtab.active?.projects.length ? (
+                                <span className="badge">{shtab.active.projects.length}</span>
+                            ) : null}
                         </button>
                     ))}
                     {saveStatus !== 'idle' ? (

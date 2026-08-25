@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { SOURCE_TITLES, topArea } from '@/lib/shtab/types';
+import { SOURCE_TITLES, closedByRazbor, topArea } from '@/lib/shtab/types';
 import type { ShtabArea } from '@/lib/shtab/types';
 import { guessArea } from '@/lib/shtab/checks';
 import type { ViewProps } from '../nav';
@@ -119,9 +119,22 @@ export default function Minus({ shtab, go }: ViewProps) {
                                             <span style={{ color: 'var(--ink-3)' }}>Минусов не зафиксировано</span>
                                         </li>
                                     ) : (
-                                        items.map((m) => (
+                                        items.map((m) => {
+                                            const by = m.done ? closedByRazbor(m.id, state.razbory) : null;
+                                            return (
                                             <li key={m.id} className={m.done ? 'done' : ''}>
-                                                <span className="mt">{m.text}</span>
+                                                <span className="mt">
+                                                    {m.text}
+                                                    {by ? (
+                                                        <small style={{ display: 'block', color: 'var(--calm)' }}>
+                                                            закрыт стратегией от{' '}
+                                                            {new Date(by.created_at).toLocaleDateString('ru-RU', {
+                                                                day: '2-digit',
+                                                                month: 'short',
+                                                            })}
+                                                        </small>
+                                                    ) : null}
+                                                </span>
                                                 <span className={`src ${m.source === 'data' ? 'auto' : ''}`}>
                                                     {SOURCE_TITLES[m.source]}
                                                 </span>
@@ -132,7 +145,8 @@ export default function Minus({ shtab, go }: ViewProps) {
                                                     {m.done ? 'вернуть' : 'закрыт'}
                                                 </button>
                                             </li>
-                                        ))
+                                            );
+                                        })
                                     )}
                                 </ul>
                                 <div className="area-acts">

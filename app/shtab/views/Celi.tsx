@@ -1,13 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GoalKind } from '@/lib/shtab/types';
+import { checkPostStatistic } from '@/lib/shtab/checks';
 import type { ViewProps } from '../nav';
 
 const SAVE_DELAY_MS = 700;
 
-export default function Celi({ shtab }: ViewProps) {
-    const { state, saveGoals } = shtab;
+export default function Celi({ shtab, tamara }: ViewProps) {
+    const { state, saveGoals, addPost, patchPost, removePost } = shtab;
+    const [newPost, setNewPost] = useState('');
+    const [postBusy, setPostBusy] = useState(false);
     const [draft, setDraft] = useState<Record<GoalKind, string> | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -22,7 +25,35 @@ export default function Celi({ shtab }: ViewProps) {
         [],
     );
 
+    // Худший из постов задаёт реплику: пока есть пост без статистики,
+    // говорить про дорогие в подсчёте незачем.
+    const worstPost = useMemo(() => {
+        let result: ReturnType<typeof checkPostStatistic> = null;
+        for (const post of state?.posts ?? []) {
+            const v = checkPostStatistic(post.statistic);
+            if (v?.kind === 'bad') return v;
+            if (v && !result) result = v;
+        }
+        return result;
+    }, [state?.posts]);
+
+    useEffect(() => {
+        tamara.reactive('post', worstPost);
+    }, [tamara, worstPost]);
+
     if (!state || !draft) return null;
+
+    const createPost = async () => {
+        const title = newPost.trim();
+        if (!title || postBusy) return;
+        setPostBusy(true);
+        try {
+            await addPost(title, null);
+            setNewPost('');
+        } finally {
+            setPostBusy(false);
+        }
+    };
 
     const edit = (kind: GoalKind, value: string) => {
         setDraft((prev) => (prev ? { ...prev, [kind]: value } : prev));
@@ -83,11 +114,115 @@ export default function Celi({ shtab }: ViewProps) {
             <div className="block-label">
                 <span className="eyebrow">Посты · образцовое положение и статистики</span>
             </div>
-            <div className="empty">
-                Посты пока не заведены. Пост — это не сотрудник: у него своё образцовое положение дел и своя
-                еженедельная статистика, и один человек может занимать несколько постов. Отдельный экран под них — в
-                следующем заходе, вместе с проектами.
+            <p style={{ fontSize: 13.5, color: 'var(--ink-2)', maxWidth: '72ch', marginBottom: 12 }}>
+                Пост — не сотрудник. У поста своё образцовое положение дел и своя еженедельная статистика; один
+                человек может занимать несколько постов, а пост может стоять вакантным.
+            </p>
+
+            <div className="card" style={{ marginBottom: 16 }}>
+                <div className="row">
+                    <input
+                        type="text"
+                        value={newPost}
+                        onChange={(e) => setNewPost(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && void createPost()}
+                        placeholder="Название поста. Например: начальник цеха по качеству и ТПП"
+                        style={{ flex: 1, minWidth: 260 }}
+                    />
+                    <button
+                        className="btn btn-primary"
+                        onClick={() => void createPost()}
+                        disabled={postBusy || !newPost.trim()}
+                    >
+                        Завести пост
+                    </button>
+                </div>
             </div>
+
+            {state.posts.length === 0 ? (
+                <div className="empty">
+                    Постов нет. Пока их нет, разговор о работе остаётся разговором о людях, а не о том, что каждый
+                    из них должен производить.
+                </div>
+            ) : (
+                <div className="tablewrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Пост</th>
+                                <th>Образцовое положение дел</th>
+                                <th>Статистика</th>
+                                <th>Занимает</th>
+                                <th />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {state.posts.map((post) => {
+                                const v = checkPostStatistic(post.statistic);
+                                return (
+                                    <tr key={post.id}>
+                                        <td>
+                                            <input
+                                                type="text"
+                                                value={post.title}
+                                                onChange={(e) => patchPost(post.id, { title: e.target.value })}
+                                                style={{ fontWeight: 600 }}
+                                            />
+                                            <select
+                                                value={post.area_code ?? ''}
+                                                onChange={(e) =>
+                                                    patchPost(post.id, { area_code: e.target.value || null })
+                                                }
+                                                style={{ marginTop: 6 }}
+                                            >
+                                                <option value="">— без области —</option>
+                                                {state.areas.map((a) => (
+                                                    <option key={a.code} value={a.code}>
+                                                        {a.title}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <textarea
+                                                value={post.ideal_scene}
+                                                onChange={(e) => patchPost(post.id, { ideal_scene: e.target.value })}
+                                                placeholder="Что должно быть, когда пост работает как надо"
+                                                style={{ minHeight: 64 }}
+                                            />
+                                        </td>
+                                        <td>
+                                            <textarea
+                                                value={post.statistic}
+                                                onChange={(e) => patchPost(post.id, { statistic: e.target.value })}
+                                                placeholder="Что считаем каждую неделю"
+                                                style={{ minHeight: 64 }}
+                                            />
+                                            {v ? <div className={`mark m-${v.kind}`}>{v.short}</div> : null}
+                                        </td>
+                                        <td>
+                                            <input
+                                                type="text"
+                                                value={post.holder_name}
+                                                onChange={(e) => patchPost(post.id, { holder_name: e.target.value })}
+                                                placeholder="вакантен"
+                                            />
+                                        </td>
+                                        <td>
+                                            <button
+                                                className="btn btn-sm btn-danger"
+                                                onClick={() => void removePost(post.id)}
+                                            >
+                                                убрать
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </>
     );
 }

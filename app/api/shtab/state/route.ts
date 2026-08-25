@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import type { GoalKind, ShtabRazbor, ShtabResource, ShtabState } from '@/lib/shtab/types';
+import type { GoalKind, ShtabProject, ShtabRazbor, ShtabResource, ShtabState } from '@/lib/shtab/types';
 import { GOAL_KINDS } from '@/lib/shtab/types';
 
 export const dynamic = 'force-dynamic';
@@ -12,13 +12,15 @@ export const dynamic = 'force-dynamic';
 // Доступ: RBAC /api/shtab → только admin.
 
 type ResourceRow = { razbor_id: number; ordinal: number; missing: string; available: string[] | null };
+type LinkRow = { razbor_id: number; minus_id: number };
+type ProjectRow = ShtabProject;
 
 export async function GET(req: NextRequest) {
     try {
         const session = await getSession(req);
         if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
-        const [areasRes, minusesRes, razboryRes, goalsRes] = await Promise.all([
+        const [areasRes, minusesRes, razboryRes, goalsRes, postsRes] = await Promise.all([
             supabase.from('shtab_area').select('code, title, ordinal').order('ordinal'),
             supabase
                 .from('shtab_minus')
@@ -32,9 +34,14 @@ export async function GET(req: NextRequest) {
                 )
                 .order('created_at', { ascending: false }),
             supabase.from('shtab_goal').select('kind, text'),
+            supabase
+                .from('shtab_post')
+                .select('id, title, area_code, ideal_scene, statistic, holder_name, ordinal')
+                .order('ordinal')
+                .order('id'),
         ]);
 
-        const failed = [areasRes, minusesRes, razboryRes, goalsRes].find((r) => r.error);
+        const failed = [areasRes, minusesRes, razboryRes, goalsRes, postsRes].find((r) => r.error);
         if (failed?.error) throw new Error(failed.error.message);
 
         const razborRows = razboryRes.data ?? [];
@@ -42,17 +49,43 @@ export async function GET(req: NextRequest) {
         // Ресурсы забираются одним запросом на все разборы, а не по одному на разбор:
         // разборов немного, но N+1 на ровном месте заводить незачем.
         let resources: ResourceRow[] = [];
+        let links: LinkRow[] = [];
+        let projects: ProjectRow[] = [];
         if (razborRows.length > 0) {
-            const { data, error } = await supabase
-                .from('shtab_resource')
-                .select('razbor_id, ordinal, missing, available')
-                .in(
-                    'razbor_id',
-                    razborRows.map((r: { id: number }) => r.id),
-                )
-                .order('ordinal');
-            if (error) throw new Error(error.message);
-            resources = (data ?? []) as ResourceRow[];
+            const ids = razborRows.map((r: { id: number }) => r.id);
+            const [resRes, linkRes, projRes] = await Promise.all([
+                supabase
+                    .from('shtab_resource')
+                    .select('razbor_id, ordinal, missing, available')
+                    .in('razbor_id', ids)
+                    .order('ordinal'),
+                supabase.from('shtab_razbor_minus').select('razbor_id, minus_id').in('razbor_id', ids),
+                supabase
+                    .from('shtab_project')
+                    .select('id, razbor_id, ordinal, title, owner_name, due_on, status, note')
+                    .in('razbor_id', ids)
+                    .order('ordinal')
+                    .order('id'),
+            ]);
+            const bad = [resRes, linkRes, projRes].find((r) => r.error);
+            if (bad?.error) throw new Error(bad.error.message);
+            resources = (resRes.data ?? []) as ResourceRow[];
+            links = (linkRes.data ?? []) as LinkRow[];
+            projects = (projRes.data ?? []) as ProjectRow[];
+        }
+
+        const linksByRazbor = new Map<number, number[]>();
+        for (const row of links) {
+            const list = linksByRazbor.get(row.razbor_id) ?? [];
+            list.push(row.minus_id);
+            linksByRazbor.set(row.razbor_id, list);
+        }
+
+        const projectsByRazbor = new Map<number, ProjectRow[]>();
+        for (const row of projects) {
+            const list = projectsByRazbor.get(row.razbor_id) ?? [];
+            list.push(row);
+            projectsByRazbor.set(row.razbor_id, list);
         }
 
         const byRazbor = new Map<number, ShtabResource[]>();
@@ -73,7 +106,10 @@ export async function GET(req: NextRequest) {
             razbory: razborRows.map((r: { id: number }) => ({
                 ...r,
                 resources: byRazbor.get(r.id) ?? [],
+                closes_minus_ids: linksByRazbor.get(r.id) ?? [],
+                projects: projectsByRazbor.get(r.id) ?? [],
             })) as ShtabRazbor[],
+            posts: (postsRes.data ?? []) as ShtabState['posts'],
             goals,
         };
 

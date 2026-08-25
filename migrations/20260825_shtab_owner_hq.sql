@@ -204,3 +204,125 @@ $function$;
 
 COMMENT ON FUNCTION public.shtab_set_resources(bigint, jsonb) IS
     'Перезаписывает карту ресурсов разбора целиком. Порядок колонок — порядок элементов массива.';
+
+-- ── проекты ────────────────────────────────────────────────────────────────────
+-- Из стратегии выходят проекты: методичка требует, чтобы способ достижения
+-- превратился в дела со сроком и ответственным, иначе стратегия остаётся текстом.
+-- Проект без ответственного или без срока — не проект, а пожелание; поля
+-- необязательные на уровне схемы, потому что заводят их черновиком, но интерфейс
+-- на пустоту ругается.
+CREATE TABLE IF NOT EXISTS public.shtab_project (
+    id         bigserial PRIMARY KEY,
+    razbor_id  bigint NOT NULL REFERENCES public.shtab_razbor(id) ON DELETE CASCADE,
+    ordinal    int  NOT NULL DEFAULT 0,
+    title      text NOT NULL,
+    owner_name text NOT NULL DEFAULT '',
+    due_on     date,
+    status     text NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'done', 'dropped')),
+    note       text NOT NULL DEFAULT '',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_shtab_project_razbor
+    ON public.shtab_project (razbor_id, ordinal);
+
+COMMENT ON TABLE public.shtab_project IS
+    'Проекты, вытекающие из стратегии разбора. Порядок ordinal — очередь исполнения.';
+
+-- ── посты ──────────────────────────────────────────────────────────────────────
+-- Пост — не сотрудник. У поста своё образцовое положение дел и своя еженедельная
+-- статистика; один человек может занимать несколько постов, и наоборот — пост
+-- может стоять вакантным. Поэтому holder_name это подпись, а не ссылка на
+-- пользователя: организационная структура здесь важнее штатного расписания.
+CREATE TABLE IF NOT EXISTS public.shtab_post (
+    id          bigserial PRIMARY KEY,
+    title       text NOT NULL,
+    area_code   text REFERENCES public.shtab_area(code),
+    ideal_scene text NOT NULL DEFAULT '',   -- образцовое положение дел
+    statistic   text NOT NULL DEFAULT '',   -- что считаем еженедельно
+    holder_name text NOT NULL DEFAULT '',
+    ordinal     int  NOT NULL DEFAULT 0,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_shtab_post_ordinal ON public.shtab_post (ordinal, id);
+
+COMMENT ON TABLE public.shtab_post IS
+    'Посты: образцовое положение дел и еженедельная статистика. Не штатное расписание.';
+
+-- ── какие минусы закрывает разбор ──────────────────────────────────────────────
+-- shtab_razbor.minus_id помнит, с какого минуса разбор НАЧАЛСЯ. Здесь — обратное:
+-- какие минусы он берётся закрыть своей стратегией. Через год по этой связке
+-- видно, какие причины владелец угадывал, а какие нет.
+CREATE TABLE IF NOT EXISTS public.shtab_razbor_minus (
+    razbor_id bigint NOT NULL REFERENCES public.shtab_razbor(id) ON DELETE CASCADE,
+    minus_id  bigint NOT NULL REFERENCES public.shtab_minus(id)  ON DELETE CASCADE,
+    PRIMARY KEY (razbor_id, minus_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shtab_razbor_minus_minus
+    ON public.shtab_razbor_minus (minus_id);
+
+COMMENT ON TABLE public.shtab_razbor_minus IS
+    'Минусы, которые разбор берётся закрыть своей стратегией.';
+
+-- Замена набора закрываемых минусов — целиком и одной транзакцией, по тем же
+-- соображениям, что и карта ресурсов.
+CREATE OR REPLACE FUNCTION public.shtab_set_razbor_minuses(p_razbor_id bigint, p_minus_ids bigint[])
+RETURNS void
+LANGUAGE plpgsql
+AS $function$
+BEGIN
+    DELETE FROM public.shtab_razbor_minus WHERE razbor_id = p_razbor_id;
+
+    INSERT INTO public.shtab_razbor_minus (razbor_id, minus_id)
+    SELECT p_razbor_id, m.id
+    FROM public.shtab_minus m
+    WHERE m.id = ANY (COALESCE(p_minus_ids, ARRAY[]::bigint[]))
+    ON CONFLICT DO NOTHING;
+END
+$function$;
+
+COMMENT ON FUNCTION public.shtab_set_razbor_minuses(bigint, bigint[]) IS
+    'Перезаписывает набор минусов, которые разбор закрывает. Несуществующие id игнорируются.';
+
+-- ── закрытие разбора ───────────────────────────────────────────────────────────
+-- Разбор закрывается вместе со своими минусами. Двумя запросами это означало бы,
+-- что сбой между ними оставляет разбор закрытым, а минусы открытыми — то есть
+-- реестр врёт, а приоритетная область считается по неверным числам. Тело функции
+-- выполняется в одной транзакции: либо закрылось всё, либо ничего.
+CREATE OR REPLACE FUNCTION public.shtab_close_razbor(p_razbor_id bigint)
+RETURNS int
+RETURNS NULL ON NULL INPUT
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    v_closed int;
+BEGIN
+    UPDATE public.shtab_razbor
+       SET status = 'done', updated_at = now()
+     WHERE id = p_razbor_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Разбор % не найден', p_razbor_id;
+    END IF;
+
+    WITH closed AS (
+        UPDATE public.shtab_minus m
+           SET done = true, done_at = now(), updated_at = now()
+          FROM public.shtab_razbor_minus rm
+         WHERE rm.razbor_id = p_razbor_id
+           AND m.id = rm.minus_id
+           AND NOT m.done
+        RETURNING m.id
+    )
+    SELECT count(*) INTO v_closed FROM closed;
+
+    RETURN v_closed;
+END
+$function$;
+
+COMMENT ON FUNCTION public.shtab_close_razbor(bigint) IS
+    'Закрывает разбор и отмеченные им минусы одной транзакцией. Возвращает число закрытых минусов.';

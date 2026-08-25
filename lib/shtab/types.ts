@@ -51,6 +51,38 @@ export type ShtabRazbor = {
     strategy: string;
     created_at: string;
     resources: ShtabResource[];
+    /** Минусы, которые разбор берётся закрыть своей стратегией. */
+    closes_minus_ids: number[];
+    projects: ShtabProject[];
+};
+
+export type ProjectStatus = 'open' | 'done' | 'dropped';
+
+/** Дело, вытекающее из стратегии: со сроком и ответственным, иначе это пожелание. */
+export type ShtabProject = {
+    id: number;
+    razbor_id: number;
+    ordinal: number;
+    title: string;
+    owner_name: string;
+    due_on: string | null;
+    status: ProjectStatus;
+    note: string;
+};
+
+/**
+ * Пост — не сотрудник. У поста своё образцовое положение дел и своя еженедельная
+ * статистика; holder_name — подпись, а не ссылка на пользователя, потому что один
+ * человек занимает несколько постов, а пост может стоять вакантным.
+ */
+export type ShtabPost = {
+    id: number;
+    title: string;
+    area_code: string | null;
+    ideal_scene: string;
+    statistic: string;
+    holder_name: string;
+    ordinal: number;
 };
 
 export type GoalKind = 'company' | 'owner' | 'product';
@@ -61,8 +93,14 @@ export type ShtabState = {
     areas: ShtabArea[];
     minuses: ShtabMinus[];
     razbory: ShtabRazbor[];
+    posts: ShtabPost[];
     goals: Record<GoalKind, string>;
 };
+
+/** Каким разбором закрыт минус. Пусто — закрыт руками, вне разбора. */
+export function closedByRazbor(minusId: number, razbory: ShtabRazbor[]): ShtabRazbor | null {
+    return razbory.find((r) => r.status === 'done' && r.closes_minus_ids.includes(minusId)) ?? null;
+}
 
 /** Шесть шагов разбора — по ним считается прогресс на Пульте. */
 export function razborProgress(r: ShtabRazbor | null | undefined): number {
