@@ -113,7 +113,7 @@ function toCandidate(row: any, reason: string): OrderMatchCandidate {
 
 /**
  * Не-клиентский кредит, который НЕ надо матчить/разбирать:
- *  - 'internal' — перевод между своими счетами (плательщик = получатель, одно юрлицо);
+ *  - 'internal' — платёж от своего юрлица группы (ИНН плательщика — наш);
  *  - 'bank'     — банковская операция (депозит/проценты/возврат средств банка).
  */
 const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат средств по/i;
@@ -121,8 +121,8 @@ const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат с�
 export function classifyNonCustomerPayment(
   payment: NormalizedPointPayment,
 ): 'internal' | 'bank' | null {
-  // Внутренний перевод между своими юрлицами группы (оба ИНН — свои), напр. субаренда.
-  if (isInternalGroupTransfer(payment.payerInn, payment.recipientInn)) return 'internal';
+  // Платит своё юрлицо группы (субаренда, распределение по фондам Точки) — не клиент.
+  if (isInternalGroupTransfer(payment.payerInn)) return 'internal';
   if (BANK_PURPOSE_RE.test(payment.purpose || '')) return 'bank';
   return null;
 }
