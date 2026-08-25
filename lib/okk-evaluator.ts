@@ -144,7 +144,7 @@ async function reachedProductionOrCancel(statusCodes: Set<string>): Promise<bool
 /** Контекст скрипт-критериев: результаты системных гейтов + значения полей ТОП3 из CRM. */
 type ScriptGateContext = {
     gates: Record<ScriptGateCode, boolean>;
-    fields: { tech: string; terms: string; price: string };
+    fields: { tech: string; terms: string; price: string; role: string; comments: string };
 };
 
 /** Считает все системные гейты по заказу и резолвит ТОП3-поля в человекочитаемые метки. */
@@ -154,6 +154,17 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
     const codeTerms = cf.top3_prokhodim_po_srokam1;
     const codePrice = cf.top3_prokhodim_li_po_tsene2;
     const NOT_FILLED = 'поле НЕ заполнено';
+    // Поле «Вы для себя или для заказчика приобретаете?» — свободный текст в CRM,
+    // поэтому отдаём ИИ как есть: он сверяет смысл с ролью, прозвучавшей в разговоре.
+    const roleRaw = String(cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete ?? '').trim();
+    // Комментарии заказа — куда менеджер заносит то, что выяснил в разговоре
+    // (отдельного поля под годовой объём в CRM нет).
+    const rp = (order?.raw_payload as any) || {};
+    const commentsRaw = [rp.managerComment, rp.customerComment]
+        .map((c: any) => String(c ?? '').trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 2000);
     const statusCodes = await collectOrderStatusCodes(orderId, currentStatus);
     const [approval, production, tech, terms, price] = await Promise.all([
         reachedApprovalStatus(statusCodes, currentStatus),
@@ -164,7 +175,7 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
     ]);
     return {
         gates: { approval_status: approval, production_or_cancel: production },
-        fields: { tech, terms, price },
+        fields: { tech, terms, price, role: roleRaw || NOT_FILLED, comments: commentsRaw || 'комментарии пустые' },
     };
 }
 
@@ -1103,10 +1114,12 @@ ${criteriaText}
                     content: `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
 ${annaInsights ? JSON.stringify(annaInsights, null, 2) : 'Данные аналитики по сделке отсутствуют.'}
 ${gateContext ? `
-ЗАПОЛНЕНИЕ ПОЛЕЙ CRM «ТОП3» (сверяй с ответами клиента в диалоге):
+ЗНАЧЕНИЯ ПОЛЕЙ CRM ПО ЭТОМУ ЗАКАЗУ (сверяй с тем, что прозвучало в диалоге):
 - ТОП3 Проходим по тех. характеристикам: ${gateContext.fields.tech}
 - ТОП3 Проходим по срокам: ${gateContext.fields.terms}
 - ТОП3 Проходим ли по цене: ${gateContext.fields.price}
+- Вы для себя или для заказчика приобретаете: ${gateContext.fields.role}
+- Комментарии в заказе (менеджера и клиента): ${gateContext.fields.comments}
 ` : ''}
 ИСТОРИЯ ЗВОНКОВ:
 ${transcript.substring(0, 15000)}`

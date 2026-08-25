@@ -30,7 +30,11 @@ const QUALITY_CRITERION_LABELS: Record<string, string> = {
     script_next_step_agreed: 'Согласован следующий шаг',
     script_dialogue_management: 'Менеджер управлял диалогом',
     script_confident_speech: 'Уверенная и грамотная речь',
-    script_other_products: 'Выяснено, что ещё закупает клиент'
+    script_other_products: 'Выяснено, что ещё закупает клиент',
+    script_client_role: 'Выяснена роль клиента',
+    script_client_role_crm: 'Роль клиента зафиксирована в CRM',
+    script_annual_volume: 'Выяснен годовой объём закупок',
+    script_annual_volume_crm: 'Годовой объём зафиксирован в CRM'
 };
 
 export function formatQualityCriterionLabel(key: string): string {
