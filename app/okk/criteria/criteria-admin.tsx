@@ -225,10 +225,15 @@ function AddForm({ onDone }: { onDone: () => void }) {
 export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
     const router = useRouter();
     const [adding, setAdding] = useState(false);
-    const list = [...initial].sort((a, b) => a.sort_order - b.sort_order);
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const all = [...initial].sort((a, b) => a.sort_order - b.sort_order);
+    // Действующие критерии — колонки таблицы качества. Выключенные уезжают в «Архив»:
+    // они не отображаются в таблице и не участвуют в баллах, но остаются доступны для возврата.
+    const list = all.filter(c => c.is_active);
+    const archived = all.filter(c => !c.is_active);
 
     const move = async (i: number, dir: -1 | 1) => {
-        const next = [...list];
+        const next = [...all];
         const j = i + dir;
         if (j < 0 || j >= next.length) return;
         [next[i], next[j]] = [next[j], next[i]];
@@ -247,7 +252,7 @@ export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
                 <div>
                     <Link href="/okk" className="text-sm text-gray-500 hover:text-gray-900 mb-2 block">← Назад к таблице качества</Link>
                     <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Критерии «Контроля качества»</h1>
-                    <p className="mt-2 text-sm text-gray-600">Добавляйте, редактируйте и отключайте критерии-колонки. Скрипт-критерии оцениваются ИИ по диалогу — промпт редактируется здесь.</p>
+                    <p className="mt-2 text-sm text-gray-600">Добавляйте, редактируйте и отключайте критерии-колонки. Скрипт-критерии оцениваются ИИ по диалогу — промпт редактируется здесь. Отключённые критерии уходят в архив: они не показываются в таблице качества и не влияют на балл.</p>
                 </div>
                 {!adding && (
                     <button onClick={() => setAdding(true)} className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors">+ Добавить критерий</button>
@@ -262,13 +267,37 @@ export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
                         <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-2 px-1">{cat}</h2>
                         <div className="space-y-2">
                             {list.filter(c => c.category === cat).map((c) => {
-                                const globalIndex = list.findIndex(x => x.key === c.key);
-                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={list.length} onMove={move} />;
+                                const globalIndex = all.findIndex(x => x.key === c.key);
+                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={all.length} onMove={move} />;
                             })}
                         </div>
                     </div>
                 ))}
             </div>
+
+            {archived.length > 0 && (
+                <div className="mt-10">
+                    <button
+                        onClick={() => setArchiveOpen(o => !o)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-left hover:bg-gray-100 transition-colors"
+                    >
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-500">
+                            Архив · {archived.length}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                            {archiveOpen ? 'Скрыть' : 'Показать'} — не отображаются в таблице качества
+                        </span>
+                    </button>
+                    {archiveOpen && (
+                        <div className="space-y-2 mt-3 opacity-70">
+                            {archived.map((c) => {
+                                const globalIndex = all.findIndex(x => x.key === c.key);
+                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={all.length} onMove={move} />;
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="mt-8 p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
                 <span className="font-bold">Важно:</span> критерии с методом «Системный» считаются логикой в коде (привязка по тех. коду) — у них редактируются название/категория/порядок/видимость, но не сама проверка. Скрипт-критерии (ИИ по диалогу) полностью настраиваются промптом. Изменения влияют на таблицу качества и на итоговый балл (а значит и на зарплату) — меняйте осознанно.
