@@ -22,7 +22,7 @@ const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide
 
 // ── Реестр скрипт-критериев (okk_criteria, eval_method='ai_script') ──
 // Дефолт — фолбэк, если реестр пуст/недоступен (полностью повторяет прежний хардкод).
-type ScriptCriterion = { key: string; label: string; ai_prompt: string | null; scoring_basket: string | null };
+type ScriptCriterion = { key: string; label: string; ai_prompt: string | null; scoring_basket: string | null; na_gate?: string | null };
 const DEFAULT_SCRIPT_CRITERIA: ScriptCriterion[] = [
     { key: 'script_greeting', label: 'Приветствие', ai_prompt: 'Приветствие и название компании. (Есть - true, Нет - false)', scoring_basket: 'script' },
     { key: 'script_call_purpose', label: 'Цель звонка', ai_prompt: 'Озвучена причина звонка (привязка к заказу/этапу). (Есть - true, Нет - false)', scoring_basket: 'script' },
@@ -47,7 +47,7 @@ const DEFAULT_SCRIPT_CRITERIA: ScriptCriterion[] = [
 async function getActiveCriteria(): Promise<any[]> {
     const { data, error } = await supabase
         .from('okk_criteria')
-        .select('key, label, ai_prompt, eval_method, scoring_basket, sort_order')
+        .select('key, label, ai_prompt, eval_method, scoring_basket, sort_order, na_gate')
         .eq('is_active', true)
         .order('sort_order', { ascending: true });
     if (error) {
@@ -57,36 +57,55 @@ async function getActiveCriteria(): Promise<any[]> {
     return data || [];
 }
 
-// ── Критерии «Работа с возражениями» (ТОП3) ──
-// Оценивают всю цепочку: вопрос задан в звонке → возражение отработано → поле CRM
-// заполнено и не противоречит ответу клиента. Применяются только начиная со статуса
-// «Согласование параметров заказа» (na-soglasovanii) и на всех последующих.
-const OBJECTION_CRITERIA_KEYS = ['script_offer_best_tech', 'script_offer_best_terms', 'script_offer_best_price'] as const;
-const APPROVAL_STATUS_CODE = 'na-soglasovanii'; // «Согласование параметров заказа»
+// ── Системные гейты применимости скрипт-критериев ──
+// Гейт решает КОД (детерминированно по статусам заказа), а не ИИ: если гейт не пройден,
+// критерий = null («правило пока не применяется») — вне знаменателя балла и без штрафа.
+// Какой гейт у критерия — задаётся данными: okk_criteria.na_gate (см. docs/okk/CRITERIA_V2.md).
+export const SCRIPT_GATE_CODES = ['approval_status', 'production_or_cancel'] as const;
+export type ScriptGateCode = (typeof SCRIPT_GATE_CODES)[number];
 
-/**
- * Дошёл ли заказ до статуса «Согласование параметров заказа» (или дальше).
- * Основной источник — история статусов order_history_log (заказ хоть раз входил в na-soglasovanii,
- * даже если потом ушёл в отмену). Фолбэк для заказов без синка истории — текущий статус
- * на этапе согласования или позже по числовому ordering из справочника statuses.
- */
-async function reachedApprovalStatus(orderId: number, currentStatus: string | null): Promise<boolean> {
-    if (currentStatus === APPROVAL_STATUS_CODE) return true;
-    // 1) История статусов — канонический способ узнать «когда-либо был в статусе».
+const APPROVAL_STATUS_CODE = 'na-soglasovanii'; // «Согласование параметров заказа»
+// Группы статусов, означающие «заказ уже ушёл в производство/доставку/выполнен либо отменён».
+// Имена групп берём из синканутого справочника RetailCRM (statuses.group_name) — не выдумываем.
+const FINAL_STATUS_GROUPS = ['Производство', 'Доставка', 'Выполнен', 'Отменен', 'Рекламации'];
+
+/** Причины «правило не применяется» — показываются пользователю в разборе критерия. */
+const GATE_NA_REASON: Record<ScriptGateCode, string> = {
+    approval_status: 'Заказ ещё не дошёл до статуса «Согласование параметров заказа» — правило пока не применяется.',
+    production_or_cancel: 'Заказ ещё не передан в производство и не отменён — правило проверяется только к этому моменту.',
+};
+
+/** Коды статусов заказа, в которых заказ когда-либо был (по истории), плюс текущий. */
+async function collectOrderStatusCodes(orderId: number, currentStatus: string | null): Promise<Set<string>> {
+    const codes = new Set<string>();
+    if (currentStatus) codes.add(currentStatus);
     try {
         const { data } = await supabase
             .from('order_history_log')
-            .select('id')
+            .select('new_value')
             .eq('retailcrm_order_id', orderId)
             .eq('field', 'status')
-            .ilike('new_value', `%"code":"${APPROVAL_STATUS_CODE}"%`)
-            .limit(1);
-        if (data && data.length > 0) return true;
+            .limit(500);
+        for (const row of data || []) {
+            const raw = String((row as any).new_value ?? '');
+            const match = raw.match(/"code"\s*:\s*"([^"]+)"/);
+            if (match) codes.add(match[1]);
+            else if (raw && !raw.startsWith('{')) codes.add(raw);
+        }
     } catch (e) {
         console.warn('[ОКК] order_history_log недоступна для гейта статуса:', (e as Error)?.message);
     }
-    // 2) Фолбэк: у старых заказов история могла не синкнуться — считаем «дошёл», если ТЕКУЩИЙ
-    //    статус на этапе согласования или позже (по ordering). Спасает от ложно-отрицательных.
+    return codes;
+}
+
+/**
+ * Дошёл ли заказ до статуса «Согласование параметров заказа» (или дальше).
+ * Основной источник — история статусов (заказ хоть раз входил в na-soglasovanii, даже если
+ * потом ушёл в отмену). Фолбэк для заказов без синка истории — текущий статус на этапе
+ * согласования или позже по числовому ordering из справочника statuses.
+ */
+async function reachedApprovalStatus(statusCodes: Set<string>, currentStatus: string | null): Promise<boolean> {
+    if (statusCodes.has(APPROVAL_STATUS_CODE)) return true;
     if (currentStatus) {
         try {
             const { data: rows } = await supabase
@@ -103,26 +122,61 @@ async function reachedApprovalStatus(orderId: number, currentStatus: string | nu
     return false;
 }
 
-/** Контекст для критериев «Работа с возражениями»: применимость по статусу + значения полей ТОП3. */
-type ObjectionContext = {
-    applicable: boolean;
-    fields: { tech: string; terms: string; price: string };
+/**
+ * Передан ли заказ в производство (или дальше по потоку) либо отменён.
+ * Момент, к которому менеджер обязан был выяснить квалификационные факты о клиенте.
+ * Группы статусов берём из справочника RetailCRM (statuses.group_name), коды не хардкодим.
+ */
+async function reachedProductionOrCancel(statusCodes: Set<string>): Promise<boolean> {
+    if (statusCodes.size === 0) return false;
+    try {
+        const { data } = await supabase
+            .from('statuses')
+            .select('code, group_name')
+            .in('code', Array.from(statusCodes));
+        return (data || []).some((row: any) => FINAL_STATUS_GROUPS.includes(row.group_name));
+    } catch (e) {
+        console.warn('[ОКК] Справочник статусов недоступен для гейта производства/отмены:', (e as Error)?.message);
+        return false;
+    }
+}
+
+/** Контекст скрипт-критериев: результаты системных гейтов + значения полей ТОП3 из CRM. */
+type ScriptGateContext = {
+    gates: Record<ScriptGateCode, boolean>;
+    fields: { tech: string; terms: string; price: string; role: string; comments: string };
 };
 
-/** Собирает ObjectionContext: гейт по статусу + резолв ТОП3-полей заказа в человекочитаемые метки. */
-async function buildObjectionContext(orderId: number, order: any, currentStatus: string | null): Promise<ObjectionContext> {
+/** Считает все системные гейты по заказу и резолвит ТОП3-поля в человекочитаемые метки. */
+async function buildScriptGateContext(orderId: number, order: any, currentStatus: string | null): Promise<ScriptGateContext> {
     const cf = (order?.raw_payload as any)?.customFields || {};
     const codeTech = cf.top3_prokhodim_po_tekh_kharakteristikam;
     const codeTerms = cf.top3_prokhodim_po_srokam1;
     const codePrice = cf.top3_prokhodim_li_po_tsene2;
     const NOT_FILLED = 'поле НЕ заполнено';
-    const [applicable, tech, terms, price] = await Promise.all([
-        reachedApprovalStatus(orderId, currentStatus),
+    // Поле «Вы для себя или для заказчика приобретаете?» — свободный текст в CRM,
+    // поэтому отдаём ИИ как есть: он сверяет смысл с ролью, прозвучавшей в разговоре.
+    const roleRaw = String(cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete ?? '').trim();
+    // Комментарии заказа — куда менеджер заносит то, что выяснил в разговоре
+    // (отдельного поля под годовой объём в CRM нет).
+    const rp = (order?.raw_payload as any) || {};
+    const commentsRaw = [rp.managerComment, rp.customerComment]
+        .map((c: any) => String(c ?? '').trim())
+        .filter(Boolean)
+        .join(' | ')
+        .slice(0, 2000);
+    const statusCodes = await collectOrderStatusCodes(orderId, currentStatus);
+    const [approval, production, tech, terms, price] = await Promise.all([
+        reachedApprovalStatus(statusCodes, currentStatus),
+        reachedProductionOrCancel(statusCodes),
         codeTech ? resolveRetailCRMLabel('top3Specs', String(codeTech)) : Promise.resolve(NOT_FILLED),
         codeTerms ? resolveRetailCRMLabel('top3Timing', String(codeTerms)) : Promise.resolve(NOT_FILLED),
         codePrice ? resolveRetailCRMLabel('top3Price', String(codePrice)) : Promise.resolve(NOT_FILLED),
     ]);
-    return { applicable, fields: { tech, terms, price } };
+    return {
+        gates: { approval_status: approval, production_or_cancel: production },
+        fields: { tech, terms, price, role: roleRaw || NOT_FILLED, comments: commentsRaw || 'комментарии пустые' },
+    };
 }
 
 const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
@@ -973,7 +1027,7 @@ export async function evaluateScript(
     annaInsights: any = null,
     callsContext?: { attempts?: number; transcribed?: number; status?: string | null },
     scriptCriteria?: ScriptCriterion[],
-    objectionContext?: ObjectionContext | null,
+    gateContext?: ScriptGateContext | null,
 ) {
     // Состав скрипт-критериев и их инструкции — из реестра okk_criteria (фолбэк на дефолты).
     const list = (scriptCriteria && scriptCriteria.length) ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA;
@@ -1019,36 +1073,39 @@ export async function evaluateScript(
             messages: [
                 {
                     role: 'system',
-                    content: `Ты — эксперт ОКК отдела продаж промышленного оборудования. 
-Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу (все звонки в рамках сделки).
-Твоя задача: оценить качество работы менеджера по чек-листу, используя сквозной анализ всей истории.
+                    content: `Ты — эксперт ОКК отдела продаж. Компания-продавец: ЗМК, завод металлоконструкций
+(холодильные и морозильные шкафы и камеры, сэндвич-панели, изделия по ТЗ). Клиенты — организации,
+покупка по коммерческому предложению и счёту, часто через тендеры.
+Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу — все звонки в рамках сделки.
 
-ОСНОВНЫЕ ПРАВИЛА:
-1. ХОЛИСТИЧЕСКИЙ АНАЛИЗ: Если действие произошло в любом из звонков истории — оно считается выполненным (true).
-2. СТРОГАЯ ОЦЕНКА (только true/false): Ты ОБЯЗАН оценить КАЖДЫЙ пункт как true (выполнено) или false (не выполнено). Вариант «нет данных»/null ЗАПРЕЩЁН — раз тебе передан диалог для анализа, значит данные есть, и ты должен вынести вердикт.
-   - Если навык НЕ проявлен, ситуация не возникла, или менеджер промолчал — это false (правило не выполнено = нарушение).
-   - Пример: клиент не возражал, а пункт «Работа с возражениями» оценивается — ставь false (навык не проявлен), либо true только если менеджер предвосхитил возражения.
-   - Любое сомнение трактуй как false (в пользу строгости).
-   (ПРИМЕЧАНИЕ: состояние «нет данных» определяет система — когда транскрипта/звонка ещё нет или данные не синхронизированы. Тебе оно недоступно: ты анализируешь уже имеющийся диалог.)
+ОБЩИЕ ПРАВИЛА ОЦЕНКИ (действуют для каждого критерия):
+1. ХОЛИСТИЧНО: факт, прозвучавший в любом звонке истории, считается известным по сделке.
+2. РАЗМЕТКА РОЛЕЙ НЕНАДЁЖНА. Подписи «Менеджер»/«Клиент» в транскрипте часто перепутаны местами.
+   Определяй говорящего по смыслу реплики, а не по подписи. Большинство правил сформулировано как
+   «стал ли известен факт» — для них роль вообще не важна.
+3. КАЧЕСТВО РАСПОЗНАВАНИЯ РЕЧИ СРЕДНЕЕ: возможны обрывы и искажения слов. Засчитывай смысл,
+   не требуй дословных формулировок.
+4. МОЛЧАНИЕ ≠ ОТРИЦАТЕЛЬНЫЙ ОТВЕТ. Если темы в разговоре не было вовсе — false. Не додумывай
+   ответ за клиента.
+5. ЯВНЫЙ ОТРИЦАТЕЛЬНЫЙ ОТВЕТ КЛИЕНТА — это полученная информация. Он засчитывается там, где
+   критерий проверяет «стало ли известно», и не засчитывается там, где критерий требует согласия клиента.
+6. НАШЕ ≠ КЛИЕНТСКОЕ. Слова о нашей компании (наш завод, наш склад, приезжайте к нам, наш город)
+   информацией о клиенте и его бизнесе не являются.
+7. ГИПОТЕТИЧЕСКИЕ реплики клиента («а если бы», «а вдруг куплю в другом месте») фактом не являются.
+8. ТОЛЬКО true/false. Вариант «нет данных»/null ЗАПРЕЩЁН: раз тебе передан диалог, данные есть.
+   Состояние «нет данных» и неприменимость правила определяет система, не ты.
+9. Любое сомнение — в сторону false (в пользу строгости).
 
-3. ИНТЕГРАЦИЯ С АННОЙ: Используй данные бизнес-аналитика Анны как "земную истину":
-   - Если Анна нашла 'lpr' (имя или должность), значит менеджер выяснил ЛПР (true). Если Анна не нашла ЛПР и в диалоге нет попыток это выяснить — false.
-   - Если Анна нашла 'budget' (сумму или готовность), значит бюджет затронут (true). Если в диалоге нет ни цифр, ни обсуждения денег — false.
-   - Если Анна нашла 'urgency' или 'timeline', значит менеджер выяснил сроки (true).
+КОНТЕКСТ ОТ АННЫ (бизнес-аналитик): её находки (ЛПР, бюджет, сроки) используй как земную истину —
+если Анна нашла факт, значит он в переговорах прозвучал.
 
-ОТВЕТ ДОЛЖЕН БЫТЬ СТРОГО В ФОРМАТЕ JSON.
-Для каждого пункта верни объект: {"result": true | false, "reason": "ПОДРОБНОЕ обоснование с цитатой"}.
+ОТВЕТ СТРОГО В ФОРМАТЕ JSON. Для каждого пункта верни объект:
+{"result": true | false, "reason": "обоснование с цитатой из разговора и именем менеджера"}.
 
-КРИТЕРИИ И СПЕЦИФИКА КЛАССИФИКАЦИИ:
+КРИТЕРИИ (ключ: что именно проверяем):
 ${criteriaText}
 
-ПЕРСОНАЛИЗАЦИЯ:
-В "reason" всегда упоминай менеджера по имени (из контекста).
-
-РАСЧЕТ script_score_pct:
-- Все пункты обязаны быть true или false (null недопустим — раз есть диалог, есть и вердикт).
-- Итоговый процент пересчитывается системой детерминированно по полям result, поэтому твоя задача — корректно проставить true/false по каждому пункту.
-
+Итоговый процент система считает сама по полям result — твоя задача корректно проставить true/false.
 Также верни:
 - evaluator_comment: аналитическое резюме по всей сделке.`
                 },
@@ -1056,11 +1113,13 @@ ${criteriaText}
                     role: 'user',
                     content: `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
 ${annaInsights ? JSON.stringify(annaInsights, null, 2) : 'Данные аналитики по сделке отсутствуют.'}
-${objectionContext ? `
-ЗАПОЛНЕНИЕ ПОЛЕЙ CRM «ТОП3» (для критериев работы с возражениями — сверяй с ответами клиента в диалоге):
-- ТОП3 Проходим по тех. характеристикам: ${objectionContext.fields.tech}
-- ТОП3 Проходим по срокам: ${objectionContext.fields.terms}
-- ТОП3 Проходим ли по цене: ${objectionContext.fields.price}
+${gateContext ? `
+ЗНАЧЕНИЯ ПОЛЕЙ CRM ПО ЭТОМУ ЗАКАЗУ (сверяй с тем, что прозвучало в диалоге):
+- ТОП3 Проходим по тех. характеристикам: ${gateContext.fields.tech}
+- ТОП3 Проходим по срокам: ${gateContext.fields.terms}
+- ТОП3 Проходим ли по цене: ${gateContext.fields.price}
+- Вы для себя или для заказчика приобретаете: ${gateContext.fields.role}
+- Комментарии в заказе (менеджера и клиента): ${gateContext.fields.comments}
 ` : ''}
 ИСТОРИЯ ЗВОНКОВ:
 ${transcript.substring(0, 15000)}`
@@ -1082,12 +1141,19 @@ ${transcript.substring(0, 15000)}`
         const items: Record<string, { result: boolean | null; reason: string | null }> = {};
         for (const key of keys) items[key] = getVal(key);
 
-        // Гейт по статусу: если заказ ещё не дошёл до «Согласования параметров заказа»,
-        // критерии работы с возражениями не применяются (null — не штрафуем, вне знаменателя балла).
-        if (objectionContext && !objectionContext.applicable) {
-            const naReason = 'Заказ ещё не дошёл до статуса «Согласование параметров заказа» — критерий работы с возражениями пока не применяется (поля ТОП3 ещё не обязательны).';
-            for (const k of OBJECTION_CRITERIA_KEYS) {
-                if (k in items) items[k] = { result: null, reason: naReason };
+        // Системные гейты применимости (okk_criteria.na_gate): если гейт не пройден, критерий
+        // не применяется — null, вне знаменателя балла и без штрафа. Решает код, не ИИ.
+        if (gateContext) {
+            for (const criterion of list) {
+                const gate = criterion.na_gate as ScriptGateCode | null | undefined;
+                if (!gate || !(criterion.key in items)) continue;
+                if (!SCRIPT_GATE_CODES.includes(gate)) {
+                    console.warn(`[ОКК] Неизвестный гейт "${gate}" у критерия ${criterion.key} — критерий оценивается без гейта.`);
+                    continue;
+                }
+                if (!gateContext.gates[gate]) {
+                    items[criterion.key] = { result: null, reason: GATE_NA_REASON[gate] };
+                }
             }
         }
 
@@ -1325,18 +1391,18 @@ export async function evaluateOrder(orderId: number): Promise<void> {
     const activeCriteria = await getActiveCriteria();
     const scriptCriteria: ScriptCriterion[] = activeCriteria
         .filter((c: any) => c.eval_method === 'ai_script')
-        .map((c: any) => ({ key: c.key, label: c.label, ai_prompt: c.ai_prompt, scoring_basket: c.scoring_basket }));
+        .map((c: any) => ({ key: c.key, label: c.label, ai_prompt: c.ai_prompt, scoring_basket: c.scoring_basket, na_gate: c.na_gate ?? null }));
     const scriptKeys = (scriptCriteria.length ? scriptCriteria : DEFAULT_SCRIPT_CRITERIA).map((c) => c.key);
 
-    // Контекст для критериев «Работа с возражениями»: гейт по статусу + значения полей ТОП3 из CRM.
-    const objectionContext = await buildObjectionContext(orderId, facts._order, facts.order_status);
+    // Системные гейты применимости критериев + значения полей ТОП3 из CRM.
+    const gateContext = await buildScriptGateContext(orderId, facts._order, facts.order_status);
 
     // Максим оценивает скрипт (используя данные от Анны и реестр критериев)
     const script: any = await evaluateScript(facts._transcript, annaInsights, {
         attempts: facts.calls_attempts_count,
         transcribed: facts.calls_evaluated_count,
         status: facts.calls_status,
-    }, scriptCriteria, objectionContext);
+    }, scriptCriteria, gateContext);
     const aiPipelineMeta = {
         degraded: Boolean(annaAnalysis.meta.degraded || script._meta?.degraded),
         insight: annaAnalysis.meta,
