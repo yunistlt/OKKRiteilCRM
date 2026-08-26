@@ -1,19 +1,22 @@
-import postgres from 'postgres';
+import { assertReadOnlyQuery } from '@/lib/shtab/external/guard';
+import type { ExternalEngine } from '@/lib/shtab/external/guard';
+import { closeMysql, runMysql } from '@/lib/shtab/external/mysql';
+import { closePostgres, runPostgres } from '@/lib/shtab/external/postgres';
 
 // Доступ к внешним базам группы — ЦехУспех, конструкторское бюро, маркетинг.
-// Только чтение, и это защищено дважды.
+// Только чтение, и это защищено втройне:
 //
-// Первый слой — на стороне базы: подключаться следует ролью, которой выдан один
-// лишь GRANT SELECT (как это завести, описано в docs/shtab/TAMARA.md).
+//   1. Роль в базе, которой выдан один лишь SELECT (как её завести — в
+//      docs/shtab/TAMARA.md). Роль заводит человек, поэтому она может оказаться
+//      шире, чем задумано, — отсюда остальные два рубежа.
+//   2. Проверка текста запроса — lib/shtab/external/guard.ts.
+//   3. Read-only транзакция вокруг каждого запроса — в файле своего движка.
 //
-// Второй слой — здесь: каждый запрос выполняется в транзакции, начатой с
-// SET TRANSACTION READ ONLY, и текст запроса проверяется на то, что это
-// единственный SELECT. Одного слоя мало: роль может оказаться шире, чем
-// задумано (её заводит человек), а код может ошибиться. Это чужие боевые базы,
-// и цена ошибки — не наши данные.
-//
-// Модель до этого слоя не достаёт: SQL пишется в коде, ей достаются именованные
-// инструменты с типизированными параметрами.
+// Базы на разных движках: ЦехУспех — MySQL, остальные пока неизвестны. Этот файл
+// остаётся лицом слоя, а различия движков живут в mysql.ts и postgres.ts.
+
+export type { ExternalEngine } from '@/lib/shtab/external/guard';
+export { assertReadOnlyQuery } from '@/lib/shtab/external/guard';
 
 export type ExternalDb = 'tseh' | 'kb' | 'marketing';
 
@@ -33,68 +36,32 @@ export function externalDbConfigured(db: ExternalDb): boolean {
     return Boolean(process.env[ENV_KEYS[db]]?.trim());
 }
 
-const pools = new Map<ExternalDb, postgres.Sql>();
-
-function getPool(db: ExternalDb): postgres.Sql {
-    const existing = pools.get(db);
-    if (existing) return existing;
-
+function requireUrl(db: ExternalDb): string {
     const url = process.env[ENV_KEYS[db]]?.trim();
     if (!url) throw new Error(`База «${EXTERNAL_DB_TITLES[db]}» не настроена: нет ${ENV_KEYS[db]}`);
-
-    const sql = postgres(url, {
-        max: 2,                 // чужая база, много соединений держать незачем
-        idle_timeout: 20,
-        connect_timeout: 10,
-        prepare: false,         // пулеры вроде pgbouncer не любят prepared statements
-        onnotice: () => {},
-    });
-    pools.set(db, sql);
-    return sql;
-}
-
-// Слова, с которых начинается изменение данных. Проверено на живой базе:
-// «WITH x AS (INSERT ... RETURNING id) SELECT id FROM x» — это один оператор,
-// он начинается со слова WITH, в нём нет точки с запятой, и он действительно
-// пишет в таблицу. Ради этого случая проверка и существует.
-//
-// Слов вроде SET, COMMENT, COPY, LOCK здесь намеренно нет: без точки с запятой
-// они в запрос не попадут, а как имена колонок встречаются сплошь и рядом —
-// «comment» в базе маркетинга отвергался бы на ровном месте.
-const FORBIDDEN =
-    /\b(insert|update|delete|merge|truncate|drop|alter|create|grant|revoke)\b/i;
-
-/** Убирает комментарии, строковые литералы и закавыченные имена. */
-function stripNoise(query: string): string {
-    return query
-        .replace(/--[^\n]*/g, ' ')          // однострочные комментарии
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')   // блочные
-        .replace(/\$([A-Za-z_]\w*)?\$[\s\S]*?\$\1?\$/g, " '' ") // долларовые литералы
-        .replace(/'(?:[^']|'')*'/g, " '' ")  // строковые литералы
-        .replace(/"(?:[^"]|"")*"/g, ' _ ');  // закавыченные идентификаторы
+    return url;
 }
 
 /**
- * Запрос обязан быть одним SELECT (допускается ведущий WITH).
+ * Движок определяется схемой строки подключения, а не таблицей в коде.
  *
- * Это второй слой защиты, не единственный: первый — роль в базе, которой выдан
- * один лишь GRANT SELECT, третий — SET TRANSACTION READ ONLY в queryExternal.
+ * Так, а не жёстким соответствием «tseh → MySQL», по двум причинам: базу можно
+ * перевезти на другой движок, не трогая код, и опечатка в схеме падает здесь
+ * внятно, а не превращается двумя слоями ниже в невразумительную ошибку драйвера.
  */
-export function assertReadOnlyQuery(query: string): void {
-    const stripped = stripNoise(query).trim();
+export function engineOfUrl(url: string, envKey = 'строка подключения'): ExternalEngine {
+    const scheme = url.slice(0, url.indexOf('://')).toLowerCase();
+    if (scheme === 'mysql' || scheme === 'mariadb') return 'mysql';
+    if (scheme === 'postgres' || scheme === 'postgresql') return 'postgres';
+    throw new Error(
+        `${envKey}: неизвестный движок «${scheme || url.slice(0, 20)}». ` +
+            'Ожидается mysql:// или postgres://',
+    );
+}
 
-    if (!stripped) throw new Error('Пустой запрос');
-
-    // Точка с запятой внутри текста запроса — почти всегда попытка приписать
-    // второй оператор. Хвостовую отбрасываем, любую другую считаем ошибкой.
-    const body = stripped.replace(/;\s*$/, '');
-    if (body.includes(';')) throw new Error('Во внешнюю базу разрешён только один оператор');
-
-    if (!/^(select|with)\b/i.test(body)) {
-        throw new Error('Во внешнюю базу разрешён только SELECT');
-    }
-    const match = body.match(FORBIDDEN);
-    if (match) throw new Error(`Во внешнюю базу разрешён только SELECT, найдено: ${match[1].toUpperCase()}`);
+/** На каком движке работает база. Нужен коду инструментов: плейсхолдеры разные. */
+export function externalEngine(db: ExternalDb): ExternalEngine {
+    return engineOfUrl(requireUrl(db), ENV_KEYS[db]);
 }
 
 /**
@@ -103,24 +70,27 @@ export function assertReadOnlyQuery(query: string): void {
  * Параметры передаются отдельно от текста запроса — подстановка значений в
  * строку означала бы инъекцию, а часть значений приходит из аргументов
  * инструмента, то есть в конечном счёте от модели.
+ *
+ * Плейсхолдеры у движков разные и взаимозаменяемыми не притворяются: в Postgres
+ * это $1, $2, в MySQL — ?. Текст запроса пишется под движок базы; какой он,
+ * говорит externalEngine().
  */
 export async function queryExternal<T = Record<string, unknown>>(
     db: ExternalDb,
     query: string,
     params: unknown[] = [],
 ): Promise<T[]> {
-    assertReadOnlyQuery(query);
-    const sql = getPool(db);
+    const url = requireUrl(db);
+    const engine = engineOfUrl(url, ENV_KEYS[db]);
 
-    return sql.begin(async (tx) => {
-        await tx.unsafe('SET TRANSACTION READ ONLY');
-        const rows = await tx.unsafe(query, params as any[]);
-        return rows as unknown as T[];
-    }) as Promise<T[]>;
+    assertReadOnlyQuery(query, engine);
+
+    return engine === 'mysql'
+        ? runMysql<T>(db, url, query, params)
+        : runPostgres<T>(db, url, query, params);
 }
 
 /** Закрывает соединения — нужно скриптам, чтобы процесс не висел. */
 export async function closeExternal(): Promise<void> {
-    await Promise.all(Array.from(pools.values()).map((sql) => sql.end({ timeout: 5 })));
-    pools.clear();
+    await Promise.all([closePostgres(), closeMysql()]);
 }
