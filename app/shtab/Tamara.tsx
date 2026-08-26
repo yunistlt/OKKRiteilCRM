@@ -145,8 +145,25 @@ export type TamaraView = {
     typing: boolean;
 };
 
-export default function Tamara({ view }: { view: TamaraView }) {
+export default function Tamara({
+    view,
+    onAsk,
+    busy,
+}: {
+    view: TamaraView;
+    /** Вопрос владельца. Без обработчика поле ввода не показывается. */
+    onAsk?: (question: string) => void;
+    busy?: boolean;
+}) {
     const { state, message, log, typing } = view;
+    const [draft, setDraft] = useState('');
+
+    const ask = () => {
+        const text = draft.trim();
+        if (!text || busy || !onAsk) return;
+        onAsk(text);
+        setDraft('');
+    };
 
     return (
         <aside className="tam" data-state={state}>
@@ -193,6 +210,22 @@ export default function Tamara({ view }: { view: TamaraView }) {
                     </div>
                 </div>
             </div>
+            {onAsk ? (
+                <div className="ask">
+                    <input
+                        type="text"
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && ask()}
+                        placeholder={busy ? 'думает…' : 'спроси Тамару'}
+                        disabled={busy}
+                        aria-label="Вопрос Тамаре"
+                    />
+                    <button className="btn btn-sm" onClick={ask} disabled={busy || !draft.trim()}>
+                        спросить
+                    </button>
+                </div>
+            ) : null}
         </aside>
     );
 }

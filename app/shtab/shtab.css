@@ -134,6 +134,19 @@
 
 .shtab .dots i:nth-child(3){animation-delay:.32s}
 
+.shtab .ask{display:flex;gap:6px;margin-top:10px;flex:0 0 auto}
+.shtab .ask input{flex:1;min-width:0;font-size:13.5px;padding:7px 10px}
+.shtab .ask .btn{white-space:nowrap}
+
+/* На узком экране колонка Тамары ложится в строку. Поле ввода — единственный
+   способ её спросить, поэтому не прячем, а переносим на свою строку целиком:
+   владелец чаще открывает Штаб с телефона, чем с монитора. */
+@media (max-width:900px){.shtab .tam{flex-wrap:wrap}
+  /* Пузырь обязан ужиматься, а не занимать всю строку: иначе фигура срывается
+     на вторую строку и колонка съедает пол-экрана телефона. */
+  .shtab .bubble{flex:1 1 0;min-width:0}
+  .shtab .ask{flex:0 0 100%;margin-top:8px}}
+
 .shtab .stage{flex:1 1 auto;min-height:230px;margin-top:10px;position:relative;overflow:hidden;
   display:flex;align-items:flex-end;justify-content:center;
   transition:box-shadow .2s}

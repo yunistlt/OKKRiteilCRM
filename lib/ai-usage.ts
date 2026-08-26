@@ -18,6 +18,7 @@ export const AiAgent = {
     MAXIM: 'maxim',
     ELENA: 'elena',
     SEMEN: 'semen',
+    TAMARA: 'tamara',
     DARYA: 'darya',
     TRANSCRIPTION: 'transcription', // служебная: AMD/диаризация/каналы
     EMBEDDINGS: 'embeddings',       // служебная: RAG/семантический поиск

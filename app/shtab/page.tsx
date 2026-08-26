@@ -48,6 +48,8 @@ export default function ShtabPage() {
     const [view, setView] = useState<ViewId>('pult');
     const rootRef = useRef<HTMLDivElement>(null);
     const greeted = useRef(false);
+    const [asking, setAsking] = useState(false);
+    const briefed = useRef(false);
 
     // Колонка Тамары считает свою высоту от области прокрутки, а не от окна:
     // над ней шапка приложения и, случается, баннер оповещений, поэтому 100vh
@@ -75,6 +77,53 @@ export default function ShtabPage() {
             'explain',
         );
     }, [state, say]);
+
+    // Понедельничная сводка: Тамара начинает разговор сама. Собирается заданием
+    // по расписанию и хранится, поэтому открытие раздела не стоит вызова модели.
+    useEffect(() => {
+        // Один раз за открытие раздела. Без этого сводка произносилась бы заново
+        // при каждом обновлении состояния — то есть после каждого заведённого
+        // минуса, перебивая то, что Тамара только что сказала по делу.
+        if (!state || briefed.current) return;
+        briefed.current = true;
+        let alive = true;
+        fetch('/api/shtab/tamara')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((data) => {
+                if (!alive || !data?.briefing?.text) return;
+                say(data.briefing.text, `Сводка за неделю с ${data.briefing.week_start}.`, 'explain');
+            })
+            .catch(() => {});
+        return () => {
+            alive = false;
+        };
+    }, [state, say]);
+
+    const ask = useCallback(
+        async (question: string) => {
+            setAsking(true);
+            say(question, undefined, 'listening');
+            try {
+                const res = await fetch('/api/shtab/tamara', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || `Ответ ${res.status}`);
+                say(
+                    data.reply || 'Пусто.',
+                    data.used_tools?.length ? `Смотрела: ${data.used_tools.join(', ')}.` : 'Инструменты не понадобились.',
+                    'explain',
+                );
+            } catch (e) {
+                say(`Не смогла ответить: ${(e as Error).message}`, undefined, 'object');
+            } finally {
+                setAsking(false);
+            }
+        },
+        [say],
+    );
 
     const go = useCallback((next: ViewId) => setView(next), []);
 
@@ -111,7 +160,7 @@ export default function ShtabPage() {
 
             <div className="wrap">
                 <div className="layout">
-                    <Tamara view={node} />
+                    <Tamara view={node} onAsk={ask} busy={asking} />
                     <div className="main">
                         {loadError ? (
                             <div className="empty">
