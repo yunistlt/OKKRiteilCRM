@@ -61,19 +61,78 @@ async function getActiveCriteria(): Promise<any[]> {
 // Гейт решает КОД (детерминированно по статусам заказа), а не ИИ: если гейт не пройден,
 // критерий = null («правило пока не применяется») — вне знаменателя балла и без штрафа.
 // Какой гейт у критерия — задаётся данными: okk_criteria.na_gate (см. docs/okk/CRITERIA_V2.md).
-export const SCRIPT_GATE_CODES = ['approval_status', 'production_or_cancel'] as const;
+export const SCRIPT_GATE_CODES = ['approval_status', 'production_or_cancel', 'client_sphere_unknown'] as const;
 export type ScriptGateCode = (typeof SCRIPT_GATE_CODES)[number];
 
 const APPROVAL_STATUS_CODE = 'na-soglasovanii'; // «Согласование параметров заказа»
 // Группы статусов, означающие «заказ уже ушёл в производство/доставку/выполнен либо отменён».
 // Имена групп берём из синканутого справочника RetailCRM (statuses.group_name) — не выдумываем.
 const FINAL_STATUS_GROUPS = ['Производство', 'Доставка', 'Выполнен', 'Отменен', 'Рекламации'];
+// Значение справочника «Сфера деятельности», которое фактически означает «не выяснено».
+const SPHERE_UNKNOWN_CODE = 'trebuetsya-utochnit';
 
 /** Причины «правило не применяется» — показываются пользователю в разборе критерия. */
 const GATE_NA_REASON: Record<ScriptGateCode, string> = {
     approval_status: 'Заказ ещё не дошёл до статуса «Согласование параметров заказа» — правило пока не применяется.',
     production_or_cancel: 'Заказ ещё не передан в производство и не отменён — правило проверяется только к этому моменту.',
+    client_sphere_unknown: 'Сфера деятельности клиента уже известна по прошлым заказам — повторно выяснять не нужно.',
 };
+
+/**
+ * Известна ли сфера деятельности клиента ДО этого заказа.
+ * Источники: карточка клиента (поле «Сфера деятельности» у клиента в CRM) и прошлые заказы.
+ * Клиент определяется по ИНН (одно юрлицо = несколько customer.id в CRM), фолбэк — customer.id.
+ * «Требуется уточнить» известной сферой НЕ считается — это заглушка справочника.
+ */
+async function isClientSphereKnown(order: any): Promise<boolean> {
+    const rp = (order?.raw_payload as any) || {};
+    const inn = String(rp?.contragent?.INN ?? '').trim();
+    const customerId = rp?.customer?.id != null ? String(rp.customer.id) : '';
+    if (!inn && !customerId) return false;
+
+    // 1) Карточка клиента — приоритетный источник: сфера там заполняется один раз на клиента.
+    try {
+        let cq = supabase
+            .from('clients')
+            .select('custom_fields')
+            .limit(1);
+        cq = inn ? cq.eq('inn', inn) : cq.eq('id', Number(customerId) || 0);
+        const { data: clientRows } = await cq;
+        const sphere = String((clientRows?.[0] as any)?.custom_fields?.sfera_deiatelnosti_klienta ?? '').trim();
+        if (sphere && sphere !== SPHERE_UNKNOWN_CODE) return true;
+    } catch (e) {
+        console.warn('[ОКК] Карточка клиента недоступна для проверки сферы:', (e as Error)?.message);
+    }
+
+    const createdAt = order?.created_at;
+    const SPHERE_PATH = 'raw_payload->customFields->>sfera_deiatelnosti';
+    try {
+        let query = supabase
+            .from('orders')
+            .select('order_id')
+            .not(SPHERE_PATH, 'is', null)
+            .neq(SPHERE_PATH, '')
+            .neq(SPHERE_PATH, SPHERE_UNKNOWN_CODE)
+            .neq('order_id', Number(order?.order_id) || 0)
+            .limit(1);
+
+        query = inn
+            ? query.eq('raw_payload->contragent->>INN', inn)
+            : query.eq('raw_payload->customer->>id', customerId);
+
+        if (createdAt) query = query.lte('created_at', createdAt);
+
+        const { data, error } = await query;
+        if (error) {
+            console.warn('[ОКК] Не удалось проверить сферу клиента по прошлым заказам:', error.message);
+            return false;
+        }
+        return (data || []).length > 0;
+    } catch (e) {
+        console.warn('[ОКК] Ошибка проверки сферы клиента:', (e as Error)?.message);
+        return false;
+    }
+}
 
 /** Коды статусов заказа, в которых заказ когда-либо был (по истории), плюс текущий. */
 async function collectOrderStatusCodes(orderId: number, currentStatus: string | null): Promise<Set<string>> {
@@ -166,15 +225,21 @@ async function buildScriptGateContext(orderId: number, order: any, currentStatus
         .join(' | ')
         .slice(0, 2000);
     const statusCodes = await collectOrderStatusCodes(orderId, currentStatus);
-    const [approval, production, tech, terms, price] = await Promise.all([
+    const [approval, production, sphereKnown, tech, terms, price] = await Promise.all([
         reachedApprovalStatus(statusCodes, currentStatus),
         reachedProductionOrCancel(statusCodes),
+        isClientSphereKnown(order),
         codeTech ? resolveRetailCRMLabel('top3Specs', String(codeTech)) : Promise.resolve(NOT_FILLED),
         codeTerms ? resolveRetailCRMLabel('top3Timing', String(codeTerms)) : Promise.resolve(NOT_FILLED),
         codePrice ? resolveRetailCRMLabel('top3Price', String(codePrice)) : Promise.resolve(NOT_FILLED),
     ]);
     return {
-        gates: { approval_status: approval, production_or_cancel: production },
+        gates: {
+            approval_status: approval,
+            production_or_cancel: production,
+            // Гейт «пройден» = сферу ещё надо выяснять. Уже знаем — правило не применяем.
+            client_sphere_unknown: !sphereKnown,
+        },
         fields: { tech, terms, price, role: roleRaw || NOT_FILLED, comments: commentsRaw || 'комментарии пустые' },
     };
 }
@@ -1145,14 +1210,22 @@ ${transcript.substring(0, 15000)}`
         // не применяется — null, вне знаменателя балла и без штрафа. Решает код, не ИИ.
         if (gateContext) {
             for (const criterion of list) {
-                const gate = criterion.na_gate as ScriptGateCode | null | undefined;
-                if (!gate || !(criterion.key in items)) continue;
-                if (!SCRIPT_GATE_CODES.includes(gate)) {
-                    console.warn(`[ОКК] Неизвестный гейт "${gate}" у критерия ${criterion.key} — критерий оценивается без гейта.`);
-                    continue;
-                }
-                if (!gateContext.gates[gate]) {
-                    items[criterion.key] = { result: null, reason: GATE_NA_REASON[gate] };
+                if (!(criterion.key in items)) continue;
+                // na_gate может содержать несколько кодов через запятую — правило применяется,
+                // только когда пройдены ВСЕ гейты.
+                const gates = String(criterion.na_gate || '')
+                    .split(',')
+                    .map((g) => g.trim())
+                    .filter(Boolean) as ScriptGateCode[];
+                for (const gate of gates) {
+                    if (!SCRIPT_GATE_CODES.includes(gate)) {
+                        console.warn(`[ОКК] Неизвестный гейт "${gate}" у критерия ${criterion.key} — гейт пропущен.`);
+                        continue;
+                    }
+                    if (!gateContext.gates[gate]) {
+                        items[criterion.key] = { result: null, reason: GATE_NA_REASON[gate] };
+                        break;
+                    }
                 }
             }
         }
