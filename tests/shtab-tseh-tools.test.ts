@@ -144,11 +144,18 @@ describe('прибыль', () => {
 
     it('месяц показывает, по скольким заказам посчитана прибыль', async () => {
         queryExternal.mockResolvedValue([
-            { m: '2026-07', orders_total: '53', orders_costed: '40', revenue_no_vat: '100', revenue_costed: '80', profit: '8', margin_pct: '10' },
+            {
+                m: '2026-07', orders_total: '53', orders_costed: '40',
+                revenue_no_vat: '100', revenue_costed: '80',
+                materials: '30', salary: '10', salary_taxes: '2.8', other_costs: '1',
+                profit: '8', margin_pct: '10',
+            },
         ]);
         const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
         const res: any = await executeTsehTool('tseh_profit_history', { months: 1 });
-        expect(res.months[0]).toMatchObject({ orders: 53, orders_costed: 40, profit: 8, margin_pct: 10 });
+        expect(res.months[0]).toMatchObject({
+            orders: 53, orders_costed: 40, materials: 30, salary: 10, other_costs: 1, profit: 8, margin_pct: 10,
+        });
         expect(String(res.note)).toContain('orders_costed');
     });
 });

@@ -103,6 +103,10 @@ SELECT DATE_FORMAT(t.DateDelivery, '%Y-%m') AS m,
        SUM(IF(t.mat_missing = 0, 1, 0)) AS orders_costed,
        ROUND(SUM(t.PriceFactNDS), 2) AS revenue_no_vat,
        ROUND(SUM(IF(t.mat_missing = 0, t.PriceFactNDS, 0)), 2) AS revenue_costed,
+       ROUND(SUM(IF(t.mat_missing = 0, t.MatNDS, 0)), 2) AS materials,
+       ROUND(SUM(IF(t.mat_missing = 0, t.Salary, 0)), 2) AS salary,
+       ROUND(SUM(IF(t.mat_missing = 0, t.Salary * 0.28, 0)), 2) AS salary_taxes,
+       ROUND(SUM(IF(t.mat_missing = 0, t.Cost, 0)), 2) AS other_costs,
        ROUND(SUM(IF(t.mat_missing = 0,
              t.PriceFactNDS - t.Salary - (t.Salary * 0.28) - t.Cost - t.MatNDS, 0)), 2) AS profit,
        ROUND(SUM(IF(t.mat_missing = 0,
@@ -353,7 +357,14 @@ async function readProfitHistory(months: number): Promise<ToolResult> {
     return {
         period: { from, to },
         unit: 'рубли',
-        formula: 'выручка без НДС − зарплата заказа − 28% взносов − себестоимость − материалы с НДС',
+        formula: 'выручка без НДС − зарплата заказа − 28% взносов − материалы − прочие расходы',
+        // Слагаемые печатаются рядом с итогом: маржа без структуры — цифра, с
+        // которой нечего делать, а тут сразу видно, чем месяц отличается.
+        components: {
+            materials: 'расход материалов на заказ: количество из потребности × цена из счёта поставщика по этому заказу, иначе историческая цена закупки за 3 года',
+            salary: 'сдельная зарплата по заказу (SalaryOrder)',
+            other_costs: 'счета поставщиков с типом «прочие расходы» (CostOrderExt); у ЗМК почти нулевые — это данные, а не пропуск',
+        },
         // Прибыль считается не по всем заказам, а по тем, у кого посчитаны
         // материалы. Разница между orders и orders_costed — это не погрешность,
         // а прямо названный кусок месяца, о котором сказать нечего.
@@ -364,6 +375,10 @@ async function readProfitHistory(months: number): Promise<ToolResult> {
             orders_costed: num(r.orders_costed),
             revenue_no_vat: num(r.revenue_no_vat),
             revenue_costed: num(r.revenue_costed),
+            materials: num(r.materials),
+            salary: num(r.salary),
+            salary_taxes: num(r.salary_taxes),
+            other_costs: num(r.other_costs),
             profit: num(r.profit),
             margin_pct: num(r.margin_pct),
         })),
