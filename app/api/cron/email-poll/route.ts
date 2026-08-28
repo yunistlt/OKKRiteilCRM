@@ -14,7 +14,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
+import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact, ourOutboundDomain, repliesToOurOutbound } from '@/lib/email/classify';
 import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
@@ -231,55 +231,6 @@ async function findOrderByEmailThread(
         }
     }
     return null;
-}
-
-/** Домен наших исходящих (из ящика секретаря). Нужен, чтобы опознать цитату нашего письма. */
-function ourOutboundDomain(): string | null {
-    const addr = process.env.IMAP_USER || process.env.SMTP_USER || '';
-    const dom = addr.split('@')[1]?.trim().toLowerCase();
-    return dom || null;
-}
-
-// Хосты почтовых релеев, через которые уходят НАШИ письма по заказам (RetailCRM). Инфраструктура
-// интеграции, а не бизнес-данные — держим списком здесь. Если письмо — ответ (In-Reply-To/References)
-// на сообщение с такого хоста, значит клиент отвечает на наше письмо по существующему заказу.
-const OUTBOUND_RELAY_HINTS = /@[^\s>]*(mlgnr\.com|rcrm-tech\.ru|retailcrm)/i;
-
-/**
- * Признак «письмо — ОТВЕТ клиента на НАШЕ исходящее» (переписка по существующему заказу).
- * Холодный новый лид процитировать нас не может — поэтому это надёжный признак, что заявку плодить
- * не нужно, ДАЖЕ если ИИ уверенно видит «новую заявку». Два независимых сигнала:
- *   1) In-Reply-To / References указывают на наш почтовый релей или наш домен — заголовок-ответ;
- *   2) тело содержит строку-цитату нашего исходящего: «…@наш-домен пишет:», «<…@наш-домен>:»,
- *      «От/Кому: …@наш-домен» или цитату «> …@наш-домен».
- *
- * Инцидент 23.07.2026 (53987 «пока нет инфо» / 53986): голый «Re:» без тега [#N/N] и без номера
- * заказа в теме, confidence 0.9 — ни один прежний признак не срабатывал, а письмо цитировало наше
- * же follow-up-письмо («Ваш запрос актуален? КП во вложении»). Заводились дубли-заявки.
- */
-function repliesToOurOutbound(
-    e: { inReplyTo?: string | null; refs?: string | string[] | null; bodyText?: string | null; bodyHtml?: string | null },
-    ourDomain: string | null
-): boolean {
-    // 1) Заголовки треда (машинный, самый надёжный сигнал).
-    const refs = Array.isArray(e.refs) ? e.refs.join(' ') : (e.refs || '');
-    const headers = `${e.inReplyTo || ''} ${refs}`;
-    if (headers.trim()) {
-        if (OUTBOUND_RELAY_HINTS.test(headers)) return true;
-        if (ourDomain && new RegExp(`@[^\\s>]*${ourDomain.replace(/\./g, '\\.')}`, 'i').test(headers)) return true;
-    }
-    // 2) Цитата нашего письма в теле.
-    if (!ourDomain) return false;
-    const body = (e.bodyText && e.bodyText.trim()) ? e.bodyText : stripHtml(e.bodyHtml);
-    if (!body) return false;
-    const d = ourDomain.replace(/\./g, '\\.');
-    const quotePatterns = [
-        new RegExp(String.raw`\S*@${d}\b[^\n]{0,40}(пишет|wrote)\s*:`, 'i'),   // "…, rop@zmktlt.ru пишет:"
-        new RegExp(String.raw`(^|\n)\s*(от|from|кому|to)\s*:[^\n]*@${d}`, 'i'), // От:/Кому: …@zmktlt.ru
-        new RegExp(String.raw`(^|\n)\s*>[^\n]*@${d}`, 'i'),                     // цитата "> …@zmktlt.ru"
-        new RegExp(String.raw`@${d}["'»<>\s]*:`, 'i'),                          // "<rop@zmktlt.ru>:"
-    ];
-    return quotePatterns.some((r) => r.test(body));
 }
 
 export async function GET(req: Request) {
