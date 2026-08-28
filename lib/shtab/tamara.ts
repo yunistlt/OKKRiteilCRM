@@ -105,6 +105,12 @@ export async function runTamara(opts: {
     userContent: string;
     purpose: string;
     withTools?: boolean;
+    /**
+     * Схема ответа для структурированного вывода. Нужна там, где ответ разбирает
+     * не человек, а код: программа состоит из задач пяти типов, и форму надо
+     * гарантировать схемой, а не уговорами в промпте.
+     */
+    schema?: { name: string; schema: Record<string, unknown> };
 }): Promise<TamaraAnswer> {
     if (!isOpenAIConfigured()) {
         return { reply: 'Модель не настроена: нет OPENAI_API_KEY.', usedTools: [], model: null };
@@ -128,7 +134,15 @@ export async function runTamara(opts: {
             max_tokens: opts.prompt.maxTokens,
             messages,
             ...(opts.withTools === false ? {} : { tools: SHTAB_TOOLS as any }),
-        });
+            ...(opts.schema
+                ? {
+                      response_format: {
+                          type: 'json_schema',
+                          json_schema: { name: opts.schema.name, strict: true, schema: opts.schema.schema },
+                      },
+                  }
+                : {}),
+        } as any);
         lastModel = completion.model;
         await recordAiUsage({
             agentId: AiAgent.TAMARA,
@@ -204,4 +218,21 @@ export function weekStart(now: Date): string {
     const shift = (d.getUTCDay() + 6) % 7; // у воскресенья getUTCDay() === 0, а до понедельника шесть дней назад
     d.setUTCDate(d.getUTCDate() - shift);
     return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Разбирает ответ, полученный со схемой.
+ *
+ * Пустой ответ и неразобранный JSON — это не «модель немного ошиблась», а
+ * отсутствие результата: дальше по этому объекту сохраняют программу в базу.
+ * Поэтому здесь бросаем, а не возвращаем половину.
+ */
+export function parseStructured<T>(reply: string, what: string): T {
+    const text = (reply || '').trim();
+    if (!text) throw new Error(`${what}: модель вернула пустой ответ`);
+    try {
+        return JSON.parse(text) as T;
+    } catch {
+        throw new Error(`${what}: ответ модели не разобрался как JSON`);
+    }
 }

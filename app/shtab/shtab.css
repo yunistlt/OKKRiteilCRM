@@ -547,3 +547,43 @@
 
 .shtab .copied{color:var(--calm);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;
   text-transform:uppercase}
+/* ---------- Программы ---------- */
+/* Слой между стратегией и проектами. Группы задач отличаются не украшением, а
+   смыслом: жизненно важные выделены цветом сигнала, потому что их нарушение
+   убивает программу; производственные — линией, потому что это числа. */
+
+.shtab .lede{margin-top:10px;max-width:62ch;color:var(--muted);font-size:14.5px;line-height:1.6}
+
+.shtab .block-head{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+.shtab .block-head .num{font-family:var(--f-mono,ui-monospace,monospace);font-size:12px;
+  border:1.5px solid var(--line-2);padding:3px 8px;color:var(--muted);flex:none;margin-top:4px}
+.shtab .block-head h2{margin:0;font-size:19px}
+
+.shtab .main-task{margin:14px 0;padding:13px 15px;background:var(--stage);border-left:3px solid var(--line-2)}
+.shtab .main-task .lbl{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:5px}
+.shtab .main-task p{margin:0;font-size:16px;line-height:1.45}
+.shtab .main-task .muted{margin-top:7px;font-size:13.5px}
+
+.shtab .grp{margin-top:18px}
+.shtab .grp h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin:0 0 8px;
+  font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  padding-bottom:5px;border-bottom:1px solid var(--line)}
+.shtab .grp h3 .hint{text-transform:none;letter-spacing:0;font-size:13px;font-style:italic;color:var(--muted-2,var(--muted))}
+.shtab .grp ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.shtab .grp li{line-height:1.5}
+.shtab .grp li .why{display:block;color:var(--muted);font-size:13.5px;margin-top:2px}
+.shtab .grp li .metric{display:block;font-size:13.5px;margin-top:3px}
+.shtab .grp li .blank{color:var(--signal);font-style:normal;border-bottom:1px dotted var(--signal)}
+
+.shtab .problems{margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+.shtab .problems li{font-size:13.5px;line-height:1.45;padding-left:12px;border-left:2px solid var(--line-2)}
+.shtab .problems li.bad{border-left-color:var(--signal)}
+
+.shtab .draft{border-style:dashed}
+.shtab .block-draft{padding:12px 0;border-top:1px solid var(--line)}
+.shtab .block-draft .block-title{width:100%;font-size:16px;font-weight:600;padding:6px 8px;margin-bottom:6px}
+.shtab .block-draft .excerpt{font-size:13.5px;color:var(--muted);line-height:1.5}
+.shtab .block-draft .why{font-size:13.5px;margin-top:5px}
+.shtab .empty-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center;color:var(--muted);font-size:14px}
+.shtab .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}

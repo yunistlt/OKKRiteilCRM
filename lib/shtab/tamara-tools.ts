@@ -73,6 +73,35 @@ export const SHTAB_TOOLS = [
             },
         },
     },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_razbor_detail',
+            description:
+                'Один разбор целиком: ситуация, «почему», обе части краткосрочной цели, карта ресурсов и полный текст стратегии. Вызывай перед тем, как резать стратегию на блоки или писать программу: shtab_state отдаёт разборы усечённо, по обрезку программу не написать.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    razbor_id: { type: 'integer', description: 'Идентификатор разбора из shtab_state.' },
+                },
+                required: ['razbor_id'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_programs',
+            description:
+                'Написанные программы: главная задача, руководитель, производственные задачи с целью и фактом. Отвечает на «где мы отстаём по программам» и нужен, чтобы не писать заново то, что уже написано.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    razbor_id: { type: 'integer', description: 'Только программы этого разбора. По умолчанию все.' },
+                },
+            },
+        },
+    },
 ] as const;
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
@@ -264,6 +293,106 @@ async function readIncome(months: number): Promise<ToolResult> {
     };
 }
 
+// ── разбор целиком и программы ─────────────────────────────────────────────────
+
+async function readRazborDetail(razborId: number): Promise<ToolResult> {
+    const { data: razbor, error } = await supabase
+        .from('shtab_razbor')
+        .select('id, area_code, status, situation, why, check_inside, check_res, check_relief, goal_fix, goal_grow, strategy')
+        .eq('id', razborId)
+        .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!razbor) return { available: false, reason: `Разбора ${razborId} нет` };
+
+    const [{ data: areas }, { data: resources }, { data: blocks }] = await Promise.all([
+        supabase.from('shtab_area').select('code, title'),
+        supabase.from('shtab_resource').select('title, note, ordinal').eq('razbor_id', razborId).order('ordinal'),
+        supabase.from('shtab_block').select('id, ordinal, title, excerpt, rationale').eq('razbor_id', razborId).order('ordinal'),
+    ]);
+    const titleByCode = new Map((areas ?? []).map((a: any) => [a.code, a.title]));
+
+    return {
+        id: razbor.id,
+        area: titleByCode.get(razbor.area_code) ?? razbor.area_code,
+        status: razbor.status,
+        situation: razbor.situation || null,
+        why: razbor.why || null,
+        why_checks: {
+            внутри_организации: razbor.check_inside,
+            устранима_ресурсами: razbor.check_res,
+            даёт_облегчение: razbor.check_relief,
+        },
+        goal: { fix: razbor.goal_fix || null, grow: razbor.goal_grow || null },
+        // Ресурсы отдаются полностью: стратегия обязана собираться из имеющегося,
+        // и программа тоже. Урезанная карта заставит модель придумывать ресурсы.
+        resources: (resources ?? []).map((r: any) => ({ title: r.title, note: r.note || null })),
+        strategy: razbor.strategy || null,
+        blocks: (blocks ?? []).map((b: any) => ({
+            id: b.id,
+            ordinal: b.ordinal,
+            title: b.title,
+            excerpt: b.excerpt || null,
+            rationale: b.rationale || null,
+        })),
+    };
+}
+
+async function readPrograms(razborId?: number): Promise<ToolResult> {
+    let blockQuery = supabase.from('shtab_block').select('id, razbor_id, ordinal, title').order('ordinal');
+    if (razborId) blockQuery = blockQuery.eq('razbor_id', razborId);
+    const { data: blocks, error: blockError } = await blockQuery.limit(MAX_ROWS);
+    if (blockError) throw new Error(blockError.message);
+    if ((blocks ?? []).length === 0) return { programs: [], note: 'Программ ещё нет' };
+
+    const blockIds = (blocks ?? []).map((b: any) => b.id);
+    const { data: programs, error: programError } = await supabase
+        .from('shtab_program')
+        .select('id, block_id, main_task, manager_name, status')
+        .in('block_id', blockIds);
+    if (programError) throw new Error(programError.message);
+
+    const programIds = (programs ?? []).map((p: any) => p.id);
+    let tasks: any[] = [];
+    if (programIds.length > 0) {
+        const { data, error } = await supabase
+            .from('shtab_task')
+            .select('program_id, kind, ordinal, text, metric, target_value, source_note, fact_value, done')
+            .in('program_id', programIds)
+            .order('ordinal');
+        if (error) throw new Error(error.message);
+        tasks = data ?? [];
+    }
+
+    const blockById = new Map<number, { title: string }>((blocks ?? []).map((b: any) => [b.id, b]));
+
+    return {
+        programs: (programs ?? []).map((p: any) => {
+            const own = tasks.filter((t) => t.program_id === p.id);
+            return {
+                id: p.id,
+                block: blockById.get(p.block_id)?.title ?? null,
+                main_task: p.main_task || null,
+                manager: p.manager_name || null,
+                status: p.status,
+                // Производственные задачи целиком: по ним и видно, отстаёт программа
+                // или идёт. Пустая цель со ссылкой на замер — это не пропуск в
+                // данных, а честно отложенное число.
+                proizvodstvennye: own
+                    .filter((t) => t.kind === 'proizvodstvennaya')
+                    .map((t) => ({
+                        text: t.text,
+                        metric: t.metric || null,
+                        target: t.target_value || null,
+                        fact: t.fact_value || null,
+                        source_note: t.source_note || null,
+                    })),
+                rabochih_vsego: own.filter((t) => t.kind === 'rabochaya').length,
+                rabochih_sdelano: own.filter((t) => t.kind === 'rabochaya' && t.done).length,
+            };
+        }),
+    };
+}
+
 export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
     try {
         if (name === 'shtab_state') {
@@ -276,6 +405,15 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
         if (name === 'money_in') {
             const months = Number.isFinite(Number(args?.months)) ? Math.min(60, Math.max(2, Number(args.months))) : 24;
             return await readIncome(months);
+        }
+        if (name === 'shtab_razbor_detail') {
+            const id = Number(args?.razbor_id);
+            if (!Number.isFinite(id)) return { available: false, reason: 'Не передан razbor_id' };
+            return await readRazborDetail(id);
+        }
+        if (name === 'shtab_programs') {
+            const id = Number(args?.razbor_id);
+            return await readPrograms(Number.isFinite(id) ? id : undefined);
         }
         return { available: false, reason: `Неизвестный инструмент: ${name}` };
     } catch (e: any) {

@@ -61,6 +61,32 @@ describe('содержание базы знаний', () => {
         }
     });
 
+    it('слой программ покрыт: блоки, программа и все пять типов задач', () => {
+        // Без этих статей Тамара доведёт разбор до стратегии и остановится —
+        // ровно там, где система обрывалась до сих пор.
+        const slugs = new Set(SHTAB_KB_SEED.map((r) => r.slug));
+        for (const step of [
+            'as-logicheskiy-blok',
+            'as-programma',
+            'as-obratnyy-otschet',
+            'as-glavnaya-zadacha',
+            'as-pervoocherednye-zadachi',
+            'as-rabochie-zadachi',
+            'as-proizvodstvennye-zadachi',
+            'as-zhiznenno-vazhnye-zadachi',
+            'as-uslovnye-zadachi',
+            'as-poryadok-zapuska',
+        ]) {
+            expect(slugs, step).toContain(step);
+        }
+    });
+
+    it('статья про стратегию не ведёт сразу к проектам', () => {
+        // Пропущенный слой программ — это пропущенные производственные задачи.
+        const strat = SHTAB_KB_SEED.find((r) => r.slug === 'as-strategiya');
+        expect(strat?.content).toMatch(/логическ|программ/i);
+    });
+
     it('в знаниях нет фактов о компании — они приходят только из инструментов', () => {
         // Число, попавшее в базу знаний, Тамара повторит как своё, и проверить
         // его будет негде: у статьи нет ни даты, ни источника в данных.

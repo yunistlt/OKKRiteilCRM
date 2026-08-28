@@ -12,14 +12,16 @@ import Minus from './views/Minus';
 import Razbor from './views/Razbor';
 import Karta from './views/Karta';
 import Strat from './views/Strat';
+import Programs from './views/Programs';
 import Projects from './views/Projects';
 import Arch from './views/Arch';
 import Celi from './views/Celi';
 import TamaraTab from './views/TamaraTab';
 
 // «Штаб владельца» — рабочее место собственника по методологии «Альянс Стратег».
-// Реестр минусов, разбор ситуации, карта ресурсов, стратегия. Слева стоит
-// наставница Тамара и проверяет написанное по методичке.
+// Реестр минусов, разбор ситуации, карта ресурсов, стратегия, программы под её
+// логические блоки. Слева стоит наставница Тамара: проверяет написанное по
+// методичке, отвечает на вопросы и раз в неделю приносит сводку.
 //
 // Раздел закрыт ролью admin (lib/rbac.ts): здесь лежат все проблемы компании,
 // включая кадровые и финансовые.
@@ -30,6 +32,7 @@ const VIEWS: Record<ViewId, (props: ViewProps) => JSX.Element | null> = {
     razbor: Razbor,
     karta: Karta,
     strat: Strat,
+    programs: Programs,
     projects: Projects,
     arch: Arch,
     celi: Celi,
