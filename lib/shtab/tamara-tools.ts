@@ -4,6 +4,7 @@ import type { IncomeRow } from '@/lib/shtab/income';
 import { topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
+import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-tools';
 
 // Инструменты Тамары (OpenAI function calling).
 //
@@ -26,7 +27,7 @@ type ToolResult = Record<string, unknown>;
 
 const MAX_ROWS = 200;
 
-export const SHTAB_TOOLS = [
+const OWN_TOOLS = [
     {
         type: 'function' as const,
         function: {
@@ -103,6 +104,10 @@ export const SHTAB_TOOLS = [
         },
     },
 ] as const;
+
+// Инструменты цеха живут отдельным файлом: у них своя база, свой движок и своя
+// причина отказать (база не подключена). Модели они видны единым списком.
+export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS];
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
 
@@ -394,6 +399,9 @@ async function readPrograms(razborId?: number): Promise<ToolResult> {
 }
 
 export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
+    // Цеховые — до try: они сами возвращают причину отказа, а не бросают.
+    if (TSEH_TOOL_NAMES.has(name)) return await executeTsehTool(name, args);
+
     try {
         if (name === 'shtab_state') {
             return await readState(Array.isArray(args?.include) ? args.include : []);

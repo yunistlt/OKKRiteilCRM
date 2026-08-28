@@ -1,0 +1,418 @@
+import { EXTERNAL_DB_TITLES, externalDbConfigured, queryExternal } from '@/lib/shtab/external/client';
+
+// Инструменты Тамары поверх боевой базы ЦехУспеха (MySQL, схема zmk).
+//
+// Тот же уговор, что и в tamara-tools.ts: модель не пишет SQL. Запросы лежат
+// здесь константами, модель вызывает именованную функцию с параметрами.
+//
+// Денежные запросы перенесены 1:1 из Delphi-форм ЦехУспеха (docs/shtab/schemas/tseh.md)
+// и помечены исходной формой — чтобы цифру можно было сверить глазами с тем, что
+// завод видит у себя. Наивный SUM по таблицам даёт число, которое с программой
+// цеха не сходится: себестоимость, зарплата и материалы считаются хранимыми
+// функциями (SalaryOrder, CostOrderExt, CostMaterialsItemOrderNDS).
+//
+// Мягкая деградация по образцу utils/openai.ts: нет SHTAB_DB_TSEH_URL или база
+// недоступна — инструмент возвращает внятное «данных цеха сейчас нет», а не
+// роняет чат.
+
+type ToolResult = Record<string, unknown>;
+
+/** Расшифровка ListBalanses.TypeData — 1:1 с Analytics.pas. */
+export const BALANCE_TYPES: Record<number, string> = {
+    1: 'Итоговый баланс',
+    2: 'Итого остатки на счетах',
+    3: 'Долг по заказам в производстве',
+    4: 'Долг по счетам (по отгруженным заказам)',
+    5: 'Долг по постоянным платежам',
+    6: 'Долг по зарплате',
+    7: 'Долг покупателей по неотгруженным заказам',
+    8: 'Взаиморасчёты с поставщиками',
+    9: 'Налог по зарплате',
+    10: 'Налог на прибыль',
+    11: 'НДС к уплате',
+    12: 'Кредиторская задолженность по полученным авансам',
+    13: 'Дебиторская задолженность по клиентам',
+    14: 'Кредиторская задолженность перед поставщиками',
+    15: 'Дебиторская задолженность по выданным авансам',
+    16: 'Незавершённое производство',
+    17: 'Баланс по депозитам',
+    18: 'Долг покупателей по отгруженным заказам',
+};
+
+// ── SQL ────────────────────────────────────────────────────────────────────────
+// Экспортируются, чтобы тест мог прогнать каждый через assertReadOnlyQuery:
+// запрет на запись обязан проверяться на том самом тексте, который уходит в базу.
+
+/** Снимок финпоказателей на каждый день периода. Форма «Итоговый баланс». */
+export const SQL_BALANCE_HISTORY = `
+SELECT DATE(b.DateUpdate) AS d, b.TypeData AS type_data, b.ValueData AS value_data
+FROM ListBalanses b
+JOIN (SELECT DATE(DateUpdate) dd, TypeData, MAX(DateUpdate) mx
+      FROM ListBalanses
+      WHERE DateUpdate >= ? AND DateUpdate < ?
+      GROUP BY dd, TypeData) t
+  ON t.mx = b.DateUpdate AND t.TypeData = b.TypeData
+ORDER BY d, b.TypeData`;
+
+/** Выручка по месяцам, без НДС. Источник: ListSales.pas, строки 247–261. */
+function revenueSql(dateField: 'DateDelivery' | 'DateReadyDelivery'): string {
+    return `
+SELECT DATE_FORMAT(O.${dateField}, '%Y-%m') AS m,
+       COUNT(DISTINCT O.ID) AS orders_cnt,
+       ROUND(SUM(IO.TotalPriceFact - ROUND(IF(CPS.PercentNDS > 0 AND IO.PercentNDS > 0,
+             (IO.TotalPriceFact * IO.PercentNDS) / (100 + IO.PercentNDS), 0), 2)), 2) AS revenue_no_vat
+FROM Orders O
+JOIN ItemsOrders IO ON IO.IDOrder = O.ID
+LEFT JOIN CounterParties CPS ON O.IDSeller = CPS.ID
+WHERE O.Basket = 0 AND O.${dateField} >= ? AND O.${dateField} < ?
+GROUP BY m ORDER BY m`;
+}
+
+export const SQL_REVENUE_BY_DELIVERY = revenueSql('DateDelivery');
+export const SQL_REVENUE_BY_READY = revenueSql('DateReadyDelivery');
+
+/**
+ * Прибыль и маржа по месяцам. Источник: ListSales.pas, строки 325–340.
+ * Требует EXECUTE на SalaryOrder и CostOrderExt — без них прибыль не считается.
+ * Тяжёлый: функции вызываются на каждый заказ, поэтому период ограничен годом.
+ */
+export const SQL_PROFIT_HISTORY = `
+SELECT DATE_FORMAT(DateDelivery, '%Y-%m') AS m,
+       ROUND(SUM(PriceFactNDS), 2) AS revenue_no_vat,
+       ROUND(SUM(PriceFactNDS) - SUM(SalaryOrder) - (SUM(SalaryOrder) * 0.28) - SUM(CostOrderExt)
+             - IFNULL(SUM(MatNDS), 0), 2) AS profit,
+       ROUND((SUM(PriceFactNDS) - SUM(SalaryOrder) - (SUM(SalaryOrder) * 0.28) - SUM(CostOrderExt)
+             - IFNULL(SUM(MatNDS), 0)) * 100 / NULLIF(SUM(PriceFactNDS), 0), 2) AS margin_pct
+FROM (
+  SELECT O.ID AS TIDOrder, O.DateDelivery,
+         SalaryOrder(O.ID) AS SalaryOrder,
+         CostOrderExt(O.ID) AS CostOrderExt,
+         IFNULL((SELECT SUM(IF(IO.PercentNDS = 0, IO.TotalPriceFact,
+                    IO.TotalPriceFact * 100 / (100 + IO.PercentNDS)))
+                 FROM ItemsOrders IO WHERE IO.IDOrder = O.ID), 0) AS PriceFactNDS,
+         IFNULL((SELECT SUM(CostMaterialsItemOrderNDS(O.ID, IO.ID, O.DateDelivery, 0))
+                 FROM ItemsOrders IO WHERE IO.IDOrder = O.ID), 0) AS MatNDS
+  FROM Orders O
+  WHERE O.Basket = 0 AND O.DateDelivery >= ? AND O.DateDelivery < ?
+) t
+GROUP BY m ORDER BY m`;
+
+/**
+ * Дебиторка «на сейчас». Источник: ListSales.pas, строки 297–304.
+ * IDPayment IS NOT NULL обязательно (BUG-18): у ЗМК включена привязка оплат к
+ * заказам, без этого условия долг занижается в разы.
+ */
+export const SQL_DEBT = `
+SELECT SUM(IF(PriceFact >= Payed, PriceFact - Payed, 0)) AS debt
+FROM (
+  SELECT ROUND(IFNULL((SELECT SUM(IPO.Amount) FROM ItemsPaymentsOrders IPO
+                       WHERE IPO.IDOrder = O.ID AND IPO.IDPayment IS NOT NULL), 0), 2) AS Payed,
+         ROUND(IFNULL((SELECT SUM(IO.TotalPriceFact) FROM ItemsOrders IO
+                       WHERE IO.IDOrder = O.ID), 0), 2) AS PriceFact
+  FROM Orders O
+  LEFT JOIN StatusesOrders SO ON O.IDStatus = SO.ID
+  WHERE O.Basket = 0 AND O.IDSeller <> O.IDPurchaser AND O.DateOrder >= '2020-01-01'
+    AND SO.NameStatus IN ('В производстве','Новый','Выполнен','Готов к отгрузке',
+                          'Рекламация','Перепродажа мебели','Отгружен')
+) t`;
+
+/** Клиенты за период: сколько заказов, на какую сумму, первый и последний. */
+export const SQL_CUSTOMERS = `
+SELECT CP.ID AS id, CP.NameCounterParty AS name,
+       COUNT(DISTINCT O.ID) AS orders_cnt,
+       MIN(O.DateOrder) AS first_order,
+       MAX(O.DateOrder) AS last_order,
+       ROUND(SUM(IO.TotalPriceFact), 2) AS total_amount
+FROM Orders O
+JOIN ItemsOrders IO ON IO.IDOrder = O.ID
+JOIN CounterParties CP ON O.IDPurchaser = CP.ID
+WHERE O.Basket = 0 AND O.DateOrder >= ?
+GROUP BY CP.ID, CP.NameCounterParty
+ORDER BY total_amount DESC
+LIMIT 100`;
+
+/**
+ * Диагностика, а не показатель: насколько заполнены поля времени у операций.
+ *
+ * От этого числа зависит весь цеховой контур (такт, узкое место, пролёживание).
+ * В схеме ЦехУспеха поля есть — ItemsTexCards.TimeExecution, AvgTime, DateBegin,
+ * DateEnd, — но соседняя сессия, снимавшая базу, утверждает, что у ЗМК нормы не
+ * заполнены. Проверяется это одним запросом, а не спором; пока доля заполнения
+ * не измерена на боевой, цеховых инструментов быть не должно: неверное число
+ * хуже пропуска, пропуск владелец видит, а число принимает за правду.
+ */
+export const SQL_OPS_COVERAGE = `
+SELECT COUNT(*) AS ops_total,
+       SUM(IF(ITC.TimeExecution > 0, 1, 0)) AS with_norm_time,
+       SUM(IF(ITC.AvgTime > 0, 1, 0)) AS with_avg_time,
+       SUM(IF(ITC.DateBegin IS NOT NULL, 1, 0)) AS with_date_begin,
+       SUM(IF(ITC.DateEnd IS NOT NULL, 1, 0)) AS with_date_end,
+       SUM(IF(ITC.IDMade > 0, 1, 0)) AS with_worker,
+       SUM(IF(ITC.Price > 0, 1, 0)) AS with_price,
+       MIN(ITC.DateEnd) AS first_closed,
+       MAX(ITC.DateEnd) AS last_closed
+FROM ItemsTexCards ITC
+JOIN TexCards TC ON TC.ID = ITC.IDTexCard
+WHERE TC.Basket = 0 AND TC.DateCreate >= ?`;
+
+// ── описания инструментов для модели ──────────────────────────────────────────
+
+export const TSEH_TOOLS = [
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_balance_history',
+            description:
+                'Финансовые показатели завода ЗМК по дням из ЦехУспеха: итоговый баланс, остатки на счетах, дебиторка, кредиторка, незавершённое производство, долги по зарплате и налогам — 18 показателей. Это те же цифры, что завод видит на своём дашборде. Данные с 29.11.2020.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'Сколько последних месяцев. По умолчанию 12.' },
+                    types: {
+                        type: 'array',
+                        items: { type: 'integer' },
+                        description: 'Коды показателей 1..18. По умолчанию все.',
+                    },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_revenue_history',
+            description:
+                'Выручка завода по месяцам, без НДС, и количество заказов. По умолчанию по отгрузке; by="ready" — по готовности к отгрузке (в ЦехУспехе это две разные цифры, не путать).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'Сколько последних месяцев. По умолчанию 12.' },
+                    by: { type: 'string', enum: ['delivery', 'ready'], description: 'По отгрузке или по готовности.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_profit_history',
+            description:
+                'Прибыль и маржа завода по месяцам: выручка без НДС минус зарплата заказа, взносы 28%, себестоимость и материалы. Считается функциями самого ЦехУспеха. Запрос тяжёлый — не больше года за вызов.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'Сколько последних месяцев, не больше 12. По умолчанию 12.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_debt',
+            description:
+                'Дебиторская задолженность завода на сейчас: сколько должны по неоплаченным заказам. За историю по дням бери tseh_balance_history, коды 13 и 18.',
+            parameters: { type: 'object', properties: {} },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_customers',
+            description:
+                'Клиенты завода за период: число заказов, сумма, первый и последний заказ. Отвечает на «кто постоянный», «кто отвалился», «на скольких клиентах держится выручка». До 100 крупнейших.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'Сколько последних месяцев. По умолчанию 24.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_ops_coverage',
+            description:
+                'Служебная проверка: заполнены ли у операций техкарт нормы времени, даты начала и окончания, исполнитель. От этого зависит, можно ли вообще считать из ЦехУспеха такт, пропускную способность и пролёживание. Вызывай, когда владелец спрашивает про цеховые показатели времени — и отвечай по факту заполнения, а не по наличию полей.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'За какой период смотреть техкарты. По умолчанию 12 месяцев.' },
+                },
+            },
+        },
+    },
+] as const;
+
+export const TSEH_TOOL_NAMES: ReadonlySet<string> = new Set<string>(TSEH_TOOLS.map((t) => t.function.name));
+
+// ── исполнение ────────────────────────────────────────────────────────────────
+
+function clampMonths(value: unknown, fallback: number, max: number): number {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.min(max, Math.max(1, Math.trunc(n)));
+}
+
+/** Границы периода: с первого числа месяца N месяцев назад по завтра. */
+export function monthWindow(months: number, now = new Date()): [string, string] {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (months - 1), 1));
+    const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+    return [from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)];
+}
+
+const num = (v: unknown): number | null => {
+    if (v === null || v === undefined) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+};
+
+async function readBalanceHistory(months: number, types: number[]): Promise<ToolResult> {
+    const [from, to] = monthWindow(months);
+    const rows = await queryExternal<any>('tseh', SQL_BALANCE_HISTORY, [from, to]);
+    const wanted = new Set(types);
+
+    const byDay = new Map<string, Record<string, number | null>>();
+    for (const r of rows) {
+        const code = Number(r.type_data);
+        if (wanted.size > 0 && !wanted.has(code)) continue;
+        const day = String(r.d).slice(0, 10);
+        const bucket = byDay.get(day) ?? {};
+        bucket[BALANCE_TYPES[code] ?? `Показатель ${code}`] = num(r.value_data);
+        byDay.set(day, bucket);
+    }
+
+    return {
+        period: { from, to },
+        unit: 'рубли',
+        days: Array.from(byDay.entries()).map(([date, values]) => ({ date, ...values })),
+    };
+}
+
+async function readRevenueHistory(months: number, by: 'delivery' | 'ready'): Promise<ToolResult> {
+    const [from, to] = monthWindow(months);
+    const sql = by === 'ready' ? SQL_REVENUE_BY_READY : SQL_REVENUE_BY_DELIVERY;
+    const rows = await queryExternal<any>('tseh', sql, [from, to]);
+    return {
+        period: { from, to },
+        basis: by === 'ready' ? 'по готовности к отгрузке' : 'по отгрузке',
+        unit: 'рубли без НДС',
+        months: rows.map((r) => ({
+            month: r.m,
+            orders: num(r.orders_cnt),
+            revenue_no_vat: num(r.revenue_no_vat),
+        })),
+    };
+}
+
+async function readProfitHistory(months: number): Promise<ToolResult> {
+    const [from, to] = monthWindow(months);
+    const rows = await queryExternal<any>('tseh', SQL_PROFIT_HISTORY, [from, to]);
+    return {
+        period: { from, to },
+        unit: 'рубли',
+        formula: 'выручка без НДС − зарплата заказа − 28% взносов − себестоимость − материалы с НДС',
+        months: rows.map((r) => ({
+            month: r.m,
+            revenue_no_vat: num(r.revenue_no_vat),
+            profit: num(r.profit),
+            margin_pct: num(r.margin_pct),
+        })),
+    };
+}
+
+async function readDebt(): Promise<ToolResult> {
+    const rows = await queryExternal<any>('tseh', SQL_DEBT, []);
+    return {
+        as_of: new Date().toISOString().slice(0, 10),
+        unit: 'рубли',
+        debt: num(rows[0]?.debt) ?? 0,
+        note: 'Долг по неоплаченным заказам на сейчас. Историю по дням смотри в tseh_balance_history, коды 13 и 18.',
+    };
+}
+
+async function readCustomers(months: number): Promise<ToolResult> {
+    const [from] = monthWindow(months);
+    const rows = await queryExternal<any>('tseh', SQL_CUSTOMERS, [from]);
+    return {
+        since: from,
+        unit: 'рубли',
+        customers: rows.map((r) => ({
+            name: r.name,
+            orders: num(r.orders_cnt),
+            total_amount: num(r.total_amount),
+            first_order: r.first_order ? String(r.first_order).slice(0, 10) : null,
+            last_order: r.last_order ? String(r.last_order).slice(0, 10) : null,
+        })),
+    };
+}
+
+async function readOpsCoverage(months: number): Promise<ToolResult> {
+    const [from] = monthWindow(months);
+    const rows = await queryExternal<any>('tseh', SQL_OPS_COVERAGE, [from]);
+    const r = rows[0] ?? {};
+    const total = num(r.ops_total) ?? 0;
+    const pct = (v: unknown) => (total > 0 ? Math.round(((num(v) ?? 0) * 1000) / total) / 10 : null);
+
+    const normPct = pct(r.with_norm_time);
+    const endPct = pct(r.with_date_end);
+
+    return {
+        since: from,
+        operations_total: total,
+        filled_pct: {
+            'норма времени (TimeExecution)': normPct,
+            'среднее время (AvgTime)': pct(r.with_avg_time),
+            'дата начала': pct(r.with_date_begin),
+            'дата окончания': pct(r.with_date_end),
+            исполнитель: pct(r.with_worker),
+            расценка: pct(r.with_price),
+        },
+        first_closed: r.first_closed ? String(r.first_closed).slice(0, 10) : null,
+        last_closed: r.last_closed ? String(r.last_closed).slice(0, 10) : null,
+        // Вывод делается здесь, а не моделью: порог решает, можно ли строить на
+        // этих данных такт и узкое место, и он должен быть один и тот же всегда.
+        verdict:
+            total === 0
+                ? 'Операций за период нет — судить не о чем'
+                : (normPct ?? 0) >= 80
+                  ? 'Нормы времени заполнены: цеховые показатели времени считать можно'
+                  : (endPct ?? 0) >= 80
+                    ? 'Норм времени нет, но операции закрываются датами: такт и пролёживание можно считать по фактическим датам, нормативную загрузку — нет'
+                    : 'Ни норм, ни дат закрытия: цеховые показатели времени из ЦехУспеха не достаются, нужен ручной замер или доработка ЦехУспеха',
+    };
+}
+
+export async function executeTsehTool(name: string, args: any): Promise<ToolResult> {
+    if (!externalDbConfigured('tseh')) {
+        return {
+            available: false,
+            reason: `Данных цеха сейчас нет: база «${EXTERNAL_DB_TITLES.tseh}» не подключена (нет SHTAB_DB_TSEH_URL)`,
+        };
+    }
+
+    try {
+        if (name === 'tseh_balance_history') {
+            const types = Array.isArray(args?.types)
+                ? args.types.map((t: unknown) => Number(t)).filter((t: number) => t >= 1 && t <= 18)
+                : [];
+            return await readBalanceHistory(clampMonths(args?.months, 12, 60), types);
+        }
+        if (name === 'tseh_revenue_history') {
+            const by = args?.by === 'ready' ? 'ready' : 'delivery';
+            return await readRevenueHistory(clampMonths(args?.months, 12, 60), by);
+        }
+        if (name === 'tseh_profit_history') {
+            // Потолок в 12 месяцев не каприз: запрос вызывает хранимые функции на
+            // каждый заказ, на всей истории он положит боевую базу цеха.
+            return await readProfitHistory(clampMonths(args?.months, 12, 12));
+        }
+        if (name === 'tseh_debt') return await readDebt();
+        if (name === 'tseh_customers') return await readCustomers(clampMonths(args?.months, 24, 120));
+        if (name === 'tseh_ops_coverage') return await readOpsCoverage(clampMonths(args?.months, 12, 60));
+        return { available: false, reason: `Неизвестный инструмент: ${name}` };
+    } catch (e: any) {
+        return { available: false, reason: `Данных цеха сейчас нет: ${e.message}` };
+    }
+}
