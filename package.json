@@ -11,6 +11,7 @@
     "shtab:discover": "tsx scripts/shtab_discover.ts",
     "shtab:seed-kb": "tsx scripts/seed_shtab_kb.ts",
     "shtab:tseh-smoke": "tsx scripts/shtab_tseh_smoke.ts",
+    "shtab:index-tseh-code": "tsx scripts/index_tseh_code.ts",
     "retailcrm:sync-dictionaries": "tsx scripts/sync_retailcrm_dictionaries.ts",
     "messenger:api-smoke": "tsx scripts/messenger_api_smoke.ts",
     "legal:consultant-seed-kb": "tsx scripts/seed_legal_consultant_kb.ts",

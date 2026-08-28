@@ -199,6 +199,22 @@ describe('заполненность времени операций', () => {
     });
 });
 
+describe('поиск по логике ЦехУспеха', () => {
+    it('работает даже когда база цеха не подключена', async () => {
+        delete process.env.SHTAB_DB_TSEH_URL;
+        const { TSEH_TOOL_NAMES } = await import('@/lib/shtab/tseh-tools');
+        // Код лежит в нашей базе: объяснить, как считается прибыль, Тамара
+        // должна и при недоступном MySQL цеха.
+        expect(TSEH_TOOL_NAMES.has('tseh_logic')).toBe(true);
+    });
+
+    it('пустой вопрос отсекается до похода за эмбеддингом', async () => {
+        const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
+        const res: any = await executeTsehTool('tseh_logic', { query: '   ' });
+        expect(res.available).toBe(false);
+    });
+});
+
 describe('подключение к Тамаре', () => {
     it('цеховые инструменты видны в общем списке и маршрутизируются', async () => {
         const { SHTAB_TOOLS, SHTAB_TOOL_NAMES, executeShtabTool } = await import('@/lib/shtab/tamara-tools');

@@ -1,4 +1,7 @@
 import { EXTERNAL_DB_TITLES, externalDbConfigured, queryExternal } from '@/lib/shtab/external/client';
+import { generateEmbedding } from '@/lib/embeddings';
+import { isOpenAIConfigured } from '@/utils/openai';
+import { supabase } from '@/utils/supabase';
 
 // Инструменты Тамары поверх боевой базы ЦехУспеха (MySQL, схема zmk).
 //
@@ -272,6 +275,26 @@ export const TSEH_TOOLS = [
             },
         },
     },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_logic',
+            description:
+                'Как устроен сам ЦехУспех: тела расчётных функций MySQL, структура таблиц и код форм. Вызывай, когда нужно объяснить, ОТКУДА берётся цифра или как программа считает — например «как считается себестоимость», «когда проставляется дата отгрузки», «что лежит в таблице заказов». Отвечай по найденному коду и называй источник.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Вопрос своими словами, например «как считается зарплата по заказу».' },
+                    kind: {
+                        type: 'string',
+                        enum: ['function', 'table', 'unit'],
+                        description: 'Сузить поиск: function — расчётные функции, table — структура таблиц, unit — формы Delphi.',
+                    },
+                },
+                required: ['query'],
+            },
+        },
+    },
 ] as const;
 
 export const TSEH_TOOL_NAMES: ReadonlySet<string> = new Set<string>(TSEH_TOOLS.map((t) => t.function.name));
@@ -447,7 +470,54 @@ async function readOpsCoverage(months: number): Promise<ToolResult> {
     };
 }
 
+/**
+ * Поиск по логике ЦехУспеха.
+ *
+ * Живёт до проверки подключения к MySQL: код лежит в нашей базе, и объяснить,
+ * как считается прибыль, Тамара может даже когда база цеха недоступна.
+ */
+async function readLogic(query: string, kind?: string): Promise<ToolResult> {
+    if (!query.trim()) return { available: false, reason: 'Пустой вопрос' };
+    if (!isOpenAIConfigured()) return { available: false, reason: 'Поиск по коду недоступен: нет OPENAI_API_KEY' };
+
+    const embedding = await generateEmbedding(query);
+    const { data, error } = await supabase.rpc('match_shtab_tseh_code', {
+        query_embedding: embedding,
+        match_threshold: 0.2,
+        match_count: 6,
+        filter_kind: kind ?? null,
+    });
+    if (error) throw new Error(error.message);
+
+    const hits = (data ?? []) as any[];
+    if (hits.length === 0) {
+        return { found: [], note: 'В коде ЦехУспеха по этому вопросу ничего не нашлось. Не выдумывай логику — скажи, что не нашла.' };
+    }
+
+    return {
+        found: hits.map((h) => ({
+            title: h.title,
+            kind: h.kind,
+            name: h.name,
+            source: h.source_ref,
+            // Код обрезается: шесть целых форм Delphi не влезут в ответ, а
+            // начала хватает, чтобы понять логику и назвать источник.
+            code: String(h.content).slice(0, 4000),
+        })),
+        note: 'Это код чужой программы. Отвечай по нему и называй источник, а не пересказывай по памяти.',
+    };
+}
+
 export async function executeTsehTool(name: string, args: any): Promise<ToolResult> {
+    if (name === 'tseh_logic') {
+        try {
+            const kind = ['function', 'table', 'unit'].includes(args?.kind) ? args.kind : undefined;
+            return await readLogic(String(args?.query ?? ''), kind);
+        } catch (e: any) {
+            return { available: false, reason: `Поиск по коду ЦехУспеха не удался: ${e.message}` };
+        }
+    }
+
     if (!externalDbConfigured('tseh')) {
         return {
             available: false,

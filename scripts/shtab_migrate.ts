@@ -14,7 +14,10 @@ import { config } from 'dotenv';
 
 config({ path: '.env.local' });
 
-const MIGRATION = '20260825_shtab_owner_hq.sql';
+// Имя файла аргументом, с прежним значением по умолчанию: миграций Штаба уже
+// несколько, а раннера в проекте нет — каждый раз править константу значит
+// однажды применить не ту.
+const MIGRATION = process.argv[2] || '20260825_shtab_owner_hq.sql';
 
 async function main() {
     const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL;
