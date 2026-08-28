@@ -89,8 +89,11 @@
       **`reply_thread` независимо от уверенности ИИ**, заказ не плодим (номера в теме нет → к заказу
       не привязываем, `created_crm_order_number` = null). Два сигнала: `In-Reply-To`/`References`
       указывают на наш почтовый релей (RetailCRM: `mlgnr.com`/`rcrm-tech.ru`) или наш домен; либо тело
-      содержит строку-цитату нашего письма (`…@наш-домен пишет:`, `<…@наш-домен>:`, `От/Кому: …@наш-домен`,
-      цитата `> …@наш-домен`). Домен берём из `IMAP_USER`/`SMTP_USER` (не хардкод). Логика: холодный
+      содержит строку-цитату нашего письма (`…@наш-домен пишет:`, `<…@наш-домен>:`, `От: …@наш-домен`,
+      цитата `> …@наш-домен`). **Строку «Кому:/To: …@наш-домен» НЕ считаем цитатой нашего письма** —
+      она означает письмо, адресованное НАМ. Инцидент 27.08.2026: клиент переслал (`Fwd:`) своё же
+      первое обращение («хотел бы приобрести РИ Стол для измерения»), в цитате было «Кому: rop@zmktlt.ru» —
+      письмо ушло в `reply_thread`, заказ не создался, заявка потеряна (заведена вручную — 54443). Домен берём из `IMAP_USER`/`SMTP_USER` (не хардкод). Логика: холодный
       новый лид процитировать нас не может, значит это переписка. **Гейт по теме (`Re:`/`Fwd:`)
       обязателен** — защищает новую заявку постоянного клиента, которая случайно содержит наш адрес.
       Инцидент 23.07.2026 — 53987 («пока нет инфо», всё остальное — цитата нашего follow-up) и 53986
@@ -192,9 +195,8 @@
 
 ## Карта файлов
 - `app/api/cron/email-poll/route.ts` — воркер (ingest + классификация + маршрутизация + заказ/пересылка). `@ts-nocheck`.
-  Здесь же `findClientOrderNumberInSubject` (номер заказа клиента из темы «Re:», сверка с `orders` по email)
-  и `repliesToOurOutbound`/`ourOutboundDomain` (детектор «ответ на наше исходящее» по заголовкам треда и цитате в теле).
-- `lib/email/classify.ts` — `classifyRoute`, `isReplyThread`, `hasCrmOrderTag`, `isNoReplySender`, `stripHtml`, `documentAttachmentNames`, `DEFAULT_SYSTEM_PROMPT`, `loadSecretaryPrompt`.
+  Здесь же `findClientOrderNumberInSubject` (номер заказа клиента из темы «Re:», сверка с `orders` по email).
+- `lib/email/classify.ts` — `classifyRoute`, `isReplyThread`, `hasCrmOrderTag`, `isNoReplySender`, `repliesToOurOutbound`/`ourOutboundDomain` (детектор «ответ на наше исходящее»; тест `tests/email-reply-detection.test.ts`), `stripHtml`, `documentAttachmentNames`, `DEFAULT_SYSTEM_PROMPT`, `loadSecretaryPrompt`.
 - `lib/email/dossier.ts` — `buildCrmDossier` (справка из CRM к письму), `extractOrderCandidates` (номера-кандидаты из темы/тела).
 - `lib/email/routes.ts` — адреса отделов, `getOrderBlocklist`, `isSenderBlocked`, `isForwardEnabled`, `getCrmTagStaleDays`, `getThreadDedupDays`, `getDuplicateHintDays`.
 - `lib/email/assign.ts` — пул, баланс, история, `getManagersOnLeave`, `getAbsences`, `resolveAssignment`.
