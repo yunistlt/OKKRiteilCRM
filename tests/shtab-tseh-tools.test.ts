@@ -78,6 +78,7 @@ describe('разбор ответа', () => {
         const res: any = await executeTsehTool('tseh_balance_history', { months: 1 });
         expect(res.days[0]).toMatchObject({
             date: '2026-08-01',
+            показателей_в_снимке: 2,
             'Итоговый баланс': 1000.5,
             'Незавершённое производство': 200,
         });
@@ -90,7 +91,9 @@ describe('разбор ответа', () => {
         ]);
         const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
         const res: any = await executeTsehTool('tseh_balance_history', { months: 1, types: [16] });
-        expect(Object.keys(res.days[0])).toEqual(['date', 'Незавершённое производство']);
+        expect(Object.keys(res.days[0])).toEqual(['date', 'показателей_в_снимке', 'Незавершённое производство']);
+        // Полнота снимка считается по всем показателям дня, а не по запрошенным.
+        expect(res.days[0].показателей_в_снимке).toBe(2);
     });
 
     it('деньги приходят строками и становятся числами', async () => {
@@ -106,6 +109,47 @@ describe('разбор ответа', () => {
         await executeTsehTool('tseh_profit_history', { months: 60 });
         const [from, to] = queryExternal.mock.calls[0][2];
         expect([from, to]).toEqual(monthWindow(12));
+    });
+});
+
+describe('нерегулярность снимков баланса', () => {
+    it('неполный день помечен, last_full_snapshot пуст', async () => {
+        queryExternal.mockResolvedValue([{ d: '2026-08-20', type_data: 17, value_data: '1' }]);
+        const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
+        const res: any = await executeTsehTool('tseh_balance_history', { months: 1 });
+        expect(res.days[0].показателей_в_снимке).toBe(1);
+        expect(res.last_full_snapshot).toBeNull();
+        expect(String(res.note)).toContain('не каждый день');
+    });
+
+    it('день со всеми 18 показателями попадает в last_full_snapshot', async () => {
+        queryExternal.mockResolvedValue(
+            Array.from({ length: 18 }, (_, i) => ({ d: '2026-08-25', type_data: i + 1, value_data: '1' })),
+        );
+        const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
+        const res: any = await executeTsehTool('tseh_balance_history', { months: 1 });
+        expect(res.last_full_snapshot).toBe('2026-08-25');
+    });
+});
+
+describe('прибыль', () => {
+    it('материалы берутся из кэша ЦехУспеха, а не пересчитываются функцией', async () => {
+        const { SQL_PROFIT_HISTORY } = await import('@/lib/shtab/tseh-tools');
+        // Функция CostMaterialsItemOrderNDS создаёт временные таблицы и под
+        // read-only транзакцией падает с 1792 — проверено на боевой.
+        expect(SQL_PROFIT_HISTORY).not.toContain('CostMaterialsItemOrderNDS');
+        expect(SQL_PROFIT_HISTORY).toContain('RCalcMONDS');
+        expect(SQL_PROFIT_HISTORY).toContain('SalaryOrder(O.ID)');
+    });
+
+    it('месяц показывает, по скольким заказам посчитана прибыль', async () => {
+        queryExternal.mockResolvedValue([
+            { m: '2026-07', orders_total: '53', orders_costed: '40', revenue_no_vat: '100', revenue_costed: '80', profit: '8', margin_pct: '10' },
+        ]);
+        const { executeTsehTool } = await import('@/lib/shtab/tseh-tools');
+        const res: any = await executeTsehTool('tseh_profit_history', { months: 1 });
+        expect(res.months[0]).toMatchObject({ orders: 53, orders_costed: 40, profit: 8, margin_pct: 10 });
+        expect(String(res.note)).toContain('orders_costed');
     });
 });
 

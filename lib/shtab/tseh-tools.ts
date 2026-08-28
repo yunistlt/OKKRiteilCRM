@@ -43,7 +43,16 @@ export const BALANCE_TYPES: Record<number, string> = {
 // Экспортируются, чтобы тест мог прогнать каждый через assertReadOnlyQuery:
 // запрет на запись обязан проверяться на том самом тексте, который уходит в базу.
 
-/** Снимок финпоказателей на каждый день периода. Форма «Итоговый баланс». */
+/**
+ * Снимки финпоказателей за период. Форма «Итоговый баланс».
+ *
+ * Слово «ежедневные» к этой таблице не подходит, и это проверено на боевой:
+ * за последние 60 дней все 18 показателей записаны лишь в 8 дней, а в остальные
+ * дни пишется один показатель — депозиты. Снимок кладётся тогда, когда человек
+ * открывает форму в ЦехУспехе, то есть примерно раз в неделю. Поэтому «взять
+ * последний день месяца» дало бы пусто или один случайный показатель, и по
+ * каждому дню возвращается ещё и число показателей в нём.
+ */
 export const SQL_BALANCE_HISTORY = `
 SELECT DATE(b.DateUpdate) AS d, b.TypeData AS type_data, b.ValueData AS value_data
 FROM ListBalanses b
@@ -73,25 +82,41 @@ export const SQL_REVENUE_BY_READY = revenueSql('DateReadyDelivery');
 
 /**
  * Прибыль и маржа по месяцам. Источник: ListSales.pas, строки 325–340.
- * Требует EXECUTE на SalaryOrder и CostOrderExt — без них прибыль не считается.
- * Тяжёлый: функции вызываются на каждый заказ, поэтому период ограничен годом.
+ *
+ * Отличие от оригинала одно, и оно вынужденное. В форме ЦехУспеха материалы
+ * считает функция CostMaterialsItemOrderNDS, а она внутри создаёт временные
+ * таблицы — под read-only транзакцией это ошибка 1792, и правильно: временные
+ * таблицы Тамаре не выдаются. Но первой же строкой эта функция возвращает кэш
+ * ItemsOrders.RCalcMONDS, если он посчитан (gb_zmk_схема.sql, тело функции).
+ * Поэтому берётся тот же кэш напрямую — это ровно то число, что вернула бы
+ * функция, а не самодельная замена ей.
+ *
+ * Где кэша нет, пересчитать его нечем. Такие заказы из прибыли исключаются, а
+ * их доля возвращается отдельным полем: месяц, посчитанный по половине заказов,
+ * обязан выглядеть как посчитанный по половине заказов.
+ *
+ * SalaryOrder и CostOrderExt под read-only работают — проверено на боевой.
  */
 export const SQL_PROFIT_HISTORY = `
-SELECT DATE_FORMAT(DateDelivery, '%Y-%m') AS m,
-       ROUND(SUM(PriceFactNDS), 2) AS revenue_no_vat,
-       ROUND(SUM(PriceFactNDS) - SUM(SalaryOrder) - (SUM(SalaryOrder) * 0.28) - SUM(CostOrderExt)
-             - IFNULL(SUM(MatNDS), 0), 2) AS profit,
-       ROUND((SUM(PriceFactNDS) - SUM(SalaryOrder) - (SUM(SalaryOrder) * 0.28) - SUM(CostOrderExt)
-             - IFNULL(SUM(MatNDS), 0)) * 100 / NULLIF(SUM(PriceFactNDS), 0), 2) AS margin_pct
+SELECT DATE_FORMAT(t.DateDelivery, '%Y-%m') AS m,
+       COUNT(*) AS orders_total,
+       SUM(IF(t.mat_missing = 0, 1, 0)) AS orders_costed,
+       ROUND(SUM(t.PriceFactNDS), 2) AS revenue_no_vat,
+       ROUND(SUM(IF(t.mat_missing = 0, t.PriceFactNDS, 0)), 2) AS revenue_costed,
+       ROUND(SUM(IF(t.mat_missing = 0,
+             t.PriceFactNDS - t.Salary - (t.Salary * 0.28) - t.Cost - t.MatNDS, 0)), 2) AS profit,
+       ROUND(SUM(IF(t.mat_missing = 0,
+             t.PriceFactNDS - t.Salary - (t.Salary * 0.28) - t.Cost - t.MatNDS, 0)) * 100
+             / NULLIF(SUM(IF(t.mat_missing = 0, t.PriceFactNDS, 0)), 0), 2) AS margin_pct
 FROM (
-  SELECT O.ID AS TIDOrder, O.DateDelivery,
-         SalaryOrder(O.ID) AS SalaryOrder,
-         CostOrderExt(O.ID) AS CostOrderExt,
+  SELECT O.ID, O.DateDelivery,
+         SalaryOrder(O.ID) AS Salary,
+         CostOrderExt(O.ID) AS Cost,
          IFNULL((SELECT SUM(IF(IO.PercentNDS = 0, IO.TotalPriceFact,
                     IO.TotalPriceFact * 100 / (100 + IO.PercentNDS)))
                  FROM ItemsOrders IO WHERE IO.IDOrder = O.ID), 0) AS PriceFactNDS,
-         IFNULL((SELECT SUM(CostMaterialsItemOrderNDS(O.ID, IO.ID, O.DateDelivery, 0))
-                 FROM ItemsOrders IO WHERE IO.IDOrder = O.ID), 0) AS MatNDS
+         IFNULL((SELECT SUM(IO.RCalcMONDS) FROM ItemsOrders IO WHERE IO.IDOrder = O.ID), 0) AS MatNDS,
+         (SELECT COUNT(*) FROM ItemsOrders IO WHERE IO.IDOrder = O.ID AND IO.RCalcMONDS IS NULL) AS mat_missing
   FROM Orders O
   WHERE O.Basket = 0 AND O.DateDelivery >= ? AND O.DateDelivery < ?
 ) t
@@ -163,7 +188,7 @@ export const TSEH_TOOLS = [
         function: {
             name: 'tseh_balance_history',
             description:
-                'Финансовые показатели завода ЗМК по дням из ЦехУспеха: итоговый баланс, остатки на счетах, дебиторка, кредиторка, незавершённое производство, долги по зарплате и налогам — 18 показателей. Это те же цифры, что завод видит на своём дашборде. Данные с 29.11.2020.',
+                'Финансовые показатели завода ЗМК по дням из ЦехУспеха: итоговый баланс, остатки на счетах, дебиторка, кредиторка, незавершённое производство, долги по зарплате и налогам — 18 показателей. Это те же цифры, что завод видит на своём дашборде. Данные с 29.11.2020. ВАЖНО: снимки нерегулярные — полный набор показателей появляется примерно раз в неделю, смотри поля показателей_в_снимке и last_full_snapshot.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -273,20 +298,36 @@ async function readBalanceHistory(months: number, types: number[]): Promise<Tool
     const rows = await queryExternal<any>('tseh', SQL_BALANCE_HISTORY, [from, to]);
     const wanted = new Set(types);
 
-    const byDay = new Map<string, Record<string, number | null>>();
+    const byDay = new Map<string, { values: Record<string, number | null>; captured: Set<number> }>();
     for (const r of rows) {
         const code = Number(r.type_data);
-        if (wanted.size > 0 && !wanted.has(code)) continue;
         const day = String(r.d).slice(0, 10);
-        const bucket = byDay.get(day) ?? {};
-        bucket[BALANCE_TYPES[code] ?? `Показатель ${code}`] = num(r.value_data);
+        const bucket = byDay.get(day) ?? { values: {}, captured: new Set<number>() };
+        // Полнота снимка считается по ВСЕМ показателям дня, а не по запрошенным:
+        // иначе фильтр по одному коду делал бы любой день «неполным».
+        bucket.captured.add(code);
+        if (wanted.size === 0 || wanted.has(code)) {
+            bucket.values[BALANCE_TYPES[code] ?? `Показатель ${code}`] = num(r.value_data);
+        }
         byDay.set(day, bucket);
     }
+
+    const days = Array.from(byDay.entries()).map(([date, b]) => ({
+        date,
+        показателей_в_снимке: b.captured.size,
+        ...b.values,
+    }));
+    const full = days.filter((d) => d.показателей_в_снимке >= 18).map((d) => d.date);
 
     return {
         period: { from, to },
         unit: 'рубли',
-        days: Array.from(byDay.entries()).map(([date, values]) => ({ date, ...values })),
+        days,
+        last_full_snapshot: full.length > 0 ? full[full.length - 1] : null,
+        note:
+            'Снимок кладётся, когда в ЦехУспехе открывают форму «Итоговый баланс» — примерно раз в неделю, не каждый день. ' +
+            'Дни, где показателей_в_снимке меньше 18, неполные: отсутствие показателя в такой день означает «не снимали», а не ноль. ' +
+            'Для сравнения периодов бери дни из last_full_snapshot и подобные им полные.',
     };
 }
 
@@ -313,9 +354,16 @@ async function readProfitHistory(months: number): Promise<ToolResult> {
         period: { from, to },
         unit: 'рубли',
         formula: 'выручка без НДС − зарплата заказа − 28% взносов − себестоимость − материалы с НДС',
+        // Прибыль считается не по всем заказам, а по тем, у кого посчитаны
+        // материалы. Разница между orders и orders_costed — это не погрешность,
+        // а прямо названный кусок месяца, о котором сказать нечего.
+        note: 'profit и margin_pct посчитаны только по заказам, где ЦехУспех посчитал материалы (orders_costed из orders). revenue_no_vat — по всем.',
         months: rows.map((r) => ({
             month: r.m,
+            orders: num(r.orders_total),
+            orders_costed: num(r.orders_costed),
             revenue_no_vat: num(r.revenue_no_vat),
+            revenue_costed: num(r.revenue_costed),
             profit: num(r.profit),
             margin_pct: num(r.margin_pct),
         })),
