@@ -140,7 +140,7 @@ export function docsFromDump(dump: string, sourceRef: string): TsehCodeDoc[] {
             name: fn.name,
             sourceRef,
             title: `Функция ЦехУспеха ${fn.name}`,
-            content: fn.body,
+            content: sanitize(fn.body),
         });
     }
 
@@ -168,6 +168,12 @@ export function docsFromDump(dump: string, sourceRef: string): TsehCodeDoc[] {
 export function docsFromColumns(
     rows: Array<{ table: string; column: string; type: string; nullable?: string }>,
     sourceRef: string,
+    /**
+     * Правильный регистр имён: MySQL на этом сервере отдаёт их строчными
+     * (lower_case_table_names), а в коде и в разговоре таблица называется
+     * `ItemsOrders`. Имя из источника, а не выдуманное, — общее правило проекта.
+     */
+    properCase: Map<string, string> = new Map(),
 ): TsehCodeDoc[] {
     const byTable = new Map<string, string[]>();
     for (const r of rows) {
@@ -175,19 +181,27 @@ export function docsFromColumns(
         list.push(`${r.column} — ${r.type}${r.nullable === 'NO' ? ', обязательное' : ''}`);
         byTable.set(r.table, list);
     }
-    return Array.from(byTable.entries()).map(([name, columns]) => ({
+    return Array.from(byTable.entries()).map(([raw, columns]) => {
+        const name = properCase.get(raw.toLowerCase()) ?? raw;
+        return {
         slug: `table:${name}`,
         kind: 'table' as const,
         name,
         sourceRef,
         title: `Таблица ЦехУспеха ${name}`,
         content: `Таблица ${name}, колонки:\n${columns.join('\n')}`,
-    }));
+        };
+    });
+}
+
+/** Карта «имя строчными → имя как в дампе». */
+export function properCaseMap(dump: string): Map<string, string> {
+    return new Map(parseTables(dump).map((t) => [t.name.toLowerCase(), t.name]));
 }
 
 export function docsFromPascal(fileName: string, source: string, sourceRef: string): TsehCodeDoc[] {
     const unit = fileName.replace(/\.pas$/i, '');
-    return chunkPascal(source).map((content, i) => ({
+    return chunkPascal(sanitize(source)).map((content, i) => ({
         slug: `unit:${unit}:${i}`,
         kind: 'unit' as const,
         name: unit,
@@ -195,6 +209,24 @@ export function docsFromPascal(fileName: string, source: string, sourceRef: stri
         title: `Форма ЦехУспеха ${unit}${i > 0 ? `, часть ${i + 1}` : ''}`,
         content,
     }));
+}
+
+/**
+ * Чистка текста перед укладкой в Postgres.
+ *
+ * В .pas ЦехУспеха попадаются нулевые байты и прочие управляющие символы —
+ * обычное дело для файлов, которые правили двадцать лет разными редакторами.
+ * Postgres на \u0000 в text отвечает ошибкой 22021 и роняет весь засев на
+ * середине, поэтому чистка стоит до базы, а не после.
+ */
+export function sanitize(text: string): string {
+    return text
+        .replace(/\u0000/g, '')
+        // одинокие суррогаты: валидны в JS-строке, невалидны в UTF-8
+        .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+        .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '')
+        // управляющие, кроме перевода строки и табуляции
+        .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F]/g, '');
 }
 
 /** Текст, по которому считается эмбеддинг: заголовок помогает попадать в поиск. */

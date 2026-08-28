@@ -17,7 +17,7 @@ import { config } from 'dotenv';
 import postgres from 'postgres';
 import { generateEmbedding } from '@/lib/embeddings';
 import { closeExternal, externalDbConfigured, queryExternal } from '@/lib/shtab/external/client';
-import { docsFromColumns, docsFromDump, docsFromPascal, indexTsehCode } from '@/lib/shtab/tseh-code';
+import { docsFromColumns, docsFromDump, docsFromPascal, indexTsehCode, properCaseMap } from '@/lib/shtab/tseh-code';
 import type { TsehCodeDoc } from '@/lib/shtab/tseh-code';
 
 config({ path: '.env.local' });
@@ -54,7 +54,7 @@ async function main() {
             "SELECT TABLE_NAME `table`, COLUMN_NAME `column`, COLUMN_TYPE `type`, IS_NULLABLE nullable " +
                 'FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() ORDER BY TABLE_NAME, ORDINAL_POSITION',
         );
-        const tables = docsFromColumns(rows, 'структура боевой базы zmk');
+        const tables = docsFromColumns(rows, 'структура боевой базы zmk', properCaseMap(dump));
         docs.push(...tables);
         console.log(`База: ${tables.length} таблиц`);
         await closeExternal();
@@ -66,9 +66,17 @@ async function main() {
 
     const files = pasFiles(SOURCES);
     for (const file of files) {
-        // Delphi пишет в cp1251, и это не мелочь: в utf8 комментарии и подписи
-        // станут мусором, а по мусору Тамара ничего не найдёт.
-        const source = new TextDecoder('windows-1251').decode(readFileSync(file));
+        // Delphi пишет в cp1251, и это не мелочь: прочитанный как utf8 файл
+        // отдаст вместо комментариев мусор, а по мусору Тамара ничего не найдёт.
+        // Но часть файлов уже перевели в utf8, поэтому сначала пробуем его
+        // строго, и лишь при отказе читаем как cp1251.
+        const raw = readFileSync(file);
+        let source: string;
+        try {
+            source = new TextDecoder('utf-8', { fatal: true }).decode(raw);
+        } catch {
+            source = new TextDecoder('windows-1251').decode(raw);
+        }
         docs.push(...docsFromPascal(path.basename(file), source, path.relative(ROOT, file)));
     }
     console.log(`Формы: ${files.length} файлов → ${docs.filter((d) => d.kind === 'unit').length} кусков`);

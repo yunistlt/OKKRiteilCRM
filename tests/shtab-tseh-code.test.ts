@@ -113,6 +113,46 @@ describe('нарезка форм Delphi', () => {
     });
 });
 
+describe('структура из живой базы', () => {
+    it('имя таблицы берётся в правильном регистре из дампа', async () => {
+        const { docsFromColumns, properCaseMap } = await import('@/lib/shtab/tseh-code');
+        // MySQL на сервере ЗМК отдаёт имена строчными, а зовётся таблица Orders.
+        const docs = docsFromColumns(
+            [{ table: 'orders', column: 'ID', type: 'int(11)', nullable: 'NO' }],
+            'структура боевой базы zmk',
+            properCaseMap(DUMP),
+        );
+        expect(docs[0].name).toBe('Orders');
+        expect(docs[0].slug).toBe('table:Orders');
+        expect(docs[0].content).toContain('ID — int(11), обязательное');
+    });
+
+    it('таблицы, которой нет в дампе, имя не выдумывается', async () => {
+        const { docsFromColumns, properCaseMap } = await import('@/lib/shtab/tseh-code');
+        const docs = docsFromColumns(
+            [{ table: 'newtable', column: 'X', type: 'int' }],
+            'структура боевой базы zmk',
+            properCaseMap(DUMP),
+        );
+        expect(docs[0].name).toBe('newtable');
+    });
+});
+
+describe('чистка перед базой', () => {
+    it('нулевой байт не доезжает до Postgres', async () => {
+        const { sanitize, docsFromPascal } = await import('@/lib/shtab/tseh-code');
+        // Postgres отвечает на \u0000 в text ошибкой 22021 и роняет весь засев.
+        expect(sanitize('a\u0000b')).toBe('ab');
+        const docs = docsFromPascal('X.pas', 'procedure A;\u0000\nbegin\nend;', 'x/X.pas');
+        expect(docs[0].content).not.toContain('\u0000');
+    });
+
+    it('перевод строки и табуляция остаются — это разметка кода', async () => {
+        const { sanitize } = await import('@/lib/shtab/tseh-code');
+        expect(sanitize('a\n\tb')).toBe('a\n\tb');
+    });
+});
+
 describe('отпечаток', () => {
     it('меняется вместе с текстом', () => {
         expect(codeFingerprint('a')).toBe(codeFingerprint('a'));

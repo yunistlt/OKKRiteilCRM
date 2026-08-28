@@ -476,9 +476,104 @@ async function readOpsCoverage(months: number): Promise<ToolResult> {
  * Живёт до проверки подключения к MySQL: код лежит в нашей базе, и объяснить,
  * как считается прибыль, Тамара может даже когда база цеха недоступна.
  */
+/**
+ * Поиск по логике ЦехУспеха.
+ *
+ * Живёт до проверки подключения к MySQL: код лежит в нашей базе, и объяснить,
+ * как считается прибыль, Тамара может даже когда база цеха недоступна.
+ *
+ * Поиск двойной. Векторный отвечает на вопрос своими словами, но имена в
+ * ЦехУспехе английские, а спрашивают по-русски: «как считается зарплата» не
+ * вытаскивает SalaryOrder, потому что в теле функции нет ни одного русского
+ * слова. Поэтому рядом идёт поиск по имени — по латинским словам из вопроса и
+ * по переводу десятка ключевых понятий. Совпадение по имени ставится первым:
+ * функция, названная ровно так, почти всегда и есть ответ.
+ */
+const NAME_HINTS: Record<string, string[]> = {
+    зарплат: ['salary'],
+    оклад: ['salary'],
+    себестоимост: ['cost'],
+    материал: ['material'],
+    заказ: ['order'],
+    отгруз: ['delivery'],
+    оплат: ['payment', 'payed'],
+    счет: ['bill'],
+    счёт: ['bill'],
+    склад: ['warehouse', 'wh'],
+    техкарт: ['texcard'],
+    операц: ['operat'],
+    сотрудник: ['user'],
+    контрагент: ['counterparty'],
+    цен: ['price'],
+    баланс: ['balans', 'balance'],
+    налог: ['nds', 'tax'],
+    прибыл: ['profit'],
+};
+
+function nameNeedles(query: string): string[] {
+    const lower = query.toLowerCase();
+    const needles = new Set<string>();
+    for (const word of lower.match(/[a-z][a-z0-9_]{3,}/g) ?? []) needles.add(word);
+    for (const [ru, en] of Object.entries(NAME_HINTS)) {
+        if (lower.includes(ru)) en.forEach((n) => needles.add(n));
+    }
+    return Array.from(needles).slice(0, 6);
+}
+
+type LogicHit = { title: string; kind: string; name: string; source: string; code: string; matched_by: string };
+
+function toHit(row: any, matchedBy: string): LogicHit {
+    return {
+        title: row.title,
+        kind: row.kind,
+        name: row.name,
+        source: row.source_ref,
+        // Код обрезается: шесть целых форм Delphi не влезут в ответ, а начала
+        // хватает, чтобы понять логику и назвать источник.
+        code: String(row.content).slice(0, 4000),
+        matched_by: matchedBy,
+    };
+}
+
 async function readLogic(query: string, kind?: string): Promise<ToolResult> {
     if (!query.trim()) return { available: false, reason: 'Пустой вопрос' };
     if (!isOpenAIConfigured()) return { available: false, reason: 'Поиск по коду недоступен: нет OPENAI_API_KEY' };
+
+    const hits: LogicHit[] = [];
+    const seen = new Set<string>();
+
+    const needles = nameNeedles(query);
+    if (needles.length > 0) {
+        // Имена функций и таблиц, а не куски форм: искать по имени модуля Delphi
+        // бессмысленно, там оно про экран, а не про расчёт.
+        const { data } = await supabase
+            .from('shtab_tseh_code')
+            .select('slug, kind, name, title, content, source_ref')
+            .eq('is_active', true)
+            .in('kind', kind === 'unit' ? ['function'] : kind ? [kind] : ['function', 'table'])
+            .or(needles.map((n) => `name.ilike.%${n}%`).join(','))
+            .limit(40);
+
+        // Слово «order» сидит в сотне имён, поэтому совпадений по имени берётся
+        // всего три и по правилу «чем меньше лишнего в имени, тем ближе к делу»:
+        // на вопрос про зарплату так первым идёт SalaryOrder, а не
+        // CalcBonusAheadOfScheduleOrderSalary. Смысловой поиск идёт следом и
+        // вытягивает то, что по имени не угадать.
+        const ranked = ((data ?? []) as any[])
+            .map((row) => {
+                const name = String(row.name).toLowerCase();
+                const hit = needles.filter((n) => name.includes(n));
+                const exact = needles.some((n) => name === n) ? 0 : 1;
+                return { row, score: [exact, -hit.length, name.length] as const };
+            })
+            .sort((a, b) => a.score[0] - b.score[0] || a.score[1] - b.score[1] || a.score[2] - b.score[2])
+            .slice(0, 3);
+
+        for (const { row } of ranked) {
+            seen.add(row.slug);
+            hits.push(toHit(row, 'имя'));
+        }
+    }
 
     const embedding = await generateEmbedding(query);
     const { data, error } = await supabase.rpc('match_shtab_tseh_code', {
@@ -489,21 +584,21 @@ async function readLogic(query: string, kind?: string): Promise<ToolResult> {
     });
     if (error) throw new Error(error.message);
 
-    const hits = (data ?? []) as any[];
+    for (const row of (data ?? []) as any[]) {
+        if (seen.has(row.slug)) continue;
+        seen.add(row.slug);
+        hits.push(toHit(row, 'смысл'));
+    }
+
     if (hits.length === 0) {
-        return { found: [], note: 'В коде ЦехУспеха по этому вопросу ничего не нашлось. Не выдумывай логику — скажи, что не нашла.' };
+        return {
+            found: [],
+            note: 'В коде ЦехУспеха по этому вопросу ничего не нашлось. Не выдумывай логику — скажи, что не нашла.',
+        };
     }
 
     return {
-        found: hits.map((h) => ({
-            title: h.title,
-            kind: h.kind,
-            name: h.name,
-            source: h.source_ref,
-            // Код обрезается: шесть целых форм Delphi не влезут в ответ, а
-            // начала хватает, чтобы понять логику и назвать источник.
-            code: String(h.content).slice(0, 4000),
-        })),
+        found: hits.slice(0, 8),
         note: 'Это код чужой программы. Отвечай по нему и называй источник, а не пересказывай по памяти.',
     };
 }
