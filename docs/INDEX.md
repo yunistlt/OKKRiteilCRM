@@ -18,6 +18,7 @@
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
 | **Штаб владельца («Альянс Стратег»)** | 🟢 Реализован | [docs/shtab/](shtab/OVERVIEW.md) | Владелец |
 | **Тамара — консультант Штаба** | 🟢 Реализован | [docs/shtab/TAMARA.md](shtab/TAMARA.md) | Владелец |
+| **Служебный API для консультанта ЦехУспеха** | 🟢 Реализован | [docs/shtab/DUTY_API.md](shtab/DUTY_API.md) | Владелец |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Платежи «с точки» (Точка → заказы)** | 🟢 Реализован | [docs/payments/](payments/OVERVIEW.md) | Team Finance |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |

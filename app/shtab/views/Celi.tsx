@@ -152,7 +152,7 @@ export default function Celi({ shtab, tamara }: ViewProps) {
                                 <th>Пост</th>
                                 <th>Образцовое положение дел</th>
                                 <th>Статистика</th>
-                                <th>Занимает</th>
+                                <th>Занимает и кто он в ЦехУспехе</th>
                                 <th />
                             </tr>
                         </thead>
@@ -206,6 +206,18 @@ export default function Celi({ shtab, tamara }: ViewProps) {
                                                 value={post.holder_name}
                                                 onChange={(e) => patchPost(post.id, { holder_name: e.target.value })}
                                                 placeholder="вакантен"
+                                            />
+                                            {/* По этому идентификатору консультант ЦехУспеха узнаёт вошедшего
+                                                и находит задачи его поста. Пусто — помогать будет нечему. */}
+                                            <input
+                                                type="text"
+                                                className="uid"
+                                                value={post.external_uid ?? ''}
+                                                onChange={(e) =>
+                                                    patchPost(post.id, { external_uid: e.target.value.trim() || null })
+                                                }
+                                                placeholder="кто он в ЦехУспехе"
+                                                title="Идентификатор занимающего пост в ЦехУспехе: по нему тамошний консультант находит его задачи"
                                             />
                                         </td>
                                         <td>

@@ -82,6 +82,7 @@ export type ShtabPost = {
     ideal_scene: string;
     statistic: string;
     holder_name: string;
+    external_uid: string | null;
     ordinal: number;
 };
 

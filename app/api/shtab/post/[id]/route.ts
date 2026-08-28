@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // PATCH  /api/shtab/post/[id] — поправить пост.
 // DELETE /api/shtab/post/[id] — убрать пост.
 
-const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, ordinal';
+const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal';
 
 const PatchSchema = z
     .object({
@@ -17,6 +17,10 @@ const PatchSchema = z
         ideal_scene: z.string().max(2000).optional(),
         statistic: z.string().max(500).optional(),
         holder_name: z.string().trim().max(200).optional(),
+        // Идентификатор занимающего пост в ЦехУспехе: по нему тамошний
+        // консультант находит, чьи это задачи. Пустая строка → null, иначе
+        // уникальный индекс споткнётся о второй пустой пост.
+        external_uid: z.string().trim().max(200).nullable().optional(),
         ordinal: z.number().int().min(0).optional(),
     })
     .refine((v) => Object.keys(v).length > 0, { message: 'Нечего менять' });

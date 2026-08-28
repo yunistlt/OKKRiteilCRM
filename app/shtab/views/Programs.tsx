@@ -8,7 +8,7 @@ import type { ViewProps } from '../nav';
 
 type Kind = { code: TaskKind; title: string; hint: string; ordinal: number };
 type Block = { id: number; ordinal: number; title: string; excerpt: string; rationale: string };
-type Program = { id: number; block_id: number; main_task: string; manager_name: string; status: string; source: string };
+type Program = { id: number; block_id: number; main_task: string; manager_name: string; status: string; source: string; post_id: number | null };
 type Task = {
     id: number;
     program_id: number;
@@ -24,7 +24,7 @@ type Task = {
 };
 
 export default function Programs({ shtab, go }: ViewProps) {
-    const { active } = shtab;
+    const { active, state } = shtab;
     const razborId = active?.id ?? null;
 
     const [kinds, setKinds] = useState<Kind[]>([]);
@@ -123,6 +123,7 @@ export default function Programs({ shtab, go }: ViewProps) {
     };
 
     const kindsSorted = useMemo(() => [...kinds].sort((a, b) => a.ordinal - b.ordinal), [kinds]);
+    const posts = useMemo(() => state?.posts ?? [], [state]);
 
     if (!active) return null;
 
@@ -287,6 +288,33 @@ export default function Programs({ shtab, go }: ViewProps) {
                                     <div className="muted">
                                         Руководитель: {program.manager_name || '— не назначен —'}
                                         {program.source === 'tamara' ? ' · черновик Тамары' : ''}
+                                    </div>
+                                    {/* Программу ведёт пост, а не фамилия: уволился человек —
+                                        программа осталась. По занимающему пост консультант
+                                        ЦехУспеха находит, кому помогать. */}
+                                    <div className="post-pick">
+                                        <label>Ведёт пост:</label>
+                                        <select
+                                            value={program.post_id ?? ''}
+                                            onChange={async (e) => {
+                                                const v = e.target.value ? Number(e.target.value) : null;
+                                                await fetch(`/api/shtab/program/${program.id}`, {
+                                                    method: 'PATCH',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ post_id: v }),
+                                                });
+                                                await load();
+                                            }}
+                                        >
+                                            <option value="">— не закреплена —</option>
+                                            {posts.map((p) => (
+                                                <option key={p.id} value={p.id}>
+                                                    {p.title}
+                                                    {p.holder_name ? ` — ${p.holder_name}` : ' (вакантен)'}
+                                                    {p.external_uid ? '' : ' · нет связи с ЦехУспехом'}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 

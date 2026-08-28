@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
             supabase.from('shtab_goal').select('kind, text'),
             supabase
                 .from('shtab_post')
-                .select('id, title, area_code, ideal_scene, statistic, holder_name, ordinal')
+                .select('id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal')
                 .order('ordinal')
                 .order('id'),
         ]);

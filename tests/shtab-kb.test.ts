@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SHTAB_KB_SEED, formatShtabKbForEmbedding } from '@/lib/shtab/kb-content';
+import { KB_TYPES, SHTAB_KB_SEED, formatShtabKbForEmbedding } from '@/lib/shtab/kb-content';
 import { duplicateSlugs, kbFingerprint } from '@/lib/shtab/kb-seed';
 
 describe('содержание базы знаний', () => {
@@ -23,7 +23,7 @@ describe('содержание базы знаний', () => {
 
     it('тип из разрешённых — тот же список, что в CHECK миграции', () => {
         for (const row of SHTAB_KB_SEED) {
-            expect(['methodology', 'framework', 'glossary'], row.slug).toContain(row.type);
+            expect(KB_TYPES as readonly string[], row.slug).toContain(row.type);
         }
     });
 
@@ -35,9 +35,27 @@ describe('содержание базы знаний', () => {
         }
     });
 
-    it('есть все три раздела', () => {
+    it('заполнены все разделы, объявленные в KB_TYPES', () => {
+        // Объявленный, но пустой вид — это либо забытые статьи, либо лишняя
+        // строка в CHECK миграции.
         const types = new Set(SHTAB_KB_SEED.map((r) => r.type));
-        expect(types).toEqual(new Set(['methodology', 'framework', 'glossary']));
+        expect(types).toEqual(new Set(KB_TYPES));
+    });
+
+    it('ремесло покрывает рабочие задачи наших программ', () => {
+        // Этими статьями консультант ЦехУспеха помогает начальнику цеха по
+        // существу. Пропала статья — помощь превращается в напоминание.
+        const slugs = new Set(SHTAB_KB_SEED.filter((r) => r.type === 'craft').map((r) => r.slug));
+        for (const need of [
+            'craft-uzkoe-mesto',
+            'craft-zamer-propusknoy',
+            'craft-grafik-to',
+            'craft-marshrut-zagotovki',
+            'craft-reglament',
+            'craft-nastavnichestvo',
+        ]) {
+            expect(slugs, need).toContain(need);
+        }
     });
 
     it('методичка «Альянс Стратег» покрыта по шагам разбора', () => {

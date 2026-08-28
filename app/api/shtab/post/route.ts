@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 // Область необязательна: часть постов (сисадмин, дворник) не ложится ни в одну
 // область компании, и заставлять выбирать значило бы врать в справочнике.
 
-const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, ordinal';
+const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal';
 
 const CreateSchema = z.object({
     title: z.string().trim().min(1, 'Название поста пустое').max(200),
