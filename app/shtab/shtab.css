@@ -587,3 +587,5 @@
 .shtab .block-draft .why{font-size:13.5px;margin-top:5px}
 .shtab .empty-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center;color:var(--muted);font-size:14px}
 .shtab .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.shtab .rhythm p{margin:8px 0 12px;max-width:64ch}
+.shtab .rhythm a.btn{display:inline-block;text-decoration:none}

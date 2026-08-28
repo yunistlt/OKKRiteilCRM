@@ -35,6 +35,11 @@ export default function Programs({ shtab, go }: ViewProps) {
     const [draftProgram, setDraftProgram] = useState<{ blockId: number; program: ProgramDraft; problems: ProgramProblem[] } | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [google, setGoogle] = useState<{
+        configured: boolean;
+        connected: boolean;
+        account: string | null;
+    } | null>(null);
 
     const load = useCallback(async () => {
         if (!razborId) return;
@@ -53,6 +58,15 @@ export default function Programs({ shtab, go }: ViewProps) {
     useEffect(() => {
         void load();
     }, [load]);
+
+    // Ритм планёрок живёт рядом с программами: на недельной разбираются именно их
+    // производственные задачи, поэтому подключение календаря стоит здесь.
+    useEffect(() => {
+        fetch('/api/shtab/google')
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => d && setGoogle(d))
+            .catch(() => {});
+    }, []);
 
     const call = async (what: string, url: string, body: unknown) => {
         setBusy(what);
@@ -144,6 +158,47 @@ export default function Programs({ shtab, go }: ViewProps) {
             </div>
 
             {error ? <div className="warn">{error}</div> : null}
+
+            {google ? (
+                <section className="card rhythm">
+                    <h2>Ритм планёрок</h2>
+                    {!google.configured ? (
+                        <p className="muted">
+                            Календарь не настроен. Нужны GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI
+                            и SHTAB_TOKEN_KEY в переменных окружения — как их получить, написано в docs/shtab/TAMARA.md.
+                        </p>
+                    ) : google.connected ? (
+                        <>
+                            <p className="muted">
+                                Подключён {google.account ? <b>{google.account}</b> : 'аккаунт Google'}. Ежедневная,
+                                недельная, месячная и квартальная встречи стоят в отдельном календаре «Ритм Штаба».
+                                Повестка обновляется по понедельникам, время встреч не двигается — двигаешь только ты.
+                            </p>
+                            <button
+                                className="btn btn-sm"
+                                onClick={async () => {
+                                    await call('revoke', '/api/shtab/google/revoke', {});
+                                    setGoogle((g) => (g ? { ...g, connected: false, account: null } : g));
+                                }}
+                                disabled={busy === 'revoke'}
+                            >
+                                Отключить календарь
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <p className="muted">
+                                Планёрки можно поставить в календарь: ежедневная 15 минут, недельная час по числам
+                                программ, месячная полдня, квартальная день. Штаб заведёт отдельный календарь и будет
+                                писать только в него — личные события останутся недоступны.
+                            </p>
+                            <a className="btn btn-primary btn-sm" href="/api/shtab/google/start">
+                                Подключить Google Calendar
+                            </a>
+                        </>
+                    )}
+                </section>
+            ) : null}
 
             {blocks.length === 0 && !draftBlocks ? (
                 <div className="empty">

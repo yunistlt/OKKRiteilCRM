@@ -140,6 +140,10 @@
         {
             "path": "/api/cron/shtab-briefing",
             "schedule": "0 6 * * 1"
+        },
+        {
+            "path": "/api/cron/shtab-rhythm",
+            "schedule": "20 6 * * 1"
         }
     ]
 }
