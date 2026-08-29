@@ -1,4 +1,5 @@
 import { getCrmConfig, updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { supabase } from '@/utils/supabase';
 
 // Рекомендации РОПа в карточке заказа.
 //
@@ -60,7 +61,28 @@ async function currentComment(orderId: number): Promise<{ comment: string; site:
     return { comment: String(data.order.managerComment ?? ''), site: data.order.site };
 }
 
-export type NoteResult = { ok: boolean; skipped?: 'already' | 'no-order'; error?: string };
+export type NoteResult = {
+    ok: boolean;
+    skipped?: 'already' | 'no-order' | 'not-worked';
+    error?: string;
+};
+
+/**
+ * Нужна ли новая заметка.
+ *
+ * Предыдущая висит нетронутой — значит по заказу ничего не произошло, и сказать
+ * нам нечего: ситуация та же, совет тот же. Второй такой же совет не добавляет
+ * смысла, он добавляет строку, из-за которой перестают читать все остальные.
+ *
+ * Работой считается действие человека после нашей записи: комментарий, смена
+ * статуса, звонок, письмо. Свои правки (дата контакта) не считаем — иначе бот
+ * принял бы за работу то, что сделал сам.
+ */
+export function noteNeeded(lastNoteAt: string | null, lastTouchAt: string | null): boolean {
+    if (!lastNoteAt) return true;
+    if (!lastTouchAt) return false;
+    return new Date(lastTouchAt).getTime() > new Date(lastNoteAt).getTime();
+}
 
 /**
  * Дописывает рекомендацию в карточку заказа.
@@ -70,6 +92,12 @@ export type NoteResult = { ok: boolean; skipped?: 'already' | 'no-order'; error?
  */
 export async function appendRopNote(orderId: number, text: string, date = new Date()): Promise<NoteResult> {
     try {
+        const { data } = await supabase.rpc('sales_rop_note_state', { p_order_id: orderId });
+        const state = ((data ?? []) as any[])[0];
+        if (state && !noteNeeded(state.last_note_at ?? null, state.last_touch_at ?? null)) {
+            return { ok: false, skipped: 'not-worked' };
+        }
+
         const current = await currentComment(orderId);
         if (!current) return { ok: false, skipped: 'no-order' };
         if (alreadyNotedToday(current.comment, date)) return { ok: false, skipped: 'already' };

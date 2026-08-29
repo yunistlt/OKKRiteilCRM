@@ -226,6 +226,7 @@ export type MorningResult = {
     tasks: number;
     crmSet: number;
     notesWritten: number;
+    notesSkipped: number;
     sent: boolean;
 };
 
@@ -324,6 +325,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // заглядывают, а в CRM работают.
     let crmSet = 0;
     let notesWritten = 0;
+    // Сколько раз промолчали: предыдущий совет висит нетронутым.
+    let notesSkipped = 0;
     if (!opts.dryRun && settings.setCrmDate) {
         const siteById = new Map(orders.map((o) => [o.orderId, o.site]));
         for (const t of planned) {
@@ -337,7 +340,18 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             // куда он смотрит, когда открывает клиента.
             if (settings.writeCrmNotes) {
                 const note = await appendRopNote(t.orderId, t.reasonText, new Date(today));
-                if (note.ok) notesWritten += 1;
+                if (note.ok) {
+                    notesWritten += 1;
+                    // Отмечаем момент записи: по нему в следующий раз решается,
+                    // была ли работа после нашего совета.
+                    await supabase
+                        .from('sales_rop_task')
+                        .update({ note_written_at: new Date().toISOString() })
+                        .eq('plan_date', today)
+                        .eq('order_id', t.orderId);
+                } else if (note.skipped === 'not-worked') {
+                    notesSkipped += 1;
+                }
             }
             await supabase
                 .from('sales_rop_task')
@@ -378,7 +392,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         sent = true;
     }
 
-    return { date: today, managers: preview.length, tasks: rows.length, crmSet, notesWritten, sent, preview: messages };
+    return { date: today, managers: preview.length, tasks: rows.length, crmSet, notesWritten, notesSkipped, sent, preview: messages };
 }
 
 function taskRow(date: string, t: Task) {

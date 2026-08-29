@@ -417,3 +417,24 @@ describe('рекомендации РОПа в карточке заказа', (
         expect(alreadyNotedToday(comment, new Date('2026-09-01'))).toBe(false);
     });
 });
+
+describe('ритм заметок РОПа', () => {
+    it('первую заметку пишем всегда', async () => {
+        const { noteNeeded } = await import('@/lib/sales-rop/crm-note');
+        expect(noteNeeded(null, null)).toBe(true);
+        expect(noteNeeded(null, '2026-08-25T10:00:00Z')).toBe(true);
+    });
+
+    it('предыдущий совет висит нетронутым — молчим', async () => {
+        const { noteNeeded } = await import('@/lib/sales-rop/crm-note');
+        // По заказу с прошлой записи ничего не произошло: ситуация та же, совет
+        // тот же, а вторая одинаковая строка обесценивает и первую.
+        expect(noteNeeded('2026-08-28T06:00:00Z', null)).toBe(false);
+        expect(noteNeeded('2026-08-28T06:00:00Z', '2026-08-27T15:00:00Z')).toBe(false);
+    });
+
+    it('менеджер поработал после совета — пишем новый', async () => {
+        const { noteNeeded } = await import('@/lib/sales-rop/crm-note');
+        expect(noteNeeded('2026-08-28T06:00:00Z', '2026-08-28T11:30:00Z')).toBe(true);
+    });
+});
