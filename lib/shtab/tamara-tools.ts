@@ -107,6 +107,34 @@ const OWN_TOOLS = [
     {
         type: 'function' as const,
         function: {
+            name: 'sales_facts',
+            description:
+                'ПРОДАЖИ отдела по месяцам: сколько заказов ушло в производство и на какую сумму, средний чек, сколько выставлено счетов. Это то, по чему меряется план отдела продаж. Не путать с tseh_* — там завод и его выручка. Вызывай первым на любой вопрос про план продаж и выполнение.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    months: { type: 'integer', description: 'Сколько последних месяцев. По умолчанию 12.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'sales_pipeline',
+            description:
+                'Воронка продаж на сейчас: в каких статусах стоят живые заказы, сколько их, на какую сумму и сколько дней не двигались. Отвечает на «что можно дотащить». Живыми считаются те, что трогали за последние N дней.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    days: { type: 'integer', description: 'Какой давности изменения считать живыми. По умолчанию 45.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
             name: 'shtab_query',
             description:
                 'Задать базе произвольный вопрос запросом SELECT, когда готовых инструментов не хватает. Пользуйся, когда надо разобраться: проверить догадку, посчитать срез, сравнить периоды. Пиши запрос под PostgreSQL. Доступные таблицы: ' +
@@ -420,6 +448,24 @@ async function readPrograms(razborId?: number): Promise<ToolResult> {
 export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
     // Цеховые — до try: они сами возвращают причину отказа, а не бросают.
     if (TSEH_TOOL_NAMES.has(name)) return await executeTsehTool(name, args);
+
+    if (name === 'sales_facts') {
+        const months = Number.isFinite(Number(args?.months)) ? Math.min(36, Math.max(2, Number(args.months))) : 12;
+        const { data, error } = await supabase.rpc('sales_month_facts', { p_months: months });
+        if (error) return { available: false, reason: error.message };
+        return {
+            unit: 'рубли',
+            note: 'Продажа = заказ ушёл в производство. По этому же критерию считается зарплата отдела.',
+            months: data ?? [],
+        };
+    }
+
+    if (name === 'sales_pipeline') {
+        const days = Number.isFinite(Number(args?.days)) ? Math.min(180, Math.max(7, Number(args.days))) : 45;
+        const { data, error } = await supabase.rpc('sales_pipeline_now', { p_days: days });
+        if (error) return { available: false, reason: error.message };
+        return { unit: 'рубли', fresh_days: days, statuses: data ?? [] };
+    }
 
     if (name === 'shtab_query') {
         // Ошибка запроса возвращается модели текстом: увидеть, что запрос
