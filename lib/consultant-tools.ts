@@ -1,6 +1,7 @@
 import { SALARY_TOOLS, executeSalaryTool, type SalaryToolContext } from '@/lib/salary/consultant-tools';
 import { RATING_TOOLS, executeRatingTool } from '@/lib/okk-consultant-rating-tools';
 import { ORDERS_TOOLS, executeOrdersTool } from '@/lib/okk-consultant-orders-tools';
+import { CRM_LIVE_TOOLS, CRM_LIVE_TOOL_NAMES, executeCrmLiveTool } from '@/lib/okk-consultant-crm-live';
 
 // Aggregates the consultant's analytical tools (OpenAI function calling):
 // - calc: safe arithmetic (no eval) so the LLM never does mental math
@@ -144,7 +145,8 @@ const ORDERS_NAMES = new Set(ORDERS_TOOLS.map((t) => t.function.name));
 
 /** Набор инструментов для tool-loop. calc и orders_aggregate — всегда; зарплата/рейтинг — при наличии менеджера. */
 export function buildConsultantTools(ctx: ConsultantToolContext) {
-    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS];
+    // Два источника: наша база знает историю и звонки, CRM — сегодняшнее утро.
+    const tools: any[] = [CALC_TOOL, ...ORDERS_TOOLS, ...CRM_LIVE_TOOLS];
     if (ctx.retailCrmManagerId != null) {
         tools.push(...SALARY_TOOLS, ...RATING_TOOLS);
     }
@@ -154,6 +156,7 @@ export function buildConsultantTools(ctx: ConsultantToolContext) {
 export async function executeConsultantTool(name: string, args: any, ctx: ConsultantToolContext): Promise<any> {
     if (name === 'calc') return executeCalc(args);
     if (ORDERS_NAMES.has(name)) return executeOrdersTool(name, args, ctx);
+    if (CRM_LIVE_TOOL_NAMES.has(name)) return executeCrmLiveTool(name, args);
     if (SALARY_NAMES.has(name)) return executeSalaryTool(name, args, ctx);
     if (RATING_NAMES.has(name)) return executeRatingTool(name, args, ctx);
     return { available: false, reason: `Неизвестный инструмент: ${name}` };
