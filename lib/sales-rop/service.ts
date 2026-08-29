@@ -4,6 +4,7 @@ import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
+import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
 // Сборка и отправка утреннего плана и вечернего разбора.
@@ -19,6 +20,8 @@ export type Settings = Thresholds & {
     enabled: boolean;
     monthPlan: number;
     setCrmDate: boolean;
+    /** Писать ли рекомендацию РОПа в комментарий карточки заказа. */
+    writeCrmNotes: boolean;
     /** Кого звать, когда менеджер заказа уволен или без ника. */
     orphanTelegram: string;
     morningGreeting: string;
@@ -70,6 +73,7 @@ export async function loadSettings(): Promise<Settings> {
         lostPerDay: num('lost_per_day', 2),
         monthPlan: num('month_plan', 13_000_000),
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
+        writeCrmNotes: String(map.get('write_crm_notes') ?? 'true') === 'true',
         orphanTelegram: String(map.get('orphan_telegram') || ''),
         morningGreeting: String(map.get('morning_greeting') || ''),
         morningFarewell: String(map.get('morning_farewell') || ''),
@@ -216,7 +220,14 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
     return Array.from(byManager.values()).flat();
 }
 
-export type MorningResult = { date: string; managers: number; tasks: number; crmSet: number; sent: boolean };
+export type MorningResult = {
+    date: string;
+    managers: number;
+    tasks: number;
+    crmSet: number;
+    notesWritten: number;
+    sent: boolean;
+};
 
 /**
  * Ставит дату следующего контакта в карточке заказа.
@@ -312,6 +323,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // менеджера на его рабочем экране в RetailCRM, а не только в чате: в чат
     // заглядывают, а в CRM работают.
     let crmSet = 0;
+    let notesWritten = 0;
     if (!opts.dryRun && settings.setCrmDate) {
         const siteById = new Map(orders.map((o) => [o.orderId, o.site]));
         for (const t of planned) {
@@ -319,6 +331,14 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             if (t.reasonCode === 'contact_today') continue;
             const res = await setContactDate(t.orderId, siteById.get(t.orderId) || '', today);
             if (res.ok) crmSet += 1;
+
+            // И сама рекомендация — в комментарий карточки. Менеджер работает в
+            // заказе, а не в переписке: то, что надо сделать, должно лежать там,
+            // куда он смотрит, когда открывает клиента.
+            if (settings.writeCrmNotes) {
+                const note = await appendRopNote(t.orderId, t.reasonText, new Date(today));
+                if (note.ok) notesWritten += 1;
+            }
             await supabase
                 .from('sales_rop_task')
                 .update({ crm_date_set: res.ok, crm_error: res.error ?? null })
@@ -358,7 +378,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         sent = true;
     }
 
-    return { date: today, managers: preview.length, tasks: rows.length, crmSet, sent, preview: messages };
+    return { date: today, managers: preview.length, tasks: rows.length, crmSet, notesWritten, sent, preview: messages };
 }
 
 function taskRow(date: string, t: Task) {

@@ -371,3 +371,49 @@ describe('собственный план менеджера', () => {
         expect(text).toContain('📅 Твой план на сегодня (из CRM)');
     });
 });
+
+describe('рекомендации РОПа в карточке заказа', () => {
+    it('строка начинается датой и подписью', async () => {
+        const { formatRopNote } = await import('@/lib/sales-rop/crm-note');
+        expect(formatRopNote('позвонить, счёт висит 3 дня', new Date('2026-08-31'))).toBe(
+            '31.08.2026 РОП: позвонить, счёт висит 3 дня',
+        );
+    });
+
+    it('комментарий менеджера не затирается — это главное', async () => {
+        const { mergeComment, formatRopNote } = await import('@/lib/sales-rop/crm-note');
+        // Тут живут договорённости, стоившие менеджеру полугода переписки.
+        const human = 'Все из 0,8 мм\nНаша резка 16105р\n02.10 примерно в пн оплата';
+        const merged = mergeComment(human, formatRopNote('уточнить оплату', new Date('2026-08-31')));
+        expect(merged).toContain('Все из 0,8 мм');
+        expect(merged).toContain('Наша резка 16105р');
+        expect(merged).toContain('31.08.2026 РОП: уточнить оплату');
+    });
+
+    it('свежая заметка сверху, старые ниже', async () => {
+        const { mergeComment, formatRopNote } = await import('@/lib/sales-rop/crm-note');
+        const existing = '30.08.2026 РОП: старое\nкомментарий менеджера';
+        const merged = mergeComment(existing, formatRopNote('новое', new Date('2026-08-31')));
+        const lines = merged.split('\n');
+        expect(lines[0]).toContain('31.08.2026');
+        expect(lines[1]).toContain('30.08.2026');
+    });
+
+    it('заметок РОПа не больше пяти, комментарии менеджера не режутся', async () => {
+        const { mergeComment, formatRopNote } = await import('@/lib/sales-rop/crm-note');
+        let comment = 'важная договорённость с клиентом';
+        for (let day = 20; day <= 30; day += 1) {
+            comment = mergeComment(comment, formatRopNote(`совет ${day}`, new Date(`2026-08-${day}`)));
+        }
+        const ropLines = comment.split('\n').filter((l) => l.includes('РОП:'));
+        expect(ropLines).toHaveLength(5);
+        expect(comment).toContain('важная договорённость с клиентом');
+    });
+
+    it('дважды за день не пишем', async () => {
+        const { alreadyNotedToday } = await import('@/lib/sales-rop/crm-note');
+        const comment = '31.08.2026 РОП: позвонить\nтекст менеджера';
+        expect(alreadyNotedToday(comment, new Date('2026-08-31'))).toBe(true);
+        expect(alreadyNotedToday(comment, new Date('2026-09-01'))).toBe(false);
+    });
+});
