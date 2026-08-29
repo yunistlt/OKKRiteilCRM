@@ -202,17 +202,12 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
         };
         list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
 
-        // Остывшие идут сверх плана и дозированно: их сотни, и вывалить их
-        // целиком — то же самое, что не дать ничего.
         // То, что менеджер сам назначил на сегодня, не режется лимитом никогда.
         // Это его собственный план из CRM, и если наш отбор его вытеснит, человек
         // решит, что работать надо только по присланному, — и свои договорённости
         // с клиентами пропустит.
         const own = list.filter((x: Task) => x.reasonCode === 'contact_today');
 
-        // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
-        // резать первой, она не делается никогда — а цель в 300 постоянных
-        // клиентов достигается только ею.
         // Сколько наших задач добавить сверх собственных: остаток до нормы, но
         // не больше дневного лимита и не меньше самого горячего.
         const room = Math.max(t.minAlways, Math.min(t.tasksPerManager, t.dailyTarget - own.length));
@@ -223,12 +218,22 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
                     x.reasonCode !== 'cold' && x.reasonCode !== 'development' && x.reasonCode !== 'contact_today',
             )
             .slice(0, room);
+        // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
+        // резать первой, она не делается никогда — а цель в 300 постоянных
+        // клиентов достигается только ею.
         const dev = list.filter((x: Task) => x.reasonCode === 'development');
-        // Дорогое вперёд: если разбирать остывшую базу, то с крупных.
+
+        // Остывшими добираем день до нормы. У одного менеджера четырнадцать
+        // своих звонков и добавлять нечего, у другого четыре — и его день
+        // наполовину пуст, хотя в базе лежат сотни остывших заказов. Недогруз —
+        // такая же потеря, как перегруз.
+        //
+        // Дорогое вперёд: если разбирать остывшую базу, то начиная с крупных.
+        const shortfall = Math.max(0, t.dailyTarget - own.length - live.length);
         const cold = list
             .filter((x: Task) => x.reasonCode === 'cold')
             .sort((a: Task, b: Task) => b.amount - a.amount)
-            .slice(0, t.coldPerDay);
+            .slice(0, Math.max(t.coldPerDay, shortfall));
         // Свои плановые звонки идут первыми: это обещания, данные клиентам.
         byManager.set(managerId, [...own, ...live, ...dev, ...cold]);
     }

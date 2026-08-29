@@ -113,7 +113,9 @@ describe('сборка плана', () => {
         const tasks = buildPlan([...many, ...cold], TODAY, T).get(249)!;
 
         expect(tasks.filter((t) => t.reasonCode !== 'cold')).toHaveLength(T.tasksPerManager);
-        expect(tasks.filter((t) => t.reasonCode === 'cold')).toHaveLength(T.coldPerDay);
+        // Остывшими день добирается до нормы: своих ноль, живых семь — значит
+        // добавится пять, а не две.
+        expect(tasks.filter((t) => t.reasonCode === 'cold')).toHaveLength(T.dailyTarget - T.tasksPerManager);
     });
 
     it('заказы разных менеджеров не смешиваются', () => {
@@ -444,6 +446,20 @@ describe('ритм заметок РОПа', () => {
 });
 
 describe('нагрузка на день', () => {
+    it('день недобран — добираем остывшими до нормы', () => {
+        // У одного менеджера четырнадцать своих звонков, у другого четыре: без
+        // добора второй получит полупустой день, хотя в базе сотни остывших.
+        const own = [order({ orderId: 1, contactDate: TODAY })];
+        const cold = Array.from({ length: 20 }, (_, i) =>
+            order({ orderId: 400 + i, contactDate: '2025-01-01', amount: 100_000 * (i + 1) }),
+        );
+        const tasks = buildPlan([...own, ...cold], TODAY, T).get(249)!;
+        expect(tasks.length).toBeGreaterThanOrEqual(T.dailyTarget - 1);
+        // Дорогие первыми.
+        const coldTasks = tasks.filter((t) => t.reasonCode === 'cold');
+        expect(coldTasks[0].amount).toBeGreaterThan(coldTasks[coldTasks.length - 1].amount);
+    });
+
     it('своих мало — добавляем полный лимит наших', () => {
         const own = [order({ orderId: 1, contactDate: TODAY })];
         const ours = Array.from({ length: 12 }, (_, i) =>
