@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan, taskFor } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Thresholds } from '@/lib/sales-rop/rules';
-import { formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
+import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning, shareOfLeads } from '@/lib/sales-rop/format';
 
 // Бот-РОП: что попадает в утренний план и как это читается.
 //
@@ -190,5 +190,38 @@ describe('как это читается', () => {
         });
         expect(text).toContain('77%');
         expect(norm(text)).toContain('1 522 787 ₽ в день');
+    });
+});
+
+describe('дисциплина и её последствие', () => {
+    const rows = [
+        { managerName: 'Матвеева Евгения', telegramUsername: 'Evgenia2222', tasksTotal: 30, tasksTouched: 29, donePct: 96.7, amountUntouched: 0 },
+        { managerName: 'Гордеева Ирина', telegramUsername: 'IrinaGordeeva777', tasksTotal: 30, tasksTouched: 18, donePct: 60, amountUntouched: 4_181_372 },
+    ];
+
+    it('доля заявок падает ступенями, а не формулой', () => {
+        // Менеджер должен уметь посчитать её сам, иначе это выглядит произволом.
+        expect(shareOfLeads(96.7, 80)).toBe(100);
+        expect(shareOfLeads(60, 80)).toBe(70);
+        expect(shareOfLeads(45, 80)).toBe(50);
+        expect(shareOfLeads(10, 80)).toBe(30);
+    });
+
+    it('отстающему прямо говорится, что заявок будет меньше', () => {
+        const text = formatDiscipline(rows, 80, 7);
+        expect(text).toContain('@IrinaGordeeva777 — 60%');
+        expect(text).toContain('завтра заявок 70% от обычного');
+        expect(text).toContain('Ниже 80%');
+    });
+
+    it('у выполнившего плана угрозы в строке нет', () => {
+        const text = formatDiscipline(rows, 80, 7);
+        expect(text).toMatch(/@Evgenia2222 — 96\.7% \(29 из 30\)\n/);
+    });
+
+    it('когда все отработали — сказано прямо, без запугивания', () => {
+        const text = formatDiscipline([rows[0]], 80, 7);
+        expect(text).toContain('без изменений');
+        expect(text).not.toContain('меньше');
     });
 });

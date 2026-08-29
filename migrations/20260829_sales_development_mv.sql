@@ -141,3 +141,8 @@ LANGUAGE sql STABLE AS $function$
 $function$;
 
 GRANT EXECUTE ON FUNCTION public.sales_rop_discipline(int) TO service_role;
+
+INSERT INTO public.sales_rop_settings (key, value, comment) VALUES
+    ('discipline_days', '7', 'За сколько дней считать дисциплину в вечернем отчёте'),
+    ('discipline_warn_pct', '80', 'Ниже этой доли отработанных задач — меньше заявок на следующий день')
+ON CONFLICT (key) DO NOTHING;

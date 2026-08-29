@@ -101,24 +101,41 @@ export type DisciplineRow = {
 };
 
 /**
- * Недельная дисциплина: доля отработанных задач по каждому.
+ * Дисциплина: доля отработанных задач по каждому за последние дни.
  *
- * Показывается раз в неделю, а не каждый день: ежедневная таблица рейтинга
- * превращается в фон, который перестают замечать. И это тот показатель, по
- * которому дальше решается, кому давать больше заявок.
+ * Печатается каждый вечер и с прямым следствием — сколько заявок человек
+ * получит завтра. Показатель без последствия превращается в фон: его читают
+ * неделю, потом перестают. Доля заявок считается ступенями, а не формулой:
+ * менеджер должен уметь посчитать её сам, иначе это выглядит произволом.
  */
-export function formatDiscipline(rows: DisciplineRow[]): string {
+export function shareOfLeads(donePct: number, warnPct: number): number {
+    if (donePct >= warnPct) return 100;
+    if (donePct >= warnPct - 20) return 70;
+    if (donePct >= warnPct - 40) return 50;
+    return 30;
+}
+
+export function formatDiscipline(rows: DisciplineRow[], warnPct = 80, periodDays = 7): string {
     if (rows.length === 0) return '';
     const sorted = [...rows].sort((a, b) => b.donePct - a.donePct);
-    const lines = ['📈 Дисциплина за неделю — доля отработанных задач:'];
+    const lines = [`📈 Дисциплина за ${days(periodDays)} — доля отработанных задач:`];
+
     for (const r of sorted) {
         const name = r.telegramUsername ? `@${r.telegramUsername.replace(/^@/, '')}` : r.managerName;
+        const share = shareOfLeads(r.donePct, warnPct);
         lines.push(
             `${name} — ${r.donePct}% (${r.tasksTouched} из ${r.tasksTotal})` +
-                (r.amountUntouched > 0 ? `, не тронуто на ${money(r.amountUntouched)} ₽` : ''),
+                (r.amountUntouched > 0 ? `, не тронуто на ${money(r.amountUntouched)} ₽` : '') +
+                (share < 100 ? ` → завтра заявок ${share}% от обычного` : ''),
         );
     }
-    lines.push('', 'По этой цифре решается, кому распределять новые заявки.');
+
+    const weak = sorted.filter((r) => r.donePct < warnPct);
+    if (weak.length > 0) {
+        lines.push('', `Ниже ${warnPct}% — новых заявок завтра меньше. Догнать можно сегодня же: отработать то, что осталось.`);
+    } else {
+        lines.push('', 'Все отработали план — распределение заявок без изменений.');
+    }
     return lines.join('\n');
 }
 

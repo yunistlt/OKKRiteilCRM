@@ -24,6 +24,8 @@ export type Settings = Thresholds & {
     devMinOrders: number;
     devMinDays: number;
     devMaxDays: number;
+    disciplineDays: number;
+    disciplineWarnPct: number;
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -54,6 +56,8 @@ export async function loadSettings(): Promise<Settings> {
         devMinOrders: num('dev_min_orders', 2),
         devMinDays: num('dev_min_days', 30),
         devMaxDays: num('dev_max_days', 540),
+        disciplineDays: num('discipline_days', 7),
+        disciplineWarnPct: num('discipline_warn_pct', 80),
     };
 }
 
@@ -357,10 +361,11 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         preview.push(formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE));
     }
 
-    // По пятницам добавляем недельный срез дисциплины — тот самый показатель,
-    // по которому дальше решается распределение заявок.
-    if (new Date(today).getUTCDay() === 5) {
-        const { data: disc } = await supabase.rpc('sales_rop_discipline', { p_days: 7 });
+    // Дисциплина печатается каждый вечер: показатель, который видят раз в
+    // неделю, ни на что не влияет — а этот прямо определяет, сколько заявок
+    // человек получит завтра.
+    {
+        const { data: disc } = await supabase.rpc('sales_rop_discipline', { p_days: settings.disciplineDays });
         const rows = ((disc ?? []) as any[]).map((r) => {
             const w = who.get(r.manager_id === null ? null : Number(r.manager_id));
             return {
@@ -372,7 +377,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                 amountUntouched: Number(r.amount_untouched ?? 0),
             };
         });
-        const text = formatDiscipline(rows);
+        const text = formatDiscipline(rows, settings.disciplineWarnPct, settings.disciplineDays);
         if (text) preview.push(text);
     }
 
