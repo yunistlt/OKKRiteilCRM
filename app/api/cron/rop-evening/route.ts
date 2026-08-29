@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runEvening } from '@/lib/sales-rop/service';
-import { moscowToday } from '@/app/api/cron/rop-morning/route';
+import { localToday } from '@/app/api/cron/rop-morning/route';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     }
 
     const dryRun = req.nextUrl.searchParams.get('dry') === '1';
-    const today = req.nextUrl.searchParams.get('date') || moscowToday();
+    const today = req.nextUrl.searchParams.get('date') || localToday();
 
     try {
         const result = await runEvening(today, { dryRun });

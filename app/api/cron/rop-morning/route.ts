@@ -20,9 +20,9 @@ export async function GET(req: NextRequest) {
     }
 
     const dryRun = req.nextUrl.searchParams.get('dry') === '1';
-    // Дата берётся по московскому времени: крон Vercel живёт в UTC, и в 9 утра
-    // по Москве там ещё вчера.
-    const today = req.nextUrl.searchParams.get('date') || moscowToday();
+    // Дата берётся по времени Тольятти: крон Vercel живёт в UTC, и в девять
+    // утра на заводе там ещё предыдущие сутки.
+    const today = req.nextUrl.searchParams.get('date') || localToday();
 
     try {
         const result = await runMorning(today, { dryRun });
@@ -32,6 +32,12 @@ export async function GET(req: NextRequest) {
     }
 }
 
-export function moscowToday(now = new Date()): string {
-    return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+/**
+ * Сегодня по заводскому времени. Тольятти — UTC+4 (самарское), а не московское:
+ * час разницы решает, каким днём датирован план, запущенный ранним утром.
+ */
+export const TSEH_UTC_OFFSET_HOURS = 4;
+
+export function localToday(now = new Date()): string {
+    return new Date(now.getTime() + TSEH_UTC_OFFSET_HOURS * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

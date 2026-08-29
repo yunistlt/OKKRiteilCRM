@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parkQueue, releaseQueue, returnQueue } from '@/lib/sales-rop/queue';
-import { moscowToday } from '@/app/api/cron/rop-morning/route';
+import { localToday } from '@/app/api/cron/rop-morning/route';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
     const mode = req.nextUrl.searchParams.get('mode') || 'release';
     const dryRun = req.nextUrl.searchParams.get('dry') === '1';
-    const date = req.nextUrl.searchParams.get('date') || moscowToday();
+    const date = req.nextUrl.searchParams.get('date') || localToday();
 
     try {
         if (mode === 'park') return NextResponse.json({ ok: true, mode, date, ...(await parkQueue(date, { dryRun })) });
