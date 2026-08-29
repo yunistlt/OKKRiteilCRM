@@ -101,7 +101,7 @@ export async function loadSettings(): Promise<Settings> {
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
         talkMinutesTarget: num('talk_minutes_target', 120),
-        talksTarget: num('talks_target', 30),
+        talksTarget: num('talks_target', 35),
         excludedStatuses: String(map.get('plan_excluded_statuses') || '')
             .split(',')
             .map((x) => x.trim())
