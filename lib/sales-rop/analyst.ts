@@ -17,6 +17,7 @@ import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
 export type Dossier = {
     clientName: string;
     sphereName: string;
+    sphereCode: string | null;
     ordersCount: number;
     totalAmount: number;
     firstOrder: string | null;
@@ -58,6 +59,7 @@ export async function loadDossier(clientKey: string): Promise<Dossier | null> {
     return {
         clientName: r.client_name ?? '',
         sphereName: r.sphere_name ?? '',
+        sphereCode: r.sphere_code ?? null,
         ordersCount: Number(r.orders_count ?? 0),
         totalAmount: Number(r.total_amount ?? 0),
         firstOrder: r.first_order ?? null,
@@ -71,7 +73,7 @@ export async function loadDossier(clientKey: string): Promise<Dossier | null> {
 }
 
 /** Текст досье для модели. Русский и человеческий: его читает и модель, и человек при разборе. */
-export function renderDossier(d: Dossier, catalog: string[]): string {
+export function renderDossier(d: Dossier, catalog: string[], rules: SolutionRule[] = []): string {
     const money = (v: number) => Math.round(v).toLocaleString('ru-RU');
     const lines = [
         `Клиент: ${d.clientName}`,
@@ -96,7 +98,63 @@ export function renderDossier(d: Dossier, catalog: string[]): string {
     }
 
     lines.push('', `Что мы производим (только из этого списка можно предлагать): ${catalog.join(', ')}`);
+
+    if (rules.length > 0) {
+        lines.push(
+            '',
+            'Что обычно нужно клиенту с таким набором (проверено владельцем, опирайся на это):',
+            ...rules.map((r) => `— ${r.segment}: взял «${r.trigger}» → нужен «${r.offer}». Почему: ${r.why} (${r.availability})`),
+        );
+    }
     return lines.join('\n');
+}
+
+export type SolutionRule = { segment: string; trigger: string; offer: string; why: string; availability: string };
+
+/**
+ * Правила из карты решений, подходящие клиенту.
+ *
+ * Отбор по тому, что он уже берёт: правило «купил муфельную печь — нужна
+ * вытяжка» применимо к тому, у кого печь есть. Статистику совместных покупок мы
+ * из подсказок убрали: из неё выходил совет предложить фланцы покупателю
+ * сушильных шкафов, потому что четырнадцать клиентов брали и то и другое.
+ *
+ * Берутся только подтверждённые строки: непроверенная догадка в устах бота
+ * выглядит как знание о товаре, а менеджер повторит её клиенту.
+ */
+export async function segmentOf(sphereCode: string | null): Promise<string | null> {
+    if (!sphereCode) return null;
+    const { data } = await supabase
+        .from('sales_segment_map')
+        .select('segment')
+        .eq('sphere_code', sphereCode)
+        .maybeSingle();
+    return data?.segment ?? null;
+}
+
+export async function loadSolutionRules(ownCategories: string[], segment: string | null): Promise<SolutionRule[]> {
+    // Без сегмента правил не даём: товар одинаковый у многих, а задача разная.
+    // Энергетик, купивший сушильный шкаф, получал совет про скамейки в
+    // раздевалку детского сада — потому что триггер совпадал.
+    if (ownCategories.length === 0 || !segment) return [];
+    const { data } = await supabase
+        .from('sales_solution_map')
+        .select('segment, trigger_item, offer_item, need_reason, availability')
+        .eq('state', 'confirmed')
+        .eq('segment', segment)
+        .in('trigger_item', ownCategories);
+
+    return ((data ?? []) as any[])
+        .filter((r) => r.availability !== 'не делаем')
+        // Предлагать то, что клиент и так берёт, — потерянный совет.
+        .filter((r) => !ownCategories.includes(r.offer_item))
+        .map((r) => ({
+            segment: r.segment,
+            trigger: r.trigger_item,
+            offer: r.offer_item,
+            why: r.need_reason,
+            availability: r.availability,
+        }));
 }
 
 async function catalogCategories(): Promise<string[]> {
@@ -168,7 +226,16 @@ export async function analyzeClient(clientKey: string, opts: { force?: boolean }
     if (!prompt) return null;
 
     const catalog = await catalogCategories();
-    const text = renderDossier(dossier, catalog);
+    const segment = await segmentOf(dossier.sphereCode);
+    const rules = await loadSolutionRules(Object.keys(dossier.byCategory), segment);
+
+    // Нет правил — молчим. Без карты модель выдаёт «предложите ещё сушильные
+    // шкафы тому, кто их и так берёт»: формально верно, для менеджера пусто.
+    // У перекупщиков и торгующих организаций сегмента нет намеренно — их задача
+    // не своя, а заказчика, и угадывать её нельзя.
+    if (rules.length === 0) return null;
+
+    const text = renderDossier(dossier, catalog, rules);
 
     try {
         const openai = getOpenAIClient();
@@ -200,7 +267,10 @@ export async function analyzeClient(clientKey: string, opts: { force?: boolean }
             caution: String(parsed.caution ?? '').trim(),
         };
         if (!insight.opportunity) return null;
-        if (!mentionsCatalog(insight, catalog)) return null;
+        // Есть карта — совет обязан опираться на неё, а не на общие соображения:
+        // ради этого карта и составлялась.
+        const allowed = rules.length > 0 ? rules.map((r) => r.offer) : catalog;
+        if (!mentionsCatalog(insight, allowed)) return null;
 
         await supabase.from('sales_client_insight').upsert({
             client_key: clientKey,

@@ -276,6 +276,7 @@ describe('второй слой: разбор клиента моделью', ()
             {
                 clientName: 'ТОО «КазТЭЦ»',
                 sphereName: 'Производители вагон-домов',
+                sphereCode: 'elektroseti',
                 ordersCount: 6,
                 totalAmount: 19_114_647,
                 firstOrder: '2024-01-24',
