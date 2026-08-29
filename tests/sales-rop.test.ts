@@ -584,3 +584,40 @@ describe('пустые звонки', () => {
         expect(isEmptyCall(call({ durationSec: 95, transcript: text }))).toBe(false);
     });
 });
+
+describe('вечерний отчёт владельцу', () => {
+    const row = (over: any) => ({
+        managerName: 'Гордеева Ирина', tasksTotal: 13, tasksDone: 9, amountUntouched: 4_181_372,
+        calls: 24, talks: 10, machine: 0, minutes: 27, ...over,
+    });
+
+    it('поимённо, с планом и звонками', async () => {
+        const { formatOwnerReport } = await import('@/lib/sales-rop/format');
+        const text = formatOwnerReport({
+            date: '2026-08-28', header: '📊 Итоги дня', rows: [row({})],
+            invoicesToday: 2, overdueContacts: 140, overdueAmount: 90_897_316, staleInvoices: 3,
+        });
+        expect(text).toContain('Гордеева Ирина: план 9/13 (69%), разговоров 10 из 24 звонков');
+        expect(norm(text)).toContain('не тронуто на 4 181 372 ₽');
+    });
+
+    it('плана не было — про него молчим, а не пишем 0/0', async () => {
+        const { formatOwnerReport } = await import('@/lib/sales-rop/format');
+        const text = formatOwnerReport({
+            date: '2026-08-28', header: 'h', rows: [row({ tasksTotal: 0, tasksDone: 0, amountUntouched: 0 })],
+            invoicesToday: 2, overdueContacts: 0, overdueAmount: 0, staleInvoices: 0,
+        });
+        expect(text).not.toContain('0/0');
+        expect(text).toContain('разговоров 10 из 24 звонков');
+    });
+
+    it('день без счетов — это первое, что видит владелец', async () => {
+        const { formatOwnerReport } = await import('@/lib/sales-rop/format');
+        const text = formatOwnerReport({
+            date: '2026-08-28', header: 'h', rows: [row({})],
+            invoicesToday: 0, overdueContacts: 0, overdueAmount: 0, staleInvoices: 0,
+        });
+        // Счета — предвестник денег с конверсией 85%: их отсутствие важнее всего.
+        expect(text).toContain('не выставлено ни одного счёта');
+    });
+});

@@ -7,7 +7,9 @@ import {
     formatEvening,
     formatEveningHeader,
     formatMorning,
+    formatOwnerReport,
 } from '@/lib/sales-rop/format';
+import type { OwnerRow } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
@@ -48,6 +50,9 @@ export type Settings = Thresholds & {
     summaryToGroup: boolean;
     /** Разбирать ли расшифровки звонков в вечернем отчёте. */
     reviewCalls: boolean;
+    /** Личный чат владельца и выключатель его отчёта. */
+    ownerChatId: string;
+    ownerReport: boolean;
     /** Норма разговоров в день, минут. */
     talkMinutesTarget: number;
     /** Норма состоявшихся разговоров в день, одна на всех. */
@@ -100,6 +105,8 @@ export async function loadSettings(): Promise<Settings> {
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
+        ownerChatId: String(map.get('owner_chat_id') || ''),
+        ownerReport: String(map.get('owner_report') ?? 'true') === 'true',
         talkMinutesTarget: num('talk_minutes_target', 120),
         talksTarget: num('talks_target', 35),
         excludedStatuses: String(map.get('plan_excluded_statuses') || '')
@@ -558,9 +565,9 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         .select('*')
         .eq('plan_date', today);
     if (error) throw new Error(error.message);
-    if ((tasks ?? []).length === 0) {
-        return { date: today, checked: 0, touched: 0, sent: false, preview: [] };
-    }
+    // Задач может не быть — например, план не запускался или день выходной.
+    // Владельцу отчёт всё равно нужен: цифры дня и звонки существуют независимо
+    // от того, ставили ли мы кому-то задачи.
 
     const touches = await detectTouches(today);
     const orders = await loadPresaleOrders();
@@ -568,6 +575,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     for (const o of orders) who.set(o.managerId, { name: o.managerName, tg: o.telegram });
 
     const byManager = new Map<number | null, EveningRow[]>();
+    const ownerRows: OwnerRow[] = [];
     let touchedCount = 0;
 
     for (const t of tasks as any[]) {
@@ -629,6 +637,19 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         // слушать автоответчик — не работа, и в норму это попадать не должно.
         const review = managerId === null ? null : await reviewCallDay(today, String(managerId)).catch(() => null);
 
+        if (call) {
+            ownerRows.push({
+                managerName: w.name,
+                tasksTotal: rows.length,
+                tasksDone: rows.filter((r) => r.touched).length,
+                amountUntouched: rows.filter((r) => !r.touched).reduce((s, r) => s + r.amount, 0),
+                calls: Number(call.calls_total),
+                talks: review ? review.realTalks : Number(call.talks),
+                machine: review?.machineCalls ?? 0,
+                minutes: Number(call.talk_minutes),
+            });
+        }
+
         preview.push(
             call
                 ? `${own}\n\n${formatCallDay({
@@ -673,11 +694,57 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         if (text) preview.push(text);
     }
 
+    // Менеджеры, у которых сегодня были звонки, но не было задач из плана: их
+    // день тоже состоялся, и в отчёте владельцу они должны быть. Иначе выходной
+    // или несработавший утренний прогон выглядит как «никто не работал».
+    const covered = new Set(ownerRows.map((r) => r.managerName));
+    for (const [managerId, call] of Array.from(callsById.entries())) {
+        if (settings.planManagerIds.length > 0 && !settings.planManagerIds.includes(Number(managerId))) continue;
+        const name = String((call as any).manager_name ?? '');
+        if (!name || covered.has(name)) continue;
+
+        const review = settings.reviewCalls ? await reviewCallDay(today, String(managerId)).catch(() => null) : null;
+        ownerRows.push({
+            managerName: name,
+            tasksTotal: 0,
+            tasksDone: 0,
+            amountUntouched: 0,
+            calls: Number((call as any).calls_total),
+            talks: review ? review.realTalks : Number((call as any).talks),
+            machine: review?.machineCalls ?? 0,
+            minutes: Number((call as any).talk_minutes),
+        });
+    }
+
+    // Вечерний разбор тоже уходит в личку: подробности в общем чате — это лента.
+    const direct = settings.deliverPlansToDm ? await loadDirectChats() : new Map<number, string>();
+
+    // Отчёт владельцу: отдел целиком и то, что требует его решения.
+    const { data: att } = await supabase.rpc('sales_rop_attention');
+    const attention = ((att ?? []) as any[])[0] ?? {};
+    const ownerText = formatOwnerReport({
+        date: today,
+        header: facts,
+        rows: ownerRows,
+        invoicesToday: Number(/Счетов выставлено: (\d+)/.exec(facts)?.[1] ?? 0),
+        overdueContacts: Number(attention.overdue_contacts ?? 0),
+        overdueAmount: Number(attention.overdue_amount ?? 0),
+        staleInvoices: Number(attention.stale_invoices ?? 0),
+    });
+
     let sent = false;
-    if (!opts.dryRun && settings.enabled && settings.chatId) {
-        await sendToChat(settings.chatId, preview.join('\n\n'));
+    if (!opts.dryRun && settings.enabled) {
+        for (const [managerId, rows] of Array.from(byManager.entries())) {
+            const dm = managerId === null ? undefined : direct.get(managerId);
+            const text = preview[Array.from(byManager.keys()).indexOf(managerId) + 1];
+            if (text) await sendToChat(dm || settings.chatId, text);
+        }
+
+        if (settings.ownerReport && settings.ownerChatId) await sendToChat(settings.ownerChatId, ownerText);
         sent = true;
     }
+
+    preview.push(ownerText);
 
     return { date: today, checked: (tasks as any[]).length, touched: touchedCount, sent, preview };
 }

@@ -292,6 +292,61 @@ export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
     return lines.join('\n');
 }
 
+export type OwnerRow = {
+    managerName: string;
+    tasksTotal: number;
+    tasksDone: number;
+    amountUntouched: number;
+    calls: number;
+    talks: number;
+    machine: number;
+    minutes: number;
+};
+
+/**
+ * Вечерний отчёт владельцу.
+ *
+ * Отличается от менеджерского не тоном, а составом: владельцу нужны отдел
+ * целиком и то, что требует его решения, а не подсказки по конкретным заказам.
+ * Поимённо — потому что «отдел сделал 60%» не говорит, с кем разговаривать.
+ */
+export function formatOwnerReport(params: {
+    date: string;
+    header: string;
+    rows: OwnerRow[];
+    invoicesToday: number;
+    overdueContacts: number;
+    overdueAmount: number;
+    staleInvoices: number;
+}): string {
+    const lines = [params.header, ''];
+
+    lines.push('По людям:');
+    for (const r of params.rows) {
+        const done = r.tasksTotal > 0 ? Math.round((r.tasksDone * 100) / r.tasksTotal) : 0;
+        // Плана могло не быть — тогда про него молчим, а не пишем «0/0 (0%)».
+        const planPart = r.tasksTotal > 0 ? `план ${r.tasksDone}/${r.tasksTotal} (${done}%), ` : '';
+        lines.push(
+            `${r.managerName}: ${planPart}` +
+                `разговоров ${r.talks} из ${r.calls} звонков, ${r.minutes} мин` +
+                (r.machine > 0 ? `, автоответчик ${r.machine}` : ''),
+        );
+        if (r.amountUntouched > 0) lines.push(`   не тронуто на ${money(r.amountUntouched)} ₽`);
+    }
+
+    // То, что не решается внутри отдела и требует внимания владельца.
+    const attention: string[] = [];
+    if (params.invoicesToday === 0) attention.push('за день не выставлено ни одного счёта');
+    if (params.staleInvoices > 0) attention.push(`счетов висит без оплаты: ${params.staleInvoices}`);
+    if (params.overdueContacts > 0) {
+        attention.push(`просроченных обещаний перезвонить: ${params.overdueContacts} на ${money(params.overdueAmount)} ₽`);
+    }
+
+    if (attention.length > 0) lines.push('', '⚠️ Требует внимания:', ...attention.map((a) => `— ${a}`));
+
+    return lines.join('\n');
+}
+
 /** Шапка вечернего отчёта: цифры дня по отделу. */
 export function formatEveningHeader(params: {
     date: string;
