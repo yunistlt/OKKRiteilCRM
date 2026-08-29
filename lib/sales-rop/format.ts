@@ -208,6 +208,8 @@ export type CallDay = {
     avgCalls: number | null;
     avgTalks: number | null;
     avgMinutes: number | null;
+    /** Норма разговоров в день, минут. */
+    targetMinutes: number;
 };
 
 /**
@@ -232,6 +234,18 @@ export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
     ];
 
     if (d.firstCall && d.lastCall) lines.push(`Первый звонок ${hhmm(d.firstCall)}, последний ${hhmm(d.lastCall)}`);
+
+    // Норма — первым делом после факта: это то, по чему меряется день.
+    if (d.targetMinutes > 0) {
+        const pct = Math.round((d.minutes * 100) / d.targetMinutes);
+        const left = Math.max(0, d.targetMinutes - d.minutes);
+        lines.push(
+            '',
+            left > 0
+                ? `Норма ${d.targetMinutes} мин в разговорах: сделано ${pct}%, не хватает ${left} мин.`
+                : `Норма ${d.targetMinutes} мин в разговорах выполнена (${pct}%).`,
+        );
+    }
 
     if (d.avgCalls !== null && d.avgTalks !== null) {
         const diff = d.talks - d.avgTalks;
