@@ -210,6 +210,13 @@ export type CallDay = {
     avgMinutes: number | null;
     /** Норма разговоров в день, минут. */
     targetMinutes: number;
+    /**
+     * Норма состоявшихся разговоров в день — одна на всех.
+     *
+     * Оклад у менеджеров одинаковый, значит и требование одинаковое: у кого не
+     * получается, это его вопрос, а не повод считать ему отдельную планку.
+     */
+    targetTalks: number;
 };
 
 /**
@@ -234,6 +241,17 @@ export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
     ];
 
     if (d.firstCall && d.lastCall) lines.push(`Первый звонок ${hhmm(d.firstCall)}, последний ${hhmm(d.lastCall)}`);
+
+    if (d.targetTalks > 0) {
+        const left = Math.max(0, d.targetTalks - d.talks);
+        const pct = Math.round((d.talks * 100) / d.targetTalks);
+        lines.push(
+            '',
+            left > 0
+                ? `Норма ${d.targetTalks} разговоров в день: сделано ${d.talks} (${pct}%), не хватает ${left}.`
+                : `Норма ${d.targetTalks} разговоров выполнена: ${d.talks} (${pct}%). 👍`,
+        );
+    }
 
     // Норма по минутам выключена намеренно (talk_minutes_target = 0).
     // Показатель поощряет длинные разговоры, а не результативные: под план по

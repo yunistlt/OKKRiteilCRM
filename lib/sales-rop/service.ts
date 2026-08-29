@@ -50,6 +50,8 @@ export type Settings = Thresholds & {
     reviewCalls: boolean;
     /** Норма разговоров в день, минут. */
     talkMinutesTarget: number;
+    /** Норма состоявшихся разговоров в день, одна на всех. */
+    talksTarget: number;
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
@@ -99,6 +101,7 @@ export async function loadSettings(): Promise<Settings> {
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
         talkMinutesTarget: num('talk_minutes_target', 120),
+        talksTarget: num('talks_target', 30),
         excludedStatuses: String(map.get('plan_excluded_statuses') || '')
             .split(',')
             .map((x) => x.trim())
@@ -638,6 +641,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       avgTalks: base ? Number(base.avg_talks) : null,
                       avgMinutes: base ? Number(base.avg_minutes) : null,
                       targetMinutes: settings.talkMinutesTarget,
+                      targetTalks: settings.talksTarget,
                   })}${review?.text ? `\n\n${review.text}` : ''}`
                 : own,
         );

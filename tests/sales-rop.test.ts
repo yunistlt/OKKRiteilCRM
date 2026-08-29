@@ -486,7 +486,7 @@ describe('срез дня по звонкам', () => {
         const text = formatCallDay({
             calls: 40, talks: 30, outgoing: 27, incoming: 13, minutes: 53,
             firstCall: '2026-08-28T06:12:00Z', lastCall: '2026-08-28T14:40:00Z',
-            avgCalls: 44.1, avgTalks: 35.3, avgMinutes: 59, targetMinutes: 120,
+            avgCalls: 44.1, avgTalks: 35.3, avgMinutes: 59, targetMinutes: 120, targetTalks: 30,
         });
         expect(text).toContain('40 (27 исходящих, 13 входящих)');
         // Время заводское, а не UTC: 06:12 UTC — это 10:12 в Тольятти.
@@ -496,15 +496,16 @@ describe('срез дня по звонкам', () => {
         // и длинные разговоры, у другого поток мелких.
         expect(text).toContain('меньше обычного');
         // Норма — то, по чему меряется день: 53 минуты из 120 это 44%.
-        expect(text).toContain('Норма 120 мин');
-        expect(text).toContain('не хватает 67 мин');
+        // Норма разговоров одна на всех: 30 разговоров в день.
+        expect(text).toContain('Норма 30 разговоров');
+        expect(text).toContain('выполнена');
     });
 
     it('без истории сравнения нет, но факт остаётся', async () => {
         const { formatCallDay } = await import('@/lib/sales-rop/format');
         const text = formatCallDay({
             calls: 5, talks: 3, outgoing: 5, incoming: 0, minutes: 7,
-            firstCall: null, lastCall: null, avgCalls: null, avgTalks: null, avgMinutes: null, targetMinutes: 120,
+            firstCall: null, lastCall: null, avgCalls: null, avgTalks: null, avgMinutes: null, targetMinutes: 120, targetTalks: 30,
         });
         expect(text).toContain('Звонки за день: 5');
         expect(text).not.toContain('среднее');
