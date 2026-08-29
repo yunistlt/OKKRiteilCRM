@@ -32,6 +32,7 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     contact_today: '🟡 Звонок сегодня',
     deal_stale: '🔵 Сделка стоит',
     big_silence: '⚪️ Крупный молчит',
+    development: '🟢 Развитие клиента — что ещё предложить',
     lost: '⚫️ Потеряшка — поднять или закрыть',
 };
 
@@ -87,6 +88,37 @@ export function formatEvening(
     }
     const lost = missed.reduce((s, r) => s + r.amount, 0);
     lines.push('', `Не тронуто на ${money(lost)} ₽`);
+    return lines.join('\n');
+}
+
+export type DisciplineRow = {
+    managerName: string;
+    telegramUsername: string;
+    tasksTotal: number;
+    tasksTouched: number;
+    donePct: number;
+    amountUntouched: number;
+};
+
+/**
+ * Недельная дисциплина: доля отработанных задач по каждому.
+ *
+ * Показывается раз в неделю, а не каждый день: ежедневная таблица рейтинга
+ * превращается в фон, который перестают замечать. И это тот показатель, по
+ * которому дальше решается, кому давать больше заявок.
+ */
+export function formatDiscipline(rows: DisciplineRow[]): string {
+    if (rows.length === 0) return '';
+    const sorted = [...rows].sort((a, b) => b.donePct - a.donePct);
+    const lines = ['📈 Дисциплина за неделю — доля отработанных задач:'];
+    for (const r of sorted) {
+        const name = r.telegramUsername ? `@${r.telegramUsername.replace(/^@/, '')}` : r.managerName;
+        lines.push(
+            `${name} — ${r.donePct}% (${r.tasksTouched} из ${r.tasksTotal})` +
+                (r.amountUntouched > 0 ? `, не тронуто на ${money(r.amountUntouched)} ₽` : ''),
+        );
+    }
+    lines.push('', 'По этой цифре решается, кому распределять новые заявки.');
     return lines.join('\n');
 }
 

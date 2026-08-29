@@ -1,7 +1,7 @@
 import { supabase } from '@/utils/supabase';
-import { PRESALE_STATUSES, buildPlan } from '@/lib/sales-rop/rules';
+import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
-import { formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
+import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
@@ -20,6 +20,10 @@ export type Settings = Thresholds & {
     setCrmDate: boolean;
     /** Кого звать, когда менеджер заказа уволен или без ника. */
     orphanTelegram: string;
+    devPerDay: number;
+    devMinOrders: number;
+    devMinDays: number;
+    devMaxDays: number;
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -46,6 +50,10 @@ export async function loadSettings(): Promise<Settings> {
         monthPlan: num('month_plan', 13_000_000),
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
         orphanTelegram: String(map.get('orphan_telegram') || ''),
+        devPerDay: num('dev_per_day', 2),
+        devMinOrders: num('dev_min_orders', 2),
+        devMinDays: num('dev_min_days', 30),
+        devMaxDays: num('dev_max_days', 540),
     };
 }
 
@@ -88,6 +96,61 @@ async function sendToChat(chatId: string, text: string): Promise<void> {
     if (!res.ok) throw new Error(`Telegram → ${res.status}: ${(await res.text()).slice(0, 200)}`);
 }
 
+/**
+ * Задачи на развитие клиента: кому что ещё можно продать.
+ *
+ * Цель — 300 постоянных клиентов со средним чеком 3 млн в год, и достигается она
+ * не потоком заявок, а базой: клиент, третий год берущий один и тот же шкаф, —
+ * это недоработанный клиент, а не лояльный.
+ *
+ * Предлагаем только то, что в этой же сфере деятельности уже покупают другие:
+ * назвать клиенту товар, которого мы не делаем, хуже, чем не позвонить.
+ */
+async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<number>): Promise<Task[]> {
+    const { data, error } = await supabase.rpc('sales_dev_candidates', {
+        p_min_orders: settings.devMinOrders,
+        p_min_days_since: settings.devMinDays,
+        p_max_days_since: settings.devMaxDays,
+    });
+    if (error) throw new Error(error.message);
+
+    const byManager = new Map<number | null, Task[]>();
+    const rows = ((data ?? []) as any[])
+        .filter((r) => Array.isArray(r.suggest_categories) && r.suggest_categories.length > 0)
+        .sort((a, b) => Number(b.total_amount) - Number(a.total_amount));
+
+    for (const r of rows) {
+        const managerId = r.manager_id === null ? null : Number(r.manager_id);
+        const list = byManager.get(managerId) ?? [];
+        if (list.length >= settings.devPerDay) continue;
+
+        const orderId = Number(r.last_order_id);
+        // Один заказ — одна строка в плане: если по нему уже есть срочная
+        // задача, развитие подождёт до следующего дня.
+        if (plannedOrderIds.has(orderId)) continue;
+
+        const own = (r.own_categories ?? []).filter((c: string) => c !== 'Прочее' && c !== 'Доставка');
+        list.push({
+            orderId,
+            number: String(r.last_order_number ?? ''),
+            client: r.client_name ?? '',
+            statusCode: 'development',
+            statusName: 'Развитие',
+            amount: Number(r.total_amount ?? 0),
+            managerId,
+            reasonCode: 'development',
+            reasonText:
+                `${purchases(Number(r.orders_count))} на ${Math.round(Number(r.total_amount)).toLocaleString('ru-RU')} ₽, ` +
+                `последняя ${r.days_since} дн назад. Берёт: ${own.join(', ') || 'не разобрано'}. ` +
+                `В сфере «${r.sphere_name}» такие клиенты берут ещё: ${(r.suggest_categories ?? []).join(', ')} — спросить, нужно ли`,
+            weight: Number(r.total_amount ?? 0),
+        });
+        byManager.set(managerId, list);
+    }
+
+    return Array.from(byManager.values()).flat();
+}
+
 export type MorningResult = { date: string; managers: number; tasks: number; crmSet: number; sent: boolean };
 
 /**
@@ -111,8 +174,22 @@ async function setContactDate(orderId: number, site: string, date: string): Prom
 
 export async function runMorning(today: string, opts: { dryRun?: boolean } = {}): Promise<MorningResult & { preview: string[] }> {
     const settings = await loadSettings();
+
+    // Профили клиентов пересчитываются раз в сутки, здесь: разбор позиций всех
+    // заказов за три года занимает минуты, и делать это на каждый запрос нельзя.
+    if (!opts.dryRun) await supabase.rpc('sales_refresh_client_profiles').catch(() => null);
+
     const orders = await loadPresaleOrders();
     const plan = buildPlan(orders, today, settings);
+
+    // Развитие добавляется после основного плана: сначала то, что горит.
+    const plannedIds = new Set<number>();
+    for (const [, tasks] of Array.from(plan.entries())) for (const t of tasks) plannedIds.add(t.orderId);
+    for (const dev of await loadDevelopmentTasks(settings, plannedIds)) {
+        const list = plan.get(dev.managerId) ?? [];
+        list.push(dev);
+        plan.set(dev.managerId, list);
+    }
 
     const nameById = new Map<number | null, { name: string; tg: string }>();
     for (const o of orders) {
@@ -278,6 +355,25 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
         preview.push(formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE));
+    }
+
+    // По пятницам добавляем недельный срез дисциплины — тот самый показатель,
+    // по которому дальше решается распределение заявок.
+    if (new Date(today).getUTCDay() === 5) {
+        const { data: disc } = await supabase.rpc('sales_rop_discipline', { p_days: 7 });
+        const rows = ((disc ?? []) as any[]).map((r) => {
+            const w = who.get(r.manager_id === null ? null : Number(r.manager_id));
+            return {
+                managerName: r.manager_name || w?.name || 'без менеджера',
+                telegramUsername: w?.tg || '',
+                tasksTotal: Number(r.tasks_total),
+                tasksTouched: Number(r.tasks_touched),
+                donePct: Number(r.done_pct ?? 0),
+                amountUntouched: Number(r.amount_untouched ?? 0),
+            };
+        });
+        const text = formatDiscipline(rows);
+        if (text) preview.push(text);
     }
 
     let sent = false;

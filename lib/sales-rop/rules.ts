@@ -33,7 +33,7 @@ export type Task = {
     statusName: string;
     amount: number;
     managerId: number | null;
-    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'lost';
+    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'lost' | 'development';
     reasonText: string;
     weight: number;
 };
@@ -106,6 +106,7 @@ function plural(n: number, one: string, few: string, many: string): string {
 }
 
 export const days = (n: number) => `${n} ${plural(n, 'день', 'дня', 'дней')}`;
+export const purchases = (n: number) => `${n} ${plural(n, 'покупка', 'покупки', 'покупок')}`;
 
 /**
  * Одна задача на заказ, даже если он подходит под несколько правил: список из
@@ -178,15 +179,22 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
             contact_today: 2,
             deal_stale: 3,
             big_silence: 4,
-            lost: 5,
+            development: 5,
+            lost: 6,
         };
         list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
 
         // Потеряшки идут сверх плана и дозированно: их сотни, и вывалить их
         // целиком — то же самое, что не дать ничего.
-        const live = list.filter((x: Task) => x.reasonCode !== 'lost').slice(0, t.tasksPerManager);
+        // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
+        // резать первой, она не делается никогда — а цель в 300 постоянных
+        // клиентов достигается только ею.
+        const live = list
+            .filter((x: Task) => x.reasonCode !== 'lost' && x.reasonCode !== 'development')
+            .slice(0, t.tasksPerManager);
+        const dev = list.filter((x: Task) => x.reasonCode === 'development');
         const lost = list.filter((x: Task) => x.reasonCode === 'lost').slice(0, t.lostPerDay);
-        byManager.set(managerId, [...live, ...lost]);
+        byManager.set(managerId, [...live, ...dev, ...lost]);
     }
 
     return byManager;
