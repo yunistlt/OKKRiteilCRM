@@ -5,6 +5,7 @@ import { topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
 import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-tools';
+import { ALLOWED_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
 
 // Инструменты Тамары (OpenAI function calling).
 //
@@ -100,6 +101,24 @@ const OWN_TOOLS = [
                 properties: {
                     razbor_id: { type: 'integer', description: 'Только программы этого разбора. По умолчанию все.' },
                 },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_query',
+            description:
+                'Задать базе произвольный вопрос запросом SELECT, когда готовых инструментов не хватает. Пользуйся, когда надо разобраться: проверить догадку, посчитать срез, сравнить периоды. Пиши запрос под PostgreSQL. Доступные таблицы: ' +
+                ALLOWED_RELATIONS.join(', ') +
+                '. Считай итоги в самом запросе (sum, count, group by), а не выгружай строки. Если запрос не выполнился — прочитай ошибку и перепиши.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    sql: { type: 'string', description: 'Запрос SELECT. Один оператор, без точки с запятой в середине.' },
+                    purpose: { type: 'string', description: 'Что проверяешь этим запросом — попадёт в журнал.' },
+                },
+                required: ['sql'],
             },
         },
     },
@@ -401,6 +420,12 @@ async function readPrograms(razborId?: number): Promise<ToolResult> {
 export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
     // Цеховые — до try: они сами возвращают причину отказа, а не бросают.
     if (TSEH_TOOL_NAMES.has(name)) return await executeTsehTool(name, args);
+
+    if (name === 'shtab_query') {
+        // Ошибка запроса возвращается модели текстом: увидеть, что запрос
+        // неверный, и переписать его — это и есть работа аналитика.
+        return (await runTamaraQuery(String(args?.sql ?? ''), String(args?.purpose ?? ''))) as ToolResult;
+    }
 
     try {
         if (name === 'shtab_state') {
