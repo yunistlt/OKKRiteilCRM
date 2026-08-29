@@ -7,6 +7,7 @@ import {
     searchConsultantKnowledge,
 } from '@/lib/okk-consultant-ai';
 import { buildConsultantTools, executeConsultantTool } from '@/lib/consultant-tools';
+import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
 
 // Семён в личке у менеджера.
 //
@@ -83,13 +84,23 @@ export async function askSemen(params: {
     const hits = await searchConsultantKnowledge(params.question).catch(() => []);
 
     const ctx = { retailCrmManagerId: params.managerId, role: 'manager' } as any;
-    const tools = buildConsultantTools(ctx);
+    // Разбор собственного дня: цифра, которую нельзя разложить, вызывает спор,
+    // а не работу.
+    const tools = [...buildConsultantTools(ctx), ...MY_DAY_TOOLS];
+
+    // Без этой строки модель не знает, какое сегодня число, и на вопрос про
+    // «28 августа» уходит смотреть выходной день, отвечая «звонков не было».
+    const now = new Date(Date.now() + 4 * 3600_000);
+    const todayLine =
+        `Сегодня ${now.toISOString().slice(0, 10)}, ` +
+        `${now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}. ` +
+        'Даты в инструменты передавай в виде ГГГГ-ММ-ДД.';
 
     const messages: any[] = [
         {
             role: 'system',
             content:
-                `${prompt.systemPrompt}\n\n` +
+                `${prompt.systemPrompt}\n\n${todayLine}\n\n` +
                 (params.promptKey === 'sales_order_note'
                     ? ''
                     : `Ты отвечаешь ${params.managerName} в личном чате Telegram. Пиши коротко: пять-шесть строк, без таблиц и без markdown-разметки — её тут не видно. `) +
@@ -134,10 +145,11 @@ export async function askSemen(params: {
                     args = {};
                 }
                 usedTools.push(name);
-                const result = await executeConsultantTool(name, args, ctx).catch((e: any) => ({
-                    available: false,
-                    reason: e.message,
-                }));
+                const result = await (
+                    MY_DAY_TOOL_NAMES.has(name)
+                        ? executeMyDayTool(name, args, params.managerId)
+                        : executeConsultantTool(name, args, ctx)
+                ).catch((e: any) => ({ available: false, reason: e.message }));
                 messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
             }
             continue;
