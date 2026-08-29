@@ -625,13 +625,19 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         // Разбор содержания: сколько из звонков были разговорами, сколько
         // закончились договорённостью и что стоит доделать. Счётчик без этого
         // обманывает — сорок звонков выглядят работой, а половина из них гудки.
-        const review = managerId === null || !settings.reviewCalls ? null : await reviewCallDay(today, String(managerId)).catch(() => null);
+        // Разговоры считаются по расшифровкам, а не по длительности: минуту
+        // слушать автоответчик — не работа, и в норму это попадать не должно.
+        const review = managerId === null ? null : await reviewCallDay(today, String(managerId)).catch(() => null);
 
         preview.push(
             call
                 ? `${own}\n\n${formatCallDay({
                       calls: Number(call.calls_total),
-                      talks: Number(call.talks),
+                      // Подтверждённые расшифровкой, а не «дольше 20 секунд».
+                      talks: review ? review.realTalks : Number(call.talks),
+                      machine: review?.machineCalls,
+                      noAnswer: review?.noAnswerCalls,
+                      noRecord: review?.noRecordCalls,
                       outgoing: Number(call.outgoing),
                       incoming: Number(call.incoming),
                       minutes: Number(call.talk_minutes),

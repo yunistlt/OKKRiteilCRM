@@ -485,13 +485,14 @@ describe('срез дня по звонкам', () => {
         const { formatCallDay } = await import('@/lib/sales-rop/format');
         const text = formatCallDay({
             calls: 40, talks: 30, outgoing: 27, incoming: 13, minutes: 53,
+            machine: 4, noAnswer: 5, noRecord: 1,
             firstCall: '2026-08-28T06:12:00Z', lastCall: '2026-08-28T14:40:00Z',
             avgCalls: 44.1, avgTalks: 35.3, avgMinutes: 59, targetMinutes: 120, targetTalks: 30,
         });
         expect(text).toContain('40 (27 исходящих, 13 входящих)');
         // Время заводское, а не UTC: 06:12 UTC — это 10:12 в Тольятти.
         expect(text).toContain('Первый звонок 10:12');
-        expect(text).toContain('Разговоров дольше 20 секунд: 30');
+        expect(text).toContain('Подтверждённых разговоров: 30');
         // Сравниваем с его же средним, а не с коллегами: у одного крупные сделки
         // и длинные разговоры, у другого поток мелких.
         expect(text).toContain('меньше обычного');
@@ -499,6 +500,8 @@ describe('срез дня по звонкам', () => {
         // Норма разговоров одна на всех: 30 разговоров в день.
         expect(text).toContain('Норма 30 разговоров');
         expect(text).toContain('выполнена');
+        // Разбивка незачтённого: без неё цифра выглядит придиркой.
+        expect(text).toContain('Не зачтено: 4 автоответчик, 5 без ответа, 1 без записи');
     });
 
     it('без истории сравнения нет, но факт остаётся', async () => {
@@ -509,6 +512,54 @@ describe('срез дня по звонкам', () => {
         });
         expect(text).toContain('Звонки за день: 5');
         expect(text).not.toContain('среднее');
+    });
+});
+
+describe('что считается разговором', () => {
+    const call = (over: any) => ({ at: '2026-08-28T09:00:00Z', direction: 'исходящий', phone: '790', orderNumber: null, ...over });
+
+    it('автоответчик не разговор, даже если слушали полторы минуты', async () => {
+        const { classifyCall } = await import('@/lib/sales-rop/call-review');
+        // Живой пример: 93 секунды приветствия чужой АТС.
+        expect(
+            classifyCall(
+                call({
+                    durationSec: 93,
+                    transcript:
+                        'Менеджер: Здравствуйте! Вы позвонили в акционерное общество «Моссиндж Проект». Наберите в тоновом режиме внутренний номер абонента или дождитесь ответа оператора.',
+                }),
+            ),
+        ).toBe('machine');
+
+        expect(
+            classifyCall(call({ durationSec: 73, transcript: 'Вас приветствует группа Кронштадт. Ваш звонок очень важен для нас.' })),
+        ).toBe('machine');
+    });
+
+    it('отказ распознавания не разговор', async () => {
+        const { classifyCall } = await import('@/lib/sales-rop/call-review');
+        // Постобработка иногда возвращает не текст, а жалобу на текст.
+        expect(
+            classifyCall(call({ durationSec: 79, transcript: 'Извините, но предоставленный текст не содержит диалога между Менеджером и Клиентом.' })),
+        ).toBe('noise');
+    });
+
+    it('диалог обеих сторон засчитывается', async () => {
+        const { classifyCall } = await import('@/lib/sales-rop/call-review');
+        const text = 'Менеджер: Дмитрий, здравствуйте, это Ирина из ЗМК.\nКлиент: Да, добрый день, я по счёту хотел уточнить сроки.';
+        expect(classifyCall(call({ durationSec: 95, transcript: text }))).toBe('talk');
+    });
+
+    it('длинная расшифровка без разметки ролей тоже разговор', async () => {
+        const { classifyCall } = await import('@/lib/sales-rop/call-review');
+        // Часть записей приходит без «Клиент:»/«Менеджер:», но это диалог.
+        const text = 'Алло, Михаил, это Ирина, компания ЗМК. Да, Ирина. '.repeat(10);
+        expect(classifyCall(call({ durationSec: 89, transcript: text }))).toBe('talk');
+    });
+
+    it('записи нет — не зачитываем, но и не обвиняем', async () => {
+        const { classifyCall } = await import('@/lib/sales-rop/call-review');
+        expect(classifyCall(call({ durationSec: 60, transcript: null }))).toBe('no_transcript');
     });
 });
 

@@ -200,6 +200,10 @@ export function formatDiscipline(rows: DisciplineRow[], warnPct = 80, periodDays
 export type CallDay = {
     calls: number;
     talks: number;
+    /** Разбивка незачтённых: автоответчик, тишина, короткие, без записи. */
+    machine?: number;
+    noAnswer?: number;
+    noRecord?: number;
     outgoing: number;
     incoming: number;
     minutes: number;
@@ -241,8 +245,15 @@ export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
         v ? new Date(new Date(v).getTime() + utcOffsetHours * 3600_000).toISOString().slice(11, 16) : '—';
     const lines = [
         `📞 Звонки за день: ${d.calls} (${d.outgoing} исходящих, ${d.incoming} входящих)`,
-        `Разговоров дольше 20 секунд: ${d.talks}, в трубке ${d.minutes} мин`,
+        `Подтверждённых разговоров: ${d.talks}, в трубке ${d.minutes} мин`,
     ];
+
+    // Разбивка незачтённого: без неё цифра выглядит придиркой, с ней — фактом.
+    const rest: string[] = [];
+    if (d.machine) rest.push(`${d.machine} автоответчик`);
+    if (d.noAnswer) rest.push(`${d.noAnswer} без ответа`);
+    if (d.noRecord) rest.push(`${d.noRecord} без записи`);
+    if (rest.length > 0) lines.push(`Не зачтено: ${rest.join(', ')}`);
 
     if (d.firstCall && d.lastCall) lines.push(`Первый звонок ${hhmm(d.firstCall)}, последний ${hhmm(d.lastCall)}`);
 

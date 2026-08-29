@@ -1,5 +1,5 @@
 import { supabase } from '@/utils/supabase';
-import { isEmptyCall } from '@/lib/sales-rop/call-review';
+import { classifyCall } from '@/lib/sales-rop/call-review';
 
 // «Почему у меня двадцать, а не тридцать пять?»
 //
@@ -86,22 +86,25 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                 transcript: r.transcript ?? null,
             }));
 
+            // Причина отказа называется прямо: спор возникает там, где
+            // непонятно, за что не засчитали.
+            const WHY: Record<string, string> = {
+                short: 'короче 15 секунд — не дозвонились',
+                machine: 'автоответчик или голосовое меню, диалога не было',
+                noise: 'в записи нет разговора: тишина или одно приветствие',
+                no_transcript: 'записи разговора нет — подтвердить нечем',
+            };
+
             const rows = calls.map((c) => {
-                const empty = isEmptyCall(c);
+                const verdict = classifyCall(c);
                 return {
                     время: hhmm(c.at),
                     направление: c.direction,
                     длительность: `${c.durationSec} сек`,
                     телефон: c.phone,
                     заказ: c.orderNumber,
-                    зачтён: !empty,
-                    // Причина отказа называется прямо: спор возникает там, где
-                    // непонятно, за что не засчитали.
-                    почему: empty
-                        ? c.durationSec < 15
-                            ? 'короче 15 секунд — не дозвонились'
-                            : 'нет разговора: автоответчик, гудки или одно приветствие'
-                        : null,
+                    зачтён: verdict === 'talk',
+                    почему: verdict === 'talk' ? null : WHY[verdict],
                 };
             });
 
@@ -109,7 +112,9 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                 дата: date,
                 всего_звонков: rows.length,
                 зачтено_разговоров: rows.filter((r) => r.зачтён).length,
-                правило: 'Разговором считается звонок длиннее 20 секунд, в котором слышен диалог с клиентом',
+                правило:
+                    'Разговором считается звонок, в расшифровке которого подтверждён диалог с клиентом. ' +
+                    'Автоответчик и голосовое меню не в счёт, даже если слушали их минуту.',
                 звонки: rows,
             };
         }
