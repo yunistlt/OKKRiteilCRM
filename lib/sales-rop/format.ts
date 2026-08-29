@@ -235,7 +235,10 @@ export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
 
     if (d.firstCall && d.lastCall) lines.push(`Первый звонок ${hhmm(d.firstCall)}, последний ${hhmm(d.lastCall)}`);
 
-    // Норма — первым делом после факта: это то, по чему меряется день.
+    // Норма по минутам выключена намеренно (talk_minutes_target = 0).
+    // Показатель поощряет длинные разговоры, а не результативные: под план по
+    // минутам начинают говорить о погоде. Минуты остаются в сводке как справка,
+    // требованием они не служат. Механика оставлена на случай разбора.
     if (d.targetMinutes > 0) {
         const pct = Math.round((d.minutes * 100) / d.targetMinutes);
         const left = Math.max(0, d.targetMinutes - d.minutes);
