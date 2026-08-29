@@ -251,3 +251,60 @@ describe('конвейер выдачи заявок', () => {
         expect(nextForOwner([row(1, 'done'), row(2, 'done')], 2)).toHaveLength(0);
     });
 });
+
+describe('второй слой: разбор клиента моделью', () => {
+    const insight = (opportunity: string, talkTrack = '') => ({ opportunity, talkTrack, evidence: '', caution: '' });
+    const CATALOG = ['Шкафы металлические', 'Сушильные шкафы', 'Стеллажи'];
+
+    it('рекомендация из нашего ассортимента проходит', async () => {
+        const { mentionsCatalog } = await import('@/lib/sales-rop/analyst');
+        expect(mentionsCatalog(insight('Предложить сушильные шкафы на 20 пар'), CATALOG)).toBe(true);
+        // Склонения не должны ломать проверку.
+        expect(mentionsCatalog(insight('Поговорить про стеллажи для склада'), CATALOG)).toBe(true);
+    });
+
+    it('выдуманный товар отбрасывается', async () => {
+        const { mentionsCatalog } = await import('@/lib/sales-rop/analyst');
+        // Проверено на живом прогоне: получив каталог из трёх категорий, модель
+        // предложила четвёртую. Промпт запрещал — она всё равно назвала.
+        expect(mentionsCatalog(insight('Предложите станки с ЧПУ и конвейерную линию'), CATALOG)).toBe(false);
+    });
+
+    it('досье для модели читается человеком и содержит динамику', async () => {
+        const { renderDossier } = await import('@/lib/sales-rop/analyst');
+        const text = renderDossier(
+            {
+                clientName: 'ТОО «КазТЭЦ»',
+                sphereName: 'Производители вагон-домов',
+                ordersCount: 6,
+                totalAmount: 19_114_647,
+                firstOrder: '2024-01-24',
+                lastOrder: '2025-10-02',
+                byYear: { '2024': 8_625_496, '2025': 10_489_152 },
+                byCategory: { 'Сушильные шкафы': 5 },
+                recentOrders: [{ number: '49104', date: '2025-10-02', amount: 1_458_200 }],
+                managerComments: ['Все из 0,8 мм'],
+                callTranscripts: [],
+            },
+            CATALOG,
+        );
+        expect(text).toContain('ТОО «КазТЭЦ»');
+        expect(text).toContain('2024 —');
+        expect(text).toContain('№49104');
+        expect(text).toContain('Все из 0,8 мм');
+        // Список того, что мы делаем, обязан быть в досье: без него модель
+        // предлагает всё подряд.
+        expect(text).toContain('Что мы производим');
+    });
+
+    it('отпечаток меняется при новой покупке и не меняется от пересборки', async () => {
+        const { dossierFingerprint } = await import('@/lib/sales-rop/analyst');
+        const base = {
+            clientName: 'X', sphereName: 'Y', ordersCount: 6, totalAmount: 100, firstOrder: null,
+            lastOrder: '2026-01-01', byYear: {}, byCategory: { A: 1 }, recentOrders: [],
+            managerComments: [], callTranscripts: [],
+        };
+        expect(dossierFingerprint(base)).toBe(dossierFingerprint({ ...base }));
+        expect(dossierFingerprint(base)).not.toBe(dossierFingerprint({ ...base, ordersCount: 7 }));
+    });
+});

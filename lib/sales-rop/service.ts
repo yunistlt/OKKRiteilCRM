@@ -3,6 +3,7 @@ import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { analyzeClient } from '@/lib/sales-rop/analyst';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
 // Сборка и отправка утреннего плана и вечернего разбора.
@@ -147,6 +148,12 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
         if (plannedOrderIds.has(orderId)) continue;
 
         const own = (r.own_categories ?? []).filter((c: string) => c !== 'Прочее' && c !== 'Доставка');
+        // Второй слой: модель читает досье клиента — покупки, комментарии
+        // менеджеров, расшифровки звонков — и говорит, о чём разговаривать.
+        // Код к этому моменту уже решил, КОГО трогать; модель отвечает только на
+        // вопрос О ЧЁМ, и её молчание плана не ломает.
+        const insight = await analyzeClient(r.client_key).catch(() => null);
+
         list.push({
             orderId,
             number: String(r.last_order_number ?? ''),
@@ -159,7 +166,13 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
             reasonText:
                 `${purchases(Number(r.orders_count))} на ${Math.round(Number(r.total_amount)).toLocaleString('ru-RU')} ₽, ` +
                 `последняя ${r.days_since} дн назад. Берёт: ${own.join(', ') || 'не разобрано'}. ` +
-                `В сфере «${r.sphere_name}» такие клиенты берут ещё: ${(r.suggest_categories ?? []).join(', ')} — спросить, нужно ли`,
+                `В сфере «${r.sphere_name}» такие клиенты берут ещё: ${(r.suggest_categories ?? []).join(', ')}` +
+                (insight
+                    ? `\n   💡 ${insight.opportunity}` +
+                      (insight.talkTrack ? `\n   Начать так: ${insight.talkTrack}` : '') +
+                      (insight.evidence ? `\n   Основание: ${insight.evidence}` : '') +
+                      (insight.caution ? `\n   Осторожно: ${insight.caution}` : '')
+                    : ' — спросить, нужно ли'),
             weight: Number(r.total_amount ?? 0),
         });
         byManager.set(managerId, list);
