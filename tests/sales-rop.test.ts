@@ -337,6 +337,36 @@ describe('человеческая обёртка утреннего плана'
     it('без шаблонов сообщение остаётся прежним', async () => {
         const { formatMorning } = await import('@/lib/sales-rop/format');
         const text = formatMorning(plan, '');
-        expect(text.startsWith('@IrinaGordeeva777, план на сегодня')).toBe(true);
+        expect(text.startsWith('@IrinaGordeeva777, на сегодня 1 шт.')).toBe(true);
+    });
+});
+
+describe('собственный план менеджера', () => {
+    it('заказы с датой контакта на сегодня не режутся лимитом и идут первыми', () => {
+        // Это обещания, данные клиентам: если наш отбор их вытеснит, человек
+        // решит, что работать надо только по присланному.
+        const own = Array.from({ length: 9 }, (_, i) =>
+            order({ orderId: 300 + i, contactDate: TODAY, amount: 50_000 + i }),
+        );
+        const ours = Array.from({ length: 12 }, (_, i) =>
+            order({ orderId: 400 + i, contactDate: '2026-08-20', amount: 900_000 + i }),
+        );
+        const tasks = buildPlan([...own, ...ours], TODAY, T).get(249)!;
+
+        expect(tasks.filter((t) => t.reasonCode === 'contact_today')).toHaveLength(9);
+        expect(tasks[0].reasonCode).toBe('contact_today');
+        expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(T.tasksPerManager);
+    });
+
+    it('в шапке разделено: сколько своих и сколько добавили мы', async () => {
+        const { formatMorning } = await import('@/lib/sales-rop/format');
+        const tasks = buildPlan(
+            [order({ orderId: 1, contactDate: TODAY }), order({ orderId: 2, contactDate: '2026-08-20' })],
+            TODAY,
+            T,
+        ).get(249)!;
+        const text = formatMorning({ managerId: 249, managerName: 'Г И', telegramUsername: 'x', tasks }, '');
+        expect(text).toContain('1 твоих по плану и 1 от меня');
+        expect(text).toContain('📅 Твой план на сегодня (из CRM)');
     });
 });

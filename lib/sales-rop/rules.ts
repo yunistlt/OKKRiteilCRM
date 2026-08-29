@@ -186,15 +186,25 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
 
         // Потеряшки идут сверх плана и дозированно: их сотни, и вывалить их
         // целиком — то же самое, что не дать ничего.
+        // То, что менеджер сам назначил на сегодня, не режется лимитом никогда.
+        // Это его собственный план из CRM, и если наш отбор его вытеснит, человек
+        // решит, что работать надо только по присланному, — и свои договорённости
+        // с клиентами пропустит.
+        const own = list.filter((x: Task) => x.reasonCode === 'contact_today');
+
         // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
         // резать первой, она не делается никогда — а цель в 300 постоянных
         // клиентов достигается только ею.
         const live = list
-            .filter((x: Task) => x.reasonCode !== 'lost' && x.reasonCode !== 'development')
+            .filter(
+                (x: Task) =>
+                    x.reasonCode !== 'lost' && x.reasonCode !== 'development' && x.reasonCode !== 'contact_today',
+            )
             .slice(0, t.tasksPerManager);
         const dev = list.filter((x: Task) => x.reasonCode === 'development');
         const lost = list.filter((x: Task) => x.reasonCode === 'lost').slice(0, t.lostPerDay);
-        byManager.set(managerId, [...live, ...dev, ...lost]);
+        // Свои плановые звонки идут первыми: это обещания, данные клиентам.
+        byManager.set(managerId, [...own, ...live, ...dev, ...lost]);
     }
 
     return byManager;

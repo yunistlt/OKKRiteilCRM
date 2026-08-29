@@ -29,7 +29,7 @@ function tag(username: string, name: string): string {
 const REASON_TITLE: Record<Task['reasonCode'], string> = {
     invoice_stale: '🔴 Счёт висит',
     contact_overdue: '🟠 Просрочено обещание',
-    contact_today: '🟡 Звонок сегодня',
+    contact_today: '📅 Твой план на сегодня (из CRM)',
     deal_stale: '🔵 Сделка стоит',
     big_silence: '⚪️ Крупный молчит',
     development: '🟢 Развитие клиента — что ещё предложить',
@@ -68,6 +68,8 @@ export function formatMorning(
     wrap?: { greeting?: string; farewell?: string; date?: Date },
 ): string {
     const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'lost');
+    const own = plan.tasks.filter((t: Task) => t.reasonCode === 'contact_today').length;
+    const added = live.length - own;
     // Блок, где живых задач нет, а потеряшки есть, — это не «план на 0 шт.»,
     // а разбор архива. Называем вещи своими именами, иначе сообщение выглядит
     // как ошибка бота и его перестают читать.
@@ -88,9 +90,16 @@ export function formatMorning(
               )
         : '';
 
+    // В шапке разделено: сколько человек запланировал сам и сколько добавили мы.
+    // Иначе присланный список читается как замена его собственному плану.
     const head =
         live.length > 0
-            ? `${who}, план на сегодня — ${live.length} шт.`
+            ? `${who}, на сегодня ${live.length} шт.` +
+              (own > 0 && added > 0
+                  ? ` — ${own} твоих по плану и ${added} от меня`
+                  : own > 0
+                    ? ' — все твои по плану'
+                    : '')
             : `${who}, на сегодня срочного нет — разобрать архив:`;
     const lines: string[] = hello ? [hello, '', head] : [head];
 
