@@ -1,7 +1,13 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
-import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
+import {
+    formatDiscipline,
+    formatEvening,
+    formatEveningHeader,
+    formatGreeting,
+    formatMorning,
+} from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import type { EveningRow } from '@/lib/sales-rop/format';
@@ -21,6 +27,8 @@ export type Settings = Thresholds & {
     setCrmDate: boolean;
     /** Кого звать, когда менеджер заказа уволен или без ника. */
     orphanTelegram: string;
+    morningGreeting: string;
+    morningFarewell: string;
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
@@ -59,6 +67,8 @@ export async function loadSettings(): Promise<Settings> {
         monthPlan: num('month_plan', 13_000_000),
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
         orphanTelegram: String(map.get('orphan_telegram') || ''),
+        morningGreeting: String(map.get('morning_greeting') || ''),
+        morningFarewell: String(map.get('morning_farewell') || ''),
         devPerDay: num('dev_per_day', 2),
         devMinOrders: num('dev_min_orders', 2),
         devMinDays: num('dev_min_days', 30),
@@ -288,13 +298,29 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         }
     }
 
+    // Приветствие и пожелание — вокруг планов, отдельными сообщениями: план
+    // каждому приходит своим уведомлением с его тегом, а общие слова общие.
+    const messages: string[] = [];
+    if (preview.length > 0 && settings.morningGreeting) {
+        const live = planned.filter((t) => t.reasonCode !== 'lost');
+        messages.push(
+            formatGreeting(settings.morningGreeting, new Date(today), {
+                managers: preview.length,
+                tasks: live.length,
+                totalAmount: live.reduce((s, t) => s + t.amount, 0),
+            }),
+        );
+    }
+    messages.push(...preview);
+    if (preview.length > 0 && settings.morningFarewell) messages.push(settings.morningFarewell);
+
     let sent = false;
     if (!opts.dryRun && settings.enabled && settings.chatId) {
-        for (const text of preview) await sendToChat(settings.chatId, text);
-        sent = preview.length > 0;
+        for (const text of messages) await sendToChat(settings.chatId, text);
+        sent = messages.length > 0;
     }
 
-    return { date: today, managers: preview.length, tasks: rows.length, crmSet, sent, preview };
+    return { date: today, managers: preview.length, tasks: rows.length, crmSet, sent, preview: messages };
 }
 
 function taskRow(date: string, t: Task) {

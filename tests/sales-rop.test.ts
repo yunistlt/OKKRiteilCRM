@@ -308,3 +308,24 @@ describe('второй слой: разбор клиента моделью', ()
         expect(dossierFingerprint(base)).not.toBe(dossierFingerprint({ ...base, ordersCount: 7 }));
     });
 });
+
+describe('человеческая обёртка утреннего плана', () => {
+    it('приветствие подставляет дату словами и сумму дня', async () => {
+        const { formatGreeting } = await import('@/lib/sales-rop/format');
+        const text = formatGreeting(
+            'Доброе утро, девочки!\n{{дата}} — планы ниже.\nВсего на день: {{сумма}} ₽.',
+            new Date('2026-08-31'),
+            { managers: 3, tasks: 21, totalAmount: 21_128_362 },
+        );
+        expect(text).toContain('31 августа');
+        expect(text).toContain('понедельник');
+        expect(norm(text)).toContain('21 128 362 ₽');
+    });
+
+    it('шаблон без подстановок остаётся собой', async () => {
+        const { formatGreeting } = await import('@/lib/sales-rop/format');
+        expect(formatGreeting('Доброе утро!', new Date('2026-08-31'), { managers: 3, tasks: 0, totalAmount: 0 })).toBe(
+            'Доброе утро!',
+        );
+    });
+});

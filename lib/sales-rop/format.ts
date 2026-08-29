@@ -36,6 +36,26 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     lost: '⚫️ Потеряшка — поднять или закрыть',
 };
 
+/**
+ * Приветствие и прощание — отдельными сообщениями вокруг планов.
+ *
+ * Тексты живут в настройках, а не в коде: состав отдела меняется, «девочки»
+ * однажды перестанут быть верным обращением, и менять это должен человек, а не
+ * деплой. Дата пишется словами — сообщение читают люди, а не парсер.
+ */
+export function formatGreeting(
+    template: string,
+    date: Date,
+    params: { managers: number; tasks: number; totalAmount: number },
+): string {
+    const day = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'long' });
+    return template
+        .replace('{{дата}}', day)
+        .replace('{{менеджеров}}', String(params.managers))
+        .replace('{{задач}}', String(params.tasks))
+        .replace('{{сумма}}', money(params.totalAmount));
+}
+
 export function formatMorning(plan: ManagerPlan, base: CrmLinkBase): string {
     const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'lost');
     // Блок, где живых задач нет, а потеряшки есть, — это не «план на 0 шт.»,
