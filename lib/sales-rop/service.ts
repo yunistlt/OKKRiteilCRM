@@ -11,6 +11,7 @@ import {
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
+import { reviewCallDay } from '@/lib/sales-rop/call-review';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
 // Сборка и отправка утреннего плана и вечернего разбора.
@@ -45,6 +46,8 @@ export type Settings = Thresholds & {
     excludedStatuses: string[];
     deliverPlansToDm: boolean;
     summaryToGroup: boolean;
+    /** Разбирать ли расшифровки звонков в вечернем отчёте. */
+    reviewCalls: boolean;
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
@@ -92,6 +95,7 @@ export async function loadSettings(): Promise<Settings> {
         morningFarewell: String(map.get('morning_farewell') || ''),
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
+        reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
         excludedStatuses: String(map.get('plan_excluded_statuses') || '')
             .split(',')
             .map((x) => x.trim())
@@ -612,6 +616,11 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const call = managerId === null ? null : callsById.get(String(managerId));
         const base = managerId === null ? null : baseById.get(String(managerId));
 
+        // Разбор содержания: сколько из звонков были разговорами, сколько
+        // закончились договорённостью и что стоит доделать. Счётчик без этого
+        // обманывает — сорок звонков выглядят работой, а половина из них гудки.
+        const review = managerId === null || !settings.reviewCalls ? null : await reviewCallDay(today, String(managerId)).catch(() => null);
+
         preview.push(
             call
                 ? `${own}\n\n${formatCallDay({
@@ -625,7 +634,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       avgCalls: base ? Number(base.avg_calls) : null,
                       avgTalks: base ? Number(base.avg_talks) : null,
                       avgMinutes: base ? Number(base.avg_minutes) : null,
-                  })}`
+                  })}${review?.text ? `\n\n${review.text}` : ''}`
                 : own,
         );
     }

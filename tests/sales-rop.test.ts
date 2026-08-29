@@ -507,3 +507,25 @@ describe('срез дня по звонкам', () => {
         expect(text).not.toContain('среднее');
     });
 });
+
+describe('пустые звонки', () => {
+    const call = (over: any) => ({ at: '2026-08-28T09:00:00Z', direction: 'исходящий', phone: '790', orderNumber: null, ...over });
+
+    it('короткий звонок — не разговор', async () => {
+        const { isEmptyCall } = await import('@/lib/sales-rop/call-review');
+        expect(isEmptyCall(call({ durationSec: 4, transcript: 'Менеджер: Компания «ЗМК», добрый день.' }))).toBe(true);
+    });
+
+    it('заставка распознавания тишины — не разговор', async () => {
+        const { isEmptyCall } = await import('@/lib/sales-rop/call-review');
+        // Whisper на тишине автоответчика выдаёт «Продолжение следует...».
+        expect(isEmptyCall(call({ durationSec: 40, transcript: 'Менеджер: Продолжение следует...' }))).toBe(true);
+        expect(isEmptyCall(call({ durationSec: 30, transcript: 'Субтитры сделал DimaTorzok' }))).toBe(true);
+    });
+
+    it('настоящий разговор считается', async () => {
+        const { isEmptyCall } = await import('@/lib/sales-rop/call-review');
+        const text = 'Менеджер: Дмитрий, здравствуйте, это Ирина из ЗМК. Клиент: Да, добрый день, я по счёту хотел уточнить сроки поставки и оплату.';
+        expect(isEmptyCall(call({ durationSec: 95, transcript: text }))).toBe(false);
+    });
+});
