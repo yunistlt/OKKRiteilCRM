@@ -479,3 +479,31 @@ describe('нагрузка на день', () => {
         expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(T.minAlways);
     });
 });
+
+describe('срез дня по звонкам', () => {
+    it('показывает факт и сравнение со своим средним', async () => {
+        const { formatCallDay } = await import('@/lib/sales-rop/format');
+        const text = formatCallDay({
+            calls: 40, talks: 30, outgoing: 27, incoming: 13, minutes: 53,
+            firstCall: '2026-08-28T06:12:00Z', lastCall: '2026-08-28T14:40:00Z',
+            avgCalls: 44.1, avgTalks: 35.3, avgMinutes: 59,
+        });
+        expect(text).toContain('40 (27 исходящих, 13 входящих)');
+        // Время заводское, а не UTC: 06:12 UTC — это 10:12 в Тольятти.
+        expect(text).toContain('Первый звонок 10:12');
+        expect(text).toContain('Разговоров дольше 20 секунд: 30');
+        // Сравниваем с его же средним, а не с коллегами: у одного крупные сделки
+        // и длинные разговоры, у другого поток мелких.
+        expect(text).toContain('меньше обычного');
+    });
+
+    it('без истории сравнения нет, но факт остаётся', async () => {
+        const { formatCallDay } = await import('@/lib/sales-rop/format');
+        const text = formatCallDay({
+            calls: 5, talks: 3, outgoing: 5, incoming: 0, minutes: 7,
+            firstCall: null, lastCall: null, avgCalls: null, avgTalks: null, avgMinutes: null,
+        });
+        expect(text).toContain('Звонки за день: 5');
+        expect(text).not.toContain('среднее');
+    });
+});

@@ -33,7 +33,7 @@ export type Task = {
     statusName: string;
     amount: number;
     managerId: number | null;
-    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development';
+    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development' | 'reactivation';
     reasonText: string;
     weight: number;
 };
@@ -177,7 +177,13 @@ export function taskFor(order: PresaleOrder, today: string, t: Thresholds): Task
 }
 
 /** План на день: по задаче на заказ, не больше N на менеджера, дорогое — первым. */
-export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds): Map<number | null, Task[]> {
+export function buildPlan(
+    orders: PresaleOrder[],
+    today: string,
+    t: Thresholds,
+    /** Сколько новых заявок в день приходит менеджеру — их разбирают до плана. */
+    intakeByManager: Map<number | null, number> = new Map(),
+): Map<number | null, Task[]> {
     const byManager = new Map<number | null, Task[]>();
 
     for (const order of orders) {
@@ -199,6 +205,7 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
             big_silence: 4,
             development: 5,
             cold: 6,
+            reactivation: 7,
         };
         list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
 
@@ -208,20 +215,28 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
         // с клиентами пропустит.
         const own = list.filter((x: Task) => x.reasonCode === 'contact_today');
 
-        // Сколько наших задач добавить сверх собственных: остаток до нормы, но
-        // не больше дневного лимита и не меньше самого горячего.
-        const room = Math.max(t.minAlways, Math.min(t.tasksPerManager, t.dailyTarget - own.length));
+        // Сколько наших задач добавить: остаток от нормы дня после собственных
+        // звонков и разбора новых заявок. Заявки приходят каждый день и ждать не
+        // могут, поэтому место под них резервируется до всего остального.
+        const intake = Math.round(intakeByManager.get(managerId) ?? 0);
+        const budget = t.dailyTarget - own.length - intake;
+        const room = Math.max(t.minAlways, Math.min(t.tasksPerManager, budget));
 
         const live = list
             .filter(
                 (x: Task) =>
-                    x.reasonCode !== 'cold' && x.reasonCode !== 'development' && x.reasonCode !== 'contact_today',
+                    x.reasonCode !== 'cold' &&
+                    x.reasonCode !== 'development' &&
+                    x.reasonCode !== 'reactivation' &&
+                    x.reasonCode !== 'contact_today',
             )
             .slice(0, room);
         // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
         // резать первой, она не делается никогда — а цель в 300 постоянных
         // клиентов достигается только ею.
-        const dev = list.filter((x: Task) => x.reasonCode === 'development');
+        const dev = list.filter(
+            (x: Task) => x.reasonCode === 'development' || x.reasonCode === 'reactivation',
+        );
 
         // Остывшими добираем день до нормы. У одного менеджера четырнадцать
         // своих звонков и добавлять нечего, у другого четыре — и его день
@@ -229,11 +244,18 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
         // такая же потеря, как перегруз.
         //
         // Дорогое вперёд: если разбирать остывшую базу, то начиная с крупных.
-        const shortfall = Math.max(0, t.dailyTarget - own.length - live.length);
-        const cold = list
-            .filter((x: Task) => x.reasonCode === 'cold')
-            .sort((a: Task, b: Task) => b.amount - a.amount)
-            .slice(0, Math.max(t.coldPerDay, shortfall));
+        const shortfall = Math.max(0, t.dailyTarget - own.length - intake - live.length);
+
+        // День уже полон собственными звонками и разбором заявок — остывших не
+        // добавляем вовсе. Норма существует, чтобы её соблюдать в обе стороны:
+        // список, который заведомо не сделать, не выполняют весь, а не частично.
+        const cold =
+            shortfall === 0
+                ? []
+                : list
+                      .filter((x: Task) => x.reasonCode === 'cold')
+                      .sort((a: Task, b: Task) => b.amount - a.amount)
+                      .slice(0, Math.max(t.coldPerDay, shortfall));
         // Свои плановые звонки идут первыми: это обещания, данные клиентам.
         byManager.set(managerId, [...own, ...live, ...dev, ...cold]);
     }

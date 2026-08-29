@@ -1,7 +1,13 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
-import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
+import {
+    formatCallDay,
+    formatDiscipline,
+    formatEvening,
+    formatEveningHeader,
+    formatMorning,
+} from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
@@ -169,7 +175,12 @@ async function sendToChat(chatId: string, text: string): Promise<void> {
  * Предлагаем только то, что в этой же сфере деятельности уже покупают другие:
  * назвать клиенту товар, которого мы не делаем, хуже, чем не позвонить.
  */
-async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<number>): Promise<Task[]> {
+async function loadDevelopmentTasks(
+    settings: Settings,
+    plannedOrderIds: Set<number>,
+    /** Сколько задач не хватает каждому до нормы дня. */
+    shortfallByManager: Map<number | null, number>,
+): Promise<Task[]> {
     const { data, error } = await supabase.rpc('sales_dev_candidates', {
         p_min_orders: settings.devMinOrders,
         p_min_days_since: settings.devMinDays,
@@ -185,7 +196,16 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
     for (const r of rows) {
         const managerId = r.manager_id === null ? null : Number(r.manager_id);
         const list = byManager.get(managerId) ?? [];
-        if (list.length >= settings.devPerDay) continue;
+
+        // Обычно развитие идёт малой дозой сверх плана. Но если у менеджера
+        // кончились живые заказы — а такое бывает, когда его портфель это
+        // тендеры, — день добирается клиентами на обзвон: пустой день хуже, чем
+        // работа вдолгую.
+        // Как и с остывшими: день полон — развитие подождёт до завтра.
+        const room = shortfallByManager.get(managerId) ?? 0;
+        if (room === 0) continue;
+        const need = Math.max(settings.devPerDay, room);
+        if (list.length >= need) continue;
 
         const orderId = Number(r.last_order_id);
         // Один заказ — одна строка в плане: если по нему уже есть срочная
@@ -223,6 +243,62 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
                       (insight.evidence ? `\n   Основание: ${insight.evidence}` : '') +
                       (insight.caution ? `\n   Осторожно: ${insight.caution}` : '')
                     : ' — спросить, нужно ли'),
+            weight: Number(r.total_amount ?? 0),
+        });
+        byManager.set(managerId, list);
+    }
+
+    return Array.from(byManager.values()).flat();
+}
+
+/**
+ * Обзвон базы: клиенты, которые покупали и давно молчат.
+ *
+ * Берётся только когда день не набрался ничем другим. Это не «работа ради
+ * работы»: у менеджера с сухим портфелем выбор между пустым днём и разговором с
+ * бывшим клиентом — а второе иногда возвращает заказ.
+ */
+async function loadReactivationTasks(
+    settings: Settings,
+    plannedOrderIds: Set<number>,
+    shortfallByManager: Map<number | null, number>,
+): Promise<Task[]> {
+    const need = Array.from(shortfallByManager.entries()).filter(([, n]) => n > 0);
+    if (need.length === 0) return [];
+
+    const { data, error } = await supabase.rpc('sales_dev_candidates', {
+        p_min_orders: 1,
+        p_min_days_since: settings.devMaxDays,
+        p_max_days_since: 1200,
+    });
+    if (error) return [];
+
+    const byManager = new Map<number | null, Task[]>();
+    const rows = ((data ?? []) as any[]).sort((a, b) => Number(b.total_amount) - Number(a.total_amount));
+
+    for (const r of rows) {
+        const managerId = r.manager_id === null ? null : Number(r.manager_id);
+        const want = shortfallByManager.get(managerId) ?? 0;
+        if (want <= 0) continue;
+
+        const list = byManager.get(managerId) ?? [];
+        if (list.length >= want) continue;
+
+        const orderId = Number(r.last_order_id);
+        if (plannedOrderIds.has(orderId)) continue;
+
+        list.push({
+            orderId,
+            number: String(r.last_order_number ?? ''),
+            client: r.client_name ?? '',
+            statusCode: 'reactivation',
+            statusName: 'Обзвон базы',
+            amount: Number(r.total_amount ?? 0),
+            managerId,
+            reasonCode: 'reactivation',
+            reasonText:
+                `${purchases(Number(r.orders_count))} на ${Math.round(Number(r.total_amount)).toLocaleString('ru-RU')} ₽, ` +
+                `последняя ${r.days_since} дн назад. Позвонить, узнать планы`,
             weight: Number(r.total_amount ?? 0),
         });
         byManager.set(managerId, list);
@@ -269,15 +345,43 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
 
     const all = await loadPresaleOrders();
     const orders = all.filter((o) => !settings.excludedStatuses.includes(o.statusCode));
-    const plan = buildPlan(orders, today, settings);
+    // Поток новых заявок по факту: их разбирают в тот же день, и место под них
+    // резервируется раньше нашего плана.
+    const { data: intakeRows } = await supabase.rpc('sales_rop_daily_intake', { p_days: 30 });
+    const intake = new Map<number | null, number>(
+        ((intakeRows ?? []) as any[]).map((r) => [r.manager_id === null ? null : Number(r.manager_id), Number(r.per_day)]),
+    );
+
+    const plan = buildPlan(orders, today, settings, intake);
 
     // Развитие добавляется после основного плана: сначала то, что горит.
     const plannedIds = new Set<number>();
-    for (const [, tasks] of Array.from(plan.entries())) for (const t of tasks) plannedIds.add(t.orderId);
-    for (const dev of await loadDevelopmentTasks(settings, plannedIds)) {
+    const shortfall = new Map<number | null, number>();
+    for (const [managerId, tasks] of Array.from(plan.entries())) {
+        for (const t of tasks) plannedIds.add(t.orderId);
+        shortfall.set(
+            managerId,
+            Math.max(0, settings.dailyTarget - tasks.length - Math.round(intake.get(managerId) ?? 0)),
+        );
+    }
+
+    for (const dev of await loadDevelopmentTasks(settings, plannedIds, shortfall)) {
         const list = plan.get(dev.managerId) ?? [];
         list.push(dev);
         plan.set(dev.managerId, list);
+        plannedIds.add(dev.orderId);
+        shortfall.set(dev.managerId, Math.max(0, (shortfall.get(dev.managerId) ?? 0) - 1));
+    }
+
+    // Если и развития не хватило — добираем обзвоном базы. Клиентов, которые
+    // когда-то покупали и давно молчат, хватает всегда; умного повода для
+    // звонка тут нет, и притворяться, что он есть, не надо: «давно не покупали»
+    // это честная причина позвонить.
+    for (const task of await loadReactivationTasks(settings, plannedIds, shortfall)) {
+        const list = plan.get(task.managerId) ?? [];
+        list.push(task);
+        plan.set(task.managerId, list);
+        plannedIds.add(task.orderId);
     }
 
     const nameById = new Map<number | null, { name: string; tg: string }>();
@@ -492,9 +596,38 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
 
     const facts = await dayFacts(today, settings.monthPlan);
     const preview = [facts];
+
+    // Срез по звонкам — каждому в личку, вместе с его разбором задач. В общий
+    // чат это не идёт: сравнивать людей по числу звонков бессмысленно, у одного
+    // крупные сделки и длинные разговоры, у другого поток мелких.
+    const [{ data: callRows }, { data: baseRows }] = await Promise.all([
+        supabase.rpc('sales_rop_call_day', { p_date: today }),
+        supabase.rpc('sales_rop_call_baseline', { p_days: 14 }),
+    ]);
+    const callsById = new Map(((callRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
+    const baseById = new Map(((baseRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
-        preview.push(formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE));
+        const own = formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE);
+        const call = managerId === null ? null : callsById.get(String(managerId));
+        const base = managerId === null ? null : baseById.get(String(managerId));
+
+        preview.push(
+            call
+                ? `${own}\n\n${formatCallDay({
+                      calls: Number(call.calls_total),
+                      talks: Number(call.talks),
+                      outgoing: Number(call.outgoing),
+                      incoming: Number(call.incoming),
+                      minutes: Number(call.talk_minutes),
+                      firstCall: call.first_call ?? null,
+                      lastCall: call.last_call ?? null,
+                      avgCalls: base ? Number(base.avg_calls) : null,
+                      avgTalks: base ? Number(base.avg_talks) : null,
+                      avgMinutes: base ? Number(base.avg_minutes) : null,
+                  })}`
+                : own,
+        );
     }
 
     // Дисциплина печатается каждый вечер: показатель, который видят раз в

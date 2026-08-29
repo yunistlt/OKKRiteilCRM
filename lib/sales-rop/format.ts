@@ -34,6 +34,7 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     big_silence: '⚪️ Крупный молчит',
     development: '🟢 Развитие клиента — что ещё предложить',
     cold: '⚫️ Остывшие — поднять или закрыть',
+    reactivation: '📞 Обзвон базы — давно не покупали',
 };
 
 /**
@@ -193,6 +194,51 @@ export function formatDiscipline(rows: DisciplineRow[], warnPct = 80, periodDays
     } else {
         lines.push('', 'Все отработали план — распределение заявок без изменений.');
     }
+    return lines.join('\n');
+}
+
+export type CallDay = {
+    calls: number;
+    talks: number;
+    outgoing: number;
+    incoming: number;
+    minutes: number;
+    firstCall: string | null;
+    lastCall: string | null;
+    avgCalls: number | null;
+    avgTalks: number | null;
+    avgMinutes: number | null;
+};
+
+/**
+ * Срез дня по звонкам.
+ *
+ * Показываем факт и сравнение со своим же средним — не с чужим. Сравнение
+ * менеджеров между собой здесь бесполезно: у одного крупные сделки и длинные
+ * разговоры, у другого поток мелких. А вот «сегодня вдвое меньше, чем обычно у
+ * тебя» — это разговор по делу.
+ *
+ * Разговором считается звонок длиннее двадцати секунд: короче — это гудки и
+ * «перезвоните позже», и складывать их с разговорами значит завышать работу.
+ */
+export function formatCallDay(d: CallDay, utcOffsetHours = 4): string {
+    // Время заводское: в UTC первый звонок выглядит как 06:26, и менеджер решит,
+    // что бот считает не его день.
+    const hhmm = (v: string | null) =>
+        v ? new Date(new Date(v).getTime() + utcOffsetHours * 3600_000).toISOString().slice(11, 16) : '—';
+    const lines = [
+        `📞 Звонки за день: ${d.calls} (${d.outgoing} исходящих, ${d.incoming} входящих)`,
+        `Разговоров дольше 20 секунд: ${d.talks}, в трубке ${d.minutes} мин`,
+    ];
+
+    if (d.firstCall && d.lastCall) lines.push(`Первый звонок ${hhmm(d.firstCall)}, последний ${hhmm(d.lastCall)}`);
+
+    if (d.avgCalls !== null && d.avgTalks !== null) {
+        const diff = d.talks - d.avgTalks;
+        const mark = diff >= 1 ? 'больше обычного' : diff <= -1 ? 'меньше обычного' : 'как обычно';
+        lines.push('', `Твоё среднее за две недели: ${d.avgCalls} звонков, ${d.avgTalks} разговоров, ${d.avgMinutes} мин — сегодня ${mark}.`);
+    }
+
     return lines.join('\n');
 }
 
