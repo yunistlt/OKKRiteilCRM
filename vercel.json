@@ -2,6 +2,10 @@
     "framework": "nextjs",
     "crons": [
         {
+            "path": "/api/cron/rop-bind",
+            "schedule": "*/10 4-15 * * 1-5"
+        },
+{
             "path": "/api/cron/rop-queue?mode=park",
             "schedule": "10 5 * * 1-5"
         },

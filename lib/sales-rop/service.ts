@@ -29,10 +29,14 @@ export type Settings = Thresholds & {
      * разговором с отделом продаж, а не с половиной компании.
      */
     planManagerIds: number[];
+    deliverPlansToDm: boolean;
+    summaryToGroup: boolean;
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
     devMaxDays: number;
+    /** Показывать ли подсказку модели в блоке развития. */
+    devInsightEnabled: boolean;
     disciplineDays: number;
     disciplineWarnPct: number;
     /** Конвейер: ночная парковка заявок в пул и выдача пачками. */
@@ -69,6 +73,8 @@ export async function loadSettings(): Promise<Settings> {
         orphanTelegram: String(map.get('orphan_telegram') || ''),
         morningGreeting: String(map.get('morning_greeting') || ''),
         morningFarewell: String(map.get('morning_farewell') || ''),
+        deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
+        summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         planManagerIds: String(map.get('plan_manager_ids') || '')
             .split(',')
             .map((x) => Number(x.trim()))
@@ -77,6 +83,7 @@ export async function loadSettings(): Promise<Settings> {
         devMinOrders: num('dev_min_orders', 2),
         devMinDays: num('dev_min_days', 30),
         devMaxDays: num('dev_max_days', 540),
+        devInsightEnabled: String(map.get('dev_insight_enabled') ?? 'false') === 'true',
         disciplineDays: num('discipline_days', 7),
         disciplineWarnPct: num('discipline_warn_pct', 80),
         queueEnabled: String(map.get('queue_enabled') ?? 'false') === 'true',
@@ -110,6 +117,15 @@ export async function loadPresaleOrders(): Promise<
         site: r.site || '',
         managerActive: Boolean(r.manager_active),
     }));
+}
+
+/** Личные чаты менеджеров: заполняются, когда человек сам напишет боту. */
+async function loadDirectChats(): Promise<Map<number, string>> {
+    const { data } = await supabase
+        .from('sales_rop_manager')
+        .select('manager_id, telegram_chat_id')
+        .not('telegram_chat_id', 'is', null);
+    return new Map(((data ?? []) as any[]).map((r) => [Number(r.manager_id), String(r.telegram_chat_id)]));
 }
 
 async function sendToChat(chatId: string, text: string): Promise<void> {
@@ -166,7 +182,12 @@ async function loadDevelopmentTasks(settings: Settings, plannedOrderIds: Set<num
         // менеджеров, расшифровки звонков — и говорит, о чём разговаривать.
         // Код к этому моменту уже решил, КОГО трогать; модель отвечает только на
         // вопрос О ЧЁМ, и её молчание плана не ломает.
-        const insight = await analyzeClient(r.client_key).catch(() => null);
+        //
+        // Выключено настройкой, пока модель не знает продукт: на первом прогоне
+        // она советовала предложить фланцы клиенту, купившему сушильные шкафы, —
+        // формально это соседняя категория, а по делу вещи из разных миров.
+        // Совет, выдающий незнание товара, роняет доверие ко всему сообщению.
+        const insight = settings.devInsightEnabled ? await analyzeClient(r.client_key).catch(() => null) : null;
 
         list.push({
             orderId,
@@ -308,11 +329,33 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
 
     // Одно сообщение на человека — приветствие и пожелание уже внутри него.
     const messages = preview;
+    const direct = settings.deliverPlansToDm ? await loadDirectChats() : new Map<number, string>();
 
     let sent = false;
-    if (!opts.dryRun && settings.enabled && settings.chatId) {
-        for (const text of messages) await sendToChat(settings.chatId, text);
-        sent = messages.length > 0;
+    if (!opts.dryRun && settings.enabled) {
+        for (const bucket of Array.from(byRecipient.values())) {
+            const text = messages[Array.from(byRecipient.values()).indexOf(bucket)];
+            const dm = bucket.managerId !== null ? direct.get(bucket.managerId) : undefined;
+            // Нет личного чата — план всё равно уходит в общий: человек не должен
+            // остаться без работы из-за того, что не написал боту.
+            const target = dm || settings.chatId;
+            if (target && text) await sendToChat(target, text);
+        }
+
+        // В общий чат — короткая сводка: кто сколько получил. Подробности там
+        // превращают рабочий чат в ленту, куда проваливаются оплаты.
+        if (settings.summaryToGroup && settings.chatId && byRecipient.size > 0) {
+            const lines = ['📋 Планы на сегодня разосланы:'];
+            for (const b of Array.from(byRecipient.values())) {
+                const live = b.tasks.filter((t) => t.reasonCode !== 'lost');
+                const sum = live.reduce((s, t) => s + t.amount, 0);
+                const who = b.tg ? `@${b.tg.replace(/^@/, '')}` : b.name;
+                const where = b.managerId !== null && direct.has(b.managerId) ? '' : ' (плана в личке нет — смотри выше)';
+                lines.push(`${who} — ${live.length} шт. на ${Math.round(sum).toLocaleString('ru-RU')} ₽${where}`);
+            }
+            await sendToChat(settings.chatId, lines.join('\n'));
+        }
+        sent = true;
     }
 
     return { date: today, managers: preview.length, tasks: rows.length, crmSet, sent, preview: messages };
