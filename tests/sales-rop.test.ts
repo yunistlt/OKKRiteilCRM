@@ -225,3 +225,29 @@ describe('дисциплина и её последствие', () => {
         expect(text).not.toContain('меньше');
     });
 });
+
+describe('конвейер выдачи заявок', () => {
+    const row = (ordinal: number, state: string) => ({ ordinal, state });
+
+    it('первая выдача — ровно пачка, по порядку очереди', async () => {
+        const { nextForOwner } = await import('@/lib/sales-rop/queue');
+        const next = nextForOwner([row(3, 'parked'), row(1, 'parked'), row(2, 'parked')], 2);
+        expect(next.map((r) => r.ordinal)).toEqual([1, 2]);
+    });
+
+    it('пока выданное не отработано, новое не выдаётся', async () => {
+        const { nextForOwner } = await import('@/lib/sales-rop/queue');
+        expect(nextForOwner([row(1, 'released'), row(2, 'released'), row(3, 'parked')], 2)).toHaveLength(0);
+    });
+
+    it('отработал одну — получает одну следующую', async () => {
+        const { nextForOwner } = await import('@/lib/sales-rop/queue');
+        const next = nextForOwner([row(1, 'done'), row(2, 'released'), row(3, 'parked'), row(4, 'parked')], 2);
+        expect(next.map((r) => r.ordinal)).toEqual([3]);
+    });
+
+    it('очередь кончилась — выдавать нечего, и это не ошибка', async () => {
+        const { nextForOwner } = await import('@/lib/sales-rop/queue');
+        expect(nextForOwner([row(1, 'done'), row(2, 'done')], 2)).toHaveLength(0);
+    });
+});

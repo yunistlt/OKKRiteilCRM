@@ -26,6 +26,12 @@ export type Settings = Thresholds & {
     devMaxDays: number;
     disciplineDays: number;
     disciplineWarnPct: number;
+    /** Конвейер: ночная парковка заявок в пул и выдача пачками. */
+    queueEnabled: boolean;
+    queuePoolManagerId: number;
+    queueBatchSize: number;
+    /** Кому включён конвейер. Пустой список — всем из плана. */
+    queueManagerIds: number[];
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -58,6 +64,13 @@ export async function loadSettings(): Promise<Settings> {
         devMaxDays: num('dev_max_days', 540),
         disciplineDays: num('discipline_days', 7),
         disciplineWarnPct: num('discipline_warn_pct', 80),
+        queueEnabled: String(map.get('queue_enabled') ?? 'false') === 'true',
+        queuePoolManagerId: num('queue_pool_manager_id', 102),
+        queueBatchSize: num('queue_batch_size', 2),
+        queueManagerIds: String(map.get('queue_manager_ids') || '')
+            .split(',')
+            .map((x) => Number(x.trim()))
+            .filter((x) => Number.isFinite(x) && x > 0),
     };
 }
 
