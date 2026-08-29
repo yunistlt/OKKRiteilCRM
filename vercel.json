@@ -2,6 +2,14 @@
     "framework": "nextjs",
     "crons": [
         {
+            "path": "/api/cron/rop-morning",
+            "schedule": "0 6 * * 1-5"
+        },
+        {
+            "path": "/api/cron/rop-evening",
+            "schedule": "30 15 * * 1-5"
+        },
+{
             "path": "/api/sync/telphin",
             "schedule": "*/2 * * * *"
         },
