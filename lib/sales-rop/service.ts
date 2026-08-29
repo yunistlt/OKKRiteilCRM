@@ -1,13 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
-import {
-    formatDiscipline,
-    formatEvening,
-    formatEveningHeader,
-    formatGreeting,
-    formatMorning,
-} from '@/lib/sales-rop/format';
+import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import type { EveningRow } from '@/lib/sales-rop/format';
@@ -29,6 +23,12 @@ export type Settings = Thresholds & {
     orphanTelegram: string;
     morningGreeting: string;
     morningFarewell: string;
+    /**
+     * Кому слать планы. Пусто — всем, у кого нашлись задачи, включая уволенных
+     * (их заказы уходят владельцу). Список нужен, чтобы утренняя рассылка была
+     * разговором с отделом продаж, а не с половиной компании.
+     */
+    planManagerIds: number[];
     devPerDay: number;
     devMinOrders: number;
     devMinDays: number;
@@ -69,6 +69,10 @@ export async function loadSettings(): Promise<Settings> {
         orphanTelegram: String(map.get('orphan_telegram') || ''),
         morningGreeting: String(map.get('morning_greeting') || ''),
         morningFarewell: String(map.get('morning_farewell') || ''),
+        planManagerIds: String(map.get('plan_manager_ids') || '')
+            .split(',')
+            .map((x) => Number(x.trim()))
+            .filter((x) => Number.isFinite(x) && x > 0),
         devPerDay: num('dev_per_day', 2),
         devMinOrders: num('dev_min_orders', 2),
         devMinDays: num('dev_min_days', 30),
@@ -252,6 +256,9 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     const byRecipient = new Map<string, { name: string; tg: string; tasks: Task[]; managerId: number | null }>();
     for (const [managerId, tasks] of Array.from(plan.entries())) {
         if (tasks.length === 0) continue;
+        if (settings.planManagerIds.length > 0 && (managerId === null || !settings.planManagerIds.includes(managerId))) {
+            continue;
+        }
         const who = nameById.get(managerId) ?? { name: 'без менеджера', tg: '' };
         const key = who.tg || who.name;
         const bucket = byRecipient.get(key) ?? { name: who.name, tg: who.tg, tasks: [], managerId };
@@ -264,6 +271,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             formatMorning(
                 { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
                 CRM_BASE,
+                { greeting: settings.morningGreeting, farewell: settings.morningFarewell, date: new Date(today) },
             ),
         );
         for (const t of bucket.tasks) {
@@ -298,21 +306,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         }
     }
 
-    // Приветствие и пожелание — вокруг планов, отдельными сообщениями: план
-    // каждому приходит своим уведомлением с его тегом, а общие слова общие.
-    const messages: string[] = [];
-    if (preview.length > 0 && settings.morningGreeting) {
-        const live = planned.filter((t) => t.reasonCode !== 'lost');
-        messages.push(
-            formatGreeting(settings.morningGreeting, new Date(today), {
-                managers: preview.length,
-                tasks: live.length,
-                totalAmount: live.reduce((s, t) => s + t.amount, 0),
-            }),
-        );
-    }
-    messages.push(...preview);
-    if (preview.length > 0 && settings.morningFarewell) messages.push(settings.morningFarewell);
+    // Одно сообщение на человека — приветствие и пожелание уже внутри него.
+    const messages = preview;
 
     let sent = false;
     if (!opts.dryRun && settings.enabled && settings.chatId) {

@@ -56,16 +56,43 @@ export function formatGreeting(
         .replace('{{сумма}}', money(params.totalAmount));
 }
 
-export function formatMorning(plan: ManagerPlan, base: CrmLinkBase): string {
+/** Имя из «Фамилия Имя»: обращаться к человеку по фамилии — это не по-человечески. */
+export function firstNameOf(fullName: string): string {
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    return parts.length > 1 ? parts[1] : parts[0] || '';
+}
+
+export function formatMorning(
+    plan: ManagerPlan,
+    base: CrmLinkBase,
+    wrap?: { greeting?: string; farewell?: string; date?: Date },
+): string {
     const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'lost');
     // Блок, где живых задач нет, а потеряшки есть, — это не «план на 0 шт.»,
     // а разбор архива. Называем вещи своими именами, иначе сообщение выглядит
     // как ошибка бота и его перестают читать.
+    // Приветствие вкладывается в личное сообщение, а не идёт общим: три
+    // сообщения в чате читаются, пять — уже лента, которую пролистывают.
+    const who = tag(plan.telegramUsername, plan.managerName);
+    const hello = wrap?.greeting
+        ? wrap.greeting
+              .replace('{{имя}}', firstNameOf(plan.managerName))
+              .replace('{{тег}}', who)
+              .replace(
+                  '{{дата}}',
+                  (wrap.date ?? new Date()).toLocaleDateString('ru-RU', {
+                      day: 'numeric',
+                      month: 'long',
+                      weekday: 'long',
+                  }),
+              )
+        : '';
+
     const head =
         live.length > 0
-            ? `${tag(plan.telegramUsername, plan.managerName)}, план на сегодня — ${live.length} шт.`
-            : `${tag(plan.telegramUsername, plan.managerName)}, на сегодня срочного нет — разобрать архив:`;
-    const lines: string[] = [head];
+            ? `${who}, план на сегодня — ${live.length} шт.`
+            : `${who}, на сегодня срочного нет — разобрать архив:`;
+    const lines: string[] = hello ? [hello, '', head] : [head];
 
     let lastReason: string | null = null;
     for (const t of plan.tasks) {
@@ -83,6 +110,7 @@ export function formatMorning(plan: ManagerPlan, base: CrmLinkBase): string {
         const sum = live.reduce((s: number, t: Task) => s + t.amount, 0);
         lines.push('', `Всего в работе на сегодня: ${money(sum)} ₽`);
     }
+    if (wrap?.farewell) lines.push('', wrap.farewell);
     return lines.join('\n');
 }
 

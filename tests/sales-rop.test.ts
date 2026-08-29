@@ -310,22 +310,33 @@ describe('второй слой: разбор клиента моделью', ()
 });
 
 describe('человеческая обёртка утреннего плана', () => {
-    it('приветствие подставляет дату словами и сумму дня', async () => {
-        const { formatGreeting } = await import('@/lib/sales-rop/format');
-        const text = formatGreeting(
-            'Доброе утро, девочки!\n{{дата}} — планы ниже.\nВсего на день: {{сумма}} ₽.',
-            new Date('2026-08-31'),
-            { managers: 3, tasks: 21, totalAmount: 21_128_362 },
-        );
+    const tasks = buildPlan([order({ statusCode: 'prepayed', lastTouchAt: '2026-08-28' })], TODAY, T).get(249)!;
+    const plan = { managerId: 249, managerName: 'Гордеева Ирина', telegramUsername: 'IrinaGordeeva777', tasks };
+
+    it('приветствие внутри личного сообщения, по имени и с датой', async () => {
+        const { formatMorning } = await import('@/lib/sales-rop/format');
+        const text = formatMorning(plan, '', {
+            greeting: '☀️ Доброе утро, {{имя}}! {{дата}}',
+            farewell: 'Хорошего дня!',
+            date: new Date(TODAY),
+        });
+        // Обращение по имени, а не по фамилии: это сообщение человеку.
+        expect(text.startsWith('☀️ Доброе утро, Ирина!')).toBe(true);
         expect(text).toContain('31 августа');
-        expect(text).toContain('понедельник');
-        expect(norm(text)).toContain('21 128 362 ₽');
+        expect(text).toContain('@IrinaGordeeva777');
+        expect(text.trimEnd().endsWith('Хорошего дня!')).toBe(true);
     });
 
-    it('шаблон без подстановок остаётся собой', async () => {
-        const { formatGreeting } = await import('@/lib/sales-rop/format');
-        expect(formatGreeting('Доброе утро!', new Date('2026-08-31'), { managers: 3, tasks: 0, totalAmount: 0 })).toBe(
-            'Доброе утро!',
-        );
+    it('имя берётся из «Фамилия Имя»', async () => {
+        const { firstNameOf } = await import('@/lib/sales-rop/format');
+        expect(firstNameOf('Гордеева Ирина')).toBe('Ирина');
+        expect(firstNameOf('Ярослав')).toBe('Ярослав');
+        expect(firstNameOf('')).toBe('');
+    });
+
+    it('без шаблонов сообщение остаётся прежним', async () => {
+        const { formatMorning } = await import('@/lib/sales-rop/format');
+        const text = formatMorning(plan, '');
+        expect(text.startsWith('@IrinaGordeeva777, план на сегодня')).toBe(true);
     });
 });
