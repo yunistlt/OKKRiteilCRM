@@ -33,7 +33,7 @@ export type Task = {
     statusName: string;
     amount: number;
     managerId: number | null;
-    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'lost' | 'development';
+    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development';
     reasonText: string;
     weight: number;
 };
@@ -41,20 +41,37 @@ export type Task = {
 export type Thresholds = {
     invoiceStaleDays: number;
     /**
-     * Просрочка старше этого срока — уже не «забыл перезвонить», а потеряшка.
-     * Без этой границы в утренний план лезут обещания трёхлетней давности, и
-     * менеджер перестаёт читать список: там кладбище, а не работа на сегодня.
+     * Граница свежей просрочки. До неё обещание ещё живо и его дожимают;
+     * дальше — работа по остывшей базе, и её дают дозированно.
      */
-    overdueLimitDays: number;
-    /** Сколько потеряшек добавлять в день: разгребается фоном, не вместо плана. */
-    lostPerDay: number;
+    freshOverdueDays: number;
+    /** Сколько остывших просрочек добавлять сверх плана. */
+    coldPerDay: number;
+
+
     dealStaleDays: number;
     bigDealAmount: number;
     bigDealSilenceDays: number;
     tasksPerManager: number;
+    /**
+     * Сколько задач в день считаем посильной нормой вместе с собственными.
+     *
+     * У менеджера может быть четырнадцать своих звонков на сегодня — тогда
+     * добавлять сверху ещё семь наших значит гарантировать, что не сделают ни
+     * те, ни другие. Наши задачи заполняют остаток до нормы, но самое горячее
+     * (висящий счёт) идёт всегда: там деньги, и их нельзя откладывать.
+     */
+    dailyTarget: number;
+    minAlways: number;
 };
 
-/** Статусы, где заказ ещё может стать деньгами. */
+/**
+ * Запасной список рабочих статусов.
+ *
+ * Настоящий источник — status_settings.is_working в базе: разметку ведёт
+ * человек, и она меняется. Список здесь нужен на случай, если таблица недоступна:
+ * пустой план хуже неточного.
+ */
 export const PRESALE_STATUSES = [
     'prepayed',
     'availability',
@@ -64,8 +81,6 @@ export const PRESALE_STATUSES = [
     'otmenili-zakupku-smeta',
     'ozidanie-tz',
     'zapros-kontaktov',
-    'tender',
-    'ozhidanie-vykhoda-tendera',
     'otlozeno',
     'novyi-1',
 ] as const;
@@ -135,9 +150,12 @@ export function taskFor(order: PresaleOrder, today: string, t: Thresholds): Task
     }
 
     if (contactIn !== null && contactIn > 0) {
-        return contactIn <= t.overdueLimitDays
-            ? make('contact_overdue', `обещали связаться ${days(contactIn)} назад — просрочено`)
-            : make('lost', `потеряшка: последнее обещание ${days(contactIn)} назад`);
+        // Свежая просрочка — это нарушенное обещание, по нему звонят сегодня.
+        // Остывшая — работа по базе: её тоже надо делать, но не вместо горячего.
+        if (contactIn <= t.freshOverdueDays) {
+            return make('contact_overdue', `обещали связаться ${days(contactIn)} назад — просрочено`);
+        }
+        return make('cold', `остыл: обещание ${days(contactIn)} назад, поднять или закрыть`);
     }
 
     if (contactIn === 0) {
@@ -180,11 +198,11 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
             deal_stale: 3,
             big_silence: 4,
             development: 5,
-            lost: 6,
+            cold: 6,
         };
         list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
 
-        // Потеряшки идут сверх плана и дозированно: их сотни, и вывалить их
+        // Остывшие идут сверх плана и дозированно: их сотни, и вывалить их
         // целиком — то же самое, что не дать ничего.
         // То, что менеджер сам назначил на сегодня, не режется лимитом никогда.
         // Это его собственный план из CRM, и если наш отбор его вытеснит, человек
@@ -195,16 +213,24 @@ export function buildPlan(orders: PresaleOrder[], today: string, t: Thresholds):
         // Развитие идёт сверх дневного лимита: это работа вдолгую, и если её
         // резать первой, она не делается никогда — а цель в 300 постоянных
         // клиентов достигается только ею.
+        // Сколько наших задач добавить сверх собственных: остаток до нормы, но
+        // не больше дневного лимита и не меньше самого горячего.
+        const room = Math.max(t.minAlways, Math.min(t.tasksPerManager, t.dailyTarget - own.length));
+
         const live = list
             .filter(
                 (x: Task) =>
-                    x.reasonCode !== 'lost' && x.reasonCode !== 'development' && x.reasonCode !== 'contact_today',
+                    x.reasonCode !== 'cold' && x.reasonCode !== 'development' && x.reasonCode !== 'contact_today',
             )
-            .slice(0, t.tasksPerManager);
+            .slice(0, room);
         const dev = list.filter((x: Task) => x.reasonCode === 'development');
-        const lost = list.filter((x: Task) => x.reasonCode === 'lost').slice(0, t.lostPerDay);
+        // Дорогое вперёд: если разбирать остывшую базу, то с крупных.
+        const cold = list
+            .filter((x: Task) => x.reasonCode === 'cold')
+            .sort((a: Task, b: Task) => b.amount - a.amount)
+            .slice(0, t.coldPerDay);
         // Свои плановые звонки идут первыми: это обещания, данные клиентам.
-        byManager.set(managerId, [...own, ...live, ...dev, ...lost]);
+        byManager.set(managerId, [...own, ...live, ...dev, ...cold]);
     }
 
     return byManager;

@@ -15,8 +15,10 @@ const T: Thresholds = {
     bigDealAmount: 1_000_000,
     bigDealSilenceDays: 7,
     tasksPerManager: 7,
-    overdueLimitDays: 90,
-    lostPerDay: 2,
+    freshOverdueDays: 30,
+    coldPerDay: 2,
+    dailyTarget: 12,
+    minAlways: 3,
 };
 
 const TODAY = '2026-08-31';
@@ -51,9 +53,9 @@ describe('что попадает в план', () => {
         expect(t?.reasonText).toContain('11 дней');
     });
 
-    it('обещание старше границы — потеряшка, а не задача на сегодня', () => {
+    it('обещание старше границы — остывшее, а не задача на сегодня', () => {
         const t = taskFor(order({ contactDate: '2023-06-01' }), TODAY, T);
-        expect(t?.reasonCode).toBe('lost');
+        expect(t?.reasonCode).toBe('cold');
     });
 
     it('контакт назначен на сегодня', () => {
@@ -103,15 +105,15 @@ describe('сборка плана', () => {
         expect(tasks[0].reasonCode).toBe('invoice_stale');
     });
 
-    it('план ограничен, но потеряшки идут сверх лимита и своей нормой', () => {
+    it('план ограничен, но остывшие идут сверх лимита и своей нормой', () => {
         const many = Array.from({ length: 12 }, (_, i) =>
-            order({ orderId: 100 + i, contactDate: '2026-08-20', amount: 100_000 + i }),
+            order({ orderId: 100 + i, contactDate: '2026-08-25', amount: 100_000 + i }),
         );
-        const lost = Array.from({ length: 5 }, (_, i) => order({ orderId: 200 + i, contactDate: '2023-01-01' }));
-        const tasks = buildPlan([...many, ...lost], TODAY, T).get(249)!;
+        const cold = Array.from({ length: 5 }, (_, i) => order({ orderId: 200 + i, contactDate: '2023-01-01' }));
+        const tasks = buildPlan([...many, ...cold], TODAY, T).get(249)!;
 
-        expect(tasks.filter((t) => t.reasonCode !== 'lost')).toHaveLength(T.tasksPerManager);
-        expect(tasks.filter((t) => t.reasonCode === 'lost')).toHaveLength(T.lostPerDay);
+        expect(tasks.filter((t) => t.reasonCode !== 'cold')).toHaveLength(T.tasksPerManager);
+        expect(tasks.filter((t) => t.reasonCode === 'cold')).toHaveLength(T.coldPerDay);
     });
 
     it('заказы разных менеджеров не смешиваются', () => {
@@ -356,7 +358,9 @@ describe('собственный план менеджера', () => {
 
         expect(tasks.filter((t) => t.reasonCode === 'contact_today')).toHaveLength(9);
         expect(tasks[0].reasonCode).toBe('contact_today');
-        expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(T.tasksPerManager);
+        // Своих девять при норме двенадцать — наших добавляется остаток до нормы,
+        // а не полный лимит: иначе не будут сделаны ни те, ни другие.
+        expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(3);
     });
 
     it('в шапке разделено: сколько своих и сколько добавили мы', async () => {
@@ -436,5 +440,26 @@ describe('ритм заметок РОПа', () => {
     it('менеджер поработал после совета — пишем новый', async () => {
         const { noteNeeded } = await import('@/lib/sales-rop/crm-note');
         expect(noteNeeded('2026-08-28T06:00:00Z', '2026-08-28T11:30:00Z')).toBe(true);
+    });
+});
+
+describe('нагрузка на день', () => {
+    it('своих мало — добавляем полный лимит наших', () => {
+        const own = [order({ orderId: 1, contactDate: TODAY })];
+        const ours = Array.from({ length: 12 }, (_, i) =>
+            order({ orderId: 100 + i, contactDate: '2026-08-25', amount: 100_000 + i }),
+        );
+        const tasks = buildPlan([...own, ...ours], TODAY, T).get(249)!;
+        expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(T.tasksPerManager);
+    });
+
+    it('своих много — наших добавляем только самое горячее', () => {
+        const own = Array.from({ length: 14 }, (_, i) => order({ orderId: 200 + i, contactDate: TODAY }));
+        const ours = Array.from({ length: 10 }, (_, i) =>
+            order({ orderId: 300 + i, contactDate: '2026-08-25', amount: 500_000 }),
+        );
+        const tasks = buildPlan([...own, ...ours], TODAY, T).get(249)!;
+        expect(tasks.filter((t) => t.reasonCode === 'contact_today')).toHaveLength(14);
+        expect(tasks.filter((t) => t.reasonCode === 'contact_overdue')).toHaveLength(T.minAlways);
     });
 });

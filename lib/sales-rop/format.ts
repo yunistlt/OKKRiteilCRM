@@ -33,7 +33,7 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     deal_stale: '🔵 Сделка стоит',
     big_silence: '⚪️ Крупный молчит',
     development: '🟢 Развитие клиента — что ещё предложить',
-    lost: '⚫️ Потеряшка — поднять или закрыть',
+    cold: '⚫️ Остывшие — поднять или закрыть',
 };
 
 /**
@@ -67,7 +67,7 @@ export function formatMorning(
     base: CrmLinkBase,
     wrap?: { greeting?: string; farewell?: string; date?: Date },
 ): string {
-    const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'lost');
+    const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'cold');
     const own = plan.tasks.filter((t: Task) => t.reasonCode === 'contact_today').length;
     const added = live.length - own;
     // Блок, где живых задач нет, а потеряшки есть, — это не «план на 0 шт.»,

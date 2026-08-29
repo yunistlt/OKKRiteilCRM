@@ -18,7 +18,11 @@ export const ROP_PREFIX = 'РОП';
 /** «29.08.2026 РОП: текст» — дата первой, чтобы порядок читался с одного взгляда. */
 export function formatRopNote(text: string, date = new Date()): string {
     const d = date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    return `${d} ${ROP_PREFIX}: ${text.trim()}`;
+    // Заметка всегда в одну строку. Многострочная не отличима от текста
+    // менеджера: её вторая строка остаётся в карточке навсегда, потому что
+    // разбор ищет дату в начале строки. На этом уже обожглись.
+    const oneLine = text.replace(/\s*\n+\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    return `${d} ${ROP_PREFIX}: ${oneLine}`;
 }
 
 /** Уже писали такое сегодня? Повтор одного и того же совета обесценивает все. */

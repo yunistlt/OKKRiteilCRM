@@ -32,6 +32,11 @@ export type Settings = Thresholds & {
      * разговором с отделом продаж, а не с половиной компании.
      */
     planManagerIds: number[];
+    /**
+     * Статусы, по которым менеджера не дёргаем. Тендер из его рук вышел:
+     * предложение отправлено, дальше решает заказчик по своим срокам.
+     */
+    excludedStatuses: string[];
     deliverPlansToDm: boolean;
     summaryToGroup: boolean;
     devPerDay: number;
@@ -69,8 +74,10 @@ export async function loadSettings(): Promise<Settings> {
         dealStaleDays: num('deal_stale_days', 3),
         bigDealAmount: num('big_deal_amount', 1_000_000),
         bigDealSilenceDays: num('big_deal_silence_days', 7),
-        overdueLimitDays: num('overdue_limit_days', 90),
-        lostPerDay: num('lost_per_day', 2),
+        freshOverdueDays: num('fresh_overdue_days', 30),
+        dailyTarget: num('daily_target_tasks', 12),
+        minAlways: num('min_always_tasks', 3),
+        coldPerDay: num('cold_per_day', 2),
         monthPlan: num('month_plan', 13_000_000),
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
         writeCrmNotes: String(map.get('write_crm_notes') ?? 'true') === 'true',
@@ -79,6 +86,10 @@ export async function loadSettings(): Promise<Settings> {
         morningFarewell: String(map.get('morning_farewell') || ''),
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
+        excludedStatuses: String(map.get('plan_excluded_statuses') || '')
+            .split(',')
+            .map((x) => x.trim())
+            .filter(Boolean),
         planManagerIds: String(map.get('plan_manager_ids') || '')
             .split(',')
             .map((x) => Number(x.trim()))
@@ -256,7 +267,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     // заказов за три года занимает минуты, и делать это на каждый запрос нельзя.
     if (!opts.dryRun) await supabase.rpc('sales_refresh_client_profiles').catch(() => null);
 
-    const orders = await loadPresaleOrders();
+    const all = await loadPresaleOrders();
+    const orders = all.filter((o) => !settings.excludedStatuses.includes(o.statusCode));
     const plan = buildPlan(orders, today, settings);
 
     // Развитие добавляется после основного плана: сначала то, что горит.
@@ -381,7 +393,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         if (settings.summaryToGroup && settings.chatId && byRecipient.size > 0) {
             const lines = ['📋 Планы на сегодня разосланы:'];
             for (const b of Array.from(byRecipient.values())) {
-                const live = b.tasks.filter((t) => t.reasonCode !== 'lost');
+                const live = b.tasks.filter((t) => t.reasonCode !== 'cold');
                 const sum = live.reduce((s, t) => s + t.amount, 0);
                 const who = b.tg ? `@${b.tg.replace(/^@/, '')}` : b.name;
                 const where = b.managerId !== null && direct.has(b.managerId) ? '' : ' (плана в личке нет — смотри выше)';

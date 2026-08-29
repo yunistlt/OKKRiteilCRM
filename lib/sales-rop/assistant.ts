@@ -46,11 +46,11 @@ export async function managerByChat(chatId: string): Promise<{ managerId: number
     };
 }
 
-async function loadManagerPrompt(): Promise<{ systemPrompt: string; model: string; temperature: number }> {
+async function loadManagerPrompt(key: string): Promise<{ systemPrompt: string; model: string; temperature: number }> {
     const { data } = await supabase
         .from('ai_prompts')
         .select('system_prompt, model, temperature')
-        .eq('key', 'semen_manager_chat')
+        .eq('key', key)
         .eq('is_active', true)
         .maybeSingle();
     if (data) {
@@ -69,6 +69,8 @@ export async function askSemen(params: {
     question: string;
     managerId: number;
     managerName: string;
+    /** Ключ промпта: у заметки в карточку своя форма и свои запреты. */
+    promptKey?: 'semen_manager_chat' | 'sales_order_note';
 }): Promise<AskResult> {
     if (!isOpenAIConfigured()) {
         return { reply: 'Модель не настроена — не могу ответить.', usedTools: [], model: null };
@@ -77,7 +79,7 @@ export async function askSemen(params: {
     // Свой промпт для этого канала. Глобальный промпт Семёна написан для
     // консультанта по системе и на вопрос «сколько счетов на оплате» отвечает
     // «в базе знаний не нашлось» — в вебе это правильно, в личке это тупик.
-    const prompt = await loadManagerPrompt();
+    const prompt = await loadManagerPrompt(params.promptKey ?? 'semen_manager_chat');
     const hits = await searchConsultantKnowledge(params.question).catch(() => []);
 
     const ctx = { retailCrmManagerId: params.managerId, role: 'manager' } as any;
@@ -88,7 +90,9 @@ export async function askSemen(params: {
             role: 'system',
             content:
                 `${prompt.systemPrompt}\n\n` +
-                `Ты отвечаешь ${params.managerName} в личном чате Telegram. Пиши коротко: пять-шесть строк, без таблиц и без markdown-разметки — её тут не видно. ` +
+                (params.promptKey === 'sales_order_note'
+                    ? ''
+                    : `Ты отвечаешь ${params.managerName} в личном чате Telegram. Пиши коротко: пять-шесть строк, без таблиц и без markdown-разметки — её тут не видно. `) +
                 '\n\n' +
                 formatConsultantKnowledgeContext(hits as any),
         },
