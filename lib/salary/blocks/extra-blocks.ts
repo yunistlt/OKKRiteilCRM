@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { round2, pickTier } from '@/lib/salary/blocks/tiers';
 import { tierLines, thresholdLine } from '@/lib/salary/blocks/tariff';
-import { fullFill, type BonusBlock, type DataFill } from '@/lib/salary/blocks/types';
+import { fullFill, type BlockOrderRef, type BonusBlock, type DataFill } from '@/lib/salary/blocks/types';
 import type { ManagerMetrics } from '@/lib/salary/metrics';
 
 // ============================================================================
@@ -200,6 +200,8 @@ const repeatClientBonus: BonusBlock<{
         let amount = 0;
         let withOrdinal = 0;
         const hits = new Map<number, number>(); // номер покупки → сколько раз засчитан
+        // Заказы, давшие доплату — расшифровка «за что именно» (просьба ОП, август 2026).
+        const orders: BlockOrderRef[] = [];
 
         for (const o of m.countedOrders) {
             if (o.clientOrdinal == null) continue;
@@ -208,7 +210,14 @@ const repeatClientBonus: BonusBlock<{
             if (bonus == null) continue;
             amount += bonus;
             hits.set(o.clientOrdinal, (hits.get(o.clientOrdinal) ?? 0) + 1);
+            orders.push({
+                id: o.orderId,
+                clientName: o.clientName,
+                note: `${o.clientOrdinal}-я покупка клиента`,
+                amount: bonus,
+            });
         }
+        orders.sort((a, b) => a.id - b.id);
 
         const parts = Array.from(hits.entries())
             .sort((a, b) => a[0] - b[0])
@@ -227,6 +236,7 @@ const repeatClientBonus: BonusBlock<{
                     value: rub(t.bonus),
                     active: (hits.get(Number(t.ordinal)) ?? 0) > 0,
                 })),
+            orders,
             dataFill: {
                 required: m.countedOrders.length,
                 present: withOrdinal,
