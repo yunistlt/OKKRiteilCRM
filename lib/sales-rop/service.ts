@@ -358,7 +358,16 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
 
     // Профили клиентов пересчитываются раз в сутки, здесь: разбор позиций всех
     // заказов за три года занимает минуты, и делать это на каждый запрос нельзя.
-    if (!opts.dryRun) await supabase.rpc('sales_refresh_client_profiles').catch(() => null);
+    if (!opts.dryRun) {
+        // Запрос Supabase — thenable, а не Promise: .catch() у него появляется
+        // только после await, и цепочка «rpc(...).catch(...)» падает на ровном
+        // месте. Ошибка вылезла в первый же боевой прогон.
+        try {
+            await supabase.rpc('sales_refresh_client_profiles');
+        } catch {
+            // Профили суточной давности лучше, чем сорванная рассылка.
+        }
+    }
 
     const all = await loadPresaleOrders();
     const orders = all.filter((o) => !settings.excludedStatuses.includes(o.statusCode));
