@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runEvening } from '@/lib/sales-rop/service';
+import { notifyOwnerFailure, runEvening } from '@/lib/sales-rop/service';
 import { localToday } from '@/app/api/cron/rop-morning/route';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +25,8 @@ export async function GET(req: NextRequest) {
         const result = await runEvening(today, { dryRun });
         return NextResponse.json({ ok: true, ...result });
     } catch (e: any) {
+        // Молчащий бот неотличим от бота без работы: о поломке сообщаем сами.
+        if (!dryRun) await notifyOwnerFailure('Вечерний отчёт', e.message);
         return NextResponse.json({ ok: false, error: e.message }, { status: 500 });
     }
 }

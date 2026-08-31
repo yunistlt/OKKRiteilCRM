@@ -324,6 +324,29 @@ async function loadReactivationTasks(
     return Array.from(byManager.values()).flat();
 }
 
+/**
+ * Сообщить владельцу, что прогон упал.
+ *
+ * Сегодня утренний план не ушёл из-за ошибки в коде, и узнали мы об этом от
+ * человека, который ждал сообщений. Молчащий бот неотличим от бота, у которого
+ * нет работы, — поэтому о своей поломке он обязан сказать сам.
+ */
+export async function notifyOwnerFailure(where: string, error: string): Promise<void> {
+    try {
+        const settings = await loadSettings();
+        const chat = settings.ownerChatId || settings.chatId;
+        if (!chat) return;
+        await sendToChat(
+            chat,
+            `⚠️ Бот-РОП: ${where} не отработал.\n\nОшибка: ${String(error).slice(0, 300)}\n\n` +
+                'Планы и отчёты сегодня не ушли. Запустить вручную можно повторным вызовом крона.',
+        );
+    } catch {
+        // Если и это не отправилось — молчим: падать на уведомлении о падении
+        // было бы совсем нелепо.
+    }
+}
+
 export type MorningResult = {
     date: string;
     managers: number;
