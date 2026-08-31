@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { formatMemory, loadMemory } from '@/lib/shtab/memory';
 import {
     formatHistory,
     formatKnowledge,
@@ -65,15 +66,17 @@ export async function POST(req: NextRequest) {
         }
         const question = parsed.data.question;
 
-        const [prompt, history, knowledge] = await Promise.all([
+        const [prompt, history, knowledge, memory] = await Promise.all([
             getTamaraPrompt('shtab_tamara_chat'),
             loadHistory(),
             searchTamaraKnowledge(question),
+            loadMemory(),
         ]);
 
         const answer = await runTamara({
             prompt,
             purpose: 'shtab_tamara_chat',
+            memory: formatMemory(memory),
             userContent: renderTemplate(prompt.userPromptTemplate, {
                 question,
                 knowledge_context: formatKnowledge(knowledge),

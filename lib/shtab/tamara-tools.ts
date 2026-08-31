@@ -4,6 +4,7 @@ import type { IncomeRow } from '@/lib/shtab/income';
 import { topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
+import { factBySlug, rememberFact } from '@/lib/shtab/memory';
 
 // Инструменты Тамары (OpenAI function calling).
 //
@@ -105,6 +106,68 @@ export const SHTAB_TOOLS = [
 ] as const;
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
+
+// ── память: выяснил — записал ─────────────────────────────────────────────────
+//
+// Эти два инструмента отличаются от остальных: они не читают базу Штаба, а
+// работают с тем, что Тамара узнала от владельца. Без них правило «не знаешь —
+// спроси» работает ровно один раз: ответ прозвучал и пропал вместе с историей
+// чата, а на следующей неделе Тамара спрашивает то же самое. Второй раз про то
+// же владелец уже не объясняет — он перестаёт отвечать вообще.
+export const MEMORY_TOOLS = [
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_zapomnit',
+            description:
+                'Записать факт о компании, который владелец только что сообщил. Вызывай СРАЗУ после его ответа на твой вопрос, не откладывая на конец разговора. Ответ передавай дословно, без пересказа: пересказанный факт через месяц не отличить от твоей догадки.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    topic: {
+                        type: 'string',
+                        description:
+                            'Тема одним словосочетанием: «начальники цеха», «печать ярлыков», «маршрут изделия». По ней факт потом находят и перезаписывают, поэтому называй тему так же, как назвал бы её в другой раз.',
+                    },
+                    asked: { type: 'string', description: 'Твой вопрос дословно — владелец должен видеть, на что отвечал.' },
+                    answer: { type: 'string', description: 'Ответ владельца дословно. Не сокращать и не приглаживать.' },
+                    note: {
+                        type: 'string',
+                        description:
+                            'Одна короткая строка «что известно» для памяти — она будет перед глазами в каждом разговоре. Без самого содержания: содержание достаётся по теме.',
+                    },
+                },
+                required: ['topic', 'asked', 'answer'],
+                additionalProperties: false,
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_fakt',
+            description:
+                'Достать полностью факт, отмеченный в блоке ПАМЯТЬ: вопрос, ответ владельца дословно и дату. Вызывай, когда тема в памяти есть, а подробность нужна для ответа.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    slug: { type: 'string', description: 'Slug из блока ПАМЯТЬ, в квадратных скобках после отметки.' },
+                },
+                required: ['slug'],
+                additionalProperties: false,
+            },
+        },
+    },
+];
+
+// Что уходит в модель: чтение плюс память. Список один, чтобы инструмент нельзя
+// было объявить и забыть подключить — тогда модель звала бы несуществующее.
+export const TAMARA_TOOLS = [...SHTAB_TOOLS, ...MEMORY_TOOLS];
+
+export const TAMARA_TOOL_NAMES: ReadonlySet<string> = new Set<string>(
+    TAMARA_TOOLS.map((t) => t.function.name),
+);
+
 
 // ── состояние Штаба ────────────────────────────────────────────────────────────
 
@@ -414,6 +477,31 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
         if (name === 'shtab_programs') {
             const id = Number(args?.razbor_id);
             return await readPrograms(Number.isFinite(id) ? id : undefined);
+        }
+        if (name === 'shtab_zapomnit') {
+            const res = await rememberFact({
+                topic: String(args?.topic ?? ''),
+                asked: String(args?.asked ?? ''),
+                answer: String(args?.answer ?? ''),
+                note: args?.note ? String(args.note) : undefined,
+                source: 'owner',
+            });
+            if (!res.ok) return { available: false, reason: res.reason };
+            // embedded=false говорим вслух: факт записан и достаётся по теме, но
+            // поиском по смыслу пока не находится. Промолчать — значит обещать
+            // модели больше, чем есть.
+            return {
+                available: true,
+                zapisano: true,
+                slug: res.slug,
+                poisk_po_smyslu: res.embedded,
+                ...(res.embedded ? {} : { ogovorka: 'Вектор не посчитался: факт достаётся по теме из памяти, но поиском по смыслу пока не находится.' }),
+            };
+        }
+        if (name === 'shtab_fakt') {
+            const fact = await factBySlug(String(args?.slug ?? ''));
+            if (!fact) return { available: false, reason: 'Такого факта нет — возможно, тема из памяти была перезаписана' };
+            return { available: true, ...fact };
         }
         return { available: false, reason: `Неизвестный инструмент: ${name}` };
     } catch (e: any) {

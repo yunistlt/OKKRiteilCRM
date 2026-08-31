@@ -23,7 +23,10 @@
  *   glossary    — термин;
  *   craft       — ремесло: как делается работа, которую задают программы.
  */
-export const KB_TYPES = ['methodology', 'framework', 'glossary', 'craft'] as const;
+// 'company' — факт о компании со слов владельца. В сид не входит: такие записи
+// появляются только через shtab_remember, когда Тамара что-то выяснила. Тип
+// нужен здесь, чтобы проверки и фильтры знали о нём и не считали чужой строкой.
+export const KB_TYPES = ['methodology', 'framework', 'glossary', 'craft', 'company'] as const;
 
 export type ShtabKbType = (typeof KB_TYPES)[number];
 

@@ -2,7 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { generateEmbedding } from '@/lib/embeddings';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
-import { SHTAB_TOOLS, SHTAB_TOOL_NAMES, executeShtabTool } from '@/lib/shtab/tamara-tools';
+import { TAMARA_TOOLS, TAMARA_TOOL_NAMES, executeShtabTool } from '@/lib/shtab/tamara-tools';
 
 // Разговорный слой Тамары.
 //
@@ -111,6 +111,13 @@ export async function runTamara(opts: {
      * гарантировать схемой, а не уговорами в промпте.
      */
     schema?: { name: string; schema: Record<string, unknown> };
+    /**
+     * Блок ПАМЯТЬ — что о компании уже выяснено. Идёт в системное сообщение, а
+     * не в шаблон пользовательского: шаблон лежит в базе и правится в админке, а
+     * память обязана быть перед глазами всегда. Забытая подстановка означала бы,
+     * что Тамара спрашивает второй раз про то же, — и виноват был бы не промпт.
+     */
+    memory?: string;
 }): Promise<TamaraAnswer> {
     if (!isOpenAIConfigured()) {
         return { reply: 'Модель не настроена: нет OPENAI_API_KEY.', usedTools: [], model: null };
@@ -120,10 +127,14 @@ export async function runTamara(opts: {
     let lastModel: string | null = null;
 
     const GUARDRAIL =
-        'Отвечай только тем, что вернули инструменты. Любое число или факт о компании, которого нет в их ответах, называть запрещено — вместо этого скажи, каких данных не хватает.';
+        'Отвечай только тем, что вернули инструменты, что лежит в блоке ПАМЯТЬ и что владелец сказал в этом разговоре. ' +
+        'Любое число или факт о компании из другого места называть запрещено. Не хватает факта — задай один прямой вопрос ' +
+        'и запиши ответ инструментом shtab_zapomnit; выдуманный правдоподобный факт хуже прямого «не знаю», потому что его не проверяют.';
+
+    const system = [opts.prompt.systemPrompt, GUARDRAIL, opts.memory?.trim()].filter(Boolean).join('\n\n');
 
     const messages: any[] = [
-        { role: 'system', content: `${opts.prompt.systemPrompt}\n\n${GUARDRAIL}` },
+        { role: 'system', content: system },
         { role: 'user', content: opts.userContent },
     ];
 
@@ -133,7 +144,7 @@ export async function runTamara(opts: {
             temperature: opts.prompt.temperature,
             max_tokens: opts.prompt.maxTokens,
             messages,
-            ...(opts.withTools === false ? {} : { tools: SHTAB_TOOLS as any }),
+            ...(opts.withTools === false ? {} : { tools: TAMARA_TOOLS as any }),
             ...(opts.schema
                 ? {
                       response_format: {
@@ -164,7 +175,7 @@ export async function runTamara(opts: {
                 } catch {
                     args = {};
                 }
-                const result = SHTAB_TOOL_NAMES.has(name)
+                const result = TAMARA_TOOL_NAMES.has(name)
                     ? await executeShtabTool(name, args)
                     : { available: false, reason: `Неизвестный инструмент: ${name}` };
                 usedTools.push({ name, args });
