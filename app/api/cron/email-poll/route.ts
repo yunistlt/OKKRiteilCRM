@@ -402,6 +402,7 @@ export async function GET(req: Request) {
                         subject: e.subject,
                         body: (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
                         contactEmail: leadContact.email || null,
+                        excludeEmailId: e.id,
                     });
                     v = await classifyRoute(
                         { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta, crmDossier },

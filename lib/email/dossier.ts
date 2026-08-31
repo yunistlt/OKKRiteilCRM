@@ -28,6 +28,12 @@ export interface DossierInput {
     body?: string | null;
     /** E-mail реального клиента, если From — робот (webasyst и т.п.). */
     contactEmail?: string | null;
+    /**
+     * id письма, которое сейчас разбираем. Исключается из истории адреса: иначе при
+     * переразборе (переочередь) досье подсовывает модели её же прошлый вердикт по этому
+     * же письму, и ошибка воспроизводится сама — «прошлые письма: accounting».
+     */
+    excludeEmailId?: string | null;
 }
 
 interface OrderFact {
@@ -153,14 +159,16 @@ async function clientHistory(email: string): Promise<{ count: number; last: { nu
 }
 
 /** Как раньше разбирали письма с этого адреса (последние решения Катерины). */
-async function senderHistory(email: string): Promise<string[]> {
+async function senderHistory(email: string, excludeId?: string | null): Promise<string[]> {
     if (!email) return [];
     try {
-        const { data } = await supabase
+        let q = supabase
             .from('incoming_emails')
             .select('email_type, received_at')
             .eq('from_email', email)
-            .not('email_type', 'is', null)
+            .not('email_type', 'is', null);
+        if (excludeId) q = q.neq('id', excludeId); // себя в свою же историю не подаём
+        const { data } = await q
             .order('received_at', { ascending: false })
             .limit(5);
         return (data || []).map((r: any) => `${String(r.received_at || '').slice(0, 10)}: ${r.email_type}`);
@@ -180,7 +188,7 @@ export async function buildCrmDossier(input: DossierInput): Promise<string> {
     const [orders, history, prior] = await Promise.all([
         findOrders(candidates),
         clientHistory(clientEmail),
-        senderHistory((input.fromEmail || '').trim().toLowerCase()),
+        senderHistory((input.fromEmail || '').trim().toLowerCase(), input.excludeEmailId),
     ]);
 
     const lines: string[] = [];
