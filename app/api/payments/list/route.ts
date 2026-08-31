@@ -23,40 +23,93 @@ export async function GET(req: NextRequest) {
     const review = searchParams.get('review'); // «Требуют разбора»: pending + проект ЗМКТЛ/не определён
     const limit = Math.min(Number(searchParams.get('limit')) || 100, 500);
 
-    let query = supabase
-      .from('point_payments')
-      .select(LIST_COLUMNS)
-      .order('created_at', { ascending: false })
-      .limit(limit);
+    // Период по дате платежа (YYYY-MM-DD, границы включительно). Пустое = без ограничения.
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    const from = searchParams.get('from');
+    const to = searchParams.get('to');
+    const dateFrom = from && dateRe.test(from) ? from : null;
+    const dateTo = to && dateRe.test(to) ? to : null;
 
-    if (review) {
-      // Столярка/консалтинг не требуют разбора (опознаны, живут в своих вкладках).
-      query = query.eq('status', 'pending_match').or('project.is.null,project.eq.zmktl');
-    } else {
-      if (status) query = query.eq('status', status);
-      if (project) query = query.eq('project', project);
-    }
+    const applyPeriod = (q: any) => {
+      if (dateFrom) q = q.gte('payment_date', dateFrom);
+      if (dateTo) q = q.lte('payment_date', dateTo);
+      return q;
+    };
+
+    // Один и тот же фильтр — и для списка, и для «итого по фильтру».
+    const applyFilter = (q: any) => {
+      q = applyPeriod(q);
+      if (review) {
+        // Столярка/консалтинг не требуют разбора (опознаны, живут в своих вкладках).
+        return q.eq('status', 'pending_match').or('project.is.null,project.eq.zmktl');
+      }
+      if (status) q = q.eq('status', status);
+      if (project) q = q.eq('project', project);
+      return q;
+    };
+
+    const query = applyFilter(
+      supabase
+        .from('point_payments')
+        .select(LIST_COLUMNS)
+        .order('created_at', { ascending: false })
+        .limit(limit),
+    );
 
     const { data, error } = await query;
     if (error) throw error;
 
-    // Сводки по статусам и по проектам для вкладок.
-    const { data: counts } = await supabase
-      .from('point_payments')
-      .select('status, project')
-      .limit(3000);
+    // «Итого по фильтру» — по всем платежам фильтра, а не только по загруженной странице.
+    const { data: filteredAmounts, error: totalsError } = await applyFilter(
+      supabase.from('point_payments').select('amount_kopecks').limit(20000),
+    );
+    if (totalsError) throw totalsError;
+    const filteredTotal = {
+      count: (filteredAmounts || []).length,
+      amountKopecks: (filteredAmounts || []).reduce(
+        (sum: number, r: any) => sum + (Number(r.amount_kopecks) || 0),
+        0,
+      ),
+    };
+
+    // Сводки по статусам и по проектам для вкладок (количество и сумма).
+    const { data: counts } = await applyPeriod(
+      supabase.from('point_payments').select('status, project, amount_kopecks').limit(20000),
+    );
     const summary: Record<string, number> = {};
     const projectSummary: Record<string, number> = {};
+    const summaryAmount: Record<string, number> = {};
+    const projectSummaryAmount: Record<string, number> = {};
     let reviewCount = 0;
+    let reviewAmount = 0;
     (counts || []).forEach((r: any) => {
+      const kop = Number(r.amount_kopecks) || 0;
       summary[r.status] = (summary[r.status] || 0) + 1;
-      if (r.project) projectSummary[r.project] = (projectSummary[r.project] || 0) + 1;
-      if (r.status === 'pending_match' && (!r.project || r.project === 'zmktl')) reviewCount++;
+      summaryAmount[r.status] = (summaryAmount[r.status] || 0) + kop;
+      if (r.project) {
+        projectSummary[r.project] = (projectSummary[r.project] || 0) + 1;
+        projectSummaryAmount[r.project] = (projectSummaryAmount[r.project] || 0) + kop;
+      }
+      if (r.status === 'pending_match' && (!r.project || r.project === 'zmktl')) {
+        reviewCount++;
+        reviewAmount += kop;
+      }
     });
 
     const crmUrl = (process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL || '').replace(/\/+$/, '');
 
-    return NextResponse.json({ payments: data || [], summary, projectSummary, reviewCount, crm_url: crmUrl });
+    return NextResponse.json({
+      payments: data || [],
+      summary,
+      projectSummary,
+      reviewCount,
+      summaryAmount,
+      projectSummaryAmount,
+      reviewAmount,
+      filteredTotal,
+      limit,
+      crm_url: crmUrl,
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

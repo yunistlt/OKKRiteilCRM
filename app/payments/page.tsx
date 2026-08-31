@@ -87,6 +87,40 @@ const TABS: Tab[] = [
   { kind: 'status', value: '', label: 'Все' },
 ];
 
+// Период по дате платежа. Пустые границы = «за всё время».
+type Period = { from: string; to: string; label: string };
+const ALL_TIME: Period = { from: '', to: '', label: 'За всё время' };
+
+function isoDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Пресет «последние N дней» — включая сегодня. */
+function lastDays(days: number, label: string): Period {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - (days - 1));
+  return { from: isoDate(from), to: isoDate(to), label };
+}
+
+/** Пресет «месяц целиком» по смещению: 0 — текущий, -1 — прошлый. */
+function monthPeriod(offset: number): Period {
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+  const last = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+  const label = first.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return { from: isoDate(first), to: isoDate(last), label: label[0].toUpperCase() + label.slice(1) };
+}
+
+/** Период из значения input[type=month] («2026-08») — весь месяц. */
+function monthValuePeriod(value: string): Period {
+  const [y, m] = value.split('-').map(Number);
+  const first = new Date(y, m - 1, 1);
+  const last = new Date(y, m, 0);
+  const label = first.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+  return { from: isoDate(first), to: isoDate(last), label: label[0].toUpperCase() + label.slice(1) };
+}
+
 // Сумма с разделителями разрядов и копейками (ru-RU) — «484 898,30 ₽».
 function formatMoney(kopecks: number, currency = 'RUB') {
   const rub = kopecks / 100;
@@ -148,6 +182,15 @@ export default function PaymentsPage() {
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [projectSummary, setProjectSummary] = useState<Record<string, number>>({});
   const [reviewCount, setReviewCount] = useState<number>(0);
+  // Итоги: по всему фильтру (вкладке) и по вкладкам — количество и сумма.
+  const [filteredTotal, setFilteredTotal] = useState<{ count: number; amountKopecks: number }>({
+    count: 0,
+    amountKopecks: 0,
+  });
+  const [summaryAmount, setSummaryAmount] = useState<Record<string, number>>({});
+  const [projectSummaryAmount, setProjectSummaryAmount] = useState<Record<string, number>>({});
+  const [reviewAmount, setReviewAmount] = useState<number>(0);
+  const [period, setPeriod] = useState<Period>(ALL_TIME);
   const [crmUrl, setCrmUrl] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -292,26 +335,30 @@ export default function PaymentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const qs =
-        tab.kind === 'review'
-          ? '?review=1'
-          : tab.value
-            ? `?${tab.kind === 'project' ? 'project' : 'status'}=${tab.value}`
-            : '';
-      const res = await fetch(`/api/payments/list${qs}`, { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (tab.kind === 'review') params.set('review', '1');
+      else if (tab.value) params.set(tab.kind === 'project' ? 'project' : 'status', tab.value);
+      if (period.from) params.set('from', period.from);
+      if (period.to) params.set('to', period.to);
+      const qs = params.toString();
+      const res = await fetch(`/api/payments/list${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка загрузки');
       setPayments(json.payments || []);
       setSummary(json.summary || {});
       setProjectSummary(json.projectSummary || {});
       setReviewCount(json.reviewCount || 0);
+      setSummaryAmount(json.summaryAmount || {});
+      setProjectSummaryAmount(json.projectSummaryAmount || {});
+      setReviewAmount(json.reviewAmount || 0);
+      setFilteredTotal(json.filteredTotal || { count: 0, amountKopecks: 0 });
       setCrmUrl(json.crm_url || '');
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [tab, period.from, period.to]);
 
   useEffect(() => {
     load();
@@ -636,10 +683,19 @@ export default function PaymentsPage() {
                   : t.value
                     ? summary[t.value]
                     : 0;
+            const amount =
+              t.kind === 'review'
+                ? reviewAmount
+                : t.kind === 'project'
+                  ? projectSummaryAmount[t.value]
+                  : t.value
+                    ? summaryAmount[t.value]
+                    : 0;
             return (
               <button
                 key={`${t.kind}:${t.value || 'all'}`}
                 onClick={() => setTab(t)}
+                title={amount ? `Итого: ${formatMoney(amount)}` : undefined}
                 className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
                   active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
@@ -655,6 +711,61 @@ export default function PaymentsPage() {
           >
             Обновить
           </button>
+        </div>
+
+        {/* Период по дате платежа: пресеты + выбор месяца.
+            Границы считаются от «сегодня» браузера — на SSR дата может отличаться (часовой пояс). */}
+        <div
+          suppressHydrationWarning
+          className="flex flex-wrap items-center gap-1 border-t border-gray-200 px-4 py-2"
+        >
+          <span className="mr-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Период</span>
+          {[
+            ALL_TIME,
+            lastDays(7, 'Последняя неделя'),
+            lastDays(30, 'Последние 30 дней'),
+            monthPeriod(0),
+            monthPeriod(-1),
+          ].map((p) => {
+            const active = period.from === p.from && period.to === p.to;
+            return (
+              <button
+                key={p.label}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  active ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+          <label className="ml-2 flex items-center gap-1 text-sm text-gray-600">
+            Месяц:
+            <input
+              type="month"
+              value={period.from ? period.from.slice(0, 7) : ''}
+              onChange={(e) => setPeriod(e.target.value ? monthValuePeriod(e.target.value) : ALL_TIME)}
+              className="border border-gray-300 px-2 py-1 text-sm"
+            />
+          </label>
+        </div>
+
+        {/* Итого по выбранной вкладке и по тому, что показано на экране */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-gray-200 bg-gray-50 px-4 py-2 text-sm">
+          <span className="text-gray-600">
+            Итого по вкладке «{tab.label}», {period.label.toLowerCase()}:{' '}
+            <span className="font-semibold text-gray-900">{filteredTotal.count.toLocaleString('ru-RU')}</span> платежей на{' '}
+            <span className="font-semibold text-gray-900">{formatMoney(filteredTotal.amountKopecks)}</span>
+          </span>
+          {payments.length < filteredTotal.count && (
+            <span className="text-gray-600">
+              На экране: <span className="font-semibold text-gray-900">{payments.length.toLocaleString('ru-RU')}</span> на{' '}
+              <span className="font-semibold text-gray-900">
+                {formatMoney(payments.reduce((sum, p) => sum + (Number(p.amount_kopecks) || 0), 0))}
+              </span>
+            </span>
+          )}
         </div>
 
         {error && <div className="border-t border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
@@ -855,6 +966,22 @@ export default function PaymentsPage() {
                 );
               })}
             </tbody>
+            <tfoot className="sticky bottom-0">
+              <tr className="border-t-2 border-gray-300 bg-gray-100 text-sm font-semibold text-gray-900">
+                <td className="px-4 py-3">Итого на экране · {payments.length.toLocaleString('ru-RU')}</td>
+                <td className="px-4 py-3 text-right">
+                  {formatMoney(payments.reduce((sum, p) => sum + (Number(p.amount_kopecks) || 0), 0))}
+                </td>
+                <td className="px-4 py-3" colSpan={6}>
+                  {payments.length < filteredTotal.count ? (
+                    <span className="font-normal text-gray-600">
+                      Всего по вкладке: {filteredTotal.count.toLocaleString('ru-RU')} на{' '}
+                      {formatMoney(filteredTotal.amountKopecks)}
+                    </span>
+                  ) : null}
+                </td>
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>
