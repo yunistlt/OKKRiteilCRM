@@ -134,10 +134,6 @@
             "schedule": "*/5 * * * *"
         },
         {
-            "path": "/api/cron/ai-balance-watch",
-            "schedule": "0 * * * *"
-        },
-        {
             "path": "/api/cron/shtab-briefing",
             "schedule": "0 6 * * 1"
         },
