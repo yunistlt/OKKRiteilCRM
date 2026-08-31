@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { getSession } from '@/lib/auth';
+import {
+  applyPaymentsListFilter,
+  applyPaymentsPeriod,
+  parsePaymentsListFilter,
+} from '@/lib/payments/list-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,35 +23,12 @@ export async function GET(req: NextRequest) {
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
     const { searchParams } = new URL(req.url);
-    const status = searchParams.get('status');
-    const project = searchParams.get('project');
-    const review = searchParams.get('review'); // «Требуют разбора»: pending + проект ЗМКТЛ/не определён
     const limit = Math.min(Number(searchParams.get('limit')) || 100, 500);
 
-    // Период по дате платежа (YYYY-MM-DD, границы включительно). Пустое = без ограничения.
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-    const from = searchParams.get('from');
-    const to = searchParams.get('to');
-    const dateFrom = from && dateRe.test(from) ? from : null;
-    const dateTo = to && dateRe.test(to) ? to : null;
-
-    const applyPeriod = (q: any) => {
-      if (dateFrom) q = q.gte('payment_date', dateFrom);
-      if (dateTo) q = q.lte('payment_date', dateTo);
-      return q;
-    };
-
-    // Один и тот же фильтр — и для списка, и для «итого по фильтру».
-    const applyFilter = (q: any) => {
-      q = applyPeriod(q);
-      if (review) {
-        // Столярка/консалтинг не требуют разбора (опознаны, живут в своих вкладках).
-        return q.eq('status', 'pending_match').or('project.is.null,project.eq.zmktl');
-      }
-      if (status) q = q.eq('status', status);
-      if (project) q = q.eq('project', project);
-      return q;
-    };
+    // Фильтр вкладки + период — общий с выгрузкой (lib/payments/list-filter).
+    const filter = parsePaymentsListFilter(searchParams);
+    const applyPeriod = (q: any) => applyPaymentsPeriod(q, filter);
+    const applyFilter = (q: any) => applyPaymentsListFilter(q, filter);
 
     const query = applyFilter(
       supabase

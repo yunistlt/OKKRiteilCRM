@@ -1,6 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  PAYMENT_PROJECT_LABELS,
+  PAYMENT_SOURCE_LABELS,
+  PAYMENT_STATUS_LABELS,
+} from '@/lib/payments/labels';
 
 interface Candidate {
   orderId: number | null;
@@ -40,14 +45,7 @@ interface Payment {
   created_at: string;
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_match: 'Требуют разбора',
-  matched: 'Привязанные',
-  manual: 'Привязаны вручную',
-  recognized: 'Опознан',
-  ignored: 'Пропущенные',
-  failed: 'Ошибка',
-};
+const STATUS_LABELS = PAYMENT_STATUS_LABELS;
 
 // Плоские квадратные бейджи статуса (Metro): сплошная заливка, без скруглений.
 const STATUS_STYLES: Record<string, string> = {
@@ -60,21 +58,14 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 // Человекочитаемые имена источников платежа (в UI — только они, не коды).
-const SOURCE_LABELS: Record<string, string> = {
-  tochka: 'Точка',
-  tbank: 'Т-Банк',
-};
+const SOURCE_LABELS = PAYMENT_SOURCE_LABELS;
 
 const SOURCE_STYLES: Record<string, string> = {
   tochka: 'bg-indigo-100 text-indigo-800',
   tbank: 'bg-yellow-100 text-yellow-800',
 };
 
-const PROJECT_LABELS: Record<string, string> = {
-  zmktl: 'ЗМКТЛ',
-  stolyarka: 'Столярка',
-  consulting: 'ПО/Консалтинг',
-};
+const PROJECT_LABELS = PAYMENT_PROJECT_LABELS;
 
 // Вкладки: по проектам (kind='project') и по статусам (kind='status').
 type Tab = { kind: 'project' | 'status' | 'review'; value: string; label: string };
@@ -331,17 +322,22 @@ export default function PaymentsPage() {
     }
   }
 
+  // Параметры текущего фильтра (вкладка + период) — общие для списка и выгрузки.
+  const exportQs = useCallback(() => {
+    const params = new URLSearchParams();
+    if (tab.kind === 'review') params.set('review', '1');
+    else if (tab.value) params.set(tab.kind === 'project' ? 'project' : 'status', tab.value);
+    if (period.from) params.set('from', period.from);
+    if (period.to) params.set('to', period.to);
+    const qs = params.toString();
+    return qs ? `?${qs}` : '';
+  }, [tab, period.from, period.to]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (tab.kind === 'review') params.set('review', '1');
-      else if (tab.value) params.set(tab.kind === 'project' ? 'project' : 'status', tab.value);
-      if (period.from) params.set('from', period.from);
-      if (period.to) params.set('to', period.to);
-      const qs = params.toString();
-      const res = await fetch(`/api/payments/list${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
+      const res = await fetch(`/api/payments/list${exportQs()}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Ошибка загрузки');
       setPayments(json.payments || []);
@@ -358,7 +354,7 @@ export default function PaymentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tab, period.from, period.to]);
+  }, [exportQs]);
 
   useEffect(() => {
     load();
@@ -705,9 +701,16 @@ export default function PaymentsPage() {
               </button>
             );
           })}
+          <a
+            href={`/api/payments/export${exportQs()}`}
+            className="ml-auto border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+            title="Выгрузить в Excel то, что сейчас в фильтре (файл открывается и в Google Таблицах)"
+          >
+            Выгрузить в Excel
+          </a>
           <button
             onClick={load}
-            className="ml-auto border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
+            className="border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-100"
           >
             Обновить
           </button>
