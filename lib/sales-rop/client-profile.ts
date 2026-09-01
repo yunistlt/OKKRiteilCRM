@@ -1,6 +1,8 @@
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
+import { companyByInn, renderCompany } from '@/lib/sales-rop/dadata';
+import type { CompanyInfo } from '@/lib/sales-rop/dadata';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
 
 // Глубокое досье клиента: всё, что о нём известно, плюс кто он снаружи.
@@ -32,6 +34,8 @@ export type ClientProfile = {
     calls: Array<{ date: string; order: string | null; transcript: string }>;
     site: string | null;
     siteSummary: string | null;
+    /** Данные ЕГРЮЛ по ИНН: чем занимается, размер, регион, жива ли. */
+    company: CompanyInfo | null;
 };
 
 /** Домен почты → сайт компании. Единственный внешний след, которому можно верить. */
@@ -83,6 +87,9 @@ export async function buildClientProfile(clientKey: string): Promise<ClientProfi
 
     const emails: string[] = extra.emails ?? [];
     const site = siteFromEmails(emails);
+    // Ключ клиента — это ИНН (кроме случаев, когда его не было и мы склеили по
+    // customer.id): по нему и спрашиваем ЕГРЮЛ.
+    const company = clientKey.startsWith('cid:') ? null : await companyByInn(clientKey);
 
     return {
         clientKey,
@@ -102,6 +109,7 @@ export async function buildClientProfile(clientKey: string): Promise<ClientProfi
         calls: extra.calls ?? [],
         site,
         siteSummary: site ? await fetchSiteSummary(site) : null,
+        company,
     };
 }
 
@@ -136,6 +144,11 @@ export function renderClientProfile(p: ClientProfile): string {
         for (const c of p.calls.slice(0, 5)) {
             lines.push(`[${c.date}${c.order ? `, заказ №${c.order}` : ''}]\n${c.transcript}`);
         }
+    }
+
+    if (p.company) {
+        lines.push('', `Из ЕГРЮЛ: ${renderCompany(p.company)}`);
+        if (p.company.managerName) lines.push(`Руководитель: ${p.company.managerName}`);
     }
 
     if (p.siteSummary) {
