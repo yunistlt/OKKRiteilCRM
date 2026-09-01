@@ -128,6 +128,10 @@
         {
             "path": "/api/cron/email-poll",
             "schedule": "*/5 * * * *"
+        },
+        {
+            "path": "/api/cron/salary-client-canon",
+            "schedule": "20 2 * * *"
         }
     ]
 }
