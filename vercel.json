@@ -168,6 +168,10 @@
         {
             "path": "/api/cron/shtab-rhythm",
             "schedule": "20 6 * * 1"
+        },
+        {
+            "path": "/api/cron/salary-client-canon",
+            "schedule": "20 2 * * *"
         }
     ]
 }

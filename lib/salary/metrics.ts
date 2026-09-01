@@ -22,6 +22,7 @@ export interface CountedOrderRow {
     created_at: string;
     site: string | null; // витрина-юрлиц (orders.site) — определяет ставку НДС
     items: any[] | null;
+    contragent: Record<string, unknown> | null; // реквизиты контрагента — признак экспорта (НДС 0%)
 }
 
 export interface OrderFinance {
@@ -127,12 +128,40 @@ export function vatDivisor(vatRate: unknown, ndsRules: SalaryConfig['nds_normali
 }
 
 /**
- * Эффективная ставка НДС заказа по витрине-юрлицу. Ставка из карточки позиции
- * НЕ используется (менеджеры её массово не проставляют): витрины из exempt_sites
- * (ЗВТО) — без НДС, остальные — default_vat_pct.
+ * Иностранный (экспортный) контрагент — счёт ему выставляется без НДС.
+ * Признак: любой маркер из конфига (exempt_contragent_markers) встречается в
+ * реквизитах контрагента заказа. Ищем только по реквизитам, не по комментариям.
  */
-export function resolveVatPct(site: string | null, policy: SalaryConfig['vat_policy']): number {
+export function isVatExemptContragent(
+    contragent: Record<string, unknown> | null | undefined,
+    markers: string[],
+): boolean {
+    if (!contragent || markers.length === 0) return false;
+    const haystack = ['legalName', 'legalAddress', 'bank', 'bankAddress', 'INN', 'BIK']
+        .map((k) => (typeof contragent[k] === 'string' ? (contragent[k] as string) : ''))
+        .join(' ')
+        .toLowerCase();
+    if (!haystack.trim()) return false;
+    // Совпадение только по границам слова: иначе «МАЙМИНСКИЙ» ловится как «Минск»,
+    // а «Лунная» — как «УНН». \b в JS не работает с кириллицей, поэтому вручную.
+    return markers.some((m) => {
+        const esc = m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`(^|[^\\p{L}\\p{N}])${esc}([^\\p{L}\\p{N}]|$)`, 'iu').test(haystack);
+    });
+}
+
+/**
+ * Эффективная ставка НДС заказа. Ставка из карточки позиции НЕ используется
+ * (менеджеры её массово не проставляют). Без НДС: витрины из exempt_sites (ЗВТО)
+ * и заказы иностранного контрагента (экспорт — счёт без НДС). Иначе default_vat_pct.
+ */
+export function resolveVatPct(
+    site: string | null,
+    policy: SalaryConfig['vat_policy'],
+    contragent?: Record<string, unknown> | null,
+): number {
     if (site != null && policy.exempt_sites.includes(site)) return 0;
+    if (isVatExemptContragent(contragent, policy.exempt_contragent_markers ?? [])) return 0;
     return policy.default_vat_pct;
 }
 
@@ -215,7 +244,7 @@ export function buildPeriodMetrics(input: {
         const managerId = row.manager_id == null ? null : Number(row.manager_id);
         if (managerId == null || !Number.isFinite(managerId)) continue;
         const clientId = row.client_id == null ? null : Number(row.client_id);
-        const vatPct = resolveVatPct(row.site, config.vat_policy);
+        const vatPct = resolveVatPct(row.site, config.vat_policy, row.contragent);
         const fin = computeOrderFinance(row.items, vatPct, config.nds_normalization.rules);
         const deals = clientId != null ? clientDeals.get(clientId) ?? 0 : 0;
         const type = classifyOrderType(clientId, clientDeals, config);
@@ -384,6 +413,7 @@ export async function collectPeriodMetrics(
         const { data: dealData, error: dealErr } = await supabase.rpc('salary_client_deal_counts', {
             p_client_ids: clientIds,
             p_closing: closing,
+            p_deal_statuses: config.deal_statuses,
         });
         if (dealErr) throw dealErr;
         for (const d of (dealData as { client_id: number; deals: number }[]) ?? []) {

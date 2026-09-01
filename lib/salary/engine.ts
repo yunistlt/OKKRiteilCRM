@@ -361,6 +361,12 @@ export function salaryResultToCalcRow(r: SalaryResult, periodId: number, compute
 /** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
 export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
     const periodId = await ensureOpenPeriod(year, month);
+    // Одно юрлицо = несколько карточек клиента в CRM (менеджеры заводят новую на
+    // каждый заказ) — без пересборки канона по ИНН постоянный клиент считается новым
+    // (инцидент по заказу 54232, ООО «ХРС-Снабжение»: 6-я покупка засчиталась как
+    // первая). Канон пересобираем перед каждым расчётом; ~12 с на всей базе.
+    const { error: canonErr } = await supabase.rpc('salary_rebuild_client_canon');
+    if (canonErr) throw canonErr;
     const calc = await calculatePeriod(year, month);
 
     const computedAt = new Date().toISOString();
