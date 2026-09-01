@@ -363,8 +363,10 @@ export function formatEveningHeader(params: {
     const perDay = workdaysLeft > 0 ? left / workdaysLeft : left;
     const pct = monthPlan > 0 ? Math.round((monthSold * 100) / monthPlan) : 0;
 
+    // Суммы — без НДС: план отдела и ведомость ЗП живут в этой же базе, иначе
+    // цифры бота и ведомости расходятся и «не бьются» (инцидент 31.08.2026).
     return [
-        `📊 Итоги дня, ${params.date}`,
+        `📊 Итоги дня, ${params.date} · суммы без НДС`,
         `Счетов выставлено: ${params.invoicesToday} на ${money(params.invoicesSum)} ₽`,
         `Ушло в производство: ${params.soldToday} на ${money(params.soldSum)} ₽`,
         '',

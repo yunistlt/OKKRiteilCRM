@@ -195,6 +195,20 @@ describe('как это читается', () => {
         expect(text).toContain('77%');
         expect(norm(text)).toContain('1 522 787 ₽ в день');
     });
+
+    it('шапка помечает, что суммы без НДС — как план отдела и ведомость ЗП', () => {
+        const text = formatEveningHeader({
+            date: '31 августа',
+            invoicesToday: 0,
+            invoicesSum: 0,
+            soldToday: 5,
+            soldSum: 1_277_416,
+            monthSold: 10_789_084,
+            monthPlan: 13_000_000,
+            workdaysLeft: 0,
+        });
+        expect(text).toContain('без НДС');
+    });
 });
 
 describe('дисциплина и её последствие', () => {
