@@ -367,7 +367,19 @@ export type MorningResult = {
  * Ошибка одного заказа не должна отменять рассылку: план в чате полезен и без
  * записи в CRM, а провал виден в crm_error.
  */
-async function setContactDate(orderId: number, site: string, date: string): Promise<{ ok: boolean; error?: string }> {
+async function setContactDate(
+    orderId: number,
+    site: string,
+    date: string,
+    currentDate?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+    // Второй рубеж поверх правил отбора: дату, назначенную на будущее, не
+    // перезаписываем никогда. Даже если заказ попал в план по ошибке, стереть
+    // договорённость с клиентом нельзя.
+    if (currentDate && currentDate.slice(0, 10) > date) {
+        return { ok: false, error: 'дата контакта назначена на будущее — не трогаем' };
+    }
+
     try {
         const res = await updateExistingOrderInCrm(orderId, { customFields: { data_kontakta: date } }, site || undefined);
         return res.success ? { ok: true } : { ok: false, error: res.errorMsg || 'RetailCRM отказал' };
@@ -494,10 +506,16 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     let notesSkipped = 0;
     if (!opts.dryRun && settings.setCrmDate) {
         const siteById = new Map(orders.map((o) => [o.orderId, o.site]));
+        const contactByOrder = new Map(orders.map((o) => [o.orderId, o.contactDate]));
         for (const t of planned) {
             // Тем, у кого контакт и так назначен на сегодня, писать нечего.
             if (t.reasonCode === 'contact_today') continue;
-            const res = await setContactDate(t.orderId, siteById.get(t.orderId) || '', today);
+            const res = await setContactDate(
+                t.orderId,
+                siteById.get(t.orderId) || '',
+                today,
+                contactByOrder.get(t.orderId),
+            );
             if (res.ok) crmSet += 1;
 
             // И сама рекомендация — в комментарий карточки. Менеджер работает в

@@ -621,3 +621,38 @@ describe('вечерний отчёт владельцу', () => {
         expect(text).toContain('не выставлено ни одного счёта');
     });
 });
+
+describe('дата контакта, назначенная на будущее', () => {
+    it('заказ с датой в будущем не попадает в план ни по какому правилу', () => {
+        // Инцидент 01.09.2026: заказ №53971 с датой контакта 20.11 попал в план
+        // как «согласование без движения», и простановка затёрла ноябрь.
+        // Клиент просил вернуться в конце года, менеджер так и записала.
+        const futureContact = order({
+            statusCode: 'na-soglasovanii',
+            statusName: 'Согласование параметров заказа',
+            contactDate: '2026-11-20',
+            lastTouchAt: '2026-07-01',
+            amount: 5_000_000,
+        });
+        expect(taskFor(futureContact, TODAY, T)).toBeNull();
+    });
+
+    it('крупный заказ с назначенной датой тоже не трогаем', () => {
+        const big = order({
+            statusCode: 'otlozeno',
+            contactDate: '2026-09-22',
+            lastTouchAt: '2026-06-01',
+            amount: 9_000_000,
+        });
+        expect(taskFor(big, TODAY, T)).toBeNull();
+    });
+
+    it('а вот заказ без даты контакта по-прежнему берём', () => {
+        const noDate = order({
+            statusCode: 'na-soglasovanii',
+            contactDate: null,
+            lastTouchAt: '2026-08-25',
+        });
+        expect(taskFor(noDate, TODAY, T)?.reasonCode).toBe('deal_stale');
+    });
+});
