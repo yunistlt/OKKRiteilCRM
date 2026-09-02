@@ -68,6 +68,11 @@ export async function enrichClients(limit = 200): Promise<EnrichResult> {
                 branches: info.branches,
                 company_alive: info.alive,
                 company_status: info.status,
+                // Приезжают только на тарифе, который их отдаёт. Пустые
+                // перезаписывать пустыми не страшно: логика их и не ждёт.
+                employees: info.employees,
+                revenue: info.revenue,
+                revenue_year: info.revenueYear,
                 enriched_at: new Date().toISOString(),
             })
             .eq('client_key', row.client_key);

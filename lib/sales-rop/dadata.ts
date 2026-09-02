@@ -26,6 +26,14 @@ export type CompanyInfo = {
     city: string | null;
     address: string | null;
     employees: number | null;
+    /**
+     * Годовая выручка по данным ФНС. На бесплатном тарифе подсказок поле
+     * приходит пустым — логику на нём строить нельзя, но если тариф позволяет,
+     * это самая честная мера масштаба клиента.
+     */
+    revenue: number | null;
+    /** За какой год выручка: цифра трёхлетней давности — тоже цифра. */
+    revenueYear: number | null;
     /** Филиалы: повод спросить, оснащают одну площадку или несколько. */
     branches: number | null;
     registeredAt: string | null;
@@ -87,6 +95,8 @@ export async function companyByInn(inn: string): Promise<CompanyInfo | null> {
             city: d.address?.data?.city_with_type ?? d.address?.data?.settlement_with_type ?? null,
             address: d.address?.value ?? null,
             employees: typeof d.employee_count === 'number' ? d.employee_count : null,
+            revenue: typeof d.finance?.income === 'number' ? d.finance.income : null,
+            revenueYear: typeof d.finance?.year === 'number' ? d.finance.year : null,
             branches: typeof d.branch_count === 'number' && d.branch_count > 0 ? d.branch_count : null,
             registeredAt: d.state?.registration_date
                 ? new Date(Number(d.state.registration_date)).toISOString().slice(0, 10)
