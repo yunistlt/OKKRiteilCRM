@@ -318,8 +318,10 @@ export function formatOwnerReport(params: {
     overdueContacts: number;
     overdueAmount: number;
     staleInvoices: number;
+    /** Стадии, которые не собрались. Отчёт вышел неполным — и это должно быть видно. */
+    degraded?: string[];
 }): string {
-    const lines = [params.header, ''];
+    const lines = params.header ? [params.header, ''] : [];
 
     lines.push('По людям:');
     for (const r of params.rows) {
@@ -343,6 +345,17 @@ export function formatOwnerReport(params: {
     }
 
     if (attention.length > 0) lines.push('', '⚠️ Требует внимания:', ...attention.map((a) => `— ${a}`));
+
+    // Неполный отчёт, прочитанный как полный, хуже отсутствующего: «ноль
+    // звонков» и «звонки не посчитались» выглядят одинаково, а значат разное.
+    if (params.degraded && params.degraded.length > 0) {
+        lines.push(
+            '',
+            '🔧 Отчёт неполный, не собралось:',
+            ...params.degraded.map((d) => `— ${d}`),
+            'Остальные цифры верны. Повторный вызов крона соберёт заново.',
+        );
+    }
 
     return lines.join('\n');
 }

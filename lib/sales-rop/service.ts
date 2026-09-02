@@ -606,10 +606,38 @@ export async function detectTouches(date: string): Promise<Map<number, string>> 
     return new Map((data ?? []).map((r: any) => [Number(r.order_id), String(r.touch_kind)]));
 }
 
-export type EveningResult = { date: string; checked: number; touched: number; sent: boolean; preview: string[] };
+export type EveningResult = {
+    date: string;
+    checked: number;
+    touched: number;
+    sent: boolean;
+    preview: string[];
+    /** Что не собралось. Пусто — прогон прошёл целиком. */
+    degraded: string[];
+};
+
+/**
+ * Стадия, без которой отчёт всё-таки лучше, чем ничего.
+ *
+ * 02.09.2026 отчёт не ушёл целиком — ни планов, ни звонков, ни дисциплины —
+ * потому что один запрос из десятка упёрся в таймаут. Молчание хуже неполного
+ * отчёта: люди ждут сообщений и не знают, что случилось.
+ *
+ * Провал стадии не прячем: он попадает в отчёт владельцу отдельной строкой,
+ * иначе неполные цифры читаются как полные.
+ */
+async function soft<T>(label: string, fallback: T, degraded: string[], fn: () => Promise<T>): Promise<T> {
+    try {
+        return await fn();
+    } catch (e: any) {
+        degraded.push(`${label}: ${String(e?.message ?? e).slice(0, 120)}`);
+        return fallback;
+    }
+}
 
 export async function runEvening(today: string, opts: { dryRun?: boolean } = {}): Promise<EveningResult> {
     const settings = await loadSettings();
+    const degraded: string[] = [];
 
     const { data: tasks, error } = await supabase
         .from('sales_rop_task')
@@ -620,8 +648,14 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     // Владельцу отчёт всё равно нужен: цифры дня и звонки существуют независимо
     // от того, ставили ли мы кому-то задачи.
 
-    const touches = await detectTouches(today);
-    const orders = await loadPresaleOrders();
+    // Без касаний отчёт выйдет, но все задачи будут выглядеть нетронутыми —
+    // это ложь, поэтому в таком случае разбор задач не отправляем вовсе.
+    const touches = await soft('касания по заказам', null as Map<number, string> | null, degraded, () =>
+        detectTouches(today),
+    );
+    const orders = await soft('карточки заказов', [] as Awaited<ReturnType<typeof loadPresaleOrders>>, degraded, () =>
+        loadPresaleOrders(),
+    );
     const who = new Map<number | null, { name: string; tg: string }>();
     for (const o of orders) who.set(o.managerId, { name: o.managerName, tg: o.telegram });
 
@@ -629,8 +663,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     const ownerRows: OwnerRow[] = [];
     let touchedCount = 0;
 
-    for (const t of tasks as any[]) {
-        const kind = touches.get(Number(t.order_id)) ?? null;
+    for (const t of touches === null ? [] : (tasks as any[])) {
+        const kind = touches!.get(Number(t.order_id)) ?? null;
         if (kind) touchedCount += 1;
         const row: EveningRow = {
             orderId: Number(t.order_id),
@@ -663,23 +697,33 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         }
     }
 
-    const facts = await dayFacts(today, settings.monthPlan);
-    const preview = [facts];
+    const facts = await soft('цифры дня', '', degraded, () => dayFacts(today, settings.monthPlan));
+    const preview = facts ? [facts] : [];
 
     // Срез по звонкам — каждому в личку, вместе с его разбором задач. В общий
     // чат это не идёт: сравнивать людей по числу звонков бессмысленно, у одного
     // крупные сделки и длинные разговоры, у другого поток мелких.
-    const [{ data: callRows }, { data: baseRows }] = await Promise.all([
-        supabase.rpc('sales_rop_call_day', { p_date: today }),
-        supabase.rpc('sales_rop_call_baseline', { p_days: 14 }),
-    ]);
+    const [{ data: callRows }, { data: baseRows }] = await soft(
+        'срез по звонкам',
+        [{ data: [] }, { data: [] }] as any[],
+        degraded,
+        () =>
+            Promise.all([
+                supabase.rpc('sales_rop_call_day', { p_date: today }),
+                supabase.rpc('sales_rop_call_baseline', { p_days: 14 }),
+            ]),
+    );
     const callsById = new Map(((callRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
     const baseById = new Map(((baseRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
 
     // Личные планы: своя цифра, а не общая по отделу. 13,5 млн человек на себя не
     // примеряет, свои 5 154 000 — примеряет.
-    const personalPlans = await loadPersonalPlans(today);
-    const personalSold = await loadMonthSoldByManager(today);
+    const personalPlans = await soft('личные планы', new Map<number, number>(), degraded, () =>
+        loadPersonalPlans(today),
+    );
+    const personalSold = await soft('выручка по менеджерам', new Map<number, number>(), degraded, () =>
+        loadMonthSoldByManager(today),
+    );
     const workdaysLeft = workdaysLeftInMonth(today);
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
@@ -796,6 +840,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         overdueContacts: Number(attention.overdue_contacts ?? 0),
         overdueAmount: Number(attention.overdue_amount ?? 0),
         staleInvoices: Number(attention.stale_invoices ?? 0),
+        degraded,
     });
 
     let sent = false;
@@ -812,7 +857,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
 
     preview.push(ownerText);
 
-    return { date: today, checked: (tasks as any[]).length, touched: touchedCount, sent, preview };
+    return { date: today, checked: (tasks as any[]).length, touched: touchedCount, sent, preview, degraded };
 }
 
 /**

@@ -625,6 +625,30 @@ describe('вечерний отчёт владельцу', () => {
         expect(text).toContain('разговоров 10 из 24 звонков');
     });
 
+    it('неполный отчёт честно говорит, что не собралось', async () => {
+        const { formatOwnerReport } = await import('@/lib/sales-rop/format');
+        const text = formatOwnerReport({
+            date: '2026-09-02', header: '', rows: [row({})],
+            invoicesToday: 1, overdueContacts: 0, overdueAmount: 0, staleInvoices: 0,
+            degraded: ['цифры дня: canceling statement due to statement timeout'],
+        });
+        // Молчание про сбой опаснее самого сбоя: неполные цифры читаются как полные.
+        expect(text).toContain('Отчёт неполный, не собралось:');
+        expect(text).toContain('цифры дня: canceling statement due to statement timeout');
+        // При этом то, что собралось, в отчёте осталось.
+        expect(text).toContain('Гордеева Ирина: план 9/13 (69%)');
+    });
+
+    it('всё собралось — никакой строки про сбои', async () => {
+        const { formatOwnerReport } = await import('@/lib/sales-rop/format');
+        const text = formatOwnerReport({
+            date: '2026-09-02', header: 'h', rows: [row({})],
+            invoicesToday: 1, overdueContacts: 0, overdueAmount: 0, staleInvoices: 0,
+            degraded: [],
+        });
+        expect(text).not.toContain('Отчёт неполный');
+    });
+
     it('день без счетов — это первое, что видит владелец', async () => {
         const { formatOwnerReport } = await import('@/lib/sales-rop/format');
         const text = formatOwnerReport({
