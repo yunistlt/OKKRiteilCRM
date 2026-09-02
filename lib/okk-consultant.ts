@@ -286,6 +286,11 @@ export const SCRIPT_SCORE_KEYS = [
     'script_next_step_agreed',
     'script_dialogue_management',
     'script_confident_speech',
+    'script_other_products',
+    'script_client_role',
+    'script_client_role_crm',
+    'script_annual_volume',
+    'script_annual_volume_crm',
 ] as const;
 
 const CRITERION_GUIDES: CriterionGuide[] = [
@@ -427,7 +432,7 @@ const CRITERION_GUIDES: CriterionGuide[] = [
         owner: 'Семён',
         group: 'Поля и ведение',
         howChecked: 'Считаются события заказа с типом comment.',
-        dataSources: ['raw_order_events.event_type'],
+        dataSources: ['order_history_log.field'],
         whyPass: 'В истории заказа есть комментарии менеджера.',
         whyFail: 'В истории заказа не найдено обязательных комментариев.',
         howToFix: 'Добавлять в сделку комментарии о сути диалога, возражениях и следующем шаге.',
@@ -439,7 +444,7 @@ const CRITERION_GUIDES: CriterionGuide[] = [
         owner: 'Семён',
         group: 'Поля и ведение',
         howChecked: 'Если дозвона нет, система ищет email-события по заказу.',
-        dataSources: ['raw_telphin_calls', 'raw_order_events.event_type'],
+        dataSources: ['raw_telphin_calls', 'order_history_log.field'],
         whyPass: 'После недозвона есть email-активность или успешный дозвон исключил потребность в письме.',
         whyFail: 'Был недозвон или отсутствие звонков, но письма клиенту не найдено.',
         howToFix: 'После недозвона отправлять email или фиксировать альтернативный канал касания.',
@@ -2677,10 +2682,10 @@ export function buildCriterionExplanation(params: {
     if (mode === 'source') {
         const sourceBits = [...guide.dataSources];
         if (criterionKey === 'mandatory_comments' && evidence) {
-            sourceBits.push(`raw_order_events comment count = ${evidence.commentCount}`);
+            sourceBits.push(`order_history_log comment count = ${evidence.commentCount}`);
         }
         if (criterionKey === 'email_sent_no_answer' && evidence) {
-            sourceBits.push(`raw_order_events email count = ${evidence.emailCount}`);
+            sourceBits.push(`order_history_log email count = ${evidence.emailCount}`);
             sourceBits.push(`звонков по заказу = ${evidence.totalCalls}`);
         }
         if (criterionKey === 'relevant_number_found' && evidence) {

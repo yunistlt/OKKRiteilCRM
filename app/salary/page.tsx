@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, X, FlaskConical } from 'lucide-react';
+import { Loader2, RefreshCw, ChevronRight, CalendarClock, Settings, Download, Lock, LockOpen, Send, X, FlaskConical } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/components/auth/AuthProvider';
 import Link from 'next/link';
@@ -10,7 +10,9 @@ import DutyModal from './DutyModal';
 import ManagerSalarySimulatorModal from './ManagerSalarySimulatorModal';
 import { CountedOrdersSplit, ConversionOrdersTable, TeamOrdersTable } from '@/components/salary/salary-drilldowns';
 import RecalcOverlay from '@/components/salary/RecalcOverlay';
+import AdminDashboard from './AdminDashboard';
 import BlockBreakdown from '@/components/salary/BlockBreakdown';
+import type { AdminDashboard as AdminDashboardData } from '@/lib/salary/admin-dashboard';
 
 const MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const rub = (n: number) => Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
@@ -46,11 +48,13 @@ export default function SalaryDashboard() {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
     const [month, setMonth] = useState(now.getMonth() + 1);
-    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number } | null>(null);
+    const [data, setData] = useState<{ period: any; rows: CalcRow[]; total: number; details?: any; needsRecalc?: boolean; engineers?: EngineerRow[]; engineersTotal?: number; dashboard?: AdminDashboardData | null } | null>(null);
+    const [tab, setTab] = useState<'dashboard' | 'sheet'>('dashboard');
     const [loading, setLoading] = useState(true);
     const [recalculating, setRecalculating] = useState(false);
     const [closing, setClosing] = useState(false);
     const [reopening, setReopening] = useState(false);
+    const [sending, setSending] = useState(false);
     const [reportManager, setReportManager] = useState<CalcRow | null>(null);
     const [reportEngineer, setReportEngineer] = useState<EngineerRow | null>(null);
     const [simManager, setSimManager] = useState<{ id: number; name: string } | null>(null);
@@ -110,7 +114,7 @@ export default function SalaryDashboard() {
     };
 
     const closePeriod = async () => {
-        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}?\n\nПосле закрытия расчёт замораживается: пересчёт по нему недоступен. Изменить закрытый период можно только переоткрыв его (доступно администратору).`)) return;
+        if (!confirm(`Закрыть период ${MONTHS[month - 1]} ${year}?\n\nСразу после закрытия расчётная ведомость автоматически уйдёт в чат бухгалтерии.\n\nПосле закрытия расчёт замораживается: пересчёт по нему недоступен. Изменить закрытый период можно только переоткрыв его (доступно администратору).`)) return;
         setClosing(true);
         try {
             const res = await fetch('/api/salary/close', {
@@ -120,7 +124,17 @@ export default function SalaryDashboard() {
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Ошибка закрытия');
-            toast({ title: 'Период закрыт', description: `${MONTHS[month - 1]} ${year}` });
+            // Ведомость уходит в бухгалтерию автоматически при закрытии; если не ушла —
+            // говорим об этом прямо, чтобы не пришлось догадываться (есть ручная кнопка).
+            const d = json.delivery;
+            const delivered = d?.ok
+                ? `Ведомость отправлена: ${(d.sent ?? []).join(', ')}`
+                : `Ведомость НЕ отправлена: ${d?.skipped || (d?.failed ?? []).map((f: any) => `${f.name} — ${f.error}`).join('; ') || 'причина неизвестна'}. Отправьте кнопкой «В бухгалтерию».`;
+            toast({
+                title: 'Период закрыт',
+                description: `${MONTHS[month - 1]} ${year}. ${delivered}`,
+                variant: d?.ok ? undefined : 'destructive',
+            });
             fetchData();
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
@@ -149,12 +163,50 @@ export default function SalaryDashboard() {
         }
     };
 
+    const sendToAccounting = async () => {
+        if (!confirm(`Отправить расчётную ведомость за ${MONTHS[month - 1]} ${year} в бухгалтерию (Telegram)?\n\nПри закрытии периода она уже уходила автоматически — это повторная отправка.`)) return;
+        setSending(true);
+        try {
+            const res = await fetch('/api/salary/send-to-accounting', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ year, month }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Ошибка отправки');
+            const failed = (json.failed ?? []) as { name: string; error: string }[];
+            toast({
+                title: 'Ведомость отправлена',
+                description: `Кому: ${(json.sent ?? []).join(', ')}${failed.length ? `. Не доставлено: ${failed.map((f) => f.name).join(', ')}` : ''}`,
+                variant: failed.length ? 'destructive' : undefined,
+            });
+        } catch (e: any) {
+            toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
+        } finally {
+            setSending(false);
+        }
+    };
+
     const rows = data?.rows ?? [];
 
     return (
         <div className="w-full space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
                 <h1 className="text-2xl font-semibold">Зарплата ОП</h1>
+                <div className="flex border border-input">
+                    <button
+                        onClick={() => setTab('dashboard')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'dashboard' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Дашборд
+                    </button>
+                    <button
+                        onClick={() => setTab('sheet')}
+                        className={`px-3 py-1.5 text-sm font-semibold ${tab === 'sheet' ? 'bg-blue-600 text-white' : 'text-muted-foreground hover:bg-muted'}`}
+                    >
+                        Ведомость
+                    </button>
+                </div>
                 <div className="ml-auto flex items-center gap-2">
                     <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
@@ -181,6 +233,12 @@ export default function SalaryDashboard() {
                         <Button variant="destructive" size="sm" onClick={closePeriod} disabled={closing}>
                             {closing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />}
                             Закрыть период
+                        </Button>
+                    )}
+                    {closed && (
+                        <Button variant="outline" size="sm" onClick={sendToAccounting} disabled={sending}>
+                            {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                            В бухгалтерию
                         </Button>
                     )}
                     {closed && isAdmin && (
@@ -225,6 +283,22 @@ export default function SalaryDashboard() {
                             ? 'Не удалось загрузить данные. Обновите страницу или повторите позже.'
                             : 'Расчёта за этот период нет. Нажмите «Пересчитать».'}
                 </div>
+            ) : tab === 'dashboard' ? (
+                data?.dashboard ? (
+                    <AdminDashboard
+                        dash={data.dashboard}
+                        monthLabel={`${MONTHS[month - 1]} ${year}`}
+                        isOpen={!closed}
+                        onOpenManager={(id) => {
+                            const r = rows.find((x) => Number(x.manager_id) === Number(id));
+                            if (r) setReportManager(r);
+                        }}
+                    />
+                ) : (
+                    <div className="border border-dashed p-12 text-center text-sm text-muted-foreground">
+                        Панель не собралась — показатели периода недоступны. Откройте вкладку «Ведомость».
+                    </div>
+                )
             ) : (() => {
                 // Колонки таблицы — динамически из блоков назначенных схем (никакого хардкода).
                 // Союз блоков по всем менеджерам в порядке появления; фолбэк на legacy для старых расчётов.
@@ -269,7 +343,7 @@ export default function SalaryDashboard() {
             })()}
 
             {/* ── Инженеры-расчётчики ── */}
-            {!loading && (data?.engineers?.length ?? 0) > 0 && (
+            {tab === 'sheet' && !loading && (data?.engineers?.length ?? 0) > 0 && (
                 <div className="mt-6 space-y-2">
                     <div className="flex items-center gap-2">
                         <h2 className="text-sm font-semibold">Инженеры-расчётчики</h2>

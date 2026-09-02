@@ -605,8 +605,11 @@ export const PriorityDashboard = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="text-center space-y-1">
-                                                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Email</div>
+                                            {/* Отправку писем RetailCRM в истории заказа не фиксирует —
+                                                индикатор всегда пуст. Помечаем прямо в интерфейсе,
+                                                чтобы его не читали как «письма не отправляли». */}
+                                            <div className="text-center space-y-1" title="Не работает: RetailCRM не передаёт факт отправки письма">
+                                                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wider hidden md:block">Email · не работает</div>
                                                 <div className="flex justify-center">
                                                     <Mail className={`w-5 h-5 ${order.today_stats.has_email ? 'text-blue-500' : 'text-muted-foreground opacity-30'}`} />
                                                 </div>

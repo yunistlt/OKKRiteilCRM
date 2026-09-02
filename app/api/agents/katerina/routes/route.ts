@@ -30,6 +30,11 @@ const BodySchema = z.object({
     order_blocklist: z.array(z.string()).optional(),
     // Исключения из noreply-фильтра (источники лидов с адреса-робота, напр. сайт webasyst).
     noreply_allowlist: z.array(z.string()).optional(),
+    // Возраст заказа (дни), после которого CRM-тег [#N/N] в теме считается протухшим.
+    crm_tag_stale_days: z.number().int().min(1).max(3650).optional(),
+    // Окно тред-дедупа и окно мягкой пометки «возможно дубль».
+    thread_dedup_days: z.number().int().min(1).max(365).optional(),
+    duplicate_hint_days: z.number().int().min(1).max(365).optional(),
 });
 
 /** Нормализует список исключений: trim, lowercase, без «mailto:»/«@»-префикса домена, без пустых и дублей. */
@@ -53,7 +58,7 @@ export async function GET() {
     }
     const [{ data: routes }, { data: cfg }] = await Promise.all([
         supabase.from('email_intake_routes').select('department, label, email, is_active'),
-        supabase.from('email_intake_config').select('create_orders, forward_enabled, order_blocklist, noreply_allowlist').maybeSingle(),
+        supabase.from('email_intake_config').select('create_orders, forward_enabled, order_blocklist, noreply_allowlist, crm_tag_stale_days, thread_dedup_days, duplicate_hint_days').maybeSingle(),
     ]);
     return NextResponse.json({
         routes: routes || [],
@@ -61,6 +66,9 @@ export async function GET() {
         forward_enabled: Boolean(cfg?.forward_enabled),
         order_blocklist: Array.isArray(cfg?.order_blocklist) ? cfg!.order_blocklist : [],
         noreply_allowlist: Array.isArray(cfg?.noreply_allowlist) ? cfg!.noreply_allowlist : [],
+        crm_tag_stale_days: Number(cfg?.crm_tag_stale_days) || 180,
+        thread_dedup_days: Number(cfg?.thread_dedup_days) || 14,
+        duplicate_hint_days: Number(cfg?.duplicate_hint_days) || 14,
     });
 }
 
@@ -91,6 +99,9 @@ export async function POST(req: Request) {
     if (typeof parsed.forward_enabled === 'boolean') cfgUpdate.forward_enabled = parsed.forward_enabled;
     if (Array.isArray(parsed.order_blocklist)) cfgUpdate.order_blocklist = normalizeBlocklist(parsed.order_blocklist);
     if (Array.isArray(parsed.noreply_allowlist)) cfgUpdate.noreply_allowlist = normalizeBlocklist(parsed.noreply_allowlist);
+    if (typeof parsed.crm_tag_stale_days === 'number') cfgUpdate.crm_tag_stale_days = parsed.crm_tag_stale_days;
+    if (typeof parsed.thread_dedup_days === 'number') cfgUpdate.thread_dedup_days = parsed.thread_dedup_days;
+    if (typeof parsed.duplicate_hint_days === 'number') cfgUpdate.duplicate_hint_days = parsed.duplicate_hint_days;
     if (Object.keys(cfgUpdate).length > 1) {
         const { error } = await supabase.from('email_intake_config').update(cfgUpdate).eq('id', true);
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });

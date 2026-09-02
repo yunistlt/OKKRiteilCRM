@@ -51,6 +51,9 @@ export function rangeFor(blockCode: string, key: string, rowMode?: string): Rang
         case 'maxRatio': return { min: 0, max: 3, step: 0.1, unit: '×' };
         case 'kMissing': return { min: 0.5, max: 1.5, step: 0.05, unit: '×' };
         case 'maxSum': return null; // порог суммы заказа — не ползунок (диапазон до млрд)
+        // Номер покупки клиента — дискретный признак, а не деньги: ползунком ФОТ не крутят
+        // (менять «за какую покупку платим» нужно в конструкторе схемы, а не в симуляторе).
+        case 'ordinal': return null;
         case 'level': case 'prorate': return null; // не ползунки
         default: return { min: 0, max: 100000, step: 1000, unit: '₽' };
     }
@@ -67,7 +70,10 @@ export function ctrlLabel(blockCode: string, key: string, item?: any, categoryNa
     if (key === 'minZayavki') return 'Мин. входящих для допуска';
     if (key === 'thresholdPct') return 'Порог выполнения плана';
     if (key === 'threshold') return 'Порог метрики';
-    if (key === 'bonus') return item && item.min != null ? `Бонус при ≥ ${item.min}%` : 'Бонус';
+    if (key === 'bonus') {
+        if (item?.ordinal != null) return `Бонус за ${item.ordinal}-ю покупку клиента`;
+        return item && item.min != null ? `Бонус при ≥ ${item.min}%` : 'Бонус';
+    }
     if (key === 'k') {
         if (blockCode === 'k_team' && item?.min != null) return `× при выручке ≥ ${formatNumberRu(item.min)} ₽`;
         if ((blockCode === 'plan_coef' || blockCode === 'dept_plan_coef') && item?.min != null) return `× при выполнении ≥ ${item.min}%`;
@@ -139,6 +145,7 @@ export const BLOCK_NAMES: Record<string, string> = {
     plan_attainment: 'Выполнение плана', plan_accelerator: 'Ускоритель плана',
     plan_coef: 'Коэффициент по личному плану', dept_plan_coef: 'Коэффициент по плану отдела',
     volume_bonus: 'Бонус за объём', same_day_sale: 'Продажа в день обращения',
+    repeat_client_bonus: 'Доплата за повторную покупку',
     script_bonus: 'Соблюдение скрипта', fast_contact_bonus: 'Скорость контакта', fields_bonus: 'Заполнение ТЗ',
     grade_multiplier: 'Грейд-коэффициент', procent_za_raschet: 'Процент за расчёт',
 };

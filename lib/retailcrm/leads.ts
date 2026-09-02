@@ -1,5 +1,11 @@
 import { supabase } from '@/utils/supabase';
 import { fetchRetailCrmOrder } from './orders';
+import {
+    buildLeadCustomerCustomFields,
+    buildLeadOrderCustomFields,
+    unspecifiedLabel,
+    type LeadFieldHints,
+} from './lead-defaults';
 
 export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -111,6 +117,56 @@ export async function findCorporateCustomerInCrm(filter: { email?: string; phone
     return null;
 }
 
+/**
+ * Найти ВСЕ корпоративные карточки по одному признаку — для подсказки менеджеру.
+ * Возвращает список, а не первого: общий ящик тендерной площадки висит на десятках
+ * разных компаний (`tender@sportmoda.ru` — 28 карточек), и привязываться к нему нельзя.
+ */
+async function lookupCorporateCustomers(filter: { email?: string; phone?: string }) {
+    const { url: baseUrl, key: apiKey } = await getCrmConfig();
+    const param = filter.email
+        ? `filter[email]=${encodeURIComponent(filter.email)}`
+        : filter.phone
+            ? `filter[phone]=${encodeURIComponent(filter.phone)}`
+            : null;
+    if (!param) return [];
+
+    try {
+        const response = await fetch(`${baseUrl}/api/v5/customers-corporate?apiKey=${apiKey}&${param}`);
+        const data = await response.json();
+        if (data.success && Array.isArray(data.customersCorporate)) return data.customersCorporate;
+    } catch (err) {
+        console.error('Failed to lookup corporate customers in CRM:', err);
+    }
+    return [];
+}
+
+/**
+ * Подсказка менеджеру: карточка клиента, похоже, уже есть, но по основному ключу не нашлась.
+ * Бот НЕ привязывается к ней сам — совпадение по почте или телефону слишком часто ложное
+ * (общий ящик посредника, личный номер снабженца, работающего на несколько фирм).
+ *
+ * Слова «дубль»/«дубл» в тексте быть не должно: комментарий заказа разбирается фильтром
+ * тендерных дублей (`(?:дубль|дубл|dubl)\D*(\d{3,6})`), и заказ вылетел бы из премии.
+ */
+async function buildExistingCustomerHint(keys: { email?: string | null; phone?: string | null }) {
+    for (const [label, filter] of [
+        ['почта', { email: keys.email || undefined }],
+        ['телефон', { phone: keys.phone || undefined }],
+    ] as const) {
+        if (!filter.email && !filter.phone) continue;
+        const found = await lookupCorporateCustomers(filter);
+        // Ровно одна карточка — осмысленная подсказка. Несколько — общий контакт, молчим.
+        if (found.length === 1) {
+            const card = found[0];
+            const name = card.nickName ? ` (${card.nickName})` : '';
+            return `❗ Возможно, клиент уже есть в базе: карточка ${card.id}${name} — совпал ${label}. `
+                + 'Проверьте, объедините карточки и укажите ИНН.';
+        }
+    }
+    return null;
+}
+
 export async function createCorporateCustomerInCrm(details: {
     companyName: string;
     inn?: string | null;
@@ -123,9 +179,14 @@ export async function createCorporateCustomerInCrm(details: {
     bik?: string | null;
     bankAccount?: string | null;
     corrAccount?: string | null;
+    fieldHints?: LeadFieldHints;
 }, site: string): Promise<number | null> {
+    // Категория товара и форма закупки обязательны и у карточки клиента —
+    // без них менеджер не сохранит контрагента.
+    const customFields = await buildLeadCustomerCustomFields(details.fieldHints);
     const payload: any = {
         nickName: details.companyName,
+        ...(Object.keys(customFields).length > 0 ? { customFields } : {}),
         contragent: {
             contragentType: 'legal-entity',
             legalName: details.companyName,
@@ -160,6 +221,95 @@ export async function createCorporateCustomerInCrm(details: {
     }
 }
 
+export type CorporateLeadDetails = {
+    isCorporate?: boolean;
+    companyName?: string | null;
+    inn?: string | null;
+    kpp?: string | null;
+    address?: string | null;
+    contactName?: string | null;
+    contactPhone?: string | null;
+    bank?: string | null;
+    bik?: string | null;
+    bankAccount?: string | null;
+    corrAccount?: string | null;
+};
+
+/**
+ * Найти или завести КОРПОРАТИВНОГО клиента под лид бота.
+ * Клиенты у нас корпоративные всегда (B2B), поэтому ищем по ИНН → email → телефону
+ * и заводим нового, если не нашли. Название компании, если бот его не распознал,
+ * ставим «Требуется уточнить» (название берём из справочника CRM, не выдумываем).
+ * Вернёт null в id, если завести контрагента не удалось — вызывающий откатится на физлицо.
+ * Вместе с id отдаёт hint: карточка, похожая на этого клиента по почте или телефону, но не
+ * найденная по основному ключу. Бот к ней не привязывается — только подсказывает менеджеру.
+ */
+async function ensureCorporateCustomerId(
+    params: {
+        details?: CorporateLeadDetails | null;
+        name?: string | null;
+        phone?: string | null;
+        email?: string | null;
+        fieldHints?: LeadFieldHints;
+    },
+    site: string
+): Promise<{ id: number | null; hint: string | null }> {
+    const details = params.details || null;
+    const phone = details?.contactPhone || params.phone || null;
+    const email = params.email || null;
+
+    // а. В нашем зеркале по ИНН — самый надёжный ключ.
+    if (details?.inn) {
+        try {
+            const { data } = await supabase
+                .from('clients')
+                .select('id')
+                .eq('inn', details.inn)
+                .eq('is_corporate', true)
+                .maybeSingle();
+            if (data) return { id: Number(data.id), hint: null };
+        } catch (err) {
+            console.error('Error finding corporate customer in Supabase:', err);
+        }
+    }
+
+    // б. В CRM по ИНН / email / телефону.
+    const existing = await findCorporateCustomerInCrm({
+        inn: details?.inn || undefined,
+        email: email || undefined,
+        phone: phone || undefined,
+    });
+    if (existing) return { id: existing.id, hint: null };
+
+    // в. Не нашли — но, возможно, карточка есть, просто без ИНН (он заполнен лишь у четверти
+    // карточек). Ищем похожую по почте и телефону ТОЛЬКО ради подсказки менеджеру: привязываться
+    // по этим ключам нельзя, общий ящик посредника висит на десятках разных компаний.
+    const hint = await buildExistingCustomerHint({ email, phone });
+
+    // г. Заводим нового контрагента.
+    const companyName = details?.companyName
+        || params.name
+        || (await unspecifiedLabel());
+    if (!companyName) return { id: null, hint };
+
+    const createdId = await createCorporateCustomerInCrm({
+        companyName,
+        inn: details?.inn,
+        kpp: details?.kpp,
+        address: details?.address,
+        contactName: details?.contactName || params.name,
+        contactPhone: phone,
+        contactEmail: email,
+        bank: details?.bank,
+        bik: details?.bik,
+        bankAccount: details?.bankAccount,
+        corrAccount: details?.corrAccount,
+        fieldHints: params.fieldHints,
+    }, site);
+
+    return { id: createdId, hint };
+}
+
 /**
  * Заявка из веб-формы без ТЗ (обратный звонок / контактная форма): в теле только
  * телефон + согласие на обработку ПДн + страница, откуда пришли; вложений нет.
@@ -191,74 +341,26 @@ export async function createEmailLead(params: {
     bodySnippet?: string;
     attachmentNames?: string[];
     managerId?: number | null;
-    corporateDetails?: {
-        isCorporate: boolean;
-        companyName?: string | null;
-        inn?: string | null;
-        kpp?: string | null;
-        address?: string | null;
-        contactName?: string | null;
-        contactPhone?: string | null;
-        bank?: string | null;
-        bik?: string | null;
-        bankAccount?: string | null;
-        corrAccount?: string | null;
-    } | null;
+    corporateDetails?: CorporateLeadDetails | null;
     attachmentText?: string;
+    fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
     const { site } = await getCrmConfig();
-    const isCorp = Boolean(params.corporateDetails?.isCorporate);
-    let customerId: number | null = null;
 
-    if (isCorp && params.corporateDetails) {
-        // 1. Поиск корпоративного клиента
-        // а. Сначала в Supabase по ИНН (самый надежный способ)
-        if (params.corporateDetails.inn) {
-            try {
-                const { data } = await supabase
-                    .from('clients')
-                    .select('id')
-                    .eq('inn', params.corporateDetails.inn)
-                    .eq('is_corporate', true)
-                    .maybeSingle();
-                if (data) {
-                    customerId = Number(data.id);
-                }
-            } catch (err) {
-                console.error('Error finding corporate customer in Supabase:', err);
-            }
-        }
+    // Клиент всегда корпоративный (B2B): контрагента ищем/заводим по ИНН, email, телефону.
+    const customerLookup = await ensureCorporateCustomerId({
+        details: params.corporateDetails,
+        name: params.corporateDetails?.contactName || params.name,
+        phone: params.phone,
+        email: params.email,
+        fieldHints: params.fieldHints,
+    }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
+    let isCorp = customerId !== null;
 
-        // б. Если не нашли, ищем в CRM по INN, email или телефону
-        if (!customerId) {
-            const existingCorp = await findCorporateCustomerInCrm({
-                inn: params.corporateDetails.inn || undefined,
-                email: params.email || undefined,
-                phone: params.corporateDetails.contactPhone || params.phone || undefined
-            });
-            if (existingCorp) {
-                customerId = existingCorp.id;
-            }
-        }
-
-        // в. Если все еще не нашли, создаем нового корпоративного клиента в CRM
-        if (!customerId && params.corporateDetails.companyName) {
-            customerId = await createCorporateCustomerInCrm({
-                companyName: params.corporateDetails.companyName,
-                inn: params.corporateDetails.inn,
-                kpp: params.corporateDetails.kpp,
-                address: params.corporateDetails.address,
-                contactName: params.corporateDetails.contactName || params.name,
-                contactPhone: params.corporateDetails.contactPhone || params.phone,
-                contactEmail: params.email,
-                bank: params.corporateDetails.bank,
-                bik: params.corporateDetails.bik,
-                bankAccount: params.corporateDetails.bankAccount,
-                corrAccount: params.corporateDetails.corrAccount
-            }, site);
-        }
-    } else {
-        // 1. Найти или создать клиента по email (для webasyst email — реальный клиента, не робот)
+    if (!customerId) {
+        // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
         const existing = params.email ? await findCustomerByEmail(params.email) : null;
         if (existing) {
             customerId = existing.id;
@@ -270,6 +372,7 @@ export async function createEmailLead(params: {
             }, site);
             if (customerResult.success) customerId = customerResult.id;
         }
+        isCorp = false;
     }
 
     // Проверка на дубликат тендера
@@ -302,6 +405,38 @@ export async function createEmailLead(params: {
         console.error('Error running duplicate check:', dupErr);
     }
 
+    // Мягкая пометка «возможно дубль»: у клиента уже есть заказ за последние N дней.
+    // Заказ всё равно создаём — по разметке менеджеров (78 дублей из 399 заказов секретаря за
+    // 60 дней) такие письма примерно в половине случаев оказываются ЗАКОННОЙ новой заявкой, и
+    // автоматически отличить их нельзя: ни сходство текста (медиана 0.79 у дублей против 0.80 у
+    // законных), ни совпадение темы (47% против 39%) не разделяют. Поэтому решение оставляем
+    // менеджеру, но показываем ему предыдущий заказ сразу в карточке, чтобы не искать вручную.
+    let recentHint = '';
+    if (!duplicateOfNumber && params.email) {
+        try {
+            const { getDuplicateHintDays } = await import('@/lib/email/routes');
+            const hintDays = await getDuplicateHintDays();
+            const since = new Date(Date.now() - hintDays * 86400000).toISOString();
+            const { data: recent } = await supabase
+                .from('orders')
+                .select('number, created_at')
+                // Регистр email в CRM не нормализован; lower() в фильтр не завернуть (иначе не
+                // сработает индекс idx_orders_raw_email_created) — сравниваем оба варианта.
+                .in('raw_payload->>email', Array.from(new Set([params.email.trim(), params.email.trim().toLowerCase()])))
+                .gte('created_at', since)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            const prev = recent?.[0];
+            if (prev) {
+                const days = Math.floor((Date.now() - new Date(prev.created_at).getTime()) / 86400000);
+                const when = days === 0 ? 'сегодня' : `${days} дн. назад`;
+                recentHint = `возможно дубль ${prev.number} (заявка того же клиента ${when}) — проверьте`;
+            }
+        } catch (hintErr) {
+            console.error('Error running recent-order hint:', hintErr);
+        }
+    }
+
     const attNames = (params.attachmentNames || []).filter(Boolean);
     const bodyPart = (params.bodySnippet || '').trim()
         || (attNames.length ? 'Тело письма пустое — суть во вложении (прикреплено к заказу).' : 'не распознано — открыть письмо');
@@ -319,6 +454,8 @@ ${bodyPart}${attLine}${duplicateReason}`;
         firstName: params.corporateDetails?.contactName || params.name || 'Клиент',
         customerComment: comment,
         source: { source: 'email-secretary' },
+        // Обязательные поля карточки: без них менеджер не сохранит заказ.
+        customFields: await buildLeadOrderCustomFields(params.fieldHints),
     };
     if (params.email) orderData.email = params.email;
     if (params.phone) orderData.phone = params.phone;
@@ -330,6 +467,13 @@ ${bodyPart}${attLine}${duplicateReason}`;
     }
     if (duplicateOfNumber) {
         orderData.managerComment = `дубль ${duplicateOfNumber}`;
+    } else if (recentHint) {
+        orderData.managerComment = recentHint;
+    }
+    if (existingCustomerHint) {
+        orderData.managerComment = orderData.managerComment
+            ? `${orderData.managerComment}\n${existingCustomerHint}`
+            : existingCustomerHint;
     }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
@@ -378,72 +522,33 @@ export async function createLeadInCrm(params: {
     visitedPages?: Array<{ url: string; title: string }>;
     managerId?: number | null;
     matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>;
-    corporateDetails?: {
-        isCorporate: boolean;
-        companyName?: string | null;
-        inn?: string | null;
-        kpp?: string | null;
-        address?: string | null;
-        contactName?: string | null;
-        contactPhone?: string | null;
-        bank?: string | null;
-        bik?: string | null;
-        bankAccount?: string | null;
-        corrAccount?: string | null;
-    } | null;
+    corporateDetails?: CorporateLeadDetails | null;
     orderMethod?: string;
+    fieldHints?: LeadFieldHints;
 }) {
     console.log('Creating lead in RetailCRM:', params);
-    const isCorp = Boolean(params.corporateDetails?.isCorporate);
     const { site } = await getCrmConfig();
 
-    // 1. Find or Create Customer
-    let customerId: number | null = null;
-    if (isCorp && params.corporateDetails) {
-        // а. Сначала в Supabase по ИНН
-        if (params.corporateDetails.inn) {
-            try {
-                const { data } = await supabase
-                    .from('clients')
-                    .select('id')
-                    .eq('inn', params.corporateDetails.inn)
-                    .eq('is_corporate', true)
-                    .maybeSingle();
-                if (data) {
-                    customerId = Number(data.id);
-                }
-            } catch (err) {
-                console.error('Error finding corporate customer in Supabase:', err);
-            }
-        }
-        // б. В CRM по INN, email или телефону
-        if (!customerId) {
-            const existingCorp = await findCorporateCustomerInCrm({
-                inn: params.corporateDetails.inn || undefined,
-                email: params.email || undefined,
-                phone: params.corporateDetails.contactPhone || params.phone || undefined
-            });
-            if (existingCorp) {
-                customerId = existingCorp.id;
-            }
-        }
-        // в. Создаем нового корпоративного клиента
-        if (!customerId && params.corporateDetails.companyName) {
-            customerId = await createCorporateCustomerInCrm({
-                companyName: params.corporateDetails.companyName,
-                inn: params.corporateDetails.inn,
-                kpp: params.corporateDetails.kpp,
-                address: params.corporateDetails.address,
-                contactName: params.corporateDetails.contactName || params.name,
-                contactPhone: params.corporateDetails.contactPhone || params.phone,
-                contactEmail: params.email,
-                bank: params.corporateDetails.bank,
-                bik: params.corporateDetails.bik,
-                bankAccount: params.corporateDetails.bankAccount,
-                corrAccount: params.corporateDetails.corrAccount
-            }, site);
-        }
-    } else {
+    // Категорию товара подсказывает каталог, если Елена подобрала позиции.
+    const fieldHints: LeadFieldHints = {
+        productCategory: params.matchedCatalogProducts?.find((p) => p.category)?.category || null,
+        ...params.fieldHints,
+    };
+
+    // 1. Клиент всегда корпоративный (B2B)
+    const customerLookup = await ensureCorporateCustomerId({
+        details: params.corporateDetails,
+        name: params.corporateDetails?.contactName || params.name,
+        phone: params.phone,
+        email: params.email,
+        fieldHints,
+    }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
+    let isCorp = customerId !== null;
+
+    if (!customerId) {
+        // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
         const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
         if (existing) {
             customerId = existing.id;
@@ -459,6 +564,7 @@ export async function createLeadInCrm(params: {
                 console.error('Failed to create customer:', customerResult);
             }
         }
+        isCorp = false;
     }
 
     // 3. Format Manager Comment
@@ -499,11 +605,14 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         phone: params.phone,
         email: params.email,
         customerComment: managerComment,
+        ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
         source: {
             source: params.utm?.source || 'ai-widget',
             medium: params.utm?.medium || 'chat',
             campaign: params.utm?.campaign || ''
-        }
+        },
+        // Обязательные поля карточки: без них менеджер не сохранит заказ.
+        customFields: await buildLeadOrderCustomFields(fieldHints),
     };
 
     if (customerId) {
@@ -543,20 +652,33 @@ export async function createSecretaryLead(params: {
     name?: string;
     summary?: string;            // распознанная суть запроса (voice_navigator_STT)
     managerId?: number | null;   // выбранный по нагрузке менеджер
+    fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
     const { site } = await getCrmConfig();
 
-    // 1. Найти или создать клиента по телефону
-    let customerId: number | null = null;
-    const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
-    if (existing) {
-        customerId = existing.id;
-    } else if (params.phone) {
-        const customerResult = await postRetailCrm('customers/create', 'customer', {
-            firstName: params.name || 'Клиент (звонок)',
-            phones: [{ number: params.phone }],
-        }, site);
-        if (customerResult.success) customerId = customerResult.id;
+    // 1. Клиент всегда корпоративный (B2B): ищем контрагента по телефону, иначе заводим
+    const customerLookup = await ensureCorporateCustomerId({
+        name: params.name,
+        phone: params.phone,
+        fieldHints: params.fieldHints,
+    }, site);
+    let customerId: number | null = customerLookup.id;
+    const existingCustomerHint = customerLookup.hint;
+    let isCorp = customerId !== null;
+
+    if (!customerId) {
+        // Откат на физлицо: контрагента завести не удалось — заявку терять нельзя.
+        const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
+        if (existing) {
+            customerId = existing.id;
+        } else if (params.phone) {
+            const customerResult = await postRetailCrm('customers/create', 'customer', {
+                firstName: params.name || 'Клиент (звонок)',
+                phones: [{ number: params.phone }],
+            }, site);
+            if (customerResult.success) customerId = customerResult.id;
+        }
+        isCorp = false;
     }
 
     const comment = `📞 Заявка принята AI-секретарём (входящий звонок)
@@ -571,9 +693,17 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
         firstName: params.name || 'Клиент',
         phone: params.phone,
         customerComment: comment,
+        ...(existingCustomerHint ? { managerComment: existingCustomerHint } : {}),
         source: { source: 'telphin-secretary' },
+        // Обязательные поля карточки: без них менеджер не сохранит заказ.
+        customFields: await buildLeadOrderCustomFields(params.fieldHints),
     };
-    if (customerId) orderData.customer = { id: customerId };
+    if (customerId) {
+        orderData.customer = {
+            id: customerId,
+            ...(isCorp ? { type: 'customer_corporate' } : {})
+        };
+    }
     if (params.managerId) orderData.managerId = params.managerId;
 
     const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);

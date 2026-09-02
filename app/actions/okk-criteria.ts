@@ -15,7 +15,7 @@ async function ensureAdminAccess() {
 const ALLOWED_FIELDS = [
     'label', 'category', 'group_color', 'cell_bg', 'type', 'agent', 'agent_emoji',
     'eval_method', 'ai_prompt', 'params', 'scoring_basket', 'how_tip', 'data_tip',
-    'sort_order', 'is_active',
+    'sort_order', 'is_active', 'na_gate',
 ] as const;
 
 function pickFields(data: Record<string, any>) {

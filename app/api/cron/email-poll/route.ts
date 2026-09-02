@@ -14,9 +14,10 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
+import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact, ourOutboundDomain, repliesToOurOutbound } from '@/lib/email/classify';
+import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
-import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist } from '@/lib/email/routes';
+import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
 import { sendAppEmail, parseOrderNumberFromSubject } from '@/lib/email';
 import { createEmailLead } from '@/lib/retailcrm/leads';
 import { attachEmailFilesToOrder } from '@/lib/retailcrm/files';
@@ -136,6 +137,100 @@ async function findClientOrderNumberInSubject(subject?: string | null, email?: s
     // Несколько номеров в теме — берём самый свежий (больший) заказ.
     mine.sort((a: any, b: any) => Number(b.number) - Number(a.number));
     return String(mine[0].number);
+}
+
+/**
+ * CRM-тег [#N/NNNNN] в теме указывает на ДАВНО ЗАКРЫТЫЙ заказ → тег «протух».
+ * Обычно тег — жёсткий признак живой переписки по сделке (CRM сама его вешает). Но клиент может
+ * переслать (Fwd:) свою же ветку многолетней давности с НОВЫМ запросом — «актуализируйте цену по
+ * ранее заказанному». Тогда тег про старую сделку, а письмо — новая заявка.
+ *
+ * Протухшим считаем ТОЛЬКО при обоих условиях сразу (осознанно консервативно, чтобы не плодить
+ * дубли по живым веткам):
+ *   1) по заказу давно НЕТ ДВИЖЕНИЯ: последняя смена статуса (raw_payload.statusUpdatedAt, фолбэк —
+ *      дата создания) старше `staleDays` (email_intake_config.crm_tag_stale_days). Берём движение,
+ *      а не возраст заказа: сделка может тянуться год и оставаться живой (заказ 45228 создан 490
+ *      дней назад, но статус менялся вчера — тег живой);
+ *   2) статус заказа не помечен рабочим (status_settings.is_working = true) — тендер и другие
+ *      долгоиграющие рабочие статусы оставляют тег жёстким даже без движения. Справочник неполный
+ *      (в нём нет `otgruzen`/`complete`/`send-assembling`), поэтому это страховка, а не основной
+ *      критерий — основной критерий пункт 1.
+ *
+ * Инцидент 30.07.2026: «Fwd: [#2/25609] … по заказу № 25609» (заказ от 14.03.2023, статус complete,
+ * движения с июля 2023) — запрос актуальной цены на стеллажи ушёл в reply_thread, заказ не создан.
+ */
+async function findStaleTaggedOrder(
+    subject: string | null | undefined,
+    staleDays: number
+): Promise<{ number: string; idleDays: number; status: string | null } | null> {
+    if (!subject) return null;
+    const num = parseOrderNumberFromSubject(subject);
+    if (!num) return null;
+    const { data } = await supabase.from('orders').select('number, status, created_at, raw_payload').eq('number', num).limit(1);
+    const ord = data?.[0];
+    if (!ord) return null; // заказа нет в базе — судить не о чем, тег оставляем жёстким
+    // statusUpdatedAt приходит из CRM без таймзоны («2023-07-06 12:57:42») — приводим к ISO-виду.
+    const rawMoved = ord.raw_payload?.statusUpdatedAt;
+    const movedAt = rawMoved ? new Date(String(rawMoved).replace(' ', 'T')) : null;
+    const lastMove = (movedAt && !Number.isNaN(movedAt.getTime()))
+        ? movedAt
+        : (ord.created_at ? new Date(ord.created_at) : null);
+    if (!lastMove || Number.isNaN(lastMove.getTime())) return null;
+    const idleDays = Math.floor((Date.now() - lastMove.getTime()) / 86400000);
+    if (idleDays < staleDays) return null;
+    const { data: st } = await supabase.from('status_settings').select('is_working').eq('code', ord.status || '').maybeSingle();
+    if (st?.is_working === true) return null; // заказ в рабочем статусе — переписка живая
+    return { number: String(ord.number), idleDays, status: ord.status || null };
+}
+
+/** Идентификаторы писем треда: Message-ID + In-Reply-To + References. */
+function threadIds(e: { message_id?: string | null; in_reply_to?: string | null; email_refs?: string | string[] | null }): string[] {
+    const refs = Array.isArray(e.email_refs) ? e.email_refs.join(' ') : (e.email_refs || '');
+    return Array.from(new Set(
+        `${e.message_id || ''} ${e.in_reply_to || ''} ${refs}`
+            .split(/\s+/)
+            .map((s) => s.trim())
+            .filter((s) => s.startsWith('<') && s.length > 3)
+    ));
+}
+
+/**
+ * Письмо продолжает ПОЧТОВЫЙ ТРЕД, по которому заказ уже создан → новый заказ не нужен.
+ *
+ * Зачем именно тред. За 60 дней менеджеры пометили «Дубль заявки» 78 из 399 заказов Катерины (20%).
+ * На этой разметке проверены признаки: сходство текста писем НЕ разделяет дубль и законную повторную
+ * заявку того же клиента (медиана 0.79 против 0.80 — при любом пороге примерно 50/50), совпадение
+ * темы тоже (47% против 39%). Разделяет только общий тред: 21% у дублей против 4% у законных.
+ * Поэтому жёстко дедуплицируем ТОЛЬКО тред, а остальное — мягкой пометкой (см. createEmailLead).
+ *
+ * Инцидент 31.07.2026: письмо «Описание» пришло через 4 минуты после «Запрос» от того же клиента —
+ * заказ 54078 оказался дублем 54077.
+ */
+async function findOrderByEmailThread(
+    e: { id: string; message_id?: string | null; in_reply_to?: string | null; email_refs?: string | string[] | null },
+    windowDays: number
+): Promise<{ number: string; id: number | null } | null> {
+    const ids = threadIds(e);
+    if (ids.length === 0) return null;
+    const since = new Date(Date.now() - windowDays * 86400000).toISOString();
+    // Письма того же треда, по которым заказ уже заведён. Тред опознаём по пересечению
+    // Message-ID/In-Reply-To/References — цитата тела здесь не нужна (её ловит repliesToOurOutbound).
+    const { data } = await supabase
+        .from('incoming_emails')
+        .select('id, message_id, in_reply_to, email_refs, created_crm_order_number, created_crm_order_id, received_at')
+        .not('created_crm_order_number', 'is', null)
+        .gte('received_at', since)
+        .order('received_at', { ascending: false })
+        .limit(400);
+    if (!data?.length) return null;
+    const mine = new Set(ids);
+    for (const prev of data) {
+        if (prev.id === e.id) continue;
+        if (threadIds(prev).some((x) => mine.has(x))) {
+            return { number: String(prev.created_crm_order_number), id: prev.created_crm_order_id ? Number(prev.created_crm_order_id) : null };
+        }
+    }
+    return null;
 }
 
 export async function GET(req: Request) {
@@ -261,11 +356,11 @@ export async function GET(req: Request) {
         const classify = { reply_thread: 0, noreply: 0, not_request: 0, new_request: 0, blocked: 0, accounting: 0, logistics: 0, legal: 0, procurement: 0 };
         const { data: cfg } = await supabase.from('email_intake_config').select('create_orders').maybeSingle();
         const createOrders = Boolean(cfg?.create_orders); // false = сухой прогон заказов
-        const [forwardEnabled, routes, orderBlocklist, noreplyAllowlist] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist(), getNoreplyAllowlist()]);
+        const [forwardEnabled, routes, orderBlocklist, noreplyAllowlist, crmTagStaleDays, threadDedupDays] = await Promise.all([isForwardEnabled(), getDepartmentRoutes(), getOrderBlocklist(), getNoreplyAllowlist(), getCrmTagStaleDays(), getThreadDedupDays()]);
 
         const { data: pending } = await supabase
             .from('incoming_emails')
-            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at')
+            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, message_id, in_reply_to, email_refs')
             .eq('status', 'new')
             .order('received_at', { ascending: true })
             .limit(CLASSIFY_BATCH);
@@ -280,6 +375,7 @@ export async function GET(req: Request) {
                 let orderBlocked = false; // отправитель в списке исключений → заказ не создаём
                 let v: any = null;
                 let subjectOrderNum: string | null = null; // номер заказа клиента, найденный в теме «Re:»
+                let threadOrder: { number: string; id: number | null } | null = null; // заказ из того же почтового треда
 
                 // Для «роботов-лидов» (webasyst и т.п.) или пересылаемых писем (Fwd) реальный контакт клиента — в теле письма,
                 // а не в From. Тянем email/телефон/имя для карточки и назначения.
@@ -299,8 +395,17 @@ export async function GET(req: Request) {
                 if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
+                    // Досье из CRM: проверяем факты (есть ли заказ с номером из письма, история клиента)
+                    // ДО обращения к ИИ и отдаём их вместе с письмом — решение по фактам, а не по словам.
+                    const crmDossier = await buildCrmDossier({
+                        fromEmail: e.from_email,
+                        subject: e.subject,
+                        body: (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
+                        contactEmail: leadContact.email || null,
+                        excludeEmailId: e.id,
+                    });
                     v = await classifyRoute(
-                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta },
+                        { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta, crmDossier },
                         prompt
                     );
                     // Сбой анализа (например, недоступен OpenAI): НЕ финализируем письмо — оставляем
@@ -321,38 +426,83 @@ export async function GET(req: Request) {
                     //  переписке пересылать можно (вопрос по счёту/доставке/договору реально нужен отделу).
                     const crmTag = hasCrmOrderTag(e.subject);
                     const bareRe = !crmTag && isReplyThread(e.subject);
+                    // Конкретный НОВЫЙ запрос на просчёт в теле (позиция + количество/характеристики).
+                    // Сильнее двух вещей:
+                    //  1) ошибочной бухгалтерии — в бухгалтерию только вопросы по ДОКУМЕНТАМ;
+                    //  2) слабых признаков переписки (ответ в нашей ветке, голый «Re:») — клиент
+                    //     отвечает на старое письмо, начиная новый запрос.
+                    // Инцидент 11.08.2026: «RE: RE: Запрос КП 51672 … с НДС 5%» с запросом цены на
+                    // Топтыжку 4 (20 шт, Нефтеюганск) ушёл в бухгалтерию, заявка не создалась.
+                    const newInquiry = v.newInquiry === true;
+                    const aiRoute: string = (v.route === 'accounting' && newInquiry) ? 'new_request' : v.route;
+                    if (aiRoute !== v.route) {
+                        reasoning = `Запрос цены/сроков на конкретную позицию — это заявка, не бухгалтерия | ${v.reasoning}`;
+                    }
                     const noteFor = (route: string) => route === 'procurement' ? 'не пересылаем в снабжение' : 'заказ не создаём';
+                    // Голый «Re:»/«Fwd:» + письмо ЦИТИРУЕТ наше исходящее (заголовок-ответ на наш релей
+                    // или наш домен в теле-цитате) — надёжный признак переписки по существующему заказу
+                    // даже без тега [#N/N] и без номера в теме (инцидент 23.07.2026, 53987/53986).
+                    const repliesToOurThread = (bareRe || isForwarded) && repliesToOurOutbound(
+                        { inReplyTo: e.in_reply_to, refs: e.email_refs, bodyText: e.body_text, bodyHtml: e.body_html },
+                        ourOutboundDomain()
+                    );
                     // Голый «Re:» + номер существующего заказа этого же клиента в теме — такой же
                     // надёжный признак переписки, как CRM-тег (см. findClientOrderNumberInSubject).
-                    subjectOrderNum = (bareRe && (v.route === 'new_request' || v.route === 'not_request'))
+                    subjectOrderNum = (bareRe && (aiRoute === 'new_request' || aiRoute === 'not_request'))
                         ? await findClientOrderNumberInSubject(e.subject, custEmail)
                         : null;
-                    if (crmTag && (v.route === 'new_request' || v.route === 'procurement')) {
+                    // Тег указывает на давно закрытый заказ — переписка по нему не идёт (см.
+                    // findStaleTaggedOrder). Проверяем ДО остальных правил: у пересланной старой
+                    // ветки сработали бы и тег, и repliesToOurThread (в теле цитата нашего письма).
+                    // Тред-дедуп проверяем ПЕРВЫМ: если по этой же переписке заказ уже заведён,
+                    // разбирать письмо как новую заявку незачем — какими бы ни были тег и «Re:».
+                    threadOrder = aiRoute === 'new_request'
+                        ? await findOrderByEmailThread(e, threadDedupDays)
+                        : null;
+                    const staleTag = !threadOrder && crmTag && aiRoute === 'new_request'
+                        ? await findStaleTaggedOrder(e.subject, crmTagStaleDays)
+                        : null;
+                    if (threadOrder) {
+                        emailType = 'reply_thread';
+                        reasoning = `Продолжение переписки, по которой заказ №${threadOrder.number} уже создан — дубль не заводим | ${v.reasoning}`;
+                    } else if (staleTag) {
+                        // Не перебиваем ИИ: это новое обращение по старой сделке — заводим заказ.
+                        emailType = 'new_request';
+                        reasoning = `Тег [#…] на давно закрытом заказе №${staleTag.number} (без движения ${staleTag.idleDays} дн.) — считаем новым обращением | ${v.reasoning}`;
+                    } else if (crmTag && (aiRoute === 'new_request' || aiRoute === 'procurement')) {
                         // Тег заказа — жёсткая переписка независимо от уверенности ИИ.
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(v.route)} | ${v.reasoning}`;
-                    } else if (bareRe && v.route === 'procurement') {
+                        reasoning = `Переписка по существующему заказу (тег [#…]) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (bareRe && aiRoute === 'procurement') {
                         // Снабжение по «Re:» на наш заказ — это переписка по нашей сделке, не новое предложение.
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (Re: без тега) — не пересылаем в снабжение | ${v.reasoning}`;
-                    } else if (bareRe && subjectOrderNum && (v.route === 'new_request' || v.route === 'not_request')) {
+                    } else if (bareRe && subjectOrderNum && !newInquiry && (aiRoute === 'new_request' || aiRoute === 'not_request')) {
                         // «Re:» + номер заказа этого клиента в теме → переписка по нему независимо от
                         // уверенности ИИ (менеджер вписала номер руками, тега [#N/N] в ветке нет).
                         emailType = 'reply_thread';
-                        reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(v.route)} | ${v.reasoning}`;
-                    } else if (bareRe && v.route === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
+                        reasoning = `Переписка по заказу №${subjectOrderNum} (Re: + номер заказа клиента в теме) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (repliesToOurThread && !newInquiry && (aiRoute === 'new_request' || aiRoute === 'not_request')) {
+                        // «Re:»/«Fwd:» + письмо цитирует НАШЕ исходящее, но номера заказа в теме нет
+                        // (иначе сработала бы ветка subjectOrderNum выше). Это ответ клиента в уже
+                        // существующей переписке, а НЕ новая заявка — не плодим дубль, ДАЖЕ если ИИ
+                        // уверен (холодный лид процитировать нас не может). К заказу не привязываем
+                        // (явного номера нет). Инцидент 23.07.2026: 53987 («пока нет инфо»), 53986.
+                        emailType = 'reply_thread';
+                        reasoning = `Переписка по существующему заказу (ответ на наше письмо, без номера в теме) — ${noteFor(aiRoute)} | ${v.reasoning}`;
+                    } else if (bareRe && !newInquiry && aiRoute === 'new_request' && v.confidence < BARE_RE_NEW_REQUEST_TRUST) {
                         // Голый «Re:» + НЕуверенная новая заявка → считаем перепиской по старой ветке.
                         // При уверенной новой заявке (≥ порога) НЕ перебиваем ИИ — заводим заказ (клиент
                         // просто ответил на прежнее письмо новым запросом).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (Re: без тега) — заказ не создаём | ${v.reasoning}`;
-                    } else if (v.route === 'not_request' && crmTag) {
+                    } else if (aiRoute === 'not_request' && crmTag) {
                         // ИИ счёл «не заявка», но в теме тег заказа [#N/N] — это переписка по заказу,
                         // а не «не заявка» (отказы «неактуально»/«нет финансирования» по заказу).
                         emailType = 'reply_thread';
                         reasoning = `Переписка по существующему заказу (тег [#…]) — ${v.reasoning}`;
                     } else {
-                        emailType = v.route;
+                        emailType = aiRoute;
                     }
                     // Источник-робот с лидами (webasyst): если ИИ счёл «не заявка», но в теле есть контакт
                     // клиента (заявка с сайта, форма «Заказать звонок») — это всё равно лид → заводим заказ.
@@ -382,8 +532,8 @@ export async function GET(req: Request) {
 
                 // Разрешаем существующий заказ для переписки
                 if (emailType === 'reply_thread') {
-                    // 0. Номер заказа этого же клиента, уже найденный в теме (сверен с базой по email)
-                    let orderNum: string | null = subjectOrderNum;
+                    // 0. Заказ, найденный по почтовому треду (самый надёжный), затем — номер из темы
+                    let orderNum: string | null = threadOrder?.number || subjectOrderNum;
 
                     // 1. Проверяем тему на наличие CRM-тега [#N/NNNNN]
                     if (!orderNum && e.subject) {
@@ -428,6 +578,23 @@ export async function GET(req: Request) {
                         createdOrderId = resolvedOrder.id;
                         createdOrderNumber = resolvedOrder.number;
                         reasoning = `${reasoning} | Привязано к заказу №${resolvedOrder.number}`;
+                    }
+                }
+
+                // Письмо продолжает тред уже созданного заказа: сам заказ не плодим, но вложения
+                // (обычно там ТЗ/спецификация) прикрепляем к нему — иначе файлы потерялись бы.
+                if (createOrders && emailType === 'reply_thread' && threadOrder?.id
+                    && Array.isArray(e.attachments_meta) && e.attachments_meta.length > 0 && e.imap_uid != null) {
+                    try {
+                        const content = await fetchEmailContentByUid(Number(e.imap_uid), e.folder || FOLDER);
+                        const files = content?.attachments || [];
+                        if (files.length > 0) {
+                            const att = await attachEmailFilesToOrder(threadOrder.id, files);
+                            reasoning = `${reasoning} | Вложения в заказ №${threadOrder.number}: ${att.attached}/${att.total}` +
+                                (att.errors.length ? ` (ошибки: ${att.errors.slice(0, 2).join('; ')})` : '');
+                        }
+                    } catch (attErr: any) {
+                        reasoning = `${reasoning} | Вложения не прикреплены: ${attErr?.message || 'ошибка'}`;
                     }
                 }
 

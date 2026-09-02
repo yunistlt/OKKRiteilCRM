@@ -1,5 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Движок правил: автоматическая проверка всех условий и триггеров.
 import { supabase } from '@/utils/supabase';
+import { toLegacyEventRow, STATUS_FIELD } from '@/lib/order-events';
 import { analyzeTranscript, analyzeText } from './semantic';
 import { evaluateChecklist } from './quality-control';
 import { sendTelegramNotification } from './telegram';
@@ -140,9 +141,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             : supabase.from('orders').select('*').lt('order_id', SYNTHETIC_ORDER_ID_MIN);
     } else {
         // Also exclude synthetic events for non-targeted runs
+        // История изменений заказа — из канонического order_history_log
+        // (raw_order_events заморожена, см. lib/order-events.ts). Строки ниже
+        // приводятся к прежней форме события через toLegacyEventRow.
         query = targetOrderId
-            ? supabase.from('raw_order_events').select('*')
-            : supabase.from('raw_order_events').select('*').lt('retailcrm_order_id', SYNTHETIC_ORDER_ID_MIN);
+            ? supabase.from('order_history_log').select('*')
+            : supabase.from('order_history_log').select('*').lt('retailcrm_order_id', SYNTHETIC_ORDER_ID_MIN);
     }
 
     // Apply filters specialized by entity type
@@ -160,12 +164,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         query = query.gte('occurred_at', startDate).lte('occurred_at', endDate);
         if (logic.trigger && logic.trigger.block === 'status_change') {
             const target = logic.trigger.params.target_status;
-            if (target) query = query.eq('event_type', 'status_changed');
+            if (target) query = query.eq('field', STATUS_FIELD);
         } else if (logic.trigger && logic.trigger.block === 'field_change') {
             const field = logic.trigger.params.field_code;
             if (field) {
                 const eventType = field.startsWith('custom_') ? field : `custom_${field}`;
-                query = query.eq('event_type', eventType);
+                query = query.eq('field', eventType);
             }
         }
     }
@@ -186,7 +190,12 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         query = query.eq('telphin_call_id', targetCallId);
     }
 
-    const { data: items, error } = await query;
+    const { data: rawItems, error } = await query;
+    // События истории приводим к прежней форме (event_type/raw_payload) — блоки
+    // условий ниже написаны под неё. Заказы и звонки идут как есть.
+    const items = rawItems && rule.entity_type !== 'call' && rule.entity_type !== 'order'
+        ? (rawItems as any[]).map(toLegacyEventRow)
+        : rawItems;
     if (error) {
         if (trace) trace.push(`[RuleEngine] [${rule.code}] DB ERROR: ${error.message}`);
         console.error(`[RuleEngine] [${rule.code}] Query error:`, error);
@@ -238,13 +247,13 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
                 .filter(Boolean)
                 .sort()[0];
             let activityQuery = supabase
-                .from('raw_order_events')
-                .select('retailcrm_order_id, event_id, event_type, raw_payload, occurred_at')
+                .from('order_history_log')
+                .select('retailcrm_order_id, retailcrm_history_id, field, old_value, new_value, occurred_at, user_data')
                 .in('retailcrm_order_id', orderIds);
             if (earliest) activityQuery = activityQuery.gt('occurred_at', earliest);
             const { data: events } = await activityQuery.order('occurred_at', { ascending: false });
             if (events) {
-                for (const ev of events as any[]) {
+                for (const ev of (events as any[]).map(toLegacyEventRow)) {
                     const arr = activityMap.get(ev.retailcrm_order_id) || [];
                     arr.push(ev);
                     activityMap.set(ev.retailcrm_order_id, arr);

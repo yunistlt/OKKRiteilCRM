@@ -391,29 +391,32 @@ export async function GET() {
             reason: 'Legacy backfill sweep for missed matches outside primary call_match queue.'
         };
 
-        // 4.5. Fetch Latest History Event (Rule Engine Source)
+        // 4.5. Свежесть истории заказов (источник движка правил и оценок ОКК).
+        //      Канонический источник — order_history_log: его наполняет воркер
+        //      retailcrm-history-delta. Старая raw_order_events заморожена, и,
+        //      пока мониторинг смотрел на неё, свежесть показывалась по мёртвым
+        //      данным (см. lib/order-events.ts).
         const { data: lastHistoryEvent } = await supabase
-            .from('raw_order_events')
+            .from('order_history_log')
             .select('occurred_at')
             .order('occurred_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         const historyCursor = lastHistoryEvent?.occurred_at || null;
         const historyOk = isFresh(historyCursor, 120); // 2 hours threshold
         const historyLastRun = historyFallbackWorker.lastSuccessAt || historyCursor || null;
+        // Легаси-fallback (/api/sync/history) удалён: он писал в замороженную
+        // raw_order_events, то есть «аварийный запуск» наполнял таблицу, которую
+        // уже никто не читает. Историю ведёт только retailcrm_history_delta.
         const historyStatus = {
-            service: 'History Fallback Sync',
-            cursor: realtimePipelineEnabled ? 'Fallback only' : (historyCursor || 'Never'),
+            service: 'История заказов (RetailCRM)',
+            cursor: historyCursor || 'Never',
             last_run: historyLastRun,
-            status: historyFallbackWorker.hasActiveError
-                ? 'warning'
-                : (realtimePipelineEnabled ? 'ok' : (historyOk ? 'ok' : 'warning')),
-            details: realtimePipelineEnabled ? 'Backup-only manual force run' : (historyOk ? 'Events Flowing' : 'Stalled (>2h)'),
+            status: historyFallbackWorker.hasActiveError ? 'warning' : (historyOk ? 'ok' : 'warning'),
+            details: historyOk ? 'Events Flowing' : 'Stalled (>2h)',
             reason: historyFallbackWorker.hasActiveError
                 ? historyFallbackWorker.lastError
-                : realtimePipelineEnabled
-                ? 'Primary history ownership is handled by retailcrm_history_delta worker in realtime pipeline.'
                 : getDiagnosis('history_sync', historyOk, historyCursor)
         };
 

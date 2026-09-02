@@ -50,33 +50,14 @@ export async function findOrderCandidatesByPhone(phone: string): Promise<OrderCa
 
     const suffix = normalized.slice(-7); // Последние 7 цифр
 
-    // Ищем заказы с точным совпадением номера в EVENTS (LIKE % убивает производительность на больших таблицах)
-    // Оптимизация: убрали slow queries .like.%${suffix}
-    const { data: phoneEvents } = await supabase
-        .from('raw_order_events')
-        .select('retailcrm_order_id, phone, phone_normalized, additional_phone, additional_phone_normalized, manager_id, occurred_at')
-        .or(`phone_normalized.eq.${normalized},additional_phone_normalized.eq.${normalized}`)
-        .order('occurred_at', { ascending: false })
-        .limit(20);
-
     const candidatesMap = new Map<number, OrderCandidate>();
 
-    // 1. Add candidates from events
-    if (phoneEvents) {
-        for (const event of phoneEvents) {
-            candidatesMap.set(event.retailcrm_order_id, {
-                retailcrm_order_id: event.retailcrm_order_id,
-                phone: event.phone,
-                additional_phone: event.additional_phone,
-                manager_id: event.manager_id,
-                last_event_at: event.occurred_at
-            });
-        }
-    }
-
-    // 2. Add candidates directly from ORDERS table (Fallback if events missing)
-    // Checking main phone and additionalPhone from raw_payload
-    // We use .descendant-style match (%suffix%) to handle orders with extensions like ...1234567-ext
+    // Кандидаты берём из ORDERS: денормализованных телефонов (phone_normalized и
+    // т.п.) больше нет — они жили только в raw_order_events, которую наполнял
+    // отключённый fallback-синк, и с апреля 2026 та таблица заморожена
+    // (см. lib/order-events.ts). В order_history_log телефонов нет вовсе, так
+    // что единственный живой источник — сам заказ.
+    // Суффикс из 7 цифр (%suffix%) переживает добавочные («...1234567-ext»).
     const { data: orders } = await supabase
         .from('orders')
         .select('id, phone, customer_phones, manager_id, created_at, raw_payload')
@@ -233,7 +214,24 @@ export async function matchCallToOrders(call: RawCall): Promise<MatchResult[]> {
 export async function saveMatches(matches: MatchResult[]): Promise<void> {
     if (matches.length === 0) return;
 
-    const records = matches.map(m => ({
+    // Приоритет источников: RetailCRM > ручная привязка > эвристика.
+    // Если у звонка уже есть привязка из CRM (telephony/calls отдаёт orderNumber)
+    // или проставленная человеком, догадка «по последним 7 цифрам» не должна её
+    // ни перебивать, ни добавлять к ней ещё заказов: сверка за май–август
+    // показала, что эвристика ошибается в 19% случаев и вешает один звонок
+    // сразу на несколько прошлых заказов клиента. См. lib/retailcrm/calls.ts.
+    const callIds = Array.from(new Set(matches.map((m) => m.telphin_call_id)));
+    const { data: authoritative } = await supabase
+        .from('call_order_matches')
+        .select('telphin_call_id')
+        .in('telphin_call_id', callIds)
+        .in('match_type', ['retailcrm', 'manual']);
+    const locked = new Set(((authoritative as any[]) ?? []).map((r) => r.telphin_call_id));
+
+    const fresh = matches.filter((m) => !locked.has(m.telphin_call_id));
+    if (fresh.length === 0) return;
+
+    const records = fresh.map(m => ({
         telphin_call_id: m.telphin_call_id,
         retailcrm_order_id: m.retailcrm_order_id,
         match_type: m.match_type,

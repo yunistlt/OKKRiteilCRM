@@ -32,9 +32,41 @@ export const SALARY_CONFIG_SCHEMAS = {
     source_exclusions: z.array(z.string()),
     // Дубль на тендер не учитывается в знаменателе конверсии при правомочной
     // простановке статуса. См. lib/salary/tender-duplicates.ts.
+    // duplicate_cancel_reasons — причины отмены, равносильные статусу-дублю
+    // (отменённый дубль уходит в «Согласование отмены», по статусу его не поймать).
+    // default [] — чтобы версия конфига, записанная до миграции, оставалась валидной.
+    // use_status_history — признак «эталон это тендер» и «заказ это дубль» берём
+    // из истории статусов (order_history_log), а не только из текущего статуса:
+    // иначе перевод эталона в отмену или вперёд по воронке возвращал дубли в
+    // знаменатель задним числом. default false — версии конфига, записанные до
+    // миграции 20260806, остаются валидными и считаются по-прежнему.
     tender_duplicate_rule: z.object({
         duplicate_status: z.string().min(1),
         reference_statuses: z.array(z.string().min(1)).min(1),
+        duplicate_cancel_reasons: z.array(z.string().min(1)).default([]),
+        use_status_history: z.boolean().default(false),
+    }),
+    // «Не наша продукция» (нет таких позиций) — не заявка на наш товар, из
+    // конверсии исключается целиком, как спам. Ловим и по статусу, и по причине
+    // отмены: финальные статусы отмены на практике почти не проставляют, отмены
+    // копятся в «Согласование отмены», а причину отмены заполняют.
+    not_our_product_rule: z.object({
+        statuses: z.array(z.string().min(1)),
+        cancel_reasons: z.array(z.string().min(1)),
+    }),
+    // Код кастом-поля заказа с причиной отмены (справочник RetailCRM). Отсюда его
+    // берут правила дублей, «не нашей продукции» и «сметы» — по образцу engineer_field.
+    cancel_reason_field: z.object({ code: z.string().min(1) }),
+    // «Смета» — клиент не покупает, а запрашивает цену для закладки в бюджет на
+    // далёкое будущее. Не потерянная продажа, из конверсии исключается целиком.
+    // Работает только внутри statuses; ветка по cancel_reasons самодостаточна,
+    // ветка по comment_patterns требует подтверждения вердиктом ИИ по диалогу
+    // (order_estimate_verdicts, порог min_confidence). См. lib/salary/estimates.ts.
+    estimate_rule: z.object({
+        statuses: z.array(z.string().min(1)),
+        cancel_reasons: z.array(z.string().min(1)),
+        comment_patterns: z.array(z.string().min(1)),
+        min_confidence: z.number().min(0).max(1),
     }),
     // Правило «Дубль заявки» (email+бот дубли, которые менеджер обязан переводить в
     // статус-дубль с номером эталона и причиной). Исключается из ЧИСЛИТЕЛЯ и ЗНАМЕНАТЕЛЯ
@@ -222,6 +254,33 @@ export async function getPrepayPolicy(asOf: string | Date = new Date()): Promise
     if (raw == null) return null;
     const parsed = PREPAY_POLICY_SCHEMA.safeParse(raw);
     return parsed.success ? parsed.data : null;
+}
+
+// ── Получатели расчётной ведомости в Telegram ────────────────────────────────
+// Тоже необязательный ключ конфига (не влияет на расчёт). Ник — только для подписи
+// и понимания «кому»; отправка возможна ТОЛЬКО по chat_id (Bot API не умеет слать
+// в личку по @username — id появляется после того, как человек нажал Start у бота).
+export const ACCOUNTING_RECIPIENT_SCHEMA = z.object({
+    name: z.string().min(1), // ФИО для подписи в аудите/UI
+    chat_id: z.string().min(1),
+    username: z.string().optional(), // @ник — для тега, необязателен
+    thread_id: z.string().optional(), // топик форума, если чат-группа
+});
+export type AccountingRecipient = z.infer<typeof ACCOUNTING_RECIPIENT_SCHEMA>;
+
+/** Получатели ведомости на дату. [] — не настроены. */
+export async function getAccountingRecipients(asOf: string | Date = new Date()): Promise<AccountingRecipient[]> {
+    const asOfStr = typeof asOf === 'string' ? asOf : asOf.toISOString().slice(0, 10);
+    const { data, error } = await supabase
+        .from('salary_config')
+        .select('value,effective_from')
+        .eq('key', 'accounting_recipients')
+        .lte('effective_from', asOfStr)
+        .order('effective_from', { ascending: false })
+        .limit(1);
+    if (error) throw error;
+    const parsed = z.array(ACCOUNTING_RECIPIENT_SCHEMA).safeParse(data?.[0]?.value);
+    return parsed.success ? parsed.data : [];
 }
 
 /** История версий ключа (для UI «кто/когда/что менял»). */

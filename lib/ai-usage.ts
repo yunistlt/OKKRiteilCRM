@@ -18,7 +18,9 @@ export const AiAgent = {
     MAXIM: 'maxim',
     ELENA: 'elena',
     SEMEN: 'semen',
+    TAMARA: 'tamara',
     DARYA: 'darya',
+    SALES_ANALYST: 'sales_analyst', // второй слой бота-РОПа: о чём говорить с клиентом
     TRANSCRIPTION: 'transcription', // служебная: AMD/диаризация/каналы
     EMBEDDINGS: 'embeddings',       // служебная: RAG/семантический поиск
 } as const;
@@ -26,6 +28,25 @@ export const AiAgent = {
 type Pricing = { input: number; cached: number; output: number };
 let pricingCache: { at: number; map: Record<string, Pricing> } | null = null;
 const PRICING_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Имя модели для поиска тарифа. OpenAI возвращает в ответе ДАТИРОВАННУЮ версию
+ * («gpt-4o-mini-2024-07-18»), а в ai_model_pricing тарифы заведены на семейство
+ * («gpt-4o-mini»), поэтому прямой поиск по ключу не находил ничего и стоимость
+ * писалась нулём — все вызовы с начала учёта оказались «бесплатными».
+ * Отрезаем датированный суффикс, затем, если точного ключа всё равно нет,
+ * берём самый длинный тариф-префикс (напр. «gpt-4.1-mini-nano-…» → «gpt-4.1-mini»).
+ */
+export function resolvePricingKey(model: string, pricing: Record<string, Pricing>): string | null {
+    if (pricing[model]) return model;
+    const undated = model.replace(/-\d{4}-\d{2}-\d{2}$/, '');
+    if (pricing[undated]) return undated;
+    let best: string | null = null;
+    for (const key of Object.keys(pricing)) {
+        if (undated.startsWith(key) && (!best || key.length > best.length)) best = key;
+    }
+    return best;
+}
 
 async function getPricing(): Promise<Record<string, Pricing>> {
     if (pricingCache && Date.now() - pricingCache.at < PRICING_TTL_MS) return pricingCache.map;
@@ -74,7 +95,8 @@ export async function recordAiUsage(opts: {
         const model = opts.model || 'unknown';
 
         const pricing = await getPricing();
-        const p = pricing[model];
+        const key = resolvePricingKey(model, pricing);
+        const p = key ? pricing[key] : undefined;
         let costUsd = 0;
         if (p) {
             const freshInput = Math.max(0, promptTokens - cachedTokens);

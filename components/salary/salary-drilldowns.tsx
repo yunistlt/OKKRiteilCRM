@@ -107,11 +107,16 @@ export function CountedOrdersSplit({
 
 function OrdersTypeTable({ title, rows, threshold }: { title: string; rows: any[]; threshold?: number | null }) {
     const sum = rows.reduce((s, o) => s + (Number(o.sum) || 0), 0);
+    const sumNoVat = rows.reduce((s, o) => s + (Number(o.revenueNoVat) || 0), 0);
     return (
         <div>
             <div className="mb-1 flex items-baseline justify-between">
                 <span className="text-xs font-semibold">{title} ({rows.length})</span>
-                {rows.length > 0 && <span className="text-[11px] text-muted-foreground">на сумму {rub(sum)}</span>}
+                {rows.length > 0 && (
+                    <span className="text-[11px] text-muted-foreground">
+                        на сумму {rub(sum)} с НДС · {rub(sumNoVat)} без НДС
+                    </span>
+                )}
             </div>
             {rows.length === 0 ? (
                 <div className="border border-dashed px-2 py-1.5 text-[11px] text-muted-foreground">нет заказов</div>
@@ -123,7 +128,8 @@ function OrdersTypeTable({ title, rows, threshold }: { title: string; rows: any[
                                 <th className="px-2 py-1.5">№ заказа</th>
                                 <th className="px-2 py-1.5">Клиент</th>
                                 <th className="px-2 py-1.5">Тип</th>
-                                <th className="px-2 py-1.5 text-right">Сумма</th>
+                                <th className="px-2 py-1.5 text-right">Сумма с НДС</th>
+                                <th className="px-2 py-1.5 text-right">Сумма без НДС</th>
                                 <th className="px-2 py-1.5 text-right">Скидка</th>
                                 <th className="px-2 py-1.5">Передан в произв.</th>
                             </tr>
@@ -135,6 +141,7 @@ function OrdersTypeTable({ title, rows, threshold }: { title: string; rows: any[
                                     <td className="px-2 py-1.5">{o.clientName || '—'}</td>
                                     <td className="px-2 py-1.5" title={orderTypeTitle(o, threshold)}>{orderTypeLabel(o, threshold)}</td>
                                     <td className="px-2 py-1.5 text-right">{o.sum != null ? rub(o.sum) : '—'}</td>
+                                    <td className="px-2 py-1.5 text-right">{o.revenueNoVat != null ? rub(o.revenueNoVat) : '—'}</td>
                                     <td className="px-2 py-1.5 text-right">{o.discountPct != null ? o.discountPct + '%' : '—'}</td>
                                     <td className="px-2 py-1.5">{fmtDate(o.enteredAt)}</td>
                                 </tr>

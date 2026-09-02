@@ -4,11 +4,13 @@ import { businessDaysInMonth, computeManagerSalary } from '@/lib/salary/engine';
 import { collectPeriodMetrics, type ManagerMetrics } from '@/lib/salary/metrics';
 import { getPlansForPeriod, resolveManagerComp } from '@/lib/salary/schemes';
 import { resolveManagerGrades } from '@/lib/salary/grades';
+import { loadPeriodView } from '@/lib/salary/period-view';
 import type { BlockComputeContext, BlockInstance } from '@/lib/salary/blocks/types';
 
 // Read-only salary tools for the "Семён" consultant (OpenAI function calling).
-// Source of truth: the persisted `salary_calc` row — the SAME data the "Моя зарплата" page
-// shows (app/api/salary/route.ts). No writes, salary engine untouched.
+// Source of truth: loadPeriodView — открытый период считается на лету, закрытый берётся
+// из снимка salary_calc. Это ТЕ ЖЕ данные, что показывает «Моя зарплата»
+// (app/api/salary/my/route.ts). No writes, salary engine untouched.
 // Marginal value per order is derived from compose.ts:72 — total = base + (премия·K_качества + variable)·K_команды,
 // so one extra order of a given type adds rates[type] × k_quality × k_team to the total.
 
@@ -41,23 +43,12 @@ const mult = (v: unknown): number => {
 };
 
 async function loadManagerSalary(managerId: number, year: number, month: number): Promise<SalaryCalcRow | null> {
-    const { data: periodRow } = await supabase
-        .from('salary_period')
-        .select('id')
-        .eq('year', year)
-        .eq('month', month)
-        .maybeSingle();
-
-    if (!periodRow) return null;
-
-    const { data } = await supabase
-        .from('salary_calc')
-        .select('total, oklad, premia_zayavki, k_quality, conv_bonus, discount_bonus, duty_pay, k_team, breakdown')
-        .eq('period_id', periodRow.id)
-        .eq('manager_id', managerId)
-        .maybeSingle();
-
-    return (data as SalaryCalcRow) || null;
+    // Единый источник: открытый период считается на лету, закрытый берётся из снимка —
+    // те же данные, что видит менеджер на «Моя зарплата».
+    const view = await loadPeriodView(year, month, { includeEngineers: false });
+    if (view.status === 'none') return null;
+    const row = view.rows.find((r) => Number(r.manager_id) === Number(managerId));
+    return row ? (row as SalaryCalcRow) : null;
 }
 
 function buildConvLever(row: SalaryCalcRow, breakdown: any, totalZayavki: number, config: SalaryConfig | null) {

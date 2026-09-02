@@ -15,6 +15,8 @@ const KEY_LABELS: Record<string, string> = {
     permanent_client_threshold: 'Порог «постоянного клиента»',
     source_exclusions: 'Источники-исключения',
     tender_duplicate_rule: 'Дубль на тендер (вне знаменателя конверсии)',
+    estimate_rule: 'Смета (вне конверсии)',
+    not_our_product_rule: 'Не наша продукция (вне конверсии)',
     nds_normalization: 'Нормализация НДС',
     vat_policy: 'НДС по витрине (ЗВТО — без НДС)',
 };
@@ -31,13 +33,13 @@ const ROLE_BLOCK_KEYS = new Set<string>([
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
 type Opt = { code: string; name: string };
-type Dicts = { statuses: Opt[]; orderMethods: Opt[]; categories: Opt[] };
+type Dicts = { statuses: Opt[]; orderMethods: Opt[]; categories: Opt[]; cancelReasons: Opt[] };
 
 export default function BaseConfigTab() {
     const [config, setConfig] = useState<Record<string, any>>({});
     const [effDates, setEffDates] = useState<Record<string, string>>({});
     const [keys, setKeys] = useState<string[]>([]);
-    const [dicts, setDicts] = useState<Dicts>({ statuses: [], orderMethods: [], categories: [] });
+    const [dicts, setDicts] = useState<Dicts>({ statuses: [], orderMethods: [], categories: [], cancelReasons: [] });
     const [loading, setLoading] = useState(true);
     const [savingKey, setSavingKey] = useState<string | null>(null);
     const { toast } = useToast();
@@ -53,7 +55,7 @@ export default function BaseConfigTab() {
             for (const k of data.keys) dates[k] = todayStr();
             setEffDates(dates);
             const dRes = await fetch('/api/salary/dictionaries').then((r) => r.json()).catch(() => null);
-            if (dRes && !dRes.error) setDicts({ statuses: dRes.statuses ?? [], orderMethods: dRes.orderMethods ?? [], categories: dRes.categories ?? [] });
+            if (dRes && !dRes.error) setDicts({ statuses: dRes.statuses ?? [], orderMethods: dRes.orderMethods ?? [], categories: dRes.categories ?? [], cancelReasons: dRes.cancelReasons ?? [] });
         } catch (e: any) {
             toast({ title: 'Ошибка загрузки конфига', description: e.message, variant: 'destructive' });
         } finally {
@@ -123,6 +125,56 @@ function KeyEditor({ configKey, value, onChange, dicts }: { configKey: string; v
                 <div>
                     <label className="text-[11px] text-muted-foreground">Эталонные статусы (тендер / ожидание выхода)</label>
                     <MultiSelectByName options={dicts.statuses} selected={ref} onChange={(v) => onChange({ ...value, reference_statuses: v })} empty="статусы не выбраны" />
+                </div>
+            </div>
+        );
+    }
+    // Смета: статусы, где правило работает, + причины отмены (самодостаточны) +
+    // текстовые маркеры в комментариях (требуют подтверждения по диалогу).
+    if (configKey === 'estimate_rule') {
+        const statuses: string[] = Array.isArray(value?.statuses) ? value.statuses : [];
+        const reasons: string[] = Array.isArray(value?.cancel_reasons) ? value.cancel_reasons : [];
+        const patterns: string[] = Array.isArray(value?.comment_patterns) ? value.comment_patterns : [];
+        return (
+            <div className="space-y-2">
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Статусы, где ищем смету</label>
+                    <MultiSelectByName options={dicts.statuses} selected={statuses} onChange={(v) => onChange({ ...value, statuses: v })} empty="статусы не выбраны" />
+                </div>
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Причины отмены = смета (исключают сразу)</label>
+                    <MultiSelectByName options={dicts.cancelReasons} selected={reasons} onChange={(v) => onChange({ ...value, cancel_reasons: v })} empty="причины не выбраны" />
+                </div>
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Слова в комментариях (исключают только с подтверждением по диалогу)</label>
+                    {patterns.map((p, i) => (
+                        <div key={i} className="mt-1 flex items-center gap-1.5">
+                            <Input value={p} onChange={(e) => onChange({ ...value, comment_patterns: patterns.map((x, idx) => (idx === i ? e.target.value : x)) })} className="h-8 w-48 text-sm" />
+                            <button onClick={() => onChange({ ...value, comment_patterns: patterns.filter((_, idx) => idx !== i) })} className="text-muted-foreground hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                    ))}
+                    <Button variant="outline" size="sm" className="mt-1 h-7" onClick={() => onChange({ ...value, comment_patterns: [...patterns, ''] })}><Plus className="mr-1 h-3.5 w-3.5" /> Слово</Button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-muted-foreground">Порог уверенности ИИ (0–1)</span>
+                    <NumberInput value={value?.min_confidence ?? 0} emptyValue={0} maxFractionDigits={2} onChange={(v) => onChange({ ...value, min_confidence: v ?? 0 })} className={`${numCls} h-8 w-20 text-sm text-right`} />
+                </div>
+            </div>
+        );
+    }
+    // Не наша продукция: статусы + причины отмены (обе ветки безусловные).
+    if (configKey === 'not_our_product_rule') {
+        const statuses: string[] = Array.isArray(value?.statuses) ? value.statuses : [];
+        const reasons: string[] = Array.isArray(value?.cancel_reasons) ? value.cancel_reasons : [];
+        return (
+            <div className="space-y-2">
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Статусы</label>
+                    <MultiSelectByName options={dicts.statuses} selected={statuses} onChange={(v) => onChange({ ...value, statuses: v })} empty="статусы не выбраны" />
+                </div>
+                <div>
+                    <label className="text-[11px] text-muted-foreground">Причины отмены</label>
+                    <MultiSelectByName options={dicts.cancelReasons} selected={reasons} onChange={(v) => onChange({ ...value, cancel_reasons: v })} empty="причины не выбраны" />
                 </div>
             </div>
         );

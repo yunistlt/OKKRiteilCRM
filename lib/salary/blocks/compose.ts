@@ -49,6 +49,7 @@ export function compose(instances: BlockInstance[], m: ManagerMetrics, ctx: Bloc
             multiplier: res.multiplier,
             explain: res.explain,
             tariff: res.tariff,
+            orders: res.orders,
             dataFill: res.dataFill,
         });
     }

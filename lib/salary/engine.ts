@@ -1,6 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { getConfigForPeriod, type SalaryConfig } from '@/lib/salary/config';
-import { collectEngineerMetrics, collectPeriodMetrics, type EngineerOrder, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
+import { businessDaysInMonth, collectEngineerMetrics, collectPeriodMetrics, type EngineerOrder, type ManagerMetrics, type OrderType, type PeriodMetrics } from '@/lib/salary/metrics';
 import { compose } from '@/lib/salary/blocks/compose';
 import { pickTier, round2 } from '@/lib/salary/blocks/tiers';
 import { getPlansForPeriod, listSchemes, resolveEngineerComp, resolveManagerComp, type EngineerComp, type PeriodPlans } from '@/lib/salary/schemes';
@@ -71,16 +71,10 @@ export interface PeriodSalary {
     results: SalaryResult[];
 }
 
-/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада. */
-export function businessDaysInMonth(year: number, month: number): number {
-    let count = 0;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-        const dow = new Date(year, month - 1, d).getDay();
-        if (dow !== 0 && dow !== 6) count++;
-    }
-    return count;
-}
+/** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада.
+ *  Реализация одна, в metrics.ts (там же считаются дни отсутствия); тут ре-экспорт,
+ *  чтобы не плодить второй календарь. */
+export { businessDaysInMonth };
 
 /** Пустые метрики для менеджера из реестра без активности (оператор → только оклад). */
 function zeroMetrics(managerId: number): ManagerMetrics {
@@ -341,18 +335,13 @@ async function ensureOpenPeriod(year: number, month: number): Promise<number> {
     return created.id;
 }
 
-/** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
-export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
-    const periodId = await ensureOpenPeriod(year, month);
-    // Одно юрлицо = несколько карточек клиента в CRM (менеджеры заводят новую на
-    // каждый заказ) — без пересборки канона по ИНН постоянный клиент считается новым
-    // (инцидент по заказу 54232, ООО «ХРС-Снабжение»: 6-я покупка засчиталась как
-    // первая). Канон пересобираем перед каждым расчётом; ~12 с на всей базе.
-    const { error: canonErr } = await supabase.rpc('salary_rebuild_client_canon');
-    if (canonErr) throw canonErr;
-    const calc = await calculatePeriod(year, month);
-
-    const rows = calc.results.map((r) => ({
+/**
+ * Строка salary_calc-формы из результата расчёта. Единый маппер и для персиста
+ * (recalcAndPersist / close), и для чтения открытого периода «на лету» (period-view),
+ * чтобы snapshot и live были байт-в-байт одной формы.
+ */
+export function salaryResultToCalcRow(r: SalaryResult, periodId: number, computedAt: string) {
+    return {
         period_id: periodId,
         manager_id: r.managerId,
         oklad: r.oklad,
@@ -365,8 +354,23 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
         total: r.total,
         margin_info: r.marginInfo,
         breakdown: r.breakdown,
-        computed_at: new Date().toISOString(),
-    }));
+        computed_at: computedAt,
+    };
+}
+
+/** Считает и СОХРАНЯЕТ расчёт периода в salary_calc (+ аудит). Период должен быть открыт. */
+export async function recalcAndPersist(year: number, month: number, actor: string | null): Promise<PeriodSalary> {
+    const periodId = await ensureOpenPeriod(year, month);
+    // Одно юрлицо = несколько карточек клиента в CRM (менеджеры заводят новую на
+    // каждый заказ) — без пересборки канона по ИНН постоянный клиент считается новым
+    // (инцидент по заказу 54232, ООО «ХРС-Снабжение»: 6-я покупка засчиталась как
+    // первая). Канон пересобираем перед каждым расчётом; ~12 с на всей базе.
+    const { error: canonErr } = await supabase.rpc('salary_rebuild_client_canon');
+    if (canonErr) throw canonErr;
+    const calc = await calculatePeriod(year, month);
+
+    const computedAt = new Date().toISOString();
+    const rows = calc.results.map((r) => salaryResultToCalcRow(r, periodId, computedAt));
 
     if (rows.length) {
         const { error } = await supabase.from('salary_calc').upsert(rows, { onConflict: 'period_id,manager_id' });
