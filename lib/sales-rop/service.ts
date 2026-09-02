@@ -158,6 +158,23 @@ export async function loadPresaleOrders(): Promise<
     }));
 }
 
+/**
+ * Имена и ники менеджеров — из справочника, а не из выборки заказов.
+ *
+ * 02.09.2026 тяжёлый запрос по заказам упал по таймауту, и весь отдел в отчёте
+ * стал «без менеджера»: имена жили только в нём. Справочник — сорок строк, он
+ * не падает, и имя человека не должно зависеть от того, собрались ли его сделки.
+ */
+async function loadManagerNames(): Promise<Map<number, { name: string; tg: string }>> {
+    const { data } = await supabase.from('managers').select('id, first_name, last_name, raw_data');
+    const out = new Map<number, { name: string; tg: string }>();
+    for (const m of (data ?? []) as any[]) {
+        const name = [m.last_name, m.first_name].filter(Boolean).join(' ').trim();
+        if (name) out.set(Number(m.id), { name, tg: String(m.raw_data?.telegram_username ?? '') });
+    }
+    return out;
+}
+
 /** Личные чаты менеджеров: заполняются, когда человек сам напишет боту. */
 async function loadDirectChats(): Promise<Map<number, string>> {
     const { data } = await supabase
@@ -656,7 +673,11 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     const orders = await soft('карточки заказов', [] as Awaited<ReturnType<typeof loadPresaleOrders>>, degraded, () =>
         loadPresaleOrders(),
     );
+    // Сначала справочник, потом уточнение из заказов: если выборка заказов не
+    // собралась, имена всё равно есть.
     const who = new Map<number | null, { name: string; tg: string }>();
+    const known = await soft('справочник менеджеров', new Map(), degraded, () => loadManagerNames());
+    for (const [id, v] of Array.from(known.entries())) who.set(id, v);
     for (const o of orders) who.set(o.managerId, { name: o.managerName, tg: o.telegram });
 
     const byManager = new Map<number | null, EveningRow[]>();
@@ -805,11 +826,15 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     // Менеджеры, у которых сегодня были звонки, но не было задач из плана: их
     // день тоже состоялся, и в отчёте владельцу они должны быть. Иначе выходной
     // или несработавший утренний прогон выглядит как «никто не работал».
-    const covered = new Set(ownerRows.map((r) => r.managerName));
+    // Сверяем по идентификатору, а не по имени: 02.09.2026 имена не подставились,
+    // все стали «без менеджера» — и одни и те же люди попали в отчёт дважды,
+    // строкой с планом и строкой со звонками.
+    const covered = new Set(Array.from(byManager.keys()).filter((id) => id !== null) as number[]);
     for (const [managerId, call] of Array.from(callsById.entries())) {
         if (settings.planManagerIds.length > 0 && !settings.planManagerIds.includes(Number(managerId))) continue;
-        const name = String((call as any).manager_name ?? '');
-        if (!name || covered.has(name)) continue;
+        if (covered.has(Number(managerId))) continue;
+        const name = who.get(Number(managerId))?.name || String((call as any).manager_name ?? '');
+        if (!name) continue;
 
         const review = settings.reviewCalls
             ? await reviewCallDay(today, String(managerId), name).catch(() => null)
