@@ -19,6 +19,9 @@ export type DayCall = {
     durationSec: number;
     phone: string | null;
     orderNumber: string | null;
+    /** Чей это заказ. Может отличаться от того, кто говорил: замена, отпуск,
+     *  клиент набрал напрямую, обратный звонок с сайта поднял сосед по очереди. */
+    orderManagerName: string | null;
     transcript: string | null;
 };
 
@@ -96,12 +99,13 @@ export async function loadDayCalls(date: string, managerRcId: string): Promise<D
         durationSec: Number(r.duration_sec ?? 0),
         phone: r.phone ?? null,
         orderNumber: r.order_number ?? null,
+        orderManagerName: r.order_manager_name ?? null,
         transcript: r.transcript ?? null,
     }));
 }
 
 /** Текст для модели: только те звонки, где есть что читать. */
-export function renderDayCalls(calls: DayCall[], utcOffsetHours = 4): string {
+export function renderDayCalls(calls: DayCall[], managerName = '', utcOffsetHours = 4): string {
     const hhmm = (v: string) => new Date(new Date(v).getTime() + utcOffsetHours * 3600_000).toISOString().slice(11, 16);
     const real = calls.filter((c) => !isEmptyCall(c));
     const empty = calls.length - real.length;
@@ -113,8 +117,14 @@ export function renderDayCalls(calls: DayCall[], utcOffsetHours = 4): string {
     ];
 
     for (const c of real.slice(0, 20)) {
+        // Чужой заказ помечаем прямо в строке: иначе модель советует «свяжись с
+        // клиентом» тому, кто просто снял трубку, а вести сделку будет другой.
+        const foreign =
+            c.orderManagerName && managerName && c.orderManagerName !== managerName
+                ? `, заказ ведёт ${c.orderManagerName}`
+                : '';
         lines.push(
-            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${c.orderNumber ? `, заказ №${c.orderNumber}` : ''}]`,
+            `[${hhmm(c.at)}, ${c.direction}, ${c.durationSec} сек${c.orderNumber ? `, заказ №${c.orderNumber}` : ''}${foreign}]`,
             c.transcript ?? '(расшифровки нет)',
             '',
         );
@@ -134,7 +144,11 @@ export type CallReview = {
     noRecordCalls: number;
 };
 
-export async function reviewCallDay(date: string, managerRcId: string): Promise<CallReview | null> {
+export async function reviewCallDay(
+    date: string,
+    managerRcId: string,
+    managerName = '',
+): Promise<CallReview | null> {
     const calls = await loadDayCalls(date, managerRcId);
     if (calls.length === 0) return null;
 
@@ -171,7 +185,7 @@ export async function reviewCallDay(date: string, managerRcId: string): Promise<
             max_tokens: Number(prompt.max_tokens ?? 600),
             messages: [
                 { role: 'system', content: prompt.system_prompt },
-                { role: 'user', content: renderDayCalls(calls) },
+                { role: 'user', content: renderDayCalls(calls, managerName) },
             ],
         });
 

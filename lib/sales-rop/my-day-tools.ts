@@ -83,6 +83,7 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                 durationSec: Number(r.duration_sec ?? 0),
                 phone: r.phone ?? null,
                 orderNumber: r.order_number ?? null,
+                orderManagerName: r.order_manager_name ?? null,
                 transcript: r.transcript ?? null,
             }));
 
@@ -103,6 +104,7 @@ export async function executeMyDayTool(name: string, args: any, managerId: numbe
                     длительность: `${c.durationSec} сек`,
                     телефон: c.phone,
                     заказ: c.orderNumber,
+                    'заказ ведёт': c.orderManagerName,
                     зачтён: verdict === 'talk',
                     почему: verdict === 'talk' ? null : WHY[verdict],
                 };

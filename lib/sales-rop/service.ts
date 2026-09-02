@@ -698,7 +698,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         // обманывает — сорок звонков выглядят работой, а половина из них гудки.
         // Разговоры считаются по расшифровкам, а не по длительности: минуту
         // слушать автоответчик — не работа, и в норму это попадать не должно.
-        const review = managerId === null ? null : await reviewCallDay(today, String(managerId)).catch(() => null);
+        const review =
+            managerId === null ? null : await reviewCallDay(today, String(managerId), w.name).catch(() => null);
 
         if (call) {
             ownerRows.push({
@@ -766,7 +767,9 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         const name = String((call as any).manager_name ?? '');
         if (!name || covered.has(name)) continue;
 
-        const review = settings.reviewCalls ? await reviewCallDay(today, String(managerId)).catch(() => null) : null;
+        const review = settings.reviewCalls
+            ? await reviewCallDay(today, String(managerId), name).catch(() => null)
+            : null;
         ownerRows.push({
             managerName: name,
             tasksTotal: 0,
