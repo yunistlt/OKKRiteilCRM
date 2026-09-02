@@ -20,7 +20,10 @@ type Item = {
     value: string;
 };
 
-type Ref = { managers: { id: number; name: string }[]; statuses: { code: string; name: string }[] };
+type Ref = {
+    managers: { id: number; name: string }[];
+    statuses: { code: string; name: string; active: boolean }[];
+};
 
 export default function SalesRopSettingsPage() {
     const [items, setItems] = useState<Item[]>([]);
@@ -304,18 +307,27 @@ function Field({
             else next.add(code);
             onChange(Array.from(next).join(','));
         };
+        // Показываем только живые статусы. Исключение — уже выбранный неактивный:
+        // он остаётся в настройке и должен быть виден, чтобы его можно было снять.
+        const shown = refs.statuses.filter((s) => s.active || picked.has(s.code));
+        const stale = shown.filter((s) => !s.active).length;
         return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
-                {refs.statuses.map((s) => {
+                {stale > 0 && (
+                    <div style={{ width: '100%', fontSize: 12, color: '#b26a00', marginBottom: 2 }}>
+                        Отмечены статусы, которых в CRM больше нет ({stale}) — их можно снять, на работу они не влияют.
+                    </div>
+                )}
+                {shown.map((s) => {
                     const on = picked.has(s.code);
                     return (
                         <button
                             key={s.code}
                             onClick={() => toggle(s.code)}
                             style={{
-                                background: on ? '#0057d9' : '#fff',
+                                background: on ? (s.active ? '#0057d9' : '#b26a00') : '#fff',
                                 color: on ? '#fff' : '#333',
-                                border: '1px solid ' + (on ? '#0057d9' : '#ddd'),
+                                border: '1px solid ' + (on ? (s.active ? '#0057d9' : '#b26a00') : '#ddd'),
                                 borderRadius: 0,
                                 padding: '3px 8px',
                                 fontSize: 12,
@@ -323,6 +335,7 @@ function Field({
                             }}
                         >
                             {s.name}
+                            {!s.active && ' · не используется'}
                         </button>
                     );
                 })}

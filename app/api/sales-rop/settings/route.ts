@@ -40,10 +40,16 @@ export async function GET() {
 
         // Справочники — чтобы в интерфейсе стояли имена и названия статусов, а
         // не идентификаторы и слаги.
-        const [{ data: mgrs }, { data: statuses }] = await Promise.all([
+        // Только активные сущности: в CRM 195 статусов, живых из них 62 —
+        // остальные это история («Цех-успех», старые схемы работы). Предлагать
+        // их к выбору значит предлагать настроить то, чего больше не бывает.
+        const [{ data: mgrs }, { data: statuses }, { data: dict }] = await Promise.all([
             supabase.from('managers').select('id, first_name, last_name, active').eq('active', true),
-            supabase.from('statuses').select('code, name'),
+            supabase.from('statuses').select('code, name, is_active'),
+            supabase.from('retailcrm_dictionaries').select('item_code, item_name, active').eq('entity_type', 'status'),
         ]);
+
+        const fromCrm = new Map(((dict ?? []) as any[]).map((d) => [String(d.item_code), d]));
 
         return NextResponse.json({
             items,
@@ -54,7 +60,16 @@ export async function GET() {
                 }))
                 .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
             statuses: ((statuses ?? []) as any[])
-                .map((s) => ({ code: String(s.code), name: String(s.name || s.code) }))
+                .map((s) => {
+                    const crm = fromCrm.get(String(s.code));
+                    return {
+                        code: String(s.code),
+                        // Название — из CRM, она источник правды для справочников.
+                        name: String(crm?.item_name || s.name || s.code),
+                        // Активность тоже из CRM; своя колонка — запасной ответ.
+                        active: crm ? Boolean(crm.active) : Boolean(s.is_active),
+                    };
+                })
                 .sort((a, b) => a.name.localeCompare(b.name, 'ru')),
         });
     } catch (e: any) {
