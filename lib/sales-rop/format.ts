@@ -35,6 +35,9 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     development: '🟢 Развитие клиента — что ещё предложить',
     cold: '⚫️ Остывшие — поднять или закрыть',
     reactivation: '📞 Обзвон базы — давно не покупали',
+    // Отношения с клиентом, а не сделка: сюда попадают и те, кто ни разу не
+    // покупал. Заголовок про клиента, не про заказ.
+    client_touch: '🤝 Напомнить о себе — давно не общались',
 };
 
 /**
@@ -110,8 +113,12 @@ export function formatMorning(
             lines.push('', REASON_TITLE[t.reasonCode]);
             lastReason = t.reasonCode;
         }
+        // У напоминания о клиенте суммы может не быть вовсе: человек обращался,
+        // но до просчёта не дошло. «0 ₽» в такой строке читается как сделка на
+        // ноль рублей, поэтому сумму просто не пишем.
+        const head = t.amount > 0 ? `${money(t.amount)} ₽ — ` : '';
         lines.push(
-            `${orderLink(base, t.orderId, t.number)} — ${money(t.amount)} ₽ — ${t.client || 'клиент не указан'}`,
+            `${orderLink(base, t.orderId, t.number)} — ${head}${t.client || 'клиент не указан'}`,
             `   ${t.reasonText}`,
         );
     }

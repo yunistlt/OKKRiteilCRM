@@ -33,6 +33,8 @@ export type Settings = Thresholds & {
     monthPlan: number;
     /** На сколько поднята нагрузка относительно базовых норм. 1 — как заведено. */
     loadFactor: number;
+    /** Сколько напоминаний о клиенте (а не о сделке) давать в день. */
+    clientTouchPerDay: number;
     setCrmDate: boolean;
     /** Писать ли рекомендацию РОПа в комментарий карточки заказа. */
     writeCrmNotes: boolean;
@@ -118,6 +120,7 @@ export async function loadSettings(): Promise<Settings> {
         coldPerDay: num('cold_per_day', 2),
         monthPlan: num('month_plan', 13_000_000),
         loadFactor,
+        clientTouchPerDay: num('client_touch_per_day', 2),
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
         writeCrmNotes: String(map.get('write_crm_notes') ?? 'true') === 'true',
         orphanTelegram: String(map.get('orphan_telegram') || ''),
@@ -364,6 +367,81 @@ async function loadReactivationTasks(
 }
 
 /**
+ * Кому пора напомнить о себе.
+ *
+ * Читает готовый снимок отношений: считать историю касаний по всей базе в
+ * утреннем прогоне нельзя, это минуты. Снимок пересчитывается ночью.
+ *
+ * Задача привязана к последнему заказу клиента — просто чтобы менеджеру было с
+ * чего начать разговор и куда нажать. Повод при этом не в заказе, а в клиенте.
+ */
+async function loadClientTouchTasks(settings: Settings, today: string): Promise<Task[]> {
+    const perDay = settings.clientTouchPerDay;
+    if (perDay <= 0) return [];
+
+    const { data, error } = await supabase.rpc('sales_client_touch_candidates', { p_today: today });
+    if (error) return [];
+
+    // Половина мест — тем, кто ещё ничего не купил. Без квоты они не попадут в
+    // план никогда: по деньгам постоянный клиент всегда выше, и несостоявшийся
+    // заказчик остаётся забытым — ровно то, ради чего это и делалось.
+    const quotaNew = Math.max(1, Math.floor(perDay / 2));
+    const byManager = new Map<number | null, Task[]>();
+    const newByManager = new Map<number, number>();
+
+    for (const r of (data ?? []) as any[]) {
+        const managerId = r.manager_id === null ? null : Number(r.manager_id);
+        // Бесхозных клиентов не раздаём наугад: звонок «здравствуйте, я от
+        // компании, с которой вы не говорили» хуже, чем не позвонить.
+        if (managerId === null) continue;
+        if (settings.planManagerIds.length > 0 && !settings.planManagerIds.includes(managerId)) continue;
+
+        const list = byManager.get(managerId) ?? [];
+        if (list.length >= perDay) continue;
+
+        const isNew = String(r.stage) !== 'kupil';
+        const takenNew = newByManager.get(managerId) ?? 0;
+        // Покупавшего не берём на место, зарезервированное под непокупавшего.
+        if (!isNew && list.length >= perDay - quotaNew + takenNew) continue;
+
+        const days = Number(r.days_since ?? 0);
+        const bought = Number(r.total_summ ?? 0);
+        const stage = String(r.stage);
+        const potential = Number(r.last_order_amount ?? 0);
+        const reasonText =
+            stage === 'kupil'
+                ? `Покупал на ${Math.round(bought).toLocaleString('ru-RU')} ₽, молчим ${days} дн. Позвонить, узнать планы`
+                : stage === 'schitali'
+                  ? potential > 0
+                      ? `Считали на ${Math.round(potential).toLocaleString('ru-RU')} ₽, не купил, ${days} дн назад. ` +
+                        'Позвонить, узнать, чем закончилось'
+                      : // Ноль здесь означает заявку без просчёта, а не сделку на
+                        // ноль рублей. Писать «считали на 0 ₽» — врать человеку.
+                        `Обращался ${days} дн назад, до сделки не дошло. Позвонить, узнать, что нужно`
+                  : `Обращался ${days} дн назад, до просчёта не дошло. Позвонить, узнать, что нужно`;
+
+        list.push({
+            orderId: Number(r.last_order_id ?? 0),
+            number: String(r.last_order_number ?? ''),
+            client: r.client_name ?? '',
+            statusCode: 'client_touch',
+            statusName: 'Отношения с клиентом',
+            // В строке показываем то, что даёт вес: у покупавшего — покупки, у
+            // остальных — сумма просчёта.
+            amount: stage === 'kupil' ? bought : potential,
+            managerId,
+            reasonCode: 'client_touch',
+            reasonText,
+            weight: Math.max(bought, potential),
+        });
+        byManager.set(managerId, list);
+        if (isNew) newByManager.set(managerId, takenNew + 1);
+    }
+
+    return Array.from(byManager.values()).flat();
+}
+
+/**
  * Сообщить владельцу, что прогон упал.
  *
  * Сегодня утренний план не ушёл из-за ошибки в коде, и узнали мы об этом от
@@ -441,6 +519,12 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         } catch {
             // Профили суточной давности лучше, чем сорванная рассылка.
         }
+        try {
+            // Снимок отношений с клиентами: две секунды на всю базу.
+            await supabase.rpc('sales_refresh_client_relations');
+        } catch {
+            // То же правило: вчерашний снимок лучше, чем несобранный план.
+        }
     }
 
     const all = await loadPresaleOrders();
@@ -463,6 +547,15 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             managerId,
             Math.max(0, settings.dailyTarget - tasks.length - Math.round(intake.get(managerId) ?? 0)),
         );
+    }
+
+    // Отношения с клиентом — отдельная работа от сделок. Сюда попадает и тот,
+    // кто ни разу ничего не купил: обратился Росатом, посчитали, не сложилось —
+    // забыть его нельзя, а по сделке напоминать нечего, она закрыта.
+    for (const touch of await loadClientTouchTasks(settings, today)) {
+        const list = plan.get(touch.managerId) ?? [];
+        list.push(touch);
+        plan.set(touch.managerId, list);
     }
 
     for (const dev of await loadDevelopmentTasks(settings, plannedIds, shortfall)) {

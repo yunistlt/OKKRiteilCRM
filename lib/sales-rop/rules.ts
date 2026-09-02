@@ -33,7 +33,7 @@ export type Task = {
     statusName: string;
     amount: number;
     managerId: number | null;
-    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development' | 'reactivation';
+    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development' | 'reactivation' | 'client_touch';
     reasonText: string;
     weight: number;
 };
@@ -217,6 +217,8 @@ export function buildPlan(
             development: 5,
             cold: 6,
             reactivation: 7,
+            // Ниже всего: сначала деньги в работе, потом отношения вдолгую.
+            client_touch: 8,
         };
         list.sort((a: Task, b: Task) => rank[a.reasonCode] - rank[b.reasonCode] || b.weight - a.weight);
 
@@ -239,6 +241,7 @@ export function buildPlan(
                     x.reasonCode !== 'cold' &&
                     x.reasonCode !== 'development' &&
                     x.reasonCode !== 'reactivation' &&
+                    x.reasonCode !== 'client_touch' &&
                     x.reasonCode !== 'contact_today',
             )
             .slice(0, room);
@@ -246,7 +249,10 @@ export function buildPlan(
         // резать первой, она не делается никогда — а цель в 300 постоянных
         // клиентов достигается только ею.
         const dev = list.filter(
-            (x: Task) => x.reasonCode === 'development' || x.reasonCode === 'reactivation',
+            (x: Task) =>
+                x.reasonCode === 'development' ||
+                x.reasonCode === 'reactivation' ||
+                x.reasonCode === 'client_touch',
         );
 
         // Остывшими добираем день до нормы. У одного менеджера четырнадцать
