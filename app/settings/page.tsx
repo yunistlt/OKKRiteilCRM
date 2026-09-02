@@ -21,6 +21,14 @@ export default function SettingsIndexPage() {
                     </p>
                 </Link>
 
+                <Link href="/settings/sales-rop" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-blue-100 hover:border-blue-100 transition-all relative overflow-hidden">
+                    <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">📋</div>
+                    <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Бот-РОП</h3>
+                    <p className="text-gray-500 text-sm leading-relaxed">
+                        Нагрузка отдела, нормы дня, пороги напоминаний и тексты утренних планов.
+                    </p>
+                </Link>
+
                 <Link href="/settings/access" className="group p-6 md:p-8 bg-white border border-gray-100 rounded-2xl md:rounded-3xl shadow-xl shadow-gray-200/50 hover:shadow-cyan-100 hover:border-cyan-100 transition-all relative overflow-hidden">
                     <div className="text-3xl md:text-4xl mb-4 md:mb-6 group-hover:scale-110 transition-transform origin-left">🛡️</div>
                     <h3 className="text-lg md:text-xl font-black text-gray-900 mb-2 uppercase tracking-tight">Доступы и Права</h3>
