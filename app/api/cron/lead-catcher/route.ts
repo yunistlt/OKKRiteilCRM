@@ -28,6 +28,15 @@ function mapPurchaseForm(raw?: string): string {
     return 'trebuetsya-utochnit';
 }
 
+// Наши собственные адреса (менеджеры тестируют виджет со своей рабочей почты). Домен берём из
+// почтового ящика компании, а не хардкодом, — так же, как у секретаря Катерины.
+function isOurOwnEmail(email?: string | null): boolean {
+    if (!email) return false;
+    const our = (process.env.IMAP_USER || process.env.SMTP_USER || '').split('@')[1]?.trim().toLowerCase();
+    if (!our) return false;
+    return email.trim().toLowerCase().endsWith('@' + our);
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
@@ -74,6 +83,15 @@ export async function GET(req: Request) {
                 .eq('session_id', session.id)
                 .order('created_at', { ascending: true });
 
+            // Заказ по этой сессии уже заведён — второй не создаём ни при каких условиях.
+            if (session.crm_order_id || session.crm_order_number) {
+                await supabase
+                    .from('widget_sessions')
+                    .update({ is_lead_created: true })
+                    .eq('id', session.id);
+                continue;
+            }
+
             if (msgsError || !messages || messages.length === 0) continue;
 
             // 1. Проверяем, ответил ли вообще клиент хоть раз
@@ -91,9 +109,38 @@ export async function GET(req: Request) {
                 continue;
             }
 
+            // 3. ЗАХВАТ сессии до тяжёлой работы. Крон идёт раз в минуту, а обработка одной сессии
+            // (OpenAI + живой фетч цен + создание заказа в CRM) занимает дольше — соседние запуски
+            // брали ту же сессию и плодили заказы (инцидент 02.09.2026: один чат = 10 заказов
+            // 54501…54516). Флаг ставим ПЕРЕД работой и возвращаем обратно, если заявка не создана.
+            const { data: claimed, error: claimError } = await supabase
+                .from('widget_sessions')
+                .update({ is_lead_created: true })
+                .eq('id', session.id)
+                .eq('is_lead_created', false)
+                .select('id');
+
+            if (claimError) {
+                console.error(`[lead-catcher] session ${session.id}: claim failed`, claimError);
+                continue;
+            }
+            if (!claimed || claimed.length === 0) {
+                // Сессию уже забрал параллельный запуск крона.
+                continue;
+            }
+
+            const releaseSession = async () => {
+                await supabase
+                    .from('widget_sessions')
+                    .update({ is_lead_created: false })
+                    .eq('id', session.id);
+            };
+
             const chatLog = messages.map((m: any) => `${m.role === 'user' ? 'Клиент' : 'ИИ'}: ${m.content}`).join('\n');
 
-            const extractionResponse = await openai.chat.completions.create({
+            let extractionResponse;
+            try {
+                extractionResponse = await openai.chat.completions.create({
                 model: 'gpt-4o-mini',
                 messages: [
                     { 
@@ -139,8 +186,15 @@ export async function GET(req: Request) {
                     },
                     { role: 'user', content: `Лог диалога:\n${chatLog}` }
                 ],
-                response_format: { type: 'json_object' }
-            });
+                    response_format: { type: 'json_object' }
+                });
+            } catch (aiError: any) {
+                // Транзиентная ошибка ИИ не должна съедать сессию — вернём её в очередь.
+                console.error(`[lead-catcher] session ${session.id}: extraction failed`, aiError);
+                await releaseSession();
+                results.push({ sessionId: session.id, status: 'extraction_error', error: aiError.message });
+                continue;
+            }
             await recordAiUsage({ agentId: AiAgent.ELENA, model: extractionResponse.model, usage: extractionResponse.usage, purpose: 'lead_extraction' });
 
             const extractedData = JSON.parse(extractionResponse.choices[0].message.content || '{}');
@@ -151,6 +205,17 @@ export async function GET(req: Request) {
                 if (m) {
                     existingOrderId = parseInt(m[0]);
                 }
+            }
+
+            // Менеджер тестирует виджет со своей рабочей почты — это не лид, заказ не заводим.
+            if (isOurOwnEmail(extractedData.email) && !existingOrderId) {
+                await supabase.from('widget_messages').insert([{
+                    session_id: session.id,
+                    role: 'system',
+                    content: 'ℹ️ Заявка не создана: контакт — внутренний адрес компании (проверка виджета).'
+                }]);
+                results.push({ sessionId: session.id, status: 'internal_contact_skipped' });
+                continue;
             }
 
             if (extractedData.phone || extractedData.email || extractedData.telegram || existingOrderId) {
@@ -345,11 +410,13 @@ ${chatLog.split('\n').slice(-10).join('\n')}`;
                     results.push({ sessionId: session.id, status: 'success', data: extractedData });
                 } catch (crmError: any) {
                     console.error(`CRM Error for session ${session.id}:`, crmError);
+                    await releaseSession();
                     results.push({ sessionId: session.id, status: 'crm_error', error: crmError.message });
                 }
             } else {
                 // GPT не смог извлечь контакты из диалога — НЕ помечаем как обработанную,
                 // чтобы при следующем запуске попробовать снова (пользователь может написать позже)
+                await releaseSession();
                 results.push({ sessionId: session.id, status: 'no_contacts_found' });
             }
         }
