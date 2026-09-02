@@ -29,6 +29,8 @@ export type Settings = Thresholds & {
     chatId: string;
     enabled: boolean;
     monthPlan: number;
+    /** На сколько поднята нагрузка относительно базовых норм. 1 — как заведено. */
+    loadFactor: number;
     setCrmDate: boolean;
     /** Писать ли рекомендацию РОПа в комментарий карточки заказа. */
     writeCrmNotes: boolean;
@@ -83,21 +85,35 @@ export async function loadSettings(): Promise<Settings> {
         return Number.isFinite(v) ? v : fallback;
     };
 
+    /**
+     * Множитель нагрузки: 1.05 — это «всем на 5% больше», не трогая остальные
+     * настройки. Норма дня и лимит наших задач — целые числа, поэтому проценты
+     * нужны отдельной ручкой: поднимать 12 → 13 → 14 руками значит каждый раз
+     * шагать на 8%, а отдел растёт мельче.
+     *
+     * Держим в разумных границах: ноль или отрицательное значение обнулило бы
+     * планы, а десятикратное завалило бы людей списком, который не сделать.
+     */
+    const rawFactor = num('load_factor', 1);
+    const loadFactor = Math.min(2, Math.max(0.5, rawFactor));
+    const scaled = (key: string, fallback: number) => Math.max(1, Math.round(num(key, fallback) * loadFactor));
+
     return {
         // Пустая настройка означает «шли туда же, куда оплаты», а не «молчи»:
         // отдельный чат для плана продаж пока не нужен.
         chatId: String(map.get('telegram_chat_id') || process.env.TELEGRAM_PAYMENTS_CHAT_ID || ''),
         enabled: String(map.get('enabled') ?? 'true') === 'true',
-        tasksPerManager: num('tasks_per_manager', 7),
+        tasksPerManager: scaled('tasks_per_manager', 7),
         invoiceStaleDays: num('invoice_stale_days', 2),
         dealStaleDays: num('deal_stale_days', 3),
         bigDealAmount: num('big_deal_amount', 1_000_000),
         bigDealSilenceDays: num('big_deal_silence_days', 7),
         freshOverdueDays: num('fresh_overdue_days', 30),
-        dailyTarget: num('daily_target_tasks', 12),
+        dailyTarget: scaled('daily_target_tasks', 12),
         minAlways: num('min_always_tasks', 3),
         coldPerDay: num('cold_per_day', 2),
         monthPlan: num('month_plan', 13_000_000),
+        loadFactor,
         setCrmDate: String(map.get('set_crm_contact_date') ?? 'true') === 'true',
         writeCrmNotes: String(map.get('write_crm_notes') ?? 'true') === 'true',
         orphanTelegram: String(map.get('orphan_telegram') || ''),
