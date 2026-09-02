@@ -7,6 +7,7 @@ import {
     formatEvening,
     formatEveningHeader,
     formatMorning,
+    firstNameOf,
     formatOwnerReport,
     formatPersonalPlan,
 } from '@/lib/sales-rop/format';
@@ -15,6 +16,7 @@ import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
 import { appendRopNote } from '@/lib/sales-rop/crm-note';
 import { reviewCallDay } from '@/lib/sales-rop/call-review';
+import { generateGreeting } from '@/lib/sales-rop/greeting';
 import type { EveningRow } from '@/lib/sales-rop/format';
 
 // Сборка и отправка утреннего плана и вечернего разбора.
@@ -38,6 +40,8 @@ export type Settings = Thresholds & {
     orphanTelegram: string;
     morningGreeting: string;
     morningFarewell: string;
+    /** Сочинять ли приветствие каждому и каждый день заново. */
+    greetingAi: boolean;
     /**
      * Кому слать планы. Пусто — всем, у кого нашлись задачи, включая уволенных
      * (их заказы уходят владельцу). Список нужен, чтобы утренняя рассылка была
@@ -119,6 +123,7 @@ export async function loadSettings(): Promise<Settings> {
         orphanTelegram: String(map.get('orphan_telegram') || ''),
         morningGreeting: String(map.get('morning_greeting') || ''),
         morningFarewell: String(map.get('morning_farewell') || ''),
+        greetingAi: String(map.get('greeting_ai') ?? 'false') === 'true',
         deliverPlansToDm: String(map.get('deliver_plans_to_dm') ?? 'true') === 'true',
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
@@ -511,11 +516,26 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     }
 
     for (const bucket of Array.from(byRecipient.values())) {
+        // Живое обращение каждому своё. Не получилось — остаётся шаблон из
+        // настроек: без приветствия сообщение начинаться не должно.
+        const written = settings.greetingAi
+            ? await generateGreeting({
+                  firstName: firstNameOf(bucket.name),
+                  date: new Date(today),
+                  tasks: bucket.tasks.length,
+                  amount: bucket.tasks.reduce((sum, t) => sum + t.amount, 0),
+              }).catch(() => null)
+            : null;
+
         preview.push(
             formatMorning(
                 { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
                 CRM_BASE,
-                { greeting: settings.morningGreeting, farewell: settings.morningFarewell, date: new Date(today) },
+                {
+                    greeting: written?.greeting || settings.morningGreeting,
+                    farewell: written?.farewell || settings.morningFarewell,
+                    date: new Date(today),
+                },
             ),
         );
         for (const t of bucket.tasks) {
