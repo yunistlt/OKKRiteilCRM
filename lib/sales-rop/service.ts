@@ -408,6 +408,15 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
         const bought = Number(r.total_summ ?? 0);
         const stage = String(r.stage);
         const potential = Number(r.last_order_amount ?? 0);
+        // Кто это вообще: «производство мебели, 8 филиалов» превращает холодный
+        // звонок в разговор по делу. Данные из Dadata, могут ещё не приехать.
+        const about = [
+            r.activity ? String(r.activity).replace(/\s*\(ОКВЭД[^)]*\)/, '') : '',
+            Number(r.branches ?? 0) > 1 ? `филиалов ${Number(r.branches)}` : '',
+        ]
+            .filter(Boolean)
+            .join(', ');
+        const tail = about ? ` (${about})` : '';
         const reasonText =
             stage === 'kupil'
                 ? `Покупал на ${Math.round(bought).toLocaleString('ru-RU')} ₽, молчим ${days} дн. Позвонить, узнать планы`
@@ -419,6 +428,7 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
                         // ноль рублей. Писать «считали на 0 ₽» — врать человеку.
                         `Обращался ${days} дн назад, до сделки не дошло. Позвонить, узнать, что нужно`
                   : `Обращался ${days} дн назад, до просчёта не дошло. Позвонить, узнать, что нужно`;
+        // Хвост с описанием компании клеим ко всем поводам одинаково.
 
         list.push({
             orderId: Number(r.last_order_id ?? 0),
@@ -431,7 +441,7 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
             amount: stage === 'kupil' ? bought : potential,
             managerId,
             reasonCode: 'client_touch',
-            reasonText,
+            reasonText: reasonText + tail,
             weight: Math.max(bought, potential),
         });
         byManager.set(managerId, list);

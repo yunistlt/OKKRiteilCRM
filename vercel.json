@@ -18,6 +18,10 @@
             "schedule": "0 14 * * 1-5"
         },
 {
+            "path": "/api/cron/rop-enrich",
+            "schedule": "0 */2 * * *"
+        },
+{
             "path": "/api/cron/rop-relations",
             "schedule": "40 4 * * 1-5"
         },
