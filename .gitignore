@@ -44,4 +44,7 @@ timeweb-audit-quiz/
 timeweb-audit-quiz.zip
 scratch/check_email*.ts
 scratch/query_*.ts
+
+# throwaway scripts/data
+scratch/
 .env*
