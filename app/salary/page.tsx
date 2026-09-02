@@ -104,7 +104,11 @@ export default function SalaryDashboard() {
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Ошибка пересчёта');
-            toast({ title: 'Пересчитано', description: `${MONTHS[month - 1]} ${year}: ${json.results?.length ?? 0} менеджеров` });
+            toast({
+                title: 'Пересчитано',
+                description: `${MONTHS[month - 1]} ${year}: ${json.results?.length ?? 0} менеджеров${json.canonWarning ? `. ⚠️ ${json.canonWarning}` : ''}`,
+                variant: json.canonWarning ? 'destructive' : undefined,
+            });
             fetchData();
         } catch (e: any) {
             toast({ title: 'Ошибка', description: e.message, variant: 'destructive' });
@@ -132,7 +136,7 @@ export default function SalaryDashboard() {
                 : `Ведомость НЕ отправлена: ${d?.skipped || (d?.failed ?? []).map((f: any) => `${f.name} — ${f.error}`).join('; ') || 'причина неизвестна'}. Отправьте кнопкой «В бухгалтерию».`;
             toast({
                 title: 'Период закрыт',
-                description: `${MONTHS[month - 1]} ${year}. ${delivered}`,
+                description: `${MONTHS[month - 1]} ${year}. ${delivered}${json.canonWarning ? ` ⚠️ ${json.canonWarning}` : ''}`,
                 variant: d?.ok ? undefined : 'destructive',
             });
             fetchData();

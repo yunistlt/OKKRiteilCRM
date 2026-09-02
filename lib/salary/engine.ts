@@ -69,6 +69,8 @@ export interface PeriodSalary {
     teamRevenueNoVat: number;
     kTeam: number;
     results: SalaryResult[];
+    /** Заполнено, если канон клиентов не удалось пересобрать перед расчётом (см. recalcAndPersist). */
+    canonWarning?: string;
 }
 
 /** Кол-во рабочих дней (Пн–Пт) в месяце — для пропорции оклада.
@@ -364,10 +366,21 @@ export async function recalcAndPersist(year: number, month: number, actor: strin
     // Одно юрлицо = несколько карточек клиента в CRM (менеджеры заводят новую на
     // каждый заказ) — без пересборки канона по ИНН постоянный клиент считается новым
     // (инцидент по заказу 54232, ООО «ХРС-Снабжение»: 6-я покупка засчиталась как
-    // первая). Канон пересобираем перед каждым расчётом; ~12 с на всей базе.
+    // первая). Канон пересобираем перед каждым расчётом.
+    //
+    // Но пересборка идёт ~9 с и упирается в лимит запроса Supabase REST (8 с): при
+    // отмене расчёт падал целиком, и закрытие периода не проходило (02.09.2026: август
+    // не закрывался, ведомость в бухгалтерию не уходила). Срыв канона больше НЕ роняет
+    // расчёт: канон пересобирается ночным кроном (/api/cron/salary-client-canon), а
+    // предупреждение уходит наверх и показывается человеку — молча считать нельзя.
+    let canonWarning: string | undefined;
     const { error: canonErr } = await supabase.rpc('salary_rebuild_client_canon');
-    if (canonErr) throw canonErr;
+    if (canonErr) {
+        console.error('[salary] Канон клиентов не пересобран:', canonErr.message);
+        canonWarning = `Канон клиентов не пересобран (${canonErr.message}). Счёт покупок клиента — по данным ночной пересборки; новые склейки карточек за сегодня могли не учесться.`;
+    }
     const calc = await calculatePeriod(year, month);
+    if (canonWarning) calc.canonWarning = canonWarning;
 
     const computedAt = new Date().toISOString();
     const rows = calc.results.map((r) => salaryResultToCalcRow(r, periodId, computedAt));
