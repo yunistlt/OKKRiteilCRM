@@ -43,13 +43,15 @@ export async function GET() {
         // Только активные сущности: в CRM 195 статусов, живых из них 62 —
         // остальные это история («Цех-успех», старые схемы работы). Предлагать
         // их к выбору значит предлагать настроить то, чего больше не бывает.
-        const [{ data: mgrs }, { data: statuses }, { data: dict }] = await Promise.all([
+        const [{ data: mgrs }, { data: statuses }, { data: dict }, { data: working }] = await Promise.all([
             supabase.from('managers').select('id, first_name, last_name, active').eq('active', true),
             supabase.from('statuses').select('code, name, is_active'),
             supabase.from('retailcrm_dictionaries').select('item_code, item_name, active').eq('entity_type', 'status'),
+            supabase.from('status_settings').select('code, is_working').eq('is_working', true),
         ]);
 
         const fromCrm = new Map(((dict ?? []) as any[]).map((d) => [String(d.item_code), d]));
+        const isWorking = new Set(((working ?? []) as any[]).map((r) => String(r.code)));
 
         return NextResponse.json({
             items,
@@ -68,6 +70,9 @@ export async function GET() {
                         name: String(crm?.item_name || s.name || s.code),
                         // Активность тоже из CRM; своя колонка — запасной ответ.
                         active: crm ? Boolean(crm.active) : Boolean(s.is_active),
+                        // Бот вообще смотрит только на рабочие статусы. Галочка
+                        // на нерабочем ничего не делает, и это должно быть видно.
+                        working: isWorking.has(String(s.code)),
                     };
                 })
                 .sort((a, b) => a.name.localeCompare(b.name, 'ru')),

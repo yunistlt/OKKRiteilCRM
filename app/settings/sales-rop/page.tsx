@@ -22,7 +22,7 @@ type Item = {
 
 type Ref = {
     managers: { id: number; name: string }[];
-    statuses: { code: string; name: string; active: boolean }[];
+    statuses: { code: string; name: string; active: boolean; working: boolean }[];
 };
 
 export default function SalesRopSettingsPage() {
@@ -309,13 +309,17 @@ function Field({
         };
         // Показываем только живые статусы. Исключение — уже выбранный неактивный:
         // он остаётся в настройке и должен быть виден, чтобы его можно было снять.
-        const shown = refs.statuses.filter((s) => s.active || picked.has(s.code));
-        const stale = shown.filter((s) => !s.active).length;
+        // Бот работает только с «рабочими» статусами — в остальных заказ и так
+        // не попадает в план, и галочка там ничего не меняет. Предлагаем только
+        // те, где выбор имеет смысл.
+        const shown = refs.statuses.filter((s) => (s.active && s.working) || picked.has(s.code));
+        const stale = shown.filter((s) => !s.active || !s.working).length;
         return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, maxHeight: 220, overflowY: 'auto' }}>
                 {stale > 0 && (
                     <div style={{ width: '100%', fontSize: 12, color: '#b26a00', marginBottom: 2 }}>
-                        Отмечены статусы, которых в CRM больше нет ({stale}) — их можно снять, на работу они не влияют.
+                        Оранжевым — статусы, на которые бот и так не смотрит ({stale}): они нерабочие или их больше нет
+                        в CRM. Галочка на них ничего не меняет, снять можно смело.
                     </div>
                 )}
                 {shown.map((s) => {
@@ -325,9 +329,9 @@ function Field({
                             key={s.code}
                             onClick={() => toggle(s.code)}
                             style={{
-                                background: on ? (s.active ? '#0057d9' : '#b26a00') : '#fff',
+                                background: on ? (s.active && s.working ? '#0057d9' : '#b26a00') : '#fff',
                                 color: on ? '#fff' : '#333',
-                                border: '1px solid ' + (on ? (s.active ? '#0057d9' : '#b26a00') : '#ddd'),
+                                border: '1px solid ' + (on ? (s.active && s.working ? '#0057d9' : '#b26a00') : '#ddd'),
                                 borderRadius: 0,
                                 padding: '3px 8px',
                                 fontSize: 12,
@@ -335,7 +339,7 @@ function Field({
                             }}
                         >
                             {s.name}
-                            {!s.active && ' · не используется'}
+                            {!s.active ? ' · нет в CRM' : !s.working ? ' · нерабочий' : ''}
                         </button>
                     );
                 })}
