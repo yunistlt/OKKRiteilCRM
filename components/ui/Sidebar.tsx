@@ -102,6 +102,7 @@ export default function Sidebar() {
                 { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
                 { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
+                { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
             ]
         },
