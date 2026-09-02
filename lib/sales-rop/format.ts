@@ -348,6 +348,33 @@ export function formatOwnerReport(params: {
 }
 
 /** Шапка вечернего отчёта: цифры дня по отделу. */
+/**
+ * Личный план месяца — в личное сообщение менеджеру.
+ *
+ * Общий план отдела человек на себя не примеряет: 13,5 млн — это «где-то там».
+ * Своя цифра и остаток по рабочим дням — то, на что он может повлиять сегодня.
+ * Планы (и общий, и личные) берутся из «Настройки мотивации → Планы», оттуда же,
+ * откуда их берёт ведомость ЗП, — чтобы цифра была одна на всю систему.
+ */
+export function formatPersonalPlan(params: {
+    sold: number;
+    plan: number;
+    workdaysLeft: number;
+}): string | null {
+    const { sold, plan, workdaysLeft } = params;
+    if (plan <= 0) return null;
+
+    const left = Math.max(0, plan - sold);
+    const pct = Math.round((sold * 100) / plan);
+    if (left === 0) return `Личный план: ${money(sold)} из ${money(plan)} ₽ (${pct}%) — выполнен ✅`;
+
+    const perDay = workdaysLeft > 0 ? left / workdaysLeft : left;
+    return (
+        `Личный план: ${money(sold)} из ${money(plan)} ₽ (${pct}%)\n` +
+        `Осталось ${money(left)} ₽ за ${days(workdaysLeft)} — по ${money(perDay)} ₽ в день`
+    );
+}
+
 export function formatEveningHeader(params: {
     date: string;
     invoicesToday: number;

@@ -8,6 +8,7 @@ import {
     formatEveningHeader,
     formatMorning,
     formatOwnerReport,
+    formatPersonalPlan,
 } from '@/lib/sales-rop/format';
 import type { OwnerRow } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
@@ -674,9 +675,21 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     ]);
     const callsById = new Map(((callRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
     const baseById = new Map(((baseRows ?? []) as any[]).map((r) => [String(r.manager_id), r]));
+
+    // Личные планы: своя цифра, а не общая по отделу. 13,5 млн человек на себя не
+    // примеряет, свои 5 154 000 — примеряет.
+    const personalPlans = await loadPersonalPlans(today);
+    const personalSold = await loadMonthSoldByManager(today);
+    const workdaysLeft = workdaysLeftInMonth(today);
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
-        const own = formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE);
+        const plan = managerId === null ? null : (personalPlans.get(managerId) ?? null);
+        const personal = plan
+            ? formatPersonalPlan({ sold: personalSold.get(managerId as number) ?? 0, plan, workdaysLeft })
+            : null;
+        const own =
+            formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE) +
+            (personal ? `\n\n${personal}` : '');
         const call = managerId === null ? null : callsById.get(String(managerId));
         const base = managerId === null ? null : baseById.get(String(managerId));
 
@@ -799,19 +812,76 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     return { date: today, checked: (tasks as any[]).length, touched: touchedCount, sent, preview };
 }
 
-/** Цифры дня: счета, продажи, где месяц относительно плана. */
-async function dayFacts(today: string, monthPlan: number): Promise<string> {
+/**
+ * План отдела на месяц — из «Настройки мотивации → Планы» (salary_plan), там же,
+ * где его ставит владелец, и там же, откуда его берёт ведомость ЗП.
+ *
+ * Раньше бот читал собственную настройку month_plan: она не менялась по месяцам,
+ * интерфейса не имела, и 02.09.2026 отчёт показал 13 млн, когда на сентябрь был
+ * поставлен план 13,5 млн. Одна цифра в двух местах — это всегда расхождение,
+ * замеченное человеком, а не системой.
+ *
+ * Настройка month_plan остаётся запасной: если план на месяц ещё не заведён,
+ * отчёт должен выйти с прежним числом, а не с нулём.
+ */
+/** Личные планы менеджеров на месяц — оттуда же, из «Настройки мотивации → Планы». */
+async function loadPersonalPlans(today: string): Promise<Map<number, number>> {
+    const date = new Date(today);
+    const { data, error } = await supabase
+        .from('salary_plan')
+        .select('manager_id, target')
+        .eq('year', date.getUTCFullYear())
+        .eq('month', date.getUTCMonth() + 1)
+        .eq('metric', 'revenue_no_vat')
+        .not('manager_id', 'is', null);
+    if (error) return new Map();
+    const out = new Map<number, number>();
+    for (const r of (data ?? []) as any[]) {
+        const target = Number(r.target);
+        if (Number.isFinite(target) && target > 0) out.set(Number(r.manager_id), target);
+    }
+    return out;
+}
+
+/** Сколько каждый уже сделал за месяц: та же выручка без НДС, что и в общем плане. */
+async function loadMonthSoldByManager(today: string): Promise<Map<number, number>> {
+    const { data, error } = await supabase.rpc('sales_rop_month_by_manager', { p_date: today });
+    if (error) return new Map();
+    return new Map(((data ?? []) as any[]).map((r) => [Number(r.manager_id), Number(r.sold_sum ?? 0)]));
+}
+
+/** Рабочих дней до конца месяца, не считая сегодняшний: он уже прожит. */
+function workdaysLeftInMonth(today: string): number {
+    const date = new Date(today);
+    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+    let left = 0;
+    for (let d = date.getUTCDate() + 1; d <= last.getUTCDate(); d += 1) {
+        const wd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), d)).getUTCDay();
+        if (wd !== 0 && wd !== 6) left += 1;
+    }
+    return left;
+}
+
+async function loadMonthPlan(today: string, fallback: number): Promise<number> {
+    const date = new Date(today);
+    const { data, error } = await supabase
+        .from('salary_plan')
+        .select('target')
+        .eq('year', date.getUTCFullYear())
+        .eq('month', date.getUTCMonth() + 1)
+        .eq('metric', 'revenue_no_vat')
+        .is('manager_id', null)
+        .maybeSingle();
+    if (error || !data) return fallback;
+    const target = Number((data as any).target);
+    return Number.isFinite(target) && target > 0 ? target : fallback;
+}
+
+async function dayFacts(today: string, monthPlanFallback: number): Promise<string> {
     const { data, error } = await supabase.rpc('sales_rop_day_facts', { p_date: today });
     if (error) throw new Error(error.message);
     const f = (data ?? [])[0] ?? {};
-
-    const date = new Date(today);
-    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
-    let workdaysLeft = 0;
-    for (let d = date.getUTCDate() + 1; d <= last.getUTCDate(); d += 1) {
-        const wd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), d)).getUTCDay();
-        if (wd !== 0 && wd !== 6) workdaysLeft += 1;
-    }
+    const monthPlan = await loadMonthPlan(today, monthPlanFallback);
 
     return formatEveningHeader({
         date: new Date(today).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
@@ -821,6 +891,6 @@ async function dayFacts(today: string, monthPlan: number): Promise<string> {
         soldSum: Number(f.sold_sum ?? 0),
         monthSold: Number(f.month_sold ?? 0),
         monthPlan,
-        workdaysLeft,
+        workdaysLeft: workdaysLeftInMonth(today),
     });
 }
