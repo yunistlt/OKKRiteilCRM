@@ -126,6 +126,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [replyOpen, setReplyOpen] = useState(false);
+    const [printOpen, setPrintOpen] = useState(false);
+    const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
@@ -156,6 +158,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             setQualityScoreLoading(false);
         }
     }, [orderId]);
+
+    useEffect(() => {
+        if (!printOpen || printTemplates.length) return;
+        fetch('/api/settings/templates?kind=document&active=true')
+            .then((r) => r.json())
+            .then((d) => setPrintTemplates(d.document || []))
+            .catch(() => setPrintTemplates([]));
+    }, [printOpen, printTemplates.length]);
 
     useEffect(() => {
         if (isOpen && orderId) {
@@ -1058,7 +1068,36 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         <div className="flex gap-2 shrink-0">
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Печать</button>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setPrintOpen((v) => !v)}
+                                    className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                    Печать
+                                </button>
+                                {printOpen && (
+                                    <div className="absolute right-0 z-20 mt-1 min-w-[220px] border border-gray-300 bg-white shadow-none">
+                                        {printTemplates.length === 0 ? (
+                                            <p className="px-3 py-2 text-xs text-gray-500">
+                                                Печатных форм нет. Заведите их в настройках.
+                                            </p>
+                                        ) : (
+                                            printTemplates.map((t) => (
+                                                <a
+                                                    key={t.id}
+                                                    href={`/api/orders/${data?.order?.number ?? orderId}/print/${t.code}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => setPrintOpen(false)}
+                                                    className="block px-3 py-2 text-sm text-gray-800 hover:bg-blue-600 hover:text-white"
+                                                >
+                                                    {t.name}
+                                                </a>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                             <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Действия</button>
                             <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
                             <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Файлы</button>

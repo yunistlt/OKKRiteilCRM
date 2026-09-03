@@ -30,6 +30,8 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
     const [thread, setThread] = useState<ThreadState | null>(null);
+    const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [applyingTemplate, setApplyingTemplate] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -42,6 +44,10 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 setThread(data);
                 setTo(data.to || '');
                 setSubject(data.subjectText || `По заказу №${orderNumber}`);
+
+                const tplRes = await fetch('/api/settings/templates?kind=email&active=true');
+                const tplData = await tplRes.json();
+                if (!cancelled && tplRes.ok) setTemplates(tplData.email || []);
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить переписку');
             } finally {
@@ -50,6 +56,25 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
         })();
         return () => { cancelled = true; };
     }, [orderNumber]);
+
+
+    const applyTemplate = async (code: string) => {
+        if (!code) return;
+        setApplyingTemplate(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/orders/${orderNumber}/email-template/${code}`);
+            const data = await res.json();
+            if (!res.ok || !data.ok) throw new Error(data.details || data.error || 'Шаблон не собрался');
+            setSubject(data.subject || '');
+            // Тело приходит готовым HTML — в поле показываем текстом, разметку уберём при отправке.
+            setBody(htmlToPlainText(data.html || ''));
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Шаблон не собрался');
+        } finally {
+            setApplyingTemplate(false);
+        }
+    };
 
     const send = async () => {
         setError(null);
@@ -119,6 +144,24 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 <button onClick={onClose} className="text-xs font-bold text-gray-500 hover:text-gray-900">Отменить</button>
             </div>
 
+            {templates.length > 0 && (
+                <div className="mb-3 border border-gray-200 bg-white px-2 py-2">
+                    <label className="mb-1 block text-[10px] font-black uppercase text-gray-400">Взять шаблон</label>
+                    <select
+                        defaultValue=""
+                        disabled={applyingTemplate}
+                        onChange={(e) => applyTemplate(e.target.value)}
+                        className="w-full border border-gray-300 px-2 py-1.5 text-sm focus:border-blue-600 focus:outline-none"
+                    >
+                        <option value="">{applyingTemplate ? 'Подставляем…' : 'Без шаблона — напишу сам'}</option>
+                        {templates.map((t) => (
+                            <option key={t.id} value={t.code}>{t.name}</option>
+                        ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-gray-500">Тема и текст подставятся из шаблона, дальше правьте руками.</p>
+                </div>
+            )}
+
             <div className="space-y-2">
                 <div>
                     <label className="mb-1 block text-[10px] font-black uppercase text-gray-400">Кому</label>
@@ -186,4 +229,18 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             ) : null}
         </div>
     );
+}
+
+/** Переводит HTML шаблона в текст для поля ввода: менеджер правит словами, а не разметкой. */
+function htmlToPlainText(html: string): string {
+    return html
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }

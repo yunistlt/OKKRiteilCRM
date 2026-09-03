@@ -46,6 +46,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/settings/prompts', label: 'API промптов', description: 'Серверные методы управления промптами.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/settings', label: 'Раздел настроек', description: 'Общий административный раздел.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/settings/templates', label: 'Шаблоны документов и писем', description: 'Печатные формы и шаблоны писем: текст, подстановки, активность.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/api/settings/templates', label: 'API шаблонов', description: 'Чтение шаблонов доступно всем, кто работает с заказами; правка — только администратору (проверяется в самом маршруте).', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/settings', label: 'API настроек', description: 'Серверные маршруты административных настроек.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/okk/consultant/logs', label: 'Логи консультанта ОКК', description: 'Аудит и trace-логи консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/okk/audit', label: 'Аудит ОКК', description: 'Экран разбора ответов консультанта.', category: 'ОКК', allowed: ['admin', 'okk', 'rop'] },
