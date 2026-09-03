@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
+import { parseOrdersFilter, applyOrdersFilter } from '@/lib/orders-filter';
 import { supabase } from '@/utils/supabase';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { getEffectiveCapabilityForRole } from '@/lib/access-control-server';
@@ -24,6 +25,9 @@ export async function GET(req: Request) {
     let filterManager = searchParams.get('manager');
     const filterStatus = searchParams.get('status');
     const selectedStatuses = (filterStatus || '').split(',').filter(Boolean);
+
+    // Полная панель фильтров — перенос экрана «Заказы» RetailCRM.
+    const ordersFilter = parseOrdersFilter(searchParams);
 
     // Насильно применяем фильтр для менеджера
     if (capability.dataScope === 'own' && retailCrmId) {
@@ -57,6 +61,14 @@ export async function GET(req: Request) {
         if (selectedManagerIds.length > 0) {
             nextQuery = nextQuery.in('manager_id', selectedManagerIds);
         }
+
+        // Остальные поля панели: покупатель, суммы, категории, даты, комментарии.
+        // Статусы и менеджеры уже наложены выше — в фильтре их обнуляем, чтобы не дублировать.
+        nextQuery = applyOrdersFilter(nextQuery, {
+            ...ordersFilter,
+            statuses: [],
+            managers: [],
+        });
 
         return nextQuery;
     };
