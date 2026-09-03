@@ -28,6 +28,7 @@ export const maxDuration = 300;
 const FOLDER = 'INBOX';
 const MAX_BATCH = 30;          // письма за один заход (бережно к Yandex/OpenAI)
 const CLASSIFY_BATCH = 30;     // классифицируем не больше N писем за заход
+const ORDER_CREATE_MAX_ATTEMPTS = 5; // сколько раз пробуем завести заказ, прежде чем звать человека
 // Порог доверия «новой заявке» при ГОЛОМ «Re:» (без CRM-тега [#N/N]). Постоянный клиент часто
 // отвечает на старое письмо, начиная НОВЫЙ запрос (КП/счёт) — голый «Re:» это слабый признак.
 // Если ИИ уверенно (≥ порога) видит новую заявку — доверяем телу и заводим заказ. CRM-тег [#N/N]
@@ -360,7 +361,7 @@ export async function GET(req: Request) {
 
         const { data: pending } = await supabase
             .from('incoming_emails')
-            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, message_id, in_reply_to, email_refs')
+            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, message_id, in_reply_to, email_refs, order_create_attempts')
             .eq('status', 'new')
             .order('received_at', { ascending: true })
             .limit(CLASSIFY_BATCH);
@@ -598,6 +599,7 @@ export async function GET(req: Request) {
                     }
                 }
 
+                let orderCreateAttempts = Number((e as any).order_create_attempts ?? 0);
                 let forwardedDepartment: string | null = null;
                 let forwardedTo: string | null = null;
                 let forwardedAt: string | null = null;
@@ -661,9 +663,20 @@ export async function GET(req: Request) {
                             }
                         }
                     } catch (err: any) {
-                        finalStatus = 'error';
                         errorMessage = err?.message || 'order_create_failed';
-                        reasoning = `${reasoning} | Ошибка создания заказа: ${errorMessage}`;
+                        // Сеть до CRM моргнула — это не приговор заявке. Раньше письмо сразу уходило
+                        // в 'error' и не повторялось никогда: запрос на 69 шкафов (01.09.2026) пролежал
+                        // мёртвым, пока менеджер случайно не наткнулся на письмо в ящике.
+                        // Возвращаем в очередь, но не бесконечно: после ORDER_CREATE_MAX_ATTEMPTS
+                        // попыток это уже не сеть, а разбор руками.
+                        orderCreateAttempts += 1;
+                        if (orderCreateAttempts < ORDER_CREATE_MAX_ATTEMPTS) {
+                            finalStatus = 'new';
+                            reasoning = `${reasoning} | Заказ не создан (${errorMessage}), попытка ${orderCreateAttempts} из ${ORDER_CREATE_MAX_ATTEMPTS} — повторим`;
+                        } else {
+                            finalStatus = 'error';
+                            reasoning = `${reasoning} | Ошибка создания заказа: ${errorMessage} (попыток ${orderCreateAttempts}, дальше вручную)`;
+                        }
                     }
                 }
 
@@ -716,6 +729,7 @@ export async function GET(req: Request) {
                     forward_error: forwardError,
                     classified_by: 'ai',
                     status: finalStatus,
+                    order_create_attempts: orderCreateAttempts,
                     error_message: errorMessage,
                     updated_at: new Date().toISOString(),
                 }).eq('id', e.id);

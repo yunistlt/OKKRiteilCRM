@@ -357,6 +357,31 @@ export async function fetchRetailCrmOrdersPage(params: {
   };
 }
 
+/**
+ * Какие из этих заказов ещё существуют в CRM.
+ *
+ * Спрашиваем пачкой: поштучные 404 по тридцати тысячам заказов CRM не переживёт.
+ * Возвращаем только найденные id — отсутствующий в ответе заказ удалён.
+ */
+export async function fetchExistingRetailCrmOrderIds(orderIds: number[]): Promise<Set<number>> {
+  const found = new Set<number>();
+  if (orderIds.length === 0) return found;
+
+  // 50 id за запрос: лимит выдачи API — 20/50/100, ответ на 50 полных заказов
+  // уже увесистый, брать больше смысла нет.
+  for (let i = 0; i < orderIds.length; i += 50) {
+    const chunk = orderIds.slice(i, i + 50);
+    const searchParams = new URLSearchParams();
+    searchParams.set('limit', '100');
+    for (const id of chunk) searchParams.append('filter[ids][]', String(id));
+
+    const data = await fetchRetailCrm('orders', searchParams);
+    for (const order of data.orders || []) found.add(Number(order.id));
+  }
+
+  return found;
+}
+
 export async function fetchRetailCrmOrder(orderId: number) {
   const searchParams = new URLSearchParams();
   searchParams.set('by', 'id');
