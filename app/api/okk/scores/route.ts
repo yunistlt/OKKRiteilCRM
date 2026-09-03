@@ -1,6 +1,5 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import { parseOrdersFilter, applyOrdersFilter } from '@/lib/orders-filter';
 import { supabase } from '@/utils/supabase';
 import { createSupabaseUserClient } from '@/utils/supabase-user';
 import { getEffectiveCapabilityForRole } from '@/lib/access-control-server';
@@ -25,9 +24,6 @@ export async function GET(req: Request) {
     let filterManager = searchParams.get('manager');
     const filterStatus = searchParams.get('status');
     const selectedStatuses = (filterStatus || '').split(',').filter(Boolean);
-
-    // Полная панель фильтров — перенос экрана «Заказы» RetailCRM.
-    const ordersFilter = parseOrdersFilter(searchParams);
 
     // Насильно применяем фильтр для менеджера
     if (capability.dataScope === 'own' && retailCrmId) {
@@ -61,14 +57,6 @@ export async function GET(req: Request) {
         if (selectedManagerIds.length > 0) {
             nextQuery = nextQuery.in('manager_id', selectedManagerIds);
         }
-
-        // Остальные поля панели: покупатель, суммы, категории, даты, комментарии.
-        // Статусы и менеджеры уже наложены выше — в фильтре их обнуляем, чтобы не дублировать.
-        nextQuery = applyOrdersFilter(nextQuery, {
-            ...ordersFilter,
-            statuses: [],
-            managers: [],
-        });
 
         return nextQuery;
     };
@@ -143,62 +131,6 @@ export async function GET(req: Request) {
     const availableStatusCodes = Array.from(new Set(
         [...(statusOrders || []).map(order => order.status).filter(Boolean), ...selectedStatuses]
     ));
-
-    // Левая колонка списка заказов: статусы, сгруппированные по этапам, с количествами.
-    // Группа и порядок приходят из RetailCRM (retailcrm_dictionaries.group_code/ordering).
-    const statusCounts = new Map<string, number>();
-    for (const row of (statusOrders || []) as Array<{ status: string | null }>) {
-        if (!row.status) continue;
-        statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
-    }
-
-    let statusTree: Array<{ groupCode: string | null; groupName: string; total: number; statuses: Array<{ code: string; label: string; count: number }> }> = [];
-    if (availableStatusCodes.length > 0) {
-        const [{ data: statusDict }, { data: groupDict }] = await Promise.all([
-            readClient
-                .from('retailcrm_dictionaries')
-                .select('item_code, item_name, group_code, ordering')
-                .eq('entity_type', 'status')
-                .in('item_code', availableStatusCodes),
-            readClient
-                .from('retailcrm_dictionaries')
-                .select('item_code, item_name')
-                .eq('entity_type', 'statusGroup'),
-        ]);
-
-        const groupNames = new Map<string, string>(
-            ((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name])
-        );
-
-        const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; ordering: number }> }>();
-        for (const row of ((statusDict || []) as any[])) {
-            const key = row.group_code || '__none__';
-            if (!grouped.has(key)) {
-                grouped.set(key, {
-                    groupName: row.group_code ? (groupNames.get(row.group_code) || 'Прочее') : 'Без группы',
-                    statuses: [],
-                });
-            }
-            grouped.get(key)!.statuses.push({
-                code: row.item_code,
-                label: row.item_name || row.item_code,
-                count: statusCounts.get(row.item_code) ?? 0,
-                ordering: row.ordering ?? 999,
-            });
-        }
-
-        statusTree = Array.from(grouped.entries())
-            .map(([groupCode, value]) => ({
-                groupCode: groupCode === '__none__' ? null : groupCode,
-                groupName: value.groupName,
-                total: value.statuses.reduce((sum, st) => sum + st.count, 0),
-                statuses: value.statuses
-                    .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
-                    .map(({ ordering, ...rest }) => rest),
-            }))
-            .filter((g) => g.total > 0)
-            .sort((a, b) => b.total - a.total);
-    }
 
     let availableStatuses: Array<{ code: string; label: string; color: string | null }> = [];
     if (availableStatusCodes.length > 0) {
@@ -297,7 +229,6 @@ export async function GET(req: Request) {
     return NextResponse.json({
         scores: enriched,
         availableStatuses,
-        statusTree,
         averages: {
             totalAvgScore,
             filteredAvgScore

@@ -12,9 +12,6 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { getRoleCapability } from '@/lib/access-control';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
-import OrdersFilterPanel from '@/components/orders/OrdersFilterPanel';
-import OrdersStatusSidebar, { type StatusGroup } from '@/components/orders/OrdersStatusSidebar';
-import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
 
 interface User {
     username: string;
@@ -719,8 +716,6 @@ function OKKContent() {
     const [runResult, setRunResult] = useState<string | null>(null);
     const [filterManager, setFilterManager] = useState<string[]>([]);
     const [filterStatus, setFilterStatus] = useState<string[]>([]);
-    const [ordersFilter, setOrdersFilter] = useState<OrdersFilter>(EMPTY_FILTER);
-    const [statusTree, setStatusTree] = useState<StatusGroup[]>([]);
     const [sortBy, setSortBy] = useState<string>('order_id');
     const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
     const [runLimit, setRunLimit] = useState(50);
@@ -811,14 +806,11 @@ function OKKContent() {
             query.set('pageSize', pagination.pageSize.toString());
             if (filterManager.length > 0) query.set('manager', filterManager.join(','));
             if (filterStatus.length > 0) query.set('status', filterStatus.join(','));
-            // Панель фильтров как в RetailCRM: остальные поля уезжают тем же запросом.
-            filterToSearchParams(ordersFilter).forEach((value, key) => query.set(key, value));
 
             const res = await fetch(`/api/okk/scores?${query.toString()}`);
             const json = await res.json();
             setScores(Array.isArray(json.scores) ? json.scores : []);
             setAvailableStatuses(Array.isArray(json.availableStatuses) ? json.availableStatuses : []);
-            setStatusTree(Array.isArray(json.statusTree) ? json.statusTree : []);
             if (json.pagination) {
                 setPagination(prev => ({ ...prev, ...json.pagination }));
             }
@@ -828,7 +820,7 @@ function OKKContent() {
         } finally {
             setLoading(false);
         }
-    }, [pagination.page, pagination.pageSize, filterManager, filterStatus, ordersFilter]);
+    }, [pagination.page, pagination.pageSize, filterManager, filterStatus]);
 
     useEffect(() => { load(); }, [load, pagination.page, pagination.pageSize]);
 
@@ -1162,16 +1154,6 @@ function OKKContent() {
                 </div>
             </div>
 
-            <OrdersFilterPanel
-                value={ordersFilter}
-                managers={activeManagers.map(m => ({ value: m.id.toString(), label: m.name }))}
-                statuses={availableStatuses.map(s => ({ value: s.code, label: s.label }))}
-                onApply={(next) => {
-                    setOrdersFilter(next);
-                    setPagination(prev => ({ ...prev, page: 1 }));
-                }}
-            />
-
             {/* Filter Row */}
             <div className="bg-white border-b border-gray-100 px-2.5 py-1 flex flex-wrap items-center gap-1.5 flex-shrink-0 relative z-40 shadow-sm">
                 {currentCapability.dataScope === 'all' && (
@@ -1249,17 +1231,6 @@ function OKKContent() {
             </div>
 
             {/* Data Area: High Contrast for Mobile */}
-            <div className="flex min-h-0 flex-1">
-            <div className="hidden md:block">
-                <OrdersStatusSidebar
-                    tree={statusTree}
-                    selected={filterStatus}
-                    onSelect={(next) => {
-                        setFilterStatus(next);
-                        setPagination(prev => ({ ...prev, page: 1 }));
-                    }}
-                />
-            </div>
             <div className={`relative z-10 min-h-0 min-w-0 flex-1 overflow-auto font-sans ${loading ? 'bg-gray-50' : 'bg-gray-300 md:bg-gray-100/30'}`}>
                 {/* Desktop View */}
                 <div className="hidden md:block">
@@ -1463,7 +1434,6 @@ function OKKContent() {
                         </div>
                     ))}
                 </div>
-            </div>
             </div>
 
             {/* Bottom Pagination (Desktop) */}
