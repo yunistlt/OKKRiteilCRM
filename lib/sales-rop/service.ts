@@ -3,6 +3,7 @@ import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import {
     formatCallDay,
+    formatContactDates,
     formatDiscipline,
     formatEvening,
     formatEveningHeader,
@@ -884,6 +885,28 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
     const personalSold = await soft('выручка по менеджерам', new Map<number, number>(), degraded, () =>
         loadMonthSoldByManager(today),
     );
+
+    // Что человек за день сделал с обещаниями клиентам: переносы, просрочка,
+    // пик впереди. Дату контакта используют как отметку «заказ не брошен» —
+    // вечером это должно попадаться на глаза самому менеджеру, а не только РОПу.
+    const { data: contactRows } = await soft(
+        'даты контакта',
+        { data: [] } as any,
+        degraded,
+        () => supabase.rpc('sales_rop_contact_dates', { p_date: today }),
+    );
+    const contactById = new Map(
+        ((contactRows ?? []) as any[]).map((r) => [
+            String(r.manager_id),
+            {
+                movedToday: Number(r.moved_today ?? 0),
+                movedByDay: Number(r.moved_by_day ?? 0),
+                overdue: Number(r.overdue ?? 0),
+                peakDate: r.peak_date ? String(r.peak_date).slice(0, 10) : null,
+                peakCount: Number(r.peak_count ?? 0),
+            },
+        ]),
+    );
     const workdaysLeft = workdaysLeftInMonth(today);
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
@@ -918,6 +941,9 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             });
         }
 
+        const contacts = managerId === null ? null : contactById.get(String(managerId)) ?? null;
+        const contactsText = contacts ? formatContactDates(contacts, settings.dailyTarget) : null;
+
         preview.push(
             call
                 ? `${own}\n\n${formatCallDay({
@@ -937,8 +963,8 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
                       avgMinutes: base ? Number(base.avg_minutes) : null,
                       targetMinutes: settings.talkMinutesTarget,
                       targetTalks: settings.talksTarget,
-                  })}${review?.text ? `\n\n${review.text}` : ''}`
-                : own,
+                  })}${review?.text ? `\n\n${review.text}` : ''}${contactsText ? `\n\n${contactsText}` : ''}`
+                : `${own}${contactsText ? `\n\n${contactsText}` : ''}`,
         );
     }
 

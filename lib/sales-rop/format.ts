@@ -1,5 +1,5 @@
 import type { Task } from '@/lib/sales-rop/rules';
-import { days } from '@/lib/sales-rop/rules';
+import { days, plural } from '@/lib/sales-rop/rules';
 
 // Тексты бота-РОПа. Живут отдельно от правил, потому что правится тут чаще
 // всего, и потому что форму сообщения согласовывает человек, а не тест.
@@ -317,6 +317,59 @@ export type OwnerRow = {
  * целиком и то, что требует его решения, а не подсказки по конкретным заказам.
  * Поимённо — потому что «отдел сделал 60%» не говорит, с кем разговаривать.
  */
+export type ContactDates = {
+    movedToday: number;
+    movedByDay: number;
+    overdue: number;
+    peakDate: string | null;
+    peakCount: number;
+};
+
+/**
+ * Что человек за день сделал с обещаниями клиентам.
+ *
+ * Дату контакта используют как служебную галочку: переносят пачками на завтра,
+ * копят по несколько десятков на одну дату. Пока это видно только в базе, ничего
+ * не меняется — поэтому вечером показываем самому менеджеру. Без выговоров:
+ * цифры и один вопрос, который стоит себе задать.
+ */
+export function formatContactDates(d: ContactDates, dailyTarget: number): string | null {
+    // Две передвинутых даты — это работа, а не проблема. Блок появляется, когда
+    // есть о чём говорить: пачка переносов, просроченные обещания или день
+    // впереди, в который человек уже не помещается. Иначе каждый вечер каждому
+    // приходит один и тот же абзац, и его перестают читать.
+    const worthSaying =
+        d.movedToday >= Math.max(5, Math.round(dailyTarget / 3)) ||
+        d.overdue > 0 ||
+        d.peakCount > dailyTarget;
+    if (!worthSaying) return null;
+
+    const lines = ['📅 Даты следующего контакта'];
+
+    if (d.movedToday > 0) {
+        lines.push(
+            d.movedByDay > 0
+                ? `Сегодня передвинуто дат: ${d.movedToday}, из них на завтра — ${d.movedByDay}.`
+                : `Сегодня передвинуто дат: ${d.movedToday}.`,
+        );
+    }
+    if (d.overdue > 0) {
+        lines.push(`Обещаний с прошедшей датой: ${d.overdue} — по ним разговор уже просрочен.`);
+    }
+    if (d.peakDate && d.peakCount > dailyTarget) {
+        const day = d.peakDate.slice(8, 10) + '.' + d.peakDate.slice(5, 7);
+        lines.push(
+            `Самый нагруженный день впереди — ${day}: ${d.peakCount} ${plural(d.peakCount, 'заказ', 'заказа', 'заказов')}. ` +
+                `Это больше, чем помещается в день (${dailyTarget}), — часть лучше развести заранее.`,
+        );
+    }
+
+    lines.push('', 'Дата контакта — обещание клиенту, а не отметка «заказ не брошен». ' +
+        'Если разговор не нужен — заказу место в другом статусе.');
+
+    return lines.join('\n');
+}
+
 export function formatOwnerReport(params: {
     date: string;
     header: string;
