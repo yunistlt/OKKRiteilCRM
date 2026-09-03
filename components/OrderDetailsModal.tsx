@@ -7,6 +7,7 @@ import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
+import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -128,6 +129,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [replyOpen, setReplyOpen] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [panel, setPanel] = useState<PanelKind | null>(null);
+    const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
@@ -158,6 +161,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             setQualityScoreLoading(false);
         }
     }, [orderId]);
+
+    useEffect(() => {
+        const number = data?.order?.number ?? orderId;
+        if (!number) return;
+        fetch(`/api/orders/${number}/tasks`)
+            .then((r) => r.json())
+            .then((d) => setTaskCount({ done: d.done ?? 0, total: d.total ?? 0 }))
+            .catch(() => setTaskCount(null));
+    }, [data?.order?.number, orderId]);
 
     useEffect(() => {
         if (!printOpen || printTemplates.length) return;
@@ -1098,10 +1110,31 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </div>
                                 )}
                             </div>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Действия</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Файлы</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">История</button>
+                            <button
+                                disabled
+                                title="Раздел ещё не сделан"
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-400 cursor-not-allowed"
+                            >
+                                Действия · в разработке
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
+                                className={`px-3 py-2 border text-sm ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Задачи {taskCount ? `${taskCount.done}/${taskCount.total}` : ''}
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'files' ? null : 'files')}
+                                className={`px-3 py-2 border text-sm ${panel === 'files' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Файлы
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'history' ? null : 'history')}
+                                className={`px-3 py-2 border text-sm ${panel === 'history' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                История
+                            </button>
                             <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
@@ -1117,6 +1150,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         )}
                     </div>
                 </header>
+
+                {panel && (
+                    <div className="border-b bg-gray-50 px-6 py-3">
+                        <OrderSidePanel
+                            kind={panel}
+                            orderNumber={String(data?.order?.number ?? orderId)}
+                            history={data?.history}
+                            onClose={() => setPanel(null)}
+                            onTasksChanged={(done, total) => setTaskCount({ done, total })}
+                        />
+                    </div>
+                )}
 
                 <nav className="border-b bg-white px-6">
                     <div className="flex overflow-x-auto text-sm">
