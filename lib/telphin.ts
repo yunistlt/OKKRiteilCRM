@@ -162,18 +162,17 @@ export async function initiateManagerOutgoingCall(params: {
         .single();
 
     if (error || !manager?.telphin_extension) {
-        throw new Error(`Manager ${params.managerId} has no telphin_extension configured`);
+        throw new Error('У менеджера не указан добавочный номер в Телфине — позвонить нельзя');
     }
 
     const managerExtension = manager.telphin_extension;
 
-    // Используемая очередь по умолчанию (должна быть настроена в env)
-    const defaultQueue = process.env.TELPHIN_CALLBACK_SOURCE || '200';
-
-    // Инициируем звонок через существующую функцию
+    // Первое плечо — аппарат САМОГО менеджера, а не очередь ОП: звонок поднимает
+    // тот, кто нажал кнопку. Очередь (TELPHIN_CALLBACK_SOURCE) здесь не при делах —
+    // она подняла бы весь отдел разом, это сценарий обратного звонка Ловца Лидов.
     return initiateMakeCall({
         extensionId: managerExtension,
-        source: defaultQueue,
+        source: managerExtension,
         destination: params.targetPhone,
     });
 }
