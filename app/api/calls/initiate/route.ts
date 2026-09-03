@@ -6,13 +6,15 @@ import { broadcastCallEvent } from '@/lib/call-broadcast';
 
 export const dynamic = 'force-dynamic';
 
-const envMockFlag = process.env.TELPHIN_MOCK_MODE === 'true';
+// TELPHIN_MOCK_MODE здесь СОЗНАТЕЛЬНО не читается: менеджер нажал «Позвонить» —
+// значит хочет реального звонка. Так же поступает воркер обратного звонка.
+// Демо-режим остаётся только там, где звонить физически нечем — нет ключей.
 const hasTelphinCredentials = Boolean(
   (process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID) &&
   (process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET)
 );
-const shouldMock = envMockFlag || !hasTelphinCredentials;
-const mockReason = !envMockFlag && shouldMock
+const shouldMock = !hasTelphinCredentials;
+const mockReason = shouldMock
   ? 'Ключи Телфина не заданы — звонок не совершается, включён демо-режим'
   : undefined;
 
