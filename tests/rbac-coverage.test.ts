@@ -65,7 +65,6 @@ describe('rbac: покрытие API-роутов правилами', () => {
     '/api/ai/generate-rule',
     '/api/ai/route-orders',
     '/api/ai/train-route',
-    '/api/calls/initiate',
     '/api/check-numbers',
     '/api/debug/match-log',
     '/api/debug/openai/status',

@@ -33,6 +33,7 @@ export const metadata: Metadata = {
 };
 
 import Sidebar from "../components/ui/Sidebar";
+import { PhonePanel } from "@/components/softphone/PhonePanel";
 
 export default async function RootLayout({
     children,
@@ -76,6 +77,7 @@ export default async function RootLayout({
                             <GlobalConsultantShell>{children}</GlobalConsultantShell>
                         </main>
                     </div>
+                    {session ? <PhonePanel /> : null}
                 </AuthProvider>
             </body>
         </html>

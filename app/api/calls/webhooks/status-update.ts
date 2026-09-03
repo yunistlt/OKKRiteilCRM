@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { safeEnqueueCallTranscriptionJob, safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { bestEffortUpdateLegacyCallStatus } from '@/lib/telphin-legacy-compat';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
+import { broadcastCallEvent } from '@/lib/call-broadcast';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -154,6 +155,19 @@ export async function POST(req: NextRequest) {
           : undefined,
       });
     }
+
+    // Отправляем SSE событие об обновлении статуса
+    broadcastCallEvent({
+      type: 'call_status_update',
+      callId: call_id,
+      data: {
+        status,
+        duration_seconds,
+        recording_url,
+        started_at,
+        ended_at,
+      },
+    });
 
     return NextResponse.json({
       success: true,

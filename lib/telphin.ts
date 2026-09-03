@@ -1,4 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Техническая интеграция с API Телфин и генерация токенов.
+import { supabase } from '@/utils/supabase';
+
 const TELPHIN_FETCH_TIMEOUT_MS = 15000;
 
 export async function fetchTelphin(url: string, init?: RequestInit) {
@@ -140,4 +142,38 @@ export async function initiateMakeCall(params: {
         callId: data.call_id,
         success: true
     };
+}
+
+/**
+ * Инициирует исходящий звонок менеджера клиенту
+ * @param managerId ID менеджера (из managers.id)
+ * @param targetPhone номер клиента для звонка
+ * @returns { callId, success }
+ */
+export async function initiateManagerOutgoingCall(params: {
+    managerId: number;
+    targetPhone: string;
+}) {
+    // Получить добавочный номер менеджера
+    const { data: manager, error } = await supabase
+        .from('managers')
+        .select('telphin_extension')
+        .eq('id', params.managerId)
+        .single();
+
+    if (error || !manager?.telphin_extension) {
+        throw new Error(`Manager ${params.managerId} has no telphin_extension configured`);
+    }
+
+    const managerExtension = manager.telphin_extension;
+
+    // Используемая очередь по умолчанию (должна быть настроена в env)
+    const defaultQueue = process.env.TELPHIN_CALLBACK_SOURCE || '200';
+
+    // Инициируем звонок через существующую функцию
+    return initiateMakeCall({
+        extensionId: managerExtension,
+        source: defaultQueue,
+        destination: params.targetPhone,
+    });
 }
