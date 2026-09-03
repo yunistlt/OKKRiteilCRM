@@ -78,6 +78,14 @@ export function buildOrderThreadSubject(orderNumber: string | number, text: stri
     return `[#${seq}/${orderNumber}] ${text}`.trim();
 }
 
+/** Убирает из темы служебный тег `[#N/NNNNN]` и цепочку Re:/Fwd: — остаётся человеческая часть. */
+export function stripOrderThreadTag(subject: string): string {
+    return (subject || '')
+        .replace(/\[#\d+\/\d+\]/g, '')
+        .replace(/^(\s*(re|fwd|fw)\s*:\s*)+/i, '')
+        .trim();
+}
+
 /** Достаёт номер заказа из служебного тега темы `[#N/NNNNN]`, иначе null. */
 export function parseOrderNumberFromSubject(subject: string): string | null {
     const m = subject.match(/\[#\d+\/(\d+)\]/);

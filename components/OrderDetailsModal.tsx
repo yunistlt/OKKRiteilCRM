@@ -6,6 +6,7 @@ import CallInitiator from './calls/CallInitiator';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
+import OrderReplyForm from '@/components/orders/OrderReplyForm';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -124,6 +125,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [replyOpen, setReplyOpen] = useState(false);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
@@ -588,10 +590,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 <p className="text-xs uppercase text-gray-400">Коммуникации</p>
                                 <h4 className="text-lg font-semibold text-gray-900">Письма и сообщения</h4>
                             </div>
-                            <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors">
-                                + Новое письмо
+                            <button
+                                onClick={() => setReplyOpen((v) => !v)}
+                                className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                                {replyOpen ? 'Свернуть' : '+ Новое письмо'}
                             </button>
                         </div>
+
+                        {replyOpen && (
+                            <div className="mb-4">
+                                <OrderReplyForm
+                                    orderNumber={String(data.order?.number ?? orderId)}
+                                    onClose={() => setReplyOpen(false)}
+                                />
+                            </div>
+                        )}
                         {data.emails && data.emails.length > 0 ? (
                             <div className="space-y-3">
                                 {data.emails.map((email) => (
