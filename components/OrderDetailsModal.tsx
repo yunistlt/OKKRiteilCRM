@@ -8,6 +8,7 @@ import { useStatusNames } from '@/components/useStatusNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
+import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -1029,8 +1030,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-            <div className="bg-white w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex bg-white">
+            <div className="flex h-full w-full flex-col overflow-hidden bg-white">
                 <header className="border-b bg-white px-6 py-5">
                     <div className="flex items-start justify-between gap-6">
                         <div>
@@ -1138,7 +1139,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-4 text-xs font-semibold">
+                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                        <OrderStatusSwitcher
+                            orderId={data?.order?.number ?? orderId}
+                            currentLabel={headerBadges[0]?.label ?? 'Сменить статус'}
+                            onChanged={() => fetchDetails()}
+                        />
                         {headerBadges.length > 0 ? (
                             headerBadges.map(badge => (
                                 <span key={badge.label} className={`px-3 py-1 ${badge.className}`}>
