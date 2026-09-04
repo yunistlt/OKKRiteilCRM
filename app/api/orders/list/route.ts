@@ -54,12 +54,14 @@ export async function GET(req: Request) {
     const rows = listResult.data || [];
     const managerIds = Array.from(new Set(rows.map((r: any) => r.manager_id).filter(Boolean)));
 
-    const [{ data: managers }, { data: statusDict }, { data: groupDict }] = await Promise.all([
+    const [{ data: managers }, { data: statusDict }, { data: statusColors }, { data: groupDict }, { data: cfDict }] = await Promise.all([
         managerIds.length
             ? supabase.from('managers').select('id, first_name, last_name').in('id', managerIds)
             : Promise.resolve({ data: [] as any[] }),
         supabase.from('retailcrm_dictionaries').select('item_code, item_name, group_code, ordering').eq('entity_type', 'status'),
+        supabase.from('statuses').select('code, color, group_name'),
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'statusGroup'),
+        supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -67,6 +69,12 @@ export async function GET(req: Request) {
     );
     const statusNames = new Map<string, string>(
         ((statusDict || []) as any[]).map((s) => [s.item_code, s.item_name])
+    );
+    const cfNames = new Map<string, string>(
+        ((cfDict || []) as any[]).map((d) => [`${d.dictionary_code}:${d.item_code}`, d.item_name])
+    );
+    const statusColorMap = new Map<string, string | null>(
+        ((statusColors || []) as any[]).map((s) => [s.code, s.color || null])
     );
 
     // Дерево статусов с количествами для левой колонки.
@@ -77,7 +85,7 @@ export async function GET(req: Request) {
     }
 
     const groupNames = new Map<string, string>(((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name]));
-    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; ordering: number }> }>();
+    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; ordering: number }> }>();
 
     for (const st of ((statusDict || []) as any[])) {
         const count = counts.get(st.item_code) ?? 0;
@@ -93,6 +101,7 @@ export async function GET(req: Request) {
             code: st.item_code,
             label: st.item_name || st.item_code,
             count,
+            color: statusColorMap.get(st.item_code) || null,
             ordering: st.ordering ?? 999,
         });
     }
@@ -102,6 +111,7 @@ export async function GET(req: Request) {
             groupCode: groupCode === '__none__' ? null : groupCode,
             groupName: value.groupName,
             total: value.statuses.reduce((sum, s) => sum + s.count, 0),
+            color: value.statuses.find((s) => s.color)?.color ?? null,
             statuses: value.statuses
                 .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
                 .map(({ ordering, ...rest }) => rest),
@@ -115,14 +125,28 @@ export async function GET(req: Request) {
             number: row.number ?? String(row.order_id),
             status: row.status,
             statusLabel: statusNames.get(row.status) || row.status,
+            statusColor: statusColorMap.get(row.status) || null,
             createdAt: row.created_at,
             managerName: managerNames.get(Number(row.manager_id)) || null,
             totalSumm: row.totalsumm != null ? Number(row.totalsumm) : null,
             customerName: payload.customer?.nickName || payload.customer?.name || [payload.firstName, payload.lastName].filter(Boolean).join(' ') || null,
+            contragentName: payload.contragent?.legalName || null,
             managerComment: payload.managerComment || null,
+            customerComment: payload.customerComment || null,
+            categoryLabel: payload.customFields?.typ_castomer
+                ? cfNames.get(`typ_castomer:${payload.customFields.typ_castomer}`) || null
+                : null,
+            sferaLabel: payload.customFields?.sfera_deiatelnosti
+                ? cfNames.get(`sfera_deiatelnosti:${payload.customFields.sfera_deiatelnosti}`) || null
+                : null,
+            phone: payload.phone || row.phone || null,
+            email: payload.email || null,
             nextContact: payload.customFields?.data_kontakta || null,
+            // Состав показываем как в RetailCRM: название с артикулом, цена и количество.
             items: (Array.isArray(payload.items) ? payload.items : []).slice(0, 4).map((i: any) => ({
                 name: i?.offer?.name || i?.productName || 'Позиция',
+                article: i?.offer?.article || i?.offer?.xmlId || null,
+                price: i?.initialPrice != null ? Number(i.initialPrice) : null,
                 quantity: i?.quantity ?? null,
             })),
             itemsTotal: Array.isArray(payload.items) ? payload.items.length : 0,

@@ -3,23 +3,37 @@
 import { useCallback, useEffect, useState } from 'react';
 import OrdersFilterPanel from '@/components/orders/OrdersFilterPanel';
 import OrdersStatusSidebar, { type StatusGroup } from '@/components/orders/OrdersStatusSidebar';
+import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
+import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 
 interface OrderRow {
     orderId: number;
     number: string;
     status: string;
     statusLabel: string;
+    statusColor: string | null;
     createdAt: string;
     managerName: string | null;
     totalSumm: number | null;
     customerName: string | null;
+    contragentName: string | null;
     managerComment: string | null;
+    customerComment: string | null;
+    categoryLabel: string | null;
+    sferaLabel: string | null;
+    phone: string | null;
+    email: string | null;
     nextContact: string | null;
-    items: Array<{ name: string; quantity: number | null }>;
+    items: Array<{ name: string; article: string | null; price: number | null; quantity: number | null }>;
     itemsTotal: number;
 }
+
+const money = (v: number | null) =>
+    v == null ? '—' : v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const day = (v: string | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
 export default function OrdersClient() {
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
@@ -30,6 +44,9 @@ export default function OrdersClient() {
     const [pagination, setPagination] = useState({ totalCount: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
     const [openOrderId, setOpenOrderId] = useState<number | null>(null);
+
+    const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
+    const [columnsOpen, setColumnsOpen] = useState(false);
 
     useEffect(() => {
         fetch('/api/okk/managers')
@@ -42,7 +59,22 @@ export default function OrdersClient() {
                 })));
             })
             .catch(() => undefined);
+
+        fetch('/api/settings/view?viewKey=orders.columns')
+            .then((r) => r.json())
+            .then((d) => setColumns(normalizeSelection(d.settings?.items, ORDER_COLUMNS, DEFAULT_COLUMNS)))
+            .catch(() => undefined);
     }, []);
+
+    const saveColumns = async (next: string[]) => {
+        setColumns(next);
+        setColumnsOpen(false);
+        await fetch('/api/settings/view', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ viewKey: 'orders.columns', settings: { items: next } }),
+        }).catch(() => undefined);
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -68,15 +100,82 @@ export default function OrdersClient() {
 
     useEffect(() => { load(); }, [load]);
 
-    const money = (v: number | null) =>
-        v == null ? '—' : v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const headerFor = (key: string) => ORDER_COLUMNS.find((c) => c.key === key)?.label ?? key;
+
+    const cell = (order: OrderRow, key: string) => {
+        switch (key) {
+            case 'status':
+                return (
+                    <span
+                        className="inline-block rounded px-2 py-1 text-xs font-medium text-gray-800"
+                        style={{ backgroundColor: order.statusColor || '#eef2f7' }}
+                    >
+                        {order.statusLabel}
+                    </span>
+                );
+            case 'number':
+                return <span className="font-medium text-blue-600">{order.number}</span>;
+            case 'customer':
+                return order.customerName || '—';
+            case 'contragent':
+                return order.contragentName || '—';
+            case 'manager':
+                return order.managerName || '—';
+            case 'managerComment':
+                return order.managerComment
+                    ? <span className="whitespace-pre-line text-gray-700">{order.managerComment.split('\n').slice(0, 5).join('\n')}</span>
+                    : '—';
+            case 'customerComment':
+                return order.customerComment || '—';
+            case 'category':
+                return order.categoryLabel || '—';
+            case 'sfera':
+                return order.sferaLabel || '—';
+            case 'phone':
+                return order.phone || '—';
+            case 'email':
+                return order.email || '—';
+            case 'items':
+                return order.items.length === 0 ? '—' : (
+                    <ul className="list-disc space-y-1 pl-4 text-gray-700">
+                        {order.items.map((i, idx) => (
+                            <li key={idx}>
+                                {i.name}
+                                {i.article ? ` ${i.article}` : ''}
+                                {i.price != null ? ` — ${i.price.toLocaleString('ru-RU')} ₽` : ''}
+                                {i.quantity ? `, ${i.quantity} шт.` : ''}
+                            </li>
+                        ))}
+                        {order.itemsTotal > order.items.length && (
+                            <li className="list-none text-gray-400">и ещё {order.itemsTotal - order.items.length}</li>
+                        )}
+                    </ul>
+                );
+            case 'totalSumm':
+                return <span className="whitespace-nowrap">{money(order.totalSumm)} ₽</span>;
+            case 'createdAt':
+                return (
+                    <span className="whitespace-nowrap">
+                        {day(order.createdAt)}
+                        <br />
+                        <span className="text-gray-500">
+                            {order.createdAt ? new Date(order.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </span>
+                    </span>
+                );
+            case 'nextContact':
+                return <span className="whitespace-nowrap">{day(order.nextContact)}</span>;
+            default:
+                return '—';
+        }
+    };
 
     return (
-        <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-baseline justify-between border-b border-gray-200 bg-white px-4 py-3">
-                <h1 className="text-xl font-black text-gray-900">Заказы</h1>
-                <span className="text-xs text-gray-500">
-                    {loading ? 'Загружаем…' : `${pagination.totalCount.toLocaleString('ru-RU')} заказов под фильтром`}
+        <div className="flex h-full min-h-0 flex-col bg-white">
+            <div className="flex items-baseline gap-3 px-6 pb-2 pt-5">
+                <h1 className="text-2xl font-semibold text-gray-900">Заказы</h1>
+                <span className="text-sm text-gray-400">
+                    {loading ? 'загружаем…' : `${pagination.totalCount.toLocaleString('ru-RU')}`}
                 </span>
             </div>
 
@@ -87,7 +186,7 @@ export default function OrdersClient() {
                 onApply={(next) => { setFilter(next); setPage(1); }}
             />
 
-            <div className="flex min-h-0 flex-1">
+            <div className="relative flex min-h-0 flex-1 border-t border-gray-200">
                 <div className="hidden md:block">
                     <OrdersStatusSidebar
                         tree={statusTree}
@@ -97,60 +196,43 @@ export default function OrdersClient() {
                 </div>
 
                 <div className="min-h-0 min-w-0 flex-1 overflow-auto">
-                    <table className="w-full text-sm">
-                        <thead className="sticky top-0 bg-white">
-                            <tr className="border-b-2 border-gray-900 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">
-                                <th className="px-3 py-2">Статус</th>
-                                <th className="px-3 py-2">Номер</th>
-                                <th className="px-3 py-2">Клиент</th>
-                                <th className="px-3 py-2">Менеджер</th>
-                                <th className="px-3 py-2">Комментарий оператора</th>
-                                <th className="px-3 py-2">Состав</th>
-                                <th className="px-3 py-2 text-right">Сумма</th>
-                                <th className="px-3 py-2">Оформлен</th>
-                                <th className="px-3 py-2">След. контакт</th>
+                    <div className="flex justify-end px-4 pt-2">
+                        <button
+                            onClick={() => setColumnsOpen(true)}
+                            title="Настроить колонки"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-400 text-white hover:bg-gray-500"
+                        >
+                            ⚙
+                        </button>
+                    </div>
+
+                    <table className="w-full border-collapse text-sm">
+                        <thead>
+                            <tr className="border-b border-gray-200 bg-gray-50 text-left align-bottom text-gray-500">
+                                {columns.map((key) => (
+                                    <th key={key} className="px-4 py-3 text-[13px] font-normal">
+                                        {headerFor(key)}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={9} className="px-3 py-6 text-sm text-gray-500">Загружаем заказы…</td></tr>
+                                <tr><td colSpan={columns.length} className="px-4 py-8 text-gray-500">Загружаем заказы…</td></tr>
                             ) : orders.length === 0 ? (
-                                <tr><td colSpan={9} className="px-3 py-6 text-sm text-gray-500">Под этот фильтр заказов нет.</td></tr>
+                                <tr><td colSpan={columns.length} className="px-4 py-8 text-gray-500">Под этот фильтр заказов нет.</td></tr>
                             ) : (
-                                orders.map((o) => (
+                                orders.map((order) => (
                                     <tr
-                                        key={o.orderId}
-                                        onClick={() => setOpenOrderId(o.orderId)}
-                                        className="cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50"
+                                        key={order.orderId}
+                                        onClick={() => setOpenOrderId(order.orderId)}
+                                        className="cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50/40"
                                     >
-                                        <td className="px-3 py-2">
-                                            <span className="bg-gray-100 px-2 py-0.5 text-xs font-bold text-gray-700">{o.statusLabel}</span>
-                                        </td>
-                                        <td className="px-3 py-2 font-bold text-blue-700">{o.number}</td>
-                                        <td className="px-3 py-2 text-gray-900">{o.customerName || '—'}</td>
-                                        <td className="px-3 py-2 text-gray-700">{o.managerName || '—'}</td>
-                                        <td className="max-w-[280px] px-3 py-2 text-xs text-gray-600">
-                                            {o.managerComment ? o.managerComment.split('\n').slice(0, 3).join(' · ') : '—'}
-                                        </td>
-                                        <td className="max-w-[280px] px-3 py-2 text-xs text-gray-600">
-                                            {o.items.length === 0 ? '—' : (
-                                                <>
-                                                    {o.items.map((i, idx) => (
-                                                        <div key={idx}>{i.name}{i.quantity ? ` — ${i.quantity} шт.` : ''}</div>
-                                                    ))}
-                                                    {o.itemsTotal > o.items.length && (
-                                                        <div className="text-gray-400">и ещё {o.itemsTotal - o.items.length}</div>
-                                                    )}
-                                                </>
-                                            )}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 text-right font-mono text-gray-900">{money(o.totalSumm)}</td>
-                                        <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                                            {o.createdAt ? new Date(o.createdAt).toLocaleDateString('ru-RU') : '—'}
-                                        </td>
-                                        <td className="whitespace-nowrap px-3 py-2 text-xs text-gray-600">
-                                            {o.nextContact ? new Date(o.nextContact).toLocaleDateString('ru-RU') : '—'}
-                                        </td>
+                                        {columns.map((key) => (
+                                            <td key={key} className="px-4 py-4 text-[13px] leading-relaxed text-gray-800">
+                                                {cell(order, key)}
+                                            </td>
+                                        ))}
                                     </tr>
                                 ))
                             )}
@@ -160,23 +242,23 @@ export default function OrdersClient() {
             </div>
 
             {pagination.totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-gray-200 bg-white px-4 py-2">
-                    <span className="text-xs text-gray-500">
+                <div className="flex items-center justify-between border-t border-gray-200 px-6 py-3">
+                    <span className="text-sm text-gray-500">
                         Показано {orders.length} из {pagination.totalCount.toLocaleString('ru-RU')}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             disabled={page === 1}
-                            className="border border-gray-300 px-3 py-1 text-xs font-bold disabled:text-gray-300"
+                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:text-gray-300"
                         >
                             Назад
                         </button>
-                        <span className="px-2 text-xs text-gray-600">{page} / {pagination.totalPages}</span>
+                        <span className="text-sm text-gray-500">{page} / {pagination.totalPages}</span>
                         <button
                             onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                             disabled={page >= pagination.totalPages}
-                            className="border border-gray-300 px-3 py-1 text-xs font-bold disabled:text-gray-300"
+                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:text-gray-300"
                         >
                             Вперёд
                         </button>
@@ -184,12 +266,19 @@ export default function OrdersClient() {
                 </div>
             )}
 
-            {openOrderId !== null && (
-                <OrderDetailsModal
-                    orderId={openOrderId}
-                    isOpen
-                    onClose={() => setOpenOrderId(null)}
+            {columnsOpen && (
+                <ViewSettingsModal
+                    title="Колонки"
+                    registry={ORDER_COLUMNS}
+                    selected={columns}
+                    defaults={DEFAULT_COLUMNS}
+                    onSave={saveColumns}
+                    onClose={() => setColumnsOpen(false)}
                 />
+            )}
+
+            {openOrderId !== null && (
+                <OrderDetailsModal orderId={openOrderId} isOpen onClose={() => setOpenOrderId(null)} />
             )}
         </div>
     );
