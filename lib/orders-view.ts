@@ -28,12 +28,13 @@ export const ORDER_COLUMNS: ViewItem[] = [
     { key: 'totalSumm', label: 'Сумма заказа', group: 'Стоимость' },
     { key: 'createdAt', label: 'Дата и время', group: 'Даты' },
     { key: 'nextContact', label: 'Дата следующего контакта', group: 'Даты' },
+    { key: 'daysInStatus', label: 'Времени в статусе', group: 'Даты' },
     { key: 'phone', label: 'Телефон', group: 'Покупатель' },
     { key: 'email', label: 'Почта', group: 'Покупатель' },
 ];
 
 export const DEFAULT_COLUMNS = [
-    'status', 'number', 'customer', 'manager', 'managerComment', 'items', 'totalSumm', 'createdAt', 'nextContact',
+    'status', 'number', 'customer', 'manager', 'managerComment', 'items', 'totalSumm', 'daysInStatus', 'createdAt', 'nextContact',
 ];
 
 export const FILTER_FIELDS: ViewItem[] = [

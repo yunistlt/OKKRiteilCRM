@@ -26,6 +26,10 @@ interface OrderRow {
     phone: string | null;
     email: string | null;
     nextContact: string | null;
+    daysInStatus: number | null;
+    normDays: number | null;
+    overdue: boolean;
+    statusSinceApproximate?: boolean;
     items: Array<{ name: string; article: string | null; price: number | null; quantity: number | null }>;
     itemsTotal: number;
 }
@@ -165,6 +169,25 @@ export default function OrdersClient() {
                 );
             case 'nextContact':
                 return <span className="whitespace-nowrap">{day(order.nextContact)}</span>;
+            case 'daysInStatus': {
+                if (order.daysInStatus == null) return '—';
+                const label = `${order.daysInStatus} дн.`;
+                return (
+                    <span
+                        className={`whitespace-nowrap ${order.overdue ? 'font-semibold text-red-600' : 'text-gray-700'}`}
+                        title={
+                            order.normDays != null
+                                ? `Норматив ${order.normDays} дн.${order.statusSinceApproximate ? ' · отсчёт от создания заказа: смены статуса нет в истории' : ''}`
+                                : 'Норматив для этого статуса не задан'
+                        }
+                    >
+                        {label}
+                        {order.overdue && order.normDays != null && (
+                            <span className="ml-1 text-xs font-normal">из {order.normDays}</span>
+                        )}
+                    </span>
+                );
+            }
             default:
                 return '—';
         }
@@ -226,7 +249,7 @@ export default function OrdersClient() {
                                     <tr
                                         key={order.orderId}
                                         onClick={() => setOpenOrderId(order.orderId)}
-                                        className="cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50/40"
+                                        className={`cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50/40 ${order.overdue ? 'bg-red-50/50' : ''}`}
                                     >
                                         {columns.map((key) => (
                                             <td key={key} className="px-4 py-4 text-[13px] leading-relaxed text-gray-800">

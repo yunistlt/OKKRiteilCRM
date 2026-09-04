@@ -64,6 +64,34 @@ export async function GET(req: Request) {
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
     ]);
 
+    // Норматив времени берём из СВОИХ статусов, связка с RetailCRM — через external_code.
+    const { data: ownStatuses } = await supabase
+        .from('crm_statuses')
+        .select('external_code, norm_days')
+        .not('external_code', 'is', null);
+    const normByStatus = new Map<string, number | null>(
+        ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
+    );
+
+    // Момент входа в текущий статус — последняя запись о его смене в истории заказа.
+    const orderIds = rows.map((r: any) => r.order_id);
+    const enteredAt = new Map<number, string>();
+    if (orderIds.length) {
+        const { data: history } = await supabase
+            .from('order_history_log')
+            .select('retailcrm_order_id, new_value, occurred_at')
+            .eq('field', 'status')
+            .in('retailcrm_order_id', orderIds)
+            .order('occurred_at', { ascending: false });
+
+        for (const h of ((history || []) as any[])) {
+            // Записи идут от новых к старым, поэтому первая встреченная и есть последняя смена.
+            if (!enteredAt.has(h.retailcrm_order_id)) {
+                enteredAt.set(h.retailcrm_order_id, h.occurred_at);
+            }
+        }
+    }
+
     const managerNames = new Map<number, string>(
         ((managers || []) as any[]).map((m) => [Number(m.id), [m.last_name, m.first_name].filter(Boolean).join(' ')])
     );
@@ -142,6 +170,7 @@ export async function GET(req: Request) {
             phone: payload.phone || row.phone || null,
             email: payload.email || null,
             nextContact: payload.customFields?.data_kontakta || null,
+            ...statusAge(row, enteredAt.get(row.order_id) ?? null, normByStatus.get(row.status) ?? null),
             // Состав показываем как в RetailCRM: название с артикулом, цена и количество.
             items: (Array.isArray(payload.items) ? payload.items : []).slice(0, 4).map((i: any) => ({
                 name: i?.offer?.name || i?.productName || 'Позиция',
@@ -164,4 +193,23 @@ export async function GET(req: Request) {
             totalPages: Math.max(1, Math.ceil((listResult.count ?? 0) / pageSize)),
         },
     });
+}
+
+/**
+ * Сколько заказ сидит в текущем статусе и не выбился ли из норматива.
+ * Если смены статуса в истории нет (старый заказ, синк не донёс) — считаем от создания
+ * и помечаем оценку приблизительной, чтобы никого не обвинить по недостоверным данным.
+ */
+function statusAge(row: any, enteredAt: string | null, normDays: number | null) {
+    const since = enteredAt || row.created_at || null;
+    if (!since) return { daysInStatus: null, normDays, overdue: false, statusSinceApproximate: true };
+
+    const days = Math.max(0, Math.floor((Date.now() - new Date(since).getTime()) / 86400000));
+    return {
+        daysInStatus: days,
+        statusSince: since,
+        statusSinceApproximate: !enteredAt,
+        normDays,
+        overdue: normDays != null && days > normDays,
+    };
 }
