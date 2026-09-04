@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { parseOrdersFilter, applyOrdersFilter } from '@/lib/orders-filter';
+import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter } from '@/lib/orders-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,25 +25,41 @@ export async function GET(req: Request) {
         filter.managers = [String(session.user.retail_crm_manager_id)];
     }
 
+    // Нормативы читаем до запроса: по ним собирается условие просрочки.
+    const { data: ownStatuses } = await supabase
+        .from('crm_statuses')
+        .select('external_code, norm_days')
+        .not('external_code', 'is', null);
+    const normByStatus = new Map<string, number | null>(
+        ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
+    );
+    const norms = ((ownStatuses || []) as any[])
+        .filter((s) => typeof s.norm_days === 'number' && s.norm_days >= 0)
+        .map((s) => ({ status: s.external_code as string, normDays: s.norm_days as number }));
+
     const base = () => {
         // Удалённые в CRM заказы в рабочем списке не показываем.
         let q = supabase.from('orders').select('*', { count: 'exact', head: false }).is('crm_deleted_at', null);
-        return applyOrdersFilter(q, filter);
+        q = applyOrdersFilter(q, filter);
+        return filter.overdueOnly ? applyOverdueFilter(q, norms) : q;
     };
 
     const from = (page - 1) * pageSize;
 
     const [listResult, statusResult] = await Promise.all([
         base()
-            .select('order_id, number, status, created_at, manager_id, totalsumm, raw_payload', { count: 'exact' })
+            .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range(from, from + pageSize - 1),
         // Количества по статусам считаем без фильтра по статусу, иначе в колонке
         // останется только выбранный — навигация сломается.
-        applyOrdersFilter(
-            supabase.from('orders').select('status').is('crm_deleted_at', null),
-            { ...filter, statuses: [] }
-        ),
+        (() => {
+            const q = applyOrdersFilter(
+                supabase.from('orders').select('status').is('crm_deleted_at', null),
+                { ...filter, statuses: [] }
+            );
+            return filter.overdueOnly ? applyOverdueFilter(q, norms) : q;
+        })(),
     ]);
 
     if (listResult.error) {
@@ -63,34 +79,6 @@ export async function GET(req: Request) {
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'statusGroup'),
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
     ]);
-
-    // Норматив времени берём из СВОИХ статусов, связка с RetailCRM — через external_code.
-    const { data: ownStatuses } = await supabase
-        .from('crm_statuses')
-        .select('external_code, norm_days')
-        .not('external_code', 'is', null);
-    const normByStatus = new Map<string, number | null>(
-        ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
-    );
-
-    // Момент входа в текущий статус — последняя запись о его смене в истории заказа.
-    const orderIds = rows.map((r: any) => r.order_id);
-    const enteredAt = new Map<number, string>();
-    if (orderIds.length) {
-        const { data: history } = await supabase
-            .from('order_history_log')
-            .select('retailcrm_order_id, new_value, occurred_at')
-            .eq('field', 'status')
-            .in('retailcrm_order_id', orderIds)
-            .order('occurred_at', { ascending: false });
-
-        for (const h of ((history || []) as any[])) {
-            // Записи идут от новых к старым, поэтому первая встреченная и есть последняя смена.
-            if (!enteredAt.has(h.retailcrm_order_id)) {
-                enteredAt.set(h.retailcrm_order_id, h.occurred_at);
-            }
-        }
-    }
 
     const managerNames = new Map<number, string>(
         ((managers || []) as any[]).map((m) => [Number(m.id), [m.last_name, m.first_name].filter(Boolean).join(' ')])
@@ -170,7 +158,7 @@ export async function GET(req: Request) {
             phone: payload.phone || row.phone || null,
             email: payload.email || null,
             nextContact: payload.customFields?.data_kontakta || null,
-            ...statusAge(row, enteredAt.get(row.order_id) ?? null, normByStatus.get(row.status) ?? null),
+            ...statusAge(row, row.status_since ?? null, normByStatus.get(row.status) ?? null),
             // Состав показываем как в RetailCRM: название с артикулом, цена и количество.
             items: (Array.isArray(payload.items) ? payload.items : []).slice(0, 4).map((i: any) => ({
                 name: i?.offer?.name || i?.productName || 'Позиция',

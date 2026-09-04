@@ -38,6 +38,8 @@ export interface OrdersFilter {
     purchaseTo: string;
     managerComment: string;
     customerComment: string;
+    /** Только заказы, выбившиеся из норматива времени в статусе. */
+    overdueOnly: boolean;
 }
 
 export const EMPTY_FILTER: OrdersFilter = {
@@ -45,7 +47,7 @@ export const EMPTY_FILTER: OrdersFilter = {
     sumFrom: '', sumTo: '', categories: [], control: '',
     contactFrom: '', contactTo: '', createdFrom: '', createdTo: '',
     contragent: '', sferas: [], purchaseFrom: '', purchaseTo: '',
-    managerComment: '', customerComment: '',
+    managerComment: '', customerComment: '', overdueOnly: false,
 };
 
 /** Запятые и скобки ломают синтаксис `or` в PostgREST — вычищаем их из пользовательского ввода. */
@@ -58,6 +60,8 @@ export function filterToSearchParams(filter: OrdersFilter): URLSearchParams {
     for (const [key, value] of Object.entries(filter)) {
         if (Array.isArray(value)) {
             if (value.length) params.set(key, value.join(','));
+        } else if (typeof value === 'boolean') {
+            if (value) params.set(key, 'true');
         } else if (value) {
             params.set(key, String(value));
         }
@@ -89,6 +93,7 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
         purchaseTo: text('purchaseTo'),
         managerComment: text('managerComment'),
         customerComment: text('customerComment'),
+        overdueOnly: text('overdueOnly') === 'true',
     };
 }
 
@@ -150,4 +155,25 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
 /** Есть ли хоть одно заполненное условие — для подсветки кнопки сброса. */
 export function isFilterEmpty(filter: OrdersFilter): boolean {
     return Object.values(filter).every((v) => (Array.isArray(v) ? v.length === 0 : !v));
+}
+
+/**
+ * Оставляет только заказы, выбившиеся из норматива времени в статусе.
+ *
+ * Норматив свой у каждого статуса, поэтому условие собирается как «статус X и вошёл в
+ * него раньше, чем N дней назад» — по одному на статус с нормативом. Заказы без
+ * известного момента входа не берём: гадать по ним и обвинять в просрочке нельзя.
+ */
+export function applyOverdueFilter(query: any, norms: Array<{ status: string; normDays: number }>) {
+    if (!norms.length) {
+        // Нормативы не заданы ни у одного статуса — просроченных быть не может.
+        return query.eq('order_id', -1);
+    }
+
+    const clauses = norms.map(({ status, normDays }) => {
+        const threshold = new Date(Date.now() - normDays * 86400000).toISOString();
+        return `and(status.eq.${status},status_since.lt.${threshold})`;
+    });
+
+    return query.not('status_since', 'is', null).or(clauses.join(','));
 }

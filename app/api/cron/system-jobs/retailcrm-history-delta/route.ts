@@ -149,6 +149,21 @@ export async function GET(req: NextRequest) {
 
           rowsUpserted += rowsToUpsert.length;
 
+          // Момент входа в текущий статус держим прямо в заказе: иначе «сколько висит
+          // в статусе» пришлось бы считать по истории на каждый запрос списка.
+          const statusChanges = rowsToUpsert.filter((r) => r.field === 'status');
+          for (const change of statusChanges) {
+            const { error: sinceError } = await supabase
+              .from('orders')
+              .update({ status_since: change.occurred_at })
+              .eq('order_id', change.retailcrm_order_id)
+              .lt('status_since', change.occurred_at);
+
+            if (sinceError) {
+              console.warn('[history-delta] Не удалось обновить момент входа в статус:', sinceError);
+            }
+          }
+
           for (const [orderId, historyId] of Array.from(lastHistoryIdByOrder.entries())) {
             await enqueueSystemJob({
               jobType: 'retailcrm_order_upsert',

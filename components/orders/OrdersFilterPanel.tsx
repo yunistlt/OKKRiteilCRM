@@ -166,6 +166,19 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                         {show('customerComment') && (
                             <Field label="Комментарий клиента"><Text value={draft.customerComment} onChange={(v) => set({ customerComment: v })} /></Field>
                         )}
+                        {show('overdueOnly') && (
+                            <Field label="Норматив времени">
+                                <label className="flex cursor-pointer items-center gap-2 py-2 text-sm text-gray-800">
+                                    <input
+                                        type="checkbox"
+                                        checked={draft.overdueOnly}
+                                        onChange={(e) => set({ overdueOnly: e.target.checked })}
+                                        className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                                    />
+                                    Только просроченные
+                                </label>
+                            </Field>
+                        )}
                     </div>
 
                     <div className="mt-5 flex flex-wrap items-start gap-3">
