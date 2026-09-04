@@ -160,6 +160,24 @@ export default function StatusBoardClient() {
                 </div>
             </div>
 
+            {groups.length > 0 && (
+                <div className="mt-4 px-6">
+                    <p className="mb-2 text-sm text-gray-500">Группы статусов — клик открывает настройку и состав</p>
+                    <div className="flex flex-wrap gap-2">
+                        {groups.map((g) => (
+                            <button
+                                key={g.id}
+                                onClick={() => setEditGroup(g)}
+                                style={{ backgroundColor: g.color || '#f1f5f9' }}
+                                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-500 hover:text-blue-700"
+                            >
+                                {g.name} <span className="text-gray-500">{statuses.filter((s) => s.group_id === g.id).length}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="mt-4 min-h-0 flex-1 overflow-auto px-6 pb-6">
                 {ordered.length === 0 ? (
                     <p className="rounded-md border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-600">
@@ -198,16 +216,27 @@ export default function StatusBoardClient() {
                                         className="sticky left-0 z-10 border border-gray-200 p-0 text-left"
                                         style={{ backgroundColor: from.color || groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
                                     >
-                                        <button
-                                            onClick={() => setEditStatus(from)}
-                                            className="block w-full px-3 py-2 text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
-                                        >
-                                            {from.name}
+                                        <div className="px-3 py-2">
+                                            <button
+                                                onClick={() => setEditStatus(from)}
+                                                title="Настроить статус"
+                                                className="block w-full text-left text-xs font-medium leading-snug text-gray-800 hover:underline"
+                                            >
+                                                {from.name}
+                                            </button>
                                             <span className="mt-0.5 block text-[10px] font-normal text-gray-500">
-                                                {groupOf(from)?.name ?? 'Без группы'}
+                                                {groupOf(from) ? (
+                                                    <button
+                                                        onClick={() => setEditGroup(groupOf(from)!)}
+                                                        title="Настроить группу"
+                                                        className="text-gray-500 underline decoration-dotted hover:text-blue-600"
+                                                    >
+                                                        {groupOf(from)!.name}
+                                                    </button>
+                                                ) : 'Без группы'}
                                                 {from.norm_days != null ? ` · норматив ${from.norm_days} дн.` : ''}
                                             </span>
-                                        </button>
+                                        </div>
                                     </th>
                                     {ordered.map((to) => (
                                         <td key={to.id} className={`border border-gray-200 text-center ${from.id === to.id ? 'bg-gray-100' : ''}`}>
@@ -227,23 +256,6 @@ export default function StatusBoardClient() {
                     </table>
                 )}
 
-                {groups.length > 0 && (
-                    <div className="mt-6">
-                        <p className="mb-2 text-sm text-gray-500">Группы статусов — клик открывает состав</p>
-                        <div className="flex flex-wrap gap-2">
-                            {groups.map((g) => (
-                                <button
-                                    key={g.id}
-                                    onClick={() => setEditGroup(g)}
-                                    style={{ backgroundColor: g.color || '#f8fafc' }}
-                                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-800 hover:border-blue-500"
-                                >
-                                    {g.name} <span className="text-gray-500">{statuses.filter((s) => s.group_id === g.id).length}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
 
             {editStatus && (
