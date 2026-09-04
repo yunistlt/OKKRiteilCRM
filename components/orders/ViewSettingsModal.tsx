@@ -19,6 +19,8 @@ interface ViewSettingsModalProps {
 export default function ViewSettingsModal({ title, registry, selected, defaults, onSave, onClose }: ViewSettingsModalProps) {
     const [current, setCurrent] = useState<string[]>(selected);
     const [search, setSearch] = useState('');
+    const [dragIndex, setDragIndex] = useState<number | null>(null);
+    const [overIndex, setOverIndex] = useState<number | null>(null);
 
     const byKey = useMemo(() => new Map(registry.map((i) => [i.key, i])), [registry]);
 
@@ -49,6 +51,19 @@ export default function ViewSettingsModal({ title, registry, selected, defaults,
         });
     };
 
+    /** Перетаскивание мышью: вынимаем строку и вставляем на место, над которым отпустили. */
+    const dropAt = (target: number) => {
+        setCurrent((prev) => {
+            if (dragIndex === null || dragIndex === target) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(dragIndex, 1);
+            next.splice(dragIndex < target ? target - 1 : target, 0, moved);
+            return next;
+        });
+        setDragIndex(null);
+        setOverIndex(null);
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={onClose}>
             <div
@@ -68,18 +83,31 @@ export default function ViewSettingsModal({ title, registry, selected, defaults,
 
                 <div className="flex min-h-0 flex-1">
                     <div className="w-64 shrink-0 overflow-y-auto border-r border-gray-200 py-2">
-                        <p className="px-4 pb-2 text-xs text-gray-400">Порядок показа</p>
+                        <p className="px-4 pb-2 text-xs text-gray-400">Порядок показа — перетащите мышью</p>
                         {current.length === 0 && <p className="px-4 text-sm text-gray-400">Ничего не выбрано</p>}
                         {current.map((key, index) => {
                             const item = byKey.get(key);
                             if (!item) return null;
                             return (
-                                <div key={key} className="group flex items-center gap-1 px-4 py-1.5 hover:bg-gray-50">
+                                <div
+                                    key={key}
+                                    draggable
+                                    onDragStart={() => setDragIndex(index)}
+                                    onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+                                    onDragOver={(e) => { e.preventDefault(); setOverIndex(index); }}
+                                    onDrop={(e) => { e.preventDefault(); dropAt(index); }}
+                                    className={`group flex cursor-grab items-center gap-1 border-t-2 px-4 py-1.5 active:cursor-grabbing ${
+                                        overIndex === index && dragIndex !== null && dragIndex !== index
+                                            ? 'border-t-blue-500'
+                                            : 'border-t-transparent'
+                                    } ${dragIndex === index ? 'opacity-40' : 'hover:bg-gray-50'}`}
+                                >
+                                    <span className="select-none text-gray-300 group-hover:text-gray-400" title="Перетащите, чтобы изменить порядок">⠿</span>
                                     <span className="flex-1 truncate text-sm text-gray-700">{item.label}</span>
                                     <button
                                         onClick={() => move(index, -1)}
                                         disabled={index === 0}
-                                        className="px-1 text-xs text-gray-400 hover:text-blue-600 disabled:opacity-30"
+                                        className="px-1 text-xs text-gray-300 opacity-0 hover:text-blue-600 group-hover:opacity-100 disabled:opacity-0"
                                         title="Выше"
                                     >
                                         ↑
@@ -87,7 +115,7 @@ export default function ViewSettingsModal({ title, registry, selected, defaults,
                                     <button
                                         onClick={() => move(index, 1)}
                                         disabled={index === current.length - 1}
-                                        className="px-1 text-xs text-gray-400 hover:text-blue-600 disabled:opacity-30"
+                                        className="px-1 text-xs text-gray-300 opacity-0 hover:text-blue-600 group-hover:opacity-100 disabled:opacity-0"
                                         title="Ниже"
                                     >
                                         ↓
@@ -95,6 +123,13 @@ export default function ViewSettingsModal({ title, registry, selected, defaults,
                                 </div>
                             );
                         })}
+                        {current.length > 0 && (
+                            <div
+                                onDragOver={(e) => { e.preventDefault(); setOverIndex(current.length); }}
+                                onDrop={(e) => { e.preventDefault(); dropAt(current.length); }}
+                                className={`mx-4 h-6 border-t-2 ${overIndex === current.length && dragIndex !== null ? 'border-t-blue-500' : 'border-t-transparent'}`}
+                            />
+                        )}
                     </div>
 
                     <div className="min-w-0 flex-1 overflow-y-auto bg-gray-50 px-6 py-4">
