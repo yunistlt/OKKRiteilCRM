@@ -25,6 +25,7 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<{
+        writeEnabled: boolean;
         currentName: string | null;
         known: boolean;
         transitionsConfigured: boolean;
@@ -94,6 +95,13 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
             {open && (
                 <div className="absolute left-0 z-50 mt-1 w-80 rounded-md border border-gray-200 bg-white shadow-lg">
                     {loading && <p className="px-3 py-3 text-sm text-gray-500">Загружаем переходы…</p>}
+
+                    {!loading && data && !data.writeEnabled && (
+                        <p className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-800">
+                            Отправка изменений в RetailCRM пока отключена — сначала достраиваем свой функционал.
+                            Список ниже показывает разрешённые переходы, но смена не применится.
+                        </p>
+                    )}
 
                     {!loading && data && !data.transitionsConfigured && (
                         <p className="px-3 py-3 text-sm text-gray-600">

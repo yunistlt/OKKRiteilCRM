@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,8 +59,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
 
+    const writeEnabled = await isRetailcrmOutboundWriteEnabled();
+
     return NextResponse.json({
         ok: true,
+        writeEnabled,
         currentCode: order.status,
         currentName: current?.name ?? null,
         // Статуса нет в нашем справочнике либо для него не заведено ни одного перехода.
@@ -108,6 +112,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const allowed = ((transitions || []) as any[]).some((t) => t.from_status_id === from.id && t.to_status_id === to.id);
     if (!allowed) {
         return NextResponse.json({ error: 'transition_not_allowed' }, { status: 409 });
+    }
+
+    // Пока свой функционал не достроен, наружу не пишем — см. lib/retailcrm/outbound-guard.
+    if (!(await isRetailcrmOutboundWriteEnabled())) {
+        return NextResponse.json({ error: 'crm_write_disabled', message: RETAILCRM_WRITE_BLOCKED_MESSAGE }, { status: 423 });
     }
 
     const result = await updateExistingOrderInCrm(Number(id), { status: body.status }, order.site || undefined);
