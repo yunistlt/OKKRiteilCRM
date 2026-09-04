@@ -72,6 +72,25 @@ export default function StatusBoardClient() {
 
     const groupOf = (s: CrmStatus) => groups.find((g) => g.id === s.group_id);
 
+    /**
+     * Статусы уже отсортированы по группам, поэтому полосу собираем отрезками подряд
+     * идущих: сколько статусов группы идёт подряд — на столько ячеек она растянется.
+     */
+    const bands = useMemo(() => {
+        const out: Array<{ id: string | null; name: string; color: string; span: number }> = [];
+        for (const s of ordered) {
+            const g = groups.find((x) => x.id === s.group_id);
+            const id = g?.id ?? null;
+            const last = out[out.length - 1];
+            if (last && last.id === id) {
+                last.span += 1;
+            } else {
+                out.push({ id, name: g?.name ?? 'Без группы', color: g?.color || '#f1f5f9', span: 1 });
+            }
+        }
+        return out;
+    }, [ordered, groups]);
+
     const toggle = (from: string, to: string) => {
         if (from === to) return;
         setPairs((prev) => {
@@ -189,7 +208,27 @@ export default function StatusBoardClient() {
                     <table className="border-collapse text-sm">
                         <thead>
                             <tr>
-                                <th className="sticky left-0 z-20 border border-gray-200 bg-gray-50 px-3 py-2 text-left text-xs font-normal text-gray-500">
+                                <th className="sticky left-0 z-20 border border-gray-200 bg-gray-50" colSpan={2} />
+                                {bands.map((b, i) => (
+                                    <th
+                                        key={`top-${b.id ?? 'none'}-${i}`}
+                                        colSpan={b.span}
+                                        style={{ backgroundColor: b.color }}
+                                        className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-800"
+                                    >
+                                        <button
+                                            onClick={() => { const g = groups.find((x) => x.id === b.id); if (g) setEditGroup(g); }}
+                                            disabled={!b.id}
+                                            className="w-full truncate hover:underline disabled:cursor-default"
+                                            title={b.id ? 'Настроить группу' : undefined}
+                                        >
+                                            {b.name}
+                                        </button>
+                                    </th>
+                                ))}
+                            </tr>
+                            <tr>
+                                <th className="sticky left-0 z-20 border border-gray-200 bg-gray-50 px-2 py-2 text-left text-xs font-normal text-gray-500" colSpan={2}>
                                     Начальный \ Конечный
                                 </th>
                                 {ordered.map((s) => (
@@ -210,10 +249,35 @@ export default function StatusBoardClient() {
                             </tr>
                         </thead>
                         <tbody>
-                            {ordered.map((from) => (
+                            {ordered.map((from, rowIndex) => {
+                                // Полоса группы слева рисуется один раз на весь отрезок.
+                                let band: { name: string; color: string; span: number; id: string | null } | null = null;
+                                let seen = 0;
+                                for (const b of bands) {
+                                    if (rowIndex === seen) { band = b; break; }
+                                    seen += b.span;
+                                }
+                                return (
                                 <tr key={from.id}>
+                                    {band && (
+                                        <th
+                                            rowSpan={band.span}
+                                            style={{ backgroundColor: band.color }}
+                                            className="sticky left-0 z-20 border border-gray-200 px-1 py-2 align-top"
+                                        >
+                                            <button
+                                                onClick={() => { const g = groups.find((x) => x.id === band!.id); if (g) setEditGroup(g); }}
+                                                disabled={!band.id}
+                                                title={band.id ? 'Настроить группу' : undefined}
+                                                className="text-[11px] font-semibold text-gray-800 hover:underline disabled:cursor-default"
+                                                style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap' }}
+                                            >
+                                                {band.name}
+                                            </button>
+                                        </th>
+                                    )}
                                     <th
-                                        className="sticky left-0 z-10 border border-gray-200 p-0 text-left"
+                                        className="sticky left-8 z-10 border border-gray-200 p-0 text-left"
                                         style={{ backgroundColor: from.color || groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
                                     >
                                         <div className="px-3 py-2">
@@ -251,7 +315,8 @@ export default function StatusBoardClient() {
                                         </td>
                                     ))}
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}
