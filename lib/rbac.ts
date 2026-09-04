@@ -34,6 +34,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/managers', label: 'Менеджеры', description: 'Настройка справочника менеджеров RetailCRM.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/managers', label: 'API менеджеров', description: 'Серверные методы списка и управления менеджерами.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/sync/managers', label: 'API синхронизации менеджеров', description: 'Синхронизация менеджеров с внешними источниками.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/settings/statuses/board', label: 'Статусы и переходы', description: 'Свои статусы будущей CRM: группы, порядок, цвет, норматив времени и матрица переходов.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/api/crm-statuses', label: 'API своих статусов', description: 'Группы, статусы и переходы внутренней CRM.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/statuses', label: 'Статусы заказов', description: 'Настройка словаря статусов заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/statuses', label: 'API статусов заказов', description: 'CRUD-операции по статусам заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/dict/statuses', label: 'API словаря статусов', description: 'Служебные методы словаря статусов.', category: 'Система', allowed: ['admin'] },
