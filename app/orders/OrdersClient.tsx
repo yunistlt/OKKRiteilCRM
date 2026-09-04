@@ -194,7 +194,7 @@ export default function OrdersClient() {
     };
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-white">
+        <div className="flex flex-col bg-white">
             <div className="flex items-baseline gap-3 px-6 pb-2 pt-5">
                 <h1 className="text-2xl font-semibold text-gray-900">Заказы</h1>
                 <span className="text-sm text-gray-400">
@@ -209,7 +209,7 @@ export default function OrdersClient() {
                 onApply={(next) => { setFilter(next); setPage(1); }}
             />
 
-            <div className="relative flex min-h-0 flex-1 border-t border-gray-200">
+            <div className="relative flex border-t border-gray-200">
                 <div className="hidden md:block">
                     <OrdersStatusSidebar
                         tree={statusTree}
@@ -218,7 +218,7 @@ export default function OrdersClient() {
                     />
                 </div>
 
-                <div className="min-h-0 min-w-0 flex-1 overflow-auto">
+                <div className="min-w-0 flex-1 overflow-x-auto">
                     <div className="flex justify-end px-4 pt-2">
                         <button
                             onClick={() => setColumnsOpen(true)}

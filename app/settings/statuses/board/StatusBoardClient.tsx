@@ -125,7 +125,7 @@ export default function StatusBoardClient() {
     if (loading) return <div className="p-6 text-sm text-gray-500">Загружаем статусы…</div>;
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-white">
+        <div className="flex flex-col bg-white">
             <div className="px-6 pt-5">
                 <h1 className="text-2xl font-semibold text-gray-900">Статусы и переходы</h1>
                 <p className="mt-1 max-w-3xl text-sm text-gray-500">
@@ -197,7 +197,7 @@ export default function StatusBoardClient() {
                 </div>
             )}
 
-            <div className="mt-4 min-h-0 flex-1 overflow-auto px-6 pb-6">
+            <div className="mt-4 overflow-x-auto px-6 pb-6">
                 {ordered.length === 0 ? (
                     <p className="rounded-md border border-gray-200 bg-gray-50 px-4 py-6 text-sm text-gray-600">
                         Статусов пока нет. Заведите первый кнопкой «+ Статус» — или перенесите текущий набор

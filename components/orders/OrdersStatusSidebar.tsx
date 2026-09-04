@@ -28,7 +28,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
         return (
             <button
                 onClick={() => setCollapsed(false)}
-                className="h-full border-r border-gray-200 bg-white px-3 py-3 text-sm text-gray-500 hover:text-gray-800"
+                className="border-r border-gray-200 bg-white px-3 py-3 text-sm text-gray-500 hover:text-gray-800"
                 title="Показать статусы"
             >
                 →
@@ -37,7 +37,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
     }
 
     return (
-        <aside className="w-60 shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
+        <aside className="w-60 shrink-0 border-r border-gray-200 bg-white">
             <button
                 onClick={() => setCollapsed(true)}
                 className="px-4 py-3 text-sm text-gray-500 hover:text-gray-800"
