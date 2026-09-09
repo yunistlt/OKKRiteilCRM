@@ -6,12 +6,13 @@ import { collectStageEvidence } from './stage-collector';
 import { generateEmbedding, formatExampleForEmbedding } from './embeddings';
 import { ANNA_INSIGHT_PROMPT } from './prompts';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
     if (!_openai) {
         if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is not set');
-        _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }

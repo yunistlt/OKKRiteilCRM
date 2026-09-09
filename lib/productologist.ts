@@ -3,13 +3,14 @@ import { supabase } from '@/utils/supabase';
 import OpenAI from 'openai';
 import { generateEmbedding, formatProductForEmbedding } from './embeddings';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 function getOpenAI(): OpenAI {
     if (!_openai) {
         const apiKey = process.env.OPENAI_API_KEY;
         if (!apiKey) throw new Error('OPENAI_API_KEY is missing in env');
-        _openai = new OpenAI({ apiKey });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }
