@@ -9,9 +9,7 @@ let _openai: OpenAI | null = null;
 
 function getOpenAI() {
     if (!_openai) {
-        _openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }
@@ -66,6 +64,7 @@ function cleanComment(comment: string): string {
 }
 
 import { DEFAULT_ROUTING_PROMPT } from '@/lib/prompts';
+import { getOpenAIClient } from '@/utils/openai';
 
 /**
  * Analyze manager comment to determine target status for order routing

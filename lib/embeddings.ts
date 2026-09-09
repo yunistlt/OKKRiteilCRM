@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 const EMBEDDING_DIMENSIONS = 1536;
@@ -61,9 +62,7 @@ function getOpenAI() {
         if (!process.env.OPENAI_API_KEY) {
             throw new Error('OPENAI_API_KEY is not set');
         }
-        _openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }

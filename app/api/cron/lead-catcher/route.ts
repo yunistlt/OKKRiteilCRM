@@ -8,10 +8,9 @@ import { normalizePhone } from '@/lib/phone-utils';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import OpenAI from 'openai';
+import { getOpenAIClient } from '@/utils/openai';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const openai = getOpenAIClient();
 
 function mapPurchaseForm(raw?: string): string {
     if (!raw) return 'trebuetsya-utochnit';

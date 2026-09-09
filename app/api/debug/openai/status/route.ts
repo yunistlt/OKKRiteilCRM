@@ -1,7 +1,7 @@
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { getOpenAIClient, getOpenAIBaseUrl, getOpenAIGateHeaders } from '@/utils/openai';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +16,7 @@ export async function GET() {
     }
 
     try {
-        const openai = new OpenAI({ apiKey });
+        const openai = getOpenAIClient();
 
         // List models to verify key and get available models
         const list = await openai.models.list();
@@ -30,6 +30,8 @@ export async function GET() {
             status: 'ok',
             message: 'API Key активен',
             key_preview: `...${apiKey.slice(-4)}`,
+            gateway: getOpenAIBaseUrl() || 'https://api.openai.com/v1 (напрямую)',
+            gateway_secret_sent: Boolean(getOpenAIGateHeaders()),
             models: {
                 total: models.length,
                 has_gpt4o_mini: hasGpt4oMini,

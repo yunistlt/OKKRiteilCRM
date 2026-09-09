@@ -2,6 +2,7 @@
 import OpenAI from 'openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
@@ -9,9 +10,7 @@ function getOpenAI() {
         if (!process.env.OPENAI_API_KEY) {
             throw new Error('OPENAI_API_KEY is not set in environment variables');
         }
-        _openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }

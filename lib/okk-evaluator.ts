@@ -16,6 +16,7 @@ import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-age
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 const GUIDE_MAP = new Map(OKK_CONSULTANT_GUIDES.map((guide) => [guide.key, guide]));
@@ -143,7 +144,7 @@ const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
 };
 
 function getOpenAI() {
-    if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    if (!_openai) _openai = getOpenAIClient();
     return _openai;
 }
 

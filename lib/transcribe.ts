@@ -5,13 +5,12 @@ import { getTelphinToken } from './telphin';
 import { supabase } from '@/utils/supabase';
 import { syncRecordingToStorage } from './telphin-storage';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
 function getOpenAI() {
     if (!_openai) {
-        _openai = new OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
+        _openai = getOpenAIClient();
     }
     return _openai;
 }
