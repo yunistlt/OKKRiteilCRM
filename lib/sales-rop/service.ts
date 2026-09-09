@@ -11,6 +11,7 @@ import {
     firstNameOf,
     formatOwnerReport,
     formatPersonalPlan,
+    splitTelegramMessage,
 } from '@/lib/sales-rop/format';
 import type { OwnerRow } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
@@ -212,17 +213,37 @@ async function loadDirectChats(): Promise<Map<number, string>> {
 async function sendToChat(chatId: string, text: string): Promise<void> {
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
     if (!token || !chatId) return;
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            chat_id: chatId,
-            text,
-            parse_mode: 'HTML',
-            disable_web_page_preview: true,
-        }),
-    });
-    if (!res.ok) throw new Error(`Telegram → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    // Длинный план уходит несколькими сообщениями подряд: Telegram не принимает
+    // больше 4096 символов за раз, а обрезать список задач нельзя — пропавшая
+    // строка это несделанная работа.
+    for (const chunk of splitTelegramMessage(text)) {
+        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: chunk,
+                parse_mode: 'HTML',
+                disable_web_page_preview: true,
+            }),
+        });
+        if (!res.ok) throw new Error(`Telegram → ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    }
+}
+
+/**
+ * Отправка, которая не уносит с собой всю рассылку.
+ *
+ * Один нерабочий адресат (заблокировал бота, сменил чат, слишком длинный текст)
+ * не должен оставлять без плана остальной отдел. Провал не прячем: он вернётся
+ * строкой и попадёт владельцу.
+ */
+async function sendToChatSafe(chatId: string, text: string, who: string, failures: string[]): Promise<void> {
+    try {
+        await sendToChat(chatId, text);
+    } catch (e: any) {
+        failures.push(`${who}: ${String(e?.message ?? e).slice(0, 160)}`);
+    }
 }
 
 /**
@@ -459,7 +480,7 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
  * человека, который ждал сообщений. Молчащий бот неотличим от бота, у которого
  * нет работы, — поэтому о своей поломке он обязан сказать сам.
  */
-export async function notifyOwnerFailure(where: string, error: string): Promise<void> {
+export async function notifyOwnerFailure(where: string, error: string, tail?: string): Promise<void> {
     try {
         const settings = await loadSettings();
         const chat = settings.ownerChatId || settings.chatId;
@@ -467,7 +488,7 @@ export async function notifyOwnerFailure(where: string, error: string): Promise<
         await sendToChat(
             chat,
             `⚠️ Бот-РОП: ${where} не отработал.\n\nОшибка: ${String(error).slice(0, 300)}\n\n` +
-                'Планы и отчёты сегодня не ушли. Запустить вручную можно повторным вызовом крона.',
+                (tail ?? 'Планы и отчёты сегодня не ушли. Запустить вручную можно повторным вызовом крона.'),
         );
     } catch {
         // Если и это не отправилось — молчим: падать на уведомлении о падении
@@ -483,6 +504,8 @@ export type MorningResult = {
     notesWritten: number;
     notesSkipped: number;
     sent: boolean;
+    /** Кому сообщение не доставлено. Пусто — рассылка прошла целиком. */
+    failures: string[];
 };
 
 /**
@@ -707,14 +730,18 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     const direct = settings.deliverPlansToDm ? await loadDirectChats() : new Map<number, string>();
 
     let sent = false;
+    // Кому план не ушёл. Пустой список — рассылка прошла целиком.
+    const failures: string[] = [];
     if (!opts.dryRun && settings.enabled) {
-        for (const bucket of Array.from(byRecipient.values())) {
-            const text = messages[Array.from(byRecipient.values()).indexOf(bucket)];
+        const buckets = Array.from(byRecipient.values());
+        for (let i = 0; i < buckets.length; i += 1) {
+            const bucket = buckets[i];
+            const text = messages[i];
             const dm = bucket.managerId !== null ? direct.get(bucket.managerId) : undefined;
             // Нет личного чата — план всё равно уходит в общий: человек не должен
             // остаться без работы из-за того, что не написал боту.
             const target = dm || settings.chatId;
-            if (target && text) await sendToChat(target, text);
+            if (target && text) await sendToChatSafe(target, text, bucket.name, failures);
         }
 
         // В общий чат — короткая сводка: кто сколько получил. Подробности там
@@ -728,12 +755,32 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                 const where = b.managerId !== null && direct.has(b.managerId) ? '' : ' (плана в личке нет — смотри выше)';
                 lines.push(`${who} — ${live.length} шт. на ${Math.round(sum).toLocaleString('ru-RU')} ₽${where}`);
             }
-            await sendToChat(settings.chatId, lines.join('\n'));
+            await sendToChatSafe(settings.chatId, lines.join('\n'), 'сводка в общий чат', failures);
         }
         sent = true;
+
+        // О сорванных отправках владелец узнаёт от бота, а не от менеджера,
+        // который не дождался плана.
+        if (failures.length > 0) {
+            await notifyOwnerFailure(
+                'Утренний план',
+                failures.join('; '),
+                'Остальные планы разосланы. Это частичный сбой, а не сорванный прогон.',
+            );
+        }
     }
 
-    return { date: today, managers: preview.length, tasks: rows.length, crmSet, notesWritten, notesSkipped, sent, preview: messages };
+    return {
+        date: today,
+        managers: preview.length,
+        tasks: rows.length,
+        crmSet,
+        notesWritten,
+        notesSkipped,
+        sent,
+        preview: messages,
+        failures,
+    };
 }
 
 function taskRow(date: string, t: Task) {
@@ -1035,14 +1082,20 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
 
     let sent = false;
     if (!opts.dryRun && settings.enabled) {
-        for (const [managerId, rows] of Array.from(byManager.entries())) {
+        const failures: string[] = [];
+        const managerIds = Array.from(byManager.keys());
+        for (let i = 0; i < managerIds.length; i += 1) {
+            const managerId = managerIds[i];
             const dm = managerId === null ? undefined : direct.get(managerId);
-            const text = preview[Array.from(byManager.keys()).indexOf(managerId) + 1];
-            if (text) await sendToChat(dm || settings.chatId, text);
+            const text = preview[i + 1];
+            if (text) await sendToChatSafe(dm || settings.chatId, text, String(managerId ?? 'без менеджера'), failures);
         }
 
-        if (settings.ownerReport && settings.ownerChatId) await sendToChat(settings.ownerChatId, ownerText);
+        if (settings.ownerReport && settings.ownerChatId) {
+            await sendToChatSafe(settings.ownerChatId, ownerText, 'отчёт владельцу', failures);
+        }
         sent = true;
+        if (failures.length > 0) degraded.push(`отправка: ${failures.join('; ')}`);
     }
 
     preview.push(ownerText);
