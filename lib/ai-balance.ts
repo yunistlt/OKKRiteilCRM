@@ -10,6 +10,7 @@
  * (429 insufficient_quota) даже если снимок устарел.
  */
 import { supabase } from '@/utils/supabase';
+import { getOpenAIBaseUrl, getOpenAIGateHeaders } from '@/utils/openai';
 
 export interface AiBalanceSettings {
     usdToEur: number;
@@ -83,9 +84,16 @@ export async function pingOpenAi(): Promise<{ ok: boolean; quotaExhausted: boole
     const key = process.env.OPENAI_API_KEY;
     if (!key) return { ok: false, quotaExhausted: false, status: 0, message: 'OPENAI_API_KEY не задан' };
     try {
-        const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        // Проверка живости обязана идти ТЕМ ЖЕ путём, что и рабочие вызовы: если они ходят через
+        // шлюз, а пинг — напрямую, он покажет «OpenAI доступен» ровно там, где всё лежит.
+        const base = (getOpenAIBaseUrl() || 'https://api.openai.com/v1').replace(/\/+$/, '');
+        const res = await fetch(`${base}/chat/completions`, {
             method: 'POST',
-            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            headers: {
+                Authorization: `Bearer ${key}`,
+                'Content-Type': 'application/json',
+                ...(getOpenAIGateHeaders() || {}),
+            },
             body: JSON.stringify({
                 model: 'gpt-4o-mini',
                 messages: [{ role: 'user', content: 'ping' }],
