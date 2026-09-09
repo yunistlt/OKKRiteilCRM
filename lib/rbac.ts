@@ -31,6 +31,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/cron/rop-relations', label: 'Крон: отношения с клиентами', description: 'Ночной пересчёт снимка отношений с клиентами для утреннего плана.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/sales-rop', label: 'Настройки бота-РОПа', description: 'Нагрузка отдела, нормы дня, пороги напоминаний и тексты бота-РОПа.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/sales-rop/settings', label: 'API настроек бота-РОПа', description: 'Чтение и правка настроек утренних планов и вечернего разбора.', category: 'Система', allowed: ['admin', 'rop'] },
+    { prefix: '/api/sales-rop/run', label: 'API ручного прогона бота-РОПа', description: 'Собрать и разослать утренние планы вручную, когда крон не отработал.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/settings/managers', label: 'Менеджеры', description: 'Настройка справочника менеджеров RetailCRM.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/managers', label: 'API менеджеров', description: 'Серверные методы списка и управления менеджерами.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/sync/managers', label: 'API синхронизации менеджеров', description: 'Синхронизация менеджеров с внешними источниками.', category: 'Система', allowed: ['admin'] },

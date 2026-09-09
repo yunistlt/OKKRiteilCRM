@@ -20,6 +20,17 @@ type Item = {
     value: string;
 };
 
+type RunResult = {
+    dry: boolean;
+    date: string;
+    managers: number;
+    tasks: number;
+    sent: boolean;
+    /** Кому сообщение не доставлено. Пусто — рассылка прошла целиком. */
+    failures: string[];
+    preview: string[];
+};
+
 type Ref = {
     managers: { id: number; name: string }[];
     statuses: { code: string; name: string; active: boolean; working: boolean }[];
@@ -33,6 +44,9 @@ export default function SalesRopSettingsPage() {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
     const [saved, setSaved] = useState('');
+    // Ручной прогон: 'dry' — проверка, 'send' — боевая рассылка.
+    const [running, setRunning] = useState<'' | 'dry' | 'send'>('');
+    const [run, setRun] = useState<RunResult | null>(null);
 
     const load = async () => {
         setLoading(true);
@@ -87,6 +101,35 @@ export default function SalesRopSettingsPage() {
         }
     };
 
+    /**
+     * Ручной прогон утреннего плана.
+     *
+     * Кнопка нужна ровно для одного случая: крон не отработал, планы не ушли, и
+     * догонять надо с телефона — а туда ни заголовок Authorization, ни
+     * CRON_SECRET не занести.
+     */
+    const runPlan = async (dry: boolean) => {
+        if (running) return;
+        if (!dry && !confirm('Разослать планы менеджерам прямо сейчас? Сообщения уйдут в личку и в общий чат.')) return;
+        setRunning(dry ? 'dry' : 'send');
+        setError('');
+        setRun(null);
+        try {
+            const res = await fetch('/api/sales-rop/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dry }),
+            });
+            const json = await res.json();
+            if (!res.ok) throw new Error(json.error || 'Прогон не удался');
+            setRun(json);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setRunning('');
+        }
+    };
+
     const byGroup = useMemo(() => {
         const map = new Map<string, Item[]>();
         for (const it of items) {
@@ -120,6 +163,30 @@ export default function SalesRopSettingsPage() {
                     {error}
                 </div>
             )}
+
+            <section style={{ border: '1px solid #111', padding: 10, marginBottom: 16 }}>
+                <h2 style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', margin: '0 0 4px' }}>
+                    Ручной прогон
+                </h2>
+                <p style={{ fontSize: 12, color: '#777', margin: '0 0 10px' }}>
+                    Догнать утреннюю рассылку, если крон не отработал. Повтор безопасен: задачи не задвоятся.
+                    Сначала стоит проверить без отправки.
+                </p>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    <button onClick={() => runPlan(true)} disabled={running !== ''} style={runButtonStyle(false, running !== '')}>
+                        {running === 'dry' ? 'Собираем…' : 'Проверить без отправки'}
+                    </button>
+                    <button onClick={() => runPlan(false)} disabled={running !== ''} style={runButtonStyle(true, running !== '')}>
+                        {running === 'send' ? 'Рассылаем…' : 'Разослать планы'}
+                    </button>
+                </div>
+                {running !== '' && (
+                    <div style={{ fontSize: 12, color: '#777', marginTop: 8 }}>
+                        Прогон занимает до нескольких минут — не закрывайте страницу.
+                    </div>
+                )}
+                {run && <RunReport run={run} />}
+            </section>
 
             {loading ? (
                 <div style={{ color: '#666', fontSize: 13 }}>Загружаем настройки…</div>
@@ -378,4 +445,67 @@ function Field({
     }
 
     return <input value={value} onChange={(e) => onChange(e.target.value)} style={inputStyle} />;
+}
+
+
+function runButtonStyle(primary: boolean, busy: boolean): React.CSSProperties {
+    return {
+        background: busy ? '#ccc' : primary ? '#0057d9' : '#fff',
+        color: busy ? '#fff' : primary ? '#fff' : '#111',
+        border: '1px solid ' + (busy ? '#ccc' : primary ? '#0057d9' : '#111'),
+        borderRadius: 0,
+        padding: '10px 16px',
+        fontSize: 14,
+        fontWeight: 600,
+        cursor: busy ? 'default' : 'pointer',
+    };
+}
+
+/**
+ * Итог прогона человеческими словами.
+ *
+ * Главное здесь — строка про недоставленные сообщения. 09.09.2026 планы не ушли
+ * целиком, и узнали мы об этом от человека, который их ждал: результат рассылки
+ * должен быть виден тому, кто её запустил, а не лежать в логах Vercel.
+ */
+function RunReport({ run }: { run: RunResult }) {
+    const longest = run.preview.reduce((max, t) => Math.max(max, t.length), 0);
+    return (
+        <div style={{ marginTop: 10, fontSize: 13, background: '#f4f4f4', padding: 10 }}>
+            <div>
+                {run.dry ? 'Проверка' : 'Рассылка'} за {run.date}: <b>{run.managers}</b> адресатов,{' '}
+                <b>{run.tasks}</b> задач. Самое длинное сообщение — {formatIntRu(longest)} символов
+                {longest > 3900 ? ' (уйдёт несколькими частями)' : ''}.
+            </div>
+
+            {!run.dry && run.failures.length === 0 && (
+                <div style={{ color: '#2e7d32', marginTop: 6 }}>Разослано всем.</div>
+            )}
+            {run.failures.length > 0 && (
+                <div style={{ color: '#d32f2f', marginTop: 6 }}>
+                    Не доставлено ({run.failures.length}): {run.failures.join('; ')}. Остальные планы ушли.
+                </div>
+            )}
+
+            <details style={{ marginTop: 8 }}>
+                <summary style={{ cursor: 'pointer' }}>Показать текст сообщений</summary>
+                {run.preview.map((text, i) => (
+                    <pre
+                        key={i}
+                        style={{
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word',
+                            background: '#fff',
+                            border: '1px solid #e5e5e5',
+                            padding: 8,
+                            margin: '8px 0 0',
+                            fontSize: 12,
+                        }}
+                    >
+                        {text}
+                    </pre>
+                ))}
+            </details>
+        </div>
+    );
 }
