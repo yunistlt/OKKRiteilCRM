@@ -481,15 +481,28 @@ ${body || '(пусто — суть письма может быть во вло
         const raw = completion.choices[0].message.content;
         if (!raw) throw new Error('Empty response');
         const parsed = JSON.parse(raw);
-        const route: EmailRoute = VALID_ROUTES.includes(parsed.route) ? parsed.route : 'not_request';
+        const modelRoute: EmailRoute = VALID_ROUTES.includes(parsed.route) ? parsed.route : 'not_request';
         const conf = Number(parsed.confidence);
+        // Электронные торги моделью не решаются: она видит «приглашение к участию» и заводит заявку
+        // (так завёлся зря заказ 54207, Портал закупок «Аквилон»). Гейт понижает маршрут только в
+        // одну сторону — заявка → не заявка, и только когда участие идёт ЧЕРЕЗ ПЛОЩАДКУ. Внутренние
+        // тендеры с подачей КП по почте гейт не трогает: их терять нельзя (заказы 54164, 54046).
+        const electronicTender = modelRoute === 'new_request' && isElectronicTenderInvite({
+            subject: email.subject,
+            body: `${body}\n${docs.join(' ')}`,
+            fromEmail: email.fromEmail,
+            fromName: email.fromName,
+        });
+        const route: EmailRoute = electronicTender ? 'not_request' : modelRoute;
         return {
             route,
             confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : 0,
-            reasoning: parsed.reasoning ?? '',
+            reasoning: electronicTender
+                ? `Электронные торги — участие через площадку, компания в них не участвует. Разбор модели: ${parsed.reasoning ?? ''}`
+                : (parsed.reasoning ?? ''),
             orderNumber: parsed.order_number ? String(parsed.order_number).trim() : null,
             // Признак засчитываем, только если он подтверждён и моделью, и текстом письма без цитаты.
-            newInquiry: parsed.new_inquiry === true && looksLikeNewInquiry(freshText),
+            newInquiry: !electronicTender && parsed.new_inquiry === true && looksLikeNewInquiry(freshText),
             corporateDetails: parsed.corporate_details ? {
                 isCorporate: Boolean(parsed.corporate_details.is_corporate),
                 companyName: parsed.corporate_details.company_name || null,
