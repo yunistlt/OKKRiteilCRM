@@ -1,0 +1,594 @@
+
+.shtab{
+  --ground:#E4E7E1; --surface:#F5F6F3; --surface-2:#ECEEE8; --field:#FFFFFF;
+  --ink:#171B1A; --ink-2:#4A544F; --ink-3:#79847D;
+  --line:#CBD0C8; --line-2:#9CA59C;
+  --blue:#2B4C7E; --signal:#B93E0C; --calm:#40694F;
+  --miss:#E2BAB2; --have:#B9CCDD; --sticker-ink:#2A2320;
+  --on-blue:#F5F6F3;
+  --fig-a:#B4BCB4; --fig-b:#8E9891; --stage:#DDE1DA;
+  --f-display:var(--font-shtab-display),'Arial Narrow',Arial,sans-serif;
+  --f-body:var(--font-shtab-body),system-ui,-apple-system,Segoe UI,sans-serif;
+  --f-mono:var(--font-shtab-mono),ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+
+.shtab, .shtab *{box-sizing:border-box}
+
+.shtab{background:var(--ground);color:var(--ink);font-family:var(--f-body);
+  font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100%}
+
+.shtab h1, .shtab h2, .shtab h3{font-family:var(--f-display);font-weight:700;margin:0;text-wrap:balance}
+
+.shtab p{margin:0}
+
+.shtab button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+
+.shtab :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+.shtab .eyebrow{font-family:var(--f-mono);font-size:10.5px;font-weight:500;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+.shtab .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.shtab input[type=text], .shtab textarea, .shtab select{width:100%;font:inherit;font-size:14.5px;color:var(--ink);
+  background:var(--field);border:1px solid var(--line-2);padding:9px 11px;line-height:1.5;border-radius:0}
+
+.shtab textarea{resize:vertical;min-height:76px}
+
+.shtab input[type=text]:focus, .shtab textarea:focus, .shtab select:focus{border-color:var(--blue);outline:none;
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 22%,transparent)}
+
+.shtab select{appearance:none;cursor:pointer}
+
+.shtab label.fl{display:block;margin-bottom:6px}
+
+.shtab .field{margin-bottom:16px}
+
+.shtab .hint{font-size:12px;color:var(--ink-3);margin-top:5px;max-width:62ch}
+
+.shtab .btn{border:1px solid var(--line-2);padding:7px 15px;font-size:13.5px;white-space:nowrap}
+
+.shtab .btn:hover{background:var(--surface-2)}
+
+.shtab .btn-primary{background:var(--blue);border-color:var(--blue);color:var(--on-blue)}
+
+.shtab .btn-primary:hover{background:var(--blue);filter:brightness(1.12)}
+
+.shtab .btn-sm{padding:4px 10px;font-size:12px}
+
+.shtab .btn-danger:hover{color:var(--signal);border-color:var(--signal);background:transparent}
+
+.shtab .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+
+/* ---------- шапка и полоса разделов ---------- */
+.shtab .navstrip{position:sticky;top:0;z-index:30;background:var(--surface);
+  border-bottom:1px solid var(--line);box-shadow:0 1px 0 var(--line)}
+
+.shtab .navstrip-in{max-width:1560px;margin:0 auto;padding:0 22px;display:flex;gap:2px;overflow-x:auto}
+
+.shtab .navstrip button{padding:11px 15px;color:var(--ink-2);font-size:14px;white-space:nowrap;
+  border-bottom:2px solid transparent}
+
+.shtab .navstrip button:hover{color:var(--ink);background:var(--surface-2)}
+
+.shtab .navstrip button[aria-current="true"]{color:var(--ink);font-weight:600;border-bottom-color:var(--signal)}
+
+.shtab .navstrip .badge{font-family:var(--f-mono);font-size:10px;color:var(--ink-3);margin-left:6px}
+
+.shtab .wrap{max-width:1560px;margin:0 auto;padding:0 22px 80px}
+
+.shtab .layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:26px;align-items:start}
+
+@media (max-width:1240px){.shtab .layout{grid-template-columns:236px minmax(0,1fr);gap:20px}}
+
+@media (max-width:900px){.shtab .layout{grid-template-columns:minmax(0,1fr);gap:0}}
+
+.shtab .main{padding-top:28px;min-width:0}
+
+/* ---------- Тамара ---------- */
+.shtab .tam{position:sticky;top:46px;height:calc(var(--shtab-vh, 100vh) - 62px);min-height:460px;
+  display:flex;flex-direction:column;padding-top:14px}
+
+@media (max-width:900px){.shtab .tam{position:sticky;top:44px;height:auto;min-height:0;z-index:20;
+    background:var(--ground);padding:12px 0 10px;border-bottom:1px solid var(--line);
+    flex-direction:row-reverse;align-items:flex-start;gap:14px}}
+
+.shtab .bubble{flex:0 1 auto;max-height:42%;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line-2);
+  padding:14px 16px;position:relative;flex:0 1 auto;min-height:0;transition:border-left-color .3s}
+
+.shtab .tam[data-state="object"] .bubble{border-left-color:var(--signal)}
+
+.shtab .tam[data-state="approve"] .bubble{border-left-color:var(--calm)}
+
+.shtab .tam[data-state="explain"] .bubble, .shtab .tam[data-state="alert"] .bubble{border-left-color:var(--blue)}
+
+.shtab .bubble::after{content:"";position:absolute;left:22px;bottom:-9px;width:14px;height:14px;
+  background:var(--surface);border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+  transform:rotate(45deg)}
+
+@media (max-width:900px){.shtab .bubble::after{display:none}
+.shtab .bubble{flex:1 1 auto;min-width:0}}
+
+.shtab .b-name{display:flex;align-items:baseline;gap:9px;margin-bottom:7px;flex-wrap:wrap}
+
+.shtab .b-name b{font-family:var(--f-display);font-size:17px;letter-spacing:.02em}
+
+.shtab .b-text{font-size:14.5px;line-height:1.55;max-height:20vh;overflow-y:auto}
+
+.shtab .b-why{margin-top:9px;font-size:11.5px;color:var(--ink-3);line-height:1.5;
+  border-top:1px solid var(--line);padding-top:8px}
+
+.shtab .b-log{margin-top:11px;border-top:1px dotted var(--line);padding-top:8px;
+  display:flex;flex-direction:column;gap:5px;max-height:9vh;overflow-y:auto}
+
+.shtab .b-log div{font-size:11.5px;color:var(--ink-3);line-height:1.4}
+
+.shtab .dots{display:inline-flex;gap:4px;align-items:center;height:20px}
+
+.shtab .dots i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);display:block;
+  animation:blip 1.05s infinite ease-in-out}
+
+@keyframes blip{0%,80%,100%{opacity:.25;transform:translateY(0)}40%{opacity:1;transform:translateY(-3px)}}
+.shtab .dots i:nth-child(2){animation-delay:.16s}
+
+.shtab .dots i:nth-child(3){animation-delay:.32s}
+
+.shtab .ask{display:flex;gap:6px;margin-top:10px;flex:0 0 auto}
+.shtab .ask input{flex:1;min-width:0;font-size:13.5px;padding:7px 10px}
+.shtab .ask .btn{white-space:nowrap}
+
+/* На узком экране колонка Тамары ложится в строку. Поле ввода — единственный
+   способ её спросить, поэтому не прячем, а переносим на свою строку целиком:
+   владелец чаще открывает Штаб с телефона, чем с монитора. */
+@media (max-width:900px){.shtab .tam{flex-wrap:wrap}
+  /* Пузырь обязан ужиматься, а не занимать всю строку: иначе фигура срывается
+     на вторую строку и колонка съедает пол-экрана телефона. */
+  .shtab .bubble{flex:1 1 0;min-width:0}
+  .shtab .ask{flex:0 0 100%;margin-top:8px}}
+
+.shtab .stage{flex:1 1 auto;min-height:230px;margin-top:10px;position:relative;overflow:hidden;
+  display:flex;align-items:flex-end;justify-content:center;
+  transition:box-shadow .2s}
+
+.shtab .stage::before{content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(180deg,transparent 0%,var(--stage) 62%);
+  -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14%,#000 86%,transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0,#000 14%,#000 86%,transparent 100%)}
+
+@media (max-width:900px){.shtab .stage{flex:0 0 96px;height:150px;min-height:0;margin-top:0;align-self:flex-end}}
+
+.shtab .lean{width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;position:relative;z-index:1;
+  transition:transform .55s cubic-bezier(.2,.7,.3,1),opacity .55s;transform-origin:50% 100%}
+
+.shtab .figin{width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;
+  transform-origin:50% 100%;position:relative}
+
+.shtab .fig{height:100%;width:auto;max-width:100%;display:block}
+
+.shtab .fig.photo{height:calc(100% - 8px);width:auto;max-width:100%;display:block;object-fit:contain;
+  object-position:center bottom;position:relative;z-index:1}
+
+.shtab .fig.photo.body{z-index:1}
+
+/* Голова — отдельный слой поверх тела. .headwrap растянут по сцене, а .headpose
+   внутри повторяет высоту тела (100% минус 8px запаса на дыхание) и по ширине
+   ужимается до самого снимка — поэтому слои совпадают при любой высоте сцены
+   без пиксельной арифметики, а проценты transform-origin отсчитываются от
+   картинки, а не от сцены. Точка вращения — основание шеи. */
+.shtab .headwrap{position:absolute;inset:0;z-index:2;pointer-events:none;
+  display:flex;align-items:flex-end;justify-content:center}
+
+.shtab .headpose{display:block;height:calc(100% - 8px);
+  transform-origin:50% 16.97%;transition:transform .5s cubic-bezier(.2,.7,.3,1)}
+
+.shtab .headpose .head{height:100%;width:auto;max-width:100%;display:block;
+  transform-origin:50% 16.97%;animation:headdrift 11s ease-in-out infinite}
+
+.shtab .breath{width:100%;height:100%;position:relative;display:flex;
+  align-items:flex-end;justify-content:center;transform-origin:50% 100%;
+  animation:breathe 4.4s ease-in-out infinite}
+
+.shtab .floorshadow{position:absolute;left:50%;bottom:4px;width:46%;height:26px;transform:translateX(-50%);
+  border-radius:50%;background:radial-gradient(ellipse at center,
+    rgba(0,0,0,.34) 0%,rgba(0,0,0,.16) 45%,rgba(0,0,0,0) 72%);
+  pointer-events:none;z-index:0}
+
+/* тон — на общий контейнер: оба слоя обрабатываются одним фильтром и не
+   расходятся по яркости */
+.shtab .tam .breath{filter:contrast(1.02) saturate(.96)}
+
+.shtab .loop-label{position:absolute;left:0;top:0;font-family:var(--f-mono);font-size:9.5px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);
+  border:1px solid var(--line);background:var(--surface);padding:2px 7px}
+
+/* ── пластика ──────────────────────────────────────────────────────────────
+   Две анимации на одном элементе не складываются: обе пишут в transform, и побеждает последняя. Поэтому каждое одновременное движение живёт на своём
+   уровне вложенности: .lean держит позу под состояние (через transition), .figin — перенос веса, .breath — дыхание. У головы так же: .headpose — поза, .head — непрерывный дрейф.
+   Периоды 4.4 / 17 / 11 с намеренно несоизмеримы: фазы почти не совпадают, и повтор не читается. */
+@keyframes breathe{0%,100%{transform:scaleY(1) scaleX(1)}50%{transform:scaleY(1.015) scaleX(.995)}}
+
+@keyframes settle{0%,100%{transform:translateX(-2px) rotate(-.55deg)}
+  50%{transform:translateX(2px) rotate(.55deg)}}
+
+@keyframes headdrift{0%,100%{transform:rotate(-1deg) translateY(.8px)}
+  50%{transform:rotate(1deg) translateY(-.8px)}}
+
+@keyframes headtalk{0%,100%{transform:rotate(-1.6deg)}50%{transform:rotate(1.6deg)}}
+
+@keyframes headnod{0%,100%{transform:rotate(0) translateY(0)}
+  30%{transform:rotate(2.6deg) translateY(1.5px)}65%{transform:rotate(-.8deg) translateY(0)}}
+
+.shtab .figin{animation:settle 17s ease-in-out infinite}
+
+/* поза корпуса — общая для обоих режимов */
+.shtab .tam[data-state="listening"] .lean{transform:translateX(11px) rotate(1.4deg)}
+
+.shtab .tam[data-state="thinking"] .lean{transform:translateX(3px)}
+
+.shtab .tam[data-state="object"] .lean{transform:translateX(19px) rotate(2.6deg)}
+
+.shtab .tam[data-state="explain"] .lean{transform:translateX(8px) rotate(.8deg)}
+
+.shtab .tam[data-state="approve"] .lean{transform:translateX(4px)}
+
+.shtab .tam[data-state="away"] .lean{transform:translateX(-46px) scale(.86);opacity:.32}
+
+/* темп дыхания под состояние */
+.shtab .tam[data-state="thinking"] .breath{animation-duration:5.6s}
+
+.shtab .tam[data-state="explain"] .breath{animation-duration:4s}
+
+.shtab .tam[data-state="object"] .breath{animation-duration:3.1s}
+
+.shtab .tam[data-state="alert"] .breath{animation-duration:3s}
+
+.shtab .tam[data-state="away"] .breath{animation-duration:4.8s}
+
+/* в тревоге корпус замирает — двигается только дыхание */
+.shtab .tam[data-state="alert"] .figin{animation:none}
+
+/* режим фотографии: наклоны корпуса мягче — поворот снимка читается как
+   перекошенная картинка, а не как движение тела */
+.shtab .tam[data-state="listening"] .lean{transform:translateX(9px) rotate(.5deg)}
+
+.shtab .tam[data-state="thinking"] .lean{transform:translateX(3px) rotate(0)}
+
+.shtab .tam[data-state="object"] .lean{transform:translateX(14px) rotate(1deg)}
+
+.shtab .tam[data-state="explain"] .lean{transform:translateX(7px) rotate(.3deg)}
+
+.shtab .tam[data-state="approve"] .lean{transform:translateX(4px) rotate(0)}
+
+/* голова: выше 3° лицо начинает выглядеть перекошенным */
+.shtab .tam[data-state="listening"] .headpose{transform:rotate(2.4deg)}
+
+.shtab .tam[data-state="thinking"] .headpose{transform:rotate(-1.6deg) translateY(2px)}
+
+.shtab .tam[data-state="object"] .headpose{transform:rotate(-2.8deg) translateY(-1px)}
+
+.shtab .tam[data-state="alert"] .headpose{transform:rotate(-1deg)}
+
+.shtab .tam[data-state="away"] .headpose{transform:rotate(6deg)}
+
+.shtab .tam[data-state="explain"] .head{animation:headtalk 3.2s ease-in-out infinite}
+
+.shtab .tam[data-state="approve"] .head{animation:headnod 2.4s ease-in-out 2}
+
+@media (prefers-reduced-motion:reduce){.shtab .figin, .shtab .tam[data-state] .figin, .shtab .breath, .shtab .tam[data-state] .breath, .shtab .headpose .head, .shtab .tam[data-state] .head, .shtab .dots i{animation:none!important}
+.shtab .lean, .shtab .headpose{transition:none}}
+
+/* ---------- общее ---------- */
+.shtab .view{display:none}
+
+.shtab .view.on{display:block}
+
+.shtab .view-head{margin-bottom:22px}
+
+.shtab .view-head h1{font-size:clamp(27px,3.4vw,38px);line-height:1.05;margin:5px 0 7px}
+
+.shtab .view-head p{color:var(--ink-2);max-width:66ch;font-size:14.5px}
+
+.shtab .card{background:var(--surface);border:1px solid var(--line);padding:20px}
+
+.shtab .stack{display:flex;flex-direction:column;gap:18px}
+
+.shtab .block-label{display:flex;align-items:center;gap:12px;margin:26px 0 10px}
+
+.shtab .block-label .eyebrow{white-space:nowrap}
+
+.shtab .block-label::after{content:"";flex:1;height:1px;background:var(--line)}
+
+/* метка вердикта под полем */
+.shtab .mark{display:inline-flex;align-items:center;gap:7px;margin-top:8px;
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase}
+
+.shtab .mark::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+.shtab .m-bad{color:var(--signal)}
+
+.shtab .m-warn{color:var(--blue)}
+
+.shtab .m-ok{color:var(--calm)}
+
+.shtab .statgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  border:1px solid var(--line);background:var(--surface)}
+
+.shtab .stat{padding:15px 17px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+
+.shtab .stat:last-child{border-right:none}
+
+@media (max-width:760px){.shtab .stat{border-right:none}}
+
+.shtab .stat-name{font-size:12.5px;color:var(--ink-2);min-height:34px}
+
+.shtab .stat-val{font-family:var(--f-display);font-size:32px;line-height:1;margin:8px 0 3px;
+  font-variant-numeric:tabular-nums}
+
+.shtab .stat-unit{font-size:12px;color:var(--ink-3);font-family:var(--f-mono)}
+
+.shtab .stat-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
+
+.shtab .verdict{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+  display:inline-flex;align-items:center;gap:6px}
+
+.shtab .verdict::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+
+.shtab .v-signal{color:var(--signal)}
+
+.shtab .v-noise{color:var(--calm)}
+
+.shtab .v-thin{color:var(--ink-3)}
+
+.shtab .stat-src{font-family:var(--f-mono);font-size:10px;color:var(--ink-3);letter-spacing:.05em;margin-top:8px}
+
+.shtab .areas{border:1px solid var(--line);background:var(--surface)}
+
+.shtab .area{border-bottom:1px solid var(--line)}
+
+.shtab .area:last-child{border-bottom:none}
+
+.shtab .area-hd{width:100%;display:grid;grid-template-columns:210px minmax(0,1fr) 34px;gap:14px;
+  align-items:center;padding:9px 16px;text-align:left}
+
+@media (max-width:620px){.shtab .area-hd{grid-template-columns:118px minmax(0,1fr) 30px;gap:9px;padding:9px 11px}}
+
+.shtab .area-hd:hover{background:var(--surface-2)}
+
+.shtab .area-name{font-size:13.5px}
+
+.shtab .area-bar{height:13px;background:var(--surface-2);position:relative;border:1px solid var(--line)}
+
+.shtab .area-bar i{position:absolute;inset:0 auto 0 0;background:var(--line-2);display:block;
+  transition:width .35s ease}
+
+.shtab .area.top .area-bar i{background:var(--signal)}
+
+.shtab .area.top .area-name{font-weight:600}
+
+.shtab .area-n{font-family:var(--f-mono);font-size:14px;text-align:right;font-variant-numeric:tabular-nums}
+
+.shtab .area-body{display:none;padding:6px 16px 16px;background:var(--surface-2)}
+
+.shtab .area.open .area-body{display:block}
+
+.shtab .mlist{margin:0;padding:0;list-style:none}
+
+.shtab .mlist li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;padding:6px 0;
+  border-bottom:1px dotted var(--line);font-size:13.5px;align-items:center}
+
+.shtab .mlist li:last-child{border-bottom:none}
+
+.shtab .mlist li.done span.mt{text-decoration:line-through;color:var(--ink-3)}
+
+.shtab .src{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;
+  border:1px solid var(--line-2);color:var(--ink-3);padding:1px 6px;white-space:nowrap}
+
+.shtab .src.auto{color:var(--blue);border-color:currentColor}
+
+.shtab .area-acts{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+
+.shtab .table-top{border:1px solid var(--line);padding:24px 20px 26px;overflow-x:auto;
+  background:repeating-linear-gradient(0deg,transparent 0 23px,var(--line) 23px 24px),
+             repeating-linear-gradient(90deg,transparent 0 23px,var(--line) 23px 24px),var(--surface)}
+
+.shtab .cols{display:flex;gap:16px;align-items:flex-start;min-width:min-content}
+
+.shtab .col{width:206px;flex:0 0 auto;display:flex;flex-direction:column;gap:9px}
+
+.shtab .sticker{padding:11px 12px;font-size:12.5px;line-height:1.42;color:var(--sticker-ink);
+  box-shadow:2px 3px 0 rgba(0,0,0,.14);position:relative}
+
+.shtab .sticker.miss{background:var(--miss);font-weight:600;min-height:64px}
+
+.shtab .sticker.have{background:var(--have)}
+
+.shtab .seq{position:absolute;top:-9px;left:-9px;width:22px;height:22px;background:var(--ink);
+  color:var(--surface);font-family:var(--f-mono);font-size:11px;display:grid;place-items:center;
+  border-radius:50%}
+
+.shtab .col.orphan .sticker.miss{outline:2px solid var(--signal);outline-offset:2px}
+
+.shtab .orphan-flag{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--signal);display:block;margin-top:4px}
+
+.shtab .sticker .x{position:absolute;top:3px;right:5px;font-size:14px;line-height:1;color:var(--sticker-ink);
+  opacity:.45;padding:2px 4px}
+
+.shtab .sticker .x:hover{opacity:1;color:var(--signal)}
+
+.shtab .col-add{display:flex;gap:5px}
+
+.shtab .col-add input{font-size:12px;padding:6px 8px}
+
+.shtab .col-move{display:flex;gap:4px;margin-top:2px}
+
+.shtab .legend{display:flex;gap:20px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--ink-2)}
+
+.shtab .legend span{display:inline-flex;align-items:center;gap:8px}
+
+.shtab .chip{width:15px;height:15px;display:inline-block;box-shadow:1px 2px 0 rgba(0,0,0,.14)}
+
+.shtab .chip.miss{background:var(--miss)}
+
+.shtab .chip.have{background:var(--have)}
+
+.shtab .steps{border:1px solid var(--line);background:var(--surface)}
+
+.shtab .step{border-bottom:1px solid var(--line);padding:18px 20px}
+
+.shtab .step:last-child{border-bottom:none}
+
+.shtab .step.locked{opacity:.45}
+
+.shtab .step.locked .step-body{display:none}
+
+.shtab .step-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+
+.shtab .step-no{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);letter-spacing:.1em}
+
+.shtab .step h3{font-size:18px}
+
+.shtab .step-state{margin-left:auto;font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3)}
+
+.shtab .step-state.ok{color:var(--calm)}
+
+.shtab .step-body{margin-top:13px}
+
+.shtab .picked{background:var(--surface-2);border-left:2px solid var(--line-2);padding:10px 13px;
+  font-size:13.5px;margin-bottom:14px}
+
+.shtab .checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+
+.shtab .checks li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;font-size:13.5px}
+
+.shtab .checks input{margin-top:4px;accent-color:var(--blue);width:15px;height:15px}
+
+.shtab .checks b{display:block}
+
+.shtab .checks small{color:var(--ink-3);font-size:12px}
+
+.shtab .arch{border:1px solid var(--line);background:var(--surface)}
+
+.shtab .arch-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:14px;padding:13px 17px;
+  border-bottom:1px solid var(--line);align-items:start}
+
+@media (max-width:680px){.shtab .arch-row{grid-template-columns:1fr;gap:6px}}
+
+.shtab .arch-row:last-child{border-bottom:none}
+
+.shtab .arch-row.active{border-left:3px solid var(--signal);padding-left:14px}
+
+.shtab .arch-meta{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);line-height:1.6}
+
+.shtab .arch-t{font-size:14px}
+
+.shtab .arch-t small{display:block;color:var(--ink-3);font-size:12.5px;margin-top:3px}
+
+.shtab .status{font-family:var(--f-mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  border:1px solid currentColor;padding:1px 7px;white-space:nowrap}
+
+.shtab .st-work{color:var(--signal)}
+
+.shtab .st-done{color:var(--calm)}
+
+.shtab .st-draft{color:var(--ink-3)}
+
+.shtab .docs{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
+
+@media (max-width:1000px){.shtab .docs{grid-template-columns:1fr}}
+
+.shtab .doc{background:var(--surface);border:1px solid var(--line);padding:20px}
+
+.shtab .doc.private{border-style:dashed;border-color:var(--line-2)}
+
+.shtab .doc h3{font-size:19px;margin:6px 0 3px}
+
+.shtab .doc-meta{font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--ink-3);margin-bottom:13px}
+
+.shtab .lock{color:var(--signal)}
+
+.shtab .tablewrap{overflow-x:auto;border:1px solid var(--line);background:var(--surface)}
+
+.shtab table{border-collapse:collapse;width:100%;font-size:13.5px}
+
+.shtab th, .shtab td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+
+.shtab th{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;white-space:nowrap}
+
+.shtab tr:last-child td{border-bottom:none}
+
+.shtab .empty{padding:26px 20px;text-align:center;color:var(--ink-3);font-size:13.5px;
+  border:1px dashed var(--line-2);background:var(--surface)}
+
+.shtab .specs{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+
+.shtab .spec{background:var(--surface);border:1px solid var(--line);padding:16px 18px}
+
+.shtab .spec h3{font-size:16px;margin-bottom:8px}
+
+.shtab .spec p{font-size:13px;color:var(--ink-2)}
+
+.shtab .spec code{font-family:var(--f-mono);font-size:11.5px;color:var(--blue)}
+
+.shtab .brief{background:var(--surface);border:1px solid var(--line);padding:18px 20px;margin-bottom:16px}
+
+.shtab .brief h3{font-size:17px;margin-bottom:4px}
+
+.shtab .brief .sub{font-size:12.5px;color:var(--ink-3);margin-bottom:12px}
+
+.shtab .brief textarea{font-family:var(--f-mono);font-size:12px;line-height:1.6;min-height:210px;
+  background:var(--surface-2)}
+
+.shtab .brief .row{margin-top:10px}
+
+.shtab .copied{color:var(--calm);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.08em;
+  text-transform:uppercase}
+/* ---------- Программы ---------- */
+/* Слой между стратегией и проектами. Группы задач отличаются не украшением, а
+   смыслом: жизненно важные выделены цветом сигнала, потому что их нарушение
+   убивает программу; производственные — линией, потому что это числа. */
+
+.shtab .lede{margin-top:10px;max-width:62ch;color:var(--muted);font-size:14.5px;line-height:1.6}
+
+.shtab .block-head{display:flex;gap:14px;align-items:flex-start;margin-bottom:14px}
+.shtab .block-head .num{font-family:var(--f-mono,ui-monospace,monospace);font-size:12px;
+  border:1.5px solid var(--line-2);padding:3px 8px;color:var(--muted);flex:none;margin-top:4px}
+.shtab .block-head h2{margin:0;font-size:19px}
+
+.shtab .main-task{margin:14px 0;padding:13px 15px;background:var(--stage);border-left:3px solid var(--line-2)}
+.shtab .main-task .lbl{display:block;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:5px}
+.shtab .main-task p{margin:0;font-size:16px;line-height:1.45}
+.shtab .main-task .muted{margin-top:7px;font-size:13.5px}
+
+.shtab .grp{margin-top:18px}
+.shtab .grp h3{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px;margin:0 0 8px;
+  font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+  padding-bottom:5px;border-bottom:1px solid var(--line)}
+.shtab .grp h3 .hint{text-transform:none;letter-spacing:0;font-size:13px;font-style:italic;color:var(--muted-2,var(--muted))}
+.shtab .grp ol{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:8px}
+.shtab .grp li{line-height:1.5}
+.shtab .grp li .why{display:block;color:var(--muted);font-size:13.5px;margin-top:2px}
+.shtab .grp li .metric{display:block;font-size:13.5px;margin-top:3px}
+.shtab .grp li .blank{color:var(--signal);font-style:normal;border-bottom:1px dotted var(--signal)}
+
+.shtab .problems{margin:12px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:7px}
+.shtab .problems li{font-size:13.5px;line-height:1.45;padding-left:12px;border-left:2px solid var(--line-2)}
+.shtab .problems li.bad{border-left-color:var(--signal)}
+
+.shtab .draft{border-style:dashed}
+.shtab .block-draft{padding:12px 0;border-top:1px solid var(--line)}
+.shtab .block-draft .block-title{width:100%;font-size:16px;font-weight:600;padding:6px 8px;margin-bottom:6px}
+.shtab .block-draft .excerpt{font-size:13.5px;color:var(--muted);line-height:1.5}
+.shtab .block-draft .why{font-size:13.5px;margin-top:5px}
+.shtab .empty-inline{display:flex;flex-wrap:wrap;gap:12px;align-items:center;color:var(--muted);font-size:14px}
+.shtab .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.shtab .rhythm p{margin:8px 0 12px;max-width:64ch}
+.shtab .rhythm a.btn{display:inline-block;text-decoration:none}
+.shtab .uid{margin-top:5px;font-size:12.5px;font-family:var(--f-mono,ui-monospace,monospace);opacity:.85}
+.shtab .post-pick{display:flex;gap:9px;align-items:center;margin-top:9px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+.shtab .post-pick select{font-size:13.5px;padding:4px 7px;max-width:100%}

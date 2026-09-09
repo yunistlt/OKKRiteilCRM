@@ -62,6 +62,9 @@ export default function Sidebar() {
             title: 'Управление',
             items: [
                 { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
+                { name: 'Штаб', href: '/shtab', icon: '🧭', allowed: ['admin'] },
+                { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
                 { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
@@ -101,6 +104,7 @@ export default function Sidebar() {
                 { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
                 { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
+                { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
             ]
         },

@@ -278,7 +278,7 @@ export async function buildPayrollWorkbook(year: number, month: number): Promise
     for (let c = 2; c <= mHeader.length; c++) wsM.getColumn(c).width = 15;
 
     // ── Лист 3: ЗАКАЗЫ (расшифровка засчитанного) ────────────────────────────
-    const orderHeader = ['Менеджер', '№ заказа', 'Клиент', 'Тип', 'Сделок клиента', 'Сумма', 'Скидка, %', 'Передан в произв.'];
+    const orderHeader = ['Менеджер', '№ заказа', 'Клиент', 'Тип', 'Сделок клиента', 'Сумма с НДС', 'Сумма без НДС', 'Скидка, %', 'Передан в произв.'];
     const wsO = wb.addWorksheet('Заказы', { views: [{ state: 'frozen', ySplit: 1 }] });
     wsO.addRow(orderHeader);
     for (let c = 1; c <= orderHeader.length; c++) styleHeaderCell(wsO.getCell(1, c));
@@ -294,10 +294,12 @@ export async function buildPayrollWorkbook(year: number, month: number): Promise
                 ORDER_TYPE_LABEL[o.type] ?? '',
                 typeof o.deals === 'number' ? o.deals : '',
                 Number(o.sum) || 0,
+                Number(o.revenueNoVat) || 0,
                 o.discountPct ?? '',
                 fmtDateRu(o.enteredAt),
             ]);
             row.getCell(6).numFmt = MONEY_FMT;
+            row.getCell(7).numFmt = MONEY_FMT;
             for (let c = 1; c <= orderHeader.length; c++) {
                 const cell = row.getCell(c);
                 gridBorder(cell);
@@ -309,7 +311,7 @@ export async function buildPayrollWorkbook(year: number, month: number): Promise
     }
     wsO.getColumn(1).width = 26;
     wsO.getColumn(3).width = 42;
-    for (const c of [2, 4, 5, 6, 7, 8]) wsO.getColumn(c).width = 16;
+    for (const c of [2, 4, 5, 6, 7, 8, 9]) wsO.getColumn(c).width = 16;
     if (oIdx > 0) wsO.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1 + oIdx, column: orderHeader.length } };
 
     const buffer = (await wb.xlsx.writeBuffer()) as ArrayBuffer;

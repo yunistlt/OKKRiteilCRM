@@ -6,6 +6,9 @@ import CallInitiator from './calls/CallInitiator';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
+import OrderReplyForm from '@/components/orders/OrderReplyForm';
+import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
+import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -124,6 +127,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [replyOpen, setReplyOpen] = useState(false);
+    const [printOpen, setPrintOpen] = useState(false);
+    const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [panel, setPanel] = useState<PanelKind | null>(null);
+    const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
     const [counterpartyScore, setCounterpartyScore] = useState<CounterpartyScoreResult | null>(null);
     const [counterpartyScoreLoading, setCounterpartyScoreLoading] = useState(false);
     const [viewTab, setViewTab] = useState<ViewTab>('card');
@@ -154,6 +162,23 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             setQualityScoreLoading(false);
         }
     }, [orderId]);
+
+    useEffect(() => {
+        const number = data?.order?.number ?? orderId;
+        if (!number) return;
+        fetch(`/api/orders/${number}/tasks`)
+            .then((r) => r.json())
+            .then((d) => setTaskCount({ done: d.done ?? 0, total: d.total ?? 0 }))
+            .catch(() => setTaskCount(null));
+    }, [data?.order?.number, orderId]);
+
+    useEffect(() => {
+        if (!printOpen || printTemplates.length) return;
+        fetch('/api/settings/templates?kind=document&active=true')
+            .then((r) => r.json())
+            .then((d) => setPrintTemplates(d.document || []))
+            .catch(() => setPrintTemplates([]));
+    }, [printOpen, printTemplates.length]);
 
     useEffect(() => {
         if (isOpen && orderId) {
@@ -588,10 +613,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 <p className="text-xs uppercase text-gray-400">Коммуникации</p>
                                 <h4 className="text-lg font-semibold text-gray-900">Письма и сообщения</h4>
                             </div>
-                            <button className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors">
-                                + Новое письмо
+                            <button
+                                onClick={() => setReplyOpen((v) => !v)}
+                                className="px-3 py-2 text-sm font-medium border border-blue-600 text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                                {replyOpen ? 'Свернуть' : '+ Новое письмо'}
                             </button>
                         </div>
+
+                        {replyOpen && (
+                            <div className="mb-4">
+                                <OrderReplyForm
+                                    orderNumber={String(data.order?.number ?? orderId)}
+                                    onClose={() => setReplyOpen(false)}
+                                />
+                            </div>
+                        )}
                         {data.emails && data.emails.length > 0 ? (
                             <div className="space-y-3">
                                 {data.emails.map((email) => (
@@ -993,8 +1030,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-            <div className="bg-white w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 flex bg-white">
+            <div className="flex h-full w-full flex-col overflow-hidden bg-white">
                 <header className="border-b bg-white px-6 py-5">
                     <div className="flex items-start justify-between gap-6">
                         <div>
@@ -1044,15 +1081,70 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         <div className="flex gap-2 shrink-0">
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Печать</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Действия</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Задачи 0/0</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">Файлы</button>
-                            <button className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">История</button>
+                            <div className="relative">
+                                <button
+                                    onClick={() => setPrintOpen((v) => !v)}
+                                    className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                    Печать
+                                </button>
+                                {printOpen && (
+                                    <div className="absolute right-0 z-20 mt-1 min-w-[220px] border border-gray-300 bg-white shadow-none">
+                                        {printTemplates.length === 0 ? (
+                                            <p className="px-3 py-2 text-xs text-gray-500">
+                                                Печатных форм нет. Заведите их в настройках.
+                                            </p>
+                                        ) : (
+                                            printTemplates.map((t) => (
+                                                <a
+                                                    key={t.id}
+                                                    href={`/api/orders/${data?.order?.number ?? orderId}/print/${t.code}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => setPrintOpen(false)}
+                                                    className="block px-3 py-2 text-sm text-gray-800 hover:bg-blue-600 hover:text-white"
+                                                >
+                                                    {t.name}
+                                                </a>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            <button
+                                disabled
+                                title="Раздел ещё не сделан"
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-400 cursor-not-allowed"
+                            >
+                                Действия · в разработке
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
+                                className={`px-3 py-2 border text-sm ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Задачи {taskCount ? `${taskCount.done}/${taskCount.total}` : ''}
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'files' ? null : 'files')}
+                                className={`px-3 py-2 border text-sm ${panel === 'files' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Файлы
+                            </button>
+                            <button
+                                onClick={() => setPanel(panel === 'history' ? null : 'history')}
+                                className={`px-3 py-2 border text-sm ${panel === 'history' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                История
+                            </button>
                             <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 mt-4 text-xs font-semibold">
+                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                        <OrderStatusSwitcher
+                            orderId={data?.order?.number ?? orderId}
+                            currentLabel={headerBadges[0]?.label ?? 'Сменить статус'}
+                            onChanged={() => fetchDetails()}
+                        />
                         {headerBadges.length > 0 ? (
                             headerBadges.map(badge => (
                                 <span key={badge.label} className={`px-3 py-1 ${badge.className}`}>
@@ -1064,6 +1156,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         )}
                     </div>
                 </header>
+
+                {panel && (
+                    <div className="border-b bg-gray-50 px-6 py-3">
+                        <OrderSidePanel
+                            kind={panel}
+                            orderNumber={String(data?.order?.number ?? orderId)}
+                            history={data?.history}
+                            onClose={() => setPanel(null)}
+                            onTasksChanged={(done, total) => setTaskCount({ done, total })}
+                        />
+                    </div>
+                )}
 
                 <nav className="border-b bg-white px-6">
                     <div className="flex overflow-x-auto text-sm">

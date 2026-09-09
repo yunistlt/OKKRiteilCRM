@@ -11,10 +11,15 @@
 
 | Модуль | Статус | Основные документы | Ответственный |
 |--------|--------|-----------------|---------|
+| **ОКК (контроль качества)** | 🟢 Production | [docs/okk/OVERVIEW.md](okk/OVERVIEW.md) | Team ОКК |
 | **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/](okk-consultant/) | Team ОКК |
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
+| **Штаб владельца («Альянс Стратег»)** | 🟢 Реализован | [docs/shtab/](shtab/OVERVIEW.md) | Владелец |
+| **Тамара — консультант Штаба** | 🟢 Реализован | [docs/shtab/TAMARA.md](shtab/TAMARA.md) | Владелец |
+| **Служебный API для консультанта ЦехУспеха** | 🟢 Реализован | [docs/shtab/DUTY_API.md](shtab/DUTY_API.md) | Владелец |
+| **Штаб: передача дел на локальную машину** | 🔵 Передача | [docs/shtab/HANDOFF.md](shtab/HANDOFF.md) | Владелец |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Платежи «с точки» (Точка → заказы)** | 🟢 Реализован | [docs/payments/](payments/OVERVIEW.md) | Team Finance |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |

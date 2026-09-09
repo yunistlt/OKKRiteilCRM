@@ -1,0 +1,12 @@
+import { Client } from 'pg';
+import fs from 'fs';
+import path from 'path';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.join(__dirname, '..', '.env.local') });
+const c = new Client({ connectionString: process.env.DATABASE_URL || process.env.POSTGRES_URL });
+await c.connect();
+await c.query(fs.readFileSync(path.join(__dirname, '..', 'migrations', '20260904_user_view_settings.sql'), 'utf8'));
+console.log('Таблица настроек отображения создана');
+await c.end();

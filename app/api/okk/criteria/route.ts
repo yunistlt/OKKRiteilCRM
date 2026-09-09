@@ -12,7 +12,7 @@ export async function GET(req: Request) {
 
         let query = supabase
             .from('okk_criteria')
-            .select('key, label, category, group_color, cell_bg, type, agent, agent_emoji, eval_method, ai_prompt, params, scoring_basket, how_tip, data_tip, sort_order, is_active');
+            .select('key, label, category, group_color, cell_bg, type, agent, agent_emoji, eval_method, ai_prompt, params, scoring_basket, how_tip, data_tip, sort_order, is_active, na_gate');
         if (!all) query = query.eq('is_active', true);
 
         const { data, error } = await query.order('sort_order', { ascending: true });

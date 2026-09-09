@@ -10,6 +10,7 @@ type Criterion = {
     agent: string | null; agent_emoji: string | null; eval_method: string;
     ai_prompt: string | null; params: any; scoring_basket: string | null;
     how_tip: string | null; data_tip: string | null; sort_order: number; is_active: boolean;
+    na_gate: string | null;
 };
 
 const EVAL_METHODS: Record<string, string> = {
@@ -20,6 +21,13 @@ const EVAL_METHODS: Record<string, string> = {
 };
 const BASKETS: Record<string, string> = { '': 'Не входит в балл', deal: 'Балл сделки', script: 'Балл скрипта' };
 const TYPES: Record<string, string> = { bool: 'Да/Нет', text: 'Текст', num: 'Число' };
+// С какого момента жизни заказа правило вообще применяется. Пока гейт не пройден,
+// критерий не оценивается и в балл не идёт (система ставит «не применяется»).
+const GATES: Record<string, string> = {
+    '': 'Всегда',
+    approval_status: 'С «Согласования параметров заказа»',
+    production_or_cancel: 'К передаче в производство или отмене',
+};
 
 const inputCls = 'w-full border border-gray-200 rounded-lg p-2 text-sm outline-none focus:border-indigo-500 transition-colors';
 const labelCls = 'block text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1';
@@ -40,7 +48,7 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                 label: draft.label, category: draft.category, type: draft.type,
                 agent: draft.agent, agent_emoji: draft.agent_emoji, eval_method: draft.eval_method,
                 ai_prompt: draft.ai_prompt, scoring_basket: draft.scoring_basket || null,
-                how_tip: draft.how_tip, data_tip: draft.data_tip,
+                how_tip: draft.how_tip, data_tip: draft.data_tip, na_gate: draft.na_gate || null,
             });
             router.refresh();
         } catch (e: any) { alert('Ошибка сохранения: ' + e.message); }
@@ -72,6 +80,7 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                         <span className="text-sm font-medium text-gray-900 truncate">{c.agent_emoji} {c.label}</span>
                         <span className="text-[10px] font-mono text-gray-400">{c.key}</span>
                         {c.scoring_basket && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c.scoring_basket === 'deal' ? 'bg-green-50 text-green-700' : 'bg-purple-50 text-purple-700'}`}>{c.scoring_basket === 'deal' ? 'СДЕЛКА' : 'СКРИПТ'}</span>}
+                        {c.na_gate && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">{GATES[c.na_gate] || c.na_gate}</span>}
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{EVAL_METHODS[c.eval_method] || c.eval_method}</span>
                         {c.eval_method === 'native' && <span className="text-[9px] text-amber-600 italic">расчёт в коде</span>}
                     </div>
@@ -113,6 +122,12 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                         </select>
                     </div>
                     <div>
+                        <label className={labelCls}>Когда применяется</label>
+                        <select value={draft.na_gate || ''} onChange={e => set('na_gate', e.target.value)} className={inputCls}>
+                            {Object.entries(GATES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                        </select>
+                    </div>
+                    <div>
                         <label className={labelCls}>Агент</label>
                         <input value={draft.agent || ''} onChange={e => set('agent', e.target.value)} placeholder="Максим / Семён / Игорь" className={inputCls} />
                     </div>
@@ -147,14 +162,14 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
 
 function AddForm({ onDone }: { onDone: () => void }) {
     const router = useRouter();
-    const [d, setD] = useState({ key: '', label: '', category: '', type: 'bool', eval_method: 'ai_script', scoring_basket: '', agent: 'Максим', agent_emoji: '🤓', ai_prompt: '' });
+    const [d, setD] = useState({ key: '', label: '', category: '', type: 'bool', eval_method: 'ai_script', scoring_basket: '', agent: 'Максим', agent_emoji: '🤓', ai_prompt: '', na_gate: '' });
     const [busy, setBusy] = useState(false);
     const set = (k: string, v: any) => setD(p => ({ ...p, [k]: v }));
 
     const create = async () => {
         setBusy(true);
         try {
-            await createCriterion({ ...d, scoring_basket: d.scoring_basket || null });
+            await createCriterion({ ...d, scoring_basket: d.scoring_basket || null, na_gate: d.na_gate || null });
             onDone();
             router.refresh();
         } catch (e: any) { alert('Ошибка: ' + e.message); setBusy(false); }
@@ -187,6 +202,12 @@ function AddForm({ onDone }: { onDone: () => void }) {
                     {Object.entries(BASKETS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
             </div>
+            <div className="col-span-2">
+                <label className={labelCls}>Когда применяется</label>
+                <select value={d.na_gate} onChange={e => set('na_gate', e.target.value)} className={inputCls}>
+                    {Object.entries(GATES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+            </div>
             {d.eval_method === 'ai_script' && (
                 <div className="col-span-2">
                     <label className={labelCls}>Инструкция (промпт) для ИИ</label>
@@ -204,10 +225,15 @@ function AddForm({ onDone }: { onDone: () => void }) {
 export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
     const router = useRouter();
     const [adding, setAdding] = useState(false);
-    const list = [...initial].sort((a, b) => a.sort_order - b.sort_order);
+    const [archiveOpen, setArchiveOpen] = useState(false);
+    const all = [...initial].sort((a, b) => a.sort_order - b.sort_order);
+    // Действующие критерии — колонки таблицы качества. Выключенные уезжают в «Архив»:
+    // они не отображаются в таблице и не участвуют в баллах, но остаются доступны для возврата.
+    const list = all.filter(c => c.is_active);
+    const archived = all.filter(c => !c.is_active);
 
     const move = async (i: number, dir: -1 | 1) => {
-        const next = [...list];
+        const next = [...all];
         const j = i + dir;
         if (j < 0 || j >= next.length) return;
         [next[i], next[j]] = [next[j], next[i]];
@@ -226,7 +252,7 @@ export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
                 <div>
                     <Link href="/okk" className="text-sm text-gray-500 hover:text-gray-900 mb-2 block">← Назад к таблице качества</Link>
                     <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Критерии «Контроля качества»</h1>
-                    <p className="mt-2 text-sm text-gray-600">Добавляйте, редактируйте и отключайте критерии-колонки. Скрипт-критерии оцениваются ИИ по диалогу — промпт редактируется здесь.</p>
+                    <p className="mt-2 text-sm text-gray-600">Добавляйте, редактируйте и отключайте критерии-колонки. Скрипт-критерии оцениваются ИИ по диалогу — промпт редактируется здесь. Отключённые критерии уходят в архив: они не показываются в таблице качества и не влияют на балл.</p>
                 </div>
                 {!adding && (
                     <button onClick={() => setAdding(true)} className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-md transition-colors">+ Добавить критерий</button>
@@ -241,13 +267,37 @@ export default function CriteriaAdmin({ initial }: { initial: Criterion[] }) {
                         <h2 className="text-[11px] font-black uppercase tracking-widest text-gray-400 mb-2 px-1">{cat}</h2>
                         <div className="space-y-2">
                             {list.filter(c => c.category === cat).map((c) => {
-                                const globalIndex = list.findIndex(x => x.key === c.key);
-                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={list.length} onMove={move} />;
+                                const globalIndex = all.findIndex(x => x.key === c.key);
+                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={all.length} onMove={move} />;
                             })}
                         </div>
                     </div>
                 ))}
             </div>
+
+            {archived.length > 0 && (
+                <div className="mt-10">
+                    <button
+                        onClick={() => setArchiveOpen(o => !o)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-left hover:bg-gray-100 transition-colors"
+                    >
+                        <span className="text-[11px] font-black uppercase tracking-widest text-gray-500">
+                            Архив · {archived.length}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                            {archiveOpen ? 'Скрыть' : 'Показать'} — не отображаются в таблице качества
+                        </span>
+                    </button>
+                    {archiveOpen && (
+                        <div className="space-y-2 mt-3 opacity-70">
+                            {archived.map((c) => {
+                                const globalIndex = all.findIndex(x => x.key === c.key);
+                                return <CriterionRow key={c.key} c={c} index={globalIndex} total={all.length} onMove={move} />;
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className="mt-8 p-4 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
                 <span className="font-bold">Важно:</span> критерии с методом «Системный» считаются логикой в коде (привязка по тех. коду) — у них редактируются название/категория/порядок/видимость, но не сама проверка. Скрипт-критерии (ИИ по диалогу) полностью настраиваются промптом. Изменения влияют на таблицу качества и на итоговый балл (а значит и на зарплату) — меняйте осознанно.

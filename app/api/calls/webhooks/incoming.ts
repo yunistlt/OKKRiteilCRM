@@ -4,6 +4,7 @@ import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { bestEffortInsertIncomingLegacyCall } from '@/lib/telphin-legacy-compat';
 import { sendTelegramNotification } from '@/lib/telegram';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
+import { broadcastCallEvent } from '@/lib/call-broadcast';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
@@ -109,6 +110,19 @@ export async function POST(req: NextRequest) {
 
       await sendTelegramNotification(message);
     }
+
+    // Отправляем SSE событие о входящем звонке
+    broadcastCallEvent({
+      type: 'incoming_call',
+      callId: call_id,
+      data: {
+        phone: from_number,
+        order_id: matchedOrderId,
+        order_number: bestMatch ? `${bestMatch.retailcrm_order_id}` : null,
+        status: 'ringing',
+        assigned_manager_id: assignedManagerId,
+      },
+    });
 
     return NextResponse.json({
       success: true,

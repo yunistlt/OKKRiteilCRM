@@ -48,11 +48,22 @@ export interface TariffLine {
     active?: boolean;
 }
 
+// Заказ, на котором сработал блок — расшифровка «за что именно начислено».
+// По просьбе ОП (август 2026): в ведомости должно быть видно номера заказов,
+// давших доплату, а не только итоговую сумму.
+export interface BlockOrderRef {
+    id: number; // номер заказа RetailCRM (он же id карточки)
+    clientName?: string | null;
+    note?: string; // за что засчитан («3-я покупка клиента»)
+    amount?: number; // сколько дал этот заказ, ₽
+}
+
 export interface BlockResult {
     amount: number; // ₽ для аддитивных/штрафных/базовых; 0 для чистых множителей
     multiplier?: number; // для kind === 'multiplier'
     explain: string; // человекочитаемая строка для отчёта
     tariff?: TariffLine[]; // ставки/пороги/шкала блока (из params) — для отчёта менеджеру
+    orders?: BlockOrderRef[]; // заказы, давшие начисление (расшифровка суммы)
     dataFill: DataFill;
 }
 
@@ -86,6 +97,7 @@ export interface BlockContribution {
     multiplier?: number;
     explain: string;
     tariff?: TariffLine[];
+    orders?: BlockOrderRef[];
     dataFill: DataFill;
 }
 

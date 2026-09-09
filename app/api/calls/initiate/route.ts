@@ -1,17 +1,21 @@
-import axios from 'axios';
 import { NextRequest, NextResponse } from 'next/server';
 import { bestEffortInsertOutgoingLegacyCall } from '@/lib/telphin-legacy-compat';
 import { upsertCanonicalTelphinCall } from '@/lib/telphin-webhook-sync';
+import { initiateManagerOutgoingCall } from '@/lib/telphin';
+import { broadcastCallEvent } from '@/lib/call-broadcast';
 
 export const dynamic = 'force-dynamic';
 
-const envMockFlag = process.env.TELPHIN_MOCK_MODE === 'true';
-const telphinApiUrl = process.env.TELPHIN_API_URL;
-const telphinApiKey = process.env.TELPHIN_API_KEY;
-const shouldMock =
-  envMockFlag || !telphinApiUrl || !telphinApiKey;
-const mockReason = !envMockFlag && shouldMock
-  ? 'Telphin credentials missing, auto-mock enabled'
+// TELPHIN_MOCK_MODE здесь СОЗНАТЕЛЬНО не читается: менеджер нажал «Позвонить» —
+// значит хочет реального звонка. Так же поступает воркер обратного звонка.
+// Демо-режим остаётся только там, где звонить физически нечем — нет ключей.
+const hasTelphinCredentials = Boolean(
+  (process.env.TELPHIN_APP_KEY || process.env.TELPHIN_CLIENT_ID) &&
+  (process.env.TELPHIN_APP_SECRET || process.env.TELPHIN_CLIENT_SECRET)
+);
+const shouldMock = !hasTelphinCredentials;
+const mockReason = shouldMock
+  ? 'Ключи Телфина не заданы — звонок не совершается, включён демо-режим'
   : undefined;
 
 export async function POST(req: NextRequest) {
@@ -45,23 +49,12 @@ export async function POST(req: NextRequest) {
 
       callSid = `mock-${Date.now()}`;
     } else {
-      const telphinResponse = await axios.post(
-        `${telphinApiUrl}/calls/initiate`,
-        {
-          phone_number: phoneNumber.replace(/\D/g, ''),
-          manager_id: managerId,
-          record: true,
-          on_connect_url: `${process.env.BASE_URL}/api/calls/webhooks/connected`,
-        },
-        {
-          headers: {
-            'X-API-Key': telphinApiKey,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const result = await initiateManagerOutgoingCall({
+        managerId: normalizedManagerId,
+        targetPhone: phoneNumber,
+      });
 
-      callSid = (telphinResponse.data as any).call_id;
+      callSid = result.callId;
     }
 
     const initiatedAt = new Date().toISOString();
@@ -98,6 +91,18 @@ export async function POST(req: NextRequest) {
       phoneNumber,
       status: 'initiated',
       createdAt: initiatedAt,
+    });
+
+    broadcastCallEvent({
+      type: 'call_initiated',
+      callId: callSid,
+      data: {
+        phone: phoneNumber,
+        order_id: normalizedOrderId,
+        manager_id: normalizedManagerId,
+        status: 'initiated',
+        mock: shouldMock,
+      },
     });
 
     return NextResponse.json({

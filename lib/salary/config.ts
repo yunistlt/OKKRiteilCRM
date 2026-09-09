@@ -81,15 +81,25 @@ export const SALARY_CONFIG_SCHEMAS = {
     // Заводим списком, чтобы легко добавлять. Удаление заказа в RetailCRM до нас не доходит
     // (синк — только upsert), поэтому спам помечают статусом, а не удаляют.
     conversion_excluded_statuses: z.array(z.string().min(1)),
+    // Статусы, означающие СОСТОЯВШУЮСЯ покупку клиента (заказ прошёл производство).
+    // Нужны для счётчика сделок клиента (новый/постоянный): у старых заказов нет
+    // события closing в order_history_log (лог ведётся не с начала времён), и они
+    // давно ушли дальше по воронке — по одному closing_status они терялись, и
+    // постоянный клиент считался новым.
+    deal_statuses: z.array(z.string().min(1)),
     nds_normalization: z.object({
         rules: z.array(z.object({ vat_pct: z.number(), divisor: z.number().positive() })),
     }),
     // НДС определяется витриной-юрлицом (orders.site), а не ставкой из карточки позиции
     // (менеджеры её массово не проставляют). default_vat_pct — для всех витрин;
     // exempt_sites — витрины без НДС (ЗВТО). Делитель берётся из nds_normalization.
+    // exempt_contragent_markers — маркеры иностранного контрагента (экспорт: счёт
+    // выставляется без НДС). Ищутся как подстроки (без учёта регистра) в реквизитах
+    // контрагента заказа: legalName / legalAddress / bank / bankAddress.
     vat_policy: z.object({
         default_vat_pct: z.number(),
         exempt_sites: z.array(z.string()),
+        exempt_contragent_markers: z.array(z.string().min(1)).default([]),
     }),
     // Инженеры-расчётчики ОП: код кастом-поля заказа с инженером (справочник) и
     // статусы таймера скорости расчёта. Инженера в заказ проставляет менеджер,
