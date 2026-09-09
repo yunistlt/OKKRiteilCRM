@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
+import { buildFieldLabelResolver } from '@/lib/order-field-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,8 +98,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
         }
 
+        const fieldLabel = await buildFieldLabelResolver();
+
         const history = ((rawHistory as any[]) ?? []).map((h) => ({
             field: h.field,
+            field_label: fieldLabel(h.field),
             old_value: formatEventValue(h.old_value),
             new_value: formatEventValue(h.new_value),
             user_data: h.user_data?.id != null

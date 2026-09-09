@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         const actor = session?.user?.email ?? null;
 
         // 1. Финальный пересчёт-снимок (бросит, если период уже закрыт)
-        await recalcAndPersist(Number(year), Number(month), actor);
+        const calc = await recalcAndPersist(Number(year), Number(month), actor);
 
         // 2. Блокировка периода
         const closedAt = new Date().toISOString();
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
             trigger: 'close',
         });
 
-        return NextResponse.json({ ok: true, status: 'closed', closed_at: closedAt, delivery });
+        return NextResponse.json({ ok: true, status: 'closed', closed_at: closedAt, delivery, canonWarning: calc.canonWarning });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 400 });
     }

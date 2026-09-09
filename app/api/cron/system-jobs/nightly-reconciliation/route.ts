@@ -217,6 +217,19 @@ export async function GET(req: NextRequest) {
       const prioritySeedLimit = parseOptionalPositiveInt(payload.priority_seed_limit);
       await writeNightlyState({ scope: jobScope, managerOffset, priorityOffset, status: 'running' });
 
+      // Справочник дублей карточек клиента для ЗП: менеджеры в RetailCRM заводят
+      // новую карточку почти на каждый заказ, и без пересборки постоянный клиент
+      // снова выглядит перворазником. Расчёт не должен падать из-за этого шага.
+      const { error: canonError } = await supabase.rpc('salary_rebuild_client_canon');
+      if (canonError) {
+        console.error(JSON.stringify({
+          level: 'error',
+          worker: WORKER_KEY,
+          step: 'salary_rebuild_client_canon',
+          message: canonError.message,
+        }));
+      }
+
       const shouldSeedAggregates = jobScope === 'all' || jobScope === 'aggregates';
       const shouldSeedPriorities = jobScope === 'all' || jobScope === 'priorities';
 

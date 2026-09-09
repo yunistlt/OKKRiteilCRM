@@ -18,7 +18,9 @@ export const AiAgent = {
     MAXIM: 'maxim',
     ELENA: 'elena',
     SEMEN: 'semen',
+    TAMARA: 'tamara',
     DARYA: 'darya',
+    SALES_ANALYST: 'sales_analyst', // второй слой бота-РОПа: о чём говорить с клиентом
     TRANSCRIPTION: 'transcription', // служебная: AMD/диаризация/каналы
     EMBEDDINGS: 'embeddings',       // служебная: RAG/семантический поиск
 } as const;

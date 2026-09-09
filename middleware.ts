@@ -22,6 +22,9 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/invite') ||
         pathname.startsWith('/api/auth') ||
         pathname.startsWith('/api/cron') ||
+        // Служебный доступ консультанта ЦехУспеха: сессии у внешней системы нет,
+        // поэтому маршрут закрыт не сессией, а токеном в самом обработчике.
+        pathname.startsWith('/api/duty') ||
         pathname === '/api/payments/tochka' ||
         pathname.startsWith('/api/sync') ||
         pathname.startsWith('/api/matching') ||

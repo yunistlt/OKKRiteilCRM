@@ -15,7 +15,8 @@ export const maxDuration = 60;
  * в теме обеспечивает привязку к заказу). IMAP работает из боевого окружения (Vercel),
  * локально в РФ он режется DPI — поэтому это серверный route, а не локальный скрипт.
  *
- * Доступ: сессия admin/rop (route под middleware-защитой, нужна авторизация в приложении).
+ * Доступ: admin/rop/ОКК/менеджер — менеджер отвечает клиенту сам, прямо из карточки заказа.
+ * Письмо в любом случае уходит с общего ящика компании.
  */
 
 const BodySchema = z.object({
@@ -51,7 +52,7 @@ async function nextThreadSeq(orderNumber: string): Promise<number> {
 
 export async function POST(req: Request) {
     const session = await getSession();
-    if (!session || !['admin', 'rop'].includes(session.user.role)) {
+    if (!session || !['admin', 'rop', 'okk', 'manager'].includes(session.user.role)) {
         return NextResponse.json({ error: 'forbidden' }, { status: 403 });
     }
 

@@ -108,10 +108,7 @@ export async function POST(req: Request) {
 - Температура: ${finalSpecs.temp || '—'} °C
 - Электросеть: ${finalSpecs.phase || '—'} В
 
-💰 ОРИЕНТИРОВОЧНАЯ ЦЕНА: ${finalPrice ? finalPrice.toLocaleString('ru-RU') + ' руб. (с учётом НДС)' : '—'}
-
-🎁 ЗАФИКСИРОВАННЫЙ ПОДАРОК: ${gift || '—'}
-🛠️ ОБЕЩАННЫЙ БОНУС: Бесплатная онлайн-настройка и запуск оборудования на бланке КБ завода`;
+💰 ОРИЕНТИРОВОЧНАЯ ЦЕНА: ${finalPrice ? finalPrice.toLocaleString('ru-RU') + ' руб. (с учётом НДС)' : '—'}`;
 
         // Создаём лид в RetailCRM
         let crmOrderId: string | null = null;

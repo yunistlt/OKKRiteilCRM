@@ -55,6 +55,24 @@ function extractFilenamesFromComment(comment: string): string[] {
     return match[1].toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// Из комментария заказа достаём ТОЛЬКО текст письма клиента.
+// У заказов от AI-секретаря комментарий — это наш шаблон
+// («✉️ Заявка принята… 📝 Текст письма: {тело} 📎 Вложения:… ⚠️ ДУБЛИКАТ ТЕНДЕРА:…»).
+// Сравнивать надо тело письма клиента, а не нашу же обвязку — иначе ищем совпадения
+// в тексте, который сгенерировали сами. Для обычных заказов маркера нет — берём как есть.
+function extractClientBody(comment: string): string {
+    if (!comment) return '';
+    const marker = '📝 Текст письма:';
+    const idx = comment.indexOf(marker);
+    let body = idx >= 0 ? comment.slice(idx + marker.length) : comment;
+    // Отрезаем наши трейлеры (список вложений и пометку о дубле — это не текст клиента)
+    for (const cut of ['📎 Вложения', '⚠️ ДУБЛИКАТ']) {
+        const ci = body.indexOf(cut);
+        if (ci >= 0) body = body.slice(0, ci);
+    }
+    return body.trim();
+}
+
 export async function findTenderDuplicate(params: {
     bodyText: string;
     attachmentText: string;
@@ -92,15 +110,10 @@ export async function findTenderDuplicate(params: {
         if (!raw) continue;
 
         const pastComment = raw.customerComment || '';
-        const pastManagerComment = raw.managerComment || '';
-        
-        // Извлекаем имена товаров из офферов заказа
-        const items = raw.items || [];
-        const pastItems = items.map((it: any) => {
-            return `${it.offer?.name || it.offer?.displayName || it.productName || it.name || ''}`;
-        }).join(' ');
 
-        const pastText = `${pastComment} ${pastManagerComment} ${pastItems}`;
+        // Сравниваем ТОЛЬКО текст письма клиента (без нашего шаблона, managerComment
+        // и названий товаров из CRM — это не то, что писал клиент).
+        const pastText = extractClientBody(pastComment);
         const pastTokens = tokenize(pastText);
 
         const overlap = calculateOverlap(newTokens, pastTokens);
@@ -122,23 +135,12 @@ export async function findTenderDuplicate(params: {
         const pastDeliveryCity = extractCity(pastDeliveryAddress);
         const cityMatch = newDeliveryCity && pastDeliveryCity && newDeliveryCity === pastDeliveryCity;
 
-        // Рассчитываем итоговый балл сходства
+        // Рассчитываем итоговый балл сходства.
+        // Базой служит пересечение текста письма клиента; совпадение имени вложения
+        // и города доставки — вспомогательные подтверждающие сигналы.
         let score = overlap;
         if (filenameMatch) score += 0.4;
         if (cityMatch) score += 0.2;
-
-        // Если в новом тексте присутствуют все товары оригинального заказа, даем бонус
-        if (items.length > 0) {
-            let itemsMatched = 0;
-            for (const it of items) {
-                const prodName = (it.offer?.name || it.offer?.displayName || it.productName || it.name || '').toLowerCase().trim();
-                if (prodName && newText.toLowerCase().includes(prodName)) {
-                    itemsMatched++;
-                }
-            }
-            const itemsMatchRatio = itemsMatched / items.length;
-            score += itemsMatchRatio * 0.3;
-        }
 
         if (score > 0.65 && (!bestMatch || score > bestMatch.score)) {
             bestMatch = { order, score };

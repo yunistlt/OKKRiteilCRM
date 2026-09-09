@@ -30,7 +30,7 @@ const REFERENCES: { path: string; key: string; entityType: string }[] = [
 ];
 
 export interface DictRow { entity_type: string; dictionary_code: string; item_code: string; item_name: string }
-export interface RefRow { entity_type: string; item_code: string; item_name: string; active: boolean }
+export interface RefRow { entity_type: string; item_code: string; item_name: string; active: boolean; group_code?: string | null; ordering?: number | null }
 export interface FieldRow {
     entity: string; code: string; name: string | null; type: string | null; dictionary: string | null;
     ordering: number | null; in_filter: boolean | null; in_list: boolean | null; display_area: string | null; raw: any;
@@ -118,7 +118,16 @@ export async function fetchRetailcrmCatalog(): Promise<CatalogData> {
             if (item?.code == null) continue;
             // reference/* items отдают `active` (statuses, payment/delivery/order-methods,
             // sites, stores, product-statuses). Если поле отсутствует — считаем активным.
-            refRows.push({ entity_type: ref.entityType, item_code: String(item.code), item_name: item.name ?? String(item.code), active: item.active ?? true });
+            // У статусов RetailCRM отдаёт группу и порядок — без них не собрать левую
+            // колонку списка заказов, где статусы сгруппированы по этапам.
+            refRows.push({
+                entity_type: ref.entityType,
+                item_code: String(item.code),
+                item_name: item.name ?? String(item.code),
+                active: item.active ?? true,
+                group_code: item.group != null ? String(item.group) : null,
+                ordering: typeof item.ordering === 'number' ? item.ordering : null,
+            });
         }
     }
 
@@ -176,7 +185,7 @@ export async function syncRetailcrmCatalog(): Promise<{ dictionaries: number; di
         if (delErr) throw delErr;
         const rows = refRows
             .filter((r) => r.entity_type === et)
-            .map((r) => ({ entity_type: r.entity_type, dictionary_code: null, item_code: r.item_code, item_name: r.item_name, active: r.active, updated_at: now }));
+            .map((r) => ({ entity_type: r.entity_type, dictionary_code: null, item_code: r.item_code, item_name: r.item_name, active: r.active, group_code: r.group_code ?? null, ordering: r.ordering ?? null, updated_at: now }));
         for (let i = 0; i < rows.length; i += 500) {
             const { error } = await supabase.from('retailcrm_dictionaries').insert(rows.slice(i, i + 500));
             if (error) throw error;

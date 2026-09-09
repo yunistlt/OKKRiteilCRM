@@ -1,5 +1,6 @@
 import { getTochkaWebhookConfig } from './tochka-admin';
 import { NormalizedPointPayment, parseAmountToKopecks } from './types';
+import { supabase } from '@/utils/supabase';
 
 // Тяга банковской выписки Точки (Open Banking) для бэкофилла исторических платежей.
 // Поток асинхронный: список счетов → создать выписку за период → дождаться → забрать транзакции.
@@ -138,9 +139,37 @@ export async function enrichTochkaRecipient(p: NormalizedPointPayment): Promise<
     if (rec?.name) {
       p.recipientName = rec.name;
       p.recipientInn = rec.inn ?? null;
+      return;
+    }
+    console.warn(`[Tochka] получатель по счёту ${base} не найден в карте счетов — фолбэк по истории`);
+  } catch (err) {
+    console.warn(
+      `[Tochka] карта счетов недоступна (${(err as Error).message}) — фолбэк по истории платежей`,
+    );
+  }
+  // Фолбэк: тот же счёт уже приходил с известным получателем. Без него платёж теряет
+  // проект (инцидент 2026-08-25: оплата ЦехУспех уехала в «Требуют разбора»).
+  await enrichRecipientFromHistory(p);
+}
+
+/** Получатель по нашему счёту из ранее сохранённых платежей (когда API Точки не ответил). */
+async function enrichRecipientFromHistory(p: NormalizedPointPayment): Promise<void> {
+  if (!p.accountId) return;
+  try {
+    const { data } = await supabase
+      .from('point_payments')
+      .select('recipient_name, recipient_inn')
+      .eq('account_id', p.accountId)
+      .not('recipient_inn', 'is', null)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if ((data as any)?.recipient_inn) {
+      p.recipientName = (data as any).recipient_name ?? null;
+      p.recipientInn = (data as any).recipient_inn;
     }
   } catch {
-    /* тихо пропускаем — получатель необязателен */
+    /* получатель необязателен — приём платежа не ломаем */
   }
 }
 

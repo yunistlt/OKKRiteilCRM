@@ -35,7 +35,7 @@ Migrations are raw SQL in `migrations/` (123+ files, date-prefixed). There is no
 ### Request flow & auth
 - `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) bypass auth; everything else requires a session.
 - Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | demo`.
-- RBAC is a route-prefix → allowed-roles table in `lib/rbac.ts` (`DEFAULT_ROUTE_RULES`). `lib/rbac-server.ts` resolves it server-side (rules can be overridden in DB). When adding a page or API route, add a matching `RouteRule` or it inherits the longest-prefix match.
+- RBAC is a route-prefix → allowed-roles table in `lib/rbac.ts` (`DEFAULT_ROUTE_RULES`). `lib/rbac-server.ts` resolves it server-side (rules can be overridden in DB). When adding a page or API route, add a matching `RouteRule` or it inherits the longest-prefix match — `tests/rbac-coverage.test.ts` enforces this (page↔API role parity + a baseline of legacy uncovered routes; new routes must get their own rule).
 
 ### Database access
 - **Server code uses the service-role client** exported from `utils/supabase.ts` as `supabase` (a lazy Proxy) — this bypasses RLS. There is no generated typed client in active use; queries are largely untyped. Other clients: `utils/supabase-admin.ts`, `utils/supabase-user.ts`, `utils/supabase-browser.ts` / `lib/supabase-browser.ts` (browser).

@@ -6,7 +6,7 @@
 //                   товар в назначении (мебель/Klapp/стульчик/берёза);
 //   • Консалтинг  — получатель = ИП Теренков (632101044652) ИЛИ ключевые слова ПО/услуги.
 //
-// Внутренний перевод между своими юрлицами (оба ИНН — из группы) — не проект (в «Пропущено»).
+// Платёж от своего юрлица группы (ИНН плательщика — наш) — не проект (в «Пропущено»).
 //
 // ENV (все опциональны, дефолты ниже):
 //   TELEGRAM_PAYMENTS_CHAT_ID (ЗМКТЛ), TELEGRAM_PROJECT_STOLYARKA_CHAT, TELEGRAM_PROJECT_CONSULTING_CHAT
@@ -81,14 +81,20 @@ function keywordsFor(key: ForeignProject): string[] {
   return DEFAULT_KEYWORDS[key];
 }
 
-/** Перевод между своими юрлицами группы (оба ИНН — свои). Не платёж клиента. */
-export function isInternalGroupTransfer(
-  payerInn: string | null | undefined,
-  recipientInn: string | null | undefined,
-): boolean {
-  const p = normInn(payerInn);
-  const r = normInn(recipientInn);
-  return Boolean(p && r && OWN_INNS.has(p) && OWN_INNS.has(r));
+/** ИНН из списка своих юрлиц группы. */
+export function isOwnInn(inn: string | null | undefined): boolean {
+  const v = normInn(inn);
+  return Boolean(v && OWN_INNS.has(v));
+}
+
+/**
+ * Перевод внутри группы. Отсекаем ТОЛЬКО по ИНН плательщика: если платит своё юрлицо —
+ * это не клиентские деньги, каким бы ни было назначение и известен ли получатель.
+ * (ИНН получателя у Точки проставляется обогащением по счёту и может отсутствовать —
+ * инцидент 2026-08-25: автораспределение по фондам ушло уведомлениями в чат.)
+ */
+export function isInternalGroupTransfer(payerInn: string | null | undefined): boolean {
+  return isOwnInn(payerInn);
 }
 
 export interface ProjectSignals {

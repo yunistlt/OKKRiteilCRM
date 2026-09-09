@@ -31,9 +31,17 @@ export function extractInvoiceNumbers(purpose?: string | null): string[] {
 
   // «счёт/счету/счета/счете № 12345», сокращение «сч. 12345» и «12345/2».
   // Сокращённая форма требует точку («сч.»), чтобы не путать с «р/сч 40802…» (номер расчётного счёта).
-  const invoiceRe = /сч(?:[её]т[а-я]*|\.)\s*№?\s*([0-9]+(?:[/-][0-9]+)?)/gi;
+  // Знак номера пишут по-разному: «№», латинская «N»/«No», кириллическая «Н», «#».
+  const NUM_SIGN = '(?:№|#|N[oO]?|[NnНн])?\\s*';
+  const invoiceRe = new RegExp(
+    `сч(?:[её]т[а-я]*|\\.)\\s*${NUM_SIGN}([0-9]+(?:[/-][0-9]+)?)`,
+    'gi',
+  );
   // «договор/дог. № 12345»
-  const contractRe = /дог(?:овор[а-я]*)?\.?\s*(?:купли[- ]продажи\s*)?№?\s*([0-9]+(?:[/-][0-9]+)?)/gi;
+  const contractRe = new RegExp(
+    `дог(?:овор[а-я]*)?\\.?\\s*(?:купли[- ]продажи\\s*)?${NUM_SIGN}([0-9]+(?:[/-][0-9]+)?)`,
+    'gi',
+  );
 
   for (const re of [invoiceRe, contractRe]) {
     let m: RegExpExecArray | null;
@@ -113,7 +121,7 @@ function toCandidate(row: any, reason: string): OrderMatchCandidate {
 
 /**
  * Не-клиентский кредит, который НЕ надо матчить/разбирать:
- *  - 'internal' — перевод между своими счетами (плательщик = получатель, одно юрлицо);
+ *  - 'internal' — платёж от своего юрлица группы (ИНН плательщика — наш);
  *  - 'bank'     — банковская операция (депозит/проценты/возврат средств банка).
  */
 const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат средств по/i;
@@ -121,8 +129,8 @@ const BANK_PURPOSE_RE = /депозит|проц(?:ент|\.)|возврат с�
 export function classifyNonCustomerPayment(
   payment: NormalizedPointPayment,
 ): 'internal' | 'bank' | null {
-  // Внутренний перевод между своими юрлицами группы (оба ИНН — свои), напр. субаренда.
-  if (isInternalGroupTransfer(payment.payerInn, payment.recipientInn)) return 'internal';
+  // Платит своё юрлицо группы (субаренда, распределение по фондам Точки) — не клиент.
+  if (isInternalGroupTransfer(payment.payerInn)) return 'internal';
   if (BANK_PURPOSE_RE.test(payment.purpose || '')) return 'bank';
   return null;
 }

@@ -251,7 +251,7 @@ async function initWidget() {
         // Вызов API с типом calc_lead
         await apiCall('calc_lead', { specs: specs, price: price });
         // Моментально показываем яркий оффер и первый шаг (email)
-        addMsg('🎁 Бонус #1 зафиксирован: бесплатный монтаж + КП на фирменном бланке. Оставьте email ниже, и сразу отправлю расчёт.', 'ai', false, false);
+        addMsg('Оставьте email ниже — инженер-технолог подготовит официальное КП с расчётом и техническим паспортом и пришлёт на почту.', 'ai', false, false);
         addEmailCapture();
     };
 
@@ -489,10 +489,10 @@ async function initWidget() {
         var inner = document.createElement('div');
         inner.style.cssText = 'background:linear-gradient(135deg,#fff7ed 0%,#fff 48%,#f0fdf4 100%);border:2px solid #fb923c;border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(251,146,60,.18);';
         var title = document.createElement('div');
-        title.textContent = '🎁 Бесплатный монтаж + КП на бланке';
+        title.textContent = 'Получить КП на почту';
         title.style.cssText = 'font-weight:800;font-size:13px;line-height:1.35;color:#9a3412;margin-bottom:6px;';
         var hint = document.createElement('div');
-        hint.textContent = 'Введите email, и Елена сразу отправит расчёт и спецификацию.';
+        hint.textContent = 'Введите email, и Елена отправит официальное КП и спецификацию.';
         hint.style.cssText = 'font-size:12px;line-height:1.35;color:#7c2d12;margin-bottom:10px;';
         var hp = document.createElement('input');
         hp.type = 'text'; hp.name = 'website'; hp.tabIndex = -1; hp.autocomplete = 'off';
@@ -501,7 +501,7 @@ async function initWidget() {
         inp.type = 'email'; inp.placeholder = 'Ваш email...';
         inp.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
         var btn = document.createElement('button');
-        btn.textContent = 'Получить КП + бесплатный монтаж';
+        btn.textContent = 'Получить КП';
         btn.style.cssText = 'width:100%;background:linear-gradient(90deg,#f97316,#ea580c);color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(249,115,22,.35);';
         btn.onclick = function() {
             var email = inp.value.trim();
@@ -525,8 +525,8 @@ async function initWidget() {
                 });
             }).then(function() {
                 wrap.remove();
-                addMsg('✅ Email ' + email + ' зафиксирован. КП на бланке и подарок с бесплатным монтажом отправляю.', 'ai', false, false);
-                addMsg('🎁 Бонус #2: оставьте телефон, и закреплю за вами умную колонку Яндекс Станция Алиса Мини.', 'ai', false, false);
+                addMsg('✅ Email ' + email + ' зафиксирован. Инженер-технолог подготовит официальное КП и пришлёт на почту.', 'ai', false, false);
+                addMsg('Оставьте телефон — менеджер оперативно свяжется, уточнит детали и ускорит подготовку расчёта.', 'ai', false, false);
                 addPhoneCapture();
             }).catch(function(err) {
                 btn.disabled = false;
@@ -577,17 +577,17 @@ async function initWidget() {
         wrap.style.cssText = 'padding:0;background:transparent;box-shadow:none;border:none;';
         var inner = document.createElement('div'); inner.style.cssText = 'background:linear-gradient(135deg,#f5f3ff 0%,#ffffff 45%,#fdf2f8 100%);border:2px solid #a855f7;border-radius:12px;padding:12px;box-shadow:0 6px 18px rgba(168,85,247,.2);';
         var title = document.createElement('div');
-        title.textContent = '🎁 Подарок за телефон: Яндекс Станция Алиса Мини';
+        title.textContent = 'Заказать звонок менеджера';
         title.style.cssText = 'font-weight:800;font-size:13px;line-height:1.35;color:#6b21a8;margin-bottom:6px;';
         var hint = document.createElement('div');
-        hint.textContent = 'Оставьте контакт, и менеджер закрепит подарок и подтвердит детали запуска.';
+        hint.textContent = 'Оставьте контакт, и менеджер свяжется, уточнит детали и подготовит КП.';
         hint.style.cssText = 'font-size:12px;line-height:1.35;color:#581c87;margin-bottom:10px;';
         var fieldStyle = 'width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;font-size:13px;outline:none;margin-bottom:8px;';
         var nameInp = document.createElement('input'); nameInp.type = 'text'; nameInp.placeholder = 'Ваше имя...'; nameInp.style.cssText = fieldStyle;
         var phoneInp = document.createElement('input'); phoneInp.type = 'tel'; phoneInp.placeholder = '+7 (___) ___-__-__'; phoneInp.value = '+7 '; phoneInp.style.cssText = fieldStyle;
         var companyInp = document.createElement('input'); companyInp.type = 'text'; companyInp.placeholder = 'Компания (необязательно)'; companyInp.style.cssText = fieldStyle;
         var submitBtn = document.createElement('button');
-        submitBtn.textContent = 'Забронировать Алису Мини';
+        submitBtn.textContent = 'Заказать звонок';
         submitBtn.style.cssText = 'width:100%;background:linear-gradient(90deg,#a855f7,#ec4899);color:#fff;border:none;border-radius:8px;padding:9px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px rgba(168,85,247,.35);';
         submitBtn.onclick = function() {
             var name = nameInp.value.trim(); var phone = phoneInp.value.trim(); var company = companyInp.value.trim();
@@ -599,8 +599,8 @@ async function initWidget() {
             apiCall('callback', { name: name, phone: phone, company: company || null }).then(function(resp) {
                 if (resp && resp.error) throw new Error(resp.error);
                 wrap.remove();
-                addMsg('✅ ' + name + ', контакт ' + phone + ' зафиксировала. Подарок Алиса Мини закреплён за вами.', 'ai', false, false);
-                addMsg('📞 Менеджер свяжется с вами в течение 15 минут для подтверждения КП и условий монтажа.', 'ai', false, false);
+                addMsg('✅ ' + name + ', контакт ' + phone + ' зафиксировала.', 'ai', false, false);
+                addMsg('📞 Менеджер свяжется с вами в течение 15 минут, уточнит детали и подготовит КП.', 'ai', false, false);
             }).catch(function(err) {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Попробовать снова';

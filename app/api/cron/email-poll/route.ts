@@ -14,7 +14,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
-import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact } from '@/lib/email/classify';
+import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact, ourOutboundDomain, repliesToOurOutbound } from '@/lib/email/classify';
 import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
@@ -28,6 +28,7 @@ export const maxDuration = 300;
 const FOLDER = 'INBOX';
 const MAX_BATCH = 30;          // письма за один заход (бережно к Yandex/OpenAI)
 const CLASSIFY_BATCH = 30;     // классифицируем не больше N писем за заход
+const ORDER_CREATE_MAX_ATTEMPTS = 5; // сколько раз пробуем завести заказ, прежде чем звать человека
 // Порог доверия «новой заявке» при ГОЛОМ «Re:» (без CRM-тега [#N/N]). Постоянный клиент часто
 // отвечает на старое письмо, начиная НОВЫЙ запрос (КП/счёт) — голый «Re:» это слабый признак.
 // Если ИИ уверенно (≥ порога) видит новую заявку — доверяем телу и заводим заказ. CRM-тег [#N/N]
@@ -233,55 +234,6 @@ async function findOrderByEmailThread(
     return null;
 }
 
-/** Домен наших исходящих (из ящика секретаря). Нужен, чтобы опознать цитату нашего письма. */
-function ourOutboundDomain(): string | null {
-    const addr = process.env.IMAP_USER || process.env.SMTP_USER || '';
-    const dom = addr.split('@')[1]?.trim().toLowerCase();
-    return dom || null;
-}
-
-// Хосты почтовых релеев, через которые уходят НАШИ письма по заказам (RetailCRM). Инфраструктура
-// интеграции, а не бизнес-данные — держим списком здесь. Если письмо — ответ (In-Reply-To/References)
-// на сообщение с такого хоста, значит клиент отвечает на наше письмо по существующему заказу.
-const OUTBOUND_RELAY_HINTS = /@[^\s>]*(mlgnr\.com|rcrm-tech\.ru|retailcrm)/i;
-
-/**
- * Признак «письмо — ОТВЕТ клиента на НАШЕ исходящее» (переписка по существующему заказу).
- * Холодный новый лид процитировать нас не может — поэтому это надёжный признак, что заявку плодить
- * не нужно, ДАЖЕ если ИИ уверенно видит «новую заявку». Два независимых сигнала:
- *   1) In-Reply-To / References указывают на наш почтовый релей или наш домен — заголовок-ответ;
- *   2) тело содержит строку-цитату нашего исходящего: «…@наш-домен пишет:», «<…@наш-домен>:»,
- *      «От/Кому: …@наш-домен» или цитату «> …@наш-домен».
- *
- * Инцидент 23.07.2026 (53987 «пока нет инфо» / 53986): голый «Re:» без тега [#N/N] и без номера
- * заказа в теме, confidence 0.9 — ни один прежний признак не срабатывал, а письмо цитировало наше
- * же follow-up-письмо («Ваш запрос актуален? КП во вложении»). Заводились дубли-заявки.
- */
-function repliesToOurOutbound(
-    e: { inReplyTo?: string | null; refs?: string | string[] | null; bodyText?: string | null; bodyHtml?: string | null },
-    ourDomain: string | null
-): boolean {
-    // 1) Заголовки треда (машинный, самый надёжный сигнал).
-    const refs = Array.isArray(e.refs) ? e.refs.join(' ') : (e.refs || '');
-    const headers = `${e.inReplyTo || ''} ${refs}`;
-    if (headers.trim()) {
-        if (OUTBOUND_RELAY_HINTS.test(headers)) return true;
-        if (ourDomain && new RegExp(`@[^\\s>]*${ourDomain.replace(/\./g, '\\.')}`, 'i').test(headers)) return true;
-    }
-    // 2) Цитата нашего письма в теле.
-    if (!ourDomain) return false;
-    const body = (e.bodyText && e.bodyText.trim()) ? e.bodyText : stripHtml(e.bodyHtml);
-    if (!body) return false;
-    const d = ourDomain.replace(/\./g, '\\.');
-    const quotePatterns = [
-        new RegExp(String.raw`\S*@${d}\b[^\n]{0,40}(пишет|wrote)\s*:`, 'i'),   // "…, rop@zmktlt.ru пишет:"
-        new RegExp(String.raw`(^|\n)\s*(от|from|кому|to)\s*:[^\n]*@${d}`, 'i'), // От:/Кому: …@zmktlt.ru
-        new RegExp(String.raw`(^|\n)\s*>[^\n]*@${d}`, 'i'),                     // цитата "> …@zmktlt.ru"
-        new RegExp(String.raw`@${d}["'»<>\s]*:`, 'i'),                          // "<rop@zmktlt.ru>:"
-    ];
-    return quotePatterns.some((r) => r.test(body));
-}
-
 export async function GET(req: Request) {
     const cronAuthorized = hasCronAuthorization(req);
     const session = cronAuthorized ? null : await getSession();
@@ -409,7 +361,7 @@ export async function GET(req: Request) {
 
         const { data: pending } = await supabase
             .from('incoming_emails')
-            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, message_id, in_reply_to, email_refs')
+            .select('id, from_email, from_name, subject, body_text, body_html, attachments_meta, folder, imap_uid, received_at, message_id, in_reply_to, email_refs, order_create_attempts')
             .eq('status', 'new')
             .order('received_at', { ascending: true })
             .limit(CLASSIFY_BATCH);
@@ -451,6 +403,7 @@ export async function GET(req: Request) {
                         subject: e.subject,
                         body: (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
                         contactEmail: leadContact.email || null,
+                        excludeEmailId: e.id,
                     });
                     v = await classifyRoute(
                         { fromEmail: e.from_email, fromName: e.from_name, subject: e.subject, bodyText: e.body_text, bodyHtml: e.body_html, attachments: e.attachments_meta, crmDossier },
@@ -646,6 +599,7 @@ export async function GET(req: Request) {
                     }
                 }
 
+                let orderCreateAttempts = Number((e as any).order_create_attempts ?? 0);
                 let forwardedDepartment: string | null = null;
                 let forwardedTo: string | null = null;
                 let forwardedAt: string | null = null;
@@ -709,9 +663,20 @@ export async function GET(req: Request) {
                             }
                         }
                     } catch (err: any) {
-                        finalStatus = 'error';
                         errorMessage = err?.message || 'order_create_failed';
-                        reasoning = `${reasoning} | Ошибка создания заказа: ${errorMessage}`;
+                        // Сеть до CRM моргнула — это не приговор заявке. Раньше письмо сразу уходило
+                        // в 'error' и не повторялось никогда: запрос на 69 шкафов (01.09.2026) пролежал
+                        // мёртвым, пока менеджер случайно не наткнулся на письмо в ящике.
+                        // Возвращаем в очередь, но не бесконечно: после ORDER_CREATE_MAX_ATTEMPTS
+                        // попыток это уже не сеть, а разбор руками.
+                        orderCreateAttempts += 1;
+                        if (orderCreateAttempts < ORDER_CREATE_MAX_ATTEMPTS) {
+                            finalStatus = 'new';
+                            reasoning = `${reasoning} | Заказ не создан (${errorMessage}), попытка ${orderCreateAttempts} из ${ORDER_CREATE_MAX_ATTEMPTS} — повторим`;
+                        } else {
+                            finalStatus = 'error';
+                            reasoning = `${reasoning} | Ошибка создания заказа: ${errorMessage} (попыток ${orderCreateAttempts}, дальше вручную)`;
+                        }
                     }
                 }
 
@@ -764,6 +729,7 @@ export async function GET(req: Request) {
                     forward_error: forwardError,
                     classified_by: 'ai',
                     status: finalStatus,
+                    order_create_attempts: orderCreateAttempts,
                     error_message: errorMessage,
                     updated_at: new Date().toISOString(),
                 }).eq('id', e.id);
