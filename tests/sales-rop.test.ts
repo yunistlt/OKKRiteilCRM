@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan, taskFor } from '@/lib/sales-rop/rules';
 import type { PresaleOrder, Thresholds } from '@/lib/sales-rop/rules';
-import { formatDiscipline, formatEvening, formatEveningHeader, formatMorning, shareOfLeads } from '@/lib/sales-rop/format';
+import {
+    formatDiscipline,
+    formatEvening,
+    formatEveningHeader,
+    formatMorning,
+    shareOfLeads,
+    splitTelegramMessage,
+    TELEGRAM_TEXT_LIMIT,
+} from '@/lib/sales-rop/format';
 
 // Бот-РОП: что попадает в утренний план и как это читается.
 //
@@ -692,5 +700,46 @@ describe('дата контакта, назначенная на будущее'
             lastTouchAt: '2026-08-25',
         });
         expect(taskFor(noDate, TODAY, T)?.reasonCode).toBe('deal_stale');
+    });
+});
+
+
+// Длина сообщения. 09.09.2026 утренний план не ушёл никому: у одного адресата
+// список перевалил за предел Telegram, отправка бросила ошибку и оборвала
+// рассылку остальным.
+describe('splitTelegramMessage', () => {
+    it('короткое сообщение не трогает', () => {
+        expect(splitTelegramMessage('привет')).toEqual(['привет']);
+    });
+
+    it('режет длинный план на части в пределах лимита', () => {
+        const text = Array.from({ length: 400 }, (_, i) => `строка ${i} — заказ на сумму`).join('\n');
+        const parts = splitTelegramMessage(text);
+
+        expect(parts.length).toBeGreaterThan(1);
+        for (const p of parts) expect(p.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
+    });
+
+    it('не теряет и не переставляет строки', () => {
+        const lines = Array.from({ length: 400 }, (_, i) => `строка ${i}`);
+        const parts = splitTelegramMessage(lines.join('\n'));
+
+        expect(parts.join('\n').split('\n')).toEqual(lines);
+    });
+
+    it('не рвёт строку посреди HTML-ссылки', () => {
+        const line = `<a href="https://crm/orders/1">54132</a> — 1 000 000 ₽ — ООО «Техномакс»`;
+        const parts = splitTelegramMessage(Array.from({ length: 300 }, () => line).join('\n'));
+
+        for (const p of parts) {
+            expect((p.match(/<a /g) ?? []).length).toBe((p.match(/<\/a>/g) ?? []).length);
+        }
+    });
+
+    it('переживает строку длиннее лимита', () => {
+        const parts = splitTelegramMessage('я'.repeat(TELEGRAM_TEXT_LIMIT * 2 + 5));
+
+        expect(parts.length).toBe(3);
+        for (const p of parts) expect(p.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
     });
 });

@@ -474,3 +474,51 @@ export function formatEveningHeader(params: {
         `Осталось ${money(left)} ₽ за ${days(workdaysLeft)} — по ${money(perDay)} ₽ в день`,
     ].join('\n');
 }
+
+/**
+ * Предел одного сообщения Telegram — 4096 символов; всё, что длиннее, API
+ * отбивает ошибкой «message is too long».
+ *
+ * 09.09.2026 утренний план не ушёл целиком: у одного адресата (на него сходятся
+ * заказы неактивных менеджеров) список перевалил за предел, отправка бросила
+ * ошибку — и вместе с его планом остались неотправленными планы всех, кто стоял
+ * в очереди следом.
+ *
+ * Берём с запасом: у длины считаются символы UTF-16, эмодзи и русские буквы
+ * ведут себя по-разному, и упираться в ровно 4096 незачем.
+ */
+export const TELEGRAM_TEXT_LIMIT = 3900;
+
+/**
+ * Режем длинное сообщение на части по границам строк.
+ *
+ * По строкам, а не по символам, по двум причинам: parse_mode=HTML — разрыв
+ * посреди строки рвёт тег `<a href>` и всё сообщение отбивается как невалидное;
+ * и читается список задач, разорванный посреди номера заказа, плохо.
+ */
+export function splitTelegramMessage(text: string, limit = TELEGRAM_TEXT_LIMIT): string[] {
+    if (text.length <= limit) return [text];
+
+    const parts: string[] = [];
+    let current = '';
+
+    const flush = () => {
+        if (current.length > 0) parts.push(current);
+        current = '';
+    };
+
+    for (const line of text.split('\n')) {
+        // Строка длиннее предела сама по себе (такого в плане не бывает, но
+        // отправка не имеет права падать ни на чём): режем по символам.
+        if (line.length > limit) {
+            flush();
+            for (let i = 0; i < line.length; i += limit) parts.push(line.slice(i, i + limit));
+            continue;
+        }
+        if (current.length + (current ? 1 : 0) + line.length > limit) flush();
+        current += (current ? '\n' : '') + line;
+    }
+    flush();
+
+    return parts.length > 0 ? parts : [text.slice(0, limit)];
+}
