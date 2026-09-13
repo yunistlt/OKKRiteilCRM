@@ -183,7 +183,12 @@ async function auditOne(browser: Browser, baseUrl: string, cookie: string, scree
             throw new Error('редирект на /login — сессия не принята');
         }
 
-        const result = await evaluateChecks(page, { mobile: vp.key === 'mobile' });
+        const result = await evaluateChecks(page, { mobile: vp.key === 'mobile' }).catch(async () => {
+            // Страница ушла в редирект в момент проверки — дождёмся и повторим один раз.
+            await page.waitForLoadState('load', { timeout: 30_000 }).catch(() => undefined);
+            await page.waitForTimeout(1_500);
+            return evaluateChecks(page, { mobile: vp.key === 'mobile' });
+        });
         const shot = path.join('shots', `${screen.key}--${vp.key}.png`);
         await page.screenshot({ path: path.join(OUT_DIR, shot), fullPage: false });
 
