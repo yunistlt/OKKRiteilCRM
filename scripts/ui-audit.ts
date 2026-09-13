@@ -5,6 +5,7 @@
  *   npm run ui:audit -- --screen=orders   # один экран (можно несколько через запятую)
  *   npm run ui:audit -- --viewport=mobile # одно окно
  *   BASE_URL=https://okk.zmksoft.com npm run ui:audit   # против готового сервера (нужен AUTH_COOKIE)
+ *   npm run ui:audit -- --render          # только пересобрать report.html из report.json
  *
  * Без BASE_URL скрипт сам поднимает `next dev` на свободном порту и выпускает
  * локальную сессию администратора (JWT с ключом по умолчанию из lib/auth.ts —
@@ -15,7 +16,7 @@
  */
 import 'dotenv/config';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
@@ -322,6 +323,13 @@ ${details}`;
 }
 
 async function main() {
+    // --render: пересобрать report.html из готового report.json (без прогона).
+    if (args.render) {
+        const saved = JSON.parse(readFileSync(path.join(OUT_DIR, 'report.json'), 'utf8')) as { meta: { baseUrl: string; startedAt: string; ms: number }; runs: ScreenRun[] };
+        writeFileSync(path.join(OUT_DIR, 'report.html'), renderHtml(saved.runs, saved.meta));
+        console.log(`Отчёт пересобран: ${path.join(OUT_DIR, 'report.html')}`);
+        return;
+    }
     const startedAt = new Date().toISOString();
     const t0 = Date.now();
     rmSync(OUT_DIR, { recursive: true, force: true });
