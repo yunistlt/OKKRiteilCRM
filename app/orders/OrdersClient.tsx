@@ -248,6 +248,7 @@ export default function OrdersClient() {
                                 orders.map((order) => (
                                     <tr
                                         key={order.orderId}
+                                        data-ui-audit="order-row"
                                         onClick={() => setOpenOrderId(order.orderId)}
                                         className={`cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50/40 ${order.overdue ? 'bg-red-50/50' : ''}`}
                                     >

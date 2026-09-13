@@ -48,3 +48,4 @@ scratch/query_*.ts
 # throwaway scripts/data
 scratch/
 .env*
+ui-audit-report/

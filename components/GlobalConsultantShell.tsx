@@ -16,7 +16,7 @@ function GlobalConsultantShellContent({ children }: { children: React.ReactNode 
 
     return (
         <div className="relative flex min-h-0 flex-1 overflow-hidden bg-white">
-            <div className="min-w-0 flex-1 overflow-auto border-r border-slate-200 bg-white">
+            <div data-ui-audit="page-scroller" className="min-w-0 flex-1 overflow-auto border-r border-slate-200 bg-white">
                 {children}
             </div>
             <OKKConsultantPanel selectedOrder={selectedOrder} />

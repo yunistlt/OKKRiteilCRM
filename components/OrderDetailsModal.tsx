@@ -1030,7 +1030,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex bg-white">
+        <div className="fixed inset-0 z-[130] flex bg-white" role="dialog" aria-modal="true" data-ui-audit="order-modal">
             <div className="flex h-full w-full flex-col overflow-hidden bg-white">
                 <header className="border-b bg-white px-6 py-5">
                     <div className="flex items-start justify-between gap-6">

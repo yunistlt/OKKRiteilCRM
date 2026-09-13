@@ -106,6 +106,7 @@ export default function Sidebar() {
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
                 { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
+                { name: 'Режим тестировщика', href: '/settings/qa', icon: '🧪', allowed: ['admin'] },
             ]
         },
         {
@@ -174,6 +175,7 @@ export default function Sidebar() {
             {!isMessengerRoute && (
                 <button
                     onClick={() => setIsMobileOpen(!isMobileOpen)}
+                    data-ui-audit-zone="sidebar"
                     className="md:hidden fixed bottom-6 right-6 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white text-2xl shadow-2xl transition-all active:scale-95"
                     aria-label={isMobileOpen ? 'Закрыть меню' : 'Открыть меню'}
                 >
@@ -184,12 +186,13 @@ export default function Sidebar() {
             {/* Mobile Overlay */}
             {isMobileOpen && (
                 <div 
+                    data-ui-audit-zone="sidebar"
                     className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] animate-in fade-in"
                     onClick={() => setIsMobileOpen(false)}
                 />
             )}
 
-            <aside className={`fixed md:sticky top-0 left-0 h-screen transition-all duration-300 z-[120] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 shadow-2xl no-scrollbar
+            <aside data-ui-audit-zone="sidebar" className={`fixed md:sticky top-0 left-0 h-screen transition-all duration-300 z-[120] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 shadow-2xl no-scrollbar
                 ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'}
                 ${isCollapsed ? 'md:w-20' : 'md:w-72'}
             `}>

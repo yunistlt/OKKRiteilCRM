@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { Phone, X } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { useCallNotifications } from '@/lib/hooks/useCallNotifications';
@@ -27,6 +28,8 @@ interface IncomingCallState {
 export function PhonePanel() {
   const { user } = useAuth();
   const managerId = user?.retail_crm_manager_id ?? null;
+
+  const pathname = usePathname();
 
   const [isOpen, setIsOpen] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCallState | null>(null);
@@ -122,7 +125,9 @@ export function PhonePanel() {
       <button
         type="button"
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 z-40 flex items-center gap-2 bg-gray-900 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-600"
+        data-ui-audit-zone="phone"
+        // В мессенджере на телефоне своя шапка с кнопками — не наезжаем на неё.
+        className={`fixed right-16 top-3 z-[60] items-center gap-2 bg-gray-900 px-3 py-2 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-600 ${pathname.startsWith('/messenger') ? 'hidden md:flex' : 'flex'}`}
       >
         <Phone size={16} />
         Телефон
@@ -132,7 +137,7 @@ export function PhonePanel() {
   }
 
   return (
-    <aside className="fixed right-0 top-0 z-40 flex h-screen w-80 flex-col border-l border-gray-200 bg-white">
+    <aside data-ui-audit-zone="phone" className="fixed right-0 top-0 z-[130] flex h-screen w-80 flex-col border-l border-gray-200 bg-white">
       <div className="flex items-center justify-between bg-gray-900 px-3 py-2">
         <span className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white">
           <Phone size={14} />

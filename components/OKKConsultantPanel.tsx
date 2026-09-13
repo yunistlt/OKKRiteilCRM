@@ -499,6 +499,8 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
     return (
         <>
             <aside
+                data-ui-audit-zone="consultant"
+                data-ui-exception="whatsapp"
                 className="relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-slate-800/80 bg-[#0f1726] text-slate-100 md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]"
                 style={desktopWidth ? { width: `${desktopWidth}px`, minWidth: `${desktopWidth}px`, maxWidth: `${desktopWidth}px` } : undefined}
             >
@@ -515,8 +517,10 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             {!pathname.startsWith('/messenger') && (
                 <button
                     type="button"
+                    data-ui-audit-zone="consultant"
+                    data-ui-exception="whatsapp"
                     onClick={() => setMobileOpen(true)}
-                    className="fixed bottom-4 right-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
+                    className="fixed bottom-4 left-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
                 >
                     <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                     Семён
@@ -524,7 +528,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             )}
 
             {mobileOpen && (
-                <div className="fixed inset-0 z-[150] md:hidden">
+                <div className="fixed inset-0 z-[150] md:hidden" data-ui-audit-zone="consultant" data-ui-exception="whatsapp">
                     <button type="button" aria-label="Закрыть слой" className="absolute inset-0 bg-slate-950/70" onClick={() => setMobileOpen(false)} />
                     <aside className="absolute inset-x-0 bottom-0 top-14 flex flex-col overflow-hidden border-t border-slate-800/80 bg-[#0f1726] text-slate-100 shadow-[0_-16px_40px_rgba(2,6,23,0.48)]">
                         {panelContent}

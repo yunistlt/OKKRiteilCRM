@@ -22,6 +22,7 @@
 | **Штаб: передача дел на локальную машину** | 🔵 Передача | [docs/shtab/HANDOFF.md](shtab/HANDOFF.md) | Владелец |
 | **Зарплата ОП (конструктор)** | 🟢 Реализован | [docs/salary/](salary/README.md) ← начни отсюда | Team Sales |
 | **Платежи «с точки» (Точка → заказы)** | 🟢 Реализован | [docs/payments/](payments/OVERVIEW.md) | Team Finance |
+| **Режим тестировщика / проверка вёрстки по голдам** | 🟢 Реализован | [docs/ui-audit/OVERVIEW.md](ui-audit/OVERVIEW.md) | Frontend |
 | **Voice of Customer KB** | 🟡 В разработке | [docs/knowledge-base/](knowledge-base/) | Team KM |
 | **Real-time pipeline** | 🟡 В исполнении | [docs/realtime-pipeline/](realtime-pipeline/) | Team Infrastructure |
 | **Транскрибация** | 🟢 ✅ Закрыто | [docs/transcription/](transcription/) | Team Infrastructure |

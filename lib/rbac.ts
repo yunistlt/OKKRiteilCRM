@@ -40,6 +40,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/statuses', label: 'Статусы заказов', description: 'Настройка словаря статусов заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/statuses', label: 'API статусов заказов', description: 'CRUD-операции по статусам заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/dict/statuses', label: 'API словаря статусов', description: 'Служебные методы словаря статусов.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/settings/qa', label: 'Режим тестировщика', description: 'Проверка вёрстки по голдам: список экранов, панель проверок.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/status', label: 'Статус систем', description: 'Мониторинг сервисов и интеграций.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/system-status', label: 'API статуса систем', description: 'Серверные методы экрана статуса систем.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/rules', label: 'Правила', description: 'Управление правилами и проверками.', category: 'Система', allowed: ['admin'] },

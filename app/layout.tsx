@@ -34,6 +34,7 @@ export const metadata: Metadata = {
 
 import Sidebar from "../components/ui/Sidebar";
 import { PhonePanel } from "@/components/softphone/PhonePanel";
+import QaOverlay from "@/components/qa/QaOverlay";
 
 export default async function RootLayout({
     children,
@@ -78,6 +79,7 @@ export default async function RootLayout({
                         </main>
                     </div>
                     {session ? <PhonePanel /> : null}
+                    {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}
                 </AuthProvider>
             </body>
         </html>
