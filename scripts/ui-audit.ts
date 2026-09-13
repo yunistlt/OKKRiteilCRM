@@ -295,18 +295,22 @@ ${r.screenshot ? `<img src="${r.screenshot}" loading="lazy" alt="">` : ''}
         })
         .join('\n');
 
-    return `<!doctype html><meta charset="utf-8"><title>Проверка вёрстки</title>
+    return `<meta charset="utf-8"><title>Проверка вёрстки</title>
 <style>
-body{font:13px/1.4 -apple-system,system-ui,sans-serif;margin:0;padding:16px;color:#0f172a;background:#fff}
-table{border-collapse:collapse;width:100%}td,th{border:1px solid #cbd5e1;padding:4px 8px;text-align:left;vertical-align:top}
-th{background:#f1f5f9}.sec{color:#64748b;white-space:nowrap}
-td.ok{background:#dcfce7}td.warn{background:#fef9c3}td.err{background:#fee2e2}td.fail{background:#0f172a;color:#fff}td.skip{color:#94a3b8}
+:root{--bg:#ffffff;--fg:#0f172a;--muted:#5b6478;--line:#cbd5e1;--head:#f1f5f9;--ok:#dcfce7;--warn:#fef9c3;--err:#fee2e2;--fail:#0f172a;--fail-fg:#ffffff;--err-fg:#dc2626;--warn-fg:#a16207;--code:#475569}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0b0f1a;--fg:#f1f5f9;--muted:#94a3b8;--line:#2d3748;--head:#151b2c;--ok:#14532d;--warn:#713f12;--err:#7f1d1d;--fail:#f1f5f9;--fail-fg:#0b0f1a;--err-fg:#f87171;--warn-fg:#fbbf24;--code:#94a3b8}}
+:root[data-theme="dark"]{--bg:#0b0f1a;--fg:#f1f5f9;--muted:#94a3b8;--line:#2d3748;--head:#151b2c;--ok:#14532d;--warn:#713f12;--err:#7f1d1d;--fail:#f1f5f9;--fail-fg:#0b0f1a;--err-fg:#f87171;--warn-fg:#fbbf24;--code:#94a3b8}
+body{font:13px/1.4 -apple-system,system-ui,"Segoe UI",sans-serif;margin:0;padding:16px;color:var(--fg);background:var(--bg);font-variant-numeric:tabular-nums}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}
+th{background:var(--head)}.sec{color:var(--muted);white-space:nowrap}
+td.ok{background:var(--ok)}td.warn{background:var(--warn)}td.err{background:var(--err)}td.fail{background:var(--fail);color:var(--fail-fg)}td.skip{color:var(--muted)}
 td a{color:inherit;text-decoration:none;display:block}
-section{border-top:2px solid #0f172a;margin-top:24px;padding-top:8px}h2{font-size:16px;margin:0 0 4px}
-img{max-width:100%;border:1px solid #cbd5e1;margin:8px 0}
-ul{padding-left:18px}li{margin:4px 0}li.error b{color:#dc2626}li.warn b{color:#a16207}
-code{font-size:11px;color:#475569}.fail{color:#dc2626}
-.kpi{display:flex;gap:16px;margin:8px 0 16px}.kpi div{border:1px solid #cbd5e1;padding:6px 12px}.kpi b{font-size:20px;display:block}
+section{border-top:2px solid var(--fg);margin-top:24px;padding-top:8px}h2{font-size:16px;margin:0 0 4px;text-wrap:balance}
+img{max-width:100%;border:1px solid var(--line);margin:8px 0;display:block}
+ul{padding-left:18px}li{margin:4px 0}li.error b{color:var(--err-fg)}li.warn b{color:var(--warn-fg)}
+code{font-size:11px;color:var(--code)}.fail{color:var(--err-fg)}
+.kpi{display:flex;gap:12px;margin:8px 0 16px;flex-wrap:wrap}.kpi div{border:1px solid var(--line);padding:6px 12px;min-width:96px}.kpi b{font-size:20px;display:block}
+p{color:var(--muted)}p b{color:var(--fg)}
 </style>
 <h1 style="margin:0 0 4px;font-size:20px">Проверка вёрстки по голдам</h1>
 <p>${esc(meta.baseUrl)} · ${esc(new Date(meta.startedAt).toLocaleString('ru-RU'))} · ${Math.round(meta.ms / 1000)} с · в ячейках «ошибки / замечания»</p>
@@ -315,9 +319,9 @@ code{font-size:11px;color:#475569}.fail{color:#dc2626}
         .sort((a, b) => b[1] - a[1])
         .map(([c, n]) => `${esc(UI_CHECK_TITLES[c as keyof typeof UI_CHECK_TITLES])}: <b>${n}</b>`)
         .join(' · ')}</p>
-<table><thead><tr><th>Раздел</th><th>Экран</th>${UI_AUDIT_VIEWPORTS.map((v) => `<th>${esc(v.title)}</th>`).join('')}</tr></thead><tbody>
+<div class="wrap"><table><thead><tr><th>Раздел</th><th>Экран</th>${UI_AUDIT_VIEWPORTS.map((v) => `<th>${esc(v.title)}</th>`).join('')}</tr></thead><tbody>
 ${rows}
-</tbody></table>
+</tbody></table></div>
 ${shellHtml}
 ${details}`;
 }
