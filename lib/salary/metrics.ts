@@ -394,12 +394,16 @@ export async function collectPeriodMetrics(
 
     // 1a. Номер покупки клиента по каждому заказу периода (блок «Доплата за
     //     повторную покупку»). Считается на момент входа в производство, поэтому
-    //     задним числом не мигает.
+    //     задним числом не мигает. Сделки без записи входа в производство (история
+    //     не на всю глубину) засчитываются по deal_statuses — тем же списком, что и
+    //     счётчик «новый/постоянный», иначе ведомость показывала «2 сделки», а
+    //     доплату за 2-ю покупку не начисляла (инцидент 54480).
     const ordinalsByOrder = new Map<number, number>();
     const { data: ordData, error: ordErr } = await supabase.rpc('salary_client_purchase_ordinals', {
         p_start: start,
         p_end: end,
         p_closing: closing,
+        p_deal_statuses: config.deal_statuses,
     });
     if (ordErr) throw ordErr;
     for (const r of (ordData as PurchaseOrdinalRow[]) ?? []) {

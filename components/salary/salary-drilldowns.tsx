@@ -25,7 +25,7 @@ const pluralRu = (n: number, one: string, few: string, many: string) => {
 const orderTypeLabel = (o: any, threshold?: number | null) => {
     const base = ORDER_TYPE_LABEL[o?.type] ?? '—';
     const deals = typeof o?.deals === 'number' ? o.deals : null;
-    const dealsTxt = deals != null ? `${deals} ${pluralRu(deals, 'сделка', 'сделки', 'сделок')} в произв.` : null;
+    const dealsTxt = deals != null ? `${deals} ${pluralRu(deals, 'сделка', 'сделки', 'сделок')}` : null;
     const thr = typeof threshold === 'number' ? threshold : null;
     if (o?.type === 'permanent') {
         return dealsTxt ? `${base} · ${dealsTxt}` : base;
