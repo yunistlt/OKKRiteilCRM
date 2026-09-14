@@ -335,11 +335,10 @@ export default function WidgetSettingsPage() {
                 .input {
                     width: 100%;
                     border: 1px solid #e5e7eb;
-                    border-radius: 8px;
+                    border-radius: 0;
                     padding: 8px 12px;
                     font-size: 14px;
                     outline: none;
-                    transition: border-color 0.15s;
                 }
                 .input:focus { border-color: #10b981; }
             `}</style>

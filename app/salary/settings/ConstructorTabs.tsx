@@ -643,7 +643,7 @@ export function SchemesTab() {
                     <select
                         value=""
                         onChange={(e) => { addSchemeFromGroup(e.target.value); e.currentTarget.value = ''; }}
-                        className="h-8 border px-2 text-sm"
+                        className="h-8 min-w-0 max-w-full border px-2 text-sm"
                         disabled={availableGroups.length === 0}
                     >
                         <option value="">{availableGroups.length ? '+ Добавить роль из справочника…' : 'все роли уже добавлены'}</option>

@@ -313,13 +313,17 @@ export function runUiChecks(options: UiChecksOptions): UiChecksResult {
         return (segs.find((x) => hasRealShadow(x)) || shadow).slice(0, 48);
     };
     // Tailwind ставит прозрачные тени (ring-заглушки) — это не тень.
+    // Кольцо Tailwind (ring-*) — box-shadow без смещения и размытия: это граница 1px, а не тень.
     const hasRealShadow = (shadow: string): boolean => {
         if (!shadow || shadow === 'none') return false;
-        const colors = shadow.match(/rgba?\([^)]*\)/g) || [];
-        if (!colors.length) return true;
-        return colors.some((c) => {
-            const parts = c.replace(/rgba?\(|\)/g, '').split(',').map((x) => parseFloat(x));
-            return parts.length < 4 || parts[3] > 0;
+        const segs = shadow.split(/\),\s*/).map((x, i, a) => (i < a.length - 1 ? x + ')' : x));
+        return segs.some((seg) => {
+            const color = seg.match(/rgba?\([^)]*\)/)?.[0] || '';
+            const parts = color.replace(/rgba?\(|\)/g, '').split(',').map((x) => parseFloat(x));
+            if (color && parts.length >= 4 && parts[3] === 0) return false;
+            const nums = seg.replace(color, '').match(/-?\d+(?:\.\d+)?px/g)?.map((n) => parseFloat(n)) || [];
+            const [ox = 0, oy = 0, blur = 0] = nums;
+            return ox !== 0 || oy !== 0 || blur !== 0;
         });
     };
     for (const el of visible) {
@@ -354,6 +358,8 @@ export function runUiChecks(options: UiChecksOptions): UiChecksResult {
     // ── 7. Зоны касания на телефоне ──────────────────────────────────────
     if (isMobile) {
         for (const el of interactive) {
+            // Нативные чекбоксы/радио маленькие по природе — зона касания у них через label.
+            if (el.matches('input[type="checkbox"], input[type="radio"]')) continue;
             const r = el.getBoundingClientRect();
             if (r.height < 36 && r.width < 36) {
                 add('touch-target', 'warn', el, `Зона касания ${Math.round(r.width)}×${Math.round(r.height)}px — на телефоне нужно ≥44px по высоте.`);
