@@ -49,7 +49,7 @@ function QualityContent() {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-bold font-sans tracking-tight">Загружаем аналитику диалогов...</div>
         </div>
     );
@@ -88,7 +88,7 @@ function QualityContent() {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-3xl md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-3xl shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                         <thead>

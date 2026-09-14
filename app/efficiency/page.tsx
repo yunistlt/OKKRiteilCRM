@@ -52,7 +52,7 @@ function EfficiencyContent() {
 
                     {loading ? (
                         <div className="flex flex-col items-center py-20">
-                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
                             <div className="text-gray-400 font-bold uppercase text-[10px] tracking-widest animate-pulse">Пересчитываем эффективность...</div>
                         </div>
                     ) : report.length === 0 ? (
@@ -123,7 +123,7 @@ function EfficiencyContent() {
 
 export default function EfficiencyDashboard() {
     return (
-        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-[50%] h-8 w-8 border-b-2 border-blue-600"></div></div>}>
             <EfficiencyContent />
         </Suspense>
     );

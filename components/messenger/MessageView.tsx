@@ -455,7 +455,7 @@ export default function MessageView({ chatId, highlightedMessageId, currentUserI
                                                 )}
 
                                                 <div
-                                                    className={`relative max-w-[min(100%,42rem)] rounded-[22px] border px-4 py-3 text-sm leading-6 shadow-sm ${
+                                                    className={`relative max-w-[min(100%,42rem)] border px-4 py-3 text-sm leading-6 shadow-sm ${
                                                         isFailed
                                                             ? 'border-rose-200 bg-rose-50 text-rose-950'
                                                             : highlightedMessageId === msg.id

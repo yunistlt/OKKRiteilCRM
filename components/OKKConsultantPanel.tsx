@@ -395,7 +395,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         </div>
                         <div className="text-[11px] font-medium text-emerald-400">Консультант ОКК</div>
                         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-400">
-                            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                            <span className="inline-flex h-2 w-2 rounded-[50%] bg-emerald-400" />
                             онлайн
                         </div>
                     </div>
@@ -443,12 +443,13 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                         return (
                             <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                                 <div
-                                    className={`max-w-[92%] px-3 py-2 text-[14px] leading-6 shadow-md ${
+                                    // Пузыри как в WhatsApp (голд §5.6): 8px, у своих — острый правый верх, у бота — левый.
+                                    className={`max-w-[92%] rounded-[8px] px-3 py-2 text-[14px] leading-6 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] ${
                                         isUser
-                                            ? 'bg-[#005c4b] text-white'
+                                            ? 'rounded-tr-[0] bg-[#005c4b] text-white'
                                             : isSystem
-                                                ? 'border border-slate-700 bg-[#202c33] text-slate-300'
-                                                : 'bg-[#111b21] text-slate-100'
+                                                ? 'rounded-tl-[0] border border-slate-700 bg-[#202c33] text-slate-300'
+                                                : 'rounded-tl-[0] bg-[#111b21] text-slate-100'
                                     }`}
                                 >
                                     <div className="whitespace-pre-wrap break-words">{message.text}</div>
@@ -462,7 +463,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
 
                     {loading && (
                         <div className="flex justify-start">
-                            <div className="bg-[#111b21] px-3 py-2 text-[14px] leading-6 text-slate-300 shadow-md">
+                            <div className="rounded-[8px] rounded-tl-[0] bg-[#111b21] px-3 py-2 text-[14px] leading-6 text-slate-300 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">
                                 Семён собирает ответ...
                             </div>
                         </div>
@@ -522,7 +523,7 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
                     onClick={() => setMobileOpen(true)}
                     className="fixed bottom-4 left-4 z-[140] flex items-center gap-2 border border-emerald-400/30 bg-[#111b21] px-3 py-2 text-xs font-black text-white shadow-[0_12px_32px_rgba(2,6,23,0.45)] md:hidden"
                 >
-                    <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                    <span className="inline-flex h-2 w-2 rounded-[50%] bg-emerald-400" />
                     Семён
                 </button>
             )}

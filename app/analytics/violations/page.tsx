@@ -113,7 +113,7 @@ function ViolationsContent() {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-medium font-sans italic">Собираем данные по нарушениям...</div>
         </div>
     );
@@ -349,7 +349,7 @@ function ViolationsContent() {
 
 export default function ViolationsPage() {
     return (
-        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-[50%] h-8 w-8 border-b-2 border-blue-600"></div></div>}>
             <ViolationsContent />
         </Suspense>
     );

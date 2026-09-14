@@ -74,7 +74,7 @@ export default async function DebugPage() {
                 <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
             </div>
 
-            <div className="bg-white rounded-[32px] md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 p-6 md:p-10 font-mono text-xs md:text-sm">
+            <div className="bg-white shadow-2xl shadow-gray-200/50 border border-gray-100 p-6 md:p-10 font-mono text-xs md:text-sm">
                 <div className="space-y-6">
                     <div>
                         <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 font-sans">Current Step</div>

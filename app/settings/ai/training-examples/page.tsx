@@ -384,7 +384,7 @@ export default function TrainingExamplesPage() {
 
                             {loadingOrder ? (
                                 <div className="text-center py-12">
-                                    <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                                    <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-[50%] mx-auto mb-4"></div>
                                     <p className="text-gray-500 font-medium">Загрузка заказа...</p>
                                 </div>
                             ) : currentOrder ? (
@@ -393,7 +393,7 @@ export default function TrainingExamplesPage() {
                                     {loadingAI ? (
                                         <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
                                             <div className="flex items-center gap-3">
-                                                <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                                                <div className="animate-spin h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-[50%]"></div>
                                                 <span className="text-xs md:text-sm text-blue-700 font-medium">Анализ ИИ...</span>
                                             </div>
                                         </div>

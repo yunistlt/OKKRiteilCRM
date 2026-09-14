@@ -337,7 +337,7 @@ const COL_GROUPS = {
     );
 
     return (
-<div className="flex min-h-full w-full flex-col overflow-hidden border border-slate-200/80 bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+<div className="flex min-h-full w-full flex-col overflow-hidden border border-slate-200/80 bg-white md:">
             {selectedOrderId && (
                 <OrderDetailsModal
                     orderId={selectedOrderId}

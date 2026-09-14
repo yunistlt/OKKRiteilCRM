@@ -207,7 +207,7 @@ export default function OKKConsultantAudit() {
                     </div>
 
                     <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
-                        <div className="max-h-[calc(100dvh-170px)] overflow-y-auto bg-[#e5ddd5] p-4">
+                        <div className="max-h-[calc(100dvh-170px)] overflow-y-auto bg-[#e5ddd5] p-4" data-ui-exception="whatsapp">
                             {error && <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                             {!selectedLog ? (
                                 <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-stone-500">Выберите запись аудита, чтобы увидеть trace.</div>
@@ -217,13 +217,13 @@ export default function OKKConsultantAudit() {
                                 <div className="space-y-4">
                                     {traceMessages.length > 0 ? traceMessages.map((message) => (
                                         <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${message.role === 'user' ? 'bg-[#d9fdd3] text-stone-900' : 'bg-white text-stone-800'}`}>
+                                            <div className={`max-w-[85%] rounded-[8px] px-4 py-3 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)] ${message.role === 'user' ? 'rounded-tr-[0] ' : 'rounded-tl-[0] '}${message.role === 'user' ? 'bg-[#d9fdd3] text-stone-900' : 'bg-white text-stone-800'}`}>
                                                 <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
                                                 <div className="mt-2 text-[11px] font-semibold text-stone-400">{new Date(message.created_at).toLocaleString('ru-RU')}</div>
                                             </div>
                                         </div>
                                     )) : (
-                                        <div className="rounded-2xl bg-white px-4 py-3 text-sm text-stone-500 shadow-sm">По этому trace в истории треда не найдено отдельных сообщений. Остаётся preview из аудита.</div>
+                                        <div className="rounded-[8px] rounded-tl-[0] bg-white px-4 py-3 text-sm text-stone-500 shadow-[0_1px_0.5px_rgba(11,20,26,0.13)]">По этому trace в истории треда не найдено отдельных сообщений. Остаётся preview из аудита.</div>
                                     )}
                                 </div>
                             )}

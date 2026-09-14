@@ -153,7 +153,7 @@ export default function MessengerPanel() {
     return (
         <div className="grid h-[100dvh] min-h-0 gap-0 md:h-auto md:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
-            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-white shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
+            <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-white shadow-none md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
             <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
             {/* Sidebar / Chat List */}
             <div className={`${isChatOpen ? 'hidden md:flex' : 'flex'} w-full flex-col bg-white md:w-[360px] md:min-w-[360px] md:border-r md:border-slate-200 md:bg-[#f8fbff]`}>
@@ -355,7 +355,7 @@ export default function MessengerPanel() {
             {isUserModalOpen && (
                 <div className="fixed inset-0 z-[140] flex items-end bg-slate-950/45 backdrop-blur-sm md:hidden" onClick={() => setIsUserModalOpen(false)}>
                     <div
-                        className="flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl shadow-slate-900/20"
+                        className="flex max-h-[88dvh] w-full flex-col overflow-hidden bg-white shadow-2xl shadow-slate-900/20"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 pb-4 pt-4">

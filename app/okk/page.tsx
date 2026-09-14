@@ -116,8 +116,8 @@ function getBadgeStyle(hex?: string) {
     return {
         backgroundColor: hex,
         color: textColor,
-        textShadow: textColor === '#FFFFFF' ? '0 1px 1px rgba(0,0,0,0.2)' : 'none',
-        boxShadow: `0 1px 2px ${hex}30`,
+        textShadow: 'none',
+        boxShadow: 'none',
         letterSpacing: '0.01em',
     };
 }
@@ -1067,7 +1067,7 @@ function OKKContent() {
                     onClose={() => setSelectedOrderId(null)}
                 />
             )}
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#eef3f7] md:min-h-0 md:border md:border-slate-200/80 md:bg-white md:shadow-[0_18px_40px_rgba(15,23,42,0.08)]" style={{ height: 'calc(100dvh - 60px)' }}>
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#eef3f7] md:min-h-0 md:border md:border-slate-200/80 md:bg-white md:" style={{ height: 'calc(100dvh - 60px)' }}>
             {/* Header / Run Bar (Ultra Compact) */}
             <div className="bg-white border-b border-gray-100 flex items-center justify-between px-2.5 py-1 md:px-3 md:py-2 gap-2 flex-shrink-0 relative z-30">
                 <div className="flex items-center gap-1.5">
@@ -1237,11 +1237,11 @@ function OKKContent() {
                     <table className="w-full min-w-max border-collapse text-[11px]">
                         <thead className="sticky top-0 z-[50]">
                             <tr className="bg-gray-100 border-b border-gray-200 text-gray-700 shadow-sm">
-                                <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-[60] border-r border-gray-200 font-semibold shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                <th rowSpan={2} className="w-[40px] min-w-[40px] max-w-[40px] p-0 text-center align-middle sticky left-0 bg-gray-100 z-[60] border-r border-gray-200 font-semibold">
                                     <input type="checkbox" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={toggleSelectAll} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
                                 </th>
                                 <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[40px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold min-w-[148px] w-[148px] text-[10px]">Заказ</th>
-                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[188px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[112px] w-[112px] break-words whitespace-normal shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">МОП</th>
+                                <th rowSpan={2} className="px-1.5 py-1.5 text-left sticky left-[188px] bg-gray-100 z-[60] border-r border-gray-200 font-semibold text-[10px] leading-tight text-gray-700 min-w-[112px] w-[112px] break-words whitespace-normal">МОП</th>
                                 {visibleColGroups.map(g => (<th key={g.label} colSpan={g.cols.length} className={`px-1.5 py-1 text-center text-[10px] font-semibold border-r border-b border-gray-200 relative bg-gray-100 ${g.color}`}>{g.label}</th>))}
                                 <th rowSpan={2} className="px-1.5 py-1.5 text-center bg-red-50 text-red-700 border-r border-gray-200 font-semibold text-[10px] min-w-[58px] w-[58px] relative">Нарушения</th>
                                 <th colSpan={4} className="px-1.5 py-1 text-center text-[10px] font-semibold bg-gray-200 text-gray-700 border-r border-b border-gray-200 relative">Оценка выполнения</th>
@@ -1292,7 +1292,7 @@ function OKKContent() {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className={`px-1.5 py-1 sticky left-[188px] min-w-[112px] w-[112px] max-w-[112px] border-r border-gray-200 text-[10px] font-medium leading-tight text-gray-800 break-words whitespace-normal align-top shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] ${stickyClass}`}>{s.manager_name || '—'}</td>
+                                        <td className={`px-1.5 py-1 sticky left-[188px] min-w-[112px] w-[112px] max-w-[112px] border-r border-gray-200 text-[10px] font-medium leading-tight text-gray-800 break-words whitespace-normal align-top ${stickyClass}`}>{s.manager_name || '—'}</td>
                                         {visibleColGroups.map(g => g.cols.map(col => renderCell(s, col, g.cellBg)))}
                                         <td className="px-1.5 py-1 text-center border-r border-gray-200 bg-red-50/30">
                                             {s.violations && s.violations.length > 0 ? (
@@ -1666,7 +1666,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                         </div>
                         {loading ? (
                             <div className="flex-1 flex items-center justify-center py-12">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                                <div className="animate-spin rounded-[50%] h-6 w-6 border-b-2 border-blue-600"></div>
                             </div>
                         ) : calls.length === 0 ? (
                             <div className="p-8 text-center text-gray-400 text-xs italic">Звонки ещё не привязаны к заказу</div>
@@ -1822,7 +1822,7 @@ function CallDetailModal({ order, onClose }: { order: OrderScore, onClose: () =>
                                                             >
                                                                 {transcribing ? (
                                                                     <span className="flex items-center gap-2">
-                                                                        <div className="w-3 h-3 border-2 border-blue-300 border-b-blue-600 rounded-full animate-spin"></div>
+                                                                        <div className="w-3 h-3 border-2 border-blue-300 border-b-blue-600 rounded-[50%] animate-spin"></div>
                                                                         Обработка...
                                                                     </span>
                                                                 ) : 'Запустить транскрибацию'}

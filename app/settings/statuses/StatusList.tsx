@@ -227,7 +227,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
 
             <div className="space-y-4">
                 {groupNames.map(group => (
-                    <div key={group} className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-xl shadow-gray-200/40">
+                    <div key={group} className="bg-white overflow-hidden border border-gray-100 shadow-xl shadow-gray-200/40">
                         <div className="bg-gray-50/50 px-5 py-3 font-black text-gray-400 uppercase text-[9px] tracking-[0.3em] border-b border-gray-100">
                             {group}
                         </div>

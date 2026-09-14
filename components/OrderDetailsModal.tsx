@@ -1029,9 +1029,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     return (
         <div className="fixed inset-0 z-[130] flex bg-white" role="dialog" aria-modal="true" data-ui-audit="order-modal">
             <div className="flex h-full w-full flex-col overflow-hidden bg-white">
-                <header className="border-b bg-white px-6 py-5">
-                    <div className="flex items-start justify-between gap-6">
-                        <div>
+                <header className="border-b bg-white px-4 py-4 md:px-6 md:py-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4 md:gap-6">
+                        <div className="min-w-0">
                             <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>
                             <h2 className="text-2xl font-semibold text-gray-900">Заказ #{orderId}</h2>
                             {data?.order && (
@@ -1077,7 +1077,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             </div>
                         </div>
 
-                        <div className="flex gap-2 shrink-0">
+                        <div className="flex flex-wrap gap-2">
                             <div className="relative">
                                 <button
                                     onClick={() => setPrintOpen((v) => !v)}

@@ -326,7 +326,7 @@ export function runUiChecks(options: UiChecksOptions): UiChecksResult {
         if (isExempt(el, 'style')) continue;
         const cs = getComputedStyle(el);
         const radius = parseFloat(cs.borderTopLeftRadius) || parseFloat(cs.borderBottomRightRadius) || 0;
-        if (radius > 0 && !el.matches('input[type="checkbox"], input[type="radio"], img, video, canvas, svg, svg *, [data-ui-audit-round="ok"]')) {
+        if (radius > 0 && !el.matches('input[type="checkbox"], input[type="radio"], img, video, canvas, svg, svg *, .animate-spin, [data-ui-audit-round="ok"]')) {
             add('radius', 'warn', el, `border-radius ${Math.round(radius)}px — по голду углы 0px.`);
         }
         if (hasRealShadow(cs.boxShadow) && !el.matches('[data-ui-audit-shadow="ok"]')) {
@@ -344,10 +344,11 @@ export function runUiChecks(options: UiChecksOptions): UiChecksResult {
     }
 
     // ── 6. Числовые поля ─────────────────────────────────────────────────
+    // Голд §4: разделители разрядов нужны суммам ≥1000; дни/проценты/счётчики — нет.
     for (const el of visible) {
-        if (el.matches('input[type="number"]') && !el.matches('[data-ui-audit-number="ok"]')) {
-            add('number-input', 'warn', el, 'input[type=number] — суммы ≥1000 вводятся через NumberInput с разделителями разрядов.');
-        }
+        if (!(el instanceof HTMLInputElement) || el.type !== 'number' || el.matches('[data-ui-audit-number="ok"]')) continue;
+        const big = [el.value, el.max, el.step, el.placeholder].some((v) => Math.abs(Number(v)) >= 1000);
+        if (big) add('number-input', 'warn', el, `Сумма ${el.value || el.placeholder || ''} в input[type=number] — поля с суммами ≥1000 вводятся через NumberInput с разделителями разрядов.`);
     }
 
     // ── 7. Зоны касания на телефоне ──────────────────────────────────────

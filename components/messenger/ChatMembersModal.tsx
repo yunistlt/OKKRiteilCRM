@@ -353,7 +353,7 @@ export default function ChatMembersModal({ chatId, chatType, chatName, chatAvata
             className="fixed inset-0 z-[200] flex items-end justify-center bg-slate-950/45 p-0 backdrop-blur-sm sm:items-center sm:p-4"
             onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
         >
-            <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[440px] flex-col overflow-hidden rounded-t-[28px] border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[85vh] sm:rounded-[28px]">
+            <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-[440px] flex-col overflow-hidden border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 sm:h-auto sm:max-h-[85vh]">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 pb-4 pt-4 sm:px-5 sm:pt-5">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-center gap-3">

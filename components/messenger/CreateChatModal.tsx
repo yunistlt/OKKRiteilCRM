@@ -89,7 +89,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
 
     return (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4">
-            <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-[28px]">
+            <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden bg-white shadow-2xl sm:max-h-[90vh]">
                 <div className="flex items-center justify-between border-b bg-slate-50 px-5 py-4 sm:px-6 sm:py-6">
                     <h2 className="text-xl font-bold text-gray-900">Новый чат</h2>
                     <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-white hover:text-gray-600">
@@ -189,7 +189,7 @@ export default function CreateChatModal({ onClose, onCreated }: CreateChatModalP
                     >
                         {creating ? (
                             <>
-                                <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                                <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-[50%]" />
                                 Создание...
                             </>
                         ) : (

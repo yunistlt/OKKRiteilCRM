@@ -141,7 +141,7 @@ export default function ManagerSettingsPage() {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-bold">Загружаем список менеджеров...</div>
         </div>
     );

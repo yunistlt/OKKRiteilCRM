@@ -25,7 +25,7 @@ export default function Error({
                     background: '#0070f3',
                     color: 'white',
                     border: 'none',
-                    borderRadius: 4,
+                    borderRadius: 0,
                     cursor: 'pointer'
                 }}
             >
