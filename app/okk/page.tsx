@@ -1341,7 +1341,7 @@ function OKKContent() {
                                 setSelectedCallOrder(s);
                                 setConsultantOrderId(s.order_id);
                             }}
-                            className="bg-white rounded border border-gray-200 shadow-sm active:bg-gray-50 transition-all cursor-pointer relative overflow-hidden flex items-center h-[52px]"
+                            className="bg-white rounded border border-gray-200 shadow-sm active:bg-gray-50 transition-all cursor-pointer relative overflow-hidden flex items-center min-h-[52px]"
                         >
                             <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: s.status_color || '#e5e7eb' }} />
 

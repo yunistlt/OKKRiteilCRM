@@ -151,7 +151,7 @@ export default function MessengerPanel() {
     };
 
     return (
-        <div className="grid h-[100dvh] min-h-0 gap-0 md:h-full md:gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid h-[100dvh] min-h-0 gap-0 md:h-auto md:gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]">
             <PushPresenceBridge selectedChatId={selectedChatId} />
             <div className="relative h-full min-h-0 w-full overflow-hidden rounded-none border-y border-slate-200 bg-white shadow-none md:rounded-[28px] md:border md:bg-white md:shadow-lg md:shadow-slate-200/60">
             <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden md:h-[680px] md:min-h-[560px] md:max-h-[820px] md:flex-row">
