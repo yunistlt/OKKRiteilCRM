@@ -5,6 +5,7 @@ import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-cou
 import CallInitiator from './calls/CallInitiator';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
+import { useDictionaryNames } from '@/components/useDictionaryNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
@@ -124,6 +125,7 @@ const toArray = (value: any) => {
 export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDetailsModalProps) {
 
     const statusName = useStatusNames();
+    const names = useDictionaryNames();
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -365,21 +367,16 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const [primaryPhone, secondaryPhone, thirdPhone] = normalizedPhones;
         const segments = Array.isArray(contact.segments) ? contact.segments.map((segment: any) => segment.name).filter(Boolean).join(', ') : null;
         const companyName = pickValue(customer.nickName, customer.companyName, customer.name);
-        const productCategory = pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category);
+        const productCategory = names.field('typ_castomer', pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category));
         const nextContact = pickValue(customFields.data_kontakta, customFields.next_contact_date, customFields.follow_up_date);
         const cancelDate = pickValue(payload.cancelledAt, customFields.data_otmeny);
-        const purchaseForm = pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki);
-        const sphere = pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry;
+        const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
+        const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
         const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
         const docFlow = customFields.dokumentooborot_cherez_edo;
         const documentsViaEDO = formatBooleanYesNo(docFlow);
-        const timezoneCode = pickValue(customFields.chasovoi_poias, customFields.timezone);
-        const timezoneMap: Record<string, string> = {
-            zero_0: 'МСК (UTC+0)',
-            plus_3: 'UTC+3',
-            minus_3: 'UTC-3'
-        };
-        const timezoneValue = timezoneCode ? (timezoneMap[timezoneCode] || timezoneCode) : null;
+        // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
+        const timezoneValue = names.field('chasovoi_poias', pickValue(customFields.chasovoi_poias, customFields.timezone)) || null;
         const logisticDeadline = pickValue(customFields.srok_izgot, shipping.productionDays, delivery.productionDays);
         const logisticComment = pickValue(customFields.komment_diveleri, shipping.comment, delivery.comment);
         const logisticWarehouse = pickValue(customFields.sklad_otgruzki, shipping.warehouse);
@@ -391,7 +388,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const marginValue = pickValue(customFields.marzha);
         const expectedAmountValue = toNumber(pickValue(customFields.ozhidaemaya_summa, customFields.expected_amount, payload.totalSumm));
         const priorityNumber = pickValue(customFields.prioriry_number);
-        const contractBasis = pickValue(customFields.osnovanie_podpиси);
+        const contractBasis = names.field('osnovanie_podpisi', pickValue(customFields.osnovanie_podpisi));
         const changeManager = pickValue(customFields.change_name_manager);
         const planPurchaseDate = pickValue(customFields.purchase_date, customFields.plan_purchase_date, payload.purchaseDate);
         const logisticAddress = pickValue(address.text, [address.region, address.city, address.street, address.house, address.building].filter(Boolean).join(', '));
@@ -434,10 +431,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                         <div className="grid gap-4 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
-                            <InfoField label="Тип заказа" value={payload.orderType || 'Не указан'} />
+                            <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
                             <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
-                            <InfoField label="Магазин" required value={payload.site || order.site || payload.slug || '—'} />
-                            <InfoField label="Способ оформления" value={payload.orderMethod || payload.orderMethodName || 'Не указан'} />
+                            <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
+                            <InfoField label="Способ оформления" value={names.resolve('orderMethod', payload.orderMethod) || payload.orderMethodName || 'Не указан'} />
                             <InfoField label="Дата поступления" value={createdDate} />
                             <InfoField label="Обновлён" value={statusUpdated} />
                             <InfoField label="Привилегия" value={privilegeType || '—'} />
@@ -482,7 +479,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                     <div className="bg-white border border-gray-200 p-6">
                         <div className="grid md:grid-cols-2 gap-4">
-                            <InfoField label="Должность" value={customFields.dolzhnost || payload.position || '—'} />
+                            <InfoField label="Должность" value={customFields.dolzhnost || names.field('position', payload.position) || '—'} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
@@ -577,7 +574,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                     <div className="bg-white border border-gray-200 p-6">
                         <div className="grid md:grid-cols-2 gap-4">
-                            <InfoField label="Тип доставки" value={delivery.code || delivery.type || 'Не указан'} />
+                            <InfoField label="Тип доставки" value={names.resolve('deliveryType', delivery.code || delivery.type) || 'Не указан'} />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
                             <InfoField label="Время доставки" value={logisticTime || '—'} />
                             <InfoField label="Стоимость" value={formatCurrency(logisticCost)} />
@@ -635,7 +632,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     <div key={email.id || email.date} className="border border-gray-200 p-4 bg-white">
                                         <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
                                             <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
-                                            <span className="px-2 py-0.5 bg-gray-100 uppercase font-semibold">{email.type}</span>
+                                            <span className="px-2 py-0.5 bg-gray-100 font-semibold">{email.type}</span>
                                         </div>
                                         <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
                                     </div>
@@ -654,7 +651,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
                             <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
                             <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
-                            <InfoField label="Статус оплаты" value={payload.payment?.status || 'Не указан'} />
+                            <InfoField label="Статус оплаты" value={names.resolve('paymentStatus', payload.payment?.status) || 'Не указан'} />
                             <InfoField label="Дата оплаты" value={formatDate(payload.payment?.date)} />
                             <InfoField label="Комментарий" value={payload.payment?.comment || '—'} />
                             <InfoField label="Приоритет" value={priorityNumber || '—'} />
@@ -687,14 +684,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Roistat" value={roistat || '—'} />
-                            <InfoField label="Причина отмены" value={payload.cancelReason || '—'} />
+                            <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
                             <InfoField label="Маржа" value={marginValue ? `${marginValue} %` : '—'} />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
                             <InfoField label="Датасчёт" value={dsDocument || '—'} />
                             <InfoField label="Изменение менеджера" value={changeManager || '—'} />
-                            <InfoField label="Контрагент" value={payload.contragent?.contragentType || '—'} />
+                            <InfoField label="Контрагент" value={names.resolve('contragentType', payload.contragent?.contragentType) || '—'} />
                             <InfoField label="Email" value={payload.email || '—'} />
                             <InfoField label="Телефон" value={primaryPhone || '—'} />
                             <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />

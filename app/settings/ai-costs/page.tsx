@@ -12,6 +12,7 @@ const SERVICE_NAMES: Record<string, string> = {
     transcription: 'Транскрибация (служебное)',
     embeddings: 'Эмбеддинги / RAG (служебное)',
     sales_outreach: 'Письма по заказам (продажи)',
+    sales_analyst: 'Бот-РОП: разбор клиента (служебное)',
 };
 
 function agentName(id: string): string {

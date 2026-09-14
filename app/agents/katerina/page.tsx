@@ -289,7 +289,7 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                                             <span className={`inline-block border px-1.5 py-0.5 text-[10px] font-bold ${t.cls}`}>{t.label}</span>
                                             <div className="mt-1 text-[11px] text-slate-400">{fmt(r.received_at)}</div>
                                         </td>
-                                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-700">{r.from_name || r.from_email}</td>
+                                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-700" data-ui-audit-code="ok">{r.from_name || r.from_email}</td>
                                         <td className="px-3 py-2 max-w-[240px] truncate text-slate-700">{r.subject || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-3 py-2 max-w-[320px] text-xs text-slate-600">
                                             {r.body_text ? (

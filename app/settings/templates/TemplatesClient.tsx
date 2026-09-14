@@ -246,7 +246,7 @@ export default function TemplatesClient() {
                         {list.map((row) => (
                             <tr key={row.id} className="border-b border-gray-100">
                                 <td className="py-2 font-bold text-gray-900">{row.name}</td>
-                                <td className="py-2 font-mono text-xs text-gray-600">{row.code}</td>
+                                <td className="py-2 font-mono text-xs text-gray-600" data-ui-audit-code="ok" title="Технический код шаблона для подстановок">{row.code}</td>
                                 <td className="py-2">{row.active ? 'Да' : 'Нет'}</td>
                                 <td className="py-2 text-right">
                                     <button

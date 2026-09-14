@@ -87,11 +87,11 @@ export default function AiPromptsPage() {
                     <Card key={prompt.key}>
                         <CardHeader>
                             <CardTitle className="flex justify-between items-center">
-                                <span>{prompt.description || prompt.key}</span>
-                                <span className="text-xs font-mono bg-muted p-1 rounded">{prompt.model}</span>
+                                <span title={`Ключ промпта: ${prompt.key}`}>{prompt.description || prompt.key}</span>
+                                <span className="text-xs bg-muted p-1" title="Модель ИИ" data-ui-audit-code="ok">{prompt.model}</span>
                             </CardTitle>
-                            <CardDescription className="font-mono text-xs text-muted-foreground">
-                                KEY: {prompt.key} | Last Updated: {new Date(prompt.updated_at).toLocaleString('ru-RU')}
+                            <CardDescription className="text-xs text-muted-foreground">
+                                Обновлён: {new Date(prompt.updated_at).toLocaleString('ru-RU')}
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">

@@ -62,11 +62,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .order('occurred_at', { ascending: false })
             .limit(10);
 
-        // Normalize events for frontend
+        // Normalize events for frontend. Тип — русская подпись поля (ЗАКОН «только
+        // человеческий язык»), код поля остаётся в fieldCode.
+        const fieldLabel = await buildFieldLabelResolver();
         const emails = events?.map(e => ({
             id: e.occurred_at, // use timestamp as id
             date: e.occurred_at,
-            type: e.field,
+            type: fieldLabel(e.field),
+            fieldCode: e.field,
             text: formatEventValue(e.new_value),
             source: 'retailcrm'
         })) || [];
@@ -98,7 +101,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             }
         }
 
-        const fieldLabel = await buildFieldLabelResolver();
 
         const history = ((rawHistory as any[]) ?? []).map((h) => ({
             field: h.field,

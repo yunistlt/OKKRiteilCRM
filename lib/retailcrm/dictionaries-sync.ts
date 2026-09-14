@@ -27,6 +27,7 @@ const REFERENCES: { path: string; key: string; entityType: string }[] = [
     { path: 'sites', key: 'sites', entityType: 'site' },
     { path: 'stores', key: 'stores', entityType: 'store' },
     { path: 'product-statuses', key: 'productStatuses', entityType: 'productStatus' },
+    { path: 'payment-statuses', key: 'paymentStatuses', entityType: 'paymentStatus' },
 ];
 
 export interface DictRow { entity_type: string; dictionary_code: string; item_code: string; item_name: string }

@@ -76,7 +76,7 @@ export default function AiCostsEditor({ initialFx, initialPricing }: { initialFx
                     <tbody>
                         {rows.map((r) => (
                             <tr key={r.model} className="border-b border-slate-50">
-                                <td className="py-2 pr-4 font-mono text-xs font-bold text-slate-800">{r.model}</td>
+                                <td className="py-2 pr-4 font-mono text-xs font-bold text-slate-800" data-ui-audit-code="ok">{r.model}</td>
                                 <td className="py-2 pr-4"><input value={r.input_per_1m} onChange={(e) => setCell(r.model, 'input_per_1m', e.target.value)} inputMode="decimal" className={inputCls} /></td>
                                 <td className="py-2 pr-4"><input value={r.cached_input_per_1m} onChange={(e) => setCell(r.model, 'cached_input_per_1m', e.target.value)} inputMode="decimal" className={inputCls} /></td>
                                 <td className="py-2 pr-4"><input value={r.output_per_1m} onChange={(e) => setCell(r.model, 'output_per_1m', e.target.value)} inputMode="decimal" className={inputCls} /></td>

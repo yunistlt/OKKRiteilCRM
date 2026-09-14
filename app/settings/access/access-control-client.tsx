@@ -404,7 +404,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                             <div key={`${account.source}:${account.id}`} className="rounded-2xl border border-gray-100 bg-gray-50/70 p-3.5">
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <div className="flex items-center gap-2">
-                                        <h3 className="text-sm font-black text-gray-900">{account.username || account.email || 'Без имени'}</h3>
+                                        <h3 className="text-sm font-black text-gray-900" data-ui-audit-code="ok">{account.username || account.email || 'Без имени'}</h3>
                                         <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 ring-1 ring-gray-200">{ACCOUNT_SOURCE_LABELS[account.source]}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS public.access_invitations (
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
                                     <div className="md:col-span-3">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Логин</label>
-                                        <input value={account.username || ''} onChange={(event) => handleAccountField(account.id, account.source, 'username', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
+                                        <input data-ui-audit-code="ok" value={account.username || ''} onChange={(event) => handleAccountField(account.id, account.source, 'username', event.target.value)} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm" />
                                     </div>
                                     <div className="md:col-span-3">
                                         <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1.5">Email</label>
