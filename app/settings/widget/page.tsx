@@ -190,20 +190,22 @@ export default function WidgetSettingsPage() {
                         
                         <div className="flex gap-6 items-start max-w-xl">
                             {/* Vertical slider */}
-                            <div className="flex flex-col items-center justify-between h-[300px]">
+                            <div className="flex w-10 shrink-0 flex-col items-center justify-between h-[300px]">
                                 <span className="text-[10px] font-bold text-gray-400 mb-2">0% (Верх)</span>
-                                <input 
-                                    type="range" 
-                                    min="0" max="100" 
-                                    value={cfg.position_y_percent}
-                                    onChange={e => set('position_y_percent', Number(e.target.value))}
-                                    className="w-[250px] transform -rotate-90 origin-center accent-emerald-500 cursor-pointer"
-                                    style={{ margin: '125px 0' }}
-                                />
+                                {/* Повёрнутый ползунок: абсолют + центр, чтобы его «лежачая» ширина не раздвигала страницу */}
+                                <div className="relative h-[250px] w-6">
+                                    <input
+                                        type="range"
+                                        min="0" max="100"
+                                        value={cfg.position_y_percent}
+                                        onChange={e => set('position_y_percent', Number(e.target.value))}
+                                        className="absolute left-1/2 top-1/2 w-[250px] -translate-x-1/2 -translate-y-1/2 -rotate-90 accent-emerald-500 cursor-pointer"
+                                    />
+                                </div>
                                 <span className="text-[10px] font-bold text-gray-400 mt-2">100% (Низ)</span>
                             </div>
                             
-                            <div className="flex-1 flex flex-col">
+                            <div className="min-w-0 flex-1 flex flex-col">
                                 {/* Horizontal slider */}
                                 <div className="flex items-center justify-between mb-4">
                                     <span className="text-[10px] font-bold text-gray-400 mr-2">0% (Лево)</span>

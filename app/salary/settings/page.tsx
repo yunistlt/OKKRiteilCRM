@@ -22,9 +22,9 @@ export default function SalarySettingsPage() {
     useConsultantScreenHint(`Настройки мотивации → вкладка «${tabLabel}»`);
     return (
         <div className="w-full space-y-3 p-3">
-            <div className="flex items-center gap-3 border-b">
+            <div className="flex flex-wrap items-center gap-3 border-b">
                 <Link href="/salary"><Button variant="outline" size="sm" className="h-8"><ArrowLeft className="mr-1 h-4 w-4" /> К зарплате</Button></Link>
-                <div className="flex gap-1 text-sm">
+                <div className="flex flex-wrap gap-1 text-sm">
                     {TABS.map(([k, label]) => (
                         <button key={k} onClick={() => setTab(k)} className={`-mb-px px-3 py-2 ${tab === k ? 'border-b-2 border-primary font-semibold' : 'text-muted-foreground hover:text-foreground'}`}>{label}</button>
                     ))}

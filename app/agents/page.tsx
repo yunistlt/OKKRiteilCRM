@@ -83,8 +83,8 @@ export default async function AgentsDirectoryPage({ searchParams }: AgentsPagePr
     return (
         <div className="min-h-[calc(100vh-4rem)] bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.14),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(16,185,129,0.12),_transparent_24%),linear-gradient(180deg,#f8fafc,#eef2ff)] px-6 py-8 md:px-8">
             <section className="rounded-[32px] border border-slate-200 bg-white/80 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur">
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                    <div className="max-w-3xl">
+                <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+                    <div className="min-w-0 max-w-3xl">
                         <div className="text-xs font-black uppercase tracking-[0.28em] text-sky-700">Agent Directory</div>
                         <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950 md:text-5xl">Все ИИ-агенты OKKRiteilCRM</h1>
                         <p className="mt-4 text-sm leading-7 text-slate-600 md:text-base">

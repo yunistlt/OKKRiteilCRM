@@ -12,7 +12,7 @@ export default function LegalDashboardPage() {
 
   return (
     <div className="flex min-h-[90vh] w-full flex-col bg-slate-100 xl:flex-row">
-      <main className="flex-1 p-6 xl:p-8">
+      <main className="min-w-0 flex-1 p-6 xl:p-8">
         <div className="rounded-[28px] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.18),_transparent_32%),linear-gradient(135deg,#0f172a,#1e293b)] p-8 text-white shadow-xl">
           <div className="flex flex-wrap items-start justify-between gap-6">
             <div className="max-w-2xl">
@@ -99,7 +99,7 @@ export default function LegalDashboardPage() {
         </div>
       </main>
 
-      <div className="w-full xl:max-w-xl">
+      <div className="w-full min-w-0 xl:w-[38%] xl:max-w-xl xl:shrink-0">
         <LegalChatPanel />
       </div>
     </div>

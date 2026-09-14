@@ -75,19 +75,19 @@ export default function AiPromptsPage() {
 
     return (
         <div className="w-full space-y-8 px-4 py-6 md:px-6 md:py-8">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Настройки ИИ (AI Settings)</h1>
+            <div className="flex min-w-0 justify-between items-center">
+                <div className="min-w-0">
+                    <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Настройки ИИ</h1>
                     <p className="text-muted-foreground">Управление системными промптами и логикой агентов.</p>
                 </div>
             </div>
 
-            <div className="grid gap-6">
+            <div className="grid min-w-0 gap-6">
                 {prompts.map((prompt) => (
-                    <Card key={prompt.key}>
+                    <Card key={prompt.key} className="min-w-0">
                         <CardHeader>
-                            <CardTitle className="flex justify-between items-center">
-                                <span title={`Ключ промпта: ${prompt.key}`}>{prompt.description || prompt.key}</span>
+                            <CardTitle className="flex flex-wrap justify-between items-center gap-2 text-lg md:text-2xl">
+                                <span className="min-w-0 [overflow-wrap:anywhere]" title={`Ключ промпта: ${prompt.key}`}>{prompt.description || prompt.key}</span>
                                 <span className="text-xs bg-muted p-1" title="Модель ИИ" data-ui-audit-code="ok">{prompt.model}</span>
                             </CardTitle>
                             <CardDescription className="text-xs text-muted-foreground">
@@ -98,12 +98,12 @@ export default function AiPromptsPage() {
                             <div className="grid gap-2">
                                 <label className="text-sm font-medium">System Prompt</label>
                                 <Textarea
-                                    className="min-h-[300px] font-mono text-sm leading-relaxed"
+                                    className="min-h-[300px] w-full min-w-0 font-mono text-sm leading-relaxed"
                                     value={prompt.system_prompt}
                                     onChange={(e) => updatePromptText(prompt.key, e.target.value)}
                                 />
                             </div>
-                            <div className="flex justify-end space-x-2">
+                            <div className="flex flex-wrap justify-end gap-2">
                                 <Button
                                     onClick={() => run(`save:${prompt.key}`, () => handleSave(prompt))}
                                     disabled={isPending(`save:${prompt.key}`)}

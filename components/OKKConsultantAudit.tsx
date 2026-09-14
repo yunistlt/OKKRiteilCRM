@@ -155,7 +155,7 @@ export default function OKKConsultantAudit() {
                 </div>
             </div>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-stone-200 lg:grid-cols-[420px_minmax(0,1fr)]">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-px bg-stone-200 xl:grid-cols-[minmax(280px,420px)_minmax(0,1fr)]">
                 <aside className="min-h-0 bg-[#efeae2]">
                     <div className="border-b border-stone-200 bg-[#d9fdd3] px-4 py-3 text-xs font-bold uppercase tracking-[0.2em] text-emerald-900">
                         Последние trace
@@ -206,7 +206,7 @@ export default function OKKConsultantAudit() {
                         </div>
                     </div>
 
-                    <div className="grid min-h-0 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px]">
+                    <div className="grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
                         <div className="max-h-[calc(100dvh-170px)] overflow-y-auto bg-[#e5ddd5] p-4">
                             {error && <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
                             {!selectedLog ? (

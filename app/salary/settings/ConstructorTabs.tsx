@@ -492,7 +492,7 @@ export function SchemesTab() {
 
     return (
       <CategoriesContext.Provider value={categories}>
-        <div className="grid gap-3 md:grid-cols-[220px_1fr]">
+        <div className="grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
             <div>
                 <div className="mb-0.5 text-xs font-semibold uppercase tracking-tight">Палитра блоков</div>
                 <div className="mb-1.5 text-[10px] text-muted-foreground">Перетащите в схему. Серые — нет данных.</div>
@@ -516,7 +516,7 @@ export function SchemesTab() {
                     })}
                 </div>
             </div>
-            <div className="space-y-3">
+            <div className="min-w-0 space-y-3">
                 {/* Базовые параметры — общие значения по умолчанию (статус закрытия, исключения, НДС, дефолтные ставки/тиры). Раскрываются по клику, чтобы не загромождать конструктор ролей. */}
                 <div className="border">
                     <button onClick={() => setShowBase((v) => !v)} className="flex w-full items-center gap-1.5 border-b bg-muted/40 px-2 py-1.5 text-left">

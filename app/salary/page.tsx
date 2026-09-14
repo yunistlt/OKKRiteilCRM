@@ -211,7 +211,7 @@ export default function SalaryDashboard() {
                         Ведомость
                     </button>
                 </div>
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
                     <select value={month} onChange={(e) => setMonth(Number(e.target.value))} className="h-9 border border-input bg-background px-2 text-sm">
                         {MONTHS.map((mn, i) => <option key={i} value={i + 1}>{mn}</option>)}
                     </select>
