@@ -214,7 +214,7 @@ export default function SalesRopSettingsPage() {
                                     key={it.key}
                                     style={{
                                         display: 'grid',
-                                        gridTemplateColumns: 'minmax(220px, 320px) 1fr',
+                                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
                                         gap: 12,
                                         borderBottom: '1px solid #e5e5e5',
                                         padding: '8px 10px',

@@ -26,7 +26,7 @@ export default function DebugActionPage() {
                 <p className="text-gray-400 font-bold uppercase text-[10px] md:text-xs tracking-widest mt-2 px-1">Isolation Testing</p>
             </div>
 
-            <div className="bg-white rounded-[32px] md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 p-6 md:p-10">
+            <div className="bg-white shadow-2xl shadow-gray-200/50 border border-gray-100 p-6 md:p-10">
                 <div className="space-y-8">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div>

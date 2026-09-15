@@ -28,7 +28,7 @@ export const FAQStats: React.FC = () => {
   if (loading) return <div>Загрузка статистики...</div>;
 
   return (
-    <div style={{ maxWidth: 400, margin: '24px 0', padding: 16, border: '1px solid #eee', borderRadius: 8 }}>
+    <div style={{ maxWidth: 400, margin: '24px 0', padding: 16, border: '1px solid #eee', borderRadius: 0 }}>
       <h3>Статистика базы знаний</h3>
       <div>Всего записей: <b>{total}</b></div>
       <ul>

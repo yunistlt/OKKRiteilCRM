@@ -77,8 +77,7 @@ function CriterionRow({ c, index, total, onMove }: { c: Criterion; index: number
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium text-gray-900 truncate">{c.agent_emoji} {c.label}</span>
-                        <span className="text-[10px] font-mono text-gray-400">{c.key}</span>
+                        <span className="text-sm font-medium text-gray-900 truncate" title={`Ключ правила: ${c.key}`}>{c.agent_emoji} {c.label}</span>
                         {c.scoring_basket && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${c.scoring_basket === 'deal' ? 'bg-green-50 text-green-700' : 'bg-purple-50 text-purple-700'}`}>{c.scoring_basket === 'deal' ? 'СДЕЛКА' : 'СКРИПТ'}</span>}
                         {c.na_gate && <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">{GATES[c.na_gate] || c.na_gate}</span>}
                         <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">{EVAL_METHODS[c.eval_method] || c.eval_method}</span>

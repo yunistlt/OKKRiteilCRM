@@ -70,7 +70,7 @@ export default function Header() {
     }, [pathname, unreadCount]);
 
     return (
-        <header className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white border-b border-border sticky top-0 z-50`}>
+        <header data-ui-audit-zone="header" className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white border-b border-border sticky top-0 z-50`}>
             <div className="px-6 flex justify-between items-center h-14">
 
                 <h1 className="text-base font-bold uppercase tracking-tight text-foreground">

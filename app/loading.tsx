@@ -5,7 +5,7 @@ export default function Loading() {
     return (
         <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <div className="flex items-center gap-3">
-                <span className="inline-block h-4 w-4 animate-spin border-2 border-gray-300 border-t-blue-600 rounded-full" />
+                <span className="inline-block h-4 w-4 animate-spin border-2 border-gray-300 border-t-blue-600 rounded-[50%]" />
                 <span className="text-[11px] font-black uppercase tracking-widest text-gray-400">Загрузка страницы…</span>
             </div>
 

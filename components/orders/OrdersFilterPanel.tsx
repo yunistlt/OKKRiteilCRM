@@ -263,9 +263,9 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
 function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void }) {
     return (
         <div className="flex items-center gap-2">
-            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
             <span className="text-gray-400">—</span>
-            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-blue-500 focus:outline-none" />
         </div>
     );
 }

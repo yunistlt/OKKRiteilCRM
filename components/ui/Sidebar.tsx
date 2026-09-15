@@ -106,6 +106,7 @@ export default function Sidebar() {
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
                 { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
+                { name: 'Режим тестировщика', href: '/settings/qa', icon: '🧪', allowed: ['admin'] },
             ]
         },
         {
@@ -174,7 +175,8 @@ export default function Sidebar() {
             {!isMessengerRoute && (
                 <button
                     onClick={() => setIsMobileOpen(!isMobileOpen)}
-                    className="md:hidden fixed bottom-6 right-6 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-white text-2xl shadow-2xl transition-all active:scale-95"
+                    data-ui-audit-zone="sidebar"
+                    className="md:hidden fixed bottom-6 right-6 z-[110] flex h-12 w-12 items-center justify-center bg-blue-600 text-white text-2xl active:bg-blue-800"
                     aria-label={isMobileOpen ? 'Закрыть меню' : 'Открыть меню'}
                 >
                     {isMobileOpen ? '✕' : '☰'}
@@ -184,23 +186,24 @@ export default function Sidebar() {
             {/* Mobile Overlay */}
             {isMobileOpen && (
                 <div 
+                    data-ui-audit-zone="sidebar"
                     className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] animate-in fade-in"
                     onClick={() => setIsMobileOpen(false)}
                 />
             )}
 
-            <aside className={`fixed md:sticky top-0 left-0 h-screen transition-all duration-300 z-[120] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 shadow-2xl no-scrollbar
+            <aside data-ui-audit-zone="sidebar" className={`fixed md:sticky top-0 left-0 h-screen z-[120] flex flex-col bg-gray-900 text-white overflow-y-auto overflow-x-hidden border-r border-white/5 no-scrollbar
                 ${isMobileOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0'}
                 ${isCollapsed ? 'md:w-20' : 'md:w-72'}
             `}>
                 {/* Logo Section */}
                 <div className={`flex ${isCollapsed && !isMobileOpen ? 'px-3 py-5 flex-col items-center gap-3' : 'p-6 items-center justify-between'}`}>
                     <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
-                        OKK<span className="text-white group-hover:text-blue-200 transition-colors">{isCollapsed ? '' : 'CRM'}</span>
+                        OKK<span className="text-white group-hover:text-blue-200">{isCollapsed ? '' : 'CRM'}</span>
                     </Link>
                     <button 
                         onClick={() => setIsCollapsed(!isCollapsed)}
-                        className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/15 text-white shadow-lg shadow-black/30 transition-all hover:bg-blue-500 hover:border-blue-300/40"
+                        className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 bg-white/15 text-white hover:bg-blue-500 hover:border-blue-300/40"
                         aria-label={isCollapsed ? 'Развернуть меню' : 'Свернуть меню'}
                     >
                         {isCollapsed ? '→' : '←'}
@@ -227,17 +230,17 @@ export default function Sidebar() {
                                             href={item.href}
                                             onClick={(event) => handleNavClick(event, item.href)}
                                             aria-busy={pending || undefined}
-                                            className={`group relative flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                                            className={`group relative flex items-center gap-3 px-4 py-3 text-sm font-bold ${
                                                 active
-                                                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                                                ? 'bg-blue-600 text-white'
                                                 : 'text-gray-400 hover:bg-white/5 hover:text-white'
                                             }`}
                                         >
-                                            <span className={`relative text-xl transition-transform ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
+                                            <span className={`relative text-xl ${active ? 'scale-110' : 'group-hover:scale-110'}`}>
                                                 <span className={pending ? 'opacity-20' : ''}>{item.icon}</span>
                                                 {pending && (
                                                     <span className="absolute inset-0 flex items-center justify-center">
-                                                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                                                        <span className="h-4 w-4 animate-spin rounded-[50%] border-2 border-white/30 border-t-white" />
                                                     </span>
                                                 )}
                                             </span>
@@ -247,18 +250,18 @@ export default function Sidebar() {
 
                                             {/* Agent Badge if exists */}
                                             {(!isCollapsed || isMobileOpen) && !pending && item.agent && (
-                                                <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <div className="ml-auto opacity-0 group-hover:opacity-100">
                                                     <img 
                                                         src={`/images/agents/${item.agent}.png`} 
                                                         alt={item.agent} 
-                                                        className="w-5 h-5 rounded-full border border-white/20"
+                                                        className="w-5 h-5 border border-white/20"
                                                     />
                                                 </div>
                                             )}
 
                                             {/* Tooltip for collapsed mode */}
                                             {isCollapsed && !isMobileOpen && (
-                                                <div className="absolute left-full ml-4 px-2 py-1 bg-gray-800 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                                                <div className="absolute left-full ml-4 px-2 py-1 bg-gray-800 text-white text-[10px] opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50">
                                                     {item.name}
                                                 </div>
                                             )}
@@ -274,7 +277,7 @@ export default function Sidebar() {
                 <div className="p-4 mt-auto border-t border-white/5 bg-black/20 backdrop-blur-md">
                     {user ? (
                         <div className={`flex items-center gap-3 ${isCollapsed && !isMobileOpen ? 'justify-center' : ''}`}>
-                            <div className="w-10 h-10 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-black shadow-lg">
+                            <div className="w-10 h-10 overflow-hidden bg-blue-600 flex items-center justify-center text-white font-black">
                                 {avatarSrc ? (
                                     <img src={avatarSrc} alt={displayName} className="h-full w-full object-cover" />
                                 ) : (
@@ -288,13 +291,13 @@ export default function Sidebar() {
                                 </div>
                             )}
                             {(!isCollapsed || isMobileOpen) && (
-                                 <Link href="/settings/profile" className="ml-auto p-2 text-gray-500 hover:text-white transition-colors">
+                                 <Link href="/settings/profile" className="ml-auto p-2 text-gray-500 hover:text-white">
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
                                  </Link>
                             )}
                         </div>
                     ) : (
-                        <div className="h-10 animate-pulse bg-white/5 rounded-2xl w-full" />
+                        <div className="h-10 animate-pulse bg-white/5 w-full" />
                     )}
                 </div>
             </aside>

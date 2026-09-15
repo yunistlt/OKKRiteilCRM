@@ -141,9 +141,9 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                 </div>
             </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-3">
+            <div className="mt-6 grid gap-6 md:grid-cols-2 2xl:grid-cols-3">
                 {/* Блок 1: процесс */}
-                <section className="border border-slate-200 bg-white p-5">
+                <section className="min-w-0 border border-slate-200 bg-white p-5">
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Что делает сейчас</div>
                     <div className="mt-4 flex items-center gap-3">
                         <span className={`h-3 w-3 rounded-full ${agent?.status === 'working' ? 'bg-emerald-500' : 'bg-slate-300'}`} />
@@ -168,7 +168,7 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                 </section>
 
                 {/* Блок 2: текущая загрузка */}
-                <section className="border border-slate-200 bg-white p-5">
+                <section className="min-w-0 border border-slate-200 bg-white p-5">
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Распределение заявок</div>
                     <div className="mt-2 text-xs text-slate-400">Заявок назначено ИИ (почта + виджет) за последние {windowDays} дн. (на этом и балансируется распределение)</div>
                     <div className="mt-4 space-y-4">
@@ -192,13 +192,13 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                 </section>
 
                 {/* Блок 3: результат (последние письма) — на всю ширину под двумя */}
-                <section className="border border-slate-200 bg-white p-5 lg:col-span-1">
+                <section className="min-w-0 border border-slate-200 bg-white p-5">
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Назначения (последние заявки)</div>
                     <ul className="mt-3 space-y-3 text-sm">
                         {(recent || []).filter((r: any) => r.email_type === 'new_request').slice(0, 12).map((r: any) => (
                             <li key={r.id} className="border-b border-slate-100 pb-2">
                                 <div className="flex items-center justify-between gap-2">
-                                    <div className="font-bold text-slate-900">{names[Number(r.assigned_manager_id)] || '—'}</div>
+                                    <div className="min-w-0 truncate font-bold text-slate-900">{names[Number(r.assigned_manager_id)] || '—'}</div>
                                     {r.created_crm_order_id && orderUrl(r.created_crm_order_id) ? (
                                         <a href={orderUrl(r.created_crm_order_id) as string} target="_blank" rel="noopener noreferrer"
                                             className="shrink-0 border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-black text-sky-800 hover:bg-sky-100">
@@ -255,12 +255,12 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                                 );
                             })}
                         </div>
-                        <form method="get" action="/agents/katerina" className="flex items-center gap-1">
+                        <form method="get" action="/agents/katerina" className="flex flex-wrap items-center gap-1">
                             <input type="date" name="from" defaultValue={fromDate}
-                                className="border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
+                                className="min-w-0 border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
                             <span className="text-slate-400">—</span>
                             <input type="date" name="to" defaultValue={toDate}
-                                className="border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
+                                className="min-w-0 border border-slate-300 px-2 py-1 text-[12px] text-slate-900 outline-none focus:border-sky-500" />
                             <button type="submit"
                                 className="border border-slate-900 bg-slate-900 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-white hover:bg-slate-800">Показать</button>
                         </form>
@@ -289,7 +289,7 @@ export default async function KaterinaPage({ searchParams }: { searchParams?: { 
                                             <span className={`inline-block border px-1.5 py-0.5 text-[10px] font-bold ${t.cls}`}>{t.label}</span>
                                             <div className="mt-1 text-[11px] text-slate-400">{fmt(r.received_at)}</div>
                                         </td>
-                                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-700">{r.from_name || r.from_email}</td>
+                                        <td className="px-3 py-2 max-w-[160px] truncate text-slate-700" data-ui-audit-code="ok">{r.from_name || r.from_email}</td>
                                         <td className="px-3 py-2 max-w-[240px] truncate text-slate-700">{r.subject || <span className="text-slate-300">—</span>}</td>
                                         <td className="px-3 py-2 max-w-[320px] text-xs text-slate-600">
                                             {r.body_text ? (

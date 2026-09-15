@@ -113,7 +113,7 @@ function ViolationsContent() {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-medium font-sans italic">Собираем данные по нарушениям...</div>
         </div>
     );
@@ -135,7 +135,7 @@ function ViolationsContent() {
                     <p className="text-gray-500 mt-1 md:mt-2 text-xs md:text-sm">Контроль качества работы с заказами</p>
                 </div>
 
-                <div className="w-full lg:w-auto flex flex-col sm:flex-row items-center gap-3 md:gap-4 bg-white p-3 md:p-2 rounded-2xl md:rounded-3xl shadow-sm border border-gray-100">
+                <div className="w-full min-w-0 lg:w-auto flex flex-col sm:flex-row sm:flex-wrap items-center gap-3 md:gap-4 bg-white p-3 md:p-2 rounded-2xl md:rounded-3xl shadow-sm border border-gray-100">
                     {filterManager && (
                         <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest border border-blue-100">
                             👤 {filterManager}
@@ -164,7 +164,7 @@ function ViolationsContent() {
                             setFilterType(e.target.value);
                             setFilterManager(null); // Reset manager filter when rule changes manually
                         }}
-                        className="w-full sm:w-auto bg-gray-50 md:bg-white border-0 text-gray-700 text-[10px] md:text-sm font-black uppercase tracking-widest rounded-xl focus:ring-0 block p-2 md:p-3 outline-none cursor-pointer"
+                        className="w-full sm:w-auto sm:max-w-[320px] min-w-0 truncate bg-gray-50 md:bg-white border-0 text-gray-700 text-[10px] md:text-sm font-black uppercase tracking-widest rounded-xl focus:ring-0 block p-2 md:p-3 outline-none cursor-pointer"
                     >
                         <option value="all">Все нарушения</option>
                         {rules.map(r => (
@@ -349,7 +349,7 @@ function ViolationsContent() {
 
 export default function ViolationsPage() {
     return (
-        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div></div>}>
+        <Suspense fallback={<div className="flex justify-center p-10"><div className="animate-spin rounded-[50%] h-8 w-8 border-b-2 border-blue-600"></div></div>}>
             <ViolationsContent />
         </Suspense>
     );

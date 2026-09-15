@@ -139,12 +139,12 @@ function PriorityWidget() {
     );
 
     if (loading) return (
-        <div className="mb-12 w-full bg-white rounded-[40px] p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
+        <div className="mb-12 w-full bg-white p-8 border border-gray-100 shadow-xl shadow-blue-100/50 animate-pulse">
             <div className="h-8 bg-gray-100 w-1/3 rounded-xl mb-6"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div className="h-64 bg-gray-100 rounded-[32px]"></div>
-                <div className="h-64 bg-gray-100 rounded-[32px]"></div>
-                <div className="h-64 bg-gray-100 rounded-[32px]"></div>
+                <div className="h-64 bg-gray-100"></div>
+                <div className="h-64 bg-gray-100"></div>
+                <div className="h-64 bg-gray-100"></div>
             </div>
         </div>
     );
@@ -152,7 +152,7 @@ function PriorityWidget() {
     if (safeOrders.length === 0) return null;
 
     return (
-        <div className="mb-12 w-full bg-white rounded-[32px] md:rounded-[40px] p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
+        <div className="mb-12 w-full bg-white p-5 md:p-8 border border-gray-100 shadow-2xl shadow-gray-200/50 relative overflow-hidden">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
                 <div className="flex items-center gap-4">
                     <div className="w-10 h-10 md:w-12 md:h-12 bg-gray-900 text-white rounded-xl md:rounded-2xl flex items-center justify-center text-xl md:text-2xl shadow-lg flex-shrink-0">
@@ -508,7 +508,7 @@ function HomeContent() {
 
                 {/* Morning Sprint Card */}
                 <Link href="/efficiency"
-                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-orange-500 to-red-500 shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
                 >
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
                         <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -526,7 +526,7 @@ function HomeContent() {
 
                 {/* OKK Dashboard Card */}
                 <Link href="/okk"
-                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-blue-600/30 hover:shadow-blue-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-blue-600 to-indigo-700 shadow-2xl shadow-blue-600/30 hover:shadow-blue-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
                 >
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
                         <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>
@@ -544,7 +544,7 @@ function HomeContent() {
 
                 {/* Analytics Hub Card */}
                 <Link href="/analytics"
-                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-emerald-500 to-teal-600 shadow-2xl shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
                 >
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
                         <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
@@ -562,7 +562,7 @@ function HomeContent() {
 
                 {/* Payments Card */}
                 <Link href="/payments"
-                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-violet-600 to-fuchsia-700 rounded-[32px] md:rounded-[40px] shadow-2xl shadow-violet-600/30 hover:shadow-violet-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
+                    className="group relative block p-8 md:p-10 bg-gradient-to-br from-violet-600 to-fuchsia-700 shadow-2xl shadow-violet-600/30 hover:shadow-violet-600/50 transition-all duration-300 transform hover:-translate-y-1 overflow-hidden"
                 >
                     <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-150 transition-transform">
                         <svg className="w-32 h-32" fill="white" viewBox="0 0 24 24"><path d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>

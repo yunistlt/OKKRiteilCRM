@@ -12,6 +12,7 @@ const SERVICE_NAMES: Record<string, string> = {
     transcription: 'Транскрибация (служебное)',
     embeddings: 'Эмбеддинги / RAG (служебное)',
     sales_outreach: 'Письма по заказам (продажи)',
+    sales_analyst: 'Бот-РОП: разбор клиента (служебное)',
 };
 
 function agentName(id: string): string {
@@ -49,7 +50,7 @@ export default async function AiCostsPage() {
                     <div className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Ведомость за {monthLabel}</div>
                     <div className="text-sm font-black text-slate-900">Итого: {formatRub(totalUsd * fx)} <span className="text-xs font-normal text-slate-400">(${totalUsd.toFixed(2)})</span></div>
                 </div>
-                <table className="mt-4 w-full text-left text-sm">
+                <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm">
                     <thead>
                         <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-400">
                             <th className="py-2 pr-4">Агент</th>
@@ -73,7 +74,7 @@ export default async function AiCostsPage() {
                             <tr><td colSpan={5} className="py-6 text-center text-slate-500">Расходов за период пока нет.</td></tr>
                         ) : null}
                     </tbody>
-                </table>
+                </table></div>
             </section>
 
             {/* Редактор курса и тарифов */}

@@ -141,7 +141,7 @@ export default function ManagerSettingsPage() {
 
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px]">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
             <div className="text-gray-500 font-bold">Загружаем список менеджеров...</div>
         </div>
     );
@@ -233,7 +233,7 @@ NOTIFY pgrst, 'reload config';`}
                                                 <span className="text-[10px] text-gray-400">He активен</span>
                                             )}
                                             {m.has_okk_access ? (
-                                                <span className="text-[10px] text-blue-600 font-medium">Доступ: {m.okk_username || 'есть'}</span>
+                                                <span className="text-[10px] text-blue-600 font-medium" data-ui-audit-code="ok">Доступ: {m.okk_username || 'есть'}</span>
                                             ) : (
                                                 <span className="text-[10px] text-amber-600 font-medium">Нет доступа</span>
                                             )}
@@ -311,7 +311,7 @@ NOTIFY pgrst, 'reload config';`}
                                         <td className="p-4 md:p-6 text-xs md:text-sm">
                                             {m.has_okk_access ? (
                                                 <span className="bg-blue-50 text-blue-700 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-blue-600/20">
-                                                    {m.okk_username || 'Доступ создан'}
+                                                    <span data-ui-audit-code="ok">{m.okk_username || 'Доступ создан'}</span>
                                                 </span>
                                             ) : (
                                                 <span className="bg-amber-50 text-amber-700 px-2 py-1 md:px-3 rounded-full text-[8px] md:text-[10px] font-black uppercase tracking-widest ring-1 ring-amber-600/20">

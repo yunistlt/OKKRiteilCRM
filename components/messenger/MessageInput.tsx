@@ -164,7 +164,7 @@ export default function MessageInput({
                 title="Прикрепить файл"
             >
                 {uploading ? (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-sky-500 border-t-transparent" />
+                    <div className="h-5 w-5 animate-spin rounded-[50%] border-2 border-sky-500 border-t-transparent" />
                 ) : (
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
@@ -200,7 +200,7 @@ export default function MessageInput({
                 className="mb-1 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-sky-600 text-white shadow-lg shadow-sky-200 transition hover:bg-sky-700 disabled:cursor-default disabled:bg-slate-300 disabled:shadow-none"
             >
                 {sending ? (
-                    <div className="h-[18px] w-[18px] animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <div className="h-[18px] w-[18px] animate-spin rounded-[50%] border-2 border-white border-t-transparent" />
                 ) : (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ marginLeft: 2 }}>
                         <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>

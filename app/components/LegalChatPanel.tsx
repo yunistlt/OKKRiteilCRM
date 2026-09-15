@@ -120,7 +120,7 @@ export default function LegalChatPanel() {
   };
 
   return (
-    <aside className="flex h-full w-full max-w-xl flex-col border-l border-slate-200 bg-white shadow-xl">
+    <aside className="flex h-full w-full min-w-0 max-w-xl flex-col border-l border-slate-200 bg-white shadow-xl">
       <header className="border-b border-slate-200 bg-slate-50 px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -200,7 +200,7 @@ export default function LegalChatPanel() {
             type="text"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
             placeholder="Ваш юридический вопрос..."
             disabled={loading}
           />

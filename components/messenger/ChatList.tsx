@@ -34,7 +34,7 @@ export default function ChatList({ chats, selectedId, currentUserId, onSelect }:
                     <button
                         key={chat.id}
                         onClick={() => onSelect(chat.id)}
-                        className={`w-full rounded-none border-0 px-4 py-3 text-left transition-all md:mx-2 md:my-1.5 md:rounded-[22px] md:border ${
+                        className={`w-full rounded-none border-0 px-4 py-3 text-left transition-all md:mx-2 md:my-1.5 md:border ${
                             isSelected
                                 ? 'bg-sky-50 md:border-sky-200 md:shadow-sm md:shadow-sky-100'
                                 : 'bg-white hover:bg-slate-50 md:border-transparent md:hover:border-slate-200'

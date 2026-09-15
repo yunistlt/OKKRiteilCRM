@@ -208,7 +208,7 @@ export default function ManagerProfilePage() {
             </div>
 
             {/* Content Area */}
-            <div className="bg-white rounded-[24px] md:rounded-[40px] shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
+            <div className="bg-white shadow-2xl shadow-gray-200/50 border border-gray-100 overflow-hidden">
                 {activeTab === 'violations' ? (
                     <div>
                         {/* Responsive: Mobile List / Desktop Table */}

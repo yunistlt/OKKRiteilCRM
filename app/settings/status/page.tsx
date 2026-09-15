@@ -847,7 +847,7 @@ export default function SystemStatusPage() {
                             const diffMin = m.last_activity ? Math.floor((Date.now() - new Date(m.last_activity).getTime()) / 60000) : null;
                             let statusColor = 'bg-gray-200';
                             if (diffMin !== null) {
-                                if (diffMin < 10) statusColor = 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]';
+                                if (diffMin < 10) statusColor = 'bg-green-500';
                                 else if (diffMin < 60) statusColor = 'bg-yellow-500';
                             }
 

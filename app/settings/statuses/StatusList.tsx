@@ -144,10 +144,10 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
             )}
 
             {/* Column Headers with Tooltips */}
-            <div className="hidden sm:grid grid-cols-[250px_1fr_380px] gap-4 px-5 py-3 mb-2 items-end">
+            <div className="hidden sm:grid grid-cols-[minmax(160px,250px)_minmax(0,1fr)_minmax(220px,380px)] gap-4 px-5 py-3 mb-2 items-end">
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Название статуса</div>
-                <div className="flex gap-6 justify-center">
-                    <div className="group relative min-w-[90px] cursor-help text-center flex flex-col items-center">
+                <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center">
+                    <div className="group relative cursor-help text-center flex flex-col items-center">
                         <img src="/images/agents/igor.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Анализ</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
@@ -162,7 +162,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
-                    <div className="group relative min-w-[120px] cursor-help text-center flex flex-col items-center">
+                    <div className="group relative cursor-help text-center flex flex-col items-center">
                         <img src="/images/agents/semen.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Транскрибация</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
@@ -177,7 +177,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
-                    <div className="group relative min-w-[110px] cursor-help text-center flex flex-col items-center">
+                    <div className="group relative cursor-help text-center flex flex-col items-center">
                         <img src="/images/agents/maxim.png" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Роутинг ИИ</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
@@ -192,7 +192,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-gray-900"></div>
                         </div>
                     </div>
-                    <div className="group relative min-w-[110px] cursor-help text-center flex flex-col items-center">
+                    <div className="group relative cursor-help text-center flex flex-col items-center">
                         <img src="/images/agents/katerina.svg" alt="" className="w-6 h-6 rounded-full border border-gray-200 mb-1 opacity-50 group-hover:opacity-100 transition-opacity" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 border-b border-dotted border-gray-300">Нагрузка</span>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-4 bg-gray-900 text-white text-[11px] leading-relaxed rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 text-left">
@@ -227,14 +227,14 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
 
             <div className="space-y-4">
                 {groupNames.map(group => (
-                    <div key={group} className="bg-white rounded-[24px] overflow-hidden border border-gray-100 shadow-xl shadow-gray-200/40">
+                    <div key={group} className="bg-white overflow-hidden border border-gray-100 shadow-xl shadow-gray-200/40">
                         <div className="bg-gray-50/50 px-5 py-3 font-black text-gray-400 uppercase text-[9px] tracking-[0.3em] border-b border-gray-100">
                             {group}
                         </div>
                         <div className="divide-y divide-gray-50">
                             {grouped[group].map(status => (
                                 <div key={status.code}
-                                    className={`p-4 grid grid-cols-1 sm:grid-cols-[250px_1fr_380px] gap-4 items-start transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target || status.is_manager_load ? 'bg-blue-50/10' : 'bg-white'
+                                    className={`p-4 grid grid-cols-1 sm:grid-cols-[minmax(160px,250px)_minmax(0,1fr)_minmax(220px,380px)] gap-4 items-start transition-all hover:bg-gray-50/50 ${status.is_working || status.is_transcribable || status.is_ai_target || status.is_manager_load ? 'bg-blue-50/10' : 'bg-white'
                                         }`}
                                 >
                                     {/* Status Name */}
@@ -248,7 +248,7 @@ export default function StatusList({ initialStatuses, counts = {} }: StatusListP
                                     </div>
 
                                     {/* Toggles Row */}
-                                    <div className="flex items-center justify-center gap-4 md:gap-6 w-full pt-1">
+                                    <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6 w-full pt-1">
                                         {/* 1. Working Toggle */}
                                         <div
                                             onClick={() => handleLocalToggle(status.code)}
