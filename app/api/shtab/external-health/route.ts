@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { EXTERNAL_DB_TITLES, engineOfUrl, queryExternal } from '@/lib/shtab/external/client';
 import type { ExternalDb } from '@/lib/shtab/external/client';
+import { catalogOverview } from '@/lib/shtab/lvz';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -122,8 +123,13 @@ export async function GET(req: NextRequest) {
         // Кодировка указывается явно: этот ответ читает человек прямо в
         // браузере, а без charset Safari разбирает русский текст как cp1251 и
         // показывает кракозябры вместо разбора ошибки.
+        // Каталог витрины подключён не строкой к базе, а REST-доступом соседнего
+        // проекта — в общий список он не попадает, но проверять его надо там же,
+        // где остальное: владелец приходит сюда с вопросом «почему не видит».
+        const catalog = await catalogOverview();
+
         return NextResponse.json(
-            { outbound_ip: await outboundIp(), checks },
+            { outbound_ip: await outboundIp(), checks, catalog },
             { headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
     } catch (e: any) {
