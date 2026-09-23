@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
 import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
+import { computeTaskResults } from '@/lib/sales-rop/task-result';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import {
     formatCallDay,
@@ -1216,6 +1217,11 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             }
         }
     }
+
+    // Цепочка по каждой задаче: выдана → тронута → контакт → ответ клиента →
+    // движение заказа → деньги. Считается после разметки касаний и до отчётов:
+    // отсюда берут цифры и отчёт, и недельный разбор.
+    await soft('результаты задач', { rows: 0, byStatus: {} }, degraded, () => computeTaskResults(today));
 
     const facts = await soft('цифры дня', '', degraded, () => dayFacts(today, settings.monthPlan));
     const preview = facts ? [facts] : [];

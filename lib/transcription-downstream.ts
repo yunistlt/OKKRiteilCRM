@@ -3,6 +3,7 @@
 // (воркер транскрибации), и async-поллером — поэтому вынесено сюда.
 import { supabase } from '@/utils/supabase';
 import { enqueueCallSemanticRulesJob, enqueueOrderRefreshJob } from '@/lib/system-jobs';
+import { orderOfCall } from '@/lib/calls-of-order';
 
 export async function enqueueTranscriptionDownstream(
     callId: string,
@@ -10,17 +11,13 @@ export async function enqueueTranscriptionDownstream(
     parentJobId?: number,
 ): Promise<{ orderId: string | null; jobs: string[] }> {
     try {
-        const { data: match } = await supabase
-            .from('call_order_matches')
-            .select('retailcrm_order_id')
-            .eq('telphin_call_id', callId)
-            .order('matched_at', { ascending: false })
-            .limit(1)
-            .single();
+        // Заказ звонка: сначала спрашиваем RetailCRM — там привязку сделали
+        // в карточке, а не угадали по номеру телефона. Наш матчинг остаётся
+        // запасным и ошибается примерно в трети случаев.
+        const found = await orderOfCall(callId);
+        if (!found) return { orderId: null, jobs: [] };
 
-        if (!match?.retailcrm_order_id) return { orderId: null, jobs: [] };
-
-        const orderId = String(match.retailcrm_order_id);
+        const orderId = String(found.orderId);
         const transcriptCompletedAt = new Date().toISOString();
 
         await enqueueCallSemanticRulesJob({
