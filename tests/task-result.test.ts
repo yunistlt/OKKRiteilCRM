@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { collapseCalls, levelOf } from '@/lib/sales-rop/task-result';
-import { recommend, type ManagerWeek } from '@/lib/sales-rop/load-review';
+import { lastWeek, recommend, type ManagerWeek } from '@/lib/sales-rop/load-review';
 
 /**
  * Методика разбора: чем задача кончилась и можно ли человеку дать больше работы.
@@ -165,5 +165,18 @@ describe('рекомендация по нагрузке', () => {
     it('выше двух не предлагает', () => {
         const r = recommend(week({ personalFactor: 2 }));
         expect(r.suggestedFactor).toBeNull();
+    });
+});
+
+
+describe('какую неделю разбираем', () => {
+    // Разбор идёт в понедельник утром и смотрит на прошлую полную неделю:
+    // «неделя по сегодня» в понедельник — это один день, вывода из него нет.
+    it('в понедельник берёт прошлую неделю целиком', () => {
+        expect(lastWeek('2026-09-28')).toEqual({ from: '2026-09-21', to: '2026-09-27' });
+    });
+
+    it('в воскресенье — тоже предыдущую, а не текущую', () => {
+        expect(lastWeek('2026-09-27')).toEqual({ from: '2026-09-14', to: '2026-09-20' });
     });
 });

@@ -145,6 +145,22 @@ export function recommend(m: ManagerWeek): LoadRecommendation {
     };
 }
 
+/**
+ * Понедельник и воскресенье прошлой недели.
+ *
+ * Разбор идёт в понедельник утром и смотрит на прошлую ПОЛНУЮ неделю: «неделя
+ * по сегодня» в понедельник — это один день, и вывода о человеке из него нет.
+ */
+export function lastWeek(today: string): { from: string; to: string } {
+    const d = new Date(`${today}T00:00:00.000Z`);
+    const dow = d.getUTCDay() === 0 ? 7 : d.getUTCDay();
+    const monday = new Date(d);
+    monday.setUTCDate(d.getUTCDate() - dow - 6);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+}
+
 /** Неделя по каждому менеджеру. Даты включительно, формат ГГГГ-ММ-ДД. */
 export async function loadWeek(from: string, to: string): Promise<ManagerWeek[]> {
     const { data: stats, error } = await supabase
