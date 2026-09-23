@@ -70,6 +70,48 @@ export async function sendTelegramDocument(params: {
 }
 
 /**
+ * Отправка голосового сообщения (sendVoice). Как и sendTelegramDocument — БРОСАЕТ:
+ * не ушедшую озвучку вызывающий обязан увидеть, а не «потерять».
+ *
+ * Telegram показывает вложение голосовым сообщением (с волной и скоростью
+ * воспроизведения) ТОЛЬКО для ogg/opus. Любой другой формат приедет обычным
+ * файлом — см. ops/tts/README.md.
+ */
+export async function sendTelegramVoice(params: {
+    chatId: string;
+    voice: ArrayBuffer | Uint8Array;
+    caption?: string;
+    durationSeconds?: number;
+    token?: string;
+    threadId?: string;
+}) {
+    const token = params.token || process.env.TELEGRAM_BOT_TOKEN;
+    if (!token) throw new Error('Не задан токен Telegram-бота');
+    if (!params.chatId) throw new Error('Не задан chat_id получателя');
+
+    const form = new FormData();
+    form.append('chat_id', params.chatId);
+    if (params.threadId) form.append('message_thread_id', params.threadId);
+    if (params.caption) {
+        form.append('caption', params.caption);
+        form.append('parse_mode', 'HTML');
+    }
+    if (params.durationSeconds) form.append('duration', String(Math.round(params.durationSeconds)));
+
+    const bytes = new Uint8Array(
+        params.voice instanceof Uint8Array ? params.voice : new Uint8Array(params.voice),
+    );
+    form.append('voice', new Blob([bytes], { type: 'audio/ogg' }), 'voice.ogg');
+
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendVoice`, { method: 'POST', body: form });
+    const json: any = await res.json().catch(() => null);
+    if (!res.ok || !json?.ok) {
+        throw new Error(`Telegram sendVoice: ${res.status} ${json?.description || (await res.text().catch(() => ''))}`);
+    }
+    return json.result;
+}
+
+/**
  * Legacy wrapper for Igor's notifications using default TELEGRAM_CHAT_ID
  */
 export async function sendTelegramNotification(message: string) {
