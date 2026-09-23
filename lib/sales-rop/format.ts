@@ -38,6 +38,9 @@ const REASON_TITLE: Record<Task['reasonCode'], string> = {
     // Отношения с клиентом, а не сделка: сюда попадают и те, кто ни разу не
     // покупал. Заголовок про клиента, не про заказ.
     client_touch: '🤝 Напомнить о себе — давно не общались',
+    // Заголовок первый по важности: это не новая работа, а возврат к той,
+    // которую закрыли, не поговорив с клиентом.
+    cancel_unconfirmed: '↩️ Закрыт без разговора — вернул в работу',
 };
 
 /**
@@ -138,7 +141,9 @@ export function formatMorning(
         if (advice?.action) {
             lines.push(`   ➡️ ${advice.action}`);
             if (advice.why) lines.push(`   Почему: ${advice.why}`);
-            if (advice.offer) lines.push(`   Предложить: ${advice.offer}`);
+            // «Узнать» вместо «предложить»: задача — выяснить, что ещё нужно
+            //  клиенту, а не зачитать ему список товаров.
+            if (advice.offer) lines.push(`   Узнать: ${advice.offer}`);
         }
     }
 

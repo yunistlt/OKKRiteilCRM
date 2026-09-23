@@ -36,9 +36,14 @@ type Ref = {
     statuses: { code: string; name: string; active: boolean; working: boolean }[];
 };
 
+/** Личный множитель нагрузки. Пустая строка — «как у отдела». */
+type ManagerLoad = { managerId: number; loadFactor: string };
+
 export default function SalesRopSettingsPage() {
     const [items, setItems] = useState<Item[]>([]);
     const [refs, setRefs] = useState<Ref>({ managers: [], statuses: [] });
+    const [loads, setLoads] = useState<ManagerLoad[]>([]);
+    const [loadDraft, setLoadDraft] = useState<Record<number, string>>({});
     const [draft, setDraft] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -56,6 +61,8 @@ export default function SalesRopSettingsPage() {
             if (!res.ok) throw new Error(json.error || 'Не удалось загрузить настройки');
             setItems(json.items);
             setRefs({ managers: json.managers ?? [], statuses: json.statuses ?? [] });
+            setLoads(json.managerLoads ?? []);
+            setLoadDraft({});
             setDraft({});
             setError('');
         } catch (e: any) {
@@ -80,15 +87,27 @@ export default function SalesRopSettingsPage() {
         setDraft((d) => ({ ...d, [key]: value }));
     };
 
+    const changedLoads = useMemo(
+        () =>
+            loads
+                .filter((l) => loadDraft[l.managerId] !== undefined && loadDraft[l.managerId] !== l.loadFactor)
+                .map((l) => ({ managerId: l.managerId, loadFactor: loadDraft[l.managerId] })),
+        [loads, loadDraft],
+    );
+
     const save = async () => {
-        if (changed.length === 0 || saving) return;
+        if (changed.length === 0 && changedLoads.length === 0) return;
+        if (saving) return;
         setSaving(true);
         setError('');
         try {
             const res = await fetch('/api/sales-rop/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ changes: changed.map((it) => ({ key: it.key, value: valueOf(it) })) }),
+                body: JSON.stringify({
+                    changes: changed.map((it) => ({ key: it.key, value: valueOf(it) })),
+                    managerLoads: changedLoads,
+                }),
             });
             const json = await res.json();
             if (!res.ok) throw new Error(json.error || 'Не удалось сохранить');
@@ -246,6 +265,76 @@ export default function SalesRopSettingsPage() {
                         </section>
                     ))}
 
+                    {/* Нагрузка по людям. Общий коэффициент поднимает норму всему
+                        отделу разом, а люди разные: одной можно добавить, у другой
+                        день и так полный. */}
+                    {loads.length > 0 && (
+                        <section style={{ marginBottom: 20 }}>
+                            <h2
+                                style={{
+                                    fontSize: 13,
+                                    fontWeight: 700,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: 0.5,
+                                    background: '#111',
+                                    color: '#fff',
+                                    padding: '5px 10px',
+                                    margin: '0 0 1px',
+                                }}
+                            >
+                                Нагрузка по людям
+                            </h2>
+                            <div style={{ fontSize: 12, color: '#777', padding: '8px 10px' }}>
+                                Личный множитель поверх общего. Пусто — как у отдела. 1.20 — этому человеку на 20%
+                                больше задач в день. Границы 0.5–2.0.
+                            </div>
+                            {loads.map((l) => {
+                                const name =
+                                    refs.managers.find((m) => m.id === l.managerId)?.name ?? `#${l.managerId}`;
+                                const value = loadDraft[l.managerId] ?? l.loadFactor;
+                                const shared = Number(
+                                    items.find((i) => i.key === 'load_factor')?.value || '1',
+                                );
+                                const personal = value.trim() === '' ? 1 : Number(value);
+                                const total = Number.isFinite(personal) ? shared * personal : shared;
+                                return (
+                                    <div
+                                        key={l.managerId}
+                                        style={{
+                                            display: 'grid',
+                                            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                                            gap: 12,
+                                            borderBottom: '1px solid #e5e5e5',
+                                            padding: '8px 10px',
+                                            alignItems: 'center',
+                                        }}
+                                    >
+                                        <div style={{ fontSize: 14, fontWeight: 600 }}>{name}</div>
+                                        <input
+                                            value={value}
+                                            placeholder="как у отдела"
+                                            onChange={(e) => {
+                                                setSaved('');
+                                                setLoadDraft((d) => ({ ...d, [l.managerId]: e.target.value }));
+                                            }}
+                                            style={{
+                                                border: '1px solid #bbb',
+                                                borderRadius: 0,
+                                                padding: '5px 8px',
+                                                fontSize: 14,
+                                                width: 140,
+                                            }}
+                                        />
+                                        <div style={{ fontSize: 12, color: '#777' }}>
+                                            итоговая нагрузка ×{(Math.round(total * 100) / 100).toLocaleString('ru-RU')}
+                                            {value.trim() === '' ? ' (общая)' : ''}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </section>
+                    )}
+
                     <div
                         style={{
                             position: 'sticky',
@@ -260,10 +349,10 @@ export default function SalesRopSettingsPage() {
                     >
                         <button
                             onClick={save}
-                            disabled={changed.length === 0 || saving}
+                            disabled={(changed.length === 0 && changedLoads.length === 0) || saving}
                             aria-busy={saving}
                             style={{
-                                background: changed.length === 0 ? '#ccc' : '#0057d9',
+                                background: changed.length === 0 && changedLoads.length === 0 ? '#ccc' : '#0057d9',
                                 color: '#fff',
                                 border: 'none',
                                 borderRadius: 0,

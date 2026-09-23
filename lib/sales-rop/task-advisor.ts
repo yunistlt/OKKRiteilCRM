@@ -58,6 +58,9 @@ const REASON_BRIEF: Record<Task['reasonCode'], string> = {
     development: 'Клиент покупал раньше. Повод — не сделка, а следующая покупка.',
     reactivation: 'Клиент давно не покупал. Задача — узнать, что изменилось, и вернуться в поле зрения.',
     client_touch: 'Давно не общались. Отношения, а не сделка.',
+    cancel_unconfirmed:
+        'Заказ закрыли, не поговорив с клиентом. Задача — выяснить у него настоящую причину: '
+        + 'решение могло измениться, а закрытый молча заказ это клиент, о котором мы не знаем, почему он ушёл.',
 };
 
 export function adviceFingerprint(task: Task, ctx: OrderContext): string {
@@ -143,8 +146,13 @@ export async function loadOrderContext(task: Task): Promise<OrderContext> {
     };
 }
 
-/** Текст для модели: заказ, его история и клиент. */
-export function renderTaskBrief(task: Task, ctx: OrderContext, dossierText: string | null): string {
+/** Текст для модели: заказ, его история, клиент и чем оснащаются похожие. */
+export function renderTaskBrief(
+    task: Task,
+    ctx: OrderContext,
+    dossierText: string | null,
+    similar: Array<{ category: string; clients: number }> = [],
+): string {
     const money = (v: number) => Math.round(v).toLocaleString('ru-RU');
     const lines = [
         `ЗАКАЗ №${ctx.number} на ${money(ctx.amount)} ₽`,
@@ -176,6 +184,15 @@ export function renderTaskBrief(task: Task, ctx: OrderContext, dossierText: stri
         );
     }
     if (dossierText) lines.push('', '--- О КЛИЕНТЕ ---', dossierText);
+
+    if (similar.length > 0) {
+        lines.push(
+            '',
+            'Чем оснащаются предприятия той же сферы (сколько таких клиентов брало):',
+            ...similar.map((c) => `— ${c.category}: ${c.clients}`),
+            'Это основание для вопроса, а не готовое предложение: соседям по отрасли нужно не то же самое.',
+        );
+    }
 
     return lines.join('\n');
 }
@@ -222,15 +239,24 @@ export async function adviseTask(task: Task, opts: { force?: boolean; clientKey?
     // совет «что сделать с заказом» не требует знания, что ещё ему продать.
     let dossierText: string | null = null;
     let allowedOffers: string[] = [];
+    let similar: Array<{ category: string; clients: number }> = [];
     if (opts.clientKey) {
         try {
             const dossier = await loadDossier(opts.clientKey);
             if (dossier) {
                 const catalog = await catalogCategories();
                 const segment = await segmentOf(dossier.sphereCode);
-                const rules = await loadSolutionRules(Object.keys(dossier.byCategory), segment);
+                const own = Object.keys(dossier.byCategory);
+                const rules = await loadSolutionRules(own, segment);
                 dossierText = renderDossier(dossier, catalog, rules);
-                allowedOffers = rules.map((r) => r.offer);
+                similar = await similarClientsBuy(dossier.sphereCode, own);
+
+                // Что вообще можно называть вслух: подтверждённая карта решений
+                // плюс то, чем оснащаются похожие предприятия. И то и другое —
+                // наши категории; выдумать третье модель не сможет.
+                allowedOffers = Array.from(
+                    new Set([...rules.map((r) => r.offer), ...similar.map((c) => c.category)]),
+                ).filter((c) => catalog.includes(c) || rules.some((r) => r.offer === c));
             }
         } catch {
             dossierText = null;
@@ -246,7 +272,7 @@ export async function adviseTask(task: Task, opts: { force?: boolean; clientKey?
             response_format: { type: 'json_object' },
             messages: [
                 { role: 'system', content: prompt.system_prompt },
-                { role: 'user', content: renderTaskBrief(task, ctx, dossierText) },
+                { role: 'user', content: renderTaskBrief(task, ctx, dossierText, similar) },
             ],
         });
 
@@ -267,12 +293,10 @@ export async function adviseTask(task: Task, opts: { force?: boolean; clientKey?
         };
         if (!advice.action) return null;
 
-        // Предложение проверяем по карте решений: без неё модель советует то,
-        // чего мы не делаем, а менеджер повторит это клиенту. Совет «что
-        // сделать» при этом остаётся — он про заказ, а не про товар.
-        if (advice.offer && allowedOffers.length > 0 && !mentionsAny(advice.offer, allowedOffers)) {
-            advice.offer = '';
-        } else if (advice.offer && allowedOffers.length === 0) {
+        // Названное вслух проверяем по нашим категориям: без проверки модель
+        // советует то, чего мы не делаем, а менеджер повторит это клиенту.
+        // Совет «что сделать» при этом остаётся — он про заказ, а не про товар.
+        if (advice.offer && (allowedOffers.length === 0 || !mentionsAny(advice.offer, allowedOffers))) {
             advice.offer = '';
         }
 
@@ -294,6 +318,38 @@ export async function adviseTask(task: Task, opts: { force?: boolean; clientKey?
     } catch {
         return null;
     }
+}
+
+/**
+ * Что берут похожие клиенты — те, кто работает в той же сфере.
+ *
+ * Карта решений (sales_solution_map) отвечает на вопрос «взял X — нужен Y» и
+ * составлена владельцем вручную, поэтому она точнее всего. Но она покрывает не
+ * всё, а вопрос «что мы ещё можем им поставлять» имеет смысл всегда. Сфера даёт
+ * второе основание: чем оснащают себя такие же предприятия.
+ *
+ * Это именно основание для РАЗГОВОРА, а не готовое предложение: то, что берут
+ * соседи по отрасли, конкретному заводу может быть не нужно. Отсюда и тон —
+ * узнать, что им ещё нужно, а не продать список.
+ */
+export async function similarClientsBuy(
+    sphereCode: string | null,
+    ownCategories: string[],
+): Promise<Array<{ category: string; clients: number }>> {
+    if (!sphereCode) return [];
+    const { data } = await supabase
+        .from('sales_sphere_category_mv')
+        .select('category, clients')
+        .eq('sphere_code', sphereCode)
+        .order('clients', { ascending: false })
+        .limit(12);
+
+    const own = new Set(ownCategories);
+    return ((data ?? []) as any[])
+        // То, что клиент и так берёт, — не новость ни для кого.
+        .filter((r) => !own.has(String(r.category)))
+        .map((r) => ({ category: String(r.category), clients: Number(r.clients ?? 0) }))
+        .slice(0, 6);
 }
 
 /**

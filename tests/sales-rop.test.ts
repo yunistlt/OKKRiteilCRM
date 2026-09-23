@@ -743,3 +743,48 @@ describe('splitTelegramMessage', () => {
         for (const p of parts) expect(p.length).toBeLessThanOrEqual(TELEGRAM_TEXT_LIMIT);
     });
 });
+
+
+// Личная нагрузка: общий коэффициент поднимал норму всему отделу разом, а
+// люди разные — у одной день не заполнен, у другой четырнадцать своих звонков.
+describe('нагрузка по людям', () => {
+    // Просроченные обещания: их всегда больше, чем влезает в день, — значит
+    // видно, где проходит граница нормы.
+    const many = Array.from({ length: 20 }, (_, i) =>
+        order({ orderId: 100 + i, number: String(100 + i), contactDate: '2026-08-25', amount: 100_000 + i }),
+    );
+
+    /** Живые задачи: остывшие идут сверх нормы и её границу не показывают. */
+    const live = (tasks: ReturnType<typeof buildPlan> extends Map<any, infer V> ? V : never) =>
+        tasks.filter((t) => t.reasonCode !== 'cold');
+
+    it('без личного множителя работает общая норма', () => {
+        const tasks = buildPlan(many, TODAY, T).get(249)!;
+        expect(live(tasks)).toHaveLength(T.tasksPerManager);
+    });
+
+    it('повышенный множитель даёт больше задач', () => {
+        const tasks = buildPlan(many, TODAY, T, new Map(), new Map([[249, 1.5]])).get(249)!;
+        expect(live(tasks).length).toBeGreaterThan(T.tasksPerManager);
+    });
+
+    it('пониженный — меньше', () => {
+        const tasks = buildPlan(many, TODAY, T, new Map(), new Map([[249, 0.5]])).get(249)!;
+        expect(live(tasks).length).toBeLessThan(T.tasksPerManager);
+    });
+
+    // Десятка вместо единицы — опечатка, а не решение руководителя: она
+    // завалила бы человека списком, который физически не сделать.
+    it('множитель за границами обрезается', () => {
+        const wild = buildPlan(many, TODAY, T, new Map(), new Map([[249, 10]])).get(249)!;
+        const max = buildPlan(many, TODAY, T, new Map(), new Map([[249, 2]])).get(249)!;
+        expect(live(wild)).toHaveLength(live(max).length);
+    });
+
+    it('множитель одного не трогает другого', () => {
+        const mixed = [...many, ...many.map((o, i) => ({ ...o, orderId: 500 + i, managerId: 10 }))];
+        const plan = buildPlan(mixed, TODAY, T, new Map(), new Map([[249, 1.5]]));
+        expect(live(plan.get(249)!).length).toBeGreaterThan(T.tasksPerManager);
+        expect(live(plan.get(10)!)).toHaveLength(T.tasksPerManager);
+    });
+});
