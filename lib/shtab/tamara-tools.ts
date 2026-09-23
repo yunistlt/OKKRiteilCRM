@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { formatStructure, loadStructure } from '@/lib/shtab/structure';
 import { NON_INCOME_STATUSES, monthlyIncome, monthsAgo } from '@/lib/shtab/income';
 import type { IncomeRow } from '@/lib/shtab/income';
 import { topArea } from '@/lib/shtab/types';
@@ -128,6 +129,30 @@ const OWN_TOOLS = [
                 type: 'object',
                 properties: {
                     days: { type: 'integer', description: 'Какой давности изменения считать живыми. По умолчанию 45.' },
+                },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_structure',
+            description:
+                'Структура компании: посты, кто кому подчинён, чей это пост, ЦКП и статистика поста, какие документы лежат в его папке. Вызывай, когда вопрос про оргсхему, подчинение, зоны ответственности или «кто за это отвечает».',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_post_doc',
+            description:
+                'Прочитать текст документа поста — описание поста, инструкцию, регламент. Сначала посмотри структуру: там перечислены названия документов и их номера.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    doc_id: { type: 'integer', description: 'Номер документа из shtab_structure.' },
+                    post_id: { type: 'integer', description: 'Или номер поста — тогда вернутся все его документы.' },
                 },
             },
         },
@@ -465,6 +490,46 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
         const { data, error } = await supabase.rpc('sales_pipeline_now', { p_days: days });
         if (error) return { available: false, reason: error.message };
         return { unit: 'рубли', fresh_days: days, statuses: data ?? [] };
+    }
+
+    if (name === 'shtab_structure') {
+        const { posts, docs } = await loadStructure();
+        if (posts.length === 0) {
+            return { available: false, reason: 'Структура ещё не заведена: постов нет.' };
+        }
+        return {
+            note: 'Структуру ведёт владелец вручную. Пост без держателя — вакансия, а не ошибка.',
+            posts_count: posts.length,
+            tree: formatStructure(posts, docs),
+            docs: docs.map((d) => ({ doc_id: d.id, post_id: d.post_id, title: d.title, readable: d.has_text })),
+        };
+    }
+
+    if (name === 'shtab_post_doc') {
+        const docId = Number(args?.doc_id);
+        const postId = Number(args?.post_id);
+        let q = supabase.from('shtab_post_doc').select('id, post_id, title, file_name, text_content');
+        if (Number.isInteger(docId) && docId > 0) q = q.eq('id', docId);
+        else if (Number.isInteger(postId) && postId > 0) q = q.eq('post_id', postId);
+        else return { available: false, reason: 'Нужен doc_id или post_id.' };
+
+        const { data, error } = await q.limit(5);
+        if (error) return { available: false, reason: error.message };
+        if (!data?.length) return { available: false, reason: 'Такого документа нет.' };
+
+        return {
+            documents: data.map((d: any) => ({
+                doc_id: d.id,
+                post_id: d.post_id,
+                title: d.title,
+                file_name: d.file_name,
+                // Пусто — это скан без распознавания или формат, который не
+                // разбирается. Молчать об этом нельзя: иначе выйдет, что
+                // документ прочитан и в нём ничего нет.
+                text: (d.text_content ?? '').trim() || null,
+                reason: (d.text_content ?? '').trim() ? undefined : 'Текст из файла не извлёкся — прочитать нечем.',
+            })),
+        };
     }
 
     if (name === 'shtab_query') {
