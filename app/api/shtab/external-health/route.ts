@@ -119,7 +119,13 @@ export async function GET(req: NextRequest) {
             }),
         );
 
-        return NextResponse.json({ outbound_ip: await outboundIp(), checks });
+        // Кодировка указывается явно: этот ответ читает человек прямо в
+        // браузере, а без charset Safari разбирает русский текст как cp1251 и
+        // показывает кракозябры вместо разбора ошибки.
+        return NextResponse.json(
+            { outbound_ip: await outboundIp(), checks },
+            { headers: { 'Content-Type': 'application/json; charset=utf-8' } },
+        );
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
