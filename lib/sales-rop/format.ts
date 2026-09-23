@@ -66,10 +66,19 @@ export function firstNameOf(fullName: string): string {
     return parts.length > 1 ? parts[1] : parts[0] || '';
 }
 
+/** Совет по задаче: что сделать, почему, что предложить. */
+export type TaskAdviceLine = { action: string; why: string; offer: string } | null;
+
 export function formatMorning(
     plan: ManagerPlan,
     base: CrmLinkBase,
-    wrap?: { greeting?: string; farewell?: string; date?: Date },
+    wrap?: {
+        greeting?: string;
+        farewell?: string;
+        date?: Date;
+        /** Советы по ключу «заказ:причина». Пустая карта — сообщение как раньше. */
+        advices?: Map<string, TaskAdviceLine>;
+    },
 ): string {
     const live = plan.tasks.filter((t: Task) => t.reasonCode !== 'cold');
     const own = plan.tasks.filter((t: Task) => t.reasonCode === 'contact_today').length;
@@ -121,6 +130,16 @@ export function formatMorning(
             `${orderLink(base, t.orderId, t.number)} — ${head}${t.client || 'клиент не указан'}`,
             `   ${t.reasonText}`,
         );
+
+        // Совет идёт под строкой заказа, а не вместо неё: причина — это факт из
+        // базы, совет — мнение модели, и путать их нельзя. Нет совета — строка
+        // остаётся как была, сообщение от этого не ломается.
+        const advice = wrap?.advices?.get(`${t.orderId}:${t.reasonCode}`);
+        if (advice?.action) {
+            lines.push(`   ➡️ ${advice.action}`);
+            if (advice.why) lines.push(`   Почему: ${advice.why}`);
+            if (advice.offer) lines.push(`   Предложить: ${advice.offer}`);
+        }
     }
 
     if (live.length > 0) {
@@ -136,23 +155,48 @@ export type EveningRow = Task & { touched: boolean; touchKind: string | null };
 export function formatEvening(
     plan: { managerName: string; telegramUsername: string; rows: EveningRow[] },
     base: CrmLinkBase,
+    /** Заказы, закрытые сегодня без разговора с клиентом. */
+    silentCancels?: Map<number, { statusName: string }>,
 ): string {
     const done = plan.rows.filter((r) => r.touched);
     const missed = plan.rows.filter((r) => !r.touched);
+    const silent = plan.rows.filter((r) => silentCancels?.has(r.orderId));
 
     const head =
         `${tag(plan.telegramUsername, plan.managerName)} — ${done.length} из ${plan.rows.length}` +
-        (missed.length === 0 ? ' ✅' : '');
+        (missed.length === 0 && silent.length === 0 ? ' ✅' : '');
 
-    if (missed.length === 0) return head;
+    if (missed.length === 0 && silent.length === 0) return head;
 
-    const lines = [head, ''];
-    lines.push('Без касания:');
-    for (const r of missed) {
-        lines.push(`${orderLink(base, r.orderId, r.number)} — ${money(r.amount)} ₽ — ${r.client || 'клиент не указан'}`);
+    const lines = [head];
+
+    if (missed.length > 0) {
+        lines.push('', 'Без касания:');
+        for (const r of missed) {
+            lines.push(`${orderLink(base, r.orderId, r.number)} — ${money(r.amount)} ₽ — ${r.client || 'клиент не указан'}`);
+        }
+        const lost = missed.reduce((s, r) => s + r.amount, 0);
+        lines.push('', `Не тронуто на ${money(lost)} ₽`);
     }
-    const lost = missed.reduce((s, r) => s + r.amount, 0);
-    lines.push('', `Не тронуто на ${money(lost)} ₽`);
+
+    // Закрытые без разговора — отдельным блоком, и формулировка осторожная.
+    // Привязка звонка к заказу ошибается примерно в трети случаев, а позвонить
+    // могли с мобильного: «звонка не вижу» — это вопрос, а не обвинение.
+    // Разница между этими двумя фразами — разговор с человеком о его работе.
+    if (silent.length > 0) {
+        lines.push('', 'Закрыты сегодня, разговора с клиентом не вижу:');
+        for (const r of silent) {
+            const status = silentCancels?.get(r.orderId)?.statusName ?? 'закрыт';
+            lines.push(
+                `${orderLink(base, r.orderId, r.number)} — ${money(r.amount)} ₽ — ${r.client || 'клиент не указан'} → ${status}`,
+            );
+        }
+        const lost = silent.reduce((s, r) => s + r.amount, 0);
+        lines.push(
+            `На ${money(lost)} ₽. Если звонок был не с рабочего номера — так и скажи, я вижу только телефонию.`,
+        );
+    }
+
     return lines.join('\n');
 }
 

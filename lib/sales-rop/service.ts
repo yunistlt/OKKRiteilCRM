@@ -1,5 +1,6 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
+import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import {
     formatCallDay,
@@ -63,6 +64,8 @@ export type Settings = Thresholds & {
     reviewCalls: boolean;
     /** Личный чат владельца и выключатель его отчёта. */
     ownerChatId: string;
+    /** Слать ли владельцу копию каждого утреннего плана. */
+    ownerCopyMorning: boolean;
     ownerReport: boolean;
     /** Норма разговоров в день, минут. */
     talkMinutesTarget: number;
@@ -74,6 +77,8 @@ export type Settings = Thresholds & {
     devMaxDays: number;
     /** Показывать ли подсказку модели в блоке развития. */
     devInsightEnabled: boolean;
+    /** Писать ли по каждой задаче, что сделать, почему и что предложить. */
+    taskAdviceEnabled: boolean;
     disciplineDays: number;
     disciplineWarnPct: number;
     /** Конвейер: ночная парковка заявок в пул и выдача пачками. */
@@ -133,6 +138,9 @@ export async function loadSettings(): Promise<Settings> {
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
         ownerChatId: String(map.get('owner_chat_id') || ''),
+        // Копия утренних планов владельцу. По умолчанию включена: реагировать
+        // на слабый план надо утром, а не вечером по отчёту, когда день прошёл.
+        ownerCopyMorning: String(map.get('owner_copy_morning') ?? 'true') === 'true',
         ownerReport: String(map.get('owner_report') ?? 'true') === 'true',
         talkMinutesTarget: num('talk_minutes_target', 120),
         talksTarget: num('talks_target', 35),
@@ -149,6 +157,9 @@ export async function loadSettings(): Promise<Settings> {
         devMinDays: num('dev_min_days', 30),
         devMaxDays: num('dev_max_days', 540),
         devInsightEnabled: String(map.get('dev_insight_enabled') ?? 'false') === 'true',
+        // Совет по каждой задаче. Включён по умолчанию: без него строка плана
+        // не говорит менеджеру ничего, чего он не знает, и список разгребают.
+        taskAdviceEnabled: String(map.get('task_advice_enabled') ?? 'true') === 'true',
         disciplineDays: num('discipline_days', 7),
         disciplineWarnPct: num('discipline_warn_pct', 80),
         queueEnabled: String(map.get('queue_enabled') ?? 'false') === 'true',
@@ -642,6 +653,28 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         byRecipient.set(key, bucket);
     }
 
+    // Совет по каждой задаче: что сделать, почему и что предложить.
+    //
+    // Считается здесь, а не в правилах, потому что это вторая природа работы:
+    // код уже решил, ЧТО брать в план, модель отвечает только О ЧЁМ говорить.
+    // Совет кэшируется по состоянию заказа, поэтому назавтра по тем же заказам
+    // модель не зовётся заново.
+    //
+    // Идём по одной задаче за раз, а не всеми сразу: рассылка не горит, а
+    // полсотни одновременных запросов к модели упираются в её лимиты и роняют
+    // весь утренний прогон ради подсказки к нему.
+    const advices = new Map<string, Awaited<ReturnType<typeof adviseTask>>>();
+    if (settings.taskAdviceEnabled) {
+        for (const bucket of Array.from(byRecipient.values())) {
+            for (const t of bucket.tasks) {
+                const key = `${t.orderId}:${t.reasonCode}`;
+                if (advices.has(key)) continue;
+                const clientKey = await clientKeyForOrder(t.orderId).catch(() => null);
+                advices.set(key, await adviseTask(t, { clientKey }).catch(() => null));
+            }
+        }
+    }
+
     for (const bucket of Array.from(byRecipient.values())) {
         // Живое обращение каждому своё. Не получилось — остаётся шаблон из
         // настроек: без приветствия сообщение начинаться не должно.
@@ -662,6 +695,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                     greeting: written?.greeting || settings.morningGreeting,
                     farewell: written?.farewell || settings.morningFarewell,
                     date: new Date(today),
+                    advices,
                 },
             ),
         );
@@ -744,6 +778,27 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             if (target && text) await sendToChatSafe(target, text, bucket.name, failures);
         }
 
+        // Копия владельцу — те же сообщения слово в слово, с пометкой, чьё.
+        //
+        // Не сводка: по сводке «Ирина — 8 шт. на 2,1 млн» не видно, что в плане
+        // восемь безнадёжных заказов и ни одного счёта. Реагировать на это надо
+        // утром, пока день не прошёл, а вечерний отчёт показывает уже итог.
+        //
+        // Идёт отдельными сообщениями, а не одним: телеграм режет длинные, и
+        // склеенные планы пятерых обрезались бы на втором.
+        if (settings.ownerCopyMorning && settings.ownerChatId) {
+            for (let i = 0; i < buckets.length; i += 1) {
+                const text = messages[i];
+                if (!text) continue;
+                await sendToChatSafe(
+                    settings.ownerChatId,
+                    `📨 Копия плана: ${buckets[i].name}\n\n${text}`,
+                    'копия плана владельцу',
+                    failures,
+                );
+            }
+        }
+
         // В общий чат — короткая сводка: кто сколько получил. Подробности там
         // превращают рабочий чат в ленту, куда проваливаются оплаты.
         if (settings.summaryToGroup && settings.chatId && byRecipient.size > 0) {
@@ -808,6 +863,92 @@ export async function detectTouches(date: string): Promise<Map<number, string>> 
     const { data, error } = await supabase.rpc('sales_rop_touches', { p_date: date });
     if (error) throw new Error(error.message);
     return new Map((data ?? []).map((r: any) => [Number(r.order_id), String(r.touch_kind)]));
+}
+
+/**
+ * Заказы, закрытые сегодня без разговора с клиентом.
+ *
+ * Зачем. За шестьдесят дней из 710 задач бота в производство ушло двадцать
+ * заказов, а в отмену восемьдесят девять — и по половине из них перед отменой
+ * не было ни одного звонка. Заказ, закрытый без разговора, — это потерянный
+ * клиент, о котором мы даже не знаем, почему он ушёл.
+ *
+ * Это НЕ обвинение и не штраф. Привязка звонка к заказу ошибается примерно в
+ * трети случаев, а позвонить могли с мобильного. Поэтому строка в отчёте
+ * говорит «звонка не вижу», а не «не звонил»: разница между этими фразами —
+ * разговор с человеком о его работе.
+ */
+export async function detectSilentCancels(
+    date: string,
+    orderIds: number[],
+): Promise<Map<number, { statusName: string }>> {
+    const result = new Map<number, { statusName: string }>();
+    if (orderIds.length === 0) return result;
+
+    // Какие статусы считаются закрытием без продажи — из справочника CRM, а не
+    // списком в коде: статусы заводит владелец, и зашитый список устареет молча.
+    const { data: dict } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code, item_name, active')
+        .eq('entity_type', 'status');
+    const cancelCodes = new Map<string, string>();
+    for (const row of ((dict ?? []) as any[])) {
+        const name = String(row.item_name ?? '');
+        if (/отмен|купили в другом/i.test(name)) cancelCodes.set(String(row.item_code), name);
+    }
+    if (cancelCodes.size === 0) return result;
+
+    const from = `${date}T00:00:00.000Z`;
+    const to = `${date}T23:59:59.999Z`;
+
+    const { data: moved } = await supabase
+        .from('order_history_log')
+        .select('retailcrm_order_id, new_value, occurred_at')
+        .in('retailcrm_order_id', orderIds)
+        .eq('field', 'status')
+        .gte('occurred_at', from)
+        .lte('occurred_at', to);
+
+    const cancelled = new Map<number, string>();
+    for (const row of ((moved ?? []) as any[])) {
+        const code = typeof row.new_value === 'object' ? row.new_value?.code : String(row.new_value ?? '').replace(/"/g, '');
+        const name = cancelCodes.get(String(code));
+        if (name) cancelled.set(Number(row.retailcrm_order_id), name);
+    }
+    if (cancelled.size === 0) return result;
+
+    // Был ли разговор по такому заказу за последние три дня. Три, а не один:
+    // менеджер мог поговорить вчера и закрыть сегодня — это нормальная работа.
+    const ids = Array.from(cancelled.keys());
+    const { data: matches } = await supabase
+        .from('call_order_matches')
+        .select('retailcrm_order_id, telphin_call_id')
+        .in('retailcrm_order_id', ids);
+
+    const callIdsByOrder = new Map<number, string[]>();
+    for (const m of ((matches ?? []) as any[])) {
+        const list = callIdsByOrder.get(Number(m.retailcrm_order_id)) ?? [];
+        list.push(String(m.telphin_call_id));
+        callIdsByOrder.set(Number(m.retailcrm_order_id), list);
+    }
+
+    const allCallIds = Array.from(callIdsByOrder.values()).flat();
+    const recent = new Set<string>();
+    if (allCallIds.length > 0) {
+        const since = new Date(new Date(`${date}T00:00:00.000Z`).getTime() - 3 * 86_400_000).toISOString();
+        const { data: calls } = await supabase
+            .from('raw_telphin_calls')
+            .select('telphin_call_id')
+            .in('telphin_call_id', allCallIds)
+            .gte('started_at', since);
+        for (const c of ((calls ?? []) as any[])) recent.add(String(c.telphin_call_id));
+    }
+
+    for (const [orderId, statusName] of Array.from(cancelled.entries())) {
+        const spoke = (callIdsByOrder.get(orderId) ?? []).some((id) => recent.has(id));
+        if (!spoke) result.set(orderId, { statusName });
+    }
+    return result;
 }
 
 export type EveningResult = {
@@ -954,6 +1095,15 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             },
         ]),
     );
+    // Заказы, закрытые сегодня без разговора с клиентом. Считаем по всему
+    // сегодняшнему плану разом: по одному заказу за раз это полсотни запросов.
+    const silentCancels = await soft(
+        'закрытые без разговора',
+        new Map<number, { statusName: string }>(),
+        degraded,
+        () => detectSilentCancels(today, ((tasks ?? []) as any[]).map((t) => Number(t.order_id))),
+    );
+
     const workdaysLeft = workdaysLeftInMonth(today);
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
@@ -962,7 +1112,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             ? formatPersonalPlan({ sold: personalSold.get(managerId as number) ?? 0, plan, workdaysLeft })
             : null;
         const own =
-            formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE) +
+            formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE, silentCancels) +
             (personal ? `\n\n${personal}` : '');
         const call = managerId === null ? null : callsById.get(String(managerId));
         const base = managerId === null ? null : baseById.get(String(managerId));
