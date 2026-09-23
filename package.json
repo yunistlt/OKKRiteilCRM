@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "next dev",
-    "build": "next build && tsx scripts/index-project-code.ts --if-production",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
