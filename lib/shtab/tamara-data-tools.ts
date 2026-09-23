@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { EXTERNAL_DB_TITLES, assertReadOnlyQuery, externalDbConfigured, externalEngine, queryExternal } from '@/lib/shtab/external/client';
 import { FORBIDDEN_RELATIONS } from '@/lib/shtab/tamara-sql';
 import { formatWeekReview, lastWeek, loadWeek, recommend } from '@/lib/sales-rop/load-review';
+import { recentReports, sendToOwner } from '@/lib/shtab/tamara-telegram';
 
 /**
  * Чем Тамара ориентируется в данных.
@@ -82,6 +83,37 @@ export const DATA_TOOLS = [
                     to: { type: 'string', description: 'Конец периода ГГГГ-ММ-ДД.' },
                     days: { type: 'integer', description: 'Или просто: за сколько последних дней.' },
                 },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'telegram_owner',
+            description:
+                'Написать владельцу в телеграм. Адресат один и задан в настройках — чужой чат указать нельзя. Подпись добавляется сама, её писать не надо. Пользуйся, когда владелец просит что-то прислать или когда собираешь для него отчёт. Каждое сообщение остаётся в журнале отправок.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    text: { type: 'string', description: 'Текст сообщения. Простой текст, без разметки.' },
+                    kind: {
+                        type: 'string',
+                        description: 'Что это: message — обычное сообщение, daily_report — ежедневный отчёт.',
+                    },
+                },
+                required: ['text'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'my_reports',
+            description:
+                'Мои прошлые отчёты владельцу. Вызывай перед тем, как собрать новый: форму отчёта выбираю я, и она не должна меняться каждый день без причины — к отчёту привыкают и читают его по привычным местам.',
+            parameters: {
+                type: 'object',
+                properties: { limit: { type: 'integer', description: 'Сколько последних. По умолчанию 3.' } },
             },
         },
     },
@@ -245,6 +277,26 @@ export async function executeDataTool(name: string, args: any): Promise<ToolResu
         if (name === 'tseh_tables') return await tsehSchema(args);
         if (name === 'tseh_query') return await tsehQuery(args);
         if (name === 'sales_team_review') return await teamReview(args);
+
+        if (name === 'telegram_owner') {
+            const text = String(args?.text ?? '').trim();
+            if (!text) return { ok: false, reason: 'Пустое сообщение отправлять не буду.' };
+            const kind = String(args?.kind ?? 'message');
+            const res = await sendToOwner(text, {
+                kind,
+                reportDate: kind === 'daily_report' ? new Date().toISOString().slice(0, 10) : null,
+            });
+            return res.ok
+                ? { ok: true, sent: true, parts: res.parts, note: 'Отправлено владельцу, подпись поставлена.' }
+                : { ok: false, reason: res.error ?? 'не отправилось' };
+        }
+
+        if (name === 'my_reports') {
+            const items = await recentReports(Number(args?.limit) || 3);
+            return items.length === 0
+                ? { reports: [], note: 'Отчётов ещё не было — форму выбираешь ты.' }
+                : { reports: items, note: 'Держись знакомой формы: к отчёту привыкают.' };
+        }
         return { available: false, reason: `Неизвестный инструмент: ${name}` };
     } catch (e: any) {
         return { available: false, reason: String(e?.message ?? e) };
