@@ -31,6 +31,15 @@ describe('что Тамаре разрешено читать', () => {
 
     // В схеме auth лежат учётки самой платформы, и по имени `users` такую
     // таблицу не поймать: она называется `auth.users`.
+    // Справочник базы — описание данных, а не данные. Без него модель не
+    // может посмотреть структуру таблицы и уходит в перебор.
+    it('справочник схемы читать можно', () => {
+        expect(() =>
+            assertAllowedQuery("SELECT column_name FROM information_schema.columns WHERE table_name = $$orders$$"),
+        ).not.toThrow();
+        expect(() => assertAllowedQuery('SELECT table_name FROM information_schema.tables')).not.toThrow();
+    });
+
     it('чужие схемы не проходят', () => {
         expect(() => assertAllowedQuery('SELECT * FROM auth.users')).toThrow(/только схему public/);
         expect(() => assertAllowedQuery('SELECT * FROM storage.objects')).toThrow();
