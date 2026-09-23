@@ -1,5 +1,9 @@
 import { supabase } from '@/utils/supabase';
 import { formatStructure, loadStructure } from '@/lib/shtab/structure';
+import { applyStructureOps } from '@/lib/shtab/structure-apply';
+import type { StructureOp } from '@/lib/shtab/structure-apply';
+import { importStaffDoc } from '@/lib/shtab/staff-doc-import';
+import { tsehPeople, tsehStaffDocs } from '@/lib/shtab/tseh-staff';
 import { NON_INCOME_STATUSES, monthlyIncome, monthsAgo } from '@/lib/shtab/income';
 import type { IncomeRow } from '@/lib/shtab/income';
 import { topArea } from '@/lib/shtab/types';
@@ -154,6 +158,75 @@ const OWN_TOOLS = [
                     doc_id: { type: 'integer', description: 'Номер документа из shtab_structure.' },
                     post_id: { type: 'integer', description: 'Или номер поста — тогда вернутся все его документы.' },
                 },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_people',
+            description:
+                'Работающие сотрудники из ЦехУспеха: идентификатор, ФИО, должность, отдел, цех. Вызывай перед тем, как сажать людей на посты: сажать надо по идентификатору отсюда, а не по фамилии из головы. Уволенных в списке нет.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_structure_apply',
+            description:
+                'Собрать структуру: завести посты, подчинить их друг другу, посадить людей, записать ЦКП и обязанности. Сначала скажи владельцу, что собираешься сделать, потом применяй. Минусы, разборы и проекты этим инструментом не трогаются — их ты не заводишь.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    operations: {
+                        type: 'array',
+                        description: 'Операции по порядку.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                op: {
+                                    type: 'string',
+                                    enum: ['create_post', 'update_post', 'set_parent', 'set_holder'],
+                                },
+                                title: { type: 'string', description: 'Название нового поста (create_post).' },
+                                post: { type: 'string', description: 'Какой пост меняем: номер или название.' },
+                                parent: { type: 'string', description: 'Кому подчинить: номер, название или пусто для верхнего уровня.' },
+                                holder_person_id: { type: 'string', description: 'Идентификатор человека из tseh_people.' },
+                                vkp: { type: 'string', description: 'Ценный конечный продукт поста.' },
+                                duties: { type: 'string', description: 'Обязанности поста.' },
+                                statistic: { type: 'string', description: 'Еженедельная статистика поста.' },
+                            },
+                            required: ['op'],
+                        },
+                    },
+                },
+                required: ['operations'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'tseh_staff_docs',
+            description:
+                'Опись документов по сотрудникам в ЦехУспехе: чьи, как называются, когда менялись. Отсюда берутся должностные инструкции, если они там есть.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_import_staff_doc',
+            description:
+                'Перенести документ сотрудника из ЦехУспеха в папку поста: файл сохраняется у нас, текст извлекается. Номер документа — из tseh_staff_docs.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    doc_id: { type: 'string', description: 'Номер документа в ЦехУспехе.' },
+                    post: { type: 'string', description: 'Пост, в папку которого класть: номер или название.' },
+                },
+                required: ['doc_id', 'post'],
             },
         },
     },
@@ -530,6 +603,37 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
                 reason: (d.text_content ?? '').trim() ? undefined : 'Текст из файла не извлёкся — прочитать нечем.',
             })),
         };
+    }
+
+    if (name === 'tseh_people') {
+        return (await tsehPeople()) as ToolResult;
+    }
+
+    if (name === 'tseh_staff_docs') {
+        const res = await tsehStaffDocs();
+        return {
+            ...res,
+            note: 'Это опись документов ЦехУспеха, а не папки постов. Перенести нужный — shtab_import_staff_doc.',
+        } as ToolResult;
+    }
+
+    if (name === 'shtab_structure_apply') {
+        const ops = Array.isArray(args?.operations) ? args.operations : [];
+        if (ops.length === 0) return { available: false, reason: 'Операций не передано.' };
+        if (ops.length > 60) return { available: false, reason: 'Слишком много операций за раз — разбей на части.' };
+        // Люди подтягиваются здесь же: фамилию на пост надо ставить из
+        // ЦехУспеха, а не из того, что модель помнит.
+        const { people } = await tsehPeople();
+        const { results } = await applyStructureOps(ops as StructureOp[], people);
+        return {
+            done: results.filter((r) => r.ok).map((r) => r.what),
+            skipped: results.filter((r) => !r.ok).map((r) => r.what),
+            note: 'Схема уже изменилась — владелец видит её на вкладке «Структура». Перескажи ему, что вышло.',
+        };
+    }
+
+    if (name === 'shtab_import_staff_doc') {
+        return await importStaffDoc(String(args?.doc_id ?? ''), args?.post);
     }
 
     if (name === 'shtab_query') {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isReasoningModel } from '@/lib/shtab/tamara';
-import { formatMemory, formatSummary, formatTail, titleFromQuestion } from '@/lib/shtab/tamara-chat';
+import { formatFiles, formatMemory, formatSummary, formatTail, titleFromQuestion } from '@/lib/shtab/tamara-chat';
 
 describe('выбор способа обращения к модели', () => {
     it('семейства gpt-5 и o опознаются как рассуждающие', () => {
@@ -51,5 +51,24 @@ describe('контекст для модели', () => {
         ]);
         expect(text).toContain('[обстоятельство] ядро из шести человек');
         expect(text).toContain('[как работать] писать коротко');
+    });
+});
+
+describe('файлы, приложенные к разговору', () => {
+    it('без файлов контекст говорит, что их нет', () => {
+        expect(formatFiles([])).toContain('не приложено');
+    });
+
+    it('нечитаемый файл назван нечитаемым, а не пропущен', () => {
+        // Пропустить его молча — значит дать Тамаре решить, что в документе
+        // ничего нет, хотя она его просто не открыла.
+        const text = formatFiles([{ title: 'Скан приказа', file_name: 'prikaz.pdf', text_content: '   ' }]);
+        expect(text).toContain('текст не извлёкся');
+    });
+
+    it('длинный файл режется и об этом сказано', () => {
+        const text = formatFiles([{ title: 'Договор', file_name: 'd.pdf', text_content: 'я'.repeat(20000) }]);
+        expect(text).toContain('показано начало из 20 000 знаков'.replace(/\s/g, ' ').replace('20 000', '20000'));
+        expect(text.length).toBeLessThan(13000);
     });
 });

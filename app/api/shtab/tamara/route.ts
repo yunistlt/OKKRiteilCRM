@@ -10,9 +10,11 @@ import {
     searchTamaraKnowledge,
 } from '@/lib/shtab/tamara';
 import {
+    chatFiles,
     chatTail,
     createChat,
     digestChat,
+    formatFiles,
     formatMemory,
     formatSummary,
     formatTail,
@@ -80,11 +82,12 @@ export async function POST(req: NextRequest) {
         let chat = parsed.data.chat_id ? await getChat(parsed.data.chat_id) : await latestChat();
         if (!chat) chat = await createChat(titleFromQuestion(question));
 
-        const [prompt, tail, knowledge, memory] = await Promise.all([
+        const [prompt, tail, knowledge, memory, files] = await Promise.all([
             getTamaraPrompt('shtab_tamara_chat'),
             chatTail(chat.id),
             searchTamaraKnowledge(question),
             searchMemory(question),
+            chatFiles(chat.id),
         ]);
 
         const answer = await runTamara({
@@ -95,6 +98,7 @@ export async function POST(req: NextRequest) {
                 question,
                 knowledge_context: formatKnowledge(knowledge),
                 memory_context: formatMemory(memory),
+                files_context: formatFiles(files),
                 summary_context: formatSummary(chat),
                 history_context: formatTail(tail),
             }),
