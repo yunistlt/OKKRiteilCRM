@@ -59,6 +59,18 @@ export async function getTamaraPrompt(key: string): Promise<TamaraPrompt> {
     };
 }
 
+/**
+ * Рассуждающая модель или обычная.
+ *
+ * Проверяется по имени, а не по списку: список пришлось бы дописывать к каждому
+ * релизу, а забытая модель ломается не мягко — запрос с max_tokens отвергается
+ * с 400, и разговор молча перестаёт работать. Семейства gpt-5* и o* требуют
+ * max_completion_tokens и не принимают температуру, отличную от своей.
+ */
+export function isReasoningModel(model: string): boolean {
+    return /^(gpt-5|o[134])/i.test(model.trim());
+}
+
 export type KnowledgeHit = { slug: string; title: string; content: string; source_ref: string; similarity: number };
 
 /** Поиск по знаниям Тамары. Пустой результат — не ошибка: знания могут быть не засеяны. */
@@ -110,6 +122,11 @@ export async function runTamara(opts: {
     purpose: string;
     withTools?: boolean;
     /**
+     * Сколько думать перед ответом. Действует только на рассуждающих моделях;
+     * на остальных параметр не отправляется вовсе.
+     */
+    reasoningEffort?: 'low' | 'medium' | 'high';
+    /**
      * Схема ответа для структурированного вывода. Нужна там, где ответ разбирает
      * не человек, а код: программа состоит из задач пяти типов, и форму надо
      * гарантировать схемой, а не уговорами в промпте.
@@ -132,11 +149,26 @@ export async function runTamara(opts: {
         { role: 'user', content: opts.userContent },
     ];
 
+    const reasoning = isReasoningModel(opts.prompt.model);
+    const effort = opts.reasoningEffort ?? 'medium';
+
+    // Рассуждающая модель с инструментами живёт только в Responses API: в
+    // /v1/chat/completions такое сочетание отвергается с 400 («use /v1/responses
+    // or set reasoning_effort to none»). Отказываться ради инструментов от
+    // размышления нельзя — разбор без шагов и есть то, ради чего она нужна.
+    if (reasoning && opts.withTools !== false) {
+        return runViaResponses({ ...opts, effort, system: `${opts.prompt.systemPrompt}\n\n${GUARDRAIL}` });
+    }
+
     for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
         const completion = await openai.chat.completions.create({
             model: opts.prompt.model,
-            temperature: opts.prompt.temperature,
-            max_tokens: opts.prompt.maxTokens,
+            // У рассуждающих моделей другие имена параметров, и это не
+            // придирка API: max_tokens там отвергается с ошибкой, а температура
+            // принимается только своя. Подробности — в isReasoningModel.
+            ...(reasoning
+                ? { max_completion_tokens: opts.prompt.maxTokens, reasoning_effort: 'none' }
+                : { temperature: opts.prompt.temperature, max_tokens: opts.prompt.maxTokens }),
             messages,
             ...(opts.withTools === false ? {} : { tools: SHTAB_TOOLS as any }),
             ...(opts.schema
@@ -187,6 +219,114 @@ export async function runTamara(opts: {
 
     // Витки кончились, а ответа нет — честно говорим об этом, а не выдаём
     // последнюю реплику модели за вывод.
+    return {
+        reply: 'Не смогла собрать ответ: слишком много обращений к данным подряд. Спроси уже, пожалуйста.',
+        usedTools,
+        model: lastModel,
+    };
+}
+
+
+/**
+ * Тот же цикл с инструментами, но через Responses API — путь рассуждающих
+ * моделей.
+ *
+ * Отличия от chat.completions, из-за которых это отдельная функция, а не пара
+ * условий: инструмент описывается плоско (без обёртки function), ответ приходит
+ * списком элементов, а результат инструмента возвращается элементом
+ * function_call_output с call_id. Рассуждения модели между витками не теряются:
+ * элементы её вывода целиком кладутся обратно во вход.
+ */
+async function runViaResponses(opts: {
+    prompt: TamaraPrompt;
+    userContent: string;
+    purpose: string;
+    effort: 'low' | 'medium' | 'high';
+    system: string;
+    schema?: { name: string; schema: Record<string, unknown> };
+}): Promise<TamaraAnswer> {
+    const openai = getOpenAIClient();
+    const usedTools: Array<{ name: string; args: unknown }> = [];
+    let lastModel: string | null = null;
+
+    const tools = SHTAB_TOOLS.map((t) => ({
+        type: 'function' as const,
+        name: t.function.name,
+        description: t.function.description,
+        parameters: t.function.parameters,
+    }));
+
+    const input: any[] = [{ role: 'user', content: opts.userContent }];
+
+    for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration += 1) {
+        const response: any = await (openai as any).responses.create({
+            model: opts.prompt.model,
+            instructions: opts.system,
+            input,
+            tools,
+            reasoning: { effort: opts.effort },
+            max_output_tokens: opts.prompt.maxTokens,
+            ...(opts.schema
+                ? { text: { format: { type: 'json_schema', name: opts.schema.name, strict: true, schema: opts.schema.schema } } }
+                : {}),
+        });
+        lastModel = response.model;
+        await recordAiUsage({
+            agentId: AiAgent.TAMARA,
+            model: response.model,
+            // Учёт расхода общий для всех агентов и считает по именам из
+            // chat.completions; здесь имена другие, поэтому перекладываем.
+            usage: {
+                prompt_tokens: response.usage?.input_tokens ?? 0,
+                completion_tokens: response.usage?.output_tokens ?? 0,
+                total_tokens: response.usage?.total_tokens ?? 0,
+                prompt_tokens_details: { cached_tokens: response.usage?.input_tokens_details?.cached_tokens ?? 0 },
+            } as any,
+            purpose: opts.purpose,
+        });
+
+        const output: any[] = response.output ?? [];
+        const calls = output.filter((o) => o.type === 'function_call');
+
+        if (calls.length > 0) {
+            input.push(...output);
+            for (const call of calls) {
+                let args: any = {};
+                try {
+                    args = JSON.parse(call.arguments || '{}');
+                } catch {
+                    args = {};
+                }
+                const result = SHTAB_TOOL_NAMES.has(call.name)
+                    ? await executeShtabTool(call.name, args)
+                    : { available: false, reason: `Неизвестный инструмент: ${call.name}` };
+                usedTools.push({ name: call.name, args });
+                input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) });
+            }
+            continue;
+        }
+
+        const text: string =
+            response.output_text ??
+            output
+                .filter((o) => o.type === 'message')
+                .flatMap((o) => (o.content ?? []).map((c: any) => c.text ?? ''))
+                .join('')
+                .trim();
+
+        // Размышление съело весь лимит и на ответ не осталось — это не ответ, и
+        // выдавать пустоту за него нельзя.
+        if (!text.trim() && response.status === 'incomplete') {
+            return {
+                reply: 'Не хватило длины ответа на размышление. Спроси то же самое покороче или переключи глубину пониже.',
+                usedTools,
+                model: lastModel,
+            };
+        }
+
+        return { reply: text.trim(), usedTools, model: lastModel };
+    }
+
     return {
         reply: 'Не смогла собрать ответ: слишком много обращений к данным подряд. Спроси уже, пожалуйста.',
         usedTools,
