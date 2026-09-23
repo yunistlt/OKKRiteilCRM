@@ -817,3 +817,13 @@
   text-decoration:none}
 
 .shtab .rich-doc:hover{background:var(--ink);color:var(--surface)}
+
+/* Документ: открыть и скачать — две кнопки рядом. Открытый в браузере PDF
+   сохраняется через меню, которое ещё надо найти, поэтому «скачать» отдельно. */
+.shtab .rich-doc-pair{display:inline-flex;margin:6px 0;vertical-align:middle}
+
+.shtab .rich-doc-save{display:inline-block;padding:8px 12px;border:1px solid var(--blue);
+  border-left:0;background:var(--surface);color:var(--blue);font-weight:600;font-size:13.5px;
+  text-decoration:none;white-space:nowrap}
+
+.shtab .rich-doc-save:hover{background:var(--blue);color:var(--on-blue)}

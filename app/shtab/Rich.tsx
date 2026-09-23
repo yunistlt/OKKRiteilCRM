@@ -29,20 +29,28 @@ function Inline({ nodes }: { nodes: InlineNode[] }) {
                         </code>
                     );
                 if (n.kind === 'link') {
-                    // Ссылка на документ — не строка текста, а действие: её
-                    // ищут глазами, чтобы скачать. Обычная подчёркнутая ссылка
-                    // в потоке текста теряется, и владелец пишет «не вижу».
+                    // Ссылка на документ — не строка текста, а действие, и
+                    // действий два: посмотреть сразу и забрать файл себе.
+                    // Одной ссылкой их не покрыть: открытый в браузере PDF
+                    // сохраняется через меню, которое ещё надо найти.
                     const isDoc = /^\/api\/shtab\/doc\//.test(n.href);
+                    if (!isDoc) {
+                        return (
+                            <a className="rich-link" href={n.href} target="_blank" rel="noreferrer" key={i}>
+                                {n.text}
+                            </a>
+                        );
+                    }
+                    const sep = n.href.includes('?') ? '&' : '?';
                     return (
-                        <a
-                            className={isDoc ? 'rich-doc' : 'rich-link'}
-                            href={n.href}
-                            target="_blank"
-                            rel="noreferrer"
-                            key={i}
-                        >
-                            {isDoc ? `📄 ${n.text} — открыть PDF` : n.text}
-                        </a>
+                        <span className="rich-doc-pair" key={i}>
+                            <a className="rich-doc" href={n.href} target="_blank" rel="noreferrer">
+                                📄 {n.text}
+                            </a>
+                            <a className="rich-doc-save" href={`${n.href}${sep}download=1`}>
+                                скачать
+                            </a>
+                        </span>
                     );
                 }
                 return <React.Fragment key={i}>{n.text}</React.Fragment>;

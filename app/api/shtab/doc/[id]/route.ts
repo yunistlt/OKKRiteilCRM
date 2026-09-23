@@ -57,10 +57,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
             .replace(/\s+/g, '-')
             .slice(0, 60);
 
+        // Открыть или скачать — решает тот, кто нажимал. По умолчанию файл
+        // открывается прямо в браузере (посмотреть быстрее, чем искать в папке
+        // загрузок), а по ?download=1 браузер его сохраняет.
+        const asFile = req.nextUrl.searchParams.get('download') === '1';
+        const name = `${encodeURIComponent(safe || 'dokument')}.pdf`;
+
         return new NextResponse(pdfBytes as any, {
             headers: {
                 'Content-Type': 'application/pdf',
-                'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(safe || 'dokument')}.pdf`,
+                'Content-Disposition': `${asFile ? 'attachment' : 'inline'}; filename*=UTF-8''${name}`,
                 'Cache-Control': 'no-store',
             },
         });
