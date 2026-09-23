@@ -1,7 +1,7 @@
 import type { TamaraController } from './Tamara';
 import type { Shtab } from './useShtab';
 
-export const VIEW_IDS = ['pult', 'minus', 'razbor', 'karta', 'strat', 'programs', 'projects', 'arch', 'celi', 'tamara'] as const;
+export const VIEW_IDS = ['pult', 'minus', 'razbor', 'karta', 'strat', 'programs', 'projects', 'arch', 'celi', 'chat', 'tamara'] as const;
 
 export type ViewId = (typeof VIEW_IDS)[number];
 
@@ -15,6 +15,7 @@ export const VIEW_TITLES: Record<ViewId, string> = {
     projects: 'Проекты',
     arch: 'Разборы',
     celi: 'Цели и посты',
+    chat: 'Разговор',
     tamara: 'Тамара',
 };
 

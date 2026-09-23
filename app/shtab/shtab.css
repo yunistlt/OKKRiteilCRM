@@ -592,3 +592,56 @@
 .shtab .uid{margin-top:5px;font-size:12.5px;font-family:var(--f-mono,ui-monospace,monospace);opacity:.85}
 .shtab .post-pick{display:flex;gap:9px;align-items:center;margin-top:9px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
 .shtab .post-pick select{font-size:13.5px;padding:4px 7px;max-width:100%}
+
+/* ── разговор с Тамарой ────────────────────────────────────────────────────── */
+/* Две колонки: список разговоров и сама переписка. Лента прокручивается внутри
+   себя, а не страницей, иначе поле ввода уезжает вверх и его приходится искать. */
+.shtab .chat{display:grid;grid-template-columns:230px minmax(0,1fr);gap:0;
+  border:1px solid var(--line);background:var(--surface)}
+
+@media (max-width:900px){.shtab .chat{grid-template-columns:1fr}}
+
+.shtab .chat-list{border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;
+  max-height:640px;overflow:auto}
+
+.shtab .chat-item{border:1px solid transparent;padding:2px}
+
+.shtab .chat-item.on{border-color:var(--line-2);background:var(--surface-2)}
+
+.shtab .chat-pick{display:block;width:100%;text-align:left;padding:7px 8px}
+
+.shtab .chat-title{display:block;font-size:13.5px;line-height:1.35;margin-bottom:2px}
+
+.shtab .chat-ops{display:none;gap:6px;padding:0 8px 7px}
+
+.shtab .chat-item.on .chat-ops{display:flex}
+
+.shtab .chat-main{display:flex;flex-direction:column;min-width:0}
+
+.shtab .chat-summary{border-bottom:1px solid var(--line);padding:10px 16px;background:var(--surface-2)}
+
+.shtab .chat-summary summary{cursor:pointer}
+
+.shtab .chat-feed{flex:1;min-height:320px;max-height:520px;overflow:auto;padding:16px;display:flex;
+  flex-direction:column;gap:16px}
+
+.shtab .chat-msg{max-width:74ch}
+
+.shtab .chat-msg.user{align-self:flex-end;background:var(--surface-2);border:1px solid var(--line);padding:10px 12px}
+
+.shtab .chat-text{white-space:pre-wrap;font-size:14.5px;line-height:1.6;margin-top:4px}
+
+.shtab .chat-tools{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);margin-top:7px}
+
+.shtab .chat-wait{color:var(--ink-3);font-size:13px}
+
+.shtab .chat-send{border-top:1px solid var(--line);padding:12px 16px;display:flex;flex-direction:column;gap:10px}
+
+.shtab .chat-send textarea{min-height:64px}
+
+.shtab .chat-mem{display:flex;align-items:baseline;gap:10px;border:1px solid var(--line);
+  background:var(--surface);padding:8px 12px;font-size:13.5px}
+
+.shtab .chat-mem .eyebrow{white-space:nowrap}
+
+.shtab .chat-mem span:nth-child(2){flex:1}
