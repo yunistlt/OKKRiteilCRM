@@ -19,30 +19,29 @@ async function getAuditContext(orderId: number) {
     let latestEmailText: string | undefined = undefined;
 
     try {
-        // 1. Fetch Latest Successful Call
-        const { data: matchedCalls, error: matchedError } = await supabase
-            .from('call_order_matches')
-            .select(`
-                telphin_call_id,
-                raw_telphin_calls (
-                    event_id,
-                    transcript,
-                    recording_url,
-                    duration_sec,
-                    started_at,
-                    direction
-                )
-            `)
-            .eq('retailcrm_order_id', orderId)
-            // Note: ordering by related table field can be tricky in some PostgREST versions, 
-            // but we can sort locally or try the syntax:
-            // .order('raw_telphin_calls.started_at', { ascending: false }) 
+        // 1. Последний состоявшийся разговор по заказу.
+        //
+        // Связь из call_order_link: привязку сделала RetailCRM, наш матчинг по
+        // номеру телефона — запасной путь. Сортируем по времени разговора.
+        const { data: links, error: matchedError } = await supabase
+            .from('call_order_link')
+            .select('telphin_call_id, started_at')
+            .eq('order_id', orderId)
+            .order('started_at', { ascending: false })
             .limit(5);
 
-        if (!matchedError && matchedCalls && matchedCalls.length > 0) {
-            // Sort by started_at descending locally to be safe
+        let matchedCalls: any[] = [];
+        if (!matchedError && links && links.length > 0) {
+            const ids = Array.from(new Set((links as any[]).map((l) => String(l.telphin_call_id))));
+            const { data: rawCalls } = await supabase
+                .from('raw_telphin_calls')
+                .select('telphin_call_id, event_id, transcript, recording_url, duration_sec, started_at, direction')
+                .in('telphin_call_id', ids);
+            matchedCalls = (rawCalls ?? []) as any[];
+        }
+
+        if (!matchedError && matchedCalls.length > 0) {
             const calls = matchedCalls
-                .map((m: any) => m.raw_telphin_calls)
                 .filter(Boolean)
                 .sort((a: any, b: any) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 

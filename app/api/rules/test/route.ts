@@ -252,6 +252,10 @@ export async function POST(request: Request) {
 
             // INSERT MATCH
             console.log('[RuleTest] Inserting Call Match...');
+            // Синтетическая привязка для проверки правила. Пишем именно в
+            // call_order_matches, а не в RetailCRM: выдуманного заказа в CRM
+            // нет и быть не должно. Общая связь call_order_link подхватит эту
+            // строку — для такого заказа другого источника всё равно нет.
             const { error: matchErr } = await supabase.from('call_order_matches').insert({
                 telphin_call_id: syntheticCallId,
                 retailcrm_order_id: testOrderId,

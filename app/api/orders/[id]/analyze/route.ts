@@ -21,12 +21,7 @@ export async function POST(
         // 1. Fetch full order context
         const { data: order, error } = await supabase
             .from('orders')
-            .select(`
-                *,
-                call_order_matches (
-                    raw_telphin_calls (*)
-                )
-            `)
+            .select('*')
             .eq('id', orderId)
             .single();
 
@@ -36,10 +31,26 @@ export async function POST(
 
         // 2. Prepare data for AI
         // Flatten calls and sort by timestamp
-        const allCalls = (order.call_order_matches || [])
-            .flatMap((m: any) => m.raw_telphin_calls ? [m.raw_telphin_calls] : [])
-            .filter((c: any) => c !== null)
-            .sort((a: any, b: any) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+        // Звонки заказа — через общую связь (привязка из RetailCRM, наш
+        // матчинг запасной): разбор заказа не должен опираться на чужой
+        // разговор, привязанный по совпадению номера телефона.
+        const { data: callLinks } = await supabase
+            .from('call_order_link')
+            .select('telphin_call_id')
+            .eq('order_id', orderId);
+        const linkedIds = Array.from(
+            new Set(((callLinks ?? []) as any[]).map((l) => String(l.telphin_call_id)).filter(Boolean)),
+        );
+        let allCalls: any[] = [];
+        if (linkedIds.length > 0) {
+            const { data: rawCalls } = await supabase
+                .from('raw_telphin_calls')
+                .select('*')
+                .in('telphin_call_id', linkedIds);
+            allCalls = ((rawCalls ?? []) as any[]).sort(
+                (a: any, b: any) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime(),
+            );
+        }
 
         const lastCall = allCalls[0];
         const transcript = lastCall?.transcript || "Нет транскрипта";

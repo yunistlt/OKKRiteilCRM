@@ -186,10 +186,12 @@ export async function POST(req: Request) {
             if (functionName === 'check_order_calls') {
                 const orderId = args.order_id;
                 try {
+                    // Звонки заказа — из общей связи: привязка от RetailCRM,
+                    // наш матчинг по телефону запасной.
                     const { data: callMatches } = await supabase
-                        .from('call_order_matches')
+                        .from('call_order_link')
                         .select('telphin_call_id')
-                        .eq('retailcrm_order_id', orderId);
+                        .eq('order_id', orderId);
 
                     const callIds = (callMatches || []).map((m: any) => m.telphin_call_id);
 
