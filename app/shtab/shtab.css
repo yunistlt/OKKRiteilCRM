@@ -685,3 +685,12 @@
   background:var(--field);font-size:13px}
 
 .shtab .struct-doc-name{flex:1;text-align:left;text-decoration:underline;text-underline-offset:2px}
+
+.shtab .chat-files{display:flex;flex-wrap:wrap;gap:6px}
+
+.shtab .chat-file{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-2);
+  background:var(--surface-2);padding:3px 8px;font-size:12.5px}
+
+.shtab .chat-file-x{font-size:14px;line-height:1;color:var(--ink-3)}
+
+.shtab .chat-file-x:hover{color:var(--signal)}

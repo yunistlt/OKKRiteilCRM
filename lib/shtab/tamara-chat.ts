@@ -104,6 +104,50 @@ export function formatTail(tail: TamaraChatMessage[]): string {
     return tail.map((m) => `${m.role === 'user' ? 'Владелец' : 'Тамара'}: ${m.text}`).join('\n\n');
 }
 
+
+export type ChatFile = {
+    id: number;
+    chat_id: number;
+    title: string;
+    file_name: string;
+    size_bytes: number;
+    has_text: boolean;
+    created_at: string;
+};
+
+/** Файлы, приложенные к разговору. Тело не тянем — только опись и текст. */
+export async function chatFiles(chatId: number): Promise<Array<ChatFile & { text_content: string }>> {
+    const { data, error } = await supabase
+        .from('shtab_tamara_file')
+        .select('id, chat_id, title, file_name, size_bytes, text_content, created_at')
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true })
+        .limit(20);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((f: any) => ({ ...f, has_text: Boolean((f.text_content ?? '').trim()) }));
+}
+
+/**
+ * Приложенные файлы текстом для модели.
+ *
+ * Каждый режется: один договор на сорок страниц вытеснил бы из контекста и
+ * знания, и разговор. Если урезали — об этом сказано прямо, чтобы Тамара не
+ * делала вывод по куску, думая, что видит целое.
+ */
+const FILE_CHARS = 12_000;
+
+export function formatFiles(files: Array<{ title: string; file_name: string; text_content: string }>): string {
+    if (files.length === 0) return 'Файлов к разговору не приложено.';
+    return files
+        .map((f) => {
+            const text = (f.text_content ?? '').trim();
+            if (!text) return `— ${f.title} (${f.file_name}): текст не извлёкся, прочитать нечем.`;
+            const cut = text.length > FILE_CHARS;
+            return `— ${f.title} (${f.file_name})${cut ? `, показано начало из ${text.length} знаков` : ''}:\n${text.slice(0, FILE_CHARS)}`;
+        })
+        .join('\n\n');
+}
+
 export type MemoryHit = { id: number; fact: string; kind: string; created_at: string; similarity: number };
 
 /** Поиск по памяти. Сбой поиска не должен ронять разговор — как и у знаний. */

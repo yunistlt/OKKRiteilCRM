@@ -1,5 +1,6 @@
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
+import { extractPdfText } from '@/lib/pdf-text';
 
 /**
  * Нормализует извлеченный текст: убирает лишние пробелы, переносы строк и дубли.
@@ -35,11 +36,9 @@ export async function extractTextFromBuffer(buffer: Buffer, filename: string): P
         }
 
         if (ext === 'pdf') {
-            // Динамический импорт pdf-parse по аналогии с legal-contract-analysis.ts
-            const pdfParseModule = await import('pdf-parse');
-            const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-            const result = await pdfParse(buffer);
-            return normalizeText(result.text || '');
+            // Через общий хелпер: у pdf-parse сменилось API, и вызов по-старому
+            // не ронял разбор, а молча отдавал пустой текст.
+            return normalizeText(await extractPdfText(buffer));
         }
 
         if (ext === 'xlsx' || ext === 'xls') {

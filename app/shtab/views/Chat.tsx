@@ -28,6 +28,8 @@ type Message = {
 
 type MemoryRow = { id: number; fact: string; kind: string; created_at: string };
 
+type ChatFile = { id: number; title: string; file_name: string; size_bytes: number; has_text: boolean };
+
 /** Глубина размышления. Дороже и дольше — но разбор без шагов не разбор. */
 const EFFORTS: Array<{ id: 'low' | 'medium' | 'high'; title: string; hint: string }> = [
     { id: 'low', title: 'быстро', hint: 'короткий ответ, почти без проверок' },
@@ -51,12 +53,14 @@ export default function Chat({ tamara }: ViewProps) {
     const [chat, setChat] = useState<Chat | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [memory, setMemory] = useState<MemoryRow[]>([]);
+    const [files, setFiles] = useState<ChatFile[]>([]);
     const [showMemory, setShowMemory] = useState(false);
     const [text, setText] = useState('');
     const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('medium');
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
+    const fileRef = useRef<HTMLInputElement>(null);
 
     const loadChats = useCallback(async () => {
         const res = await fetch('/api/shtab/tamara/chats');
@@ -66,14 +70,59 @@ export default function Chat({ tamara }: ViewProps) {
         return (data.chats ?? []) as Chat[];
     }, []);
 
-    const openChat = useCallback(async (id: number | null) => {
-        const url = id ? `/api/shtab/tamara?chat_id=${id}` : '/api/shtab/tamara';
-        const res = await fetch(url);
+    const loadFiles = useCallback(async (chatId: number | null) => {
+        if (!chatId) return setFiles([]);
+        const res = await fetch(`/api/shtab/tamara/files?chat_id=${chatId}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || 'Разговор не открылся');
-        setChat(data.chat ?? null);
-        setMessages(data.messages ?? []);
+        setFiles(res.ok ? data.files ?? [] : []);
     }, []);
+
+    const openChat = useCallback(
+        async (id: number | null) => {
+            const url = id ? `/api/shtab/tamara?chat_id=${id}` : '/api/shtab/tamara';
+            const res = await fetch(url);
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Разговор не открылся');
+            setChat(data.chat ?? null);
+            setMessages(data.messages ?? []);
+            await loadFiles(data.chat?.id ?? null);
+        },
+        [loadFiles],
+    );
+
+    const attach = useCallback(
+        async (file: File) => {
+            setBusy(true);
+            setError(null);
+            try {
+                const body = new FormData();
+                body.append('file', file);
+                if (chat?.id) body.append('chat_id', String(chat.id));
+                const res = await fetch('/api/shtab/tamara/files', { method: 'POST', body });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data?.error || 'Файл не прицепился');
+                if (!chat) await openChat(data.chat_id);
+                await loadFiles(data.chat_id);
+                if (!data.has_text) {
+                    setError('Файл сохранён, но текст из него не извлёкся — Тамара его не прочитает.');
+                }
+            } catch (e) {
+                setError((e as Error).message);
+            } finally {
+                setBusy(false);
+                if (fileRef.current) fileRef.current.value = '';
+            }
+        },
+        [chat, openChat, loadFiles],
+    );
+
+    const detach = useCallback(
+        async (id: number) => {
+            await fetch(`/api/shtab/tamara/files/${id}`, { method: 'DELETE' });
+            await loadFiles(chat?.id ?? null);
+        },
+        [chat, loadFiles],
+    );
 
     const loadMemory = useCallback(async () => {
         const res = await fetch('/api/shtab/tamara/memory');
@@ -149,6 +198,7 @@ export default function Chat({ tamara }: ViewProps) {
         await loadChats();
         setChat(data);
         setMessages([]);
+        setFiles([]);
     }, [loadChats]);
 
     const rename = useCallback(
@@ -261,6 +311,19 @@ export default function Chat({ tamara }: ViewProps) {
                     </div>
 
                     <div className="chat-send">
+                        {files.length ? (
+                            <div className="chat-files">
+                                {files.map((f) => (
+                                    <span className="chat-file" key={f.id}>
+                                        {f.title}
+                                        {f.has_text ? null : <b style={{ color: 'var(--signal)' }}> без текста</b>}
+                                        <button className="chat-file-x" onClick={() => void detach(f.id)} title="убрать">
+                                            ×
+                                        </button>
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
                         <textarea
                             value={text}
                             placeholder="Что спросить"
@@ -287,9 +350,24 @@ export default function Chat({ tamara }: ViewProps) {
                                     </button>
                                 ))}
                             </div>
-                            <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()}>
-                                {busy ? 'думает…' : 'спросить'}
-                            </button>
+                            <div className="row" style={{ gap: 6 }}>
+                                <input
+                                    ref={fileRef}
+                                    type="file"
+                                    hidden
+                                    accept=".pdf,.doc,.docx,.txt,.xlsx,.xls"
+                                    onChange={(e) => {
+                                        const f = e.target.files?.[0];
+                                        if (f) void attach(f);
+                                    }}
+                                />
+                                <button className="btn btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+                                    прицепить файл
+                                </button>
+                                <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()}>
+                                    {busy ? 'думает…' : 'спросить'}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </section>

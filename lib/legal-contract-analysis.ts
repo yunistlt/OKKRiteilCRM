@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import { extractPdfText } from '@/lib/pdf-text';
 import { supabase } from '@/utils/supabase';
 import { extractTextFromImageBuffer } from '@/lib/legal-ocr';
 
@@ -51,8 +52,6 @@ export async function extractTextFromContract(params: {
 
     try {
         if (fileKind === 'txt') {
-            const pdfParseModule = await import('pdf-parse');
-            const pdfParse = (pdfParseModule as any).default || pdfParseModule;
             return {
                 text: normalizeExtractedText(buffer.toString('utf-8')),
                 status: 'completed',
@@ -75,10 +74,10 @@ export async function extractTextFromContract(params: {
 
 
         if (fileKind === 'pdf') {
-            const pdfParseModule = await import('pdf-parse');
-            const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-            const result = await pdfParse(buffer);
-            const plainText = result.text || '';
+            // Через общий хелпер: у pdf-parse сменилось API, и старый вызов
+            // не падал видимо — он отдавал пустой текст, и договор уходил в
+            // «нужна ручная проверка», как будто в нём нет текстового слоя.
+            const plainText = await extractPdfText(buffer);
             if (plainText.trim().length > 40) {
                 return {
                     text: normalizeExtractedText(plainText),
