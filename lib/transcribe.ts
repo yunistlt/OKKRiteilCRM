@@ -70,7 +70,7 @@ async function transcribeViaSttServer(file: File): Promise<string> {
 /**
  * Речь → текст. Предпочитаем свой STT-сервер (бесплатно); если STT_URL не задан — OpenAI Whisper.
  */
-async function runSpeechToText(file: File): Promise<string> {
+export async function runSpeechToText(file: File): Promise<string> {
     if (isSelfHostedSttConfigured()) {
         return await transcribeViaSttServer(file);
     }
