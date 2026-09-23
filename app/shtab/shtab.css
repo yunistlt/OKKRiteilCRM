@@ -698,3 +698,23 @@
 /* Кнопка записи, пока идёт диктовка: заметна, но не мигает — мигание в рабочем
    интерфейсе раздражает сильнее, чем помогает. */
 .shtab .btn-rec{background:var(--signal);border-color:var(--signal);color:var(--on-blue)}
+
+/* Предложения Тамары изменить настройку сервиса.
+   Стоят над полем ввода и выделены цветом сигнала: это единственное место в
+   разговоре, где нажатие меняет прод, и выглядеть как обычная карточка оно не
+   должно. */
+.shtab .proposals{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+
+.shtab .proposal{border-left:3px solid var(--signal)}
+
+.shtab .proposal-title{font-weight:600;margin-top:6px}
+
+.shtab .proposal-diff{display:flex;align-items:baseline;gap:8px;margin-top:8px;font-size:15px}
+
+.shtab .proposal-was{color:var(--ink-3);text-decoration:line-through}
+
+.shtab .proposal-arrow{color:var(--ink-3)}
+
+.shtab .proposal-will{color:var(--signal);font-size:17px}
+
+.shtab .proposal-reason{margin-top:8px;font-size:13.5px;color:var(--ink-2)}

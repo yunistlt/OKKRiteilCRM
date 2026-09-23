@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
             prompt,
             purpose: 'shtab_tamara_chat',
             reasoningEffort: effort ?? 'medium',
+            conversationId: chat.id,
             userContent: renderTemplate(prompt.userPromptTemplate, {
                 question,
                 knowledge_context: formatKnowledge(knowledge),

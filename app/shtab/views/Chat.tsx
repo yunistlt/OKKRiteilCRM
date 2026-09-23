@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ViewProps } from '../nav';
+import SettingProposals from './SettingProposals';
 
 // Разговор с Тамарой: свои чаты, память и пересказ.
 //
@@ -61,6 +62,9 @@ export default function Chat({ tamara }: ViewProps) {
     const [recording, setRecording] = useState(false);
     const [decoding, setDecoding] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Ответ Тамары мог оставить новое предложение по настройке: перечитываем
+    // карточки после каждого захода, иначе оно появится только после перезагрузки.
+    const [proposalsKey, setProposalsKey] = useState(0);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
@@ -228,6 +232,7 @@ export default function Chat({ tamara }: ViewProps) {
             if (!res.ok) throw new Error(data?.error || `Ответ ${res.status}`);
             await Promise.all([loadChats(), openChat(data.chat_id)]);
             if (data.digest?.remembered) await loadMemory();
+            setProposalsKey((k) => k + 1);
             tamara.say(
                 data.reply || 'Пусто.',
                 data.used_tools?.length ? `Смотрела: ${data.used_tools.join(', ')}.` : undefined,
@@ -360,6 +365,10 @@ export default function Chat({ tamara }: ViewProps) {
                         ))}
                         {busy ? <div className="chat-msg assistant chat-wait">думает…</div> : null}
                     </div>
+
+                    {/* Предложения по настройкам — над полем ввода, а не в ленте:
+                        решение по ним принимают сейчас, а лента уезжает вверх. */}
+                    <SettingProposals key={proposalsKey} />
 
                     <div className="chat-send">
                         {files.length ? (

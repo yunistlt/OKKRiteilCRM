@@ -26,7 +26,8 @@
     "okk:consultant-real-cases": "tsx scripts/okk_consultant_real_cases.ts",
     "okk:consultant-real-cases:refresh": "tsx scripts/okk_consultant_real_cases.ts",
     "okk:consultant-real-cases:check": "tsx scripts/okk_consultant_real_cases.ts --check",
-    "okk:consultant-quality-gate": "npm run okk:consultant-real-cases:check && npm run okk:consultant-regression"
+    "okk:consultant-quality-gate": "npm run okk:consultant-real-cases:check && npm run okk:consultant-regression",
+    "tamara:index-code": "tsx scripts/index-project-code.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",

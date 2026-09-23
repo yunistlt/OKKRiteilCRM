@@ -122,6 +122,12 @@ export async function runTamara(opts: {
     purpose: string;
     withTools?: boolean;
     /**
+     * Из какого разговора идёт заход. Нужен предложениям по настройкам: по нему
+     * видно, откуда взялось «поднять нагрузку на 5%», когда владелец вернётся к
+     * карточке через неделю.
+     */
+    conversationId?: number | null;
+    /**
      * Сколько думать перед ответом. Действует только на рассуждающих моделях;
      * на остальных параметр не отправляется вовсе.
      */
@@ -202,7 +208,7 @@ export async function runTamara(opts: {
                     args = {};
                 }
                 const result = SHTAB_TOOL_NAMES.has(name)
-                    ? await executeShtabTool(name, args)
+                    ? await executeShtabTool(name, args, { conversationId: opts.conversationId ?? null })
                     : { available: false, reason: `Неизвестный инструмент: ${name}` };
                 usedTools.push({ name, args });
                 messages.push({
@@ -243,6 +249,7 @@ async function runViaResponses(opts: {
     purpose: string;
     effort: 'low' | 'medium' | 'high';
     system: string;
+    conversationId?: number | null;
     schema?: { name: string; schema: Record<string, unknown> };
 }): Promise<TamaraAnswer> {
     const openai = getOpenAIClient();
@@ -298,7 +305,7 @@ async function runViaResponses(opts: {
                     args = {};
                 }
                 const result = SHTAB_TOOL_NAMES.has(call.name)
-                    ? await executeShtabTool(call.name, args)
+                    ? await executeShtabTool(call.name, args, { conversationId: opts.conversationId ?? null })
                     : { available: false, reason: `Неизвестный инструмент: ${call.name}` };
                 usedTools.push({ name: call.name, args });
                 input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) });

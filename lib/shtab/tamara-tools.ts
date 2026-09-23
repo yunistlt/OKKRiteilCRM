@@ -13,7 +13,12 @@ import { topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
 import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-tools';
+import { SETTINGS_TOOLS, SETTINGS_TOOL_NAMES, executeSettingsTool } from '@/lib/shtab/tamara-settings-tools';
+import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { ALLOWED_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
+
+/** Из какого разговора пришёл вызов — предложение по настройке помнит, откуда оно. */
+export type ToolContext = { conversationId?: number | null };
 
 // Инструменты Тамары (OpenAI function calling).
 //
@@ -391,7 +396,10 @@ const OWN_TOOLS = [
 
 // Инструменты цеха живут отдельным файлом: у них своя база, свой движок и своя
 // причина отказать (база не подключена). Модели они видны единым списком.
-export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS];
+//
+// Настройки и код — тоже отдельно: у настроек своё правило (предлагать, но не
+// применять), у кода свой источник (снимок репозитория, а не боевые таблицы).
+export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS, ...SETTINGS_TOOLS, ...CODE_TOOLS];
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
 
@@ -682,9 +690,17 @@ async function readPrograms(razborId?: number): Promise<ToolResult> {
     };
 }
 
-export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
+export async function executeShtabTool(
+    name: string,
+    args: any,
+    ctx: ToolContext = {},
+): Promise<ToolResult> {
     // Цеховые — до try: они сами возвращают причину отказа, а не бросают.
     if (TSEH_TOOL_NAMES.has(name)) return await executeTsehTool(name, args);
+    // Настройки и код — тоже: они возвращают отказ текстом, чтобы модель
+    // прочитала причину и исправилась, а не уронила разговор.
+    if (SETTINGS_TOOL_NAMES.has(name)) return await executeSettingsTool(name, args, ctx);
+    if (CODE_TOOL_NAMES.has(name)) return await executeCodeTool(name, args);
 
     if (name === 'sales_facts') {
         const months = Number.isFinite(Number(args?.months)) ? Math.min(36, Math.max(2, Number(args.months))) : 12;

@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { SETTINGS_SCHEMA, specFor } from '@/lib/sales-rop/settings-schema';
+import { assertSalesRopValue } from '@/lib/settings-registry/sales-rop';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,14 +100,13 @@ export async function PUT(req: Request) {
             return NextResponse.json({ error: 'Неверные данные формы' }, { status: 400 });
         }
 
-        // Нагрузка — единственное значение, где опечатка бьёт по всему отделу
-        // сразу: 10 вместо 1.0 завалит людей списком, который не сделать.
-        for (const c of parsed.data.changes) {
-            if (c.key !== 'load_factor') continue;
-            const v = Number(c.value);
-            if (!Number.isFinite(v) || v < 0.5 || v > 2) {
-                return NextResponse.json({ error: 'Нагрузка задаётся числом от 0.5 до 2.0' }, { status: 400 });
-            }
+        // Проверка одна на все пути к настройке: сюда ходит этот экран, а через
+        // реестр настроек — предложения Тамары. Проверка, стоящая на одном
+        // пути, — это проверка, которую второй путь обходит.
+        try {
+            for (const c of parsed.data.changes) assertSalesRopValue(c.key, c.value);
+        } catch (e: any) {
+            return NextResponse.json({ error: e.message }, { status: 400 });
         }
 
         for (const c of parsed.data.changes) {
