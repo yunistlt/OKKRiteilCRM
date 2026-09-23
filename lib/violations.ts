@@ -69,17 +69,50 @@ export async function detectViolations(startDate: string, endDate: string) {
             duration: duration_sec,
             timestamp: started_at,
             flow: direction,
-            raw_payload,
-            call_order_matches(
-                order_id: retailcrm_order_id,
-                orders(status, manager_id)
-            )
+            raw_payload
         `)
         .gte('started_at', startDate)
         .lte('started_at', endDate);
 
     if (fetchError) {
         throw new Error(`Violations fetch error: ${fetchError.message}`);
+    }
+
+    // Заказ звонка и его менеджер — через общую связь call_order_link: там
+    // привязка из RetailCRM, а наш матчинг по номеру телефона запасной. По
+    // этим нарушениям удерживают деньги, и угаданная привязка означала бы
+    // удержание за разговор, которого по этому заказу не было.
+    const callOrderLink = new Map<string, { orderId: number; managerId: number | null; status: string | null }>();
+    {
+        const ids = ((calls ?? []) as any[]).map((c) => String(c.id)).filter(Boolean);
+        const orderByCall = new Map<string, number>();
+        for (let i = 0; i < ids.length; i += 300) {
+            const { data: links } = await supabase
+                .from('call_order_link')
+                .select('telphin_call_id, order_id')
+                .in('telphin_call_id', ids.slice(i, i + 300));
+            for (const l of ((links ?? []) as any[])) {
+                if (!orderByCall.has(String(l.telphin_call_id))) orderByCall.set(String(l.telphin_call_id), Number(l.order_id));
+            }
+        }
+        const orderIds = Array.from(new Set(Array.from(orderByCall.values())));
+        const orderInfo = new Map<number, { managerId: number | null; status: string | null }>();
+        for (let i = 0; i < orderIds.length; i += 300) {
+            const { data: orders } = await supabase
+                .from('orders')
+                .select('id, status, manager_id')
+                .in('id', orderIds.slice(i, i + 300));
+            for (const o of ((orders ?? []) as any[])) {
+                orderInfo.set(Number(o.id), {
+                    managerId: o.manager_id === null || o.manager_id === undefined ? null : Number(o.manager_id),
+                    status: o.status ?? null,
+                });
+            }
+        }
+        for (const [callId, orderId] of Array.from(orderByCall.entries())) {
+            const info = orderInfo.get(orderId);
+            callOrderLink.set(callId, { orderId, managerId: info?.managerId ?? null, status: info?.status ?? null });
+        }
     }
 
     // 3. Fetch all history events in range
@@ -110,25 +143,14 @@ export async function detectViolations(startDate: string, endDate: string) {
     for (const call of callData) {
         // Map raw_payload fields
         const isAnsweringMachine = (call.raw_payload as any)?.is_answering_machine === true;
-        const match = call.call_order_matches?.[0]; // Relation name changed
+        const match = callOrderLink.get(String(call.id));
 
-        // DEBUG PROBE
-        if (call.id === '349957-CD02BDDC732441F49C7531F68EFD87FD') {
-            violations.push({
-                call_id: call.id,
-                manager_id: 10, // Force match
-                order_id: null,
-                violation_type: 'short_call',
-                severity: 'low',
-                details: `DEBUG PROBE: Match: ${JSON.stringify(call.call_order_matches)}, Duration: ${call.duration}, ManagerID: ${(match as any)?.orders?.manager_id}`,
-                created_at: call.timestamp
-            });
-        }
+        // Звонок, не привязанный ни к одному заказу, в нарушения не идёт:
+        // спрашивать за него не с кого и не по какому заказу.
+        if (!match) continue;
 
-        if (!match) continue; // RULE 1: Skip if no matching order
-
-        const orderId = match.order_id;
-        const managerId = (match as any).orders?.manager_id ? Number((match as any).orders.manager_id) : null;
+        const orderId = match.orderId;
+        const managerId = match.managerId;
         const duration = call.duration || 0;
 
         const amdRule = activeRules.get('answering_machine_dialog');
@@ -229,7 +251,7 @@ export async function detectViolations(startDate: string, endDate: string) {
                 if (current.new_value === QUALIFIED_STATUS && NEW_STATUSES.includes(current.old_value)) {
                     // Check if there was a call > 20s for this order (in ALL callData, not just current range)
                     // Heuristic: for history analysis, we might need a broader call sync.
-                    const orderCalls = callData.filter(c => c.call_order_matches?.[0]?.order_id === orderId);
+                    const orderCalls = callData.filter(c => callOrderLink.get(String(c.id))?.orderId === orderId);
                     const hasValidCall = orderCalls.some(c =>
                         (c.duration || 0) > 20 &&
                         (c.raw_payload as any)?.is_answering_machine !== true && // Must NOT be an AM
@@ -250,7 +272,7 @@ export async function detectViolations(startDate: string, endDate: string) {
 
                 // RULE 6: NO_CALL_BEFORE_QUALIFICATION
                 if (current.new_value === QUALIFIED_STATUS) {
-                    const orderCalls = callData.filter(c => c.call_order_matches?.[0]?.order_id === orderId);
+                    const orderCalls = callData.filter(c => callOrderLink.get(String(c.id))?.orderId === orderId);
                     if (orderCalls.length === 0) {
                         violations.push({
                             manager_id: current.manager_id,
