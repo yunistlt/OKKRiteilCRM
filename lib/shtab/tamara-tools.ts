@@ -4,6 +4,8 @@ import { applyStructureOps } from '@/lib/shtab/structure-apply';
 import type { StructureOp } from '@/lib/shtab/structure-apply';
 import { importStaffDoc } from '@/lib/shtab/staff-doc-import';
 import { tsehPeople, tsehStaffDocs } from '@/lib/shtab/tseh-staff';
+import { applyRazborOps } from '@/lib/shtab/razbor-write';
+import type { RazborOp } from '@/lib/shtab/razbor-write';
 import { NON_INCOME_STATUSES, monthlyIncome, monthsAgo } from '@/lib/shtab/income';
 import type { IncomeRow } from '@/lib/shtab/income';
 import { topArea } from '@/lib/shtab/types';
@@ -227,6 +229,63 @@ const OWN_TOOLS = [
                     post: { type: 'string', description: 'Пост, в папку которого класть: номер или название.' },
                 },
                 required: ['doc_id', 'post'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'shtab_razbor_write',
+            description:
+                'Записать в открытый разбор то, что владелец уже продумал: стратегию, краткосрочную цель, логические блоки и программы с задачами. Пользуйся, когда он диктует или прикладывает свои материалы. Разбор ты не заводишь и не закрываешь — если открытого разбора нет, скажи об этом.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    operations: {
+                        type: 'array',
+                        description: 'Операции по порядку. Блок заводится раньше своей программы.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                op: {
+                                    type: 'string',
+                                    enum: ['set_strategy', 'set_goal', 'create_block', 'save_program'],
+                                },
+                                razbor: { type: 'integer', description: 'Номер разбора. Без него — последний черновик.' },
+                                text: { type: 'string', description: 'Текст стратегии (set_strategy).' },
+                                goal_fix: { type: 'string', description: 'Что перестанет происходить.' },
+                                goal_grow: { type: 'string', description: 'Что вырастет.' },
+                                title: { type: 'string', description: 'Название логического блока.' },
+                                excerpt: { type: 'string', description: 'Кусок стратегии, из которого блок вырезан.' },
+                                rationale: { type: 'string', description: 'Почему это отдельный блок.' },
+                                block: { type: 'string', description: 'Блок для программы: номер или название.' },
+                                main_task: { type: 'string', description: 'Главная задача программы — результат, а не действие.' },
+                                manager_name: { type: 'string', description: 'Кто ведёт программу.' },
+                                tasks: {
+                                    type: 'array',
+                                    description: 'Задачи программы. Без производственных задач программа выполняется понарошку.',
+                                    items: {
+                                        type: 'object',
+                                        properties: {
+                                            kind: {
+                                                type: 'string',
+                                                enum: ['pervoocherednaya', 'zhiznenno_vazhnaya', 'rabochaya', 'proizvodstvennaya', 'uslovnaya'],
+                                            },
+                                            text: { type: 'string' },
+                                            why: { type: 'string', description: 'Почему так — особенно у жизненно важных.' },
+                                            metric: { type: 'string', description: 'Что считаем (производственные).' },
+                                            target_value: { type: 'string', description: 'К какому числу приходим.' },
+                                            source_note: { type: 'string', description: 'Откуда это число берётся.' },
+                                        },
+                                        required: ['kind', 'text'],
+                                    },
+                                },
+                            },
+                            required: ['op'],
+                        },
+                    },
+                },
+                required: ['operations'],
             },
         },
     },
@@ -634,6 +693,21 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
 
     if (name === 'shtab_import_staff_doc') {
         return await importStaffDoc(String(args?.doc_id ?? ''), args?.post);
+    }
+
+    if (name === 'shtab_razbor_write') {
+        const ops = Array.isArray(args?.operations) ? args.operations : [];
+        if (ops.length === 0) return { available: false, reason: 'Операций не передано.' };
+        if (ops.length > 40) return { available: false, reason: 'Слишком много операций за раз — разбей на части.' };
+        const results = await applyRazborOps(ops as RazborOp[]);
+        return {
+            done: results.filter((r) => r.ok).map((r) => r.what),
+            skipped: results.filter((r) => !r.ok).map((r) => r.what),
+            // Находки проверок — не придирка: программа без производственных
+            // задач выполняется по шагам и не меняет положения дел.
+            checks: results.flatMap((r) => r.problems ?? []),
+            note: 'Записанное владелец видит на вкладках «Стратегия» и «Программы». Перескажи ему, что вышло, и назови находки проверок.',
+        };
     }
 
     if (name === 'shtab_query') {
