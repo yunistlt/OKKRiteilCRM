@@ -17,6 +17,7 @@ import Projects from './views/Projects';
 import Arch from './views/Arch';
 import Celi from './views/Celi';
 import Chat from './views/Chat';
+import Struct from './views/Struct';
 import TamaraTab from './views/TamaraTab';
 
 // «Штаб владельца» — рабочее место собственника по методологии «Альянс Стратег».
@@ -37,6 +38,7 @@ const VIEWS: Record<ViewId, (props: ViewProps) => JSX.Element | null> = {
     projects: Projects,
     arch: Arch,
     celi: Celi,
+    struct: Struct,
     chat: Chat,
     tamara: TamaraTab,
 };

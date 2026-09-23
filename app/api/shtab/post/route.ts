@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { POST_COLUMNS } from '@/lib/shtab/structure';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,6 @@ export const dynamic = 'force-dynamic';
 // Область необязательна: часть постов (сисадмин, дворник) не ложится ни в одну
 // область компании, и заставлять выбирать значило бы врать в справочнике.
 
-const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal';
 
 const CreateSchema = z.object({
     title: z.string().trim().min(1, 'Название поста пустое').max(200),

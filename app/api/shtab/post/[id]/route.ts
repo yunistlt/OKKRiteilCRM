@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { POST_COLUMNS, makesCycle } from '@/lib/shtab/structure';
 
 export const dynamic = 'force-dynamic';
 
 // PATCH  /api/shtab/post/[id] — поправить пост.
 // DELETE /api/shtab/post/[id] — убрать пост.
 
-const POST_COLUMNS = 'id, title, area_code, ideal_scene, statistic, holder_name, external_uid, ordinal';
+
 
 const PatchSchema = z
     .object({
@@ -22,6 +23,12 @@ const PatchSchema = z
         // уникальный индекс споткнётся о второй пустой пост.
         external_uid: z.string().trim().max(200).nullable().optional(),
         ordinal: z.number().int().min(0).optional(),
+        // Место в структуре: кому подчинён и где стоит на холсте.
+        parent_id: z.number().int().positive().nullable().optional(),
+        pos_x: z.number().int().min(-20000).max(20000).optional(),
+        pos_y: z.number().int().min(-20000).max(20000).optional(),
+        vkp: z.string().max(1000).optional(),
+        duties: z.string().max(5000).optional(),
     })
     .refine((v) => Object.keys(v).length > 0, { message: 'Нечего менять' });
 
@@ -51,6 +58,16 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
                 .maybeSingle();
             if (areaError) throw new Error(areaError.message);
             if (!area) return NextResponse.json({ error: 'Неизвестная область' }, { status: 400 });
+        }
+
+        // Кольцо в подчинении не пустит триггер в базе, но владельцу нужна
+        // человеческая фраза, а не текст исключения Postgres.
+        if (parsed.data.parent_id !== undefined) {
+            const { data: all, error: allError } = await supabase.from('shtab_post').select('id, parent_id');
+            if (allError) throw new Error(allError.message);
+            if (makesCycle(all ?? [], id, parsed.data.parent_id)) {
+                return NextResponse.json({ error: 'Так получается кольцо в подчинении' }, { status: 400 });
+            }
         }
 
         const { data, error } = await supabase
