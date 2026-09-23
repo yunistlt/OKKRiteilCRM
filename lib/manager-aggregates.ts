@@ -1,7 +1,6 @@
 import { supabase } from '@/utils/supabase';
 
 const LOOKBACK_DAYS = 35;
-const MATCH_BATCH_SIZE = 1000;
 
 interface DialogueStatsRow {
   manager_id: string;
@@ -47,40 +46,37 @@ async function getControlledManagerIds(managerIds?: Array<number | string>) {
 
 async function fetchManagerMatches(managerId: string, startStr: string) {
   const allMatches: any[] = [];
-  let from = 0;
 
-  while (true) {
-    const { data: batch, error } = await supabase
-      .from('call_order_matches')
-      .select(`
-        telphin_call_id,
-        retailcrm_order_id,
-        raw_telphin_calls (duration_sec, started_at),
-        orders!inner (manager_id)
-      `)
-      .gte('matched_at', startStr)
-      .eq('orders.manager_id', managerId)
-      .range(from, from + MATCH_BATCH_SIZE - 1);
+  // Заказы этого менеджера. Отдельным запросом, потому что связь звонка с
+  // заказом живёт представлением, а к представлению PostgREST не умеет
+  // подключать связанные таблицы встроенным джойном.
+  const { data: orders, error: ordersError } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('manager_id', managerId);
+  if (ordersError) {
+    throw ordersError;
+  }
+  const orderIds = ((orders ?? []) as any[]).map((o) => Number(o.id));
+  if (orderIds.length === 0) {
+    return allMatches;
+  }
 
+  for (let i = 0; i < orderIds.length; i += 300) {
+    const { data: links, error } = await supabase
+      .from('call_order_link')
+      .select('telphin_call_id, order_id, started_at, duration_sec')
+      .in('order_id', orderIds.slice(i, i + 300))
+      .gte('started_at', startStr);
     if (error) {
       throw error;
     }
-
-    if (!batch?.length) {
-      break;
-    }
-
-    allMatches.push(...batch);
-
-    if (batch.length < MATCH_BATCH_SIZE) {
-      break;
-    }
-
-    from += MATCH_BATCH_SIZE;
+    allMatches.push(...((links ?? []) as any[]));
   }
 
   return allMatches;
 }
+
 
 function aggregateDialogueStats(managerId: string, matches: any[], now: Date): DialogueStatsRow {
   const stats = buildEmptyStatsRow(managerId, now.toISOString());
@@ -88,13 +84,12 @@ function aggregateDialogueStats(managerId: string, matches: any[], now: Date): D
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   for (const match of matches) {
-    const call = match.raw_telphin_calls as any;
-    if (!call?.started_at) {
+    if (!match?.started_at) {
       continue;
     }
 
-    const duration = call.duration_sec || 0;
-    const startedAt = new Date(call.started_at);
+    const duration = Number(match.duration_sec || 0);
+    const startedAt = new Date(match.started_at);
 
     stats.d30_count += 1;
     stats.d30_duration += duration;

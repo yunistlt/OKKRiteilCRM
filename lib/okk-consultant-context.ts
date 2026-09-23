@@ -80,10 +80,14 @@ export async function loadConsultantEvidence(orderId: number, historyLimit: numb
     ] = await Promise.all([
         countOrderEventsByField(orderId, COMMENT_FIELD_PATTERNS),
         countOrderEventsByField(orderId, EMAIL_FIELD_PATTERNS),
+        // Звонки по заказу — через общую связь: привязка из RetailCRM основная,
+        // наш матчинг по телефону запасной. Семён приводит эти разговоры как
+        // доказательство в ответе владельцу, и чужой звонок в списке — это
+        // доказательство того, чего не было.
         supabase
-            .from('call_order_matches')
-            .select('raw_telphin_calls(direction, transcript, started_at, duration_sec, recording_url)')
-            .eq('retailcrm_order_id', orderId),
+            .from('call_order_link')
+            .select('telphin_call_id, started_at, duration_sec, direction, source')
+            .eq('order_id', orderId),
         supabase
             .from('order_history_log')
             .select('field, occurred_at, old_value, new_value')
@@ -97,9 +101,30 @@ export async function loadConsultantEvidence(orderId: number, historyLimit: numb
             .maybeSingle(),
     ]);
 
-    const calls = (callRows || [])
-        .map((row: any) => Array.isArray(row.raw_telphin_calls) ? row.raw_telphin_calls[0] : row.raw_telphin_calls)
-        .filter(Boolean);
+    // Расшифровка лежит в Телфине: связь знает, какой это разговор, но не что в
+    // нём говорили.
+    const linkRows = (callRows || []) as any[];
+    const callIds = Array.from(new Set(linkRows.map((r: any) => String(r.telphin_call_id)).filter(Boolean)));
+    const rawById = new Map<string, any>();
+    if (callIds.length > 0) {
+        const { data: rawCalls } = await supabase
+            .from('raw_telphin_calls')
+            .select('telphin_call_id, direction, transcript, started_at, duration_sec, recording_url')
+            .in('telphin_call_id', callIds);
+        for (const c of ((rawCalls ?? []) as any[])) rawById.set(String(c.telphin_call_id), c);
+    }
+
+    const calls = linkRows.map((row: any) => {
+        const raw = rawById.get(String(row.telphin_call_id)) ?? {};
+        return {
+            started_at: raw.started_at ?? row.started_at,
+            direction: raw.direction ?? row.direction,
+            duration_sec: raw.duration_sec ?? row.duration_sec,
+            transcript: raw.transcript ?? null,
+            recording_url: raw.recording_url ?? null,
+            source: row.source,
+        };
+    });
     const rawPayload = orderRow?.raw_payload || {};
     const tzFields = ['tz', 'technical_specification', 'width', 'height', 'depth', 'temperature'];
 
@@ -117,7 +142,7 @@ export async function loadConsultantEvidence(orderId: number, historyLimit: numb
             included_in_score: null,
             classification: null,
             classification_reason: null,
-            matched_by: null,
+            matched_by: call.source === 'crm' ? 'retailcrm' : 'phone_matching',
         })),
         facts: {
             buyer: rawPayload?.customer?.firstName || rawPayload?.customer?.name || rawPayload?.contact?.name || null,
