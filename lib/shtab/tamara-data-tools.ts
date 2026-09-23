@@ -2,7 +2,8 @@ import { supabase } from '@/utils/supabase';
 import { EXTERNAL_DB_TITLES, assertReadOnlyQuery, externalDbConfigured, externalEngine, queryExternal } from '@/lib/shtab/external/client';
 import { FORBIDDEN_RELATIONS } from '@/lib/shtab/tamara-sql';
 import { formatWeekReview, lastWeek, loadWeek, recommend } from '@/lib/sales-rop/load-review';
-import { recentReports, sendToOwner } from '@/lib/shtab/tamara-telegram';
+import { loadTamaraSettings, recentReports, sendToOwner } from '@/lib/shtab/tamara-telegram';
+import { sendTelegramDocument } from '@/lib/telegram';
 
 /**
  * Чем Тамара ориентируется в данных.
@@ -114,6 +115,24 @@ export const DATA_TOOLS = [
             parameters: {
                 type: 'object',
                 properties: { limit: { type: 'integer', description: 'Сколько последних. По умолчанию 3.' } },
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'make_document',
+            description:
+                'Собрать документ (PDF) из своего текста и дать на него ссылку. Пользуйся, когда просят «сделай файлом», «пришли PDF», «оформи документом», или когда разбор получился длинным и его будут показывать другим. Тело пиши той же разметкой, что и в разговоре: таблицы, заголовки, списки и графики перенесутся. Можно сразу отправить файл владельцу в телеграм.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    title: { type: 'string', description: 'Название документа — станет заголовком и именем файла.' },
+                    subtitle: { type: 'string', description: 'Подзаголовок: период, о чём документ.' },
+                    body: { type: 'string', description: 'Тело документа разметкой.' },
+                    send_to_telegram: { type: 'boolean', description: 'Отправить файл владельцу в телеграм.' },
+                },
+                required: ['title', 'body'],
             },
         },
     },
@@ -289,6 +308,59 @@ export async function executeDataTool(name: string, args: any): Promise<ToolResu
             return res.ok
                 ? { ok: true, sent: true, parts: res.parts, note: 'Отправлено владельцу, подпись поставлена.' }
                 : { ok: false, reason: res.error ?? 'не отправилось' };
+        }
+
+        if (name === 'make_document') {
+            const title = String(args?.title ?? '').trim();
+            const body = String(args?.body ?? '').trim();
+            if (!title || !body) return { ok: false, reason: 'Нужны название и тело документа.' };
+
+            const { data: saved, error } = await supabase
+                .from('shtab_tamara_doc')
+                .insert({ title, subtitle: args?.subtitle ? String(args.subtitle) : null, body })
+                .select('id')
+                .single();
+            if (error) return { ok: false, reason: error.message };
+
+            const id = Number((saved as any).id);
+            const link = `/api/shtab/doc/${id}`;
+            let sent = false;
+            let sendError: string | null = null;
+
+            if (args?.send_to_telegram) {
+                try {
+                    const settings = await loadTamaraSettings();
+                    if (!settings.chatId) throw new Error('не задан чат владельца');
+                    // Генератор подгружается по требованию: он тянет за собой
+                    // шрифты и разметку документа, а нужен раз в день.
+                    const { buildPdf } = await import('@/lib/shtab/tamara-doc');
+                    const file = await buildPdf({
+                        title,
+                        subtitle: args?.subtitle ? String(args.subtitle) : undefined,
+                        body,
+                    });
+                    await sendTelegramDocument({
+                        chatId: settings.chatId,
+                        filename: `${title.replace(/[^\w\dА-Яа-яЁё\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'dokument'}.pdf`,
+                        file,
+                        caption: `${title}\n\n— ${settings.signature}`,
+                    });
+                    sent = true;
+                } catch (e: any) {
+                    // Документ уже сохранён и доступен по ссылке — провал
+                    // отправки не повод потерять работу целиком.
+                    sendError = String(e?.message ?? e);
+                }
+            }
+
+            return {
+                ok: true,
+                document_id: id,
+                link,
+                sent_to_telegram: sent,
+                ...(sendError ? { send_error: sendError } : {}),
+                note: `Документ готов. Дай владельцу ссылку [${title}](${link}) — она откроет PDF.`,
+            };
         }
 
         if (name === 'my_reports') {
