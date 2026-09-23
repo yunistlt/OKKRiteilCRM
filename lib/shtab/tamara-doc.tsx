@@ -2,6 +2,7 @@ import React from 'react';
 import path from 'path';
 import { Document, Font, Page, StyleSheet, Text, View, pdf } from '@react-pdf/renderer';
 import { parseRich, type Block, type InlineNode } from '@/lib/shtab/rich-parse';
+import { formatIntRu } from '@/lib/format';
 
 /**
  * Документ от Тамары: её ответ, собранный в PDF.
@@ -10,6 +11,12 @@ import { parseRich, type Block, type InlineNode } from '@/lib/shtab/rich-parse';
  * не умеет, и предлагала скопировать текст в Word. Теперь умеет — из той же
  * разметки, которой отвечает в разговоре: таблицы остаются таблицами, заголовки
  * заголовками.
+ *
+ * СТИЛЬ. Не выдуман: это те же golds/, что и для экранов, — GOLD_DESIGN_UX
+ * (плоско, монохром, типографика как иерархия, никаких украшений) и
+ * GOLD_UI_TABLES (шапка повторяется, чередование строк, числа вправо, ячейки
+ * 12/16, без внешней рамки). Отдельного «фирменного стиля документов» нет и
+ * заводить его незачем: документ — продолжение экрана, а не другая система.
  *
  * ШРИФТ. Встроенный в генератор Helvetica кириллицы не содержит, и кодировка у
  * него WinAnsi: русский текст вышел бы набором пустых мест, причём молча — файл
@@ -180,7 +187,7 @@ function Blocks({ blocks }: { blocks: Block[] }) {
                                         <View style={[S.chartFill, { width: `${Math.max(1, (d.value / max) * 100)}%` }]} />
                                     </View>
                                     <Text style={S.chartValue}>
-                                        {Math.round(d.value).toLocaleString('ru-RU')}
+                                        {formatIntRu(d.value)}
                                         {b.unit ? ` ${b.unit}` : ''}
                                     </Text>
                                 </View>

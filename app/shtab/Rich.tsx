@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { parseRich, type Block, type InlineNode } from '@/lib/shtab/rich-parse';
+import { formatIntRu } from '@/lib/format';
 
 /**
  * Отрисовка разметки в ответах Тамары.
@@ -10,7 +11,10 @@ import { parseRich, type Block, type InlineNode } from '@/lib/shtab/rich-parse';
  * раскладка готовых блоков. Чужой HTML в страницу не вставляется — строятся
  * React-элементы, поэтому разметка из ответа модели ничего сломать не может.
  *
- * Стиль — как везде в Штабе: плоско, без скруглений и теней, плотно.
+ * Стиль — по golds/: таблицы живут по GOLD_UI_TABLES (липкая шапка, чередование
+ * строк, подсветка под курсором, ячейки 12/16, без внешней рамки), остальное —
+ * по GOLD_DESIGN_UX: плоско, без скруглений и теней, плотно. Числа выводятся
+ * через lib/format — разряды у больших чисел это закон, а не оформление.
  */
 
 function Inline({ nodes }: { nodes: InlineNode[] }) {
@@ -24,12 +28,23 @@ function Inline({ nodes }: { nodes: InlineNode[] }) {
                             {n.text}
                         </code>
                     );
-                if (n.kind === 'link')
+                if (n.kind === 'link') {
+                    // Ссылка на документ — не строка текста, а действие: её
+                    // ищут глазами, чтобы скачать. Обычная подчёркнутая ссылка
+                    // в потоке текста теряется, и владелец пишет «не вижу».
+                    const isDoc = /^\/api\/shtab\/doc\//.test(n.href);
                     return (
-                        <a href={n.href} target="_blank" rel="noreferrer" key={i}>
-                            {n.text}
+                        <a
+                            className={isDoc ? 'rich-doc' : 'rich-link'}
+                            href={n.href}
+                            target="_blank"
+                            rel="noreferrer"
+                            key={i}
+                        >
+                            {isDoc ? `📄 ${n.text} — открыть PDF` : n.text}
                         </a>
                     );
+                }
                 return <React.Fragment key={i}>{n.text}</React.Fragment>;
             })}
         </>
@@ -44,7 +59,6 @@ function Inline({ nodes }: { nodes: InlineNode[] }) {
  */
 function Chart({ block }: { block: Extract<Block, { kind: 'chart' }> }) {
     const max = Math.max(...block.data.map((d) => d.value), 0) || 1;
-    const fmt = (v: number) => Math.round(v).toLocaleString('ru-RU');
 
     return (
         <div className="rich-chart">
@@ -60,7 +74,7 @@ function Chart({ block }: { block: Extract<Block, { kind: 'chart' }> }) {
                         <div className="rich-bar-fill" style={{ width: `${Math.max(1, (d.value / max) * 100)}%` }} />
                     </div>
                     <div className="rich-bar-value">
-                        {fmt(d.value)}
+                        {formatIntRu(d.value)}
                         {block.unit ? ` ${block.unit}` : ''}
                     </div>
                 </div>

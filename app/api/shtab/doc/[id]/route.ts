@@ -4,6 +4,9 @@ import { supabase } from '@/utils/supabase';
 import { buildPdf } from '@/lib/shtab/tamara-doc';
 
 export const dynamic = 'force-dynamic';
+// Сборка PDF идёт средствами Node: в edge-окружении нет ни файловой системы для
+// шрифтов, ни потоков, на которых работает генератор.
+export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 // GET /api/shtab/doc/<id> — скачать документ, сделанный Тамарой.

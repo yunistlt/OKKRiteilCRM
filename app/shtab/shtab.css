@@ -627,7 +627,9 @@
 
 .shtab .chat-msg{max-width:74ch}
 
-.shtab .chat-msg.user{align-self:flex-end;background:var(--surface-2);border:1px solid var(--line);padding:10px 12px}
+.shtab .chat-msg.user{align-self:flex-end;background:#dcf8c6;border:1px solid var(--line);
+  border-radius:8px;border-top-right-radius:0;padding:10px 12px;
+  box-shadow:0 1px .5px rgba(11,20,26,.13)}
 
 .shtab .chat-text{white-space:pre-wrap;font-size:14.5px;line-height:1.6;margin-top:4px}
 
@@ -720,11 +722,14 @@
 .shtab .proposal-reason{margin-top:8px;font-size:13.5px;color:var(--ink-2)}
 
 /* ── облака переписки и разметка в ответах ────────────────────────────────── */
-/* Ответ Тамары теперь в таком же облаке, как вопрос: раньше её реплики висели
-   голым текстом на фоне ленты, и где кончается одна и начинается другая, было
-   видно только по подписи. */
-.shtab .chat-msg.assistant{align-self:flex-start;background:var(--surface);
-  border:1px solid var(--line);border-left:3px solid var(--blue);padding:10px 12px}
+/* Чат — единственное исключение из Metro-строгости: golds/GOLD_DESIGN_UX §5.6
+   предписывает имитировать WhatsApp. Пузыри 8px, у бота острый левый верхний
+   угол, у пользователя — правый; лёгкая тень для объёма; белый фон у бота и
+   светло-зелёный у пользователя. Так же сделан чат Семёна — двум чатам в одной
+   системе выглядеть по-разному незачем. */
+.shtab .chat-msg.assistant{align-self:flex-start;background:#ffffff;
+  border:1px solid var(--line);border-radius:8px;border-top-left-radius:0;
+  padding:10px 12px;box-shadow:0 1px .5px rgba(11,20,26,.13)}
 
 .shtab .chat-head{display:flex;align-items:baseline;gap:10px;justify-content:space-between}
 
@@ -757,18 +762,30 @@
 
 .shtab .rich-li-marker{color:var(--ink-3);flex:none;font-family:var(--f-mono);font-size:12px}
 
-/* Широкая таблица прокручивается внутри себя: страница из-за неё ездить вбок
+/* Таблицы — по golds/GOLD_UI_TABLES: шапка липкая, чередование строк, подсветка
+   строки под курсором, ячейки 12px по вертикали и 16px по горизонтали. Внешней
+   рамки нет — голд её запрещает, разделение держится на границах ячеек.
+   Широкая таблица прокручивается внутри себя: страница из-за неё ездить вбок
    не должна. */
-.shtab .rich-table-wrap{overflow-x:auto;margin:10px 0;border:1px solid var(--line)}
+.shtab .rich-table-wrap{overflow:auto;margin:10px 0;max-height:420px}
 
 .shtab .rich-table{border-collapse:collapse;width:100%;font-size:13.5px}
 
-.shtab .rich-table th{background:var(--ink);color:var(--surface);font-weight:600;
-  text-transform:uppercase;letter-spacing:.4px;font-size:11px;padding:6px 10px;white-space:nowrap}
+.shtab .rich-table th{position:sticky;top:0;z-index:1;background:var(--ink);color:var(--surface);
+  font-weight:600;text-transform:uppercase;letter-spacing:.4px;font-size:11px;
+  padding:12px 16px;white-space:nowrap}
 
-.shtab .rich-table td{border-top:1px solid var(--line);padding:6px 10px;vertical-align:top}
+.shtab .rich-table td{border-top:1px solid var(--line);padding:12px 16px;vertical-align:top}
 
 .shtab .rich-table tbody tr:nth-child(even){background:var(--surface-2)}
+
+/* Строка под курсором подсвечивается: на широкой таблице глаз иначе теряет
+   строку между первым и последним столбцом. */
+.shtab .rich-table tbody tr:hover{background:var(--field)}
+
+/* Пустая ячейка — прочерк, а не пустота: пустое место читается как «забыли
+   заполнить», прочерк — как «данных нет». */
+.shtab .rich-table td:empty::after{content:'—';color:var(--ink-3)}
 
 /* Столбчатый график: свой, без библиотеки — ради пяти полосок её не тянем. */
 .shtab .rich-chart{margin:12px 0;border:1px solid var(--line);padding:10px 12px;background:var(--surface)}
@@ -786,3 +803,17 @@
 .shtab .rich-bar-fill{background:var(--blue);height:100%}
 
 .shtab .rich-bar-value{font-family:var(--f-mono);font-size:12.5px;text-align:right}
+
+/* Ссылка должна быть видна ссылкой: в потоке текста без подчёркивания её
+   попросту не находят глазами. */
+.shtab .rich-link{color:var(--blue);text-decoration:underline;text-underline-offset:2px}
+
+.shtab .rich-link:hover{color:var(--ink)}
+
+/* Ссылка на документ — действие, а не строка текста: её ищут, чтобы скачать.
+   Поэтому она выглядит кнопкой, а не словом в абзаце. */
+.shtab .rich-doc{display:inline-block;margin:6px 0;padding:8px 12px;
+  background:var(--blue);color:var(--on-blue);font-weight:600;font-size:13.5px;
+  text-decoration:none}
+
+.shtab .rich-doc:hover{background:var(--ink);color:var(--surface)}
