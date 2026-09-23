@@ -497,24 +497,21 @@ async function loadSilentCancelTasks(settings: Settings, today: string): Promise
 
     // Разговор ПОСЛЕ закрытия тоже снимает вопрос: менеджер мог перезвонить и
     // выяснить причину уже потом — это и есть нужный нам результат.
-    const { data: matches } = await supabase
-        .from('call_order_matches')
-        .select('retailcrm_order_id, telphin_call_id')
-        .in('retailcrm_order_id', ids);
+    //
+    // Звонки — через общую связь: привязка из RetailCRM, наш матчинг запасной.
     const callsByOrder = new Map<number, string[]>();
-    for (const m of ((matches ?? []) as any[])) {
-        const list = callsByOrder.get(Number(m.retailcrm_order_id)) ?? [];
-        list.push(String(m.telphin_call_id));
-        callsByOrder.set(Number(m.retailcrm_order_id), list);
-    }
-    const allCallIds = Array.from(callsByOrder.values()).flat();
     const callAt = new Map<string, string>();
-    if (allCallIds.length > 0) {
-        const { data: calls } = await supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id, started_at')
-            .in('telphin_call_id', allCallIds);
-        for (const c of ((calls ?? []) as any[])) callAt.set(String(c.telphin_call_id), String(c.started_at));
+    {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id, telphin_call_id, started_at')
+            .in('order_id', ids);
+        for (const l of ((links ?? []) as any[])) {
+            const list = callsByOrder.get(Number(l.order_id)) ?? [];
+            list.push(String(l.telphin_call_id));
+            callsByOrder.set(Number(l.order_id), list);
+            callAt.set(String(l.telphin_call_id), String(l.started_at));
+        }
     }
 
     const perManager = new Map<number | null, number>();
@@ -1091,34 +1088,22 @@ export async function detectSilentCancels(
 
     // Был ли разговор по такому заказу за последние три дня. Три, а не один:
     // менеджер мог поговорить вчера и закрыть сегодня — это нормальная работа.
+    // Звонки — через общую связь, и сразу за нужный период: время в ней это
+    // время разговора, а не сопоставления.
     const ids = Array.from(cancelled.keys());
-    const { data: matches } = await supabase
-        .from('call_order_matches')
-        .select('retailcrm_order_id, telphin_call_id')
-        .in('retailcrm_order_id', ids);
-
-    const callIdsByOrder = new Map<number, string[]>();
-    for (const m of ((matches ?? []) as any[])) {
-        const list = callIdsByOrder.get(Number(m.retailcrm_order_id)) ?? [];
-        list.push(String(m.telphin_call_id));
-        callIdsByOrder.set(Number(m.retailcrm_order_id), list);
-    }
-
-    const allCallIds = Array.from(callIdsByOrder.values()).flat();
-    const recent = new Set<string>();
-    if (allCallIds.length > 0) {
-        const since = new Date(new Date(`${date}T00:00:00.000Z`).getTime() - 3 * 86_400_000).toISOString();
-        const { data: calls } = await supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id')
-            .in('telphin_call_id', allCallIds)
+    const since = new Date(new Date(`${date}T00:00:00.000Z`).getTime() - 3 * 86_400_000).toISOString();
+    const spokeOrders = new Set<number>();
+    for (let i = 0; i < ids.length; i += 300) {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id')
+            .in('order_id', ids.slice(i, i + 300))
             .gte('started_at', since);
-        for (const c of ((calls ?? []) as any[])) recent.add(String(c.telphin_call_id));
+        for (const l of ((links ?? []) as any[])) spokeOrders.add(Number(l.order_id));
     }
 
     for (const [orderId, statusName] of Array.from(cancelled.entries())) {
-        const spoke = (callIdsByOrder.get(orderId) ?? []).some((id) => recent.has(id));
-        if (!spoke) result.set(orderId, { statusName });
+        if (!spokeOrders.has(orderId)) result.set(orderId, { statusName });
     }
     return result;
 }

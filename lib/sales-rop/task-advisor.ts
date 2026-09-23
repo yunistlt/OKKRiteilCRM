@@ -91,11 +91,14 @@ export async function loadOrderContext(task: Task): Promise<OrderContext> {
             .eq('retailcrm_order_id', task.orderId)
             .order('occurred_at', { ascending: false })
             .limit(30),
+        // Звонки по заказу — через общую связь: привязка из RetailCRM, наш
+        // матчинг запасной. Сортировка по времени разговора, а не по времени
+        // сопоставления: второе отстаёт, иногда на несколько суток.
         supabase
-            .from('call_order_matches')
-            .select('telphin_call_id, matched_at')
-            .eq('retailcrm_order_id', task.orderId)
-            .order('matched_at', { ascending: false })
+            .from('call_order_link')
+            .select('telphin_call_id, started_at')
+            .eq('order_id', task.orderId)
+            .order('started_at', { ascending: false })
             .limit(10),
     ]);
 

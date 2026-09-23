@@ -121,62 +121,32 @@ export async function computeTaskResults(date: string): Promise<{ rows: number; 
     const dayFrom = `${date}T00:00:00.000Z`;
     const dayTo = `${date}T23:59:59.999Z`;
 
-    // Звонки, привязанные к заказу САМОЙ CRM.
-    //
-    // Это главный источник: в RetailCRM звонок связан с заказом там же, где
-    // работает менеджер, и гадать не приходится. Наш матчинг по номеру телефона
-    // ошибается примерно в трети случаев — он остаётся запасным путём для
-    // заказов, которых в выгрузке CRM нет.
-    const { data: crmCalls } = await supabase
-        .from('retailcrm_calls')
-        .select('order_number, call_date, duration_sec, call_type, phone_normalized')
-        .gte('call_date', dayFrom)
-        .lte('call_date', dayTo)
-        .not('order_number', 'is', null);
-
-    const numberToId = new Map<string, number>();
-    for (const t of list) numberToId.set(String(t.order_number ?? ''), Number(t.order_id));
-
-    const crmByOrder = new Map<number, any[]>();
-    for (const c of ((crmCalls ?? []) as any[])) {
-        const id = numberToId.get(String(c.order_number));
-        if (!id) continue;
-        const arr = crmByOrder.get(id) ?? [];
-        arr.push({
-            started_at: String(c.call_date),
-            duration_sec: Number(c.duration_sec ?? 0),
-            direction: String(c.call_type) === 'in' ? 'incoming' : 'outgoing',
-            from_number: String(c.phone_normalized ?? ''),
-            to_number: String(c.phone_normalized ?? ''),
-        });
-        crmByOrder.set(id, arr);
-    }
-
-    // Запасной путь: наш матчинг по времени разговора, а не по времени
-    // сопоставления — матчинг догоняет позже, иногда на несколько суток.
-    const { data: matches } = await supabase
-        .from('call_order_matches')
-        .select('retailcrm_order_id, telphin_call_id')
-        .in('retailcrm_order_id', orderIds);
-    const callIdsByOrder = new Map<number, string[]>();
-    for (const m of ((matches ?? []) as any[])) {
-        const list2 = callIdsByOrder.get(Number(m.retailcrm_order_id)) ?? [];
-        list2.push(String(m.telphin_call_id));
-        callIdsByOrder.set(Number(m.retailcrm_order_id), list2);
-    }
-
-    const allCallIds = Array.from(callIdsByOrder.values()).flat();
-    const callById = new Map<string, any>();
-    if (allCallIds.length > 0) {
-        // Порциями: список идентификаторов на тысячи звонков не влезает в URL.
-        for (let i = 0; i < allCallIds.length; i += 200) {
-            const { data: calls } = await supabase
-                .from('raw_telphin_calls')
-                .select('telphin_call_id, started_at, duration_sec, direction, from_number, to_number')
-                .in('telphin_call_id', allCallIds.slice(i, i + 200))
-                .gte('started_at', dayFrom)
-                .lte('started_at', dayTo);
-            for (const c of ((calls ?? []) as any[])) callById.set(String(c.telphin_call_id), c);
+    // Звонки по заказам за этот день — через общую связь call_order_link:
+    // привязка из RetailCRM основная, наш матчинг по телефону запасной, и
+    // время в ней это время разговора, а не сопоставления.
+    const callsByOrder = new Map<number, any[]>();
+    const callSourceByOrder = new Map<number, string>();
+    for (let i = 0; i < orderIds.length; i += 300) {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id, telphin_call_id, started_at, duration_sec, direction, source')
+            .in('order_id', orderIds.slice(i, i + 300))
+            .gte('started_at', dayFrom)
+            .lte('started_at', dayTo);
+        for (const l of ((links ?? []) as any[])) {
+            const id = Number(l.order_id);
+            const arr = callsByOrder.get(id) ?? [];
+            arr.push({
+                started_at: String(l.started_at),
+                duration_sec: Number(l.duration_sec ?? 0),
+                direction: l.direction === 'incoming' ? 'incoming' : 'outgoing',
+                from_number: '',
+                to_number: '',
+            });
+            callsByOrder.set(id, arr);
+            // Источник запоминаем первый: в связи по одному заказу он один и
+            // тот же — представление не смешивает CRM и матчинг.
+            if (!callSourceByOrder.has(id)) callSourceByOrder.set(id, String(l.source));
         }
     }
 
@@ -243,12 +213,8 @@ export async function computeTaskResults(date: string): Promise<{ rows: number; 
 
     const rows: TaskResultRow[] = list.map((t) => {
         const orderId = Number(t.order_id);
-        // CRM знает привязку точно; наш матчинг подставляется, только если там
-        // по этому заказу ничего нет.
-        const fromCrm = crmByOrder.get(orderId) ?? [];
-        const fromMatch = (callIdsByOrder.get(orderId) ?? []).map((id) => callById.get(id)).filter(Boolean);
-        const calls = fromCrm.length > 0 ? fromCrm : (fromMatch as any[]);
-        const callSource = fromCrm.length > 0 ? 'crm' : fromMatch.length > 0 ? 'match' : null;
+        const calls = callsByOrder.get(orderId) ?? [];
+        const callSource = callSourceByOrder.get(orderId) ?? null;
         const collapsed = collapseCalls(calls as any[]);
         const movement = movementByOrder.get(orderId);
         const replyAt = replyByOrder.get(orderId) ?? null;
@@ -280,8 +246,6 @@ export async function computeTaskResults(date: string): Promise<{ rows: number; 
             details: {
                 calls_raw: (calls as any[]).length,
                 calls_collapsed: collapsed.length,
-                calls_from_crm: fromCrm.length,
-                calls_from_match: fromMatch.length,
                 status_code: movement?.code ?? null,
             },
         };

@@ -33,7 +33,10 @@ export type OrderCall = {
      * почти все они с расшифровкой.
      */
     telphinCallId: string | null;
-    /** Идентификатор записи разговора — из CRM он приходит сразу. */
+    /**
+     * Идентификатор записи разговора. Связь звонка с заказом уже разрешена в
+     * представлении, поэтому здесь он больше не нужен и остаётся null.
+     */
     recordUuid: string | null;
     startedAt: string;
     durationSec: number;
@@ -57,99 +60,34 @@ export async function callsByOrders(
     const result = new Map<number, OrderCall[]>();
     if (orderIds.length === 0) return result;
 
-    // Номера заказов: CRM связывает звонок с номером, а не с нашим id.
-    const { data: orders } = await supabase.from('orders').select('id, number').in('id', orderIds);
-    const idByNumber = new Map<string, number>();
-    for (const o of ((orders ?? []) as any[])) idByNumber.set(String(o.number), Number(o.id));
-
-    let crmQuery = supabase
-        .from('retailcrm_calls')
-        .select('order_number, call_date, duration_sec, call_type, manager_rc_id, record_uuid, external_id')
-        .in('order_number', Array.from(idByNumber.keys()));
-    if (opts.from) crmQuery = crmQuery.gte('call_date', opts.from);
-    if (opts.to) crmQuery = crmQuery.lte('call_date', opts.to);
-
-    const { data: crmCalls } = await crmQuery;
-    for (const c of ((crmCalls ?? []) as any[])) {
-        const id = idByNumber.get(String(c.order_number));
-        if (!id) continue;
-        const list = result.get(id) ?? [];
-        list.push({
-            // Идентификатор Телфина подставится ниже, по записи разговора.
-            telphinCallId: null,
-            recordUuid: c.external_id ? String(c.external_id) : null,
-            startedAt: String(c.call_date),
-            durationSec: Number(c.duration_sec ?? 0),
-            direction: String(c.call_type) === 'in' ? 'incoming' : 'outgoing',
-            managerId: c.manager_rc_id === null || c.manager_rc_id === undefined ? null : Number(c.manager_rc_id),
-            source: 'crm',
-        });
-        result.set(id, list);
-    }
-
-    // Идентификатор звонка в Телфине — чтобы достать запись и расшифровку.
-    // CRM отдаёт идентификатор ЗАПИСИ, а он лежит внутри массива record_uuids.
-    const recordUuids = Array.from(result.values())
-        .flat()
-        .map((c) => c.recordUuid)
-        .filter(Boolean) as string[];
-    if (recordUuids.length > 0) {
-        const byUuid = new Map<string, string>();
-        for (let i = 0; i < recordUuids.length; i += 100) {
-            const { data: raw } = await supabase
-                .from('raw_telphin_calls')
-                .select('telphin_call_id, record_uuids')
-                .overlaps('record_uuids', recordUuids.slice(i, i + 100));
-            for (const r of ((raw ?? []) as any[])) {
-                for (const u of (r.record_uuids ?? []) as string[]) byUuid.set(String(u), String(r.telphin_call_id));
-            }
-        }
-        for (const list of Array.from(result.values())) {
-            for (const call of list) {
-                if (call.recordUuid) call.telphinCallId = byUuid.get(call.recordUuid) ?? null;
-            }
-        }
-    }
-
-    // Костыль — только для заказов, про которые CRM ничего не сказала.
-    const missing = orderIds.filter((id) => !result.has(id));
-    if (missing.length === 0) return result;
-
-    const { data: matches } = await supabase
-        .from('call_order_matches')
-        .select('retailcrm_order_id, telphin_call_id')
-        .in('retailcrm_order_id', missing);
-    const callIds = ((matches ?? []) as any[]).map((m) => String(m.telphin_call_id));
-    if (callIds.length === 0) return result;
-
-    const orderByCall = new Map<string, number>();
-    for (const m of ((matches ?? []) as any[])) orderByCall.set(String(m.telphin_call_id), Number(m.retailcrm_order_id));
-
-    // Порциями: тысячи идентификаторов в один запрос не влезают.
-    for (let i = 0; i < callIds.length; i += 200) {
+    // Связь живёт представлением в базе: какой источник главный, решено там
+    // один раз, и все потребители видят одно и то же. Раньше эта развилка была
+    // здесь, в коде, и повторялась в каждом месте, которое читало звонки.
+    const rows: any[] = [];
+    for (let i = 0; i < orderIds.length; i += 300) {
         let q = supabase
-            .from('raw_telphin_calls')
-            .select('telphin_call_id, started_at, duration_sec, direction, record_uuids')
-            .in('telphin_call_id', callIds.slice(i, i + 200));
+            .from('call_order_link')
+            .select('order_id, telphin_call_id, started_at, duration_sec, direction, manager_id, source')
+            .in('order_id', orderIds.slice(i, i + 300));
         if (opts.from) q = q.gte('started_at', opts.from);
         if (opts.to) q = q.lte('started_at', opts.to);
 
-        const { data: calls } = await q;
-        for (const c of ((calls ?? []) as any[])) {
-            const id = orderByCall.get(String(c.telphin_call_id));
-            if (!id) continue;
-            const list = result.get(id) ?? [];
-            list.push({
-                telphinCallId: String(c.telphin_call_id),
-                recordUuid: Array.isArray(c.record_uuids) ? String(c.record_uuids[0] ?? '') || null : null,
-                startedAt: String(c.started_at),
-                durationSec: Number(c.duration_sec ?? 0),
-                direction: c.direction === 'incoming' ? 'incoming' : 'outgoing',
-                managerId: null,
-                source: 'match',
-            });
-            result.set(id, list);
-        }
+        const { data } = await q;
+        rows.push(...((data ?? []) as any[]));
+    }
+
+    for (const r of rows) {
+        const list = result.get(Number(r.order_id)) ?? [];
+        list.push({
+            telphinCallId: r.telphin_call_id ? String(r.telphin_call_id) : null,
+            recordUuid: null,
+            startedAt: String(r.started_at),
+            durationSec: Number(r.duration_sec ?? 0),
+            direction: r.direction === 'incoming' ? 'incoming' : 'outgoing',
+            managerId: r.manager_id === null || r.manager_id === undefined ? null : Number(r.manager_id),
+            source: r.source === 'crm' ? 'crm' : 'match',
+        });
+        result.set(Number(r.order_id), list);
     }
 
     return result;
@@ -163,44 +101,19 @@ export async function callsByOrders(
  * матчинг.
  */
 export async function orderOfCall(telphinCallId: string): Promise<{ orderId: number; source: 'crm' | 'match' } | null> {
-    // Идентификаторы записей этого звонка — по ним CRM его и знает.
-    const { data: call } = await supabase
-        .from('raw_telphin_calls')
-        .select('record_uuids')
+    // Развилка «CRM или матчинг» разрешена в представлении, и порядок там же:
+    // строка из CRM идёт первой, наша догадка подставляется, только если CRM
+    // про этот заказ промолчала.
+    const { data } = await supabase
+        .from('call_order_link')
+        .select('order_id, source')
         .eq('telphin_call_id', telphinCallId)
-        .maybeSingle();
+        .order('source', { ascending: true }) // 'crm' раньше 'match' по алфавиту
+        .limit(1);
 
-    const uuids = ((call as any)?.record_uuids ?? []) as string[];
-    if (uuids.length > 0) {
-        const { data: crm } = await supabase
-            .from('retailcrm_calls')
-            .select('order_number')
-            .in('external_id', uuids)
-            .not('order_number', 'is', null)
-            .limit(1);
-        const number = ((crm ?? []) as any[])[0]?.order_number;
-        if (number) {
-            const { data: order } = await supabase
-                .from('orders')
-                .select('id')
-                .eq('number', String(number))
-                .maybeSingle();
-            if (order) return { orderId: Number((order as any).id), source: 'crm' };
-        }
-    }
-
-    // Костыль: наш матчинг. Ошибается примерно в трети случаев, поэтому
-    // спрашивается последним и помечается источником.
-    const { data: match } = await supabase
-        .from('call_order_matches')
-        .select('retailcrm_order_id')
-        .eq('telphin_call_id', telphinCallId)
-        .limit(1)
-        .maybeSingle();
-    if ((match as any)?.retailcrm_order_id) {
-        return { orderId: Number((match as any).retailcrm_order_id), source: 'match' };
-    }
-    return null;
+    const row = ((data ?? []) as any[])[0];
+    if (!row) return null;
+    return { orderId: Number(row.order_id), source: row.source === 'crm' ? 'crm' : 'match' };
 }
 
 /** Звонки по одному заказу. */
