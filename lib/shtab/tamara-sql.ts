@@ -39,6 +39,13 @@ export const ALLOWED_RELATIONS = [
     'retailcrm_dictionaries',
     'retailcrm_custom_fields',
     'okk_order_scores',
+    // Звонки, их расшифровки и входящие письма. Без них на вопрос «а звонок
+    // вообще был» ответить нечем: в истории заказа видно только то, что
+    // менеджер записал сам, и отличить работу от записи о работе невозможно.
+    // Расшифровка лежит прямо в raw_telphin_calls.transcript.
+    'raw_telphin_calls',
+    'call_order_matches',
+    'incoming_emails',
     'sales_client_purchases_mv',
     'sales_client_profile_mv',
     'sales_sphere_category_mv',
