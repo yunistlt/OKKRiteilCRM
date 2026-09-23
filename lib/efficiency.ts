@@ -21,8 +21,8 @@ type CallMatchRow = {
 };
 
 type RawCallRow = {
+    id?: string;
     raw_payload?: unknown;
-    call_order_matches?: CallMatchRow[] | null;
 };
 
 type ManagerRow = {
@@ -119,14 +119,26 @@ export async function calculateEfficiency(startDate: string, endDate: string) {
     // To do this strictly, we need to know which orders had at least one "REAL" (non-AM) call
     const { data: allCallsInPeriod } = await supabase
         .from('raw_telphin_calls')
-        .select('id: telphin_call_id, raw_payload, call_order_matches(order_id: retailcrm_order_id)')
+        .select('id: telphin_call_id, raw_payload')
         .gte('started_at', startDate)
         .lte('started_at', endDate);
 
-    // Filter in memory for safety (JSONB query can be tricky)
+    // Автоответчик разговором не считается: заказ, по которому «дозвонились» до
+    // робота, обработанным не стал.
     const realCalls = ((allCallsInPeriod || []) as RawCallRow[]).filter((c) => (c.raw_payload as any)?.is_answering_machine !== true);
 
-    const ordersWithRealContact = new Set((realCalls || []).flatMap((c) => c.call_order_matches?.map((m) => m.order_id) || []));
+    // Заказ звонка — через общую связь: привязка из RetailCRM основная, наш
+    // матчинг по телефону запасной. Раньше здесь стоял джойн матчинга, и заказ
+    // мог попасть в «обработанные» по чужому разговору.
+    const realCallIds = realCalls.map((c: any) => String(c.id)).filter(Boolean);
+    const ordersWithRealContact = new Set<number>();
+    for (let i = 0; i < realCallIds.length; i += 300) {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id')
+            .in('telphin_call_id', realCallIds.slice(i, i + 300));
+        for (const l of ((links ?? []) as any[])) ordersWithRealContact.add(Number(l.order_id));
+    }
 
     // 6. Fetch Manager Metadata
     const knownManagerIds = Object.keys(managerTime).map(Number);

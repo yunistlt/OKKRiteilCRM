@@ -250,7 +250,7 @@ const DEFAULT_SOURCE_REFS: Record<string, string[]> = {
     field_buyer_filled: ['orders.raw_payload.company', 'orders.raw_payload.contact', 'orders.raw_payload.customer'],
     field_product_category: ['orders.raw_payload.customFields', 'orders.raw_payload.category'],
     field_contact_data: ['orders.raw_payload.phone', 'orders.raw_payload.email', 'orders.raw_payload.contact.phones'],
-    relevant_number_found: ['call_order_matches', 'raw_telphin_calls.from_number', 'raw_telphin_calls.to_number'],
+    relevant_number_found: ['call_order_link', 'raw_telphin_calls.from_number', 'raw_telphin_calls.to_number'],
     field_expected_amount: ['orders.raw_payload.customFields.expected_amount', 'orders.raw_payload.totalSumm'],
     field_purchase_form: ['orders.raw_payload.customFields.typ_customer_margin', 'orders.raw_payload.customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete'],
     field_sphere_correct: ['orders.raw_payload.customFields.sfera_deiatelnosti'],
@@ -665,18 +665,42 @@ export async function collectFacts(orderId: number) {
         console.warn('[ОКК] payload-validator failed:', e);
     }
 
-    // --- Умный поиск звонков ---
+    // --- Звонки по заказу ---
+    //
+    // Привязку знает сама RetailCRM; наш матчинг по номеру телефона остаётся
+    // запасным и ошибается примерно в трети случаев. Здесь по звонкам ставится
+    // оценка качества, от которой считается зарплата, поэтому источник видно в
+    // matched_by — обоснование оценки должно называть, откуда взят разговор.
     let calls: any[] = [];
-    const { data: callMatches } = await supabase
-        .from('call_order_matches')
-        .select('telphin_call_id, raw_telphin_calls(started_at, duration_sec, recording_url, direction, transcript)')
-        .eq('retailcrm_order_id', orderId);
+    const { data: links } = await supabase
+        .from('call_order_link')
+        .select('telphin_call_id, started_at, duration_sec, direction, source')
+        .eq('order_id', orderId);
 
-    calls = (callMatches || []).map((m: any) => ({
-        ...(m.raw_telphin_calls || {}),
-        telphin_call_id: m.telphin_call_id || null,
-        matched_by: 'call_order_matches',
-    })).filter(Boolean);
+    const linkRows = (links ?? []) as any[];
+    if (linkRows.length > 0) {
+        const callIds = Array.from(new Set(linkRows.map((l) => String(l.telphin_call_id))));
+        const rawById = new Map<string, any>();
+        for (let i = 0; i < callIds.length; i += 300) {
+            const { data: raw } = await supabase
+                .from('raw_telphin_calls')
+                .select('telphin_call_id, started_at, duration_sec, recording_url, direction, transcript')
+                .in('telphin_call_id', callIds.slice(i, i + 300));
+            for (const c of ((raw ?? []) as any[])) rawById.set(String(c.telphin_call_id), c);
+        }
+
+        calls = linkRows.map((l) => {
+            const raw = rawById.get(String(l.telphin_call_id)) ?? {};
+            return {
+                ...raw,
+                started_at: raw.started_at ?? l.started_at,
+                duration_sec: raw.duration_sec ?? l.duration_sec,
+                direction: raw.direction ?? l.direction,
+                telphin_call_id: String(l.telphin_call_id),
+                matched_by: l.source === 'crm' ? 'retailcrm' : 'phone_matching',
+            };
+        });
+    }
 
     // Фолбек: если привязок нет, ищем по номеру телефона клиента
     if (calls.length === 0) {

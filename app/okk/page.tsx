@@ -325,7 +325,7 @@ const DEFAULT_COL_GROUPS: Group[] = [
             },
             {
                 key: 'relevant_number_found', label: 'Релевантный номер (поиск в интернете если не дозвониться)', type: 'bool',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Есть ли исходящие звонки по заказу', data: 'raw_telphin_calls (direction=outgoing) через call_order_matches' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Есть ли исходящие звонки по заказу', data: 'raw_telphin_calls (direction=outgoing) через RetailCRM (call_order_link)' }
             },
             {
                 key: 'field_expected_amount', label: 'Указана ожидаемая сумма сделки', type: 'bool',
@@ -356,19 +356,19 @@ const DEFAULT_COL_GROUPS: Group[] = [
         cols: [
             {
                 key: 'calls_status', label: 'Статус звонков', type: 'text',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: '"Дозвон есть" / "Попытки без ответа" / "Нет звонков"', data: 'raw_telphin_calls (duration_sec, direction) через call_order_matches' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: '"Дозвон есть" / "Попытки без ответа" / "Нет звонков"', data: 'raw_telphin_calls (duration_sec, direction) через RetailCRM (call_order_link)' }
             },
             {
                 key: 'calls_total_duration', label: 'Общая длительность всех разговоров', type: 'text',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Сумма duration_sec всех звонков по заказу', data: 'raw_telphin_calls.duration_sec через call_order_matches' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Сумма duration_sec всех звонков по заказу', data: 'raw_telphin_calls.duration_sec через RetailCRM (call_order_link)' }
             },
             {
                 key: 'calls_attempts_count', label: 'Совершено звонков/попыток дозвона', type: 'num',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Количество исходящих звонков (direction=outgoing)', data: 'raw_telphin_calls (direction=outgoing) через call_order_matches' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Количество исходящих звонков (direction=outgoing)', data: 'raw_telphin_calls (direction=outgoing) через RetailCRM (call_order_link)' }
             },
             {
                 key: 'calls_evaluated_count', label: 'Количество оцененных звонков в сделке', type: 'num',
-                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Звонки у которых есть расшифровка (transcript != null)', data: 'raw_telphin_calls.transcript через call_order_matches' }
+                tip: { agent: 'Семён', agentEmoji: '🎧', how: 'Звонки у которых есть расшифровка (transcript != null)', data: 'raw_telphin_calls.transcript через RetailCRM (call_order_link)' }
             },
         ]
     },
