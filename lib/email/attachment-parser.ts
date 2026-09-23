@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { extractPdfText } from '@/lib/pdf-text';
+import { decodeTextBuffer } from '@/lib/text-decode';
 
 /**
  * Нормализует извлеченный текст: убирает лишние пробелы, переносы строк и дубли.
@@ -27,7 +28,15 @@ export async function extractTextFromBuffer(buffer: Buffer, filename: string): P
 
     try {
         if (ext === 'txt') {
-            return normalizeText(buffer.toString('utf-8'));
+            return normalizeText(decodeTextBuffer(buffer));
+        }
+
+        if (ext === 'csv' || ext === 'tsv') {
+            // CSV читается как текст, а не таблицей: разделители и кавычки
+            // модель разбирает сама, а вот потеря кодировки её обманет молча.
+            // Через XLSX csv тоже проходит, но он всегда считает файл UTF-8 —
+            // а русские выгрузки чаще в windows-1251.
+            return normalizeText(decodeTextBuffer(buffer));
         }
 
         if (ext === 'docx' || ext === 'doc') {

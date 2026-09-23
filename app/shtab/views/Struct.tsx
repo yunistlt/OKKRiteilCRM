@@ -416,14 +416,14 @@ export default function Struct({ shtab }: ViewProps) {
                             <input
                                 ref={fileRef}
                                 type="file"
-                                accept=".pdf,.doc,.docx,.txt,.xlsx,.xls"
+                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
                                 disabled={busy}
                                 onChange={(e) => {
                                     const f = e.target.files?.[0];
                                     if (f) void upload(f);
                                 }}
                             />
-                            <p className="hint">PDF, docx, txt, xlsx — до 4 МБ. Текст вынимается сразу, чтобы Тамара могла его прочитать.</p>
+                            <p className="hint">PDF, docx, txt, csv, xlsx — до 4 МБ. Текст вынимается сразу, чтобы Тамара могла его прочитать.</p>
                             <div className="stack" style={{ gap: 6, marginTop: 8 }}>
                                 {postDocs.map((d) => (
                                     <div className="struct-doc" key={d.id}>

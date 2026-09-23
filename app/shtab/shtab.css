@@ -694,3 +694,7 @@
 .shtab .chat-file-x{font-size:14px;line-height:1;color:var(--ink-3)}
 
 .shtab .chat-file-x:hover{color:var(--signal)}
+
+/* Кнопка записи, пока идёт диктовка: заметна, но не мигает — мигание в рабочем
+   интерфейсе раздражает сильнее, чем помогает. */
+.shtab .btn-rec{background:var(--signal);border-color:var(--signal);color:var(--on-blue)}

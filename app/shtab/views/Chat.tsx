@@ -58,9 +58,13 @@ export default function Chat({ tamara }: ViewProps) {
     const [text, setText] = useState('');
     const [effort, setEffort] = useState<'low' | 'medium' | 'high'>('medium');
     const [busy, setBusy] = useState(false);
+    const [recording, setRecording] = useState(false);
+    const [decoding, setDecoding] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    const recorder = useRef<MediaRecorder | null>(null);
+    const chunks = useRef<Blob[]>([]);
 
     const loadChats = useCallback(async () => {
         const res = await fetch('/api/shtab/tamara/chats');
@@ -115,6 +119,53 @@ export default function Chat({ tamara }: ViewProps) {
         },
         [chat, openChat, loadFiles],
     );
+
+    // ── диктовка ──────────────────────────────────────────────────────────────
+    // Пишем на устройстве и отправляем запись на распознавание — тем же путём,
+    // которым распознаются звонки. Текст попадает в поле ввода, а не уходит
+    // сразу: надиктованное почти всегда надо поправить.
+    const startRecording = useCallback(async () => {
+        setError(null);
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const rec = new MediaRecorder(stream);
+            chunks.current = [];
+            rec.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.current.push(e.data);
+            };
+            rec.onstop = async () => {
+                // Дорожку надо закрыть руками, иначе в браузере остаётся
+                // гореть значок микрофона, хотя запись уже кончилась.
+                stream.getTracks().forEach((t) => t.stop());
+                const blob = new Blob(chunks.current, { type: rec.mimeType || 'audio/webm' });
+                if (blob.size === 0) return;
+                setDecoding(true);
+                try {
+                    const body = new FormData();
+                    body.append('audio', blob, 'dictation.webm');
+                    const res = await fetch('/api/shtab/tamara/voice', { method: 'POST', body });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data?.error || 'Не распозналось');
+                    setText((prev) => (prev.trim() ? `${prev.trim()} ${data.text}` : data.text));
+                } catch (e) {
+                    setError((e as Error).message);
+                } finally {
+                    setDecoding(false);
+                }
+            };
+            rec.start();
+            recorder.current = rec;
+            setRecording(true);
+        } catch (e) {
+            setError(`Микрофон не открылся: ${(e as Error).message}`);
+        }
+    }, []);
+
+    const stopRecording = useCallback(() => {
+        recorder.current?.stop();
+        recorder.current = null;
+        setRecording(false);
+    }, []);
 
     const detach = useCallback(
         async (id: number) => {
@@ -355,7 +406,7 @@ export default function Chat({ tamara }: ViewProps) {
                                     ref={fileRef}
                                     type="file"
                                     hidden
-                                    accept=".pdf,.doc,.docx,.txt,.xlsx,.xls"
+                                    accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
                                     onChange={(e) => {
                                         const f = e.target.files?.[0];
                                         if (f) void attach(f);
@@ -363,6 +414,13 @@ export default function Chat({ tamara }: ViewProps) {
                                 />
                                 <button className="btn btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
                                     прицепить файл
+                                </button>
+                                <button
+                                    className={`btn btn-sm${recording ? ' btn-rec' : ''}`}
+                                    disabled={decoding}
+                                    onClick={() => (recording ? stopRecording() : void startRecording())}
+                                >
+                                    {decoding ? 'расшифровываю…' : recording ? 'закончить диктовку' : 'диктовать'}
                                 </button>
                                 <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()}>
                                     {busy ? 'думает…' : 'спросить'}
