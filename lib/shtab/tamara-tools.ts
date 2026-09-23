@@ -4,6 +4,7 @@ import { applyStructureOps } from '@/lib/shtab/structure-apply';
 import type { StructureOp } from '@/lib/shtab/structure-apply';
 import { importStaffDoc } from '@/lib/shtab/staff-doc-import';
 import { tsehPeople, tsehStaffDocs } from '@/lib/shtab/tseh-staff';
+import { catalogOverview, catalogSearch, lvzCalcSummary, lvzRead, lvzTables } from '@/lib/shtab/lvz';
 import { applyRazborOps } from '@/lib/shtab/razbor-write';
 import type { RazborOp } from '@/lib/shtab/razbor-write';
 import { NON_INCOME_STATUSES, monthlyIncome, monthsAgo } from '@/lib/shtab/income';
@@ -286,6 +287,85 @@ const OWN_TOOLS = [
                     },
                 },
                 required: ['operations'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'catalog_search',
+            description:
+                'Найти позиции в каталоге витрины zmktlt.ru по словам из названия: имя, цена, категория, ссылка, продаётся ли сейчас. Цена — снимок на момент импорта витрины, не актуальный прайс.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Слова из названия изделия.' },
+                    limit: { type: 'integer', description: 'Сколько позиций вернуть, по умолчанию 15.' },
+                },
+                required: ['query'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'catalog_overview',
+            description:
+                'Сводка по витрине zmktlt.ru: сколько позиций всего, сколько активных, у скольких есть цена, какие категории. Отвечает на «что у нас вообще выставлено».',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'lvz_tables',
+            description:
+                'Что можно прочитать в базе соседнего проекта (сервис расчётов, маркетинг, продажи): список таблиц с назначением. Вызывай первым, когда вопрос про расчёты, проекты продаж или карточки товара.',
+            parameters: { type: 'object', properties: {}, additionalProperties: false },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'lvz_read',
+            description:
+                'Прочитать строки таблицы соседнего проекта. Итоги там не считаются — бери count_only, чтобы узнать количество, и строки, чтобы разобраться в содержимом. Столбцы неизвестны — посмотри их через limit 1.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    table: { type: 'string', description: 'Имя таблицы из lvz_tables.' },
+                    columns: { type: 'string', description: 'Через запятую; по умолчанию все.' },
+                    filters: {
+                        type: 'array',
+                        description: 'Условия отбора.',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                column: { type: 'string' },
+                                op: { type: 'string', enum: ['eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike'] },
+                                value: { type: 'string' },
+                            },
+                            required: ['column', 'op', 'value'],
+                        },
+                    },
+                    order: { type: 'string', description: 'По какому столбцу сортировать.' },
+                    descending: { type: 'boolean', description: 'Сначала новые.' },
+                    limit: { type: 'integer', description: 'До 200, по умолчанию 50.' },
+                    count_only: { type: 'boolean', description: 'Вернуть только количество подходящих строк.' },
+                },
+                required: ['table'],
+            },
+        },
+    },
+    {
+        type: 'function' as const,
+        function: {
+            name: 'lvz_calc_summary',
+            description:
+                'Сводка по сервису расчётов: сколько расчётов каждого вида за период, сколько всего, когда считали последний раз и кто. Отвечает на «пользуются ли расчётчиком».',
+            parameters: {
+                type: 'object',
+                properties: { days: { type: 'integer', description: 'За сколько дней, по умолчанию 90.' } },
             },
         },
     },
@@ -708,6 +788,34 @@ export async function executeShtabTool(name: string, args: any): Promise<ToolRes
             checks: results.flatMap((r) => r.problems ?? []),
             note: 'Записанное владелец видит на вкладках «Стратегия» и «Программы». Перескажи ему, что вышло, и назови находки проверок.',
         };
+    }
+
+    if (name === 'lvz_tables') {
+        return lvzTables() as ToolResult;
+    }
+
+    if (name === 'lvz_read') {
+        return (await lvzRead({
+            table: String(args?.table ?? ''),
+            columns: args?.columns ? String(args.columns) : undefined,
+            filters: Array.isArray(args?.filters) ? args.filters : [],
+            order: args?.order ? String(args.order) : undefined,
+            descending: Boolean(args?.descending),
+            limit: Number(args?.limit) || undefined,
+            count_only: Boolean(args?.count_only),
+        })) as ToolResult;
+    }
+
+    if (name === 'lvz_calc_summary') {
+        return (await lvzCalcSummary(Number(args?.days) || 90)) as ToolResult;
+    }
+
+    if (name === 'catalog_search') {
+        return (await catalogSearch(String(args?.query ?? ''), Number(args?.limit) || 15)) as ToolResult;
+    }
+
+    if (name === 'catalog_overview') {
+        return (await catalogOverview()) as ToolResult;
     }
 
     if (name === 'shtab_query') {
