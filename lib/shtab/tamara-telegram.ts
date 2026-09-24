@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { telegramBotToken } from '@/lib/telegram';
 
 /**
  * Тамара пишет владельцу в телеграм.
@@ -84,10 +85,12 @@ export async function sendToOwner(
     opts: { kind?: string; reportDate?: string | null } = {},
 ): Promise<SendResult> {
     const settings = await loadTamaraSettings();
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    // Имя переменной с токеном на проде и локально разное — выбор один на
+    // весь сервис, в lib/telegram.
+    const token = telegramBotToken();
 
     if (!token || !settings.chatId) {
-        const error = !token ? 'нет TELEGRAM_BOT_TOKEN' : 'не задан чат владельца';
+        const error = !token ? 'не настроен токен бота' : 'не задан чат владельца';
         await supabase.from('shtab_tamara_outbox').insert({
             kind: opts.kind ?? 'message',
             text,

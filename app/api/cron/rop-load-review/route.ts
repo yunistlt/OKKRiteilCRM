@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { telegramBotToken } from '@/lib/telegram';
 import { formatWeekReview, lastWeek, loadWeek, recommend } from '@/lib/sales-rop/load-review';
 import { loadSettings, notifyOwnerFailure } from '@/lib/sales-rop/service';
 import { createProposal } from '@/lib/settings-registry/proposals';
@@ -21,7 +22,7 @@ export const maxDuration = 300;
 async function sendToOwner(text: string): Promise<boolean> {
     const settings = await loadSettings();
     const chat = settings.ownerChatId || settings.chatId;
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = telegramBotToken();
     if (!token || !chat) return false;
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
