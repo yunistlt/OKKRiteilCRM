@@ -10,7 +10,7 @@
  * здесь человек.
  */
 import fs from 'fs';
-import path from 'path';
+import { cutout } from './outfit-cutout';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
@@ -45,9 +45,11 @@ function num(name: string): number | null {
     }
     const supabase = createClient(url, key);
 
-    const bytes = fs.readFileSync(file);
-    const ext = path.extname(file) || '.png';
-    const storagePath = `tamara-wardrobe/${slug}${ext}`;
+    // Kling отдаёт кадр на сплошном светлом фоне и с широкими полями. В Штабе
+    // фигура стоит на фоне страницы, поэтому фон снимаем, а поля срезаем —
+    // иначе Тамара выходит в сером прямоугольнике и вполовину мельче.
+    const bytes = await cutout(fs.readFileSync(file));
+    const storagePath = `tamara-wardrobe/${slug}.png`;
 
     const up = await supabase.storage
         .from(BUCKET)
@@ -57,9 +59,12 @@ function num(name: string): number | null {
         process.exit(1);
     }
 
+    // Метка версии в ссылке. Путь у образа постоянный, а CDN держит файл час:
+    // без метки перешитая вещь ещё час показывалась бы в прежнем виде.
     const {
-        data: { publicUrl },
+        data: { publicUrl: base },
     } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
+    const publicUrl = `${base}?v=${Date.now().toString(36)}`;
 
     const rain = arg('rain');
     const row = {
