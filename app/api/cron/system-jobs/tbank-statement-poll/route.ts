@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   getTbankConfig,
@@ -21,8 +22,7 @@ const WORKER_KEY = 'system_jobs.tbank_statement_poll';
 const WINDOW_DAYS = Number(process.env.TBANK_POLL_WINDOW_DAYS || 3);
 
 function ensureAuthorized(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronHeaderAuthorized(req)) {
     throw new Error('Unauthorized');
   }
 }

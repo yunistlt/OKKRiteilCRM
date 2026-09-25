@@ -1,11 +1,11 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
 
 function ensureAuthorized(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronHeaderAuthorized(req)) {
     throw new Error('Unauthorized');
   }
 }

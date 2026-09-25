@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   claimSystemJobs,
@@ -18,8 +19,7 @@ const WORKER_KEY = 'system_jobs.transcription';
 const MAX_TRANSCRIPTION_CONCURRENCY = 1;
 
 function ensureAuthorized(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronHeaderAuthorized(req)) {
     throw new Error('Unauthorized');
   }
 }

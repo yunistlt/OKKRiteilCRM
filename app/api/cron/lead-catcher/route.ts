@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { createLeadInCrm, updateExistingOrderInCrm, formatMatchedCatalogProducts } from '@/lib/retailcrm/leads';
@@ -40,9 +41,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
     try {
-        const authHeader = req.headers.get('authorization');
         // Simple security check for CRON
-        if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+        if (!isCronHeaderAuthorized(req)) {
             // In development, we might skip this
         }
 

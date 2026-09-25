@@ -52,7 +52,18 @@ export async function POST(req: NextRequest) {
         }
 
         const headers: HeadersInit = {};
-        if (needsCronAuth(url) && process.env.CRON_SECRET) {
+        if (needsCronAuth(url)) {
+            // Крон-роуты закрыты по умолчанию (lib/cron-auth.ts). Запуск из интерфейса
+            // представляется тем же ключом, что и планировщик; без ключа запускать нечем.
+            if (!process.env.CRON_SECRET) {
+                return NextResponse.json(
+                    {
+                        ok: false,
+                        error: 'Запуск вручную недоступен: не задана переменная CRON_SECRET в окружении. Расписание при этом работает.',
+                    },
+                    { status: 503 },
+                );
+            }
             headers.authorization = `Bearer ${process.env.CRON_SECRET}`;
         }
 

@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
   claimProcessablePayments,
@@ -17,8 +18,7 @@ export const maxDuration = 300;
 const WORKER_KEY = 'system_jobs.point_payment_ingest';
 
 function ensureAuthorized(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronHeaderAuthorized(req)) {
     throw new Error('Unauthorized');
   }
 }

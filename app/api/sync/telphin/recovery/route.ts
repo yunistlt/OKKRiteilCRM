@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { releaseRuntimeSyncLock, tryAcquireRuntimeSyncLock } from '@/lib/runtime-sync-locks';
 import { runTelphinBacklogRecovery } from '@/lib/sync/telphin';
@@ -10,8 +11,7 @@ const TELPHIN_BACKFILL_LOCK_KEY = 'sync.telphin_backfill';
 const TELPHIN_BACKFILL_LOCK_TTL_SECONDS = 280;
 
 function isAuthorized(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    return isCronHeaderAuthorized(req);
 }
 
 async function persistTelphinBackfillLockState(status: 'idle' | 'running' | 'contended', holder?: string | null) {

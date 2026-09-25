@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { runFullEvaluation } from '@/lib/okk-evaluator';
 import { getSession } from '@/lib/auth';
@@ -10,8 +11,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 function hasCronAuthorization(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    return isCronHeaderAuthorized(req);
 }
 
 // GET /api/okk/run-all — полный прогон всех контролируемых заказов

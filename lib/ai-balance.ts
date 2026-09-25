@@ -24,6 +24,8 @@ export interface AiBalanceState {
     balanceEur: number | null;
     spentSinceSnapshotUsd: number;
     snapshotAt: string | null;
+    /** true — расход перекрыл снимок: было пополнение, которое не занесли. */
+    snapshotStale: boolean;
     /** Средний расход в USD за сутки по последним 7 дням (для прогноза «хватит на N дней»). */
     burnPerDayUsd: number;
     daysLeft: number | null;
@@ -41,6 +43,14 @@ export async function getAiBalanceSettings(): Promise<AiBalanceSettings> {
     };
 }
 
+/** Сумма расходов с указанного момента; считает БД, а не приложение. */
+async function sumUsageUsd(sinceIso: string): Promise<number> {
+    const { data, error } = await supabase.rpc('ai_usage_summary', { since: sinceIso });
+    if (error) throw new Error(`Не удалось посчитать расход с ${sinceIso}: ${error.message}`);
+    const row = Array.isArray(data) ? data[0] : data;
+    return Number(row?.usd) || 0;
+}
+
 /** Считает остаток от последнего снимка баланса за вычетом расходов после него. */
 export async function getAiBalanceState(settings: AiBalanceSettings): Promise<AiBalanceState> {
     const { data: snap } = await supabase
@@ -51,29 +61,25 @@ export async function getAiBalanceState(settings: AiBalanceSettings): Promise<Ai
         .maybeSingle();
 
     const sinceIso = snap?.occurred_at || null;
-    let spent = 0;
-    if (sinceIso) {
-        const { data: rows } = await supabase
-            .from('ai_usage_events')
-            .select('cost_usd')
-            .gte('created_at', sinceIso);
-        spent = (rows || []).reduce((acc: number, r: any) => acc + (Number(r.cost_usd) || 0), 0);
-    }
+    // Суммы считает БД: REST-клиент отдаёт максимум 1000 строк, а вызовов тысячи,
+    // и расход после снимка молча занижался бы.
+    const spent = sinceIso ? await sumUsageUsd(sinceIso) : 0;
 
     const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
-    const { data: weekRows } = await supabase
-        .from('ai_usage_events')
-        .select('cost_usd')
-        .gte('created_at', weekAgo);
-    const weekSpent = (weekRows || []).reduce((acc: number, r: any) => acc + (Number(r.cost_usd) || 0), 0);
-    const burnPerDayUsd = weekSpent / 7;
+    const burnPerDayUsd = (await sumUsageUsd(weekAgo)) / 7;
 
-    const balanceUsd = snap ? Math.max(0, Number(snap.balance_usd) - spent) : null;
+    // Расход перекрыл снимок — значит после него было пополнение, которое никто не занёс.
+    // Считать остаток не от чего: лучше честное «не знаю», чем ноль, на который
+    // сторож будет каждые несколько часов слать ложное «деньги заканчиваются».
+    const snapshotStale = !!snap && spent >= Number(snap.balance_usd);
+    const balanceUsd = snap && !snapshotStale ? Number(snap.balance_usd) - spent : null;
+
     return {
         balanceUsd,
         balanceEur: balanceUsd === null ? null : balanceUsd * settings.usdToEur,
         spentSinceSnapshotUsd: spent,
         snapshotAt: sinceIso,
+        snapshotStale,
         burnPerDayUsd,
         daysLeft: balanceUsd !== null && burnPerDayUsd > 0 ? balanceUsd / burnPerDayUsd : null,
     };

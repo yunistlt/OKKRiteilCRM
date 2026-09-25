@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { weekStart } from '@/lib/shtab/tamara';
@@ -19,8 +20,7 @@ export const maxDuration = 300;
 // моделью: она должна быть одинаковой всю неделю, иначе на неё нельзя сослаться.
 
 function ensureAuthorized(req: NextRequest) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }

@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import {
     formatKnowledge,
@@ -38,8 +39,7 @@ const REPORT_TASK = `Собери ежедневный отчёт владель
 Что посмотреть — решай сама по тому, что сегодня важно. Обычно это деньги, продажи, движение заказов, работа отдела, открытые минусы Штаба и выпуск на заводе.`;
 
 export async function GET(req: NextRequest) {
-    const auth = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

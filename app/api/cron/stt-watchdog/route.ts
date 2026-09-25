@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -13,8 +14,7 @@ const BACKLOG_MIN = 30;       // меньше — не алармим (мелк�
 const DONE_PER_HOUR_MIN = 10; // меньше обработанных/час при бэклоге → воркер встал/ползёт
 
 function ensureAuthorized(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!isCronHeaderAuthorized(req)) {
     throw new Error('Unauthorized');
   }
 }

@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { notifyOwnerFailure, runEvening } from '@/lib/sales-rop/service';
 import { localToday } from '@/app/api/cron/rop-morning/route';
@@ -13,8 +14,7 @@ export const maxDuration = 300;
 // проверял бы не то, что просили.
 
 export async function GET(req: NextRequest) {
-    const auth = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
@@ -9,8 +10,7 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 function hasCronAuthorization(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    return isCronHeaderAuthorized(req);
 }
 
 export async function GET(request: Request) {

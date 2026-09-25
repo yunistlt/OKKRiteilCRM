@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
@@ -8,8 +9,7 @@ const RETAILCRM_KEY = process.env.RETAILCRM_API_KEY;
 export const maxDuration = 300;
 
 function ensureAuthorized(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
             .select('id, raw_data');
 
         const nicknameMap = new Map();
-        existingManagers?.forEach(em => {
+        existingManagers?.forEach((em: any) => {
             if (em.raw_data?.telegram_username) {
                 nicknameMap.set(em.id, em.raw_data.telegram_username);
             }

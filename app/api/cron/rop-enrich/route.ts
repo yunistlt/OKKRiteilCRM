@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { enrichClients } from '@/lib/sales-rop/enrich';
@@ -11,8 +12,7 @@ export const maxDuration = 300;
 // подсказок Dadata один на всю компанию. За неделю ночных прогонов база
 // обогащается целиком, дальше — только новые и те, кого не проверяли полгода.
 export async function GET(req: NextRequest) {
-    const auth = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

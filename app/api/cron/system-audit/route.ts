@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 
 // ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Системный аудитор: проверка здоровья базы и зависших процессов.
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,8 +15,7 @@ const ALERT_RECOVERED_AT_KEY = 'system_audit_realtime_alert_recovered_at';
 const ALERT_COOLDOWN_HOURS = 6;
 
 function ensureAuthorized(req: NextRequest) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }

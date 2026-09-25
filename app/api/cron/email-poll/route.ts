@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 /**
  * GET /api/cron/email-poll
  * Этап 1 фичи «Автоприём писем»: read-only вычитывает новые письма из общего ящика
@@ -46,8 +47,7 @@ async function setAgentStatus(status: string, task: string) {
 }
 
 function hasCronAuthorization(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    return !process.env.CRON_SECRET || authHeader === `Bearer ${process.env.CRON_SECRET}`;
+    return isCronHeaderAuthorized(req);
 }
 
 function escapeHtml(s: string): string {

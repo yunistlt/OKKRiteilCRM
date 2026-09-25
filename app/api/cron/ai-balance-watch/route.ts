@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { getAiBalanceSettings, getAiBalanceState, pingOpenAi } from '@/lib/ai-balance';
@@ -9,8 +10,7 @@ const WORKER_KEY = 'system_jobs.ai_balance_watch';
 const ALERT_KEY = 'ai_balance_alerted_at';
 
 function ensureAuthorized(req: NextRequest) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }
@@ -43,7 +43,10 @@ export async function GET(req: NextRequest) {
         const ping = await pingOpenAi();
 
         const belowThreshold = state.balanceEur !== null && state.balanceEur < settings.alertEur;
+        // Устаревший снимок — не повод кричать «деньги заканчиваются»: остаток посчитать
+        // не от чего. Про сам снимок скажем отдельно и только когда ИИ при этом работает.
         const shouldAlert = ping.quotaExhausted || belowThreshold;
+        const shouldRemindSnapshot = !shouldAlert && state.snapshotStale && ping.ok;
 
         const lastAlertAt = await getLastAlertAt();
         const muted = lastAlertAt
@@ -72,7 +75,17 @@ export async function GET(req: NextRequest) {
             await sendTelegramNotification(lines.join('\n'));
             await setLastAlertAt(new Date().toISOString());
             action = ping.quotaExhausted ? 'alerted_exhausted' : 'alerted_low';
-        } else if (!shouldAlert && lastAlertAt) {
+        } else if (shouldRemindSnapshot && !muted) {
+            await sendTelegramNotification(
+                [
+                    'ℹ️ <b>Остаток на OpenAI посчитать не от чего.</b>',
+                    `Последний занесённый снимок баланса — от ${new Date(state.snapshotAt || '').toLocaleDateString('ru-RU')}, расходы после него его перекрыли: значит было пополнение, которое не занесли.`,
+                    'ИИ работает, тревоги нет. Занеси сумму пополнения в настройках расходов — иначе прогноз «хватит на N дней» не считается.',
+                ].join('\n'),
+            );
+            await setLastAlertAt(new Date().toISOString());
+            action = 'snapshot_stale';
+        } else if (!shouldAlert && !state.snapshotStale && lastAlertAt) {
             await sendTelegramNotification(
                 `✅ Баланс OpenAI пополнен: ~€${state.balanceEur !== null ? money(state.balanceEur) : '—'}. ИИ снова работает.`,
             );

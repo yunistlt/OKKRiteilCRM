@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 
@@ -12,8 +13,7 @@ export const maxDuration = 300;
 // подхватывая правки задним числом. Расчёт ЗП зовёт ту же функцию инкрементально
 // (доли секунды) — см. migrations/20260902_salary_canon_incremental.sql.
 export async function GET(req: NextRequest) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

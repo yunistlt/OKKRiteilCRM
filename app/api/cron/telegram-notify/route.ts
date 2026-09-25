@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateHumanNotification } from '@/lib/semantic';
@@ -6,8 +7,7 @@ import { sendTelegramNotification } from '@/lib/telegram';
 // Vercel Cron will hit this endpoint every 10 minutes
 export async function GET(req: Request) {
     // Basic authorization to prevent arbitrary triggers. Vercel automatically sends this header
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         // Warning: This endpoint should remain accessible during local dev or if no secret is configured
         if (process.env.NODE_ENV === 'production' && process.env.CRON_SECRET) {
             return new NextResponse('Unauthorized', { status: 401 });

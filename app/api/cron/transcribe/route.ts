@@ -1,5 +1,5 @@
-
 // @ts-nocheck
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { isSystemJobsPipelineRuntimeEnabled, safeEnqueueCallSemanticRulesJob } from '@/lib/system-jobs';
@@ -11,8 +11,7 @@ export const dynamic = 'force-dynamic';
 const WORKER_KEY = 'fallback.transcription';
 
 function ensureAuthorized(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }

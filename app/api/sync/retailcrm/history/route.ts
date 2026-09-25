@@ -1,3 +1,4 @@
+import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 
 // @ts-nocheck
 import { NextResponse } from 'next/server';
@@ -12,8 +13,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 mins
 
 function ensureAuthorized(req: Request) {
-    const authHeader = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!isCronHeaderAuthorized(req)) {
         throw new Error('Unauthorized');
     }
 }

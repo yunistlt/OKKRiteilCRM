@@ -24,6 +24,9 @@ const BodySchema = z.object({
             })
         )
         .optional(),
+    /** Пополнение счёта OpenAI: сумма в USD, которая лежит на счёте на этот момент. */
+    balance_topup_usd: z.number().positive().optional(),
+    balance_topup_note: z.string().max(200).optional(),
 });
 
 export async function GET() {
@@ -69,6 +72,18 @@ export async function POST(req: Request) {
             },
             { onConflict: 'model' }
         );
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Снимок баланса: от него считается остаток и прогноз «хватит на N дней».
+    // Без свежего снимка после пополнения остаток посчитать не от чего.
+    if (typeof parsed.balance_topup_usd === 'number') {
+        const now = new Date().toISOString();
+        const { error } = await supabase.from('ai_balance_snapshots').insert({
+            balance_usd: parsed.balance_topup_usd,
+            occurred_at: now,
+            note: parsed.balance_topup_note || `пополнение ${new Date().toLocaleDateString('ru-RU')}`,
+        });
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

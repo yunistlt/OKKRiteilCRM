@@ -16,6 +16,8 @@ export default function AiCostsEditor({ initialFx, initialPricing }: { initialFx
     const [fx, setFx] = useState(String(initialFx));
     const [rows, setRows] = useState<PricingRow[]>(initialPricing);
     const [saving, setSaving] = useState(false);
+    const [topup, setTopup] = useState('');
+    const [savingTopup, setSavingTopup] = useState(false);
     const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
     const setCell = (model: string, key: keyof PricingRow, val: string) =>
@@ -49,6 +51,33 @@ export default function AiCostsEditor({ initialFx, initialPricing }: { initialFx
         }
     }
 
+    async function saveTopup() {
+        const amount = Number(topup.replace(',', '.').replace(/\s/g, ''));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            setMsg({ kind: 'err', text: 'Сумма пополнения должна быть положительным числом' });
+            return;
+        }
+
+        setSavingTopup(true);
+        setMsg(null);
+        try {
+            const res = await fetch('/api/settings/ai-costs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ balance_topup_usd: amount }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || 'Ошибка сохранения');
+            setMsg({ kind: 'ok', text: `Пополнение на $${amount.toLocaleString('ru-RU')} записано` });
+            setTopup('');
+            router.refresh();
+        } catch (e: any) {
+            setMsg({ kind: 'err', text: e?.message || 'Ошибка' });
+        } finally {
+            setSavingTopup(false);
+        }
+    }
+
     const inputCls = 'w-28 border border-slate-300 px-2 py-1 text-sm text-slate-900 outline-none focus:border-sky-500';
 
     return (
@@ -59,6 +88,31 @@ export default function AiCostsEditor({ initialFx, initialPricing }: { initialFx
                     <input value={fx} onChange={(e) => setFx(e.target.value)} inputMode="decimal" className={`${inputCls} mt-2 w-40 text-lg font-bold`} />
                 </div>
                 <div className="text-xs text-slate-500">Курс применяется к отображению стоимости всех агентов. Стоимость в USD фиксируется на момент вызова.</div>
+            </div>
+
+            <div className="mt-5 flex flex-wrap items-end gap-4 border border-slate-200 bg-white p-5">
+                <div>
+                    <label className="block text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Пополнение счёта OpenAI, $</label>
+                    <input
+                        value={topup}
+                        onChange={(e) => setTopup(e.target.value)}
+                        inputMode="decimal"
+                        placeholder="сколько стало на счёте"
+                        className={`${inputCls} mt-2 w-56 text-lg font-bold`}
+                    />
+                </div>
+                <button
+                    type="button"
+                    onClick={saveTopup}
+                    disabled={savingTopup || !topup.trim()}
+                    className="border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+                >
+                    {savingTopup ? 'Записываю…' : 'Записать пополнение'}
+                </button>
+                <div className="text-xs text-slate-500">
+                    Остаток на счёте OpenAI по ключу не отдаёт, поэтому он считается от последнего пополнения
+                    за вычетом наших расходов. Не записал пополнение — остаток и прогноз «хватит на N дней» не считаются.
+                </div>
             </div>
 
             <div className="mt-5 overflow-x-auto border border-slate-200 bg-white p-5">
