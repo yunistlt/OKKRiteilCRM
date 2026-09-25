@@ -243,7 +243,7 @@ export default function Tamara({
                                 /* Образ дня приходит цельным кадром — голова на нём
                                    уже своя, второй слой её бы задвоил. */
                                 <img
-                                    className="fig photo body"
+                                    className="fig photo body outfit"
                                     alt={`Тамара, ${outfit.title}`}
                                     title={`${outfit.title} — ${outfit.reason}`}
                                     src={outfit.imageUrl}
