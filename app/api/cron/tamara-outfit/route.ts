@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized } from '@/lib/cron-auth';
 import { supabase } from '@/utils/supabase';
 import { buildPrompt, drawConfigured, drawOutfit, storeOutfit } from '@/lib/shtab/outfit-draw';
 import { chooseOutfit, outfitEnabled } from '@/lib/shtab/tamara-wardrobe';
@@ -17,8 +18,7 @@ export const maxDuration = 300;
 // отрисовка не удалась, остаётся принятый кадр из гардероба — Тамара выйдет
 // одетой в любом случае.
 export async function GET(req: NextRequest) {
-    const auth = req.headers.get('authorization');
-    if (process.env.CRON_SECRET && auth !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (!(await isCronAuthorized(req))) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
