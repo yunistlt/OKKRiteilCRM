@@ -2,6 +2,7 @@
 // ОТВЕТСТВЕННЫЙ: АННА (Бизнес-аналитик) — Семантическая проверка текста и выявление смыслов.
 import { getOpenAIClient } from '@/utils/openai';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { cachedAiResult } from '@/lib/ai-cache';
 
 // const openai = new OpenAI({
 //     apiKey: process.env.OPENAI_API_KEY,
@@ -44,23 +45,33 @@ Be strict. If the text is ambiguous, bias towards NO violation (innocent until p
 Если текст есть, но нарушения в нём нет — это is_violation=false (НЕ insufficient_data). insufficient_data=true оставь только для случая, когда анализировать нечего (нет текста/данные не синхронизированы).
     `;
 
+    const userPrompt = `RULE: ${rulePrompt}\n\nINPUT TEXT:\n${text}`;
+
     try {
-        const openai = getOpenAIClient();
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini", // Efficient model for analysis
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: `RULE: ${rulePrompt}\n\nINPUT TEXT:\n${text}` }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.1,
+        // Правило и текст не менялись — ответ модели тот же. Берём его из кэша.
+        const { value: result } = await cachedAiResult<any>({
+            purpose: 'semantic_rule',
+            keyParts: [systemPrompt, userPrompt],
+            run: async () => {
+                const openai = getOpenAIClient();
+                const completion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini", // Efficient model for analysis
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: userPrompt }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.1,
+                });
+                await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'semantic_rule' });
+
+                const content = completion.choices[0].message.content;
+                if (!content) throw new Error('No content from LLM');
+
+                return JSON.parse(content);
+            },
         });
-        await recordAiUsage({ agentId: AiAgent.MAXIM, model: completion.model, usage: completion.usage, purpose: 'semantic_rule' });
 
-        const content = completion.choices[0].message.content;
-        if (!content) throw new Error('No content from LLM');
-
-        const result = JSON.parse(content);
         const insufficient_data = Boolean(result.insufficient_data);
         return {
             // При недостатке данных нарушение не фиксируем — параметр не учитывается, а не штрафуется.

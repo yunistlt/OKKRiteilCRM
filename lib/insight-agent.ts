@@ -6,6 +6,7 @@ import { collectStageEvidence } from './stage-collector';
 import { generateEmbedding, formatExampleForEmbedding } from './embeddings';
 import { ANNA_INSIGHT_PROMPT } from './prompts';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { cachedAiResult } from '@/lib/ai-cache';
 import { getOpenAIClient } from '@/utils/openai';
 
 let _openai: OpenAI | null = null;
@@ -133,20 +134,33 @@ KEY METRICS:
 - Comments suggest shipped: ${evidence.metrics?.was_shipped_hint}
 `;
 
-        const openai = getOpenAI();
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.1,
-        });
-        await recordAiUsage({ agentId: AiAgent.ANNA, model: completion.model, usage: completion.usage, purpose: 'insight_analysis' });
+        // Заказ, который никто не трогал с прошлого разбора, даёт тот же ответ модели.
+        // Ключ кэша собран из промптов целиком: изменился заказ, история или промпт —
+        // отпечаток другой, и разбор пойдёт заново.
+        const { value: insights, cached } = await cachedAiResult<BusinessInsights | null>({
+            purpose: 'insight_analysis',
+            keyParts: [systemPrompt, userPrompt],
+            run: async () => {
+                const openai = getOpenAI();
+                const completion = await openai.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: userPrompt }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.1,
+                });
+                await recordAiUsage({ agentId: AiAgent.ANNA, model: completion.model, usage: completion.usage, purpose: 'insight_analysis' });
 
-        const content = completion.choices[0].message.content;
-        if (!content) {
+                const content = completion.choices[0].message.content;
+                if (!content) return null;
+
+                return JSON.parse(content) as BusinessInsights;
+            },
+        });
+
+        if (!insights) {
             return {
                 status: 'failed',
                 insights: null,
@@ -154,7 +168,9 @@ KEY METRICS:
             };
         }
 
-        const insights = JSON.parse(content) as BusinessInsights;
+        if (cached) {
+            console.log(`[InsightAgent] Заказ #${orderId}: данные не менялись, разбор взят из кэша.`);
+        }
 
         // Ensure total_orders is set from evidence if AI missed it
         if (evidence.customerOrdersCount !== undefined && (!insights.customer_profile || insights.customer_profile.total_orders === undefined)) {

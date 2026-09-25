@@ -15,6 +15,7 @@ import OpenAI from 'openai';
 import { runInsightAnalysisDetailed, type BusinessInsights } from './insight-agent';
 import { OKK_CONSULTANT_GUIDES } from './okk-consultant';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { cachedAiResult } from '@/lib/ai-cache';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 import { getOpenAIClient } from '@/utils/openai';
 
@@ -537,29 +538,34 @@ async function checkTZWithAI(
         return { tz_received: false, reason: 'Комментарии клиента и оператора отсутствуют; ТЗ не найдено.' };
     }
 
-    try {
-        const openai = getOpenAI();
-        const res = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-                {
-                    role: 'system',
-                    content: `Ты — ОКК-аналитик отдела продаж промышленного оборудования.
+    const tzSystemPrompt = `Ты — ОКК-аналитик отдела продаж промышленного оборудования.
 Определи, содержится ли в тексте достаточно информации для расчёта коммерческого предложения.
 Признаки наличия ТЗ: размеры (мм, м, см), количество штук, температура, тип нагрева, нагрузка, материал, модель.
-Верни JSON: {"tz_received": true/false, "reason": "одно предложение с цитатой из текста если нашёл"}`
-                },
-                {
-                    role: 'user',
-                    content: parts.join('\n\n').substring(0, 2000)
-                }
-            ]
-        });
-        await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'tz_detection' });
+Верни JSON: {"tz_received": true/false, "reason": "одно предложение с цитатой из текста если нашёл"}`;
+    const tzUserPrompt = parts.join('\n\n').substring(0, 2000);
 
-        const parsed = JSON.parse(res.choices[0].message.content || '{}');
+    try {
+        // Комментарии не менялись — ответ модели тот же. Берём его из кэша.
+        const { value: parsed } = await cachedAiResult<any>({
+            purpose: 'tz_detection',
+            keyParts: [tzSystemPrompt, tzUserPrompt],
+            run: async () => {
+                const openai = getOpenAI();
+                const res = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    temperature: 0,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: tzSystemPrompt },
+                        { role: 'user', content: tzUserPrompt }
+                    ]
+                });
+                await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'tz_detection' });
+
+                return JSON.parse(res.choices[0].message.content || '{}');
+            },
+        });
+
         return {
             tz_received: !!parsed.tz_received,
             reason: parsed.reason ||
@@ -583,29 +589,34 @@ async function detectRealConversation(
         return { is_human: false, reason: 'Текст слишком короткий или отсутствует.' };
     }
 
-    try {
-        const openai = getOpenAI();
-        const res = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-                {
-                    role: 'system',
-                    content: `Ты — ассистент ОКК (Семён). Определи по расшифровке телефонного звонка:
+    const conversationSystemPrompt = `Ты — ассистент ОКК (Семён). Определи по расшифровке телефонного звонка:
 Это реальный разговор с живым человеком (клиентом) или звонок попал на автоответчик / голосовое меню (IVR) / фоновую музыку / тишину?
 Учти, что автоответчики могут долго говорить (Например: "Ваш звонок очень важен для нас..."). Если человек поговорил с живым оператором на стороне клиента (например, секретарь) - это тоже живой человек.
-Верни JSON: {"is_human": true/false, "reason": "Краткое обоснование, почему ты так решил"}`
-                },
-                {
-                    role: 'user',
-                    content: `Транскрипция звонка:\n${transcript.substring(0, 1500)}`
-                }
-            ]
-        });
-        await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'real_conversation_detection' });
+Верни JSON: {"is_human": true/false, "reason": "Краткое обоснование, почему ты так решил"}`;
+    const conversationUserPrompt = `Транскрипция звонка:\n${transcript.substring(0, 1500)}`;
 
-        const parsed = JSON.parse(res.choices[0].message.content || '{}');
+    try {
+        // Расшифровка звонка больше не изменится — ответ модели тот же. Берём его из кэша.
+        const { value: parsed } = await cachedAiResult<any>({
+            purpose: 'real_conversation_detection',
+            keyParts: [conversationSystemPrompt, conversationUserPrompt],
+            run: async () => {
+                const openai = getOpenAI();
+                const res = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    temperature: 0,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: conversationSystemPrompt },
+                        { role: 'user', content: conversationUserPrompt }
+                    ]
+                });
+                await recordAiUsage({ agentId: AiAgent.ANNA, model: res.model, usage: res.usage, purpose: 'real_conversation_detection' });
+
+                return JSON.parse(res.choices[0].message.content || '{}');
+            },
+        });
+
         return {
             is_human: !!parsed.is_human,
             reason: parsed.reason || (parsed.is_human ? 'Похоже на диалог с человеком' : 'Похоже на автоответчик')
@@ -1130,16 +1141,7 @@ export async function evaluateScript(
         return empty as any;
     }
 
-    try {
-        const openai = getOpenAI();
-        const res = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            temperature: 0,
-            response_format: { type: 'json_object' },
-            messages: [
-                {
-                    role: 'system',
-                    content: `Ты — эксперт ОКК отдела продаж. Компания-продавец: ЗМК, завод металлоконструкций
+    const routingSystemPrompt = `Ты — эксперт ОКК отдела продаж. Компания-продавец: ЗМК, завод металлоконструкций
 (холодильные и морозильные шкафы и камеры, сэндвич-панели, изделия по ТЗ). Клиенты — организации,
 покупка по коммерческому предложению и счёту, часто через тендеры.
 Тебе предоставлена ИСТОРИЯ ПЕРЕГОВОРОВ по одному заказу — все звонки в рамках сделки.
@@ -1173,11 +1175,9 @@ ${criteriaText}
 
 Итоговый процент система считает сама по полям result — твоя задача корректно проставить true/false.
 Также верни:
-- evaluator_comment: аналитическое резюме по всей сделке.`
-                },
-                {
-                    role: 'user',
-                    content: `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
+- evaluator_comment: аналитическое резюме по всей сделке.`;
+
+    const routingUserPrompt = `БИЗНЕС-АНАЛИТИКА ОТ АННЫ (контекст сделки):
 ${annaInsights ? JSON.stringify(annaInsights, null, 2) : 'Данные аналитики по сделке отсутствуют.'}
 ${gateContext ? `
 ЗНАЧЕНИЯ ПОЛЕЙ CRM ПО ЭТОМУ ЗАКАЗУ (сверяй с тем, что прозвучало в диалоге):
@@ -1188,15 +1188,33 @@ ${gateContext ? `
 - Комментарии в заказе (менеджера и клиента): ${gateContext.fields.comments}
 ` : ''}
 ИСТОРИЯ ЗВОНКОВ:
-${transcript.substring(0, 15000)}`
-                }
-            ]
-        });
-        await recordAiUsage({ agentId: AiAgent.MAXIM, model: res.model, usage: res.usage, purpose: 'order_routing' });
+${transcript.substring(0, 15000)}`;
 
-        const rawContent = res.choices[0].message.content || '{}';
-        console.log('[Максим/GPT] Raw AI response received:', rawContent);
-        const parsed = JSON.parse(rawContent);
+    try {
+        // Ни история звонков, ни контекст заказа не менялись — ответ модели тот же.
+        // Берём его из кэша, чтобы не переразбирать сделку на каждом прогоне очереди.
+        const { value: parsed, cached } = await cachedAiResult<any>({
+            purpose: 'order_routing',
+            keyParts: [routingSystemPrompt, routingUserPrompt],
+            run: async () => {
+                const openai = getOpenAI();
+                const res = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    temperature: 0,
+                    response_format: { type: 'json_object' },
+                    messages: [
+                        { role: 'system', content: routingSystemPrompt },
+                        { role: 'user', content: routingUserPrompt }
+                    ]
+                });
+                await recordAiUsage({ agentId: AiAgent.MAXIM, model: res.model, usage: res.usage, purpose: 'order_routing' });
+
+                const rawContent = res.choices[0].message.content || '{}';
+                console.log('[Максим/GPT] Raw AI response received:', rawContent);
+                return JSON.parse(rawContent);
+            },
+        });
+        if (cached) console.log('[Максим/GPT] Оценка взята из кэша: входные данные не менялись.');
         // Нормализуем result строго к true | false | null (всё неоднозначное → null = нет данных, не учитывается)
         const getVal = (key: string) => {
             const raw = parsed[key]?.result;
