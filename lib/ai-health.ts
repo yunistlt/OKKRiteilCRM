@@ -68,16 +68,19 @@ export async function getAiHealthThresholds(): Promise<AiHealthThresholds> {
     };
 }
 
+/**
+ * Свод расходов считает БД, а не приложение: REST-клиент отдаёт максимум 1000 строк,
+ * а вызовов в сутки тысячи — суммирование на стороне кода молча занижало бы расход.
+ */
 async function sumUsage(sinceIso: string): Promise<{ usd: number; calls: number }> {
-    const { data } = await supabase
-        .from('ai_usage_events')
-        .select('cost_usd')
-        .gte('created_at', sinceIso);
+    const { data, error } = await supabase.rpc('ai_usage_summary', { since: sinceIso });
 
-    const rows = data || [];
+    if (error) throw new Error(`Не удалось посчитать расход с ${sinceIso}: ${error.message}`);
+
+    const row = Array.isArray(data) ? data[0] : data;
     return {
-        usd: rows.reduce((acc: number, row: any) => acc + (Number(row.cost_usd) || 0), 0),
-        calls: rows.length,
+        usd: Number(row?.usd) || 0,
+        calls: Number(row?.calls) || 0,
     };
 }
 
@@ -138,8 +141,17 @@ export async function collectAiHealth(): Promise<AiHealthReport> {
         : null;
 
     const day = await sumUsage(dayAgoIso);
-    const week = await sumUsage(weekAgoIso);
-    const avgDayUsd = week.usd / 7;
+
+    // Среднюю за неделю считаем только по дням, когда ИИ реально звали. Сутки простоя
+    // (кончились деньги, встал пайплайн) — это не «дёшево», а «не работало»; включив их,
+    // мы занизили бы норму и потом ловили бы ложный «скачок расхода».
+    const { data: dailyRows, error: dailyError } = await supabase.rpc('ai_usage_daily', { since: weekAgoIso });
+    if (dailyError) throw new Error(`Не удалось получить расход по дням: ${dailyError.message}`);
+
+    const workingDays = (dailyRows || []).filter((row: any) => Number(row.calls) > 0);
+    const avgDayUsd = workingDays.length
+        ? workingDays.reduce((acc: number, row: any) => acc + (Number(row.usd) || 0), 0) / workingDays.length
+        : 0;
     const spikePct = avgDayUsd > 0 ? ((day.usd - avgDayUsd) / avgDayUsd) * 100 : null;
 
     // Считаем записи, которые пригодились за сутки: каждая — это разбор, не ушедший
