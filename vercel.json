@@ -38,6 +38,10 @@
             "schedule": "0 5 * * *"
         },
         {
+            "path": "/api/cron/tamara-outfit",
+            "schedule": "30 1 * * *"
+        },
+        {
             "path": "/api/cron/rop-load-review",
             "schedule": "0 5 * * 1"
         },

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { TamaraState } from '../Tamara';
 import { BRIEFS } from '../tamara-briefs';
 import type { ViewProps } from '../nav';
+import Wardrobe from './Wardrobe';
 
 const LOOPS: { state: TamaraState; when: string; what: string }[] = [
     { state: 'idle', when: 'по умолчанию', what: 'стоит спокойно, редко меняет опору' },
@@ -81,6 +82,8 @@ export default function TamaraTab({ tamara }: ViewProps) {
                     </tbody>
                 </table>
             </div>
+
+            <Wardrobe />
 
             <div className="block-label">
                 <span className="eyebrow">Как производить клипы</span>

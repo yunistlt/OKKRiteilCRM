@@ -69,6 +69,9 @@ export default function Chat({ tamara }: ViewProps) {
     // Какое сообщение только что скопировали — чтобы на кнопке было видно, что
     // нажатие сработало. Без отклика её жмут по три раза.
     const [copied, setCopied] = useState<number | null>(null);
+    // Приветствие дня. Приходит отдельно от ленты и в переписку не пишется:
+    // это не вопрос и не ответ, и захламлять им историю разговора незачем.
+    const [greeting, setGreeting] = useState<string | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
@@ -197,6 +200,14 @@ export default function Chat({ tamara }: ViewProps) {
                 if (!alive) return;
                 await openChat(list[0]?.id ?? null);
                 await loadMemory();
+                // Здоровается не спеша и не мешая: лента уже открыта, а
+                // приветствие приезжает, когда сочинится.
+                fetch('/api/shtab/tamara/greeting')
+                    .then((r) => r.json())
+                    .then((j) => {
+                        if (alive && j?.greeting) setGreeting(String(j.greeting));
+                    })
+                    .catch(() => undefined);
             } catch (e) {
                 if (alive) setError((e as Error).message);
             }
@@ -348,7 +359,18 @@ export default function Chat({ tamara }: ViewProps) {
                     ) : null}
 
                     <div className="chat-feed" ref={feedRef}>
-                        {messages.length === 0 && !busy ? (
+                        {/* Приветствие дня стоит первым в ленте, а не всплывает
+                            поверх: это её реплика, и место ей там же, где
+                            остальные, — иначе её закрывают не читая. */}
+                        {greeting ? (
+                            <div className="chat-msg assistant">
+                                <div className="chat-head">
+                                    <span className="eyebrow">Тамара · сегодня</span>
+                                </div>
+                                <Rich text={greeting} />
+                            </div>
+                        ) : null}
+                        {messages.length === 0 && !busy && !greeting ? (
                             <p className="hint">
                                 Спроси про область с минусами, про цифры по заводу или про шаг методички — она
                                 посмотрит инструментами и ответит по существу.

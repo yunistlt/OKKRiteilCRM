@@ -29,6 +29,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/cron/rop-enrich', label: 'Крон: кто эти клиенты', description: 'Обогащение клиентов данными Dadata по ИНН: отрасль, филиалы, статус.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/cron/crm-reconcile-deleted', label: 'Крон: сверка удалённых заказов', description: 'Проверяет, жив ли заказ в RetailCRM, и помечает удалённые.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/cron/rop-relations', label: 'Крон: отношения с клиентами', description: 'Ночной пересчёт снимка отношений с клиентами для утреннего плана.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/api/cron/tamara-outfit', label: 'Крон: образ дня Тамары', description: 'Ночью выбирает из гардероба, во что Тамара оденется, по сезону, дню недели и погоде.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/sales-rop', label: 'Настройки бота-РОПа', description: 'Нагрузка отдела, нормы дня, пороги напоминаний и тексты бота-РОПа.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/sales-rop/settings', label: 'API настроек бота-РОПа', description: 'Чтение и правка настроек утренних планов и вечернего разбора.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/api/sales-rop/run', label: 'API ручного прогона бота-РОПа', description: 'Собрать и разослать утренние планы вручную, когда крон не отработал.', category: 'Система', allowed: ['admin', 'rop'] },

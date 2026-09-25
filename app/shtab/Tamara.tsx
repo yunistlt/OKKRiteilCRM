@@ -25,6 +25,34 @@ const ROLE_TITLES: Partial<Record<TamaraState, string>> = {
     alert: 'внимание',
 };
 
+type Outfit = { slug: string; title: string; imageUrl: string; reason: string };
+
+/**
+ * Образ дня.
+ *
+ * Пока он не приехал — и если гардероб пуст или смена одежды выключена —
+ * показывается прежняя двухслойная фигура. Пустой силуэт на первом экране
+ * Штаба хуже, чем вчерашняя одежда.
+ */
+function useOutfit(): Outfit | null {
+    const [outfit, setOutfit] = useState<Outfit | null>(null);
+
+    useEffect(() => {
+        let alive = true;
+        fetch('/api/shtab/tamara/outfit')
+            .then((r) => r.json())
+            .then((j) => {
+                if (alive && j?.ok && j.outfit) setOutfit(j.outfit as Outfit);
+            })
+            .catch(() => undefined);
+        return () => {
+            alive = false;
+        };
+    }, []);
+
+    return outfit;
+}
+
 /** Через сколько без единого действия она отходит к своим бумагам. */
 const AWAY_AFTER_MS = 90_000;
 
@@ -165,6 +193,7 @@ export default function Tamara({
 }) {
     const { state, message, log, typing } = view;
     const [draft, setDraft] = useState('');
+    const outfit = useOutfit();
 
     const ask = () => {
         const text = draft.trim();
@@ -210,12 +239,25 @@ export default function Tamara({
                             {/* Обычный <img>, а не next/image: слои накладываются
                                 попиксельно, и любой независимый ресайз сдвинул бы
                                 голову относительно тела. */}
-                            <img className="fig photo body" alt="Тамара" src="/images/tamara/body.webp" />
-                            <div className="headwrap" aria-hidden="true">
-                                <span className="headpose">
-                                    <img className="head" alt="" src="/images/tamara/head.webp" />
-                                </span>
-                            </div>
+                            {outfit ? (
+                                /* Образ дня приходит цельным кадром — голова на нём
+                                   уже своя, второй слой её бы задвоил. */
+                                <img
+                                    className="fig photo body"
+                                    alt={`Тамара, ${outfit.title}`}
+                                    title={`${outfit.title} — ${outfit.reason}`}
+                                    src={outfit.imageUrl}
+                                />
+                            ) : (
+                                <>
+                                    <img className="fig photo body" alt="Тамара" src="/images/tamara/body.webp" />
+                                    <div className="headwrap" aria-hidden="true">
+                                        <span className="headpose">
+                                            <img className="head" alt="" src="/images/tamara/head.webp" />
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
