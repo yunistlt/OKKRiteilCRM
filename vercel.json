@@ -182,6 +182,10 @@
             "schedule": "0 * * * *"
         },
         {
+            "path": "/api/cron/ai-health",
+            "schedule": "5 14 * * 1-5"
+        },
+        {
             "path": "/api/cron/shtab-briefing",
             "schedule": "0 6 * * 1"
         },
