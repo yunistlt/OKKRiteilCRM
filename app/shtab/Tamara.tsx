@@ -149,11 +149,19 @@ export default function Tamara({
     view,
     onAsk,
     busy,
+    quiet,
 }: {
     view: TamaraView;
     /** Вопрос владельца. Без обработчика поле ввода не показывается. */
     onAsk?: (question: string) => void;
     busy?: boolean;
+    /**
+     * Тихий режим: только фигура, без реплики.
+     *
+     * Нужен на вкладке «Разговор», где переписка идёт лентой справа: пузырь с
+     * последним ответом показывал бы то же самое во второй раз.
+     */
+    quiet?: boolean;
 }) {
     const { state, message, log, typing } = view;
     const [draft, setDraft] = useState('');
@@ -167,6 +175,7 @@ export default function Tamara({
 
     return (
         <aside className="tam" data-state={state}>
+            {quiet ? null : (
             <div className="bubble">
                 <div className="b-name">
                     <b>Тамара</b>
@@ -190,6 +199,7 @@ export default function Tamara({
                     ))}
                 </div>
             </div>
+            )}
 
             <div className="stage">
                 <div className="loop-label">петля: {state}</div>

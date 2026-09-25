@@ -157,7 +157,7 @@ export async function loadSolutionRules(ownCategories: string[], segment: string
         }));
 }
 
-async function catalogCategories(): Promise<string[]> {
+export async function catalogCategories(): Promise<string[]> {
     const { data } = await supabase
         .from('sales_category_rule')
         .select('category, ordinal')

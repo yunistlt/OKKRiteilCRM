@@ -1,6 +1,7 @@
 // ОТВЕТСТВЕННЫЙ: СЕМЁН (Архивариус) — Сбор улик и истории изменений заказа из RetailCRM.
 import { supabase } from '@/utils/supabase';
 import { fetchOrderEvents, formatEventValue, parseEventValue } from '@/lib/order-events';
+import { callsOfOrder, collapseCalls } from '@/lib/calls-of-order';
 
 export interface Interaction {
     type: 'call' | 'comment' | 'field_change';
@@ -43,15 +44,37 @@ export async function collectStageEvidence(orderId: number, status: string, entr
     const is_corporate = raw?.customer?.type === 'customer_corporate' || !!raw?.company;
     const has_email = !!(raw?.email || raw?.contact?.email || raw?.customer?.email);
 
-    // 1. Fetch Calls
-    const { data: callMatches } = await supabase
-        .from('call_order_matches')
-        .select('telphin_call_id, raw_telphin_calls(started_at, transcript, event_id, duration, status)')
-        .eq('retailcrm_order_id', orderId);
+    // 1. Звонки по заказу.
+    //
+    // Привязку знает сама RetailCRM; наш матчинг по телефону оставлен костылём
+    // и подставляется, только когда в выгрузке CRM по заказу пусто. Он
+    // ошибается примерно в трети случаев, а по этим данным ставится оценка
+    // качества, от которой зависит зарплата менеджера.
+    const orderCalls = collapseCalls(await callsOfOrder(orderId, { from: entryTime, to: end }));
 
-    const calls = (callMatches || [])
-        .map((m: any) => m.raw_telphin_calls as any)
-        .filter((c: any) => c && c.started_at >= entryTime && c.started_at <= end);
+    // Расшифровка и текст разговора живут в Телфине, по идентификатору звонка.
+    const telphinIds = orderCalls.map((c) => c.telphinCallId).filter(Boolean) as string[];
+    const transcriptById = new Map<string, any>();
+    if (telphinIds.length > 0) {
+        const { data: rawCalls } = await supabase
+            .from('raw_telphin_calls')
+            .select('telphin_call_id, started_at, transcript, event_id, duration_sec, transcription_status')
+            .in('telphin_call_id', telphinIds);
+        for (const c of ((rawCalls ?? []) as any[])) transcriptById.set(String(c.telphin_call_id), c);
+    }
+
+    const calls = orderCalls.map((c) => {
+        const raw = c.telphinCallId ? transcriptById.get(c.telphinCallId) : null;
+        return {
+            started_at: c.startedAt,
+            transcript: raw?.transcript ?? null,
+            event_id: raw?.event_id ?? null,
+            duration: c.durationSec,
+            status: raw?.transcription_status ?? null,
+            direction: c.direction,
+            source: c.source,
+        };
+    });
 
     // 2. История изменений заказа — канонический источник order_history_log
     //    (см. lib/order-events.ts: raw_order_events заморожена с апреля 2026).

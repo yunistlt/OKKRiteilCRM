@@ -13,24 +13,31 @@ import { topArea } from '@/lib/shtab/types';
 import type { ShtabArea, ShtabMinus } from '@/lib/shtab/types';
 import { verdict } from '@/lib/shtab/xmr';
 import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-tools';
-import { ALLOWED_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
+import { SETTINGS_TOOLS, SETTINGS_TOOL_NAMES, executeSettingsTool } from '@/lib/shtab/tamara-settings-tools';
+import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
+import { DATA_TOOLS, DATA_TOOL_NAMES, executeDataTool } from '@/lib/shtab/tamara-data-tools';
+import { CORE_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
+
+/** Из какого разговора пришёл вызов — предложение по настройке помнит, откуда оно. */
+export type ToolContext = { conversationId?: number | null };
 
 // Инструменты Тамары (OpenAI function calling).
 //
-// Через них — и только через них — Тамара узнаёт что-либо о компании. Модель не
-// получает доступа к SQL: запросы живут здесь, в коде, а модель вызывает
-// именованные функции с типизированными параметрами. Модель, пишущая
-// произвольный SQL по боевой базе, однажды обязательно напишет не тот запрос.
+// Через них — и только через них — Тамара узнаёт что-либо о компании.
 //
-// Набор намеренно узкий. Сюда попало только то, чьи таблицы я могу проверить:
-// собственные таблицы Штаба и point_payments (её схема лежит в migrations/).
-// Заказы не переписываю — переиспользую готовые инструменты Семёна
-// (lib/okk-consultant-orders-tools.ts), они уже работают в проде.
+// Готовые инструменты отвечают на частые вопросы одинаково и проверяемо: у них
+// фиксированный запрос, который можно прочитать и покрыть тестом. Их набор
+// начинался как весь доступ Тамары к данным и оказался слишком тесным —
+// управленческий вопрос почти никогда не совпадает с заранее написанным
+// запросом.
 //
-// Чего здесь нет и почему: рекламации и постоянные клиенты считаются по orders,
-// statuses и salary_client_canon — таблицам, созданным прямо в Supabase, без
-// определений в migrations/. Запрос по догадке дал бы правдоподобное и
-// непроверяемое число, а на словах Тамары владелец принимает решения.
+// Поэтому рядом стоит shtab_query: произвольный SELECT по всей базе, закрыты
+// только пароли и ключи входа (см. lib/shtab/tamara-sql.ts). Готовые
+// инструменты от этого не стали лишними — они быстрее, и их ответы не зависят
+// от того, как модель сегодня написала запрос.
+//
+// Пишущих инструментов три, и каждый пишет только в своё: структуру постов,
+// открытый разбор и предложения по настройкам, которые применяет человек.
 
 type ToolResult = Record<string, unknown>;
 
@@ -374,9 +381,12 @@ const OWN_TOOLS = [
         function: {
             name: 'shtab_query',
             description:
-                'Задать базе произвольный вопрос запросом SELECT, когда готовых инструментов не хватает. Пользуйся, когда надо разобраться: проверить догадку, посчитать срез, сравнить периоды. Пиши запрос под PostgreSQL. Доступные таблицы: ' +
-                ALLOWED_RELATIONS.join(', ') +
-                '. Считай итоги в самом запросе (sum, count, group by), а не выгружай строки. Если запрос не выполнился — прочитай ошибку и перепиши.',
+                'Задать базе произвольный вопрос запросом SELECT, когда готовых инструментов не хватает. Пользуйся, когда надо разобраться: проверить догадку, посчитать срез, сравнить периоды. Пиши запрос под PostgreSQL. ' +
+                'Читать можно ВСЮ базу — все 145 таблиц, а не только перечисленные ниже. Закрыты только пароли и ключи входа. Не знаешь, где лежат нужные данные, — посмотри список таблиц запросом к information_schema.tables (и колонки через information_schema.columns) или найди таблицу в коде через code_search. ' +
+                'С чего обычно начинают: ' +
+                CORE_RELATIONS.join(', ') +
+                '. Звонки и расшифровки — raw_telphin_calls, письма — incoming_emails, зарплата — salary_*, нарушения — okk_violations. ' +
+                'Считай итоги в самом запросе (sum, count, group by), а не выгружай строки. Если запрос не выполнился — прочитай ошибку и перепиши.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -391,7 +401,10 @@ const OWN_TOOLS = [
 
 // Инструменты цеха живут отдельным файлом: у них своя база, свой движок и своя
 // причина отказать (база не подключена). Модели они видны единым списком.
-export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS];
+//
+// Настройки и код — тоже отдельно: у настроек своё правило (предлагать, но не
+// применять), у кода свой источник (снимок репозитория, а не боевые таблицы).
+export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS, ...SETTINGS_TOOLS, ...CODE_TOOLS, ...DATA_TOOLS];
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
 
@@ -682,9 +695,18 @@ async function readPrograms(razborId?: number): Promise<ToolResult> {
     };
 }
 
-export async function executeShtabTool(name: string, args: any): Promise<ToolResult> {
+export async function executeShtabTool(
+    name: string,
+    args: any,
+    ctx: ToolContext = {},
+): Promise<ToolResult> {
     // Цеховые — до try: они сами возвращают причину отказа, а не бросают.
     if (TSEH_TOOL_NAMES.has(name)) return await executeTsehTool(name, args);
+    // Настройки и код — тоже: они возвращают отказ текстом, чтобы модель
+    // прочитала причину и исправилась, а не уронила разговор.
+    if (SETTINGS_TOOL_NAMES.has(name)) return await executeSettingsTool(name, args, ctx);
+    if (CODE_TOOL_NAMES.has(name)) return await executeCodeTool(name, args);
+    if (DATA_TOOL_NAMES.has(name)) return await executeDataTool(name, args);
 
     if (name === 'sales_facts') {
         const months = Number.isFinite(Number(args?.months)) ? Math.min(36, Math.max(2, Number(args.months))) : 12;

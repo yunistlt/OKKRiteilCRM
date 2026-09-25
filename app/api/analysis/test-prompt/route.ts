@@ -6,6 +6,43 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { resolveRetailCRMLabel } from '@/lib/retailcrm/mapping';
 
+/**
+ * Звонки по заказам — через общую связь call_order_link.
+ *
+ * Привязку знает RetailCRM; наш матчинг по номеру телефона запасной и
+ * ошибается примерно в трети случаев.
+ */
+async function loadCallsByOrder(orderIds: number[]): Promise<Map<number, any[]>> {
+    const byOrder = new Map<number, any[]>();
+    if (orderIds.length === 0) return byOrder;
+
+    const { data: links } = await supabase
+        .from('call_order_link')
+        .select('order_id, telphin_call_id')
+        .in('order_id', orderIds);
+    const rows = (links ?? []) as any[];
+    if (rows.length === 0) return byOrder;
+
+    const ids = Array.from(new Set(rows.map((l) => String(l.telphin_call_id))));
+    const rawById = new Map<string, any>();
+    for (let i = 0; i < ids.length; i += 300) {
+        const { data: raw } = await supabase
+            .from('raw_telphin_calls')
+            .select('*')
+            .in('telphin_call_id', ids.slice(i, i + 300));
+        for (const c of ((raw ?? []) as any[])) rawById.set(String(c.telphin_call_id), c);
+    }
+
+    for (const l of rows) {
+        const call = rawById.get(String(l.telphin_call_id));
+        if (!call) continue;
+        const list = byOrder.get(Number(l.order_id)) ?? [];
+        list.push(call);
+        byOrder.set(Number(l.order_id), list);
+    }
+    return byOrder;
+}
+
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
@@ -25,12 +62,7 @@ export async function POST(req: Request) {
     let query = supabase
         .from('orders')
         .select(`
-            id, number, status, created_at, updated_at, totalsumm, manager_id, raw_payload,
-            call_order_matches (
-                raw_telphin_calls (
-                  *
-                )
-            )
+            id, number, status, created_at, updated_at, totalsumm, manager_id, raw_payload
         `);
 
     if (orderId) {
@@ -54,16 +86,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    const callsByOrder = await loadCallsByOrder((orders as any[]).map((o) => Number(o.id)));
+
     // Pick first order with transcript, or just first
     const order = orders.find((o: any) => {
-        const calls = (o.call_order_matches || []).flatMap((m: any) => m.raw_telphin_calls ? [m.raw_telphin_calls] : []);
+        const calls = callsByOrder.get(Number(o.id)) ?? [];
         return calls.some((c: any) => c?.transcript);
     }) || orders[0];
 
-    // Flatten calls and sort by timestamp
-    // Flatten calls and sort by timestamp
-    const allCalls = (order.call_order_matches || [])
-        .flatMap((m: any) => m.raw_telphin_calls ? [m.raw_telphin_calls] : [])
+    const allCalls = (callsByOrder.get(Number(order.id)) ?? [])
         .filter((c: any) => c !== null)
         .sort((a: any, b: any) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
 

@@ -26,17 +26,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         if (orderError) throw orderError;
 
-        // 2. Fetch Call Transcriptions (via raw_telphin_calls and matches)
-        // We join call_order_matches -> raw_telphin_calls -> call_transcriptions
-        // Since Supabase joins can be tricky with multiple levels, we'll do it in steps or use a View if it existed.
-        // Step A: Get matched call IDs
+        // 2. Звонки заказа.
+        //
+        // Связь берём из call_order_link: привязку сделала RetailCRM, а наш
+        // матчинг по номеру телефона остался запасным путём и ошибается
+        // примерно в трети случаев. Сортировка по времени разговора, а не по
+        // времени сопоставления: второе отстаёт, иногда на несколько суток.
         const { data: matches } = await supabase
-            .from('call_order_matches')
-            .select('telphin_call_id, confidence_score, match_type')
-            .eq('retailcrm_order_id', id)
-            .order('matched_at', { ascending: false });
+            .from('call_order_link')
+            .select('telphin_call_id, source, started_at')
+            .eq('order_id', id)
+            .order('started_at', { ascending: false });
 
-        const callIds = matches?.map(m => m.telphin_call_id) || [];
+        const callIds = ((matches ?? []) as any[]).map((m) => m.telphin_call_id).filter(Boolean);
 
         let calls: any[] = [];
         if (callIds.length > 0) {

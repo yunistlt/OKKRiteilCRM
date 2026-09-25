@@ -56,10 +56,13 @@ interface OrderRow {
 
 /** Расшифровки всех звонков заказа, склеенные в один текст для модели. */
 async function loadTranscripts(orderId: number): Promise<{ text: string; callIds: string[] }> {
+    // Связь звонка с заказом — из RetailCRM, наш матчинг запасной. По этим
+    // расшифровкам заказ признаётся сметой и исключается из конверсии, а
+    // конверсия — это премия менеджера.
     const { data: matches } = await supabase
-        .from('call_order_matches')
+        .from('call_order_link')
         .select('telphin_call_id')
-        .eq('retailcrm_order_id', orderId);
+        .eq('order_id', orderId);
     const callIds = Array.from(
         new Set(((matches as any[]) ?? []).map((m) => String(m.telphin_call_id)).filter(Boolean)),
     );

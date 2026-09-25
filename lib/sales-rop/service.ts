@@ -1,5 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { PRESALE_STATUSES, buildPlan, purchases } from '@/lib/sales-rop/rules';
+import { adviseTask, clientKeyForOrder } from '@/lib/sales-rop/task-advisor';
+import { computeTaskResults } from '@/lib/sales-rop/task-result';
 import type { PresaleOrder, Task, Thresholds } from '@/lib/sales-rop/rules';
 import {
     formatCallDay,
@@ -63,6 +65,14 @@ export type Settings = Thresholds & {
     reviewCalls: boolean;
     /** Личный чат владельца и выключатель его отчёта. */
     ownerChatId: string;
+    /** Слать ли владельцу копию каждого утреннего плана. */
+    ownerCopyMorning: boolean;
+    /** Возвращать ли в план заказы, закрытые без разговора с клиентом. */
+    cancelReturnEnabled: boolean;
+    /** С какой даты закрытые заказы возвращаются: хвост разбирается руками. */
+    cancelReturnSince: string;
+    /** Сколько таких заказов возвращать одному человеку за день. */
+    cancelReturnPerDay: number;
     ownerReport: boolean;
     /** Норма разговоров в день, минут. */
     talkMinutesTarget: number;
@@ -74,6 +84,8 @@ export type Settings = Thresholds & {
     devMaxDays: number;
     /** Показывать ли подсказку модели в блоке развития. */
     devInsightEnabled: boolean;
+    /** Писать ли по каждой задаче, что сделать, почему и что предложить. */
+    taskAdviceEnabled: boolean;
     disciplineDays: number;
     disciplineWarnPct: number;
     /** Конвейер: ночная парковка заявок в пул и выдача пачками. */
@@ -133,6 +145,12 @@ export async function loadSettings(): Promise<Settings> {
         summaryToGroup: String(map.get('summary_to_group') ?? 'true') === 'true',
         reviewCalls: String(map.get('review_calls') ?? 'true') === 'true',
         ownerChatId: String(map.get('owner_chat_id') || ''),
+        // Копия утренних планов владельцу. По умолчанию включена: реагировать
+        // на слабый план надо утром, а не вечером по отчёту, когда день прошёл.
+        ownerCopyMorning: String(map.get('owner_copy_morning') ?? 'true') === 'true',
+        cancelReturnEnabled: String(map.get('cancel_return_enabled') ?? 'true') === 'true',
+        cancelReturnSince: String(map.get('cancel_return_since') || ''),
+        cancelReturnPerDay: num('cancel_return_per_day', 3),
         ownerReport: String(map.get('owner_report') ?? 'true') === 'true',
         talkMinutesTarget: num('talk_minutes_target', 120),
         talksTarget: num('talks_target', 35),
@@ -149,6 +167,9 @@ export async function loadSettings(): Promise<Settings> {
         devMinDays: num('dev_min_days', 30),
         devMaxDays: num('dev_max_days', 540),
         devInsightEnabled: String(map.get('dev_insight_enabled') ?? 'false') === 'true',
+        // Совет по каждой задаче. Включён по умолчанию: без него строка плана
+        // не говорит менеджеру ничего, чего он не знает, и список разгребают.
+        taskAdviceEnabled: String(map.get('task_advice_enabled') ?? 'true') === 'true',
         disciplineDays: num('discipline_days', 7),
         disciplineWarnPct: num('discipline_warn_pct', 80),
         queueEnabled: String(map.get('queue_enabled') ?? 'false') === 'true',
@@ -162,6 +183,27 @@ export async function loadSettings(): Promise<Settings> {
 }
 
 /** Заказы, которые ещё могут стать деньгами. Мёртвые статусы сюда не попадают. */
+/**
+ * Личные множители нагрузки.
+ *
+ * Общий коэффициент поднимал нагрузку всему отделу разом, а люди разные: одной
+ * можно добавить, у другой день и так полный. Пусто в колонке — работает общий.
+ */
+export async function loadManagerFactors(): Promise<Map<number | null, number>> {
+    const { data, error } = await supabase
+        .from('sales_rop_manager')
+        .select('manager_id, load_factor')
+        .eq('is_active', true);
+    if (error) throw new Error(error.message);
+    const map = new Map<number | null, number>();
+    for (const row of ((data ?? []) as any[])) {
+        if (row.load_factor === null || row.load_factor === undefined) continue;
+        const v = Number(row.load_factor);
+        if (Number.isFinite(v)) map.set(Number(row.manager_id), v);
+    }
+    return map;
+}
+
 export async function loadPresaleOrders(): Promise<
     Array<PresaleOrder & { managerName: string; telegram: string; site: string; managerActive: boolean }>
 > {
@@ -397,6 +439,129 @@ async function loadReactivationTasks(
  * Задача привязана к последнему заказу клиента — просто чтобы менеджеру было с
  * чего начать разговор и куда нажать. Повод при этом не в заказе, а в клиенте.
  */
+/**
+ * Заказы, закрытые без разговора с клиентом, — обратно в план.
+ *
+ * Не напоминание, а возврат в работу: заказ выпадет из плана только после
+ * разговора с клиентом. За шестьдесят дней так — молча — закрыли половину
+ * отменённых заказов, а это потерянные клиенты, о которых мы даже не знаем,
+ * почему они ушли. Механизм согласования отмен уже есть; здесь мы лишь не даём
+ * заказу проскочить его без единого разговора.
+ *
+ * Порог даты обязателен. В «Согласовании отмены» висит около 1800 заказов, и
+ * вернуть их разом значит завалить отдел списком, который не сделать, —
+ * а заодно похоронить саму идею. Берём только закрытые начиная с даты запуска;
+ * хвост разбирается отдельно, и дата сдвигается по мере разбора.
+ */
+async function loadSilentCancelTasks(settings: Settings, today: string): Promise<Task[]> {
+    if (!settings.cancelReturnEnabled || settings.cancelReturnPerDay <= 0) return [];
+    if (!settings.cancelReturnSince) return [];
+
+    const { data: dict } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code, item_name')
+        .eq('entity_type', 'status');
+    const cancelNames = new Map<string, string>();
+    for (const row of ((dict ?? []) as any[])) {
+        const name = String(row.item_name ?? '');
+        if (/отмен|купили в другом/i.test(name)) cancelNames.set(String(row.item_code), name);
+    }
+    if (cancelNames.size === 0) return [];
+
+    // Когда заказ попал в отменный статус — по истории, а не по updated_at:
+    // карточку трогают и после закрытия, и дата правки это не дата решения.
+    const { data: moved } = await supabase
+        .from('order_history_log')
+        .select('retailcrm_order_id, new_value, occurred_at')
+        .eq('field', 'status')
+        .gte('occurred_at', `${settings.cancelReturnSince}T00:00:00.000Z`)
+        .order('occurred_at', { ascending: false })
+        .limit(2000);
+
+    const closedAt = new Map<number, { at: string; statusName: string }>();
+    for (const row of ((moved ?? []) as any[])) {
+        const code = typeof row.new_value === 'object' ? row.new_value?.code : String(row.new_value ?? '').replace(/"/g, '');
+        const name = cancelNames.get(String(code));
+        if (!name) continue;
+        const id = Number(row.retailcrm_order_id);
+        // Берём самое свежее закрытие: заказ могли открыть и закрыть дважды.
+        if (!closedAt.has(id)) closedAt.set(id, { at: String(row.occurred_at), statusName: name });
+    }
+    if (closedAt.size === 0) return [];
+
+    const ids = Array.from(closedAt.keys());
+    const { data: orders } = await supabase
+        .from('orders')
+        .select('id, number, status, total_summ, manager_id, raw_payload')
+        .in('id', ids);
+
+    // Разговор ПОСЛЕ закрытия тоже снимает вопрос: менеджер мог перезвонить и
+    // выяснить причину уже потом — это и есть нужный нам результат.
+    //
+    // Звонки — через общую связь: привязка из RetailCRM, наш матчинг запасной.
+    const callsByOrder = new Map<number, string[]>();
+    const callAt = new Map<string, string>();
+    {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id, telphin_call_id, started_at')
+            .in('order_id', ids);
+        for (const l of ((links ?? []) as any[])) {
+            const list = callsByOrder.get(Number(l.order_id)) ?? [];
+            list.push(String(l.telphin_call_id));
+            callsByOrder.set(Number(l.order_id), list);
+            callAt.set(String(l.telphin_call_id), String(l.started_at));
+        }
+    }
+
+    const perManager = new Map<number | null, number>();
+    const tasks: Task[] = [];
+
+    for (const o of ((orders ?? []) as any[])) {
+        const id = Number(o.id);
+        const closed = closedAt.get(id);
+        if (!closed) continue;
+        // Заказ вернули в работу руками — он уже не в отмене, и напоминать не о чем.
+        if (!cancelNames.has(String(o.status))) continue;
+
+        const managerId = o.manager_id === null || o.manager_id === undefined ? null : Number(o.manager_id);
+        if (managerId === null) continue;
+        if (settings.planManagerIds.length > 0 && !settings.planManagerIds.includes(managerId)) continue;
+
+        // Разговор за три дня до закрытия или в любой момент после него.
+        const closedMs = new Date(closed.at).getTime();
+        const spoke = (callsByOrder.get(id) ?? []).some((cid) => {
+            const at = callAt.get(cid);
+            if (!at) return false;
+            const ms = new Date(at).getTime();
+            return ms >= closedMs - 3 * 86_400_000;
+        });
+        if (spoke) continue;
+
+        const taken = perManager.get(managerId) ?? 0;
+        if (taken >= settings.cancelReturnPerDay) continue;
+        perManager.set(managerId, taken + 1);
+
+        const days = Math.max(0, Math.floor((Date.now() - closedMs) / 86_400_000));
+        tasks.push({
+            orderId: id,
+            number: String(o.number ?? ''),
+            client: String(o.raw_payload?.customer?.nickName || o.raw_payload?.customer?.name || ''),
+            statusCode: String(o.status),
+            statusName: closed.statusName,
+            amount: Number(o.total_summ ?? 0),
+            managerId,
+            reasonCode: 'cancel_unconfirmed',
+            reasonText:
+                `закрыт ${days === 0 ? 'сегодня' : `${days} дн назад`} без разговора с клиентом — ` +
+                `выяснить причину и закрыть с понятной. Если звонок был не с рабочего номера, скажи мне`,
+            weight: Number(o.total_summ ?? 0),
+        });
+    }
+
+    return tasks;
+}
+
 async function loadClientTouchTasks(settings: Settings, today: string): Promise<Task[]> {
     const perDay = settings.clientTouchPerDay;
     if (perDay <= 0) return [];
@@ -570,22 +735,37 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         ((intakeRows ?? []) as any[]).map((r) => [r.manager_id === null ? null : Number(r.manager_id), Number(r.per_day)]),
     );
 
-    const plan = buildPlan(orders, today, settings, intake);
+    // Личная нагрузка поверх общей: добавить одной, не трогая другую.
+    const personalLoad = await loadManagerFactors().catch(() => new Map<number | null, number>());
+    const plan = buildPlan(orders, today, settings, intake, personalLoad);
 
     // Развитие добавляется после основного плана: сначала то, что горит.
     const plannedIds = new Set<number>();
     const shortfall = new Map<number | null, number>();
     for (const [managerId, tasks] of Array.from(plan.entries())) {
         for (const t of tasks) plannedIds.add(t.orderId);
+        const personal = Math.min(2, Math.max(0.5, personalLoad.get(managerId) ?? 1));
         shortfall.set(
             managerId,
-            Math.max(0, settings.dailyTarget - tasks.length - Math.round(intake.get(managerId) ?? 0)),
+            Math.max(
+                0,
+                Math.round(settings.dailyTarget * personal) - tasks.length - Math.round(intake.get(managerId) ?? 0),
+            ),
         );
     }
 
     // Отношения с клиентом — отдельная работа от сделок. Сюда попадает и тот,
     // кто ни разу ничего не купил: обратился Росатом, посчитали, не сложилось —
     // забыть его нельзя, а по сделке напоминать нечего, она закрыта.
+    // Закрытые без разговора — вперёд остального: это не напоминание, а
+    // возврат в работу, и место под него резервируется до развития и обзвона.
+    for (const back of await loadSilentCancelTasks(settings, today)) {
+        const list = plan.get(back.managerId) ?? [];
+        list.push(back);
+        plan.set(back.managerId, list);
+        plannedIds.add(back.orderId);
+    }
+
     for (const touch of await loadClientTouchTasks(settings, today)) {
         const list = plan.get(touch.managerId) ?? [];
         list.push(touch);
@@ -642,6 +822,28 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         byRecipient.set(key, bucket);
     }
 
+    // Совет по каждой задаче: что сделать, почему и что предложить.
+    //
+    // Считается здесь, а не в правилах, потому что это вторая природа работы:
+    // код уже решил, ЧТО брать в план, модель отвечает только О ЧЁМ говорить.
+    // Совет кэшируется по состоянию заказа, поэтому назавтра по тем же заказам
+    // модель не зовётся заново.
+    //
+    // Идём по одной задаче за раз, а не всеми сразу: рассылка не горит, а
+    // полсотни одновременных запросов к модели упираются в её лимиты и роняют
+    // весь утренний прогон ради подсказки к нему.
+    const advices = new Map<string, Awaited<ReturnType<typeof adviseTask>>>();
+    if (settings.taskAdviceEnabled) {
+        for (const bucket of Array.from(byRecipient.values())) {
+            for (const t of bucket.tasks) {
+                const key = `${t.orderId}:${t.reasonCode}`;
+                if (advices.has(key)) continue;
+                const clientKey = await clientKeyForOrder(t.orderId).catch(() => null);
+                advices.set(key, await adviseTask(t, { clientKey }).catch(() => null));
+            }
+        }
+    }
+
     for (const bucket of Array.from(byRecipient.values())) {
         // Живое обращение каждому своё. Не получилось — остаётся шаблон из
         // настроек: без приветствия сообщение начинаться не должно.
@@ -662,6 +864,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                     greeting: written?.greeting || settings.morningGreeting,
                     farewell: written?.farewell || settings.morningFarewell,
                     date: new Date(today),
+                    advices,
                 },
             ),
         );
@@ -744,6 +947,27 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             if (target && text) await sendToChatSafe(target, text, bucket.name, failures);
         }
 
+        // Копия владельцу — те же сообщения слово в слово, с пометкой, чьё.
+        //
+        // Не сводка: по сводке «Ирина — 8 шт. на 2,1 млн» не видно, что в плане
+        // восемь безнадёжных заказов и ни одного счёта. Реагировать на это надо
+        // утром, пока день не прошёл, а вечерний отчёт показывает уже итог.
+        //
+        // Идёт отдельными сообщениями, а не одним: телеграм режет длинные, и
+        // склеенные планы пятерых обрезались бы на втором.
+        if (settings.ownerCopyMorning && settings.ownerChatId) {
+            for (let i = 0; i < buckets.length; i += 1) {
+                const text = messages[i];
+                if (!text) continue;
+                await sendToChatSafe(
+                    settings.ownerChatId,
+                    `📨 Копия плана: ${buckets[i].name}\n\n${text}`,
+                    'копия плана владельцу',
+                    failures,
+                );
+            }
+        }
+
         // В общий чат — короткая сводка: кто сколько получил. Подробности там
         // превращают рабочий чат в ленту, куда проваливаются оплаты.
         if (settings.summaryToGroup && settings.chatId && byRecipient.size > 0) {
@@ -808,6 +1032,80 @@ export async function detectTouches(date: string): Promise<Map<number, string>> 
     const { data, error } = await supabase.rpc('sales_rop_touches', { p_date: date });
     if (error) throw new Error(error.message);
     return new Map((data ?? []).map((r: any) => [Number(r.order_id), String(r.touch_kind)]));
+}
+
+/**
+ * Заказы, закрытые сегодня без разговора с клиентом.
+ *
+ * Зачем. За шестьдесят дней из 710 задач бота в производство ушло двадцать
+ * заказов, а в отмену восемьдесят девять — и по половине из них перед отменой
+ * не было ни одного звонка. Заказ, закрытый без разговора, — это потерянный
+ * клиент, о котором мы даже не знаем, почему он ушёл.
+ *
+ * Это НЕ обвинение и не штраф. Привязка звонка к заказу ошибается примерно в
+ * трети случаев, а позвонить могли с мобильного. Поэтому строка в отчёте
+ * говорит «звонка не вижу», а не «не звонил»: разница между этими фразами —
+ * разговор с человеком о его работе.
+ */
+export async function detectSilentCancels(
+    date: string,
+    orderIds: number[],
+): Promise<Map<number, { statusName: string }>> {
+    const result = new Map<number, { statusName: string }>();
+    if (orderIds.length === 0) return result;
+
+    // Какие статусы считаются закрытием без продажи — из справочника CRM, а не
+    // списком в коде: статусы заводит владелец, и зашитый список устареет молча.
+    const { data: dict } = await supabase
+        .from('retailcrm_dictionaries')
+        .select('item_code, item_name, active')
+        .eq('entity_type', 'status');
+    const cancelCodes = new Map<string, string>();
+    for (const row of ((dict ?? []) as any[])) {
+        const name = String(row.item_name ?? '');
+        if (/отмен|купили в другом/i.test(name)) cancelCodes.set(String(row.item_code), name);
+    }
+    if (cancelCodes.size === 0) return result;
+
+    const from = `${date}T00:00:00.000Z`;
+    const to = `${date}T23:59:59.999Z`;
+
+    const { data: moved } = await supabase
+        .from('order_history_log')
+        .select('retailcrm_order_id, new_value, occurred_at')
+        .in('retailcrm_order_id', orderIds)
+        .eq('field', 'status')
+        .gte('occurred_at', from)
+        .lte('occurred_at', to);
+
+    const cancelled = new Map<number, string>();
+    for (const row of ((moved ?? []) as any[])) {
+        const code = typeof row.new_value === 'object' ? row.new_value?.code : String(row.new_value ?? '').replace(/"/g, '');
+        const name = cancelCodes.get(String(code));
+        if (name) cancelled.set(Number(row.retailcrm_order_id), name);
+    }
+    if (cancelled.size === 0) return result;
+
+    // Был ли разговор по такому заказу за последние три дня. Три, а не один:
+    // менеджер мог поговорить вчера и закрыть сегодня — это нормальная работа.
+    // Звонки — через общую связь, и сразу за нужный период: время в ней это
+    // время разговора, а не сопоставления.
+    const ids = Array.from(cancelled.keys());
+    const since = new Date(new Date(`${date}T00:00:00.000Z`).getTime() - 3 * 86_400_000).toISOString();
+    const spokeOrders = new Set<number>();
+    for (let i = 0; i < ids.length; i += 300) {
+        const { data: links } = await supabase
+            .from('call_order_link')
+            .select('order_id')
+            .in('order_id', ids.slice(i, i + 300))
+            .gte('started_at', since);
+        for (const l of ((links ?? []) as any[])) spokeOrders.add(Number(l.order_id));
+    }
+
+    for (const [orderId, statusName] of Array.from(cancelled.entries())) {
+        if (!spokeOrders.has(orderId)) result.set(orderId, { statusName });
+    }
+    return result;
 }
 
 export type EveningResult = {
@@ -905,6 +1203,11 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
         }
     }
 
+    // Цепочка по каждой задаче: выдана → тронута → контакт → ответ клиента →
+    // движение заказа → деньги. Считается после разметки касаний и до отчётов:
+    // отсюда берут цифры и отчёт, и недельный разбор.
+    await soft('результаты задач', { rows: 0, byStatus: {} }, degraded, () => computeTaskResults(today));
+
     const facts = await soft('цифры дня', '', degraded, () => dayFacts(today, settings.monthPlan));
     const preview = facts ? [facts] : [];
 
@@ -954,6 +1257,15 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             },
         ]),
     );
+    // Заказы, закрытые сегодня без разговора с клиентом. Считаем по всему
+    // сегодняшнему плану разом: по одному заказу за раз это полсотни запросов.
+    const silentCancels = await soft(
+        'закрытые без разговора',
+        new Map<number, { statusName: string }>(),
+        degraded,
+        () => detectSilentCancels(today, ((tasks ?? []) as any[]).map((t) => Number(t.order_id))),
+    );
+
     const workdaysLeft = workdaysLeftInMonth(today);
     for (const [managerId, rows] of Array.from(byManager.entries())) {
         const w = who.get(managerId) ?? { name: 'без менеджера', tg: '' };
@@ -962,7 +1274,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             ? formatPersonalPlan({ sold: personalSold.get(managerId as number) ?? 0, plan, workdaysLeft })
             : null;
         const own =
-            formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE) +
+            formatEvening({ managerName: w.name, telegramUsername: w.tg, rows }, CRM_BASE, silentCancels) +
             (personal ? `\n\n${personal}` : '');
         const call = managerId === null ? null : callsById.get(String(managerId));
         const base = managerId === null ? null : baseById.get(String(managerId));

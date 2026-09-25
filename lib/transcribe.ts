@@ -465,15 +465,12 @@ export async function writeFinalTranscript(callId: string, transcription: string
 
     // Триггер инсайт-агента при наличии матча
     try {
-        const { data: match } = await supabase
-            .from('call_order_matches')
-            .select('retailcrm_order_id')
-            .or(`telphin_call_id.eq.${callId}${/^\d+$/.test(callId) ? `,event_id.eq.${callId}` : ''}`)
-            .limit(1)
-            .single();
-        if (match?.retailcrm_order_id) {
+        // Заказ звонка спрашиваем у RetailCRM, наш матчинг — запасной путь.
+        const { orderOfCall } = await import('./calls-of-order');
+        const found = await orderOfCall(callId);
+        if (found) {
             const { runInsightAnalysis } = await import('./insight-agent');
-            runInsightAnalysis(match.retailcrm_order_id).catch(e =>
+            runInsightAnalysis(found.orderId).catch(e =>
                 console.error('[InsightAgent] Post-transcribe trigger failed:', e));
         }
     } catch (e) { }

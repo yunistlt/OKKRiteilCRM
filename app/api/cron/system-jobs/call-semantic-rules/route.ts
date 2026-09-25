@@ -62,11 +62,14 @@ export async function GET(req: NextRequest) {
             .eq('telphin_call_id', callId)
             .limit(1)
             .single(),
+          // Заказ звонка — через общую связь: привязка из RetailCRM основная,
+          // наш матчинг запасной. Сортировка по времени разговора, а не по
+          // времени сопоставления (оно отстаёт, иногда на несколько суток).
           supabase
-            .from('call_order_matches')
-            .select('retailcrm_order_id')
+            .from('call_order_link')
+            .select('order_id')
             .eq('telphin_call_id', callId)
-            .order('matched_at', { ascending: false })
+            .order('started_at', { ascending: false })
             .limit(1)
             .single(),
         ]);
@@ -90,7 +93,7 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        if (matchError || !matchRow?.retailcrm_order_id) {
+        if (matchError || !matchRow?.order_id) {
           const retry = getAdaptiveSystemJobRetry({
             attempts: job.attempts || 0,
             errorMessage: `Matched order is not ready for call ${callId}`,
@@ -108,19 +111,19 @@ export async function GET(req: NextRequest) {
           false,
           undefined,
           undefined,
-          matchRow.retailcrm_order_id,
+          matchRow.order_id,
           {
             ruleType: 'semantic',
             entityType: 'call',
             targetCallId: callId,
-            targetOrderId: matchRow.retailcrm_order_id,
+            targetOrderId: matchRow.order_id,
           }
         );
         const semanticRulesCompletedAt = new Date().toISOString();
 
         await enqueueOrderRefreshJob({
           jobType: 'order_score_refresh',
-          orderId: matchRow.retailcrm_order_id,
+          orderId: matchRow.order_id,
           source: 'call_semantic_rules_worker',
           payload: {
             telphin_call_id: callId,
@@ -133,7 +136,7 @@ export async function GET(req: NextRequest) {
 
         await completeSystemJob(job.id, {
           telphin_call_id: callId,
-          retailcrm_order_id: matchRow.retailcrm_order_id,
+          retailcrm_order_id: matchRow.order_id,
           violations_found: violationsFound,
           next_jobs: ['order_score_refresh'],
         });
@@ -141,7 +144,7 @@ export async function GET(req: NextRequest) {
         results.push({
           job_id: job.id,
           telphin_call_id: callId,
-          retailcrm_order_id: matchRow.retailcrm_order_id,
+          retailcrm_order_id: matchRow.order_id,
           status: 'completed',
           violations_found: violationsFound,
         });

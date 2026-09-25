@@ -24,26 +24,52 @@ export async function GET(request: Request) {
             return NextResponse.json({ message: 'No controlled managers selected in settings.' });
         }
 
-        // 2. Find missing transcripts for controlled managers (ALL calls, not just working orders)
-        const { data: calls, error: fetchError } = await supabase
-            .from('calls')
-            .select(`
-                id, 
-                record_url, 
-                duration,
-                call_order_matches!inner (
-                    orders!inner (
-                        manager_id
-                    )
-                )
-            `)
+        // 2. Звонки выбранных менеджеров, у которых нет расшифровки.
+        //
+        // ВНИМАНИЕ: этот разбор не работал. Он читал таблицу `calls`, которой в
+        // базе нет — запрос падал при каждом обращении, и молча, потому что
+        // ошибку никто не проверял глазами. Ниже переписано на живые таблицы:
+        // заказы выбранных менеджеров → их звонки через общую связь
+        // call_order_link → записи без расшифровки.
+        const { data: managerOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .in('manager_id', controlledIds);
+        const orderIds = ((managerOrders ?? []) as any[]).map((o) => Number(o.id));
+
+        if (orderIds.length === 0) {
+            return NextResponse.json({ message: 'No orders for controlled managers.', count: 0 });
+        }
+
+        const linkedCallIds = new Set<string>();
+        for (let i = 0; i < orderIds.length; i += 300) {
+            const { data: links } = await supabase
+                .from('call_order_link')
+                .select('telphin_call_id')
+                .in('order_id', orderIds.slice(i, i + 300));
+            for (const l of ((links ?? []) as any[])) linkedCallIds.add(String(l.telphin_call_id));
+        }
+
+        if (linkedCallIds.size === 0) {
+            return NextResponse.json({ message: 'No pending calls found for controlled managers.', count: 0 });
+        }
+
+        const { data: rawCalls, error: fetchError } = await supabase
+            .from('raw_telphin_calls')
+            .select('telphin_call_id, recording_url, duration_sec, started_at')
+            .in('telphin_call_id', Array.from(linkedCallIds).slice(0, 2000))
             .is('transcript', null)
-            .not('record_url', 'is', null)
-            .in('call_order_matches.orders.manager_id', controlledIds)
-            .order('timestamp', { ascending: false })
+            .not('recording_url', 'is', null)
+            .order('started_at', { ascending: false })
             .limit(limit);
 
         if (fetchError) throw fetchError;
+
+        const calls = ((rawCalls ?? []) as any[]).map((c) => ({
+            id: String(c.telphin_call_id),
+            record_url: c.recording_url as string | null,
+            duration: Number(c.duration_sec ?? 0),
+        }));
 
         if (!calls || calls.length === 0) {
             return NextResponse.json({ message: 'No pending calls found for controlled managers.', count: 0 });

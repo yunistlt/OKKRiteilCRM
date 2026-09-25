@@ -34,6 +34,14 @@
             "schedule": "0 5 * * 1-5"
         },
         {
+            "path": "/api/cron/shtab-daily-report",
+            "schedule": "0 5 * * *"
+        },
+        {
+            "path": "/api/cron/rop-load-review",
+            "schedule": "0 5 * * 1"
+        },
+        {
             "path": "/api/cron/rop-evening",
             "schedule": "0 16 * * 1-5"
         },

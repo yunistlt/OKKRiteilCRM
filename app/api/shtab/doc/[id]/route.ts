@@ -1,69 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { buildPdf } from '@/lib/shtab/tamara-doc';
 
 export const dynamic = 'force-dynamic';
+// Сборка PDF идёт средствами Node: в edge-окружении нет ни файловой системы для
+// шрифтов, ни потоков, на которых работает генератор.
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
-// GET    /api/shtab/doc/[id] — ссылка на файл, живущая пять минут.
-// DELETE /api/shtab/doc/[id] — убрать документ вместе с файлом.
+// GET /api/shtab/doc/<id> — скачать документ, сделанный Тамарой.
 //
-// Корзина закрытая, поэтому прямой ссылки на файл нет и быть не должно:
-// должностные папки — не публичные документы.
-
-function parseId(raw: string): number | null {
-    const id = Number(raw);
-    return Number.isInteger(id) && id > 0 ? id : null;
-}
+// PDF собирается в момент скачивания из сохранённой разметки: так документ
+// всегда свежей вёрстки, не нужно хранилище и нечего чистить.
+//
+// Доступ: RBAC /api/shtab → только admin. В документах лежат деньги, фамилии и
+// разбор работы людей.
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
     try {
         const session = await getSession(req);
         if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
-        const id = parseId(params.id);
-        if (!id) return NextResponse.json({ error: 'Некорректный id' }, { status: 400 });
+
+        const id = Number(params.id);
+        if (!Number.isInteger(id) || id <= 0) {
+            return NextResponse.json({ error: 'Неверный номер документа' }, { status: 400 });
+        }
 
         const { data: doc, error } = await supabase
-            .from('shtab_post_doc')
-            .select('storage_bucket, storage_path, file_name')
+            .from('shtab_tamara_doc')
+            .select('id, title, subtitle, body, opened')
             .eq('id', id)
             .maybeSingle();
         if (error) throw new Error(error.message);
-        if (!doc) return NextResponse.json({ error: 'Документ не найден' }, { status: 404 });
+        if (!doc) return NextResponse.json({ error: 'Такого документа нет' }, { status: 404 });
 
-        const { data: signed, error: signError } = await supabase.storage
-            .from(doc.storage_bucket)
-            .createSignedUrl(doc.storage_path, 300, { download: doc.file_name });
-        if (signError) throw new Error(signError.message);
+        const pdfBytes = await buildPdf({
+            title: String((doc as any).title),
+            subtitle: (doc as any).subtitle ?? undefined,
+            body: String((doc as any).body),
+        });
 
-        return NextResponse.json({ url: signed?.signedUrl ?? null });
-    } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
-    }
-}
-
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
-    try {
-        const session = await getSession(req);
-        if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
-        const id = parseId(params.id);
-        if (!id) return NextResponse.json({ error: 'Некорректный id' }, { status: 400 });
-
-        const { data: doc, error } = await supabase
-            .from('shtab_post_doc')
-            .select('storage_bucket, storage_path')
+        // Счётчик открытий — мягко: сорвавшийся апдейт не повод не отдать файл.
+        await supabase
+            .from('shtab_tamara_doc')
+            .update({ opened: Number((doc as any).opened ?? 0) + 1 })
             .eq('id', id)
-            .maybeSingle();
-        if (error) throw new Error(error.message);
-        if (!doc) return NextResponse.json({ error: 'Документ не найден' }, { status: 404 });
+            .then(() => null, () => null);
 
-        // Сначала строка, потом файл: если упадёт удаление файла, в хранилище
-        // останется сирота — это неприятно, но не страшно. Обратный порядок
-        // оставил бы в списке документ, который не открывается.
-        const { error: delError } = await supabase.from('shtab_post_doc').delete().eq('id', id);
-        if (delError) throw new Error(delError.message);
-        await supabase.storage.from(doc.storage_bucket).remove([doc.storage_path]).catch(() => undefined);
+        // Имя файла — из названия документа: «document.pdf» в папке загрузок
+        // через неделю ничего не значит. Латиница и цифры остаются, остальное
+        // заменяется, чтобы имя не сломалось по дороге.
+        const safe = String((doc as any).title)
+            .replace(/[^\w\dА-Яа-яЁё\s-]/g, '')
+            .trim()
+            .replace(/\s+/g, '-')
+            .slice(0, 60);
 
-        return NextResponse.json({ ok: true });
+        // Открыть или скачать — решает тот, кто нажимал. По умолчанию файл
+        // открывается прямо в браузере (посмотреть быстрее, чем искать в папке
+        // загрузок), а по ?download=1 браузер его сохраняет.
+        const asFile = req.nextUrl.searchParams.get('download') === '1';
+        const name = `${encodeURIComponent(safe || 'dokument')}.pdf`;
+
+        return new NextResponse(pdfBytes as any, {
+            headers: {
+                'Content-Type': 'application/pdf',
+                'Content-Disposition': `${asFile ? 'attachment' : 'inline'}; filename*=UTF-8''${name}`,
+                'Cache-Control': 'no-store',
+            },
+        });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

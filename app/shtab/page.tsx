@@ -167,7 +167,11 @@ export default function ShtabPage() {
 
             <div className="wrap">
                 <div className="layout">
-                    <Tamara view={node} onAsk={ask} busy={asking} />
+                    {/* На вкладке «Разговор» переписка идёт в ленте справа:
+                        поле вопроса и пузырь с ответом слева её дублировали, и
+                        одно и то же сообщение показывалось дважды в разных
+                        местах. Фигура остаётся — это её образ, а не форма. */}
+                    <Tamara view={node} onAsk={view === 'chat' ? undefined : ask} busy={asking} quiet={view === 'chat'} />
                     <div className="main">
                         {loadError ? (
                             <div className="empty">

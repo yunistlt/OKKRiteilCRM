@@ -1,6 +1,21 @@
 // ОТВЕТСТВЕННЫЙ: ИГОРЬ (Диспетчер) — Внешняя коммуникация, отправка алертов и отчетов в Telegram.
+
+/**
+ * Токен бота: имена переменных на проде и локально разные.
+ *
+ * На Vercel он живёт как TELEGRAM_PAYMENTS_BOT_TOKEN, в .env.local — как
+ * TELEGRAM_BOT_TOKEN. Код, знающий только второе имя, работает на машине
+ * разработчика и молча молчит в проде: ровно так у Тамары не ушёл ежедневный
+ * отчёт, хотя накануне проверка с ноутбука дошла.
+ *
+ * Бот один на весь сервис, поэтому и выбор токена должен быть один — здесь.
+ */
+export function telegramBotToken(): string | undefined {
+    return process.env.TELEGRAM_PAYMENTS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+}
+
 export async function sendTelegramMessage(chatId: string, text: string) {
-    const token = process.env.TELEGRAM_BOT_TOKEN;
+    const token = telegramBotToken();
 
     if (!token || !chatId) {
         console.warn('[Telegram] Credentials not found. Skipping notification.');
@@ -43,7 +58,7 @@ export async function sendTelegramDocument(params: {
     threadId?: string;
     contentType?: string;
 }) {
-    const token = params.token || process.env.TELEGRAM_BOT_TOKEN;
+    const token = params.token || telegramBotToken();
     if (!token) throw new Error('Не задан токен Telegram-бота');
     if (!params.chatId) throw new Error('Не задан chat_id получателя');
 

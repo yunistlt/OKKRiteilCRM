@@ -23,14 +23,38 @@ import { assertReadOnlyQuery } from '@/lib/shtab/external/client';
 //      откуда взялся вывод.
 
 /**
- * Что Тамаре можно читать.
+ * Что Тамаре можно читать: ВСЁ, кроме входа в чужие аккаунты.
  *
- * Список белый, а не чёрный: новая таблица в проекте не должна становиться
- * доступной сама собой. Здесь только то, из чего состоит управленческая
- * картина, — заказы, статусы, деньги, работа отдела продаж и её собственные
- * таблицы Штаба.
+ * Список был белым — двадцать четыре таблицы, «только проверенное». Практика
+ * показала, чем это кончается: на вопрос «а звонок вообще был» она отвечала
+ * «в доступных мне таблицах подтверждения нет», и это звучало как «работы не
+ * было». Управленческий вопрос почти никогда не укладывается в заранее
+ * угаданный список таблиц, а недоступная таблица — это не осторожность, это
+ * неверный ответ с уверенной интонацией.
+ *
+ * Поэтому список теперь чёрный. Запрещено ровно то, чтением чего можно войти
+ * под чужим именем: хэши паролей, токены сброса, ключи Google, ключи push.
+ * Никакой управленческой ценности в них нет, а утечка в чат — настоящая.
+ *
+ * Остальные рубежи никуда не делись: один оператор, только SELECT, жёсткий
+ * LIMIT, таймаут и журнал каждого запроса в shtab_query_log. Разговор с
+ * Тамарой доступен только владельцу.
  */
-export const ALLOWED_RELATIONS = [
+export const FORBIDDEN_RELATIONS = [
+    'password_reset_tokens',
+    'access_invitations',
+    'shtab_google_token',
+    'messenger_push_subscriptions',
+] as const;
+
+/** Колонки, которые нельзя вытащить даже из разрешённой таблицы. */
+export const FORBIDDEN_COLUMNS = ['password_hash'] as const;
+
+/**
+ * Список, с которого всё начиналось. Оставлен как подсказка модели, с чего
+ * смотреть: это ядро управленческой картины, а не граница дозволенного.
+ */
+export const CORE_RELATIONS = [
     'orders',
     'statuses',
     'managers',
@@ -39,6 +63,13 @@ export const ALLOWED_RELATIONS = [
     'retailcrm_dictionaries',
     'retailcrm_custom_fields',
     'okk_order_scores',
+    // Звонки, их расшифровки и входящие письма. Без них на вопрос «а звонок
+    // вообще был» ответить нечем: в истории заказа видно только то, что
+    // менеджер записал сам, и отличить работу от записи о работе невозможно.
+    // Расшифровка лежит прямо в raw_telphin_calls.transcript.
+    'raw_telphin_calls',
+    'call_order_matches',
+    'incoming_emails',
     'sales_client_purchases_mv',
     'sales_client_profile_mv',
     'sales_sphere_category_mv',
@@ -85,18 +116,49 @@ export function cteNames(query: string): string[] {
 export function assertAllowedQuery(query: string): void {
     assertReadOnlyQuery(query, 'postgres');
 
-    const allowed = new Set<string>(ALLOWED_RELATIONS as readonly string[]);
+    const forbidden = new Set<string>(FORBIDDEN_RELATIONS as readonly string[]);
     const cte = new Set(cteNames(query));
 
     for (const name of referencedRelations(query)) {
         if (cte.has(name)) continue;
         // Подзапрос «FROM (SELECT …)» имени не имеет — скобка сюда не попадает.
         if (name.startsWith('(')) continue;
-        if (!allowed.has(name)) {
+        // Справочник самой базы — это не данные, а их описание: какие есть
+        // таблицы и колонки. Запретив его вместе с остальными схемами, мы
+        // оставили модель без карты: она не могла посмотреть структуру и шла
+        // перебором, тратя на разведку все отведённые шаги. Тридцать пять
+        // отказов из ста семидесяти пяти запросов пришлись ровно на это.
+        if (name === 'information_schema.columns' || name === 'information_schema.tables') continue;
+
+        // Остальные чужие схемы закрыты целиком. В auth лежат учётки Supabase,
+        // в storage и vault — файлы и секреты; управленческих данных там нет, а
+        // чёрный список по именам такую таблицу не поймает: `auth.users` — это
+        // не `users`.
+        if (name.includes('.')) {
             throw new Error(
-                `Таблица «${name}» Тамаре недоступна. Доступны: ${Array.from(allowed).join(', ')}`,
+                `Читать можно только схему public, а «${name}» из другой схемы. Там служебные данные платформы, а не наши.`,
             );
         }
+        if (forbidden.has(name)) {
+            throw new Error(
+                `Таблица «${name}» закрыта: её чтением можно войти под чужим именем. ` +
+                    `Управленческого смысла в ней нет — спроси данные по существу вопроса.`,
+            );
+        }
+    }
+
+    // Колонка с хэшем пароля закрыта отдельно: таблица users нужна для имён и
+    // ролей, а хэш не нужен ни для чего, кроме входа под чужим именем.
+    // Звёздочка по такой таблице тоже не пройдёт — иначе запрет обходится
+    // одним символом.
+    const lowered = query.toLowerCase();
+    for (const column of FORBIDDEN_COLUMNS) {
+        if (lowered.includes(column)) {
+            throw new Error(`Колонка «${column}» закрыта. Перечисли нужные колонки явно.`);
+        }
+    }
+    if (/select\s+\*\s+from\s+(public\.)?users\b/i.test(query)) {
+        throw new Error('По таблице users перечисли колонки явно: звёздочка тянет и хэш пароля.');
     }
 }
 

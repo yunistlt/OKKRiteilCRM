@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ViewProps } from '../nav';
+import SettingProposals from './SettingProposals';
+import Rich from '../Rich';
 
 // Разговор с Тамарой: свои чаты, память и пересказ.
 //
@@ -61,6 +63,12 @@ export default function Chat({ tamara }: ViewProps) {
     const [recording, setRecording] = useState(false);
     const [decoding, setDecoding] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    // Ответ Тамары мог оставить новое предложение по настройке: перечитываем
+    // карточки после каждого захода, иначе оно появится только после перезагрузки.
+    const [proposalsKey, setProposalsKey] = useState(0);
+    // Какое сообщение только что скопировали — чтобы на кнопке было видно, что
+    // нажатие сработало. Без отклика её жмут по три раза.
+    const [copied, setCopied] = useState<number | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
@@ -228,6 +236,7 @@ export default function Chat({ tamara }: ViewProps) {
             if (!res.ok) throw new Error(data?.error || `Ответ ${res.status}`);
             await Promise.all([loadChats(), openChat(data.chat_id)]);
             if (data.digest?.remembered) await loadMemory();
+            setProposalsKey((k) => k + 1);
             tamara.say(
                 data.reply || 'Пусто.',
                 data.used_tools?.length ? `Смотрела: ${data.used_tools.join(', ')}.` : undefined,
@@ -347,10 +356,37 @@ export default function Chat({ tamara }: ViewProps) {
                         ) : null}
                         {messages.map((m) => (
                             <div key={m.id} className={`chat-msg ${m.role}`}>
-                                <div className="eyebrow">
-                                    {m.role === 'user' ? 'ты' : 'Тамара'} · {when(m.created_at)}
+                                <div className="chat-head">
+                                    <span className="eyebrow">
+                                        {m.role === 'user' ? 'ты' : 'Тамара'} · {when(m.created_at)}
+                                    </span>
+                                    {/* Ответ с таблицей уносят в почту или в чат
+                                        с людьми — выделять его мышью по строчке
+                                        неудобно, и половину забирают лишнего. */}
+                                    <button
+                                        className="chat-copy"
+                                        title="скопировать"
+                                        onClick={() => {
+                                            void navigator.clipboard
+                                                .writeText(m.text)
+                                                .then(() => {
+                                                    setCopied(m.id);
+                                                    window.setTimeout(() => setCopied(null), 1500);
+                                                })
+                                                .catch(() => setError('Браузер не дал скопировать'));
+                                        }}
+                                    >
+                                        {copied === m.id ? 'скопировано' : 'копировать'}
+                                    </button>
                                 </div>
-                                <div className="chat-text">{m.text}</div>
+                                {/* Разметку показываем разметкой: таблица из
+                                    палок и звёздочек нечитаема, а именно в ней
+                                    приходят числа, ради которых всё и затеяно. */}
+                                {m.role === 'assistant' ? (
+                                    <Rich text={m.text} />
+                                ) : (
+                                    <div className="chat-text">{m.text}</div>
+                                )}
                                 {m.role === 'assistant' && m.used_tools?.length ? (
                                     <div className="chat-tools">
                                         смотрела: {m.used_tools.map((t) => t.name).join(', ')}
@@ -360,6 +396,10 @@ export default function Chat({ tamara }: ViewProps) {
                         ))}
                         {busy ? <div className="chat-msg assistant chat-wait">думает…</div> : null}
                     </div>
+
+                    {/* Предложения по настройкам — над полем ввода, а не в ленте:
+                        решение по ним принимают сейчас, а лента уезжает вверх. */}
+                    <SettingProposals key={proposalsKey} />
 
                     <div className="chat-send">
                         {files.length ? (

@@ -10,9 +10,40 @@ describe('что Тамаре разрешено читать', () => {
         expect(() => assertAllowedQuery('select o.number from public.orders o join statuses s on s.code = o.status')).not.toThrow();
     });
 
-    it('чужая таблица не проходит, и в ошибке сказано какая', () => {
-        expect(() => assertAllowedQuery('SELECT * FROM messenger_push_delivery_logs')).toThrow(/messenger_push/);
-        expect(() => assertAllowedQuery('SELECT * FROM auth.users')).toThrow();
+    // Читать можно всю нашу базу: недоступная таблица давала не осторожность,
+    // а уверенный неверный ответ («подтверждения нет» вместо «не смотрела»).
+    it('любая наша таблица проходит', () => {
+        expect(() => assertAllowedQuery('SELECT count(*) FROM raw_telphin_calls')).not.toThrow();
+        expect(() => assertAllowedQuery('SELECT count(*) FROM incoming_emails')).not.toThrow();
+        expect(() => assertAllowedQuery('SELECT count(*) FROM messenger_push_delivery_logs')).not.toThrow();
+    });
+
+    // Закрыто ровно то, чтением чего входят под чужим именем.
+    it('ключи входа не проходят', () => {
+        expect(() => assertAllowedQuery('SELECT * FROM password_reset_tokens')).toThrow(/под чужим именем/);
+        expect(() => assertAllowedQuery('SELECT * FROM shtab_google_token')).toThrow();
+        expect(() => assertAllowedQuery('SELECT password_hash FROM users')).toThrow(/password_hash/);
+        // Звёздочка по users тянет тот же хэш — запрет не должен обходиться
+        // одним символом.
+        expect(() => assertAllowedQuery('SELECT * FROM users')).toThrow(/перечисли колонки/);
+        expect(() => assertAllowedQuery('SELECT id, email FROM users')).not.toThrow();
+    });
+
+    // В схеме auth лежат учётки самой платформы, и по имени `users` такую
+    // таблицу не поймать: она называется `auth.users`.
+    // Справочник базы — описание данных, а не данные. Без него модель не
+    // может посмотреть структуру таблицы и уходит в перебор.
+    it('справочник схемы читать можно', () => {
+        expect(() =>
+            assertAllowedQuery("SELECT column_name FROM information_schema.columns WHERE table_name = $$orders$$"),
+        ).not.toThrow();
+        expect(() => assertAllowedQuery('SELECT table_name FROM information_schema.tables')).not.toThrow();
+    });
+
+    it('чужие схемы не проходят', () => {
+        expect(() => assertAllowedQuery('SELECT * FROM auth.users')).toThrow(/только схему public/);
+        expect(() => assertAllowedQuery('SELECT * FROM storage.objects')).toThrow();
+        expect(() => assertAllowedQuery('SELECT count(*) FROM public.orders')).not.toThrow();
     });
 
     it('временные имена из WITH таблицами не считаются', () => {

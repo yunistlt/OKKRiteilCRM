@@ -33,7 +33,18 @@ export type Task = {
     statusName: string;
     amount: number;
     managerId: number | null;
-    reasonCode: 'invoice_stale' | 'contact_overdue' | 'contact_today' | 'deal_stale' | 'big_silence' | 'cold' | 'development' | 'reactivation' | 'client_touch';
+    reasonCode:
+        | 'invoice_stale'
+        | 'contact_overdue'
+        | 'contact_today'
+        | 'deal_stale'
+        | 'big_silence'
+        | 'cold'
+        | 'development'
+        | 'reactivation'
+        | 'client_touch'
+        // Закрыт без разговора с клиентом — возвращён в работу.
+        | 'cancel_unconfirmed';
     reasonText: string;
     weight: number;
 };
@@ -194,6 +205,14 @@ export function buildPlan(
     t: Thresholds,
     /** Сколько новых заявок в день приходит менеджеру — их разбирают до плана. */
     intakeByManager: Map<number | null, number> = new Map(),
+    /**
+     * Личный множитель нагрузки поверх общего.
+     *
+     * Общий коэффициент поднимал нагрузку всему отделу сразу, а люди разные: у
+     * одной день не заполнен, у другой четырнадцать своих звонков. Пусто —
+     * значит как у отдела.
+     */
+    loadByManager: Map<number | null, number> = new Map(),
 ): Map<number | null, Task[]> {
     const byManager = new Map<number | null, Task[]>();
 
@@ -209,6 +228,10 @@ export function buildPlan(
         // Просрочка вперёд денег: обещание, которое уже нарушено, дороже
         // крупной суммы, до которой ещё никто ничего не обещал.
         const rank: Record<Task['reasonCode'], number> = {
+            // Закрытый без разговора — самый верх: это не новая работа, а
+            // недоделанная старая, и откладывать её значит согласиться, что
+            // клиента потеряли молча.
+            cancel_unconfirmed: -1,
             invoice_stale: 0,
             contact_overdue: 1,
             contact_today: 2,
@@ -232,8 +255,14 @@ export function buildPlan(
         // звонков и разбора новых заявок. Заявки приходят каждый день и ждать не
         // могут, поэтому место под них резервируется до всего остального.
         const intake = Math.round(intakeByManager.get(managerId) ?? 0);
-        const budget = t.dailyTarget - own.length - intake;
-        const room = Math.max(t.minAlways, Math.min(t.tasksPerManager, budget));
+        // Нормы уже умножены на общий коэффициент отдела; личный идёт поверх.
+        // Границы те же, что у общего: десятикратная нагрузка на одного
+        // человека — это не решение руководителя, а опечатка.
+        const personal = Math.min(2, Math.max(0.5, loadByManager.get(managerId) ?? 1));
+        const dailyTarget = Math.max(1, Math.round(t.dailyTarget * personal));
+        const perManager = Math.max(1, Math.round(t.tasksPerManager * personal));
+        const budget = dailyTarget - own.length - intake;
+        const room = Math.max(t.minAlways, Math.min(perManager, budget));
 
         const live = list
             .filter(
@@ -261,7 +290,7 @@ export function buildPlan(
         // такая же потеря, как перегруз.
         //
         // Дорогое вперёд: если разбирать остывшую базу, то начиная с крупных.
-        const shortfall = Math.max(0, t.dailyTarget - own.length - intake - live.length);
+        const shortfall = Math.max(0, dailyTarget - own.length - intake - live.length);
 
         // День уже полон собственными звонками и разбором заявок — остывших не
         // добавляем вовсе. Норма существует, чтобы её соблюдать в обе стороны:

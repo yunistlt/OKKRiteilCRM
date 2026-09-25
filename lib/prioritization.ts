@@ -4,6 +4,53 @@ import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '../utils/openai';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 
+/**
+ * Звонки по заказам — через общую связь call_order_link.
+ *
+ * Раньше звонки подтягивались встроенным джойном call_order_matches, то есть
+ * нашим матчингом по номеру телефона: он ошибается примерно в трети случаев, и
+ * приоритет заказа мог считаться по чужому разговору. Привязку знает сама
+ * RetailCRM, матчинг остался запасным путём — подробности в lib/calls-of-order.
+ */
+async function callsForOrders(orderIds: number[]): Promise<Map<number, any[]>> {
+    const byOrder = new Map<number, any[]>();
+    if (orderIds.length === 0) return byOrder;
+
+    const links: any[] = [];
+    for (let i = 0; i < orderIds.length; i += 300) {
+        const { data } = await supabase
+            .from('call_order_link')
+            .select('order_id, telphin_call_id, started_at, duration_sec')
+            .in('order_id', orderIds.slice(i, i + 300));
+        links.push(...((data ?? []) as any[]));
+    }
+    if (links.length === 0) return byOrder;
+
+    // Расшифровка лежит в Телфине: связь знает, какой это звонок, но не что в
+    // нём говорили.
+    const callIds = Array.from(new Set(links.map((l) => String(l.telphin_call_id))));
+    const textById = new Map<string, string | null>();
+    for (let i = 0; i < callIds.length; i += 300) {
+        const { data } = await supabase
+            .from('raw_telphin_calls')
+            .select('telphin_call_id, transcript')
+            .in('telphin_call_id', callIds.slice(i, i + 300));
+        for (const c of ((data ?? []) as any[])) textById.set(String(c.telphin_call_id), c.transcript ?? null);
+    }
+
+    for (const l of links) {
+        const list = byOrder.get(Number(l.order_id)) ?? [];
+        list.push({
+            id: String(l.telphin_call_id),
+            timestamp: l.started_at,
+            duration: Number(l.duration_sec ?? 0),
+            transcript: textById.get(String(l.telphin_call_id)) ?? null,
+        });
+        byOrder.set(Number(l.order_id), list);
+    }
+    return byOrder;
+}
+
 export type PriorityLevel = 'red' | 'yellow' | 'green' | 'black';
 
 export interface OrderPriority {
@@ -55,14 +102,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
     while (true) {
         const { data: batch, error } = await supabase
             .from('orders')
-            .select(`
-                id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload,
-                call_order_matches (
-                    raw_telphin_calls (
-                        telphin_call_id, started_at, duration_sec, transcript
-                    )
-                )
-            `)
+            .select('id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload')
             .in('status', workingCodes)
             .order('updated_at', { ascending: true })
             .range(from, from + PAGE_SIZE - 1);
@@ -109,6 +149,10 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
     const { logAgentActivity } = await import('./agent-logger');
     await logAgentActivity('igor', 'working', `Пересчитываю приоритеты для ${orders.length} сделок...`);
 
+    // Звонки по всем заказам разом: по одному запросу на заказ это сотни
+    // round-trip'ов, а пересчёт приоритетов идёт по всей рабочей базе.
+    const callsByOrder = await callsForOrders(orders.map((o: any) => Number(o.id)));
+
     const priorities: OrderPriority[] = [];
     const now = new Date();
 
@@ -120,15 +164,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
         // --- 1. Hard Rules (Heuristics) ---
 
         // Extract and flatten all calls
-        const rawCalls = (order.call_order_matches || [])
-            .map((m: any) => m.raw_telphin_calls)
-            .filter((c: any) => c !== null)
-            .map((c: any) => ({
-                id: c.telphin_call_id,
-                timestamp: c.started_at,
-                duration: c.duration_sec,
-                transcript: c.transcript,
-            }));
+        const rawCalls = callsByOrder.get(Number(order.id)) ?? [];
 
         const allCalls = rawCalls;
         const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
@@ -279,14 +315,7 @@ export async function refreshStoredPriorityForOrder(orderId: number | string, sk
 
     const { data: order, error } = await supabase
         .from('orders')
-        .select(`
-            id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload,
-            call_order_matches (
-                raw_telphin_calls (
-                    telphin_call_id, started_at, duration_sec, transcript
-                )
-            )
-        `)
+        .select('id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload')
         .eq('id', numericOrderId)
         .single();
 
@@ -333,15 +362,7 @@ export async function refreshStoredPriorityForOrder(orderId: number | string, sk
     let level: PriorityLevel = 'black';
     let aiSummary = 'Ожидание анализа';
 
-    const rawCalls = (order.call_order_matches || [])
-        .map((m: any) => m.raw_telphin_calls)
-        .filter((c: any) => c !== null)
-        .map((c: any) => ({
-            id: c.telphin_call_id,
-            timestamp: c.started_at,
-            duration: c.duration_sec,
-            transcript: c.transcript,
-        }));
+    const rawCalls = (await callsForOrders([Number(order.id)])).get(Number(order.id)) ?? [];
 
     const allCalls = rawCalls;
     const lastCall = allCalls.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];

@@ -50,27 +50,54 @@ export async function GET(req: Request) {
             return NextResponse.json({ message: 'No statuses configured for transcription.' });
         }
 
-        // 2. Fetch Candidates
-        // Only fetch calls that:
-        // - are in 'pending' transcription status
-        // - have a recording URL
-        // - were started in the last 30 days
-        // - are matched to an order with a 'transcribable' status
+        // 2. Кого расшифровываем.
+        //
+        // Берём звонки, которые ждут расшифровки, имеют запись, не старше
+        // тридцати дней и привязаны к заказу в подходящем статусе.
+        //
+        // Привязку даёт call_order_link: из RetailCRM основная, наш матчинг
+        // запасной. Это не только вопрос точности: матчинг привязывает звонок
+        // с опозданием, иногда на несколько суток, и до его срабатывания
+        // разговор в очередь просто не попадал.
+        //
+        // Идём от заказов: к представлению PostgREST не подключает связанные
+        // таблицы встроенным джойном, поэтому сначала подходящие заказы, потом
+        // их звонки.
+        const { data: goodOrders } = await supabase
+            .from('orders')
+            .select('id')
+            .in('status', transcribableStatuses);
+        const goodOrderIds = ((goodOrders ?? []) as any[]).map((o) => Number(o.id));
+
+        if (goodOrderIds.length === 0) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'idle', reason: 'no_orders_in_transcribable_statuses' });
+            return NextResponse.json({ message: 'No orders in transcribable statuses.' });
+        }
+
+        const linkedCallIds = new Set<string>();
+        for (let i = 0; i < goodOrderIds.length; i += 300) {
+            const { data: links } = await supabase
+                .from('call_order_link')
+                .select('telphin_call_id')
+                .in('order_id', goodOrderIds.slice(i, i + 300))
+                .gte('started_at', thirtyDaysAgo.toISOString());
+            for (const l of ((links ?? []) as any[])) linkedCallIds.add(String(l.telphin_call_id));
+        }
+
+        if (linkedCallIds.size === 0) {
+            await recordWorkerSuccess(WORKER_KEY, { status: 'idle', processed: 0, reason: 'no_calls' });
+            return NextResponse.json({ message: 'No transcribable ready calls found.' });
+        }
+
         const { data: calls, error } = await supabase
             .from('raw_telphin_calls')
-            .select(`
-                *,
-                matches:call_order_matches!inner(
-                    retailcrm_order_id,
-                    orders:orders!inner(status)
-                )
-            `)
+            .select('*')
+            .in('telphin_call_id', Array.from(linkedCallIds).slice(0, 2000))
             .in('transcription_status', ['pending', 'ready_for_transcription'])
             .not('recording_url', 'is', null)
             .gte('started_at', thirtyDaysAgo.toISOString())
-            .in('matches.orders.status', transcribableStatuses)
             .order('started_at', { ascending: false })
-            .limit(10); // Reduced to 10 to avoid timeouts
+            .limit(10); // Небольшими порциями, чтобы не упереться в таймаут
 
         if (error) {
             console.error('[Cron] Fetch candidates error:', error);

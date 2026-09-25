@@ -131,7 +131,11 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     if (rule.entity_type === 'call') {
         // Use !inner to ensure we only get calls that actually have an order match,
         // which drastically reduces data transfer and fixes 504 timeouts when filtering by targetOrderId.
-        query = supabase.from('raw_telphin_calls').select('*, call_order_matches!inner(order_id: retailcrm_order_id, orders(manager_id))');
+        // Раньше здесь стоял джойн с call_order_matches. Теперь связь звонка с
+        // заказом живёт отдельно (call_order_link: привязка из RetailCRM,
+        // наш матчинг запасным) и подтягивается после выборки — представление
+        // нельзя подключить встроенным джойном PostgREST.
+        query = supabase.from('raw_telphin_calls').select('*');
     } else if (rule.entity_type === 'order') {
         // STATE-BASED: Fetch current orders (NO JOIN here as FK is missing)
         // Exclude synthetic test orders (ID >= 99900000) to prevent test pollution in production cron runs.
@@ -177,8 +181,15 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
     // Apply strict filter if testing a specific order
     if (targetOrderId) {
         if (rule.entity_type === 'call') {
-            // Filter via call_order_matches
-            query = query.filter('call_order_matches.retailcrm_order_id', 'eq', targetOrderId);
+            // Звонки этого заказа — по общей связи. Пустой список означает
+            // «звонков по заказу нет», и правило просто не сработает.
+            const { data: links } = await supabase
+                .from('call_order_link')
+                .select('telphin_call_id')
+                .eq('order_id', targetOrderId);
+            const ids = ((links ?? []) as any[]).map((l) => String(l.telphin_call_id));
+            if (ids.length === 0) return dryRun ? [] : 0;
+            query = query.in('telphin_call_id', ids);
         } else if (rule.entity_type === 'order') {
             query = query.eq('id', targetOrderId);
         } else {
@@ -204,6 +215,32 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
     if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidates Found: ${items.length}`);
 
+    // Для правил по звонкам подтягиваем заказ и его менеджера отдельным
+    // запросом: связь живёт представлением, а его нельзя подключить встроенным
+    // джойном. Звонок без заказа в правилах не участвует — оценивать его не за
+    // что и не с кем.
+    const linkByCall = new Map<string, { order_id: number; manager_id: number | null }>();
+    if (rule.entity_type === 'call') {
+        const callIds = (items as any[]).map((i) => String(i.telphin_call_id)).filter(Boolean);
+        for (let i = 0; i < callIds.length; i += 300) {
+            const { data: links } = await supabase
+                .from('call_order_link')
+                .select('telphin_call_id, order_id')
+                .in('telphin_call_id', callIds.slice(i, i + 300));
+            for (const l of ((links ?? []) as any[])) {
+                if (!linkByCall.has(String(l.telphin_call_id))) {
+                    linkByCall.set(String(l.telphin_call_id), { order_id: Number(l.order_id), manager_id: null });
+                }
+            }
+        }
+        const linkedOrderIds = Array.from(new Set(Array.from(linkByCall.values()).map((v) => v.order_id)));
+        if (linkedOrderIds.length > 0) {
+            const { data: orders } = await supabase.from('orders').select('id, manager_id').in('id', linkedOrderIds);
+            const managerByOrder = new Map(((orders ?? []) as any[]).map((o) => [Number(o.id), o.manager_id ?? null]));
+            for (const v of Array.from(linkByCall.values())) v.manager_id = managerByOrder.get(v.order_id) ?? null;
+        }
+    }
+
     // FETCH METRICS MANUALLY if needed
     let metricsMap = new Map();
     // PERF: pre-fetch transcripts and activity for ALL candidate orders in one query each,
@@ -223,16 +260,33 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
         // Pre-fetch latest transcript per order (only for checklist rules — mirrors the in-loop query).
         if (rule.checklist && rule.checklist.length > 0 && orderIds.length > 0) {
-            const { data: callRows } = await supabase
-                .from('call_order_matches')
-                .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(transcript)')
-                .in('retailcrm_order_id', orderIds)
-                .order('telphin_call_id', { ascending: false });
-            if (callRows) {
-                for (const row of callRows as any[]) {
-                    const oid = row.retailcrm_order_id;
-                    if (transcriptMap.has(oid)) continue; // keep highest telphin_call_id (first, due to ordering)
-                    const t = row?.raw_telphin_calls?.transcript;
+            // Связь звонка с заказом берём из call_order_link: там привязка от
+            // самой RetailCRM, а наш матчинг по телефону — запасной путь. По
+            // этим расшифровкам ставится оценка качества, от которой зависит
+            // зарплата, и угаданная привязка здесь стоит дороже пропущенной.
+            const { data: linkRows } = await supabase
+                .from('call_order_link')
+                .select('order_id, telphin_call_id, started_at')
+                .in('order_id', orderIds)
+                .order('started_at', { ascending: false });
+
+            const latestByOrder = new Map<any, string>();
+            for (const row of ((linkRows ?? []) as any[])) {
+                // Первый по убыванию времени — самый свежий разговор по заказу.
+                if (!latestByOrder.has(row.order_id)) latestByOrder.set(row.order_id, String(row.telphin_call_id));
+            }
+
+            const callIds = Array.from(latestByOrder.values());
+            if (callIds.length > 0) {
+                const { data: calls } = await supabase
+                    .from('raw_telphin_calls')
+                    .select('telphin_call_id, transcript')
+                    .in('telphin_call_id', callIds);
+                const textById = new Map(
+                    ((calls ?? []) as any[]).map((c) => [String(c.telphin_call_id), c.transcript]),
+                );
+                for (const [oid, callId] of Array.from(latestByOrder.entries())) {
+                    const t = textById.get(callId);
                     if (t) transcriptMap.set(oid, t);
                 }
             }
@@ -266,9 +320,10 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
 
     // 2. Evaluate each candidate
     for (const item of items) {
-        const orderId = rule.entity_type === 'call' ? item.call_order_matches?.[0]?.order_id : (item.retailcrm_order_id || item.id);
+        const link = rule.entity_type === 'call' ? linkByCall.get(String(item.telphin_call_id)) : null;
+        const orderId = rule.entity_type === 'call' ? link?.order_id : (item.retailcrm_order_id || item.id);
         const metrics = rule.entity_type === 'call'
-            ? item.call_order_matches?.[0]?.orders
+            ? (link ? { manager_id: link.manager_id } : null)
             : metricsMap.get(orderId);
 
         let occurredAt = rule.entity_type === 'call' ? item.started_at : (item.raw_payload?._sync_metadata?.order_statusUpdatedAt || item.occurred_at);

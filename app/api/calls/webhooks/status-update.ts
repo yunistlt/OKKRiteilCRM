@@ -116,12 +116,18 @@ export async function POST(req: NextRequest) {
     let callMatchIdempotencyKey = `call_match:${call_id}:status:${status}`;
 
     if (isTerminalStatus) {
-      const { count: existingMatchesCount } = await supabase
-        .from('call_order_matches')
-        .select('id', { count: 'exact', head: true })
+      // Нужно ли вообще запускать наш матчинг по номеру телефона.
+      //
+      // Если звонок уже связан с заказом — неважно, нашей догадкой или самой
+      // RetailCRM, — угадывать нечего. Проверяем по общей связи: раньше
+      // смотрели только в свою таблицу и запускали матчинг даже там, где CRM
+      // уже всё знает.
+      const { count: existingLinks } = await supabase
+        .from('call_order_link')
+        .select('telphin_call_id', { count: 'exact', head: true })
         .eq('telphin_call_id', call_id);
 
-      shouldEnqueueCallMatch = !existingMatchesCount;
+      shouldEnqueueCallMatch = !existingLinks;
       if (shouldEnqueueCallMatch) {
         callMatchSource = 'call_end_webhook';
         callMatchIdempotencyKey = `call_match:${call_id}:call_end`;

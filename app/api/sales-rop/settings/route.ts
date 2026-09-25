@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth';
 import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { SETTINGS_SCHEMA, specFor } from '@/lib/sales-rop/settings-schema';
+import { assertSalesRopValue } from '@/lib/settings-registry/sales-rop';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,8 +54,20 @@ export async function GET() {
         const fromCrm = new Map(((dict ?? []) as any[]).map((d) => [String(d.item_code), d]));
         const isWorking = new Set(((working ?? []) as any[]).map((r) => String(r.code)));
 
+        // Личная нагрузка живёт колонкой в sales_rop_manager, а не ключом в
+        // настройках: она привязана к человеку, и ключ «load_factor_249»
+        // пришлось бы заводить руками на каждого нового сотрудника.
+        const { data: ropManagers } = await supabase
+            .from('sales_rop_manager')
+            .select('manager_id, load_factor, is_active')
+            .eq('is_active', true);
+
         return NextResponse.json({
             items,
+            managerLoads: ((ropManagers ?? []) as any[]).map((r) => ({
+                managerId: Number(r.manager_id),
+                loadFactor: r.load_factor === null || r.load_factor === undefined ? '' : String(r.load_factor),
+            })),
             managers: ((mgrs ?? []) as any[])
                 .map((m) => ({
                     id: Number(m.id),
@@ -83,7 +96,12 @@ export async function GET() {
 }
 
 const PutSchema = z.object({
-    changes: z.array(z.object({ key: z.string().min(1).max(64), value: z.string().max(2000) })).min(1).max(50),
+    changes: z.array(z.object({ key: z.string().min(1).max(64), value: z.string().max(2000) })).max(50).default([]),
+    /** Личная нагрузка: пустая строка — «как у отдела». */
+    managerLoads: z
+        .array(z.object({ managerId: z.number().int().positive(), loadFactor: z.string().max(10) }))
+        .max(50)
+        .optional(),
 });
 
 // PUT /api/sales-rop/settings — сохранить изменённые значения.
@@ -99,14 +117,13 @@ export async function PUT(req: Request) {
             return NextResponse.json({ error: 'Неверные данные формы' }, { status: 400 });
         }
 
-        // Нагрузка — единственное значение, где опечатка бьёт по всему отделу
-        // сразу: 10 вместо 1.0 завалит людей списком, который не сделать.
-        for (const c of parsed.data.changes) {
-            if (c.key !== 'load_factor') continue;
-            const v = Number(c.value);
-            if (!Number.isFinite(v) || v < 0.5 || v > 2) {
-                return NextResponse.json({ error: 'Нагрузка задаётся числом от 0.5 до 2.0' }, { status: 400 });
-            }
+        // Проверка одна на все пути к настройке: сюда ходит этот экран, а через
+        // реестр настроек — предложения Тамары. Проверка, стоящая на одном
+        // пути, — это проверка, которую второй путь обходит.
+        try {
+            for (const c of parsed.data.changes) assertSalesRopValue(c.key, c.value);
+        } catch (e: any) {
+            return NextResponse.json({ error: e.message }, { status: 400 });
         }
 
         for (const c of parsed.data.changes) {
@@ -116,7 +133,34 @@ export async function PUT(req: Request) {
             if (error) throw new Error(error.message);
         }
 
-        return NextResponse.json({ ok: true, saved: parsed.data.changes.length });
+        for (const m of parsed.data.managerLoads ?? []) {
+            const raw = m.loadFactor.trim();
+            // Пусто — значит «как у отдела»: стираем личный множитель, а не
+            // ставим единицу. Единица — это решение, пустота — его отсутствие.
+            if (raw === '') {
+                const { error } = await supabase
+                    .from('sales_rop_manager')
+                    .update({ load_factor: null, updated_at: new Date().toISOString() })
+                    .eq('manager_id', m.managerId);
+                if (error) throw new Error(error.message);
+                continue;
+            }
+            try {
+                assertSalesRopValue('load_factor', raw);
+            } catch (e: any) {
+                return NextResponse.json({ error: e.message }, { status: 400 });
+            }
+            const { error } = await supabase
+                .from('sales_rop_manager')
+                .update({ load_factor: Number(raw), updated_at: new Date().toISOString() })
+                .eq('manager_id', m.managerId);
+            if (error) throw new Error(error.message);
+        }
+
+        return NextResponse.json({
+            ok: true,
+            saved: parsed.data.changes.length + (parsed.data.managerLoads?.length ?? 0),
+        });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

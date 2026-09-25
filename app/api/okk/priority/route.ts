@@ -138,11 +138,33 @@ export async function GET(request: Request) {
             ])
         );
 
-        // Fetch Calls
-        const { data: calls } = await supabase
-            .from('call_order_matches')
-            .select('retailcrm_order_id, telphin_call_id, raw_telphin_calls(*)')
-            .in('retailcrm_order_id', orderIds);
+        // Звонки по заказам — через общую связь: привязка из RetailCRM
+        // основная, наш матчинг по телефону запасной (ошибается примерно в
+        // трети случаев).
+        const linkRows: any[] = [];
+        for (let i = 0; i < orderIds.length; i += 300) {
+            const { data } = await supabase
+                .from('call_order_link')
+                .select('order_id, telphin_call_id')
+                .in('order_id', orderIds.slice(i, i + 300));
+            linkRows.push(...((data ?? []) as any[]));
+        }
+
+        const callIdList = Array.from(new Set(linkRows.map((l) => String(l.telphin_call_id))));
+        const rawCallById = new Map<string, any>();
+        for (let i = 0; i < callIdList.length; i += 300) {
+            const { data } = await supabase
+                .from('raw_telphin_calls')
+                .select('*')
+                .in('telphin_call_id', callIdList.slice(i, i + 300));
+            for (const c of ((data ?? []) as any[])) rawCallById.set(String(c.telphin_call_id), c);
+        }
+
+        const calls = linkRows.map((l) => ({
+            retailcrm_order_id: Number(l.order_id),
+            telphin_call_id: String(l.telphin_call_id),
+            raw_telphin_calls: rawCallById.get(String(l.telphin_call_id)) ?? null,
+        }));
 
         // Письма по заказу. Источник — история заказа (order_history_log;
         // raw_order_events заморожена, см. lib/order-events.ts).
