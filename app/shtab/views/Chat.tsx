@@ -592,30 +592,36 @@ export default function Chat({ tamara }: ViewProps) {
                 </div>
             ) : null}
 
-            <div className="block-label">
-                <span className="eyebrow">Память · {memory.length}</span>
-                <button className="btn btn-sm" onClick={() => setShowMemory((v) => !v)}>
-                    {showMemory ? 'свернуть' : 'показать'}
-                </button>
-            </div>
-            <p className="hint" style={{ marginBottom: 10 }}>
-                То, что Тамара держит в голове между разговорами: решения, обстоятельства, как с тобой работать. Чисел
-                тут нет — они устаревают, их она смотрит заново. Лишнее можно забыть.
-            </p>
-            {showMemory ? (
-                <div className="stack" style={{ gap: 8 }}>
-                    {memory.length === 0 ? <p className="hint">Пока пусто.</p> : null}
-                    {memory.map((m) => (
-                        <div className="chat-mem" key={m.id}>
-                            <span className="eyebrow">{KIND_TITLES[m.kind] ?? m.kind}</span>
-                            <span>{m.fact}</span>
-                            <button className="btn btn-sm btn-danger" onClick={() => void forget(m.id)}>
-                                забыть
-                            </button>
-                        </div>
-                    ))}
+            {/* Память — справочный раздел, к ней приходят разбираться, а не
+                переписываться. На телефоне она целиком скрыта: всё, что стоит
+                под перепиской, заставляет страницу прокручиваться, и тогда
+                прокруток снова становится две. */}
+            <div className="chat-memory">
+                <div className="block-label">
+                    <span className="eyebrow">Память · {memory.length}</span>
+                    <button className="btn btn-sm" onClick={() => setShowMemory((v) => !v)}>
+                        {showMemory ? 'свернуть' : 'показать'}
+                    </button>
                 </div>
-            ) : null}
+                <p className="hint" style={{ marginBottom: 10 }}>
+                    То, что Тамара держит в голове между разговорами: решения, обстоятельства, как с тобой работать.
+                    Чисел тут нет — они устаревают, их она смотрит заново. Лишнее можно забыть.
+                </p>
+                {showMemory ? (
+                    <div className="stack" style={{ gap: 8 }}>
+                        {memory.length === 0 ? <p className="hint">Пока пусто.</p> : null}
+                        {memory.map((m) => (
+                            <div className="chat-mem" key={m.id}>
+                                <span className="eyebrow">{KIND_TITLES[m.kind] ?? m.kind}</span>
+                                <span>{m.fact}</span>
+                                <button className="btn btn-sm btn-danger" onClick={() => void forget(m.id)}>
+                                    забыть
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                ) : null}
+            </div>
         </>
     );
 }
