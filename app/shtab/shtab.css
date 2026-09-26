@@ -620,7 +620,95 @@
 .shtab .chat{display:grid;grid-template-columns:230px minmax(0,1fr);gap:0;
   border:1px solid var(--line);background:var(--surface)}
 
-@media (max-width:900px){.shtab .chat{grid-template-columns:1fr}}
+/* ─── Разговор на телефоне ────────────────────────────────────────────────
+   За образец взят Telegram: шапка с лицом собеседника, лента тем под ней,
+   переписка во весь остаток экрана, ввод прижат к низу. Цвета наши, менять
+   их под чужой мессенджер незачем — заимствуется устройство экрана, а не
+   оформление.
+
+   Прокрутка на экране одна. Их было три — страница, лента и список
+   разговоров, — и палец не знал, какую из них он тянет. */
+.shtab .chat-bar{display:none}
+.shtab .chat-strip{display:none}
+
+@media (min-width:901px){.shtab .chat-mobile-only{display:none!important}}
+
+@media (max-width:900px){
+  /* Заголовок раздела убран: то же слово стоит во вкладках. */
+  .shtab .chat-head-block{display:none}
+  /* Отступы страницы на этой вкладке лишние: переписка занимает экран
+     целиком, от полосы разделов до поля ввода. */
+  .shtab .main:has(.chat){padding-top:0}
+  .shtab .wrap:has(.chat){padding:0}
+
+  .shtab .chat{grid-template-columns:1fr;border:0;
+    /* Минус полоса разделов: больше над перепиской ничего нет. */
+    height:calc(var(--shtab-vh, 100vh) - 46px);
+    display:flex;flex-direction:column;min-height:0}
+
+  /* Колонка Тамары на этой вкладке не показывается: её место занимает
+     переписка, а лицо переехало в шапку. */
+  .shtab .tam-quiet{display:none}
+  .shtab .chat-list{display:none}
+  .shtab .chat-intro{display:none}
+  .shtab .chat-main{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+
+  /* Шапка: лицо, имя, тема разговора. */
+  .shtab .chat-bar{display:flex;align-items:center;gap:10px;flex:0 0 auto;
+    padding:8px 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+  /* В кружок берётся только лицо. Снимок головы лежит на прозрачном поле во
+     весь рост фигуры, поэтому его приходится приближать и сдвигать вверх —
+     иначе в кружке окажется пустота с макушкой в углу. */
+  .shtab .chat-ava{width:40px;height:40px;border-radius:50%;flex:0 0 auto;
+    background:var(--surface-2);object-fit:cover}
+  .shtab .chat-who{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+  .shtab .chat-who b{font-family:var(--f-display);font-size:15.5px}
+  .shtab .chat-who .eyebrow{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .shtab .chat-plus{width:44px;height:44px;font-size:24px;color:var(--ink-2);flex:0 0 auto}
+
+  /* Лента тем: кружок с буквой и короткое имя, листается вбок. */
+  .shtab .chat-strip{display:flex;flex:0 0 auto;gap:4px;padding:8px 8px 6px;
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    background:var(--surface);border-bottom:1px solid var(--line)}
+  .shtab .chat-strip::-webkit-scrollbar{display:none}
+  .shtab .chat-chip{flex:0 0 auto;width:64px;display:flex;flex-direction:column;
+    align-items:center;gap:4px;padding:2px}
+  .shtab .chat-chip-ico{width:44px;height:44px;border-radius:50%;display:flex;
+    align-items:center;justify-content:center;font-family:var(--f-display);
+    font-size:18px;color:var(--on-blue);background:var(--line-2);
+    border:2px solid transparent}
+  .shtab .chat-chip-ico[data-tone="0"]{background:var(--blue)}
+  .shtab .chat-chip-ico[data-tone="1"]{background:var(--calm)}
+  .shtab .chat-chip-ico[data-tone="2"]{background:var(--signal)}
+  .shtab .chat-chip-ico[data-tone="3"]{background:var(--ink-2)}
+  .shtab .chat-chip-ico[data-tone="4"]{background:var(--line-2)}
+  /* Открытый разговор обведён — в ленте из кружков это единственное, что
+     отличает «здесь я сейчас» от «сюда можно перейти». */
+  .shtab .chat-chip.on .chat-chip-ico{border-color:var(--ink);
+    box-shadow:0 0 0 2px var(--surface) inset}
+  .shtab .chat-chip-name{font-size:10.5px;line-height:1.2;color:var(--ink-3);
+    max-width:64px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .shtab .chat-chip.on .chat-chip-name{color:var(--ink)}
+
+  /* Единственная прокрутка на экране. */
+  .shtab .chat-feed{flex:1 1 auto;min-height:0;max-height:none;padding:12px;gap:8px}
+  .shtab .chat-msg{max-width:86%}
+  .shtab .chat-text{font-size:15px}
+
+  /* Ввод прижат к низу: к переписке возвращаются, чтобы ответить. */
+  .shtab .chat-send{flex:0 0 auto;padding:8px;gap:8px;background:var(--surface)}
+  /* Кегль 16 обязателен: на меньшем Safari сам приближает страницу при
+     фокусе, и вернуть масштаб потом нечем. */
+  /* Поле в одну строку и растёт по мере набора. Поле в три строки отнимает
+     их у переписки всё время, а нужны они в одном вопросе из десяти. */
+  .shtab .chat-send textarea{min-height:44px;height:44px;max-height:120px;font-size:16px;resize:none}
+  .shtab .chat-send .row{gap:6px;flex-wrap:nowrap}
+  .shtab .chat-send .btn{min-height:44px;padding:0 12px;white-space:nowrap}
+  .shtab .chat-efforts.off{display:none}
+
+  /* Память — справочный текст, на телефоне он только отодвигает переписку. */
+  .shtab .chat-mem{display:none}
+}
 
 .shtab .chat-list{border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;
   max-height:640px;overflow:auto}
@@ -848,3 +936,50 @@
   text-decoration:none;white-space:nowrap}
 
 .shtab .rich-doc-save:hover{background:var(--blue);color:var(--on-blue)}
+
+/* Поле ввода на телефоне — в одну строку, растёт по тексту.
+   Правило стоит в конце файла намеренно: выше, среди общих стилей чата,
+   есть `.chat-send textarea{min-height:64px}` с той же силой, и порядок
+   здесь решает исход. */
+@media (max-width:900px){
+  .shtab .chat-send textarea{min-height:44px;height:44px;max-height:120px;resize:none}
+}
+
+/* ---------- «откуда это»: источники ответа по касанию ---------- */
+
+/* Ссылка в углу пузыря вместо строки под каждым ответом. Строка стояла
+   всегда, а нужна в одном ответе из десяти. */
+.shtab .chat-src{font-family:var(--f-mono);font-size:11px;color:var(--ink-3);
+  border-bottom:1px dotted var(--line-2);margin-top:6px;align-self:flex-start}
+.shtab .chat-src:hover{color:var(--ink)}
+
+/* Подложка гасит переписку и ловит касание мимо окна — на телефоне выход
+   ищут именно там. */
+.shtab .chat-sheet-back{position:fixed;inset:0;z-index:60;background:rgba(23,27,26,.38);
+  display:flex;align-items:flex-end;justify-content:center}
+
+.shtab .chat-sheet{width:100%;max-width:520px;background:var(--surface);
+  border-top:1px solid var(--line);padding:14px 16px 22px}
+
+@media (min-width:901px){.shtab .chat-sheet-back{align-items:center}
+  .shtab .chat-sheet{border:1px solid var(--line-2)}}
+
+.shtab .chat-sheet-head{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:10px}
+
+.shtab .chat-sheet-list{margin:0 0 12px;padding:0;list-style:none;
+  display:flex;flex-direction:column;gap:1px}
+
+.shtab .chat-sheet-list li{padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+
+.shtab .chat-sheet-list li:last-child{border-bottom:0}
+
+/* Пузыри ближе друг к другу: воздух между ними на телефоне съедает по
+   сообщению с экрана. Подпись с именем и временем прижата к тексту — она
+   часть реплики, а не отдельная строка. */
+@media (max-width:900px){
+  .shtab .chat-feed{gap:5px;padding:10px}
+  .shtab .chat-msg.assistant, .shtab .chat-msg.user{padding:7px 10px 8px}
+  .shtab .chat-head{margin-bottom:1px}
+  .shtab .chat-text{margin-top:1px}
+}

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ViewProps } from '../nav';
 import SettingProposals from './SettingProposals';
 import Rich from '../Rich';
+import { lookedInto } from '@/lib/shtab/tool-titles';
 
 // Разговор с Тамарой: свои чаты, память и пересказ.
 //
@@ -72,6 +73,12 @@ export default function Chat({ tamara }: ViewProps) {
     // Приветствие дня. Приходит отдельно от ленты и в переписку не пишется:
     // это не вопрос и не ответ, и захламлять им историю разговора незачем.
     const [greeting, setGreeting] = useState<string | null>(null);
+    // Раскрыт ли выбор глубины. На широком экране он виден всегда, здесь —
+    // только состояние кнопки на телефоне.
+    const [deepOpen, setDeepOpen] = useState(false);
+    // Какое сообщение раскрыто по вопросу «откуда это». Номер, а не флаг:
+    // открытых окон одно, и открытие второго закрывает первое само собой.
+    const [sources, setSources] = useState<number | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
@@ -310,10 +317,14 @@ export default function Chat({ tamara }: ViewProps) {
 
     return (
         <>
-            <div className="view-head">
+            {/* Заголовок раздела на телефоне не показывается: то же слово уже
+                стоит во вкладках, а место он занимает в треть экрана. */}
+            <div className="view-head chat-head-block">
                 <div className="eyebrow">Наставник</div>
                 <h1>Разговор</h1>
-                <p>
+                {/* Пояснение к разделу читают один раз, а место на телефоне
+                    оно отнимает всегда — там его нет. */}
+                <p className="chat-intro">
                     Рабочая переписка с Тамарой. Разговоры отдельные, чтобы темы не мешались; что сказано — она помнит
                     и в следующий раз, а числа каждый раз смотрит заново.
                 </p>
@@ -351,6 +362,42 @@ export default function Chat({ tamara }: ViewProps) {
                 </aside>
 
                 <section className="chat-main">
+                    {/* Шапка и лента тем — только для телефона.
+                        Шапка отвечает на вопрос «с кем я говорю»: на узком
+                        экране собеседника показывают лицом в кружке, а не
+                        ростовым портретом на полэкрана.
+                        Лента тем — способ попасть в нужный разговор за одно
+                        касание. Список колонкой на телефоне не помещается, а
+                        кружок с буквой узнаётся быстрее строки текста. */}
+                    <div className="chat-bar chat-mobile-only">
+                        <img className="chat-ava" src="/images/tamara/face.webp" alt="" />
+                        <div className="chat-who">
+                            <b>Тамара</b>
+                            <span className="eyebrow">{chat?.title ?? 'новый разговор'}</span>
+                        </div>
+                        <button className="chat-plus" onClick={() => void newChat()} title="новый разговор">
+                            +
+                        </button>
+                    </div>
+
+                    <div className="chat-strip chat-mobile-only">
+                        {chats.map((c) => (
+                            <button
+                                key={c.id}
+                                className={`chat-chip${chat?.id === c.id ? ' on' : ''}`}
+                                onClick={() => void openChat(c.id)}
+                            >
+                                {/* Цвет кружка — от номера разговора: один и тот
+                                    же разговор всегда одного цвета, и рука
+                                    находит его быстрее, чем глаз дочитывает. */}
+                                <span className="chat-chip-ico" data-tone={c.id % 5}>
+                                    {(c.title || '?').trim().charAt(0).toUpperCase()}
+                                </span>
+                                <span className="chat-chip-name">{c.title}</span>
+                            </button>
+                        ))}
+                    </div>
+
                     {chat?.summary ? (
                         <details className="chat-summary">
                             <summary className="eyebrow">Что было раньше в этом разговоре</summary>
@@ -409,10 +456,14 @@ export default function Chat({ tamara }: ViewProps) {
                                 ) : (
                                     <div className="chat-text">{m.text}</div>
                                 )}
+                                {/* Откуда взяты числа — по касанию, а не строкой
+                                    под каждым ответом. Строка стояла всегда, а
+                                    нужна в одном ответе из десяти: остальные
+                                    девять раз она просто отодвигала переписку. */}
                                 {m.role === 'assistant' && m.used_tools?.length ? (
-                                    <div className="chat-tools">
-                                        смотрела: {m.used_tools.map((t) => t.name).join(', ')}
-                                    </div>
+                                    <button className="chat-src" onClick={() => setSources(m.id)}>
+                                        откуда это
+                                    </button>
                                 ) : null}
                             </div>
                         ))}
@@ -440,7 +491,15 @@ export default function Chat({ tamara }: ViewProps) {
                         <textarea
                             value={text}
                             placeholder="Что спросить"
-                            onChange={(e) => setText(e.target.value)}
+                            onChange={(e) => {
+                                setText(e.target.value);
+                                // Рост по тексту. Высоту сбрасываем перед
+                                // замером: иначе поле только растёт и после
+                                // стирания текста остаётся раздутым.
+                                const el = e.target;
+                                el.style.height = '';
+                                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                            }}
                             onKeyDown={(e) => {
                                 // Enter отправляет, Shift+Enter переносит строку:
                                 // вопросы тут чаще в одну строку, чем в абзац.
@@ -450,18 +509,33 @@ export default function Chat({ tamara }: ViewProps) {
                                 }
                             }}
                         />
+                        {/* Глубина размышления на телефоне спрятана под кнопку
+                            с текущим значением: её меняют редко, а три кнопки в
+                            ряду не дают поместиться остальным. */}
+                        <div className={`row chat-efforts${deepOpen ? '' : ' off'}`} style={{ gap: 6 }}>
+                            {EFFORTS.map((e) => (
+                                <button
+                                    key={e.id}
+                                    className={`btn btn-sm${effort === e.id ? ' btn-primary' : ''}`}
+                                    title={e.hint}
+                                    onClick={() => {
+                                        setEffort(e.id);
+                                        setDeepOpen(false);
+                                    }}
+                                >
+                                    {e.title}
+                                </button>
+                            ))}
+                        </div>
                         <div className="row" style={{ justifyContent: 'space-between' }}>
                             <div className="row" style={{ gap: 6 }}>
-                                {EFFORTS.map((e) => (
-                                    <button
-                                        key={e.id}
-                                        className={`btn btn-sm${effort === e.id ? ' btn-primary' : ''}`}
-                                        title={e.hint}
-                                        onClick={() => setEffort(e.id)}
-                                    >
-                                        {e.title}
-                                    </button>
-                                ))}
+                                <button
+                                    className="btn btn-sm chat-mobile-only"
+                                    onClick={() => setDeepOpen((v) => !v)}
+                                    title="глубина размышления"
+                                >
+                                    {EFFORTS.find((e) => e.id === effort)?.title ?? 'глубина'}
+                                </button>
                             </div>
                             <div className="row" style={{ gap: 6 }}>
                                 <input
@@ -492,6 +566,31 @@ export default function Chat({ tamara }: ViewProps) {
                     </div>
                 </section>
             </div>
+
+            {/* Откуда взяты числа. Выезжает снизу и закрывается касанием мимо —
+                так устроены все всплывающие окна на телефоне, и палец ищет
+                выход там, где привык. */}
+            {sources !== null ? (
+                <div className="chat-sheet-back" onClick={() => setSources(null)}>
+                    <div className="chat-sheet" onClick={(e) => e.stopPropagation()}>
+                        <div className="chat-sheet-head">
+                            <span className="eyebrow">Откуда это</span>
+                            <button className="chat-plus" onClick={() => setSources(null)} title="закрыть">
+                                ×
+                            </button>
+                        </div>
+                        <ul className="chat-sheet-list">
+                            {lookedInto(messages.find((m) => m.id === sources)?.used_tools).map((t) => (
+                                <li key={t}>{t}</li>
+                            ))}
+                        </ul>
+                        <p className="hint">
+                            Числа в ответе взяты отсюда. Любое из них она раскладывает до исходных строк — спроси
+                            «откуда 34 заказа», и она покажет.
+                        </p>
+                    </div>
+                </div>
+            ) : null}
 
             <div className="block-label">
                 <span className="eyebrow">Память · {memory.length}</span>
