@@ -65,7 +65,14 @@ export default function ShtabPage() {
         const root = rootRef.current;
         if (!root) return;
         const scroller = root.closest('main') ?? document.documentElement;
-        const apply = () => root.style.setProperty('--shtab-vh', `${scroller.clientHeight}px`);
+        // Вычитаем нижний отступ области прокрутки. На телефоне там
+        // зарезервирована полоса под плавающие кнопки — бургер меню и Семёна;
+        // clientHeight её включает, и поле ввода разговора оказывалось ровно
+        // под ними.
+        const apply = () => {
+            const reserved = parseFloat(getComputedStyle(scroller).paddingBottom) || 0;
+            root.style.setProperty('--shtab-vh', `${scroller.clientHeight - reserved}px`);
+        };
         apply();
         const observer = new ResizeObserver(apply);
         observer.observe(scroller);
