@@ -77,6 +77,7 @@ export default function Chat({ tamara }: ViewProps) {
     // открытых окон одно, и открытие второго закрывает первое само собой.
     const [sources, setSources] = useState<number | null>(null);
     const feedRef = useRef<HTMLDivElement>(null);
+    const askRef = useRef<HTMLTextAreaElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
     const chunks = useRef<Blob[]>([]);
@@ -220,6 +221,22 @@ export default function Chat({ tamara }: ViewProps) {
             alive = false;
         };
     }, [loadChats, openChat, loadMemory]);
+
+    /**
+     * Поле растёт и сжимается вслед за тем, что в нём написано.
+     *
+     * Высота задаётся не при наборе, а от самого текста — и потому верна
+     * всегда, а не только пока по клавишам стучат. Раньше её ставили в
+     * обработчике набора: после отправки текст исчезал, а высота оставалась,
+     * и пустое поле занимало треть экрана. То же было после диктовки, когда
+     * текст приходит в поле сам.
+     */
+    useEffect(() => {
+        const el = askRef.current;
+        if (!el) return;
+        el.style.height = '';
+        if (text) el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    }, [text]);
 
     // Лента листается вниз сама: разговор читается от старых реплик к новым,
     // и после ответа смотреть надо на последнюю.
@@ -548,17 +565,10 @@ export default function Chat({ tamara }: ViewProps) {
                             ))}
 
                         <textarea
+                            ref={askRef}
                             value={text}
                             placeholder="Что спросить"
-                            onChange={(e) => {
-                                setText(e.target.value);
-                                // Рост по тексту. Высоту сбрасываем перед
-                                // замером: иначе поле только растёт и после
-                                // стирания текста остаётся раздутым.
-                                const el = e.target;
-                                el.style.height = '';
-                                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-                            }}
+                            onChange={(e) => setText(e.target.value)}
                             onKeyDown={(e) => {
                                 // Enter отправляет, Shift+Enter переносит строку:
                                 // вопросы тут чаще в одну строку, чем в абзац.
