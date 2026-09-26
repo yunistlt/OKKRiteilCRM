@@ -3,6 +3,7 @@ import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { generateEmbedding } from '@/lib/embeddings';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
 import { SHTAB_TOOLS, SHTAB_TOOL_NAMES, executeShtabTool } from '@/lib/shtab/tamara-tools';
+import { formatToolResult } from '@/lib/shtab/tool-format';
 
 // Разговорный слой Тамары.
 //
@@ -176,7 +177,9 @@ export async function runTamara(opts: {
                 messages.push({
                     role: 'tool',
                     tool_call_id: call.id,
-                    content: JSON.stringify(result),
+                    // Таблицей, а не JSON: ответ инструмента едет к модели заново
+                    // на каждом следующем витке, и его размер множится на их число.
+                    content: formatToolResult(result),
                 });
             }
             continue;
