@@ -121,8 +121,17 @@ export async function resolveSite(query?: string): Promise<Site | WmError> {
         };
     }
 
+    // Порядок проверок важен. У владельца есть zmktlt.ru и soft.zmktlt.ru, и
+    // «zmktlt.ru» по вхождению подстроки попадает в оба — а первым в списке
+    // Вебмастера идёт поддомен. Поэтому сначала ищем точное совпадение хоста,
+    // и только потом вхождение: спросили про сайт — отвечаем про него, а не
+    // про его поддомен.
     const needle = query.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
-    const hit = all.find((s) => s.url.toLowerCase().includes(needle)) ?? all.find((s) => s.host_id === query);
+    const host = (u: string) => u.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const hit =
+        all.find((s) => host(s.url) === needle) ??
+        all.find((s) => s.host_id === query) ??
+        all.find((s) => host(s.url).includes(needle));
     if (!hit) {
         return { available: false, reason: `сайт «${query}» не найден. Есть: ${all.map((s) => s.url).join(', ')}` };
     }

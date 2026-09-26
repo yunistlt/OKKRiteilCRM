@@ -123,6 +123,51 @@ export const WEBMASTER_TOOL_NAMES: ReadonlySet<string> = new Set<string>(
     WEBMASTER_TOOLS.map((t) => t.function.name),
 );
 
+/**
+ * Названия проблем и показателей обхода по-русски.
+ *
+ * Вебмастер отдаёт их кодами: BIG_FAVICON_ABSENT, HTTP_4XX. Владелец читает
+ * ответ Тамары, а не документацию Яндекса, и код в нём — то же самое, что
+ * непереведённое слово. Незнакомый код отдаём как есть: пустая строка хуже
+ * кода.
+ */
+const PROBLEM_TITLES: Record<string, string> = {
+    NO_SITEMAPS: 'не указана карта сайта',
+    NO_SITEMAP_MODIFICATIONS: 'карта сайта давно не обновлялась',
+    ERROR_IN_ROBOTS_TXT: 'ошибка в robots.txt',
+    MAIN_MIRROR_IS_NOT_HTTPS: 'главное зеркало не на https',
+    NO_REGIONS: 'не указан регион сайта',
+    NO_METRIKA_COUNTER: 'на сайте нет счётчика Метрики',
+    NO_METRIKA_COUNTER_BINDING: 'счётчик Метрики не привязан к сайту',
+    BIG_FAVICON_ABSENT: 'нет крупного значка сайта',
+    SOFT_404: 'несуществующие страницы отвечают как обычные',
+    DOCUMENTS_MISSING_DESCRIPTION: 'у страниц нет описания',
+    DOCUMENTS_MISSING_TITLE: 'у страниц нет заголовка',
+    SLOW_AVG_RESPONSE_TIME: 'сайт медленно отвечает',
+    DISALLOWED_IN_ROBOTS: 'страницы закрыты в robots.txt',
+    THREATS: 'угрозы безопасности на сайте',
+    URL_ALERT: 'проблемы с адресами страниц',
+    TOO_MANY_PAGE_DUPLICATES: 'много страниц-дублей',
+    VIDEOHOST_OFFER_NEED_PAPER: 'для видео нужны документы',
+    INSIGNIFICANT_CGI_PARAMETER: 'незначащие параметры в адресах',
+    DOCUMENTS_ERROR: 'ошибки при загрузке страниц',
+};
+
+const SEVERITY_TITLES: Record<string, string> = {
+    FATAL: 'критично',
+    CRITICAL: 'критично',
+    POSSIBLE_PROBLEM: 'возможная проблема',
+    RECOMMENDATION: 'рекомендация',
+};
+
+const CRAWL_TITLES: Record<string, string> = {
+    HTTP_2XX: 'страниц отдано',
+    HTTP_3XX: 'переадресаций',
+    HTTP_4XX: 'ошибок 404 и подобных',
+    HTTP_5XX: 'ошибок сервера',
+    OTHER: 'прочих ответов',
+};
+
 /** Пояснение к цифрам, чтобы их не путали с внутренними. */
 const NOTE =
     'Данные Яндекс Вебмастера. Показ — сайт попал в выдачу; клик — по нему перешли. ' +
@@ -142,7 +187,10 @@ const NOTE =
 function rowsOrRaw<T>(raw: any, pick: (raw: any) => T[] | null): T[] | any {
     try {
         const rows = pick(raw);
-        return rows && rows.length ? rows : raw;
+        // Пустой список — законный ответ: у сайта может не быть ни одного
+        // запроса за неделю. Отдаём его как есть, иначе «данных нет» и «форма
+        // ответа не та» сливаются в одно, и Тамара не сможет различить их.
+        return rows === null ? raw : rows;
     } catch {
         return raw;
     }
@@ -210,16 +258,24 @@ export async function executeWebmasterTool(name: string, args: any): Promise<Too
         if (failed(data)) return data;
         return {
             ...head,
-            проблемы: rowsOrRaw(data, (d) =>
-                (d.problems ?? [])
-                    .filter((x: any) => x.state !== 'ABSENT')
-                    .map((x: any) => ({
-                        тяжесть: x.severity,
-                        что: x.problem_type,
-                        состояние: x.state,
-                        обновлено: x.last_state_update,
-                    })),
-            ),
+            // Вебмастер отдаёт проблемы не списком, а объектом: ключ —
+            // название проблемы, значение — её состояние. Отсутствующие
+            // отбрасываем: их там втрое больше, чем настоящих, и в ответе они
+            // только мешают отличить беду от тишины.
+            проблемы: rowsOrRaw(data, (d) => {
+                const raw = d.problems;
+                if (!raw) return null;
+                const entries = Array.isArray(raw)
+                    ? raw.map((x: any) => [x.problem_type, x])
+                    : Object.entries<any>(raw);
+                return entries
+                    .filter(([, x]: any) => x?.state && x.state !== 'ABSENT')
+                    .map(([type, x]: any) => ({
+                        тяжесть: SEVERITY_TITLES[x.severity] ?? x.severity,
+                        что: PROBLEM_TITLES[type] ?? type,
+                        обновлено: String(x.last_state_update ?? '').slice(0, 10),
+                    }));
+            }),
         };
     }
 
@@ -247,13 +303,14 @@ export async function executeWebmasterTool(name: string, args: any): Promise<Too
             ...head,
             за_дней: days,
             обход_по_дням: rowsOrRaw(data, (d) => {
-                const groups = d.indicators ?? {};
+                const groups = d.indicators;
+                if (!groups) return null;
                 const byDate = new Map<string, Record<string, unknown>>();
                 for (const [indicator, points] of Object.entries<any>(groups)) {
                     for (const pt of points ?? []) {
                         const day = String(pt.date).slice(0, 10);
                         const row = byDate.get(day) ?? { дата: day };
-                        row[indicator] = num(pt.value);
+                        row[CRAWL_TITLES[indicator] ?? indicator] = num(pt.value);
                         byDate.set(day, row);
                     }
                 }
