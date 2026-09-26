@@ -73,9 +73,9 @@ export default function Chat({ tamara }: ViewProps) {
     // Приветствие дня. Приходит отдельно от ленты и в переписку не пишется:
     // это не вопрос и не ответ, и захламлять им историю разговора незачем.
     const [greeting, setGreeting] = useState<string | null>(null);
-    // Раскрыт ли выбор глубины. На широком экране он виден всегда, здесь —
-    // только состояние кнопки на телефоне.
-    const [deepOpen, setDeepOpen] = useState(false);
+    // Раскрыта ли полка со второстепенными кнопками. На широком экране она
+    // видна всегда, здесь — только состояние кнопки «⋯» на телефоне.
+    const [moreOpen, setMoreOpen] = useState(false);
     // Какое сообщение раскрыто по вопросу «откуда это». Номер, а не флаг:
     // открытых окон одно, и открытие второго закрывает первое само собой.
     const [sources, setSources] = useState<number | null>(null);
@@ -488,6 +488,94 @@ export default function Chat({ tamara }: ViewProps) {
                                 ))}
                             </div>
                         ) : null}
+                        {/* Всё второстепенное — глубина, файл, диктовка —
+                            одной полкой, которая на телефоне раскрывается по
+                            кнопке «⋯». Раньше эти кнопки стояли строкой всегда
+                            и занимали внизу столько же места, сколько сама
+                            переписка вверху. */}
+                        <div className={`row chat-extra${moreOpen ? '' : ' off'}`} style={{ gap: 6 }}>
+                            {/* Глубина: на телефоне одним списком, на широком
+                                экране тремя кнопками. Список занимает место
+                                одной кнопки и показывает выбранное значение
+                                прямо на себе; три кнопки в ряду там, где ряд
+                                всего один, — непозволительная роскошь. */}
+                            <select
+                                className="chat-deep chat-mobile-only"
+                                value={effort}
+                                onChange={(e) => setEffort(e.target.value as 'low' | 'medium' | 'high')}
+                                aria-label="Глубина размышления"
+                            >
+                                {EFFORTS.map((e) => (
+                                    <option key={e.id} value={e.id}>
+                                        {e.title}
+                                    </option>
+                                ))}
+                            </select>
+                            {EFFORTS.map((e) => (
+                                <button
+                                    key={e.id}
+                                    className={`btn btn-sm chat-desk-only${effort === e.id ? ' btn-primary' : ''}`}
+                                    title={e.hint}
+                                    onClick={() => setEffort(e.id)}
+                                >
+                                    {e.title}
+                                </button>
+                            ))}
+                            <input
+                                ref={fileRef}
+                                type="file"
+                                hidden
+                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) void attach(f);
+                                }}
+                            />
+                            <button className="btn btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
+                                прицепить файл
+                            </button>
+                            {/* Диктовка — значком. Микрофон понятен без подписи
+                                и занимает место одной буквы вместо девяти;
+                                состояние видно по самому значку: идёт запись —
+                                он красный, идёт расшифровка — точки. */}
+                            <button
+                                className={`btn btn-sm chat-mic${recording ? ' on' : ''}`}
+                                disabled={decoding}
+                                onClick={() => (recording ? stopRecording() : void startRecording())}
+                                title={decoding ? 'расшифровываю' : recording ? 'закончить диктовку' : 'диктовать'}
+                                aria-label={decoding ? 'расшифровываю' : recording ? 'закончить диктовку' : 'диктовать'}
+                            >
+                                {decoding ? (
+                                    <span className="dots">
+                                        <i />
+                                        <i />
+                                        <i />
+                                    </span>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                                        <path
+                                            d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z"
+                                            fill="currentColor"
+                                        />
+                                        <path
+                                            d="M5 11a7 7 0 0 0 14 0M12 18v3"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                        />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+
+                        <div className="chat-compose">
+                            <button
+                                className="chat-more chat-mobile-only"
+                                onClick={() => setMoreOpen((v) => !v)}
+                                title="глубина, файл, диктовка"
+                            >
+                                ⋯
+                            </button>
                         <textarea
                             value={text}
                             placeholder="Что спросить"
@@ -509,59 +597,13 @@ export default function Chat({ tamara }: ViewProps) {
                                 }
                             }}
                         />
-                        {/* Глубина размышления на телефоне спрятана под кнопку
-                            с текущим значением: её меняют редко, а три кнопки в
-                            ряду не дают поместиться остальным. */}
-                        <div className={`row chat-efforts${deepOpen ? '' : ' off'}`} style={{ gap: 6 }}>
-                            {EFFORTS.map((e) => (
-                                <button
-                                    key={e.id}
-                                    className={`btn btn-sm${effort === e.id ? ' btn-primary' : ''}`}
-                                    title={e.hint}
-                                    onClick={() => {
-                                        setEffort(e.id);
-                                        setDeepOpen(false);
-                                    }}
-                                >
-                                    {e.title}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="row" style={{ justifyContent: 'space-between' }}>
-                            <div className="row" style={{ gap: 6 }}>
-                                <button
-                                    className="btn btn-sm chat-mobile-only"
-                                    onClick={() => setDeepOpen((v) => !v)}
-                                    title="глубина размышления"
-                                >
-                                    {EFFORTS.find((e) => e.id === effort)?.title ?? 'глубина'}
-                                </button>
-                            </div>
-                            <div className="row" style={{ gap: 6 }}>
-                                <input
-                                    ref={fileRef}
-                                    type="file"
-                                    hidden
-                                    accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
-                                    onChange={(e) => {
-                                        const f = e.target.files?.[0];
-                                        if (f) void attach(f);
-                                    }}
-                                />
-                                <button className="btn btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-                                    прицепить файл
-                                </button>
-                                <button
-                                    className={`btn btn-sm${recording ? ' btn-rec' : ''}`}
-                                    disabled={decoding}
-                                    onClick={() => (recording ? stopRecording() : void startRecording())}
-                                >
-                                    {decoding ? 'расшифровываю…' : recording ? 'закончить диктовку' : 'диктовать'}
-                                </button>
-                                <button className="btn btn-primary" disabled={busy || !text.trim()} onClick={() => void send()}>
-                                    {busy ? 'думает…' : 'спросить'}
-                                </button>
-                            </div>
+                            <button
+                                className="btn btn-primary chat-go"
+                                disabled={busy || !text.trim()}
+                                onClick={() => void send()}
+                            >
+                                {busy ? 'думает…' : 'спросить'}
+                            </button>
                         </div>
                     </div>
                 </section>

@@ -952,25 +952,62 @@
     max-width:64px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .shtab .chat-chip.on .chat-chip-name{color:var(--ink)}
 
-  /* Единственная прокрутка на экране. */
-  .shtab .chat-feed{flex:1 1 auto;min-height:0;max-height:none;padding:10px;gap:5px}
-  .shtab .chat-msg{max-width:86%}
-  .shtab .chat-msg.assistant, .shtab .chat-msg.user{padding:7px 10px 8px}
+  /* Единственная прокрутка на экране.
+     Поля по краям — по четыре пикселя, около процента ширины экрана. На
+     телефоне пустая полоса сбоку не «воздух», а отнятая строка: текст
+     переносится раньше, и сообщение занимает на две строки больше. */
+  .shtab .chat-feed{flex:1 1 auto;min-height:0;max-height:none;padding:6px 3px;gap:5px}
+  .shtab .chat-msg{max-width:100%}
+  .shtab .chat-msg.assistant, .shtab .chat-msg.user{padding:7px 9px 8px}
   .shtab .chat-head{margin-bottom:1px}
   .shtab .chat-text{font-size:15px;margin-top:1px}
 
-  /* Ввод прижат к низу: к переписке возвращаются, чтобы ответить. */
-  .shtab .chat-send{flex:0 0 auto;padding:8px;gap:8px;background:var(--surface)}
+  /* Ввод прижат к низу: к переписке возвращаются, чтобы ответить.
+     Всё второстепенное убрано под «⋯», и внизу остаётся одна строка в 44
+     пикселя вместо трёх. Раньше низ занимал столько же, сколько переписка. */
+  .shtab .chat-send{flex:0 0 auto;padding:5px 4px;gap:5px;background:var(--surface)}
   /* Кегль 16 обязателен: на меньшем Safari сам приближает страницу при
      фокусе, и вернуть масштаб потом нечем. */
-  /* Поле в одну строку и растёт по мере набора. Поле в три строки отнимает
-     их у переписки всё время, а нужны они в одном вопросе из десяти. */
-  .shtab .chat-send textarea{min-height:44px;height:44px;max-height:120px;font-size:16px;resize:none}
-  .shtab .chat-send .row{gap:6px;flex-wrap:nowrap}
-  .shtab .chat-send .btn{min-height:44px;padding:0 12px;white-space:nowrap}
-  .shtab .chat-efforts.off{display:none}
+  .shtab .chat-send textarea{min-height:40px;height:40px;max-height:110px;font-size:16px;
+    resize:none;padding:8px 10px}
+  .shtab .chat-extra.off{display:none}
+  .shtab .chat-extra{gap:5px;flex-wrap:wrap}
+  .shtab .chat-extra .btn{min-height:40px}
 
   /* Память со всем её пояснением скрыта: всё, что стоит под перепиской,
      заставляет прокручиваться страницу, и прокруток снова становится две. */
   .shtab .chat-memory{display:none}
 }
+
+/* ---------- строка ввода ---------- */
+
+/* Поле и кнопки в одну строку. На телефоне это единственная строка внизу:
+   всё остальное живёт на полке под «⋯». */
+.shtab .chat-compose{display:flex;align-items:flex-end;gap:6px}
+.shtab .chat-compose textarea{flex:1;min-width:0}
+
+.shtab .chat-more{width:40px;height:40px;flex:0 0 auto;font-size:20px;line-height:1;
+  color:var(--ink-2);border:1px solid var(--line-2)}
+.shtab .chat-more:hover{background:var(--surface-2)}
+
+.shtab .chat-go{flex:0 0 auto;height:40px;padding:0 14px}
+
+/* На широком экране полка со второстепенными кнопками видна всегда: места
+   хватает, и лишнее нажатие ради «прицепить файл» там ни к чему. */
+@media (min-width:901px){.shtab .chat-extra.off{display:flex}}
+
+/* Кнопка диктовки — значком: микрофон понятен без подписи, а слово
+   «диктовать» занимало девять знаков в строке, где их всего на три кнопки. */
+.shtab .chat-mic{display:inline-flex;align-items:center;justify-content:center;
+  width:40px;padding:0;color:var(--ink-2)}
+.shtab .chat-mic:hover{color:var(--ink)}
+.shtab .chat-mic.on{background:var(--signal);border-color:var(--signal);color:var(--on-blue)}
+
+/* Глубина размышления: список на телефоне, кнопки на широком экране. */
+.shtab .chat-deep{width:auto;min-height:40px;padding:0 26px 0 10px;font-size:13.5px;
+  background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),
+    linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 50%,calc(100% - 9px) 50%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+
+@media (max-width:900px){.shtab .chat-desk-only{display:none}}
