@@ -203,7 +203,7 @@ export default function Tamara({
     };
 
     return (
-        <aside className="tam" data-state={state}>
+        <aside className={`tam${quiet ? ' tam-quiet' : ''}`} data-state={state}>
             {quiet ? null : (
             <div className="bubble">
                 <div className="b-name">

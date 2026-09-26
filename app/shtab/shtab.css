@@ -620,7 +620,74 @@
 .shtab .chat{display:grid;grid-template-columns:230px minmax(0,1fr);gap:0;
   border:1px solid var(--line);background:var(--surface)}
 
-@media (max-width:900px){.shtab .chat{grid-template-columns:1fr}}
+/* ─── Разговор на телефоне ────────────────────────────────────────────────
+   Переписка на узком экране устроена так же, как в мессенджерах, и причины
+   у каждого правила те же, по которым они там к этому пришли.
+
+   Прокрутка одна. Раньше их было три: страница, лента внутри своей рамки и
+   список разговоров. На телефоне палец не знает, какую из них он тянет, и
+   поле ввода то и дело уезжало за край. Теперь страница стоит, а едет только
+   лента.
+
+   Поле ввода прижато к низу и видно всегда. Это главное отличие переписки от
+   документа: к ней возвращаются, чтобы ответить, а не чтобы дочитать.
+
+   Фигура убрана. Она занимала половину экрана — на телефоне это место
+   переписки. В мессенджерах собеседник и показан именем в шапке, не ростовым
+   портретом.
+
+   Список разговоров свёрнут. Открытый разговор — отдельный экран, а не
+   половина; переключаются между ними редко, а место отнимает постоянно. */
+@media (max-width:900px){
+  .shtab .chat{grid-template-columns:1fr;border:0;
+    /* Минус шапка, вкладки и заголовок раздела. */
+    height:calc(var(--shtab-vh, 100vh) - 132px);
+    display:flex;flex-direction:column;min-height:0}
+
+  /* Фигура на вкладке разговора не показывается: её место — переписка. */
+  .shtab .tam-quiet{display:none}
+
+  /* Список разговоров лентой поверху: видно текущий и соседние, листается
+     вбок. Занимает одну строку вместо половины экрана. */
+  .shtab .chat-list{flex:0 0 auto;border-right:0;border-bottom:1px solid var(--line);
+    flex-direction:row;overflow-x:auto;overflow-y:hidden;max-height:none;
+    padding:8px;gap:6px;-webkit-overflow-scrolling:touch}
+  .shtab .chat-list > .btn{width:auto!important;flex:0 0 auto;white-space:nowrap}
+  .shtab .chat-item{flex:0 0 auto;max-width:60vw}
+  .shtab .chat-pick{min-height:44px}
+  .shtab .chat-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Переименование и архив — дела редкие и с телефона почти не нужные. */
+  .shtab .chat-item.on .chat-ops{display:none}
+
+  .shtab .chat-main{flex:1 1 auto;min-height:0}
+
+  /* Единственная прокрутка на экране. */
+  .shtab .chat-feed{flex:1 1 auto;min-height:0;max-height:none;padding:12px;gap:10px}
+
+  /* Пузырь во всю ширину минус поле для «хвостика»: на узком экране
+     78 символов не помещаются, а обрезанная строка читается хуже переноса. */
+  .shtab .chat-msg{max-width:88%}
+
+  /* Ввод прижат к низу и не прокручивается вместе с лентой. */
+  .shtab .chat-send{flex:0 0 auto;padding:8px;gap:8px;background:var(--surface)}
+  .shtab .chat-send textarea{min-height:44px;max-height:120px;font-size:16px}
+
+  /* Кнопки в одну строку и не мельче 44 пикселей — иначе промахиваешься. */
+  .shtab .chat-send .row{gap:8px;flex-wrap:nowrap}
+  .shtab .chat-send .btn{min-height:44px;padding-left:12px;padding-right:12px;white-space:nowrap}
+
+  /* Память — справочный текст, на телефоне он только отодвигает переписку. */
+  .shtab .chat-mem{display:none}
+}
+
+/* 16 пикселей в поле ввода — не эстетика: Safari на меньшем кегле сам
+   приближает страницу при фокусе, и вернуть масштаб потом нечем. */
+
+@media (min-width:901px){.shtab .chat-mobile-only{display:none}}
+
+/* На широком экране глубина видна всегда: место есть, прятать незачем. */
+@media (max-width:900px){.shtab .chat-efforts.off{display:none}
+  .shtab .chat-intro{display:none}}
 
 .shtab .chat-list{border-right:1px solid var(--line);padding:12px;display:flex;flex-direction:column;gap:8px;
   max-height:640px;overflow:auto}
