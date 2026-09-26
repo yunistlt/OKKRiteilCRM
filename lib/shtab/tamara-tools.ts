@@ -21,6 +21,7 @@ import {
     WEBMASTER_TOOL_NAMES,
     executeWebmasterTool,
 } from '@/lib/shtab/tamara-webmaster-tools';
+import { DIRECT_TOOLS, DIRECT_TOOL_NAMES, executeDirectTool } from '@/lib/shtab/tamara-direct-tools';
 import { CORE_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
 
 /** Из какого разговора пришёл вызов — предложение по настройке помнит, откуда оно. */
@@ -418,6 +419,7 @@ export const SHTAB_TOOLS = [
     ...CODE_TOOLS,
     ...DATA_TOOLS,
     ...WEBMASTER_TOOLS,
+    ...DIRECT_TOOLS,
 ];
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
@@ -722,6 +724,7 @@ export async function executeShtabTool(
     if (CODE_TOOL_NAMES.has(name)) return await executeCodeTool(name, args);
     if (DATA_TOOL_NAMES.has(name)) return await executeDataTool(name, args);
     if (WEBMASTER_TOOL_NAMES.has(name)) return await executeWebmasterTool(name, args);
+    if (DIRECT_TOOL_NAMES.has(name)) return await executeDirectTool(name, args, ctx);
 
     if (name === 'sales_facts') {
         const months = Number.isFinite(Number(args?.months)) ? Math.min(36, Math.max(2, Number(args.months))) : 12;

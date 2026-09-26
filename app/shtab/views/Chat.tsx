@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ViewProps } from '../nav';
 import SettingProposals from './SettingProposals';
+import AdProposals from './AdProposals';
 import Rich from '../Rich';
 import { lookedInto } from '@/lib/shtab/tool-titles';
 
@@ -486,6 +487,7 @@ export default function Chat({ tamara }: ViewProps) {
 
                     {/* Предложения по настройкам — над полем ввода, а не в ленте:
                         решение по ним принимают сейчас, а лента уезжает вверх. */}
+                    <AdProposals key={`ads-${proposalsKey}`} />
                     <SettingProposals key={proposalsKey} />
 
                     <div className="chat-send">

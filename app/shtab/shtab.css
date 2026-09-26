@@ -1016,3 +1016,20 @@
   background-size:5px 5px,5px 5px;background-repeat:no-repeat}
 
 @media (max-width:900px){.shtab .chat-desk-only{display:none}}
+
+/* ---------- объявление на карточке предложения ---------- */
+
+/* Объявление показываем так, как его увидит человек в выдаче: синий заголовок,
+   зелёная ссылка, текст под ними. По нему и решают — а не по описанию того,
+   какой получится текст. */
+.shtab .ad-preview{border:1px solid var(--line);background:var(--field);
+  padding:10px 12px;margin:8px 0}
+
+.shtab .ad-preview-title{color:var(--blue);font-size:15.5px;line-height:1.35}
+
+.shtab .ad-preview-title2{color:var(--ink-2)}
+
+.shtab .ad-preview-href{color:var(--calm);font-size:12.5px;margin-top:2px;
+  word-break:break-all}
+
+.shtab .ad-preview-text{font-size:13.5px;color:var(--ink);margin-top:4px}
