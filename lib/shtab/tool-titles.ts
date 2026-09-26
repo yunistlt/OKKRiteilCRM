@@ -63,6 +63,15 @@ const TITLES: Record<string, string> = {
     settings_propose: 'предложение по настройке',
     settings_proposals: 'предложения по настройкам',
 
+    // Поиск
+    seo_sites: 'сайты в Яндекс Вебмастере',
+    seo_summary: 'сводка по сайту в Яндексе',
+    seo_queries: 'запросы в поиске Яндекса',
+    seo_problems: 'проблемы сайта в Яндексе',
+    seo_pages: 'страницы сайта в поиске',
+    seo_crawl: 'обход сайта роботом Яндекса',
+    seo_links: 'внешние ссылки на сайт',
+
     // Её собственные дела
     my_reports: 'свои прошлые отчёты',
     tamara_digest: 'своя сводка',

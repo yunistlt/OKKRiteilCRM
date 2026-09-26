@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth';
 import { EXTERNAL_DB_TITLES, engineOfUrl, queryExternal } from '@/lib/shtab/external/client';
 import type { ExternalDb } from '@/lib/shtab/external/client';
 import { catalogOverview } from '@/lib/shtab/lvz';
+import { failed, sites, webmasterConfigured } from '@/lib/yandex/webmaster';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -128,8 +129,31 @@ export async function GET(req: NextRequest) {
         // где остальное: владелец приходит сюда с вопросом «почему не видит».
         const catalog = await catalogOverview();
 
+        // Яндекс Вебмастер проверяется тут же и по той же причине: «данных
+        // поиска нет» звучит одинаково и когда токена не завели, и когда он
+        // истёк, и когда права на сайт не подтверждены. Ответ показывает, что
+        // из трёх.
+        const webmaster = await (async () => {
+            if (!webmasterConfigured()) {
+                return {
+                    ok: false,
+                    reason: 'не задан YANDEX_WEBMASTER_TOKEN',
+                    hint: 'Токен берётся на oauth.yandex.ru: приложение с доступом webmaster:hostinfo. Кладётся в переменные окружения Vercel, после чего нужен redeploy.',
+                };
+            }
+            const list = await sites();
+            if (failed(list)) return { ok: false, reason: list.reason };
+            return {
+                ok: true,
+                sites: list.map((h) => ({ url: h.url, verified: h.verified })),
+                hint: list.some((h) => !h.verified)
+                    ? 'По неподтверждённым сайтам Вебмастер данных не отдаёт — права подтверждаются в его интерфейсе.'
+                    : undefined,
+            };
+        })();
+
         return NextResponse.json(
-            { outbound_ip: await outboundIp(), checks, catalog },
+            { outbound_ip: await outboundIp(), checks, catalog, webmaster },
             { headers: { 'Content-Type': 'application/json; charset=utf-8' } },
         );
     } catch (e: any) {

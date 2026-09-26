@@ -16,6 +16,11 @@ import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-t
 import { SETTINGS_TOOLS, SETTINGS_TOOL_NAMES, executeSettingsTool } from '@/lib/shtab/tamara-settings-tools';
 import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { DATA_TOOLS, DATA_TOOL_NAMES, executeDataTool } from '@/lib/shtab/tamara-data-tools';
+import {
+    WEBMASTER_TOOLS,
+    WEBMASTER_TOOL_NAMES,
+    executeWebmasterTool,
+} from '@/lib/shtab/tamara-webmaster-tools';
 import { CORE_RELATIONS, runTamaraQuery } from '@/lib/shtab/tamara-sql';
 
 /** Из какого разговора пришёл вызов — предложение по настройке помнит, откуда оно. */
@@ -404,7 +409,16 @@ const OWN_TOOLS = [
 //
 // Настройки и код — тоже отдельно: у настроек своё правило (предлагать, но не
 // применять), у кода свой источник (снимок репозитория, а не боевые таблицы).
-export const SHTAB_TOOLS = [...OWN_TOOLS, ...TSEH_TOOLS, ...SETTINGS_TOOLS, ...CODE_TOOLS, ...DATA_TOOLS];
+// Поиск — отдельно и снаружи: это единственный источник, который показывает
+// начало воронки. Всё остальное начинается с заявки, которая уже пришла.
+export const SHTAB_TOOLS = [
+    ...OWN_TOOLS,
+    ...TSEH_TOOLS,
+    ...SETTINGS_TOOLS,
+    ...CODE_TOOLS,
+    ...DATA_TOOLS,
+    ...WEBMASTER_TOOLS,
+];
 
 export const SHTAB_TOOL_NAMES: ReadonlySet<string> = new Set<string>(SHTAB_TOOLS.map((t) => t.function.name));
 
@@ -707,6 +721,7 @@ export async function executeShtabTool(
     if (SETTINGS_TOOL_NAMES.has(name)) return await executeSettingsTool(name, args, ctx);
     if (CODE_TOOL_NAMES.has(name)) return await executeCodeTool(name, args);
     if (DATA_TOOL_NAMES.has(name)) return await executeDataTool(name, args);
+    if (WEBMASTER_TOOL_NAMES.has(name)) return await executeWebmasterTool(name, args);
 
     if (name === 'sales_facts') {
         const months = Number.isFinite(Number(args?.months)) ? Math.min(36, Math.max(2, Number(args.months))) : 12;
