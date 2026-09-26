@@ -970,9 +970,6 @@
      фокусе, и вернуть масштаб потом нечем. */
   .shtab .chat-send textarea{min-height:40px;height:40px;max-height:110px;font-size:16px;
     resize:none;padding:8px 10px}
-  .shtab .chat-extra.off{display:none}
-  .shtab .chat-extra{gap:5px;flex-wrap:wrap}
-  .shtab .chat-extra .btn{min-height:40px}
 
   /* Память со всем её пояснением скрыта: всё, что стоит под перепиской,
      заставляет прокручиваться страницу, и прокруток снова становится две. */
@@ -984,23 +981,31 @@
 /* Поле и кнопки в одну строку. На телефоне это единственная строка внизу:
    всё остальное живёт на полке под «⋯». */
 .shtab .chat-compose{display:flex;align-items:flex-end;gap:6px}
+
+/* На телефоне в строке пять мест, и каждый лишний пиксель у соседей —
+   пиксель, отнятый у поля ввода: оно и так остаётся самым тесным. */
+@media (max-width:900px){.shtab .chat-compose{gap:4px}
+  .shtab .chat-compose .chat-deep{padding:0 20px 0 7px;font-size:13px;
+    background-position:calc(100% - 11px) 50%,calc(100% - 7px) 50%}}
 .shtab .chat-compose textarea{flex:1;min-width:0}
 
-.shtab .chat-more{width:40px;height:40px;flex:0 0 auto;font-size:20px;line-height:1;
-  color:var(--ink-2);border:1px solid var(--line-2)}
-.shtab .chat-more:hover{background:var(--surface-2)}
+.shtab .chat-go{flex:0 0 auto;height:40px;padding:0 14px;
+  display:inline-flex;align-items:center;justify-content:center}
 
-.shtab .chat-go{flex:0 0 auto;height:40px;padding:0 14px}
+/* На телефоне отправка — стрелкой: мест в строке пять, и на подпись их не
+   хватает. */
+@media (max-width:900px){.shtab .chat-go{width:40px;padding:0}}
 
-/* На широком экране полка со второстепенными кнопками видна всегда: места
-   хватает, и лишнее нажатие ради «прицепить файл» там ни к чему. */
-@media (min-width:901px){.shtab .chat-extra.off{display:flex}}
 
 /* Кнопка диктовки — значком: микрофон понятен без подписи, а слово
    «диктовать» занимало девять знаков в строке, где их всего на три кнопки. */
-.shtab .chat-mic{display:inline-flex;align-items:center;justify-content:center;
-  width:40px;padding:0;color:var(--ink-2)}
-.shtab .chat-mic:hover{color:var(--ink)}
+/* Кнопка-значок: скрепка и микрофон. Квадрат в 40 пикселей — минимум, по
+   которому попадают пальцем, и ровно столько же, сколько у поля ввода. */
+.shtab .chat-ico{display:inline-flex;align-items:center;justify-content:center;
+  width:40px;height:40px;flex:0 0 auto;padding:0;color:var(--ink-2);
+  border:1px solid var(--line-2)}
+.shtab .chat-ico:hover{background:var(--surface-2);color:var(--ink)}
+.shtab .chat-ico:disabled{opacity:.45}
 .shtab .chat-mic.on{background:var(--signal);border-color:var(--signal);color:var(--on-blue)}
 
 /* Глубина размышления: список на телефоне, кнопки на широком экране. */

@@ -73,9 +73,6 @@ export default function Chat({ tamara }: ViewProps) {
     // Приветствие дня. Приходит отдельно от ленты и в переписку не пишется:
     // это не вопрос и не ответ, и захламлять им историю разговора незачем.
     const [greeting, setGreeting] = useState<string | null>(null);
-    // Раскрыта ли полка со второстепенными кнопками. На широком экране она
-    // видна всегда, здесь — только состояние кнопки «⋯» на телефоне.
-    const [moreOpen, setMoreOpen] = useState(false);
     // Какое сообщение раскрыто по вопросу «откуда это». Номер, а не флаг:
     // открытых окон одно, и открытие второго закрывает первое само собой.
     const [sources, setSources] = useState<number | null>(null);
@@ -488,17 +485,45 @@ export default function Chat({ tamara }: ViewProps) {
                                 ))}
                             </div>
                         ) : null}
-                        {/* Всё второстепенное — глубина, файл, диктовка —
-                            одной полкой, которая на телефоне раскрывается по
-                            кнопке «⋯». Раньше эти кнопки стояли строкой всегда
-                            и занимали внизу столько же места, сколько сама
-                            переписка вверху. */}
-                        <div className={`row chat-extra${moreOpen ? '' : ' off'}`} style={{ gap: 6 }}>
-                            {/* Глубина: на телефоне одним списком, на широком
-                                экране тремя кнопками. Список занимает место
-                                одной кнопки и показывает выбранное значение
-                                прямо на себе; три кнопки в ряду там, где ряд
-                                всего один, — непозволительная роскошь. */}
+                        {/* Вся строка ввода: скрепка, глубина, поле, микрофон,
+                            отправка. Ничего не спрятано под «ещё» — всё, что
+                            нужно при наборе вопроса, стоит на виду и достаётся
+                            одним касанием. */}
+                        <div className="chat-compose">
+                            <input
+                                ref={fileRef}
+                                type="file"
+                                hidden
+                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) void attach(f);
+                                }}
+                            />
+                            {/* Скрепка — знак вложения во всех мессенджерах,
+                                объяснять его не нужно. */}
+                            <button
+                                className="chat-ico"
+                                disabled={busy}
+                                onClick={() => fileRef.current?.click()}
+                                title="прицепить файл"
+                                aria-label="прицепить файл"
+                            >
+                                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                                    <path
+                                        d="M20 11.5 11.5 20a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-3-3l7.5-7.5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
+                            </button>
+
+                            {/* Глубина: списком на телефоне, кнопками на
+                                широком экране. Список занимает место одной
+                                кнопки и показывает выбранное значение на себе. */}
                             <select
                                 className="chat-deep chat-mobile-only"
                                 value={effort}
@@ -521,25 +546,33 @@ export default function Chat({ tamara }: ViewProps) {
                                     {e.title}
                                 </button>
                             ))}
-                            <input
-                                ref={fileRef}
-                                type="file"
-                                hidden
-                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
-                                onChange={(e) => {
-                                    const f = e.target.files?.[0];
-                                    if (f) void attach(f);
-                                }}
-                            />
-                            <button className="btn btn-sm" disabled={busy} onClick={() => fileRef.current?.click()}>
-                                прицепить файл
-                            </button>
-                            {/* Диктовка — значком. Микрофон понятен без подписи
-                                и занимает место одной буквы вместо девяти;
-                                состояние видно по самому значку: идёт запись —
-                                он красный, идёт расшифровка — точки. */}
+
+                        <textarea
+                            value={text}
+                            placeholder="Что спросить"
+                            onChange={(e) => {
+                                setText(e.target.value);
+                                // Рост по тексту. Высоту сбрасываем перед
+                                // замером: иначе поле только растёт и после
+                                // стирания текста остаётся раздутым.
+                                const el = e.target;
+                                el.style.height = '';
+                                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+                            }}
+                            onKeyDown={(e) => {
+                                // Enter отправляет, Shift+Enter переносит строку:
+                                // вопросы тут чаще в одну строку, чем в абзац.
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    void send();
+                                }
+                            }}
+                        />
+                            {/* Микрофон — диктовка. Состояние видно по самому
+                                значку: идёт запись — он красный, идёт
+                                расшифровка — точки. */}
                             <button
-                                className={`btn btn-sm chat-mic${recording ? ' on' : ''}`}
+                                className={`chat-ico chat-mic${recording ? ' on' : ''}`}
                                 disabled={decoding}
                                 onClick={() => (recording ? stopRecording() : void startRecording())}
                                 title={decoding ? 'расшифровываю' : recording ? 'закончить диктовку' : 'диктовать'}
@@ -566,43 +599,34 @@ export default function Chat({ tamara }: ViewProps) {
                                     </svg>
                                 )}
                             </button>
-                        </div>
 
-                        <div className="chat-compose">
-                            <button
-                                className="chat-more chat-mobile-only"
-                                onClick={() => setMoreOpen((v) => !v)}
-                                title="глубина, файл, диктовка"
-                            >
-                                ⋯
-                            </button>
-                        <textarea
-                            value={text}
-                            placeholder="Что спросить"
-                            onChange={(e) => {
-                                setText(e.target.value);
-                                // Рост по тексту. Высоту сбрасываем перед
-                                // замером: иначе поле только растёт и после
-                                // стирания текста остаётся раздутым.
-                                const el = e.target;
-                                el.style.height = '';
-                                el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-                            }}
-                            onKeyDown={(e) => {
-                                // Enter отправляет, Shift+Enter переносит строку:
-                                // вопросы тут чаще в одну строку, чем в абзац.
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                    e.preventDefault();
-                                    void send();
-                                }
-                            }}
-                        />
                             <button
                                 className="btn btn-primary chat-go"
                                 disabled={busy || !text.trim()}
                                 onClick={() => void send()}
+                                title="спросить"
+                                aria-label="спросить"
                             >
-                                {busy ? 'думает…' : 'спросить'}
+                                {/* На телефоне стрелка вместо слова: пять мест
+                                    в строке из пяти, и на подпись их не
+                                    хватает. На широком экране слово остаётся. */}
+                                <span className="chat-desk-only">{busy ? 'думает…' : 'спросить'}</span>
+                                <svg
+                                    className="chat-mobile-only"
+                                    viewBox="0 0 24 24"
+                                    width="18"
+                                    height="18"
+                                    aria-hidden="true"
+                                >
+                                    <path
+                                        d="M4 12h14M12 5l7 7-7 7"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                    />
+                                </svg>
                             </button>
                         </div>
                     </div>
