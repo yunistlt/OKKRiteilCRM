@@ -72,9 +72,6 @@ export default function Chat({ tamara }: ViewProps) {
     // Приветствие дня. Приходит отдельно от ленты и в переписку не пишется:
     // это не вопрос и не ответ, и захламлять им историю разговора незачем.
     const [greeting, setGreeting] = useState<string | null>(null);
-    // Раскрыт ли выбор глубины. На широком экране он виден всегда, здесь —
-    // только состояние кнопки «ещё» для телефона.
-    const [deepOpen, setDeepOpen] = useState(false);
     const feedRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const recorder = useRef<MediaRecorder | null>(null);
@@ -316,9 +313,7 @@ export default function Chat({ tamara }: ViewProps) {
             <div className="view-head">
                 <div className="eyebrow">Наставник</div>
                 <h1>Разговор</h1>
-                {/* Пояснение к разделу читают один раз, а место на телефоне
-                    оно отнимает всегда — там его нет. */}
-                <p className="chat-intro">
+                <p>
                     Рабочая переписка с Тамарой. Разговоры отдельные, чтобы темы не мешались; что сказано — она помнит
                     и в следующий раз, а числа каждый раз смотрит заново.
                 </p>
@@ -455,30 +450,18 @@ export default function Chat({ tamara }: ViewProps) {
                                 }
                             }}
                         />
-                        {/* Глубина размышления на телефоне спрятана под «ещё»:
-                            её меняют редко, а три кнопки в ряду не дают
-                            поместиться остальным и отнимают строку у переписки. */}
-                        <div className={`row chat-efforts${deepOpen ? '' : ' off'}`} style={{ gap: 6 }}>
-                            {EFFORTS.map((e) => (
-                                <button
-                                    key={e.id}
-                                    className={`btn btn-sm${effort === e.id ? ' btn-primary' : ''}`}
-                                    title={e.hint}
-                                    onClick={() => setEffort(e.id)}
-                                >
-                                    {e.title}
-                                </button>
-                            ))}
-                        </div>
                         <div className="row" style={{ justifyContent: 'space-between' }}>
                             <div className="row" style={{ gap: 6 }}>
-                                <button
-                                    className="btn btn-sm chat-mobile-only"
-                                    onClick={() => setDeepOpen((v) => !v)}
-                                    title="глубина размышления"
-                                >
-                                    {EFFORTS.find((e) => e.id === effort)?.title ?? 'ещё'}
-                                </button>
+                                {EFFORTS.map((e) => (
+                                    <button
+                                        key={e.id}
+                                        className={`btn btn-sm${effort === e.id ? ' btn-primary' : ''}`}
+                                        title={e.hint}
+                                        onClick={() => setEffort(e.id)}
+                                    >
+                                        {e.title}
+                                    </button>
+                                ))}
                             </div>
                             <div className="row" style={{ gap: 6 }}>
                                 <input
