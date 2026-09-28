@@ -83,7 +83,7 @@ const SELECT_COLUMNS =
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
-  'raw_payload, notified_at, pending_notified_at, created_at, updated_at';
+  'raw_payload, notified_at, pending_notified_at, renotify_requested_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -520,4 +520,45 @@ export async function reconcileCrmPostings(limit = 10): Promise<number> {
     }
   }
   return reconciled;
+}
+
+
+/**
+ * Переотправка уведомлений, запрошенных вручную (`renotify_requested_at`).
+ *
+ * Нужна, когда у платежа поправили проект: сообщение уже ушло в чат прежнего проекта, и
+ * бот должен отправить его заново — в правильный чат (инцидент 2026-09-28: платёж за ПО
+ * ушёл в чат ЗМК). Флаг ставится точечно по конкретным строкам, поэтому массовой рассылки
+ * по истории быть не может. Сообщение в прежнем чате бот удалить не может: message_id
+ * отправленных уведомлений мы не храним — старое сообщение убирают руками.
+ */
+export async function sendRequestedRenotifications(limit = 10): Promise<number> {
+  const { data, error } = await supabase
+    .from('point_payments')
+    .select(SELECT_COLUMNS)
+    .not('renotify_requested_at', 'is', null)
+    .order('renotify_requested_at', { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+
+  let sent = 0;
+  for (const row of (data || []) as PointPaymentRow[]) {
+    try {
+      await notifyPaymentTelegram(row);
+      sent += 1;
+    } catch (e: any) {
+      // Не гасим флаг: следующий проход попробует снова.
+      console.error('[payments] renotify failed:', row.id, e?.message || e);
+      continue;
+    }
+    await supabase
+      .from('point_payments')
+      .update({
+        renotify_requested_at: null,
+        notified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+  }
+  return sent;
 }
