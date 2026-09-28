@@ -34,6 +34,10 @@ describe('разбор постановления о возбуждении ИП
     expect(valueOf(fields, 'fssp_department')).not.toMatch(/ФЕДЕРАЛЬНАЯ/i);
   });
 
+  it('берёт номер исполнительного листа с буквенной серией', () => {
+    expect(valueOf(fields, 'writ_number')).toBe('ФС 045123789');
+  });
+
   it('суммы долга и взыскания различаются', () => {
     const debt = fields.find((item) => item.field === 'debt_amount_kopecks');
     const charge = fields.find((item) => item.field === 'charge_amount_kopecks');

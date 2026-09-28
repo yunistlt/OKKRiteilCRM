@@ -147,7 +147,9 @@ export function extractByRegex(text: string): ExtractionOutcome {
   const courtCase = text.match(/(?:дел[а-яё]*\s*№|дел[а-яё]*\s+номер)\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
   if (courtCase) add('court_case_number', courtCase[1].trim(), courtCase[1].trim(), courtCase, 0.7);
 
-  const writ = text.match(/(?:исполнительн[а-яё]*\s+лист[а-яё]*|судебн[а-яё]*\s+приказ[а-яё]*)\s*(?:серии\s*)?№?\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
+  // Серия и номер разделены пробелом («ФС 045123789»), поэтому пробел внутри
+  // захвата разрешён, а лишнее обрезаем после.
+  const writ = text.match(/(?:исполнительн[а-яё]*\s+лист[а-яё]*|судебн[а-яё]*\s+приказ[а-яё]*)\s*(?:серии\s*)?№?\s*([А-ЯA-Z]{0,3}\s?\d[\dА-ЯA-Z\-\/]{3,25})/i);
   if (writ) add('writ_number', writ[1].trim(), writ[1].trim(), writ, 0.7);
 
   // Период долга: «за 2025 год», «за 1 квартал 2026»
@@ -248,6 +250,18 @@ export async function extractByAi(text: string): Promise<ExtractionOutcome> {
   }
 }
 
+/**
+ * Одно ли это значение. Сравниваем по нормализованному виду: «1 250 000,00» и
+ * «1250000» — одна и та же сумма, и показывать их человеку как конфликт значит
+ * заставлять его разбирать разницу форматов вместо работы с документом.
+ */
+function sameValue(left: ExtractedField, right: ExtractedField): boolean {
+  if (left.value_raw !== null && left.value_raw !== undefined && right.value_raw !== null && right.value_raw !== undefined) {
+    if (String(left.value_raw) === String(right.value_raw)) return true;
+  }
+  return String(left.value_text).trim().toLowerCase() === String(right.value_text).trim().toLowerCase();
+}
+
 /** Номер арбитражного дела: А55-12345/2026 (кириллическая или латинская буква). */
 const COURT_CASE_RE = /^[АA]\d{1,2}[-–]\d{1,7}\/\d{4}$/;
 /** Номер исполнительного производства: 45678/26/63021-ИП. */
@@ -291,11 +305,7 @@ export async function extractEnforcementFields(text: string): Promise<Extraction
 
   const fields = [...byRegex.fields];
   for (const candidate of byAi.fields) {
-    const same = fields.find(
-      (item) =>
-        item.field === candidate.field &&
-        String(item.value_text).trim().toLowerCase() === String(candidate.value_text).trim().toLowerCase(),
-    );
+    const same = fields.find((item) => item.field === candidate.field && sameValue(item, candidate));
     // То же самое значение, найденное вторым способом, — не новость, а
     // подтверждение: поднимаем уверенность вместо второй карточки человеку.
     if (same) {

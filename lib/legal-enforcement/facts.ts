@@ -62,7 +62,10 @@ export async function saveExtractedFields(params: {
       (fact: any) =>
         fact.field === field.field &&
         fact.state !== 'rejected' &&
-        String(fact.value_text || '').toLowerCase() !== field.value_text.toLowerCase(),
+        // Сравниваем нормализованно: «1 250 000,00» и «1250000» — одно значение,
+        // а не спор, который надо нести человеку.
+        String((fact.value_raw as any)?.value ?? fact.value_text ?? '').trim().toLowerCase() !==
+          String(field.value_raw ?? field.value_text).trim().toLowerCase(),
     );
 
     const ambiguous = (perFieldCount.get(field.field) || 0) > 1 || Boolean(conflicting);
