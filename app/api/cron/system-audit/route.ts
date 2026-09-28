@@ -86,13 +86,13 @@ export async function GET(req: NextRequest) {
             .lt('started_at', twoHoursAgo);
 
         if (pendingError) {
-            report.push(`❌ DB Error (Pending Check): ${pendingError.message}`);
+            report.push(`❌ Ошибка базы при проверке очереди расшифровок: ${pendingError.message}`);
             hasAnomalies = true;
         } else if (pendingCount !== null && pendingCount > 0) {
-            report.push(`⚠️ <b>Stuck Transcriptions:</b> ${pendingCount} calls (ready/processing > 2h). Billing risk!`);
+            report.push(`⚠️ <b>Расшифровки застряли:</b> ${pendingCount} звонков ждут дольше 2 часов. Есть риск переплаты.`);
             hasAnomalies = true;
         } else {
-            report.push(`✅ Transcriptions: OK (0 stuck)`);
+            report.push(`✅ Расшифровки: всё в порядке, застрявших нет`);
         }
 
         // 2. Check Recent Violations (Did analysis run in last 24h?)
@@ -103,22 +103,22 @@ export async function GET(req: NextRequest) {
             .gte('violation_time', oneDayAgo);
 
         if (violError) {
-            report.push(`❌ DB Error (Violations Check): ${violError.message}`);
+            report.push(`❌ Ошибка базы при проверке нарушений: ${violError.message}`);
             hasAnomalies = true;
         } else if (violCount === 0) {
             // Not necessarily a critical error, but worth noting if we expect them daily
-            report.push(`ℹ️ <b>No violations in 24h</b>. System quiet or analysis broken?`);
+            report.push(`ℹ️ <b>За сутки не найдено ни одного нарушения.</b> Либо и правда тихо, либо сломался разбор — стоит проверить.`);
         } else {
-            report.push(`✅ Violations: ${violCount} found in last 24h.`);
+            report.push(`✅ Нарушения: за сутки найдено ${violCount}`);
         }
 
         // 3. Database Connection Test (Simple Fetch)
         const { error: dbError } = await supabase.from('okk_rules').select('count', { count: 'exact', head: true });
         if (dbError) {
-            report.push(`❌ <b>DB Connection Failed:</b> ${dbError.message}`);
+            report.push(`❌ <b>Нет связи с базой:</b> ${dbError.message}`);
             hasAnomalies = true;
         } else {
-            report.push(`✅ DB Connection: OK`);
+            report.push(`✅ Связь с базой: в порядке`);
         }
 
         const realtimePipeline = await getRealtimePipelineMonitoringSnapshot();
@@ -194,14 +194,14 @@ export async function GET(req: NextRequest) {
 
             if (realtimeAlertLines.length > 0) {
                 hasAnomalies = true;
-                report.push(`⚠️ <b>Realtime pipeline SLA:</b> ${realtimeAlertLines.join('; ')}`);
+                report.push(`⚠️ <b>Конвейер не укладывается в норматив:</b> ${realtimeAlertLines.join('; ')}`);
             } else {
-                report.push('✅ Realtime pipeline SLA: OK');
+                report.push('✅ Конвейер укладывается в норматив');
             }
         } else if (realtimePipeline.enabled && !realtimePipeline.queueAvailable) {
-            report.push('ℹ️ Realtime pipeline включен, но `system_jobs` migration ещё не применена.');
+            report.push('ℹ️ Конвейер включён, но миграция очереди работ (`system_jobs`) ещё не применена.');
         } else {
-            report.push('ℹ️ Realtime pipeline отключен feature flag-ом.');
+            report.push('ℹ️ Конвейер выключен рубильником в настройках.');
         }
 
         // Send Alert if Anomalies Found or periodically (e.g. daily summary)
@@ -224,7 +224,7 @@ export async function GET(req: NextRequest) {
 
         if (hasAnomalies) {
             const message = `
-<b>🤖 System Auditor Alert</b>
+<b>🤖 Системный аудитор: есть вопросы</b>
 ${report.join('\n')}
              `.trim();
 
@@ -241,7 +241,7 @@ ${report.join('\n')}
         } else {
             console.log('[SystemAuditor] All systems nominal. No alert sent.');
             if (previousHash) {
-                await sendTelegramTechNotification('<b>✅ Realtime pipeline recovered</b>\nLag и backlog вернулись в допустимые пределы.');
+                await sendTelegramTechNotification('<b>✅ Конвейер вошёл в норму</b>\nОтставание и очередь вернулись в допустимые пределы.');
                 await persistAlertState([
                     { key: ALERT_HASH_KEY, value: '' },
                     { key: ALERT_RECOVERED_AT_KEY, value: new Date().toISOString() },
@@ -259,7 +259,7 @@ ${report.join('\n')}
     } catch (e: any) {
         console.error('[SystemAuditor] Fatal Error:', e);
         if (e.message !== 'Unauthorized') {
-            await sendTelegramTechNotification(`<b>🚨 System Auditor CRASHED</b>\n${e.message}`);
+            await sendTelegramTechNotification(`<b>🚨 Системный аудитор упал</b>\n${e.message}`);
         }
         const isUnauthorized = e.message === 'Unauthorized';
         return NextResponse.json({ error: e.message }, { status: isUnauthorized ? 401 : 500 });

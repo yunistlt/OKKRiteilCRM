@@ -104,9 +104,16 @@ def main():
         changed = problems != state.get("last_problems", [])
 
         if not state.get("failing") or changed or repeat_due:
-            lines = ["🔴 <b>Конвейер ОКК встал</b>", ""]
+            # Заголовок по существу проблемы. Раньше здесь всегда стояло «Заявки не
+            # создаются» — неправда: застрявшая ночная сверка на приём заявок не влияет,
+            # а сообщение пугало зря. Про заявки говорим, только когда встало то, что их
+            # действительно создаёт.
+            intake_keys = ("Приём почты", "Письма без разбора", "Заказы из RetailCRM")
+            intake_down = any(problem.startswith(intake_keys) for problem in problems)
+
+            lines = ["🔴 <b>Конвейер ОКК: сбой</b>" if not intake_down else "🔴 <b>Заявки не создаются</b>", ""]
             lines += [f"• {problem}" for problem in problems]
-            lines += ["", "Заявки из почты и с сайта сейчас не создаются.", PULSE_URL]
+            lines += ["", "Заявки из почты и с сайта сейчас не создаются." if intake_down else "На приём заявок это не влияет.", PULSE_URL]
             if send_telegram("\n".join(lines)):
                 state["last_alert_at"] = now
 
