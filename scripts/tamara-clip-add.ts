@@ -42,6 +42,26 @@ function arg(name: string): string | undefined {
     return i > 0 ? process.argv[i + 1] : undefined;
 }
 
+/** Границы непрозрачного в вырезанном кадре. */
+async function figureBox(file: string) {
+    const { data, info } = await sharp(file).raw().toBuffer({ resolveWithObject: true });
+    let left = info.width;
+    let top = info.height;
+    let right = -1;
+    let bottom = -1;
+    for (let y = 0; y < info.height; y += 1) {
+        for (let x = 0; x < info.width; x += 1) {
+            if (data[(y * info.width + x) * info.channels + 3] > 8) {
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+            }
+        }
+    }
+    return { left, top, right, bottom };
+}
+
 function ffmpeg(args: string[]) {
     execFileSync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-y', ...args], { stdio: 'inherit' });
 }
@@ -118,7 +138,21 @@ function ffmpeg(args: string[]) {
     // печатается — по ней общую и считают.
     console.log(`фигура в кадре: ${left}:${top}:${right}:${bottom} из ${width}×${height}`);
     const frame = arg('frame');
-    if (frame) {
+    if (frame === 'auto') {
+        // Рамка от первого кадра, а не от всего ролика: все ролики образа
+        // начинаются с одного и того же исходного кадра, значит и рамка у них
+        // выйдет одна. По ширине — запас под взмах руки, симметрично вокруг
+        // фигуры (как у фирменного образа: полширины ≈ 0,27 высоты фигуры).
+        const f = await figureBox(path.join(cutDir, frames[0]));
+        const figH = f.bottom - f.top;
+        const cx = Math.round((f.left + f.right) / 2);
+        const half = Math.max(Math.round((f.right - f.left) / 2), Math.round(figH * 0.27));
+        left = Math.max(0, cx - half);
+        right = Math.min(width - 1, cx + half);
+        top = Math.max(0, f.top - Math.round(figH * 0.02));
+        bottom = Math.min(height - 1, f.bottom + Math.round(figH * 0.01));
+        console.log(`общая рамка: ${left}:${top}:${right}:${bottom}`);
+    } else if (frame) {
         [left, top, right, bottom] = frame.split(':').map(Number);
     } else {
         console.warn('без --frame рамка своя — годится для пробы, но не для набора роликов');
