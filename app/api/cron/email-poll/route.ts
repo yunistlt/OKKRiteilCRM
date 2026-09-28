@@ -16,6 +16,8 @@ import { hasAnyRole } from '@/lib/rbac';
 import { supabase } from '@/utils/supabase';
 import { fetchNewEmails, fetchEmailContentByUid, isImapConfigured } from '@/lib/email/imap';
 import { classifyRoute, isReplyThread, hasCrmOrderTag, isNoReplySender, loadSecretaryPrompt, stripHtml, extractLeadContact, ourOutboundDomain, repliesToOurOutbound } from '@/lib/email/classify';
+import { isCourtWatchEmail, parseStrajEmail } from '@/lib/court/straj-parser';
+import { storeStrajCases } from '@/lib/court/store';
 import { buildCrmDossier } from '@/lib/email/dossier';
 import { getAssignmentContext, resolveAssignment } from '@/lib/email/assign';
 import { getDepartmentRoutes, isForwardEnabled, isDepartmentRoute, getOrderBlocklist, isSenderBlocked, getNoreplyAllowlist, getCrmTagStaleDays, getThreadDedupDays } from '@/lib/email/routes';
@@ -391,9 +393,32 @@ export async function GET(req: Request) {
                 const custName = leadContact.name || e.from_name || undefined;
                 const custPhone = leadContact.phone || undefined;
 
-                // noreply-отправитель пропускаем, КРОМЕ исключений (сайт-магазин webasyst и т.п.):
-                // такие письма несут реальные лиды/заказы — их классифицируем как обычно.
-                if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
+                // Уведомления «Электронного стража» картотеки арбитражных дел разбираем
+                // ДО проверки noreply: страж пишет с робота, и общий фильтр выкинул бы
+                // письмо о новом иске к нам как мусор. ИИ здесь не нужен — разметка устойчивая.
+                const straj = isCourtWatchEmail({
+                    fromEmail: e.from_email,
+                    subject: e.subject,
+                    body: (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
+                });
+                if (straj) {
+                    let note = 'Уведомление картотеки арбитражных дел';
+                    try {
+                        const parsed = parseStrajEmail({ subject: e.subject, body: e.body_text, html: e.body_html });
+                        if (parsed.length > 0) {
+                            const stored = await storeStrajCases({ cases: parsed, emailId: e.id });
+                            const fresh = stored.filter((row) => row.created).map((row) => row.case_number);
+                            note = `Картотека: дел в письме ${stored.length}` + (fresh.length > 0 ? `, новых: ${fresh.join(', ')}` : '');
+                        } else {
+                            note = 'Письмо картотеки без номера дела — записывать нечего';
+                        }
+                    } catch (err: any) {
+                        // Разбор упал — письмо не теряем: оно осталось в incoming_emails,
+                        // причина видна в reasoning, переочередь разберёт заново.
+                        note = `Картотека: разбор не удался — ${String(err?.message || err).slice(0, 200)}`;
+                    }
+                    emailType = 'court_watch'; reasoning = note;
+                } else if (isNoReplySender(e.from_email) && !isSenderBlocked(e.from_email, noreplyAllowlist)) {
                     emailType = 'noreply'; reasoning = 'Робот-отправитель (noreply) — пропуск';
                 } else {
                     // Досье из CRM: проверяем факты (есть ли заказ с номером из письма, история клиента)
