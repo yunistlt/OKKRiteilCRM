@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getDefaultPathForRole } from '@/lib/rbac';
@@ -11,6 +11,14 @@ export default function LoginPage() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const router = useRouter();
+
+    // Сюда приводит middleware, когда роли не открыт ни один раздел:
+    // без пояснения человек видит просто форму входа и не понимает, что не так.
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('error') === 'no-access') {
+            setError('Вашей роли не открыт ни один раздел. Обратитесь к администратору.');
+        }
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

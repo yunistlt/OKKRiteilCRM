@@ -49,7 +49,16 @@ export async function middleware(request: NextRequest) {
             if (pathname.startsWith('/api')) {
                 return applyNoStoreHeaders(NextResponse.json({ error: 'Доступ запрещен' }, { status: 403 }));
             }
-            return applyNoStoreHeaders(NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url)));
+
+            const fallbackPath = getDefaultPathForRole(session.user.role);
+            // Если домашняя страница роли закрыта для неё же, редирект туда уводит
+            // браузер в бесконечный круг (ERR_TOO_MANY_REDIRECTS). В этом случае
+            // возвращаем на вход, а не гоняем по кругу.
+            if (fallbackPath === pathname || !(await canAccessPathServer(session.user.role, fallbackPath))) {
+                return applyNoStoreHeaders(NextResponse.redirect(new URL('/login?error=no-access', request.url)));
+            }
+
+            return applyNoStoreHeaders(NextResponse.redirect(new URL(fallbackPath, request.url)));
         }
 
         return applyNoStoreHeaders(NextResponse.next());
@@ -58,7 +67,14 @@ export async function middleware(request: NextRequest) {
     if (isAuthRoute) {
         const session = await getSession(request);
         if (session?.user) {
-            return applyNoStoreHeaders(NextResponse.redirect(new URL(getDefaultPathForRole(session.user.role), request.url)));
+            const fallbackPath = getDefaultPathForRole(session.user.role);
+            // Не отправляем вошедшего туда, откуда его развернёт проверка прав,
+            // иначе /login и домашняя страница начнут перекидывать друг на друга.
+            if (await canAccessPathServer(session.user.role, fallbackPath)) {
+                return applyNoStoreHeaders(NextResponse.redirect(new URL(fallbackPath, request.url)));
+            }
+
+            return applyNoStoreHeaders(NextResponse.next());
         }
 
         return applyNoStoreHeaders(NextResponse.next());

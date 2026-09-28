@@ -111,6 +111,7 @@ export function getDefaultPathForRole(role: AppRole | null | undefined): string 
     if (role === 'rop') return '/okk';
     if (role === 'okk') return '/okk';
     if (role === 'demo') return '/okk';
+    if (role === 'jurist') return '/legal';
     return '/';
 }
 
