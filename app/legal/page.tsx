@@ -28,6 +28,12 @@ export default function LegalDashboardPage() {
                 <div className="mt-1 text-2xl font-black">v{kbVersion}</div>
               </div>
               <Link
+                href="/legal/enforcement"
+                className="border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-white/10"
+              >
+                Исполнительные производства (ФССП)
+              </Link>
+              <Link
                 href="/agents"
                 className="rounded-2xl border border-sky-300/30 bg-sky-400/10 px-4 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-400/20"
               >

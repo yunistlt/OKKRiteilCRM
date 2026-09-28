@@ -14,6 +14,7 @@
 | **ОКК (контроль качества)** | 🟢 Production | [docs/okk/OVERVIEW.md](okk/OVERVIEW.md) | Team ОКК |
 | **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/](okk-consultant/) | Team ОКК |
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
+| **Исполнительные производства (ФССП)** | 🟡 не влито | [docs/legal-enforcement/OVERVIEW.md](legal-enforcement/OVERVIEW.md) | Team Legal |
 | **Корпоративный мессенджер** | 🟡 92% ready | [docs/messenger/](messenger/) | Team Messenger |
 | **Lead Catcher (Елена)** | 🟢 Реализован | [docs/lead-catcher/](lead-catcher/) | Team Sales |
 | **Штаб владельца («Альянс Стратег»)** | 🟢 Реализован | [docs/shtab/](shtab/OVERVIEW.md) | Владелец |

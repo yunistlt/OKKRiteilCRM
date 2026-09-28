@@ -22,6 +22,7 @@ export type SystemJobType =
   | 'nightly_reconciliation'
   | 'legal_contract_analyze'
   | 'legal_contract_scan'
+  | 'legal_enforcement_parse'
   | 'telphin_callback'
   | 'salary_estimate_classify';
 
@@ -51,6 +52,18 @@ export async function enqueueLegalContractAnalyzeJob(reviewId: number) {
     maxAttempts: 3,
   });
 }
+// Enqueue job разбора документов исполнительного производства (ФССП).
+// Идемпотентность по карточке: разбираем карточку целиком, а не файл по файлу.
+export async function enqueueLegalEnforcementParseJob(caseId: number) {
+  return enqueueSystemJob({
+    jobType: 'legal_enforcement_parse',
+    payload: { case_id: caseId },
+    priority: 60,
+    idempotencyKey: `legal_enforcement_parse:${caseId}`,
+    maxAttempts: 3,
+  });
+}
+
 // Enqueue job для антивирусной проверки контракта
 export async function enqueueLegalContractScanJob(reviewId: number) {
   return enqueueSystemJob({

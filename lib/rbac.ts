@@ -68,6 +68,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Дашборд юридического модуля и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/legal/enforcement', label: 'Исполнительные производства', description: 'Карточки ИП ФССП: документы, разбор ботом, связь с платежами.', category: 'Юридический отдел', allowed: ['admin'] },
+    { prefix: '/api/legal/enforcement', label: 'API исполнительных производств', description: 'Серверные методы карточек ИП: загрузка документов, разбор, подтверждение полей.', category: 'Юридический отдел', allowed: ['admin'] },
     { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы legal helpdesk и contract review.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/messenger', label: 'Мессенджер', description: 'Рабочий раздел внутренних диалогов.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/messenger', label: 'API мессенджера', description: 'Серверные методы мессенджера.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
