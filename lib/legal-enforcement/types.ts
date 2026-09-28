@@ -48,7 +48,7 @@ export const ENFORCEMENT_STATUSES = [
 export type EnforcementStatus = (typeof ENFORCEMENT_STATUSES)[number];
 
 export const ENFORCEMENT_STATUS_LABELS: Record<EnforcementStatus, string> = {
-  docs_uploaded: 'Документы загружены',
+  docs_uploaded: 'Черновик',
   parsed: 'Бот разобрал',
   needs_review: 'Нужна проверка',
   confirmed: 'Подтверждено',

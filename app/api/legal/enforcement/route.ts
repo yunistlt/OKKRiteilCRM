@@ -28,20 +28,32 @@ export async function GET(request: Request) {
 
     const ids = (cases || []).map((row: any) => row.id);
     const pending = new Map<number, number>();
+    const documents = new Map<number, number>();
 
     if (ids.length > 0) {
-      const { data: facts } = await supabase
-        .from('legal_enforcement_field_facts')
-        .select('case_id')
-        .eq('state', 'suggested')
-        .in('case_id', ids);
+      const [{ data: facts }, { data: docs }] = await Promise.all([
+        supabase
+          .from('legal_enforcement_field_facts')
+          .select('case_id')
+          .eq('state', 'suggested')
+          .in('case_id', ids),
+        supabase.from('legal_enforcement_documents').select('case_id').in('case_id', ids),
+      ]);
+
       for (const fact of facts || []) {
         pending.set(Number(fact.case_id), (pending.get(Number(fact.case_id)) || 0) + 1);
+      }
+      for (const doc of docs || []) {
+        documents.set(Number(doc.case_id), (documents.get(Number(doc.case_id)) || 0) + 1);
       }
     }
 
     return NextResponse.json({
-      cases: (cases || []).map((row: any) => ({ ...row, pending_facts: pending.get(Number(row.id)) || 0 })),
+      cases: (cases || []).map((row: any) => ({
+        ...row,
+        pending_facts: pending.get(Number(row.id)) || 0,
+        documents_count: documents.get(Number(row.id)) || 0,
+      })),
     });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Не удалось получить список' }, { status: 500 });

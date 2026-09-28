@@ -141,7 +141,9 @@ export default function EnforcementRegistry() {
             {!loading && rows.length === 0 && (
               <tr>
                 <td colSpan={9} className="px-2 py-4 text-center text-gray-500">
-                  Производств нет. Заведите строку сверху и загрузите документы — остальное заполнит бот.
+                  {statusFilter || query
+                    ? 'По этому отбору производств нет. Снимите фильтр или очистите поиск.'
+                    : 'Производств нет. Заведите строку сверху и загрузите документы — остальное заполнит бот.'}
                 </td>
               </tr>
             )}
@@ -175,7 +177,12 @@ export default function EnforcementRegistry() {
                 </td>
                 {/* Клик по ячейке загрузки не должен открывать карточку. */}
                 <td className="px-2 py-2" onClick={(event) => event.stopPropagation()}>
-                  <RowUpload caseId={row.id} onUploaded={load} />
+                  <div className="flex items-center gap-2">
+                    <span className={(row.documents_count || 0) > 0 ? 'text-gray-700' : 'text-gray-300'}>
+                      {(row.documents_count || 0) > 0 ? `${row.documents_count} шт.` : '—'}
+                    </span>
+                    <RowUpload caseId={row.id} onUploaded={load} />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -230,22 +237,23 @@ function NewCaseRow({ onCreated }: { onCreated: () => void }) {
             value={form.case_number}
             onChange={(event) => setForm({ ...form, case_number: event.target.value })}
             placeholder="номер ИП, если есть"
-            className="w-full border border-gray-300 px-2 py-1 text-xs"
+            className="w-full min-w-[7rem] border border-gray-300 px-2 py-1 text-xs"
           />
         </td>
         <td className="px-2 py-1">
-          <div className="flex gap-1">
+          {/* На узком экране поля встают в столбик: в строку они схлопывались до нечитаемых. */}
+          <div className="flex flex-col gap-1 sm:flex-row">
             <input
               value={form.debtor_name}
               onChange={(event) => setForm({ ...form, debtor_name: event.target.value })}
               placeholder="юрлицо группы"
-              className="w-full border border-gray-300 px-2 py-1 text-xs"
+              className="w-full min-w-[9rem] border border-gray-300 px-2 py-1 text-xs"
             />
             <input
               value={form.debtor_inn}
               onChange={(event) => setForm({ ...form, debtor_inn: event.target.value })}
               placeholder="ИНН"
-              className="w-28 border border-gray-300 px-2 py-1 text-xs"
+              className="w-full min-w-[7rem] border border-gray-300 px-2 py-1 text-xs sm:w-28"
             />
           </div>
         </td>

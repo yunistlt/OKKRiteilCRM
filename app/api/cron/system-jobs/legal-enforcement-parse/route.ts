@@ -54,6 +54,10 @@ async function handle(req: NextRequest) {
         .in('extract_status', ['queued', 'failed']);
 
       const warnings: string[] = [];
+      // Распаковали архив — разбор не закончен: файлы из архива разберёт
+      // следующий заход. Без этого флага карточка помечалась «бот разобрал»
+      // с пустыми полями, а документы навсегда оставались в очереди.
+      let requeue = false;
 
       for (const document of documents || []) {
         // Антивирус — прежний мок из контура договоров, но заражённое дальше не идёт.
@@ -85,11 +89,7 @@ async function handle(req: NextRequest) {
             });
             warnings.push(`Архив «${document.file_name}»: файлов ${unpacked.created}` +
               (unpacked.skipped.length > 0 ? `, пропущено ${unpacked.skipped.length}` : ''));
-            // Ставим карточку снова в очередь — распакованные файлы ждут разбора.
-            await supabase
-              .from('legal_enforcement_cases')
-              .update({ parse_status: 'queued', updated_at: new Date().toISOString() })
-              .eq('id', caseId);
+            if (unpacked.created > 0) requeue = true;
           } catch (err: any) {
             warnings.push(`Архив «${document.file_name}» не распаковался: ${String(err?.message || err)}`);
             await supabase
@@ -140,9 +140,9 @@ async function handle(req: NextRequest) {
       await supabase
         .from('legal_enforcement_cases')
         .update({
-          parse_status: 'completed',
+          parse_status: requeue ? 'queued' : 'completed',
           parse_error: warnings.length > 0 ? warnings.join(' | ').slice(0, 2000) : null,
-          parsed_at: new Date().toISOString(),
+          parsed_at: requeue ? null : new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('id', caseId);
@@ -176,7 +176,8 @@ export async function GET(req: NextRequest) {
   try {
     return await handle(req);
   } catch (error: any) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    const unauthorized = String(error?.message) === 'Unauthorized';
+    return NextResponse.json({ ok: false, error: error.message }, { status: unauthorized ? 401 : 500 });
   }
 }
 
