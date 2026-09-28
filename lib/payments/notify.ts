@@ -288,21 +288,22 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
   if (!token) return; // не сконфигурировано — тихо пропускаем
 
-  // Выбор чата: сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе —
-  // по проекту из назначения (столярка/консалтинг → свой чат).
+  // Выбор чата — по проекту платежа. Проект уже определён при обработке (в т.ч. по
+  // плательщику и назначению) и сильнее факта матча: платёж за ПО, сцепившийся со старым
+  // заказом Цех-Успеха в RetailCRM, уходил в чат ЗМК (инцидент 2026-09-28, платёж 1565).
+  // Пере-детект — только фолбэк для старых строк без project.
   const matched = row.status === 'matched' || row.status === 'manual';
-  // Проект уже определён при обработке (в т.ч. по плательщику) — берём его; пере-детект
-  // только как фолбэк для старых строк без project.
   const stored = row.project === 'stolyarka' || row.project === 'consulting' ? row.project : null;
-  const foreign = matched
-    ? null
-    : stored ??
-      detectForeignProject({
-        purpose: row.purpose,
-        recipientInn: row.recipient_inn,
-        payerName: row.payer_name,
-        payerInn: row.payer_inn,
-      });
+  const foreign =
+    stored ??
+    (matched
+      ? null
+      : detectForeignProject({
+          purpose: row.purpose,
+          recipientInn: row.recipient_inn,
+          payerName: row.payer_name,
+          payerInn: row.payer_inn,
+        }));
   const routed = Boolean(foreign);
   const zmk = routed ? { chatId: projectChatId(foreign as any), personal: false } : await zmktlChatId();
   const chatId = zmk.chatId;
