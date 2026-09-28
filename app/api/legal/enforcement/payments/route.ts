@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { writeLegalAudit } from '@/lib/legal-audit';
 import { enforcementParseSchema, enforcementPaymentLinkSchema } from '@/lib/legal-enforcement/types';
 import {
   decidePaymentLink,
@@ -54,11 +55,11 @@ export async function PATCH(request: Request) {
 
     const status = await recalcCaseStatus(parsed.data.case_id);
 
-    await supabase.from('legal_audit_log').insert({
+    await writeLegalAudit({
       action: `legal_enforcement_payment_${parsed.data.decision}`,
       entity: 'legal_enforcement_case',
-      entity_id: parsed.data.case_id,
-      performed_by: session.user.id,
+      entityId: parsed.data.case_id,
+      performedBy: String(session.user.id),
       details: { payment_id: parsed.data.payment_id },
     });
 

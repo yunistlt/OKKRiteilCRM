@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { writeLegalAudit } from '@/lib/legal-audit';
 import {
   buildEnforcementStoragePath,
   ENFORCEMENT_BUCKET,
@@ -102,11 +103,11 @@ export async function PATCH(request: Request) {
       await enqueueLegalEnforcementParseJob(Number(document.case_id));
     }
 
-    await supabase.from('legal_audit_log').insert({
+    await writeLegalAudit({
       action: 'legal_enforcement_document_uploaded',
       entity: 'legal_enforcement_document',
-      entity_id: document.id,
-      performed_by: session.user.id,
+      entityId: document.id,
+      performedBy: String(session.user.id),
       details: { upload_status, error: uploadError || null },
     });
 

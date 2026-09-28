@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { writeLegalAudit } from '@/lib/legal-audit';
 import { enforcementCaseCreateSchema } from '@/lib/legal-enforcement/types';
 
 export const dynamic = 'force-dynamic';
@@ -77,11 +78,11 @@ export async function POST(request: Request) {
       .single();
     if (error) throw error;
 
-    await supabase.from('legal_audit_log').insert({
+    await writeLegalAudit({
       action: 'legal_enforcement_case_created',
       entity: 'legal_enforcement_case',
-      entity_id: created.id,
-      performed_by: session.user.id,
+      entityId: created.id,
+      performedBy: String(session.user.id),
       details: parsed.data,
     });
 

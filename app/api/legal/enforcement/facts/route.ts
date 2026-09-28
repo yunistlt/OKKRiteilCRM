@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { writeLegalAudit } from '@/lib/legal-audit';
 import { enforcementFactDecisionSchema } from '@/lib/legal-enforcement/types';
 import { decideFact, recalcCaseStatus } from '@/lib/legal-enforcement/facts';
 
@@ -26,11 +27,11 @@ export async function POST(request: Request) {
 
     const status = await recalcCaseStatus(result.case_id);
 
-    await supabase.from('legal_audit_log').insert({
+    await writeLegalAudit({
       action: `legal_enforcement_fact_${parsed.data.decision}`,
       entity: 'legal_enforcement_field_fact',
-      entity_id: parsed.data.fact_id,
-      performed_by: session.user.id,
+      entityId: parsed.data.fact_id,
+      performedBy: String(session.user.id),
       details: { field: result.field, applied: result.applied, corrected: parsed.data.corrected_value || null },
     });
 

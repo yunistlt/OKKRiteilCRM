@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { writeLegalAudit } from '@/lib/legal-audit';
 import { enforcementCaseStatusSchema } from '@/lib/legal-enforcement/types';
 
 export const dynamic = 'force-dynamic';
@@ -49,11 +50,11 @@ export async function POST(request: Request) {
       .single();
     if (error) throw error;
 
-    await supabase.from('legal_audit_log').insert({
+    await writeLegalAudit({
       action: 'legal_enforcement_status_changed',
       entity: 'legal_enforcement_case',
-      entity_id: case_id,
-      performed_by: session.user.id,
+      entityId: case_id,
+      performedBy: String(session.user.id),
       details: { status, closed_reason: closed_reason || null },
     });
 
