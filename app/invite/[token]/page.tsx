@@ -1,9 +1,17 @@
+import { redirect } from 'next/navigation';
+import { getSession } from '@/lib/auth';
+import { getDefaultPathForRole } from '@/lib/rbac';
 import { getInvitationInfo } from '../actions';
 import InviteAcceptClient from './invite-accept-client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InvitePage({ params }: { params: { token: string } }) {
+    const session = await getSession();
+    if (session) {
+        redirect(getDefaultPathForRole(session.user.role));
+    }
+
     const info = await getInvitationInfo(params.token);
 
     if (!info.valid) {
