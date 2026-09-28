@@ -72,7 +72,10 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
   return (
     <div className="mt-3 bg-white">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-gray-200 px-3 py-2">
-        <div className="text-sm font-bold text-gray-900">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+          {data.case.is_sample && (
+            <span className="bg-violet-600 px-2 py-[2px] text-[10px] font-black uppercase text-white">образец / тест</span>
+          )}
           Карточка № {data.case.case_number || `без номера (внутр. ${data.case.id})`}
         </div>
         <div className="flex items-center gap-2 text-xs">
@@ -276,8 +279,16 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
         >
           Закрыто
         </button>
+        <button
+          onClick={() => act('/api/legal/enforcement/status', { case_id: caseId, is_sample: !data.case.is_sample }, 'PATCH')}
+          disabled={busy}
+          className={`px-2 py-1 font-bold disabled:opacity-50 ${data.case.is_sample ? 'bg-gray-200 text-gray-700' : 'bg-violet-600 text-white'}`}
+        >
+          {data.case.is_sample ? 'Снять пометку «образец»' : 'Пометить как образец / тест'}
+        </button>
         <span className="text-gray-500">
           Перевод в «Подтверждено» и «Учтено в ФД-отчёте» закрыт, пока остались непроверенные поля.
+          Образцы видны в реестре, но в суммы долга не входят.
         </span>
       </section>
     </div>

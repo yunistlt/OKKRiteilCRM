@@ -3,9 +3,42 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { writeLegalAudit } from '@/lib/legal-audit';
-import { enforcementCaseStatusSchema } from '@/lib/legal-enforcement/types';
+import { enforcementCaseStatusSchema, enforcementSampleToggleSchema } from '@/lib/legal-enforcement/types';
 
 export const dynamic = 'force-dynamic';
+
+/** Пометить карточку образцом или снять пометку. */
+export async function PATCH(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const parsed = enforcementSampleToggleSchema.safeParse(await request.json());
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Проверьте запрос' }, { status: 400 });
+    }
+
+    const { data: updated, error } = await supabase
+      .from('legal_enforcement_cases')
+      .update({ is_sample: parsed.data.is_sample, updated_at: new Date().toISOString() })
+      .eq('id', parsed.data.case_id)
+      .select('id, is_sample')
+      .single();
+    if (error) throw error;
+
+    await writeLegalAudit({
+      action: parsed.data.is_sample ? 'legal_enforcement_marked_sample' : 'legal_enforcement_unmarked_sample',
+      entity: 'legal_enforcement_case',
+      entityId: parsed.data.case_id,
+      performedBy: String(session.user.id),
+      details: { is_sample: parsed.data.is_sample },
+    });
+
+    return NextResponse.json({ case: updated });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Не удалось изменить пометку' }, { status: 500 });
+  }
+}
 
 export async function POST(request: Request) {
   try {

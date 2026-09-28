@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
     const { data: created, error } = await supabase
       .from('legal_enforcement_cases')
-      .insert({ ...parsed.data, status: 'docs_uploaded', created_by: session.user.id })
+      .insert({ ...parsed.data, is_sample: parsed.data.is_sample ?? false, status: 'docs_uploaded', created_by: session.user.id })
       .select('*')
       .single();
     if (error) throw error;

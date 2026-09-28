@@ -135,6 +135,13 @@ export const enforcementCaseCreateSchema = z.object({
   project: z.enum(['zmktl', 'stolyarka', 'consulting']).optional().nullable(),
   case_number: z.string().trim().min(3).max(120).optional().nullable(),
   note: z.string().trim().max(2000).optional().nullable(),
+  /** Тестовый прогон: карточка видна, но подписана «ОБРАЗЕЦ» и не идёт в суммы. */
+  is_sample: z.boolean().optional(),
+});
+
+export const enforcementSampleToggleSchema = z.object({
+  case_id: z.number().int().positive(),
+  is_sample: z.boolean(),
 });
 
 export const enforcementDocumentUploadSchema = z.object({

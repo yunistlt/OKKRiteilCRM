@@ -2,7 +2,13 @@
 // человеческое отображение значений. Коды в интерфейс не выпускаем (ЗАКОН).
 import { ENFORCEMENT_GROUND_LABELS } from '@/lib/legal-enforcement/types';
 
-export type EnforcementCase = Record<string, any> & { id: number; status: string; pending_facts?: number };
+export type EnforcementCase = Record<string, any> & {
+  id: number;
+  status: string;
+  pending_facts?: number;
+  documents_count?: number;
+  is_sample?: boolean;
+};
 
 export type Fact = {
   id: number;

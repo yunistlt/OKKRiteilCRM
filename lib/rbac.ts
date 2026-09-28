@@ -1,6 +1,6 @@
 import type { AppSession, AppRole } from '@/lib/auth';
 
-export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'demo'];
+export const APP_ROLES: AppRole[] = ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'];
 
 export type RouteRule = {
     prefix: string;
@@ -39,7 +39,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/statuses/board', label: 'Статусы и переходы', description: 'Свои статусы будущей CRM: группы, порядок, цвет, норматив времени и матрица переходов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/crm-statuses', label: 'API своих статусов', description: 'Группы, статусы и переходы внутренней CRM.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/statuses', label: 'Статусы заказов', description: 'Настройка словаря статусов заказов.', category: 'Система', allowed: ['admin'] },
-    { prefix: '/api/dictionaries', label: 'API справочников RetailCRM', description: 'Чтение русских названий кодов (типы заказа, магазины, значения полей) для интерфейса.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
+    { prefix: '/api/dictionaries', label: 'API справочников RetailCRM', description: 'Чтение русских названий кодов (типы заказа, магазины, значения полей) для интерфейса.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'] },
     { prefix: '/api/statuses', label: 'API статусов заказов', description: 'CRUD-операции по статусам заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/dict/statuses', label: 'API словаря статусов', description: 'Служебные методы словаря статусов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/qa', label: 'Режим тестировщика', description: 'Проверка вёрстки по голдам: список экранов, панель проверок.', category: 'Система', allowed: ['admin'] },
@@ -51,7 +51,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/settings/ai', label: 'Настройка промпта', description: 'Управление промптами и AI-настройками.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/prompts', label: 'Промпты', description: 'Редактор системных промптов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/prompts', label: 'API промптов', description: 'Серверные методы управления промптами.', category: 'Система', allowed: ['admin'] },
-    { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
+    { prefix: '/settings/profile', label: 'Личный профиль', description: 'Профиль пользователя и смена пароля.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'] },
     { prefix: '/settings', label: 'Раздел настроек', description: 'Общий административный раздел.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/templates', label: 'Шаблоны документов и писем', description: 'Печатные формы и шаблоны писем: текст, подстановки, активность.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/view', label: 'API настроек экрана', description: 'Личный состав и порядок колонок списка и полей фильтра.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager'] },
@@ -67,14 +67,14 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/orders', label: 'API карточки заказа', description: 'Чтение карточки заказа и её анализ (используется в ОКК и отчётах ЗП).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
-    { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin'] },
-    { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
     { prefix: '/legal/enforcement', label: 'Исполнительные производства', description: 'Карточки ИП ФССП: документы, разбор ботом, связь с платежами.', category: 'Юридический отдел', allowed: ['admin'] },
     { prefix: '/api/legal/enforcement', label: 'API исполнительных производств', description: 'Серверные методы карточек ИП: загрузка документов, разбор, подтверждение полей.', category: 'Юридический отдел', allowed: ['admin'] },
-    { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы юротдела. По умолчанию только админ — как и реестр ИП на /legal.', category: 'Юридический отдел', allowed: ['admin'] },
-    { prefix: '/api/legal/consultant', label: 'API юридического помощника', description: 'Дарья: ответы по базе знаний и ручная эскалация.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
-    { prefix: '/api/legal/contracts', label: 'API анализа договоров', description: 'Загрузка и разбор договоров (Лев).', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
-    { prefix: '/api/legal/counterparty', label: 'API проверки контрагентов', description: 'Скоринг контрагента (Борис).', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/api/legal', label: 'API юридического модуля', description: 'Серверные методы юротдела. Только админ и юрист — как и реестр ИП на /legal.', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
+    { prefix: '/api/legal/consultant', label: 'API юридического помощника', description: 'Дарья: ответы по базе знаний и ручная эскалация.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
+    { prefix: '/api/legal/contracts', label: 'API анализа договоров', description: 'Загрузка и разбор договоров (Лев).', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
+    { prefix: '/api/legal/counterparty', label: 'API проверки контрагентов', description: 'Скоринг контрагента (Борис).', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
     { prefix: '/messenger', label: 'Мессенджер', description: 'Рабочий раздел внутренних диалогов.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/messenger', label: 'API мессенджера', description: 'Серверные методы мессенджера.', category: 'Связь', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/salary/my', label: 'Моя зарплата', description: 'Просмотр собственной зарплаты и разбивки менеджером.', category: 'Зарплата', allowed: ['admin', 'rop', 'manager'] },

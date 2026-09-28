@@ -56,13 +56,16 @@ export default function EnforcementRegistry() {
     );
   }, [cases, query]);
 
-  const totals = useMemo(
-    () => ({
-      debt: rows.reduce((sum, row) => sum + (Number(row.debt_amount_kopecks) || 0), 0),
-      review: rows.filter((row) => (row.pending_facts || 0) > 0).length,
-    }),
-    [rows],
-  );
+  // Образцы считаем отдельно: их суммы не имеют отношения к долгам группы,
+  // а попав в итог, поехали бы дальше в ФД-отчёт.
+  const totals = useMemo(() => {
+    const real = rows.filter((row) => !row.is_sample);
+    return {
+      debt: real.reduce((sum, row) => sum + (Number(row.debt_amount_kopecks) || 0), 0),
+      review: real.filter((row) => (row.pending_facts || 0) > 0).length,
+      samples: rows.length - real.length,
+    };
+  }, [rows]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -83,6 +86,12 @@ export default function EnforcementRegistry() {
           <span>
             Требуют проверки: <span className="font-semibold text-amber-700">{totals.review}</span>
           </span>
+          {totals.samples > 0 && (
+            <span>
+              Из них образцов: <span className="font-semibold text-violet-700">{totals.samples}</span>{' '}
+              <span className="text-gray-400">(в суммы не входят)</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -154,7 +163,12 @@ export default function EnforcementRegistry() {
                 onClick={() => router.push(`/legal/enforcement/${row.id}`)}
                 className="cursor-pointer border-t border-gray-100 hover:bg-gray-50"
               >
-                <td className="px-2 py-2 font-semibold text-gray-900">{row.case_number || <Dash />}</td>
+                <td className="px-2 py-2 font-semibold text-gray-900">
+                  {row.is_sample && (
+                    <span className="mr-1 bg-violet-600 px-1 py-[1px] text-[10px] font-black uppercase text-white">образец</span>
+                  )}
+                  {row.case_number || <Dash />}
+                </td>
                 <td className="px-2 py-2">
                   {row.debtor_name || <Dash />}
                   {row.project && <span className="ml-1 text-gray-400">· {PROJECT_LABELS[row.project] || row.project}</span>}
@@ -200,7 +214,7 @@ export default function EnforcementRegistry() {
 
 /** Строка создания прямо в таблице: минимум полей, остальное достанет бот. */
 function NewCaseRow({ onCreated }: { onCreated: () => void }) {
-  const [form, setForm] = useState({ debtor_name: '', debtor_inn: '', project: '', case_number: '' });
+  const [form, setForm] = useState({ debtor_name: '', debtor_inn: '', project: '', case_number: '', is_sample: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -216,11 +230,12 @@ function NewCaseRow({ onCreated }: { onCreated: () => void }) {
           debtor_inn: form.debtor_inn || null,
           project: form.project || null,
           case_number: form.case_number || null,
+          is_sample: form.is_sample,
         }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Не удалось создать строку');
-      setForm({ debtor_name: '', debtor_inn: '', project: '', case_number: '' });
+      setForm({ debtor_name: '', debtor_inn: '', project: '', case_number: '', is_sample: false });
       onCreated();
     } catch (err: any) {
       setError(err.message);
@@ -272,7 +287,14 @@ function NewCaseRow({ onCreated }: { onCreated: () => void }) {
           </select>
         </td>
         <td className="px-2 py-1 text-gray-400" colSpan={4}>
-          заполнит бот из документов
+          <label className="flex items-center gap-1 text-gray-600">
+            <input
+              type="checkbox"
+              checked={form.is_sample}
+              onChange={(event) => setForm({ ...form, is_sample: event.target.checked })}
+            />
+            это образец / тест
+          </label>
         </td>
         <td className="px-2 py-1">
           <button
