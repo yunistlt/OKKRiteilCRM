@@ -16,6 +16,7 @@ import { TSEH_TOOLS, TSEH_TOOL_NAMES, executeTsehTool } from '@/lib/shtab/tseh-t
 import { SETTINGS_TOOLS, SETTINGS_TOOL_NAMES, executeSettingsTool } from '@/lib/shtab/tamara-settings-tools';
 import { CODE_TOOLS, CODE_TOOL_NAMES, executeCodeTool } from '@/lib/shtab/tamara-code-tools';
 import { DATA_TOOLS, DATA_TOOL_NAMES, executeDataTool } from '@/lib/shtab/tamara-data-tools';
+import { COURT_TOOLS, COURT_TOOL_NAMES, executeCourtTool } from '@/lib/shtab/tamara-court-tools';
 import {
     WEBMASTER_TOOLS,
     WEBMASTER_TOOL_NAMES,
@@ -419,6 +420,7 @@ export const SHTAB_TOOLS = [
     ...CODE_TOOLS,
     ...DATA_TOOLS,
     ...WEBMASTER_TOOLS,
+    ...COURT_TOOLS,
     ...DIRECT_TOOLS,
 ];
 
@@ -724,6 +726,7 @@ export async function executeShtabTool(
     if (CODE_TOOL_NAMES.has(name)) return await executeCodeTool(name, args);
     if (DATA_TOOL_NAMES.has(name)) return await executeDataTool(name, args);
     if (WEBMASTER_TOOL_NAMES.has(name)) return await executeWebmasterTool(name, args);
+    if (COURT_TOOL_NAMES.has(name)) return await executeCourtTool(name, args);
     if (DIRECT_TOOL_NAMES.has(name)) return await executeDirectTool(name, args, ctx);
 
     if (name === 'sales_facts') {
