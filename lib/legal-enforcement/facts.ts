@@ -39,7 +39,9 @@ export async function saveExtractedFields(params: {
   // Уже подтверждённые человеком факты неприкосновенны: бот их не перебивает.
   const { data: existingFacts } = await supabase
     .from('legal_enforcement_field_facts')
-    .select('field, value_text, state')
+    // value_raw обязателен: сравнение конфликта идёт по нормализованному виду,
+    // и без этой колонки «1 250 000,00» спорило само с собой из второго документа.
+    .select('field, value_text, value_raw, state')
     .eq('case_id', caseId);
 
   const confirmedFields = new Set(
