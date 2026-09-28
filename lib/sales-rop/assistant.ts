@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
+import { modelTuning } from '@/lib/ai/model-compat';
 import {
     formatConsultantKnowledgeContext,
     getConsultantPromptConfig,
@@ -25,8 +26,12 @@ import {
 // скупость, а безопасность — у Семёна есть инструменты по заказам и зарплате,
 // и отвечать ими случайному человеку, написавшему боту, нельзя.
 
-const MAX_TOOL_ITERATIONS = 6;
+// Столько же кругов работы инструментами, сколько у Тамары: на «почему у меня
+// двадцать, а не тридцать пять» шести вызовов не хватало, и Семён отвечал
+// «не смог собрать ответ», хотя данные были в трёх запросах от него.
+const MAX_TOOL_ITERATIONS = 30;
 const MAX_ANSWER_CHARS = 1400;
+const DEFAULT_MAX_TOKENS = 900;
 
 export type AskResult = { reply: string; usedTools: string[]; model: string | null };
 
@@ -52,10 +57,10 @@ export async function managerByChat(chatId: string): Promise<{ managerId: number
     };
 }
 
-async function loadManagerPrompt(key: string): Promise<{ systemPrompt: string; model: string; temperature: number }> {
+async function loadManagerPrompt(key: string): Promise<{ systemPrompt: string; model: string; temperature: number; maxTokens: number }> {
     const { data } = await supabase
         .from('ai_prompts')
-        .select('system_prompt, model, temperature')
+        .select('system_prompt, model, temperature, max_tokens')
         .eq('key', key)
         .eq('is_active', true)
         .maybeSingle();
@@ -64,11 +69,17 @@ async function loadManagerPrompt(key: string): Promise<{ systemPrompt: string; m
             systemPrompt: data.system_prompt,
             model: data.model || 'gpt-4o',
             temperature: Number(data.temperature ?? 0.3),
+            maxTokens: Number(data.max_tokens ?? DEFAULT_MAX_TOKENS),
         };
     }
     // Промпта нет — берём общий, он хотя бы не выдумывает.
     const fallback = await getConsultantPromptConfig('okk_consultant_global_chat');
-    return { systemPrompt: fallback.systemPrompt, model: fallback.model, temperature: fallback.temperature };
+    return {
+        systemPrompt: fallback.systemPrompt,
+        model: fallback.model,
+        temperature: fallback.temperature,
+        maxTokens: DEFAULT_MAX_TOKENS,
+    };
 }
 
 export async function askSemen(params: {
@@ -129,8 +140,13 @@ export async function askSemen(params: {
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i += 1) {
         const completion = await openai.chat.completions.create({
             model: prompt.model || 'gpt-4o',
-            temperature: Number(prompt.temperature ?? 0.3),
-            max_tokens: 700,
+            // Новые модели требуют другой набор параметров, иначе запрос падает с 400
+            // и разговор молча перестаёт работать — см. lib/ai/model-compat.
+            ...modelTuning({
+                model: prompt.model || 'gpt-4o',
+                maxTokens: prompt.maxTokens,
+                temperature: Number(prompt.temperature ?? 0.3),
+            }),
             messages,
             tools: tools as any,
         } as any);

@@ -51,6 +51,7 @@ import { buildConsultantTools, executeConsultantTool, type ConsultantToolContext
 import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { modelTuning } from '@/lib/ai/model-compat';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -390,15 +391,22 @@ async function buildGlobalKnowledgeAnswer(
     const usedTools: Array<{ name: string }> = [];
     const maxTokens = Math.max(mainPrompt.maxTokens, 600);
 
-    // Tool-calling loop (bounded). Tools are read-only and bound to the session user.
-    for (let iteration = 0; iteration < 5; iteration += 1) {
+    // Кругов работы инструментами столько же, сколько у Тамары: на вопрос, который
+    // требует трёх-четырёх запросов подряд, пяти не хватало — Семён обрывался на
+    // середине и отвечал, что не нашёл данных. Инструменты только читают и
+    // ограничены правами спрашивающего, поэтому длинная цепочка безопасна.
+    for (let iteration = 0; iteration < 30; iteration += 1) {
         const completion = await openai.chat.completions.create({
             model: mainPrompt.model,
-            temperature: mainPrompt.temperature,
-            max_tokens: maxTokens,
+            // Новые модели требуют другой набор параметров — см. lib/ai/model-compat.
+            ...modelTuning({
+                model: mainPrompt.model,
+                maxTokens,
+                temperature: mainPrompt.temperature,
+            }),
             messages,
             tools,
-        });
+        } as any);
         await recordAiUsage({ agentId: AiAgent.SEMEN, model: completion.model, usage: completion.usage, purpose: 'consultant_global_answer' });
 
         const choice = completion.choices[0]?.message;
