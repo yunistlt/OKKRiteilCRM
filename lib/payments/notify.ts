@@ -2,6 +2,25 @@ import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
 import { detectForeignProject, projectChatId } from './projects';
 import { supabase } from '@/utils/supabase';
+import { ownerTelegramChatId } from '@/lib/telegram';
+
+/**
+ * Куда уходят платёжные сообщения ЗМКТЛ.
+ *
+ * Раньше — в общий чат отдела продаж (TELEGRAM_PAYMENTS_CHAT_ID). Менеджерам эти
+ * строки не нужны и топят рабочую переписку, поэтому весь платёжный поток ЗМК идёт
+ * владельцу в личку: адрес тот же, что у бота-РОПа (sales_rop_settings.owner_chat_id),
+ * запасной env — TELEGRAM_OWNER_CHAT_ID. Чужие проекты (столярка, консалтинг) не
+ * трогаем: у них свои отдельные чаты.
+ *
+ * Возвращает и признак личного чата: в личке нет топиков форума, message_thread_id
+ * туда слать нельзя.
+ */
+async function zmktlChatId(): Promise<{ chatId: string | undefined; personal: boolean }> {
+  const owner = await ownerTelegramChatId().catch(() => '');
+  if (owner) return { chatId: owner, personal: true };
+  return { chatId: projectChatId('zmktl'), personal: false };
+}
 
 // Снабженец проекта ЗМК (константа): его тег ставим в каждое уведомление об оплате.
 // Личность — запись в managers (по умолчанию id 13, Лариса Хоменко); сам ник берём из
@@ -148,7 +167,7 @@ export async function notifyPendingPaymentsTelegram(
 ): Promise<void> {
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
     if (!token || rows.length === 0) return;
-    const chatId = projectChatId('zmktl');
+    const { chatId, personal } = await zmktlChatId();
     if (!chatId) return;
 
     const MAX_ROWS = 10;
@@ -185,7 +204,7 @@ export async function notifyPendingPaymentsTelegram(
         disable_web_page_preview: true,
     };
     const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-    if (threadId) body.message_thread_id = Number(threadId);
+    if (!personal && threadId) body.message_thread_id = Number(threadId);
 
     const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
@@ -219,7 +238,7 @@ async function resolveReviewTags(): Promise<string[]> {
 export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error: string): Promise<void> {
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
     if (!token) return;
-    const chatId = projectChatId('zmktl');
+    const { chatId, personal } = await zmktlChatId();
     if (!chatId) return;
 
     const lines: string[] = [];
@@ -241,7 +260,7 @@ export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error
         disable_web_page_preview: true,
     };
     const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-    if (threadId) body.message_thread_id = Number(threadId);
+    if (!personal && threadId) body.message_thread_id = Number(threadId);
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -285,7 +304,8 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
         payerInn: row.payer_inn,
       });
   const routed = Boolean(foreign);
-  const chatId = projectChatId(foreign ?? 'zmktl');
+  const zmk = routed ? { chatId: projectChatId(foreign as any), personal: false } : await zmktlChatId();
+  const chatId = zmk.chatId;
   if (!chatId) return;
 
   // Теги ответственных — только для ЗМК (у чужих проектов нет заказа/снабженца ЗМК).
@@ -303,7 +323,7 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   };
   // Топик форума — только для чата по умолчанию (у маршрутных чатов свой).
   const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-  if (!routed && threadId) body.message_thread_id = Number(threadId);
+  if (!routed && !zmk.personal && threadId) body.message_thread_id = Number(threadId);
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: 'POST',

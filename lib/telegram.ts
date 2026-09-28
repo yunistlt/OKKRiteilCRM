@@ -93,22 +93,26 @@ export async function sendTelegramDocument(params: {
  * Если адреса нет — молчим. Падать обратно на общий чат нельзя: это ровно то,
  * от чего уходим.
  */
-export async function sendTelegramTechNotification(message: string) {
-    let chatId = process.env.TELEGRAM_OWNER_CHAT_ID || '';
+export async function ownerTelegramChatId(): Promise<string> {
+    const fromEnv = process.env.TELEGRAM_OWNER_CHAT_ID || '';
+    if (fromEnv) return fromEnv;
 
-    if (!chatId) {
-        try {
-            const { supabase } = await import('@/utils/supabase');
-            const { data } = await supabase
-                .from('sales_rop_settings')
-                .select('value')
-                .eq('key', 'owner_chat_id')
-                .maybeSingle();
-            chatId = String((data as any)?.value ?? '');
-        } catch (e) {
-            console.error('[Telegram] Не удалось прочитать owner_chat_id:', e);
-        }
+    try {
+        const { supabase } = await import('@/utils/supabase');
+        const { data } = await supabase
+            .from('sales_rop_settings')
+            .select('value')
+            .eq('key', 'owner_chat_id')
+            .maybeSingle();
+        return String((data as any)?.value ?? '');
+    } catch (e) {
+        console.error('[Telegram] Не удалось прочитать owner_chat_id:', e);
+        return '';
     }
+}
+
+export async function sendTelegramTechNotification(message: string) {
+    const chatId = await ownerTelegramChatId();
 
     if (!chatId) {
         console.warn('[Telegram] Нет адреса владельца для технического алерта — сообщение не отправлено.');
