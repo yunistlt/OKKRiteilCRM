@@ -92,6 +92,7 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
 
     // ── Юридический отдел ─────────────────────────────────────────────────
     { key: 'legal', title: 'Юридический отдел', section: 'Юридический отдел', path: '/legal', route: '/legal' },
+    { key: 'legal-enforcement', title: 'Исполнительные производства', section: 'Юридический отдел', path: '/legal/enforcement', route: '/legal/enforcement' },
 
     // ── Система ───────────────────────────────────────────────────────────
     { key: 'settings', title: 'Настройки', section: 'Система', path: '/settings', route: '/settings' },
