@@ -19,6 +19,7 @@ import Celi from './views/Celi';
 import Chat from './views/Chat';
 import Struct from './views/Struct';
 import TamaraTab from './views/TamaraTab';
+import { moodOf } from '@/lib/shtab/tamara-mood';
 
 // «Штаб владельца» — рабочее место собственника по методологии «Альянс Стратег».
 // Реестр минусов, разбор ситуации, карта ресурсов, стратегия, программы под её
@@ -88,7 +89,8 @@ export default function ShtabPage() {
         say(
             `В реестре ${open} открытых минусов. Приоритет пересчитывается сам — начинай с той области, где их больше всего.`,
             'Область с наибольшим числом минусов и есть приоритет: именно там сидит то, что порождает остальное.',
-            'explain',
+            // Первая реплика при входе — встреча: живая Тамара машет рукой.
+            'greet',
         );
     }, [state, say]);
 
@@ -128,7 +130,7 @@ export default function ShtabPage() {
                 say(
                     data.reply || 'Пусто.',
                     data.used_tools?.length ? `Смотрела: ${data.used_tools.join(', ')}.` : 'Инструменты не понадобились.',
-                    'explain',
+                    moodOf(question),
                 );
             } catch (e) {
                 say(`Не смогла ответить: ${(e as Error).message}`, undefined, 'object');
