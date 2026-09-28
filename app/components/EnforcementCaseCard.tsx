@@ -23,6 +23,32 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  /** Отправляет только поля карточки; суммы вводятся рублями, на сервере хранятся в копейках. */
+  const saveFields = useCallback(async () => {
+    setBusy(true);
+    setSaveError(null);
+    try {
+      const response = await fetch(`/api/legal/enforcement/${caseId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(draft),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось сохранить');
+      setEditing(false);
+      await load();
+    } catch (e: any) {
+      setSaveError(e?.message || 'Не удалось сохранить');
+    } finally {
+      setBusy(false);
+    }
+    // load объявлен ниже и стабилен между отрисовками — ссылка на него здесь безопасна.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseId, draft]);
 
   const load = useCallback(async () => {
     try {
@@ -95,13 +121,65 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
 
       <div className="grid gap-3 p-3 lg:grid-cols-2">
         <section>
-          <div className="mb-1 text-xs font-bold uppercase text-gray-500">Поля карточки</div>
+          <div className="mb-1 flex items-center justify-between">
+            <div className="text-xs font-bold uppercase text-gray-500">Поля карточки</div>
+            {!editing ? (
+              <button
+                onClick={() => {
+                  // В правку отдаём то, что видно: суммы — рублями, остальное как есть.
+                  const start: Record<string, string> = {};
+                  for (const field of Object.keys(ENFORCEMENT_FIELD_LABELS)) {
+                    start[field] = toInputValue(field, data.case[field]);
+                  }
+                  setDraft(start);
+                  setSaveError(null);
+                  setEditing(true);
+                }}
+                className="border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white"
+              >
+                Изменить
+              </button>
+            ) : (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => { setEditing(false); setSaveError(null); }}
+                  disabled={busy}
+                  className="border border-gray-300 px-2 py-1 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                >
+                  Отменить
+                </button>
+                <button
+                  onClick={saveFields}
+                  disabled={busy}
+                  className="bg-gray-900 px-2 py-1 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {busy ? 'Сохраняем…' : 'Сохранить'}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {saveError && (
+            <div className="mb-1 border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-700">{saveError}</div>
+          )}
+
           <table className="min-w-full text-xs">
             <tbody>
               {Object.entries(ENFORCEMENT_FIELD_LABELS).map(([field, label]) => (
                 <tr key={field} className="border-t border-gray-100">
                   <td className="w-1/2 px-2 py-1 text-gray-500">{label}</td>
-                  <td className="px-2 py-1 font-semibold text-gray-900">{humanFieldValue(field, data.case[field])}</td>
+                  <td className="px-2 py-1 font-semibold text-gray-900">
+                    {editing ? (
+                      <input
+                        value={draft[field] ?? ''}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [field]: e.target.value }))}
+                        placeholder={field.endsWith('_kopecks') ? 'рубли' : field.endsWith('_on') || field.startsWith('debt_period') ? 'ГГГГ-ММ-ДД' : ''}
+                        className="w-full border border-gray-300 px-1 py-0.5 text-xs font-normal focus:border-gray-900 focus:outline-none"
+                      />
+                    ) : (
+                      humanFieldValue(field, data.case[field])
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -432,4 +510,14 @@ function UploadDocument({ caseId, onUploaded }: { caseId: number; onUploaded: ()
       {error && <div className="mt-1 bg-red-50 p-2 text-xs text-red-700">{error}</div>}
     </div>
   );
+}
+
+/** Значение поля для ввода: копейки показываем рублями, пустое — пустой строкой. */
+function toInputValue(field: string, value: any): string {
+  if (value === null || value === undefined) return '';
+  if (field.endsWith('_kopecks')) {
+    const kopecks = Number(value);
+    return Number.isFinite(kopecks) ? String(kopecks / 100) : '';
+  }
+  return String(value);
 }

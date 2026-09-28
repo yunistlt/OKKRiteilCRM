@@ -139,6 +139,58 @@ export const enforcementCaseCreateSchema = z.object({
   is_sample: z.boolean().optional(),
 });
 
+/**
+ * Ручная правка полей карточки.
+ *
+ * Бот разбирает документы и предлагает значения, человек их подтверждает — но там, где
+ * бот не справился или в документе опечатка, поле нужно исправить руками. Правим ровно
+ * те поля, что показаны в карточке; служебные (статус, кто подтвердил, пометка образца)
+ * меняются своими методами, чтобы их нельзя было переписать мимо проверок.
+ *
+ * Пустая строка приходит как очистка поля: человек стёр значение осознанно.
+ */
+const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : v);
+const optionalText = (max: number) =>
+    z.preprocess(emptyToNull, z.string().trim().max(max).nullable().optional());
+const optionalDate = () =>
+    z.preprocess(emptyToNull, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата в виде ГГГГ-ММ-ДД').nullable().optional());
+const optionalInn = () =>
+    z.preprocess(emptyToNull, z.string().trim().regex(/^\d{10}(\d{2})?$/, 'ИНН — 10 или 12 цифр').nullable().optional());
+/** Деньги храним в копейках, а вводит человек рубли — принимаем и то и другое написание. */
+const optionalMoneyKopecks = () =>
+    z.preprocess((v) => {
+        // undefined — «поле не присылали», его нельзя равнять с «стереть»: иначе правка
+        // одного поля обнулит суммы, а они уходят в ФД-отчёт.
+        if (v === undefined) return undefined;
+        if (v === null || (typeof v === 'string' && v.trim() === '')) return null;
+        if (typeof v === 'number') return Math.round(v);
+        const normalized = String(v).replace(/\s/g, '').replace(',', '.');
+        const rubles = Number(normalized);
+        return Number.isFinite(rubles) ? Math.round(rubles * 100) : v;
+    }, z.number().int().nonnegative('Сумма не может быть отрицательной').nullable().optional());
+
+export const enforcementCaseUpdateSchema = z.object({
+    case_number: optionalText(120),
+    started_on: optionalDate(),
+    debtor_name: optionalText(300),
+    debtor_inn: optionalInn(),
+    claimant_name: optionalText(300),
+    claimant_inn: optionalInn(),
+    debt_amount_kopecks: optionalMoneyKopecks(),
+    charge_amount_kopecks: optionalMoneyKopecks(),
+    fssp_department: optionalText(300),
+    bailiff_name: optionalText(200),
+    ground: optionalText(500),
+    court_case_number: optionalText(120),
+    writ_number: optionalText(120),
+    debt_period_from: optionalDate(),
+    debt_period_to: optionalDate(),
+    management_account: optionalText(200),
+    note: optionalText(2000),
+});
+
+export type EnforcementCaseUpdate = z.infer<typeof enforcementCaseUpdateSchema>;
+
 export const enforcementSampleToggleSchema = z.object({
   case_id: z.number().int().positive(),
   is_sample: z.boolean(),
