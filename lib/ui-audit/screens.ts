@@ -94,6 +94,8 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     { key: 'legal', title: 'Реестр исполнительных производств', section: 'Юридический отдел', path: '/legal', route: '/legal' },
     { key: 'legal-helpdesk', title: 'Юридический помощник', section: 'Юридический отдел', path: '/legal/helpdesk', route: '/legal/helpdesk' },
     { key: 'legal-enforcement-case', title: 'Карточка исполнительного производства', section: 'Юридический отдел', path: '/legal/enforcement/1', route: '/legal/enforcement/[id]' },
+    { key: 'legal-matters', title: 'Претензионно-исковая работа', section: 'Юридический отдел', path: '/legal/matters', route: '/legal/matters' },
+    { key: 'legal-matter-card', title: 'Карточка дела', section: 'Юридический отдел', path: '/legal/matters/1', route: '/legal/matters/[id]' },
 
     // ── Система ───────────────────────────────────────────────────────────
     { key: 'settings', title: 'Настройки', section: 'Система', path: '/settings', route: '/settings' },
