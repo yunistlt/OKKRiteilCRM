@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { extractTextFromBuffer } from '@/lib/email/attachment-parser';
+import { isArchiveName } from '@/lib/archive/unpack';
 import { DOC_BUCKET } from '@/lib/shtab/structure';
 import { chatFiles, createChat, getChat, latestChat } from '@/lib/shtab/tamara-chat';
 
@@ -41,7 +42,15 @@ export async function POST(req: NextRequest) {
         const file = form.get('file');
         if (!(file instanceof File)) return NextResponse.json({ error: 'Файл не пришёл' }, { status: 400 });
         if (file.size === 0) return NextResponse.json({ error: 'Файл пустой' }, { status: 400 });
-        if (file.size > MAX_BYTES) return NextResponse.json({ error: 'Файл больше 4 МБ — такой не принимается' }, { status: 400 });
+        // Предел не наш каприз: тело запроса на Vercel ограничено ~4,5 МБ.
+        // Для архива это частая беда, поэтому говорим, что с ним делать.
+        if (file.size > MAX_BYTES) {
+            return NextResponse.json({
+                error: isArchiveName(file.name)
+                    ? 'Архив больше 4 МБ — целиком не принимается. Разбейте его на части или пришлите нужные файлы отдельно.'
+                    : 'Файл больше 4 МБ — такой не принимается',
+            }, { status: 400 });
+        }
 
         const rawChat = form.get('chat_id');
         let chat = rawChat ? await getChat(Number(rawChat)) : await latestChat();

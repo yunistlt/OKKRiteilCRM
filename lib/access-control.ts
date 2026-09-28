@@ -15,13 +15,14 @@ export type RoleCapabilityProfile = {
     canRunBulkOperations: boolean;
 };
 
-export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'demo'];
+export const ROLE_DISPLAY_ORDER: AppRole[] = ['admin', 'manager', 'okk', 'rop', 'jurist', 'demo'];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
     admin: 'Админ',
     manager: 'Менеджер ОП',
     okk: 'Контролёр ОКК',
     rop: 'РОП',
+    jurist: 'Юрист',
     demo: 'ДЕМО',
 };
 
@@ -65,6 +66,19 @@ export const DEFAULT_ROLE_CAPABILITIES: RoleCapabilityProfile[] = [
         dataScope: 'all',
         editScope: 'team',
         canViewAnalytics: true,
+        canViewAudit: true,
+        canViewSalary: false,
+        canViewSettings: false,
+        canManageUsers: false,
+        canRunBulkOperations: false,
+    },
+    {
+        // Юрист видит свой контур и ничего больше: ни зарплат, ни настроек,
+        // ни управления людьми. Аудит нужен — по документам он и работает.
+        role: 'jurist',
+        dataScope: 'all',
+        editScope: 'team',
+        canViewAnalytics: false,
         canViewAudit: true,
         canViewSalary: false,
         canViewSettings: false,

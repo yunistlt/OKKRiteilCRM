@@ -72,6 +72,10 @@ const TITLES: Record<string, string> = {
     seo_crawl: 'обход сайта роботом Яндекса',
     seo_links: 'внешние ссылки на сайт',
 
+    // Суды
+    court_cases: 'арбитражные дела группы',
+    court_case: 'карточка арбитражного дела',
+
     // Реклама
     ads_campaigns: 'кампании в Яндекс Директе',
     ads_groups: 'группы объявлений',
