@@ -72,5 +72,18 @@ INSERT INTO public.legal_matter_dictionaries (kind, code, name, description, col
 ('close_reason', 'lost',       'Проиграно',            NULL, NULL, 30),
 ('close_reason', 'partial',    'Частично',             NULL, NULL, 40),
 ('close_reason', 'withdrawn',  'Отказались от требований', NULL, NULL, 50),
-('close_reason', 'uncollectible','Безнадёжно к взысканию', NULL, NULL, 60)
+('close_reason', 'uncollectible','Безнадёжно к взысканию', NULL, NULL, 60),
+
+-- Денежные поля: подписи для раскладки «финансового риска» по клику
+('money_field', 'contract_amount_kopecks',  'Цена договора',            NULL, NULL, 10),
+('money_field', 'claim_amount_kopecks',     'Требование контрагента',   NULL, NULL, 20),
+('money_field', 'our_claim_amount_kopecks', 'Наше требование',          NULL, NULL, 30),
+('money_field', 'penalty_kopecks',          'Неустойка',                NULL, NULL, 40),
+('money_field', 'damages_kopecks',          'Убытки',                   NULL, NULL, 50),
+('money_field', 'state_duty_kopecks',       'Госпошлина',               'Платится вперёд, возвращается отдельно', NULL, 60),
+('money_field', 'court_costs_kopecks',      'Судебные расходы',         NULL, NULL, 70),
+('money_field', 'settled_amount_kopecks',   'Урегулировано',            NULL, NULL, 80),
+('money_field', 'recovered_kopecks',        'Взыскано',                 NULL, NULL, 90),
+('money_field', 'paid_out_kopecks',         'Выплачено нами',           NULL, NULL, 95),
+('money_field', 'costs_recovered_kopecks',  'Расходы взысканы',         NULL, NULL, 97)
 ON CONFLICT (kind, code) DO NOTHING;
