@@ -1,6 +1,7 @@
 import { normalizePhone } from './phone-utils';
 import { supabase } from '@/utils/supabase';
 import { loadLegacyCallContext } from './telphin-legacy-compat';
+import { resolveTranscriptionStatus } from '@/lib/telphin-call-outcome';
 
 type CallDirection = 'incoming' | 'outgoing';
 
@@ -168,6 +169,26 @@ export async function upsertCanonicalTelphinCall(
 
   if (upsertError) {
     throw upsertError;
+  }
+
+  // Расшифровать нечего — ставим причину, а не вечное «ждёт расшифровки».
+  // Иначе недозвоны и соединения с голосовым меню копятся в очереди навсегда.
+  const honestStatus = resolveTranscriptionStatus({
+    rawPayload,
+    recordingUrl,
+    currentStatus: existing?.transcription_status ?? null,
+    hasTranscript: Boolean(existing?.transcript),
+  });
+
+  if (honestStatus) {
+    const { error: statusError } = await supabase
+      .from('raw_telphin_calls')
+      .update({ transcription_status: honestStatus })
+      .eq('telphin_call_id', input.callId);
+
+    if (statusError) {
+      throw statusError;
+    }
   }
 
   const shouldQueueTranscription =

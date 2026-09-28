@@ -77,12 +77,16 @@ export async function GET(req: NextRequest) {
         ensureAuthorized(req);
         console.log('[SystemAuditor] Starting check...');
 
-        // 1. Check for Stuck Transcriptions (Pending > 2 hours)
+        // 1. Застрявшие расшифровки — только те, где есть что расшифровывать.
+        //    Без фильтра по записи сюда попадали недозвоны и соединения с голосовым меню:
+        //    расшифровать их нельзя никогда, и счётчик показывал вечные 6965 «застрявших».
+        //    Тревога, которая горит всегда, — это не тревога.
         const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
         const { count: pendingCount, error: pendingError } = await supabase
             .from('raw_telphin_calls')
             .select('*', { count: 'exact', head: true })
             .in('transcription_status', ['pending', 'ready_for_transcription', 'processing'])
+            .not('recording_url', 'is', null)
             .lt('started_at', twoHoursAgo);
 
         if (pendingError) {
