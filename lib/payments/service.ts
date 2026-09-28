@@ -1,7 +1,12 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
-import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
+import {
+  notifyPaymentTelegram,
+  notifyPendingPaymentsTelegram,
+  notifyPaymentPushErrorTelegram,
+  deletePaymentNotification,
+} from './notify';
 import { classifyProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
@@ -83,7 +88,8 @@ const SELECT_COLUMNS =
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
-  'raw_payload, notified_at, pending_notified_at, renotify_requested_at, created_at, updated_at';
+  'raw_payload, notified_at, pending_notified_at, renotify_requested_at, ' +
+  'telegram_chat_id, telegram_message_id, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -544,6 +550,11 @@ export async function sendRequestedRenotifications(limit = 10): Promise<number> 
   let sent = 0;
   for (const row of (data || []) as PointPaymentRow[]) {
     try {
+      // Сначала убираем своё сообщение в прежнем чате, потом шлём в правильный. Не вышло
+      // (сообщение старше 48 часов или координат нет) — всё равно отправляем новое.
+      if (row.telegram_chat_id && row.telegram_message_id) {
+        await deletePaymentNotification(String(row.telegram_chat_id), Number(row.telegram_message_id));
+      }
       await notifyPaymentTelegram(row);
       sent += 1;
     } catch (e: any) {

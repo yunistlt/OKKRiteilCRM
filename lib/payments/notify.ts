@@ -334,4 +334,38 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   if (!res.ok) {
     throw new Error(`Telegram payments notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
+
+  // Координаты сообщения — чтобы при переносе платежа в другой проект бот смог удалить
+  // своё старое сообщение в прежнем чате (инцидент 2026-09-28: платёж за ПО в чате ЗМК).
+  // Не смогли распарсить — не беда, уведомление отправлено; молча пропускаем.
+  const messageId = await res
+    .json()
+    .then((j: any) => Number(j?.result?.message_id) || null)
+    .catch(() => null);
+  if (messageId) {
+    await supabase
+      .from('point_payments')
+      .update({ telegram_chat_id: String(chatId), telegram_message_id: messageId })
+      .eq('id', row.id)
+      .then(undefined, (e: any) => console.error('[payments] save message_id failed:', e?.message || e));
+  }
+}
+
+/**
+ * Удаляет ранее отправленное уведомление об оплате (например, оно ушло в чат чужого проекта).
+ * Телеграм разрешает боту удалять свои сообщения не старше 48 часов — более старое удаляют
+ * руками, поэтому неудача здесь не считается ошибкой.
+ */
+export async function deletePaymentNotification(
+  chatId: string,
+  messageId: number,
+): Promise<boolean> {
+  const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
+  if (!token) return false;
+  const res = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+  }).catch(() => null);
+  return Boolean(res?.ok);
 }
