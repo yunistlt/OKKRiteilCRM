@@ -1,6 +1,6 @@
 // ОТВЕТСТВЕННЫЙ: МАКСИМ (Аудитор) — Движок правил: автоматическая проверка всех условий и триггеров.
 import { supabase } from '@/utils/supabase';
-import { toLegacyEventRow, STATUS_FIELD } from '@/lib/order-events';
+import { toLegacyEventRow, STATUS_FIELD, parseEventValue } from '@/lib/order-events';
 import { analyzeTranscript, analyzeText } from './semantic';
 import { evaluateChecklist } from './quality-control';
 import { sendTelegramNotification } from './telegram';
@@ -316,6 +316,77 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
         }
     }
 
+    // ЗАКОН: нарушения считаем только по РАБОЧИМ статусам (status_settings.is_working,
+    // разметку ведёт человек в /settings/statuses). Заказ, ушедший из работы
+    // менеджера — «Передано в производство», отгрузка, отмена — живёт по другим
+    // правилам: перенос даты следующего контакта или тишина там не нарушение, а
+    // нормальный ход дела.
+    //
+    // Статус берём НА МОМЕНТ СОБЫТИЯ, а не текущий: заказ, уехавший в
+    // производство через неделю после реального нарушения, задним числом его не
+    // отменяет. Восстанавливаем по истории смен статуса (order_history_log).
+    // Если разметки рабочих статусов нет вовсе — не фильтруем: пустой аудит
+    // хуже неточного.
+    const { data: workingSettings } = await supabase.from('status_settings').select('code').eq('is_working', true);
+    const workingCodes = new Set<string>(((workingSettings as any[]) || []).map((s: any) => String(s.code)));
+
+    /** Смены статуса по заказу, по возрастанию времени: [{at, from, to}]. */
+    const statusHistory = new Map<number, Array<{ at: number; from: string | null; to: string | null }>>();
+    /** Текущий статус заказа — точка отсчёта, если истории смен нет. */
+    const currentStatus = new Map<number, string>();
+
+    const candidateOrderIds = Array.from(new Set((items as any[])
+        .map((i: any) => rule.entity_type === 'call' ? i.call_order_matches?.[0]?.order_id : (i.retailcrm_order_id || i.id))
+        .filter(Boolean)
+        .map((x: any) => Number(x))));
+
+    if (workingCodes.size > 0 && candidateOrderIds.length > 0) {
+        if (rule.entity_type === 'order') {
+            for (const it of items as any[]) currentStatus.set(Number(it.id), it.status);
+        } else {
+            const { data: orderRows } = await supabase.from('orders').select('id, status').in('id', candidateOrderIds);
+            for (const r of (orderRows as any[]) || []) currentStatus.set(Number(r.id), r.status);
+        }
+
+        const { data: statusEvents } = await supabase
+            .from('order_history_log')
+            .select('retailcrm_order_id, occurred_at, old_value, new_value')
+            .eq('field', STATUS_FIELD)
+            .in('retailcrm_order_id', candidateOrderIds)
+            .order('occurred_at', { ascending: true });
+
+        const codeOf = (raw: any): string | null => {
+            const v = parseEventValue(raw);
+            if (v == null) return null;
+            return typeof v === 'object' ? (v.code ?? null) : String(v);
+        };
+        for (const ev of (statusEvents as any[]) || []) {
+            const oid = Number(ev.retailcrm_order_id);
+            const arr = statusHistory.get(oid) || [];
+            arr.push({ at: new Date(ev.occurred_at).getTime(), from: codeOf(ev.old_value), to: codeOf(ev.new_value) });
+            statusHistory.set(oid, arr);
+        }
+        if (trace) trace.push(`[RuleEngine] [${rule.code}] Рабочих статусов в разметке: ${workingCodes.size}`);
+    }
+
+    /**
+     * Статус заказа в указанный момент: последняя смена до него даёт новый
+     * статус, первая смена после — свой старый. Истории нет — текущий статус.
+     */
+    const statusAt = (orderId: number, at: string | null): string | null => {
+        const history = statusHistory.get(orderId);
+        const ts = at ? new Date(at).getTime() : NaN;
+        if (history && history.length > 0 && !Number.isNaN(ts)) {
+            let result: string | null = null;
+            for (const change of history) {
+                if (change.at <= ts) result = change.to;
+                else return result ?? change.from ?? currentStatus.get(orderId) ?? null;
+            }
+            return result ?? currentStatus.get(orderId) ?? null;
+        }
+        return currentStatus.get(orderId) ?? null;
+    };
+
     const violations: any[] = [];
 
     // 2. Evaluate each candidate
@@ -344,6 +415,16 @@ async function executeBlockRule(rule: any, startDate: string, endDate: string, s
             managerId: metrics?.manager_id || item.manager_id,
             occurredAt: occurredAt
         };
+
+        // Заказ вне рабочих статусов на момент события — правила ОКК к нему не
+        // применяем (см. выше).
+        if (workingCodes.size > 0) {
+            const orderStatus = statusAt(Number(orderId), context.occurredAt);
+            if (!orderStatus || !workingCodes.has(orderStatus)) {
+                if (trace) trace.push(`[RuleEngine] [${rule.code}] Candidate ${orderId}: статус на ${context.occurredAt} — "${orderStatus ?? 'неизвестен'}", не рабочий. Пропуск.`);
+                continue;
+            }
+        }
 
         // --- NEW: Stage Audit Logic (Multi-Interaction) ---
         if (rule.entity_type === 'stage') {
