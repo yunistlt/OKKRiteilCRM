@@ -129,12 +129,35 @@ export function detectForeignProject(s: ProjectSignals): ForeignProject | null {
 }
 
 /**
- * Итоговый проект платежа. matchedToOrder=true (счёт совпал с заказом RetailCRM) → ЗМКТЛ.
- * Иначе — по detectForeignProject; null — не определён (по умолчанию ЗМКТЛ в разборе).
+ * Итоговый проект платежа. Матч по точному номеру счёта → ЗМКТЛ; матч «по сигналам» уступает
+ * явному признаку ПО/консалтинга в назначении. Иначе — detectForeignProject; null — не определён.
  */
-export function classifyProject(s: ProjectSignals, matchedToOrder: boolean): ProjectKey | null {
+export function classifyProject(
+  s: ProjectSignals,
+  matchedToOrder: boolean,
+  matchedByInvoiceNumber = true,
+): ProjectKey | null {
+  // Матч по ТОЧНОМУ номеру счёта из назначения — это ЗМКТЛ, как и было.
+  if (matchedToOrder && matchedByInvoiceNumber) return 'zmktl';
+  // Матч «по сигналам» (ИНН плательщика/сумма) — не доказательство, что деньги за заказ ЗМКТЛ.
+  // До 2021 клиентов «Цех-Успех» тоже вели в RetailCRM: платёж за ПО со своим номером счёта
+  // (№168) цеплялся к их старому заказу (9265) и уезжал в ЗМК — инцидент 2026-09-28.
+  // Назначение с явным признаком ПО/консалтинга сильнее такого матча.
+  if (isConsultingPurpose(s.purpose)) return 'consulting';
   if (matchedToOrder) return 'zmktl';
   return detectForeignProject(s);
+}
+
+// Сильные признаки ПО/консалтинга в назначении — только однозначные, без общего слова «услуги»:
+// им подписан и десяток заказов ЗМК («за услуги по доставке»).
+const CONSULTING_STRONG_RE =
+  /(программн|доступ[а]?\s+к\s+по|достук\s+к\s+по|цех[\s-]?успех|лиценз|абонентск|подписк|внедрен|сопровожден\s+по|консалт|консультацион)/i;
+
+/** Назначение платежа однозначно про ПО/консалтинг (не про заказ ЗМКТЛ). */
+export function isConsultingPurpose(purpose: string | null | undefined): boolean {
+  const p = String(purpose || '');
+  if (ORDER_REF_RE.test(p)) return false;
+  return CONSULTING_STRONG_RE.test(p);
 }
 
 /** Chat_id проекта (undefined, если не сконфигурирован). */

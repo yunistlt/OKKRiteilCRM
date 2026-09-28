@@ -297,7 +297,15 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     payerName: normalized.payerName,
     payerInn: normalized.payerInn,
   };
-  const project = classifyProject(signals, match.status === 'matched');
+  const project = classifyProject(
+    signals,
+    match.status === 'matched',
+    match.method === 'order_number',
+  );
+
+  // Чужой проект (столярка/консалтинг) в RetailCRM ЗМКТЛ не ведётся — совпавший номер счёта
+  // не повод заносить чужие деньги на заказ ЗМК.
+  const foreignProject = project === 'stolyarka' || project === 'consulting';
 
   const update: Record<string, any> = {
     match_method: match.method,
@@ -310,11 +318,11 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     updated_at: new Date().toISOString(),
   };
 
-  if (autoMatch) {
+  if (autoMatch && !foreignProject) {
     update.status = 'matched';
     update.matched_order_id = match.matchedOrderId;
     update.matched_order_number = match.matchedOrderNumber;
-  } else if (project === 'stolyarka' || project === 'consulting') {
+  } else if (foreignProject) {
     // Чужой проект опознан (в RetailCRM ЗМКТЛ не ведётся) — действие не требуется.
     update.status = 'recognized';
   } else {
@@ -333,7 +341,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   let push: { movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string } = {
     movedToProduction: false,
   };
-  if (autoMatch && updated) {
+  if (autoMatch && !foreignProject && updated) {
     push = await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
 
@@ -341,7 +349,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   //   • ЗМКТЛ — только по разнесённым (matched); неразобранные не шлём;
   //   • столярка/консалтинг (чужой проект) — всегда, независимо от матча, в свой чат.
   const u = updated as PointPaymentRow;
-  if (!row.notified_at && updated && (u.status === 'matched' || project === 'stolyarka' || project === 'consulting')) {
+  if (!row.notified_at && updated && (u.status === 'matched' || foreignProject)) {
     await notifyPaymentTelegram(u, {
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,

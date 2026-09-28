@@ -4,7 +4,7 @@ import { computeCrmPosting } from '@/lib/payments/service';
 import { parseAmountToKopecks } from '@/lib/payments/types';
 import { normalizeTochkaPayment, isIncomingTochkaWebhook } from '@/lib/payments/tochka';
 import { normalizeStatementTransaction } from '@/lib/payments/tochka-statement';
-import { detectForeignProject } from '@/lib/payments/projects';
+import { detectForeignProject, classifyProject } from '@/lib/payments/projects';
 
 describe('extractInvoiceNumbers', () => {
   it('вытаскивает номер счёта из реального назначения', () => {
@@ -240,5 +240,42 @@ describe('detectForeignProject (маркетплейс по плательщик
         recipientInn: '6324017492',
       }),
     ).toBeNull();
+  });
+});
+
+describe('classifyProject: матч «по сигналам» vs назначение про ПО', () => {
+  const softwarePayment = {
+    purpose: 'Оплата по счету № 168 от 21.09.2026 г.за услуги программного обеспечения.',
+    recipientInn: '632101044652',
+    payerName: 'ООО "Альянс"',
+    payerInn: '1660137236',
+  };
+
+  it('платёж за ПО, сматченный не по номеру счёта, остаётся консалтингом', () => {
+    expect(classifyProject(softwarePayment, true, false)).toBe('consulting');
+  });
+
+  it('заказ ЗМК с получателем ИП остаётся ЗМКТЛ (матч по точному номеру)', () => {
+    expect(
+      classifyProject(
+        {
+          purpose: 'Оплата по счету №53238 от 01.06.2026г за стол электромонтажный',
+          recipientInn: '632101044652',
+          payerInn: '7727000000',
+        },
+        true,
+        true,
+      ),
+    ).toBe('zmktl');
+  });
+
+  it('«за услуги по доставке» при матче по сигналам — всё ещё ЗМКТЛ', () => {
+    expect(
+      classifyProject(
+        { purpose: 'Оплата по счету 54188 от 10.08.2026 за услуги по доставке', recipientInn: '632101044652' },
+        true,
+        false,
+      ),
+    ).toBe('zmktl');
   });
 });
