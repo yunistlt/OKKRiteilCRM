@@ -42,12 +42,12 @@ function pushUnique(acc: ExtractedField[], candidate: ExtractedField) {
 }
 
 const DOC_KIND_PATTERNS: Array<[EnforcementDocKind, RegExp]> = [
-  ['postanovlenie', /постановлени\w*\s+о\s+возбуждении/i],
-  ['trebovanie', /требовани\w*\s+(об|о)\s+уплат/i],
-  ['reshenie', /решени\w*\s+о\s+взыскании/i],
-  ['prikaz', /судебн\w*\s+приказ/i],
-  ['list', /исполнительн\w*\s+лист/i],
-  ['inkasso', /инкассов\w*\s+поручени/i],
+  ['postanovlenie', /постановлени[а-яё]*\s+о\s+возбуждении/i],
+  ['trebovanie', /требовани[а-яё]*\s+(об|о)\s+уплат/i],
+  ['reshenie', /решени[а-яё]*\s+о\s+взыскании/i],
+  ['prikaz', /судебн[а-яё]*\s+приказ/i],
+  ['list', /исполнительн[а-яё]*\s+лист/i],
+  ['inkasso', /инкассов[а-яё]*\s+поручени/i],
 ];
 
 export function detectDocKind(text: string): EnforcementDocKind | null {
@@ -58,15 +58,22 @@ export function detectDocKind(text: string): EnforcementDocKind | null {
 }
 
 const GROUND_PATTERNS: Array<[string, RegExp]> = [
-  ['tax', /(налог|фнс|ифнс|межрайонн\w*\s+инспекц|страховы\w*\s+взнос|пен(я|и)\s+по\s+налог)/i],
-  ['fund', /(социальн\w*\s+фонд|сфр|пфр|фсс|фонд\s+пенсионн)/i],
-  ['court', /(решени\w*\s+суда|судебн\w*\s+приказ|арбитражн\w*\s+суд|мировой\s+судья)/i],
-  ['fine', /(административн\w*\s+штраф|гибдд|постановлени\w*\s+по\s+делу\s+об\s+административн)/i],
-  ['employee', /(заработн\w*\s+плат|алимент|трудов\w*\s+спор)/i],
-  ['counterparty', /(ооо|ао|ип)\s|задолженност\w*\s+по\s+договор/i],
+  ['tax', /(налог|фнс|ифнс|межрайонн[а-яё]*\s+инспекц|страховы[а-яё]*\s+взнос|пен(я|и)\s+по\s+налог)/i],
+  ['fund', /(социальн[а-яё]*\s+фонд|сфр|пфр|фсс|фонд\s+пенсионн)/i],
+  ['court', /(решени[а-яё]*\s+суда|судебн[а-яё]*\s+приказ|арбитражн[а-яё]*\s+суд|мировой\s+судья)/i],
+  ['fine', /(административн[а-яё]*\s+штраф|гибдд|постановлени[а-яё]*\s+по\s+делу\s+об\s+административн)/i],
+  ['employee', /(заработн[а-яё]*\s+плат|алимент|трудов[а-яё]*\s+спор)/i],
+  ['counterparty', /(ооо|ао|ип)\s|задолженност[а-яё]*\s+по\s+договор/i],
 ];
 
-/** Regex-слой: ищет то, что в документах ФССП стоит в устойчивых формулировках. */
+/**
+ * Regex-слой: ищет то, что в документах ФССП стоит в устойчивых формулировках.
+ *
+ * ВНИМАНИЕ: в JavaScript `\w` — это только латиница, цифры и подчёркивание.
+ * После русского корня («сумм\w*») он не ловит окончание, и правило молча не
+ * срабатывает. Поэтому здесь везде явный класс [а-яё] с флагом i, а не \w.
+ * По той же причине нет границ слова \b рядом с кириллицей.
+ */
 export function extractByRegex(text: string): ExtractionOutcome {
   const fields: ExtractedField[] = [];
   const warnings: string[] = [];
@@ -90,11 +97,11 @@ export function extractByRegex(text: string): ExtractionOutcome {
   };
 
   // Номер исполнительного производства: 12345/26/63001-ИП
-  const caseNumber = text.match(/\b(\d{3,7}\/\d{2}\/\d{3,6}(?:-ИП)?)\b/i);
+  const caseNumber = text.match(/(\d{3,7}\/\d{2}\/\d{3,6}(?:-ИП)?)/i);
   if (caseNumber) add('case_number', caseNumber[1].toUpperCase(), caseNumber[1], caseNumber, 0.95);
 
   // Дата возбуждения
-  const startedOn = text.match(/возбужден\w*[^.\n]{0,60}?(\d{1,2}[.\/]\d{1,2}[.\/]\d{4})/i)
+  const startedOn = text.match(/возбужден[а-яё]*[^.\n]{0,60}?(\d{1,2}[.\/]\d{1,2}[.\/]\d{4})/i)
     || text.match(/от\s+(\d{1,2}[.\/]\d{1,2}[.\/]\d{4})\s*(?:г\.?)?[^\n]{0,40}возбужд/i);
   if (startedOn) {
     const iso = parseRuDate(startedOn[1]);
@@ -110,38 +117,41 @@ export function extractByRegex(text: string): ExtractionOutcome {
   const debtor = text.match(/должник[^:\n]{0,20}[:\s]+([^\n,;]{4,160})/i);
   if (debtor) add('debtor_name', debtor[1].trim(), debtor[1].trim(), debtor, 0.7);
 
-  const claimant = text.match(/взыскател\w*[^:\n]{0,20}[:\s]+([^\n,;]{4,160})/i);
+  const claimant = text.match(/взыскател[а-яё]*[^:\n]{0,20}[:\s]+([^\n,;]{4,160})/i);
   if (claimant) add('claimant_name', claimant[1].trim(), claimant[1].trim(), claimant, 0.7);
 
   // Суммы
-  const debt = text.match(/(?:сумм\w*\s+(?:долга|задолженност\w*)|задолженност\w*\s+в\s+размере)[^\d]{0,30}([\d\s ]+(?:[.,]\d{2})?)/i);
+  const debt = text.match(/(?:сумм[а-яё]*\s+(?:долга|задолженност[а-яё]*)|задолженност[а-яё]*\s+в\s+размере)[^\d]{0,30}([\d\s ]+(?:[.,]\d{2})?)/i);
   if (debt) {
     const kopecks = parseAmountToKopecks(debt[1]);
     if (kopecks) add('debt_amount_kopecks', debt[1].trim(), kopecks, debt, 0.8);
   }
 
-  const charge = text.match(/(?:исполнительн\w*\s+сбор|сумм\w*\s+взыскани\w*)[^\d]{0,30}([\d\s ]+(?:[.,]\d{2})?)/i);
+  // В бланках пишут и «исполнительный сбор», и «исполнительский» — ловим оба корня.
+  const charge = text.match(/(?:исполнительс?к?[а-яё]*\s+сбор|сумм[а-яё]*\s+взыскани[а-яё]*)[^\d]{0,30}([\d\s ]+(?:[.,]\d{2})?)/i);
   if (charge) {
     const kopecks = parseAmountToKopecks(charge[1]);
     if (kopecks) add('charge_amount_kopecks', charge[1].trim(), kopecks, charge, 0.75);
   }
 
   // Отдел ФССП и пристав
-  const department = text.match(/((?:[А-ЯЁ][а-яё\-]+\s+){0,3}(?:районн\w*|городск\w*|межрайонн\w*)?\s*отдел\w*\s+судебных\s+приставов[^\n,;]{0,90})/i);
+  // Начинаем ровно со слова «отдел»: иначе в значение уезжает шапка бланка
+  // («ФЕДЕРАЛЬНАЯ СЛУЖБА СУДЕБНЫХ ПРИСТАВОВ Отдел судебных приставов …»).
+  const department = text.match(/((?:межрайонн[а-яё]*\s+|специализированн[а-яё]*\s+)?отдел\s+судебных\s+приставов[^\n,;]{0,90})/i);
   if (department) add('fssp_department', department[1].replace(/\s+/g, ' ').trim(), department[1].trim(), department, 0.8);
 
-  const bailiff = text.match(/судебн\w*\s+пристав\w*[^:\n]{0,40}[:\s]+([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s?[А-ЯЁ]\.)/);
+  const bailiff = text.match(/судебн[а-яё]*\s+пристав[а-яё]*[^:\n]{0,40}[:\s]+([А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s?[А-ЯЁ]\.)/);
   if (bailiff) add('bailiff_name', bailiff[1].trim(), bailiff[1].trim(), bailiff, 0.75);
 
   // Судебное дело и исполнительный лист
-  const courtCase = text.match(/(?:дел\w*\s*№|дел\w*\s+номер)\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
+  const courtCase = text.match(/(?:дел[а-яё]*\s*№|дел[а-яё]*\s+номер)\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
   if (courtCase) add('court_case_number', courtCase[1].trim(), courtCase[1].trim(), courtCase, 0.7);
 
-  const writ = text.match(/(?:исполнительн\w*\s+лист\w*|судебн\w*\s+приказ\w*)\s*(?:серии\s*)?№?\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
+  const writ = text.match(/(?:исполнительн[а-яё]*\s+лист[а-яё]*|судебн[а-яё]*\s+приказ[а-яё]*)\s*(?:серии\s*)?№?\s*([А-ЯA-Z0-9\-\/]{4,30})/i);
   if (writ) add('writ_number', writ[1].trim(), writ[1].trim(), writ, 0.7);
 
   // Период долга: «за 2025 год», «за 1 квартал 2026»
-  const period = text.match(/за\s+(\d{1,2})\s+квартал\w*\s+(\d{4})/i);
+  const period = text.match(/за\s+(\d{1,2})\s+квартал[а-яё]*\s+(\d{4})/i);
   if (period) {
     const quarter = Number(period[1]);
     const year = period[2];
@@ -177,6 +187,10 @@ const AI_SYSTEM_PROMPT = `Ты юрист-аналитик. Тебе дают т
 Формат: {"fields":[{"field":"<код>","value":"<значение>","quote":"<цитата>","confidence":<0..1>}]}
 Допустимые коды поля: ${ENFORCEMENT_EXTRACTABLE_FIELDS.join(', ')}.
 Для ground допустимы только: ${ENFORCEMENT_GROUNDS.join(', ')}.
+РАЗЛИЧАЙ ДВА НОМЕРА, это разные поля и путать их нельзя:
+  case_number — номер исполнительного производства ФССП, вид «45678/26/63021-ИП»;
+  court_case_number — номер дела арбитражного суда, вид «А55-12345/2026».
+Номер вида «А55-12345/2026» в case_number не возвращай никогда.
 Суммы возвращай числом с копейками через точку, даты — в формате ДД.ММ.ГГГГ.
 Для management_account предложи управленческую статью расхода по-русски (например «Налоги и сборы»,
 «Судебные издержки», «Расчёты с сотрудниками»).`;
@@ -234,6 +248,32 @@ export async function extractByAi(text: string): Promise<ExtractionOutcome> {
   }
 }
 
+/** Номер арбитражного дела: А55-12345/2026 (кириллическая или латинская буква). */
+const COURT_CASE_RE = /^[АA]\d{1,2}[-–]\d{1,7}\/\d{4}$/;
+/** Номер исполнительного производства: 45678/26/63021-ИП. */
+const ENFORCEMENT_CASE_RE = /^\d{3,7}\/\d{2}\/\d{3,6}(-ИП)?$/i;
+
+/**
+ * Модель путает номер производства с номером судебного дела. Раскладываем по
+ * форме номера: это надёжнее любой формулировки в промпте.
+ */
+function fixSwappedCaseNumbers(fields: ExtractedField[]): ExtractedField[] {
+  return fields
+    .map((item) => {
+      const value = item.value_text.trim();
+      if (item.field === 'case_number' && COURT_CASE_RE.test(value)) {
+        return { ...item, field: 'court_case_number' };
+      }
+      if (item.field === 'court_case_number' && ENFORCEMENT_CASE_RE.test(value)) {
+        return { ...item, field: 'case_number' };
+      }
+      return item;
+    })
+    // После перекладки в поле могли попасть два одинаковых значения — не дублируем.
+    .filter((item, index, all) =>
+      all.findIndex((other) => other.field === item.field && other.value_text.trim() === item.value_text.trim()) === index);
+}
+
 function normalizeAiValue(field: string, valueText: string): any {
   if (field.endsWith('_kopecks')) return parseAmountToKopecks(valueText);
   if (field === 'started_on' || field.startsWith('debt_period')) return parseRuDate(valueText);
@@ -251,20 +291,26 @@ export async function extractEnforcementFields(text: string): Promise<Extraction
 
   const fields = [...byRegex.fields];
   for (const candidate of byAi.fields) {
-    const existing = fields.find((item) => item.field === candidate.field);
-    if (!existing) {
-      fields.push(candidate);
+    const same = fields.find(
+      (item) =>
+        item.field === candidate.field &&
+        String(item.value_text).trim().toLowerCase() === String(candidate.value_text).trim().toLowerCase(),
+    );
+    // То же самое значение, найденное вторым способом, — не новость, а
+    // подтверждение: поднимаем уверенность вместо второй карточки человеку.
+    if (same) {
+      same.confidence = Math.max(same.confidence, candidate.confidence);
       continue;
     }
-    // Значения разошлись — это конфликт, человек должен увидеть оба.
-    if (String(existing.value_text).toLowerCase() !== String(candidate.value_text).toLowerCase()) {
-      fields.push({ ...candidate, confidence: Math.min(candidate.confidence, 0.5) });
-    }
+    fields.push(fields.some((item) => item.field === candidate.field)
+      // Значения разошлись — это конфликт, человек должен увидеть оба.
+      ? { ...candidate, confidence: Math.min(candidate.confidence, 0.5) }
+      : candidate);
   }
 
   return {
     doc_kind: byRegex.doc_kind,
-    fields,
+    fields: fixSwappedCaseNumbers(fields),
     warnings: [...byRegex.warnings, ...byAi.warnings],
   };
 }

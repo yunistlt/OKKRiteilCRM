@@ -8,6 +8,7 @@
 // serverless, где никаких распаковщиков в системе нет). 7z и tar не поддержаны:
 // честнее сказать это прямо, чем вернуть пустоту, похожую на пустой архив.
 import AdmZip from 'adm-zip';
+import { isArchiveName } from './names';
 
 export type ArchiveEntry = {
   name: string;
@@ -44,9 +45,7 @@ export function detectArchiveKind(buffer: Buffer | null | undefined, fileName?: 
   return 'none';
 }
 
-export function isArchiveName(fileName?: string | null) {
-  return /\.(zip|rar|7z|tar|gz|tgz|bz2)$/i.test(String(fileName || ''));
-}
+export { isArchiveName };
 
 export class UnsupportedArchiveError extends Error {
   constructor(fileName?: string | null) {

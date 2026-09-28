@@ -8,6 +8,7 @@ import {
   ENFORCEMENT_FIELD_LABELS,
   ENFORCEMENT_STATUS_LABELS,
 } from '@/lib/legal-enforcement/types';
+import { isArchiveName } from '@/lib/archive/names';
 import { ENFORCEMENT_STATUS_STYLES, formatDate, formatMoney, humanFieldValue } from './enforcement-shared';
 import type { Doc, EnforcementCase, Fact, PaymentLink, PaymentRow } from './enforcement-shared';
 
@@ -134,7 +135,9 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
                       {' · '}
                       {doc.upload_status === 'uploaded' ? 'загружен' : doc.upload_status === 'failed' ? 'ошибка загрузки' : 'загружается'}
                       {' · '}
-                      {doc.extract_status === 'completed'
+                      {doc.extract_status === 'completed' && isArchiveName(doc.file_name)
+                        ? String(doc.extract_warnings?.archive || 'архив распакован')
+                        : doc.extract_status === 'completed'
                         ? `текст распознан (${doc.raw_text_length.toLocaleString('ru-RU')} симв.)`
                         : doc.extract_status === 'manual_review_required'
                           ? 'текст не распознан, нужна ручная проверка'

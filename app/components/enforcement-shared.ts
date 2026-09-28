@@ -72,9 +72,22 @@ export function formatMoney(kopecks: number | null | undefined) {
   });
 }
 
+/**
+ * Дату печатаем только тогда, когда это действительно дата в формате ISO.
+ * Всё прочее отдаём как есть: «2 квартал 2026» через new Date() давало
+ * «Invalid Date», а «01.04.2026» — 4 января, потому что JS читает такую
+ * строку по-американски. Показанная задом наперёд дата хуже неформатированной.
+ */
 export function formatDate(value: string | null | undefined) {
   if (!value) return '—';
-  return new Date(value).toLocaleDateString('ru-RU');
+  const raw = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleDateString('ru-RU');
+  }
+
+  return raw;
 }
 
 export function humanFieldValue(field: string, value: any) {
