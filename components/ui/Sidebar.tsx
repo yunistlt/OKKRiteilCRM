@@ -94,7 +94,8 @@ export default function Sidebar() {
         {
             title: 'Юридический отдел',
             items: [
-                { name: 'Юридический отдел', href: '/legal', icon: '⚖️', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Претензионно-исковая работа', href: '/legal/matters', icon: '⚖️', allowed: ['admin', 'jurist'] },
+                { name: 'Юридический отдел', href: '/legal', icon: '📑', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
             ]
         },
         {
