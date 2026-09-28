@@ -2,7 +2,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { collectAiHealth } from '@/lib/ai-health';
-import { sendTelegramNotification } from '@/lib/telegram';
+import { sendTelegramTechNotification } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
                 lines.push(`Из кэша отдано ${int(report.cacheHitsDay)} разборов — ${Math.round(report.cacheSharePct)}% работы без обращения к модели.`);
             }
 
-            await sendTelegramNotification(lines.join('\n'));
+            await sendTelegramTechNotification(lines.join('\n'));
             action = 'alerted';
         }
 

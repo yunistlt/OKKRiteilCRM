@@ -85,6 +85,40 @@ export async function sendTelegramDocument(params: {
 }
 
 /**
+ * Технические алерты (ИИ-контур, баланс, аудит, STT-воркер) — лично владельцу,
+ * а не в общий чат отдела продаж: менеджерам эти строки ничего не говорят и
+ * тонут в рабочей переписке. Адрес берём там же, где его берёт бот-РОП
+ * (sales_rop_settings.owner_chat_id), с запасным env TELEGRAM_OWNER_CHAT_ID.
+ *
+ * Если адреса нет — молчим. Падать обратно на общий чат нельзя: это ровно то,
+ * от чего уходим.
+ */
+export async function sendTelegramTechNotification(message: string) {
+    let chatId = process.env.TELEGRAM_OWNER_CHAT_ID || '';
+
+    if (!chatId) {
+        try {
+            const { supabase } = await import('@/utils/supabase');
+            const { data } = await supabase
+                .from('sales_rop_settings')
+                .select('value')
+                .eq('key', 'owner_chat_id')
+                .maybeSingle();
+            chatId = String((data as any)?.value ?? '');
+        } catch (e) {
+            console.error('[Telegram] Не удалось прочитать owner_chat_id:', e);
+        }
+    }
+
+    if (!chatId) {
+        console.warn('[Telegram] Нет адреса владельца для технического алерта — сообщение не отправлено.');
+        return;
+    }
+
+    return sendTelegramMessage(chatId, message);
+}
+
+/**
  * Legacy wrapper for Igor's notifications using default TELEGRAM_CHAT_ID
  */
 export async function sendTelegramNotification(message: string) {

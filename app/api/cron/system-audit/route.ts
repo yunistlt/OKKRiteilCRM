@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRealtimePipelineMonitoringSnapshot } from '@/lib/system-jobs-monitoring';
 import { REALTIME_SLA_THRESHOLDS } from '@/lib/realtime-sla';
 import { supabase } from '@/utils/supabase';
-import { sendTelegramNotification } from '@/lib/telegram';
+import { sendTelegramTechNotification } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
 
@@ -229,7 +229,7 @@ ${report.join('\n')}
              `.trim();
 
             if (!realtimeAlertLines.length || shouldSendRealtimeAlert) {
-                await sendTelegramNotification(message);
+                await sendTelegramTechNotification(message);
             }
 
             if (realtimeAlertLines.length > 0) {
@@ -241,14 +241,14 @@ ${report.join('\n')}
         } else {
             console.log('[SystemAuditor] All systems nominal. No alert sent.');
             if (previousHash) {
-                await sendTelegramNotification('<b>✅ Realtime pipeline recovered</b>\nLag и backlog вернулись в допустимые пределы.');
+                await sendTelegramTechNotification('<b>✅ Realtime pipeline recovered</b>\nLag и backlog вернулись в допустимые пределы.');
                 await persistAlertState([
                     { key: ALERT_HASH_KEY, value: '' },
                     { key: ALERT_RECOVERED_AT_KEY, value: new Date().toISOString() },
                 ]);
             }
             // Uncomment to verify functionality initially:
-            // await sendTelegramNotification(`<b>🤖 System Auditor: OK</b>\nNo anomalies found.`);
+            // await sendTelegramTechNotification(`<b>🤖 System Auditor: OK</b>\nNo anomalies found.`);
         }
 
         return NextResponse.json({
@@ -259,7 +259,7 @@ ${report.join('\n')}
     } catch (e: any) {
         console.error('[SystemAuditor] Fatal Error:', e);
         if (e.message !== 'Unauthorized') {
-            await sendTelegramNotification(`<b>🚨 System Auditor CRASHED</b>\n${e.message}`);
+            await sendTelegramTechNotification(`<b>🚨 System Auditor CRASHED</b>\n${e.message}`);
         }
         const isUnauthorized = e.message === 'Unauthorized';
         return NextResponse.json({ error: e.message }, { status: isUnauthorized ? 401 : 500 });

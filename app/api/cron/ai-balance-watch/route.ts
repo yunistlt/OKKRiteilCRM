@@ -2,7 +2,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { getAiBalanceSettings, getAiBalanceState, pingOpenAi } from '@/lib/ai-balance';
-import { sendTelegramNotification } from '@/lib/telegram';
+import { sendTelegramTechNotification } from '@/lib/telegram';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -72,11 +72,11 @@ export async function GET(req: NextRequest) {
             }
             lines.push('Пополнить: https://platform.openai.com/settings/organization/billing');
 
-            await sendTelegramNotification(lines.join('\n'));
+            await sendTelegramTechNotification(lines.join('\n'));
             await setLastAlertAt(new Date().toISOString());
             action = ping.quotaExhausted ? 'alerted_exhausted' : 'alerted_low';
         } else if (shouldRemindSnapshot && !muted) {
-            await sendTelegramNotification(
+            await sendTelegramTechNotification(
                 [
                     'ℹ️ <b>Остаток на OpenAI посчитать не от чего.</b>',
                     `Последний занесённый снимок баланса — от ${new Date(state.snapshotAt || '').toLocaleDateString('ru-RU')}, расходы после него его перекрыли: значит было пополнение, которое не занесли.`,
@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
             await setLastAlertAt(new Date().toISOString());
             action = 'snapshot_stale';
         } else if (!shouldAlert && !state.snapshotStale && lastAlertAt) {
-            await sendTelegramNotification(
+            await sendTelegramTechNotification(
                 `✅ Баланс OpenAI пополнен: ~€${state.balanceEur !== null ? money(state.balanceEur) : '—'}. ИИ снова работает.`,
             );
             await setLastAlertAt('');
