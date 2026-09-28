@@ -52,6 +52,7 @@ import { getOpenAIClient } from '@/utils/openai';
 import { supabase } from '@/utils/supabase';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
 import { modelTuning } from '@/lib/ai/model-compat';
+import { logAssistantDialog } from '@/lib/assistant/dialog-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -424,6 +425,15 @@ async function buildGlobalKnowledgeAnswer(
             }
             continue;
         }
+
+        void logAssistantDialog({
+            channel: 'web',
+            question,
+            answer: choice.content || '',
+            model: mainPrompt.model,
+            tools: usedTools.map((t) => t.name),
+            intent: 'global',
+        });
 
         return {
             reply: choice.content || null,
@@ -826,6 +836,21 @@ export async function POST(req: Request) {
             })
             : [];
         const formattedReply = reply;
+
+        // Разговор пишем ВСЕГДА, а не только когда у него есть ветка: именно из-за
+        // этого условия веб-чат молчал в журнале, хотя вопросы ему задавали.
+        void logAssistantDialog({
+            channel: 'web',
+            question: message,
+            answer: formattedReply,
+            userId,
+            username,
+            orderId,
+            threadId: thread?.id ?? null,
+            // Вид ответа важнее режима: часть ответов здесь собирает код, а не модель.
+            intent: `${mode}/${replyKind}`,
+            usedFallback,
+        });
 
         let traceId: string | null = null;
         if (thread) {

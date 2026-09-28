@@ -2,6 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { AiAgent, recordAiUsage } from '@/lib/ai-usage';
 import { modelTuning } from '@/lib/ai/model-compat';
+import { logAssistantDialog } from '@/lib/assistant/dialog-log';
 import {
     formatConsultantKnowledgeContext,
     getConsultantPromptConfig,
@@ -136,6 +137,9 @@ export async function askSemen(params: {
     const openai = getOpenAIClient();
     const usedTools: string[] = [];
     let model: string | null = null;
+    const startedAt = Date.now();
+    let promptTokens = 0;
+    let completionTokens = 0;
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i += 1) {
         const completion = await openai.chat.completions.create({
@@ -152,6 +156,8 @@ export async function askSemen(params: {
         } as any);
 
         model = completion.model;
+        promptTokens += completion.usage?.prompt_tokens ?? 0;
+        completionTokens += completion.usage?.completion_tokens ?? 0;
         await recordAiUsage({
             agentId: AiAgent.SEMEN,
             model: completion.model,
@@ -186,11 +192,25 @@ export async function askSemen(params: {
         }
 
         const text = (choice.content || '').trim();
-        return {
-            reply: text.length > MAX_ANSWER_CHARS ? `${text.slice(0, MAX_ANSWER_CHARS)}…` : text,
-            usedTools,
+        const reply = text.length > MAX_ANSWER_CHARS ? `${text.slice(0, MAX_ANSWER_CHARS)}…` : text;
+
+        // Разговор записываем целиком: без него судить об уме агента не по чему.
+        // Запись не ждём и не даём ей уронить ответ человеку.
+        void logAssistantDialog({
+            channel: 'telegram',
+            question: params.question,
+            answer: reply,
             model,
-        };
+            tools: usedTools,
+            managerId: params.managerId,
+            username: params.managerName,
+            intent: params.promptKey ?? 'semen_manager_chat',
+            promptTokens,
+            completionTokens,
+            latencyMs: Date.now() - startedAt,
+        });
+
+        return { reply, usedTools, model };
     }
 
     // Инструменты закончились, а ответа нет: честнее сказать это, чем выдать
