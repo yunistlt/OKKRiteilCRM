@@ -1,6 +1,7 @@
 # Исполнительные производства (ФССП) — as-built
 
-> Раздел юридического отдела: `/legal/enforcement` (роль `admin`).
+> Раздел юридического отдела: `/legal` — реестр (роль `admin`), карточка `/legal/enforcement/{id}`.
+> Прежний дашборд юротдела (Дарья + договоры) переехал на `/legal/helpdesk`, ссылка есть в шапке реестра.
 > Статус: 🟡 код готов, миграция не применена, в прод не влито. Ветка `feat/legal-enforcement`.
 
 Читать этот файл ПЕРВЫМ, до кода.
@@ -84,8 +85,9 @@
 | Подбор платежей | `lib/legal-enforcement/payment-match.ts` |
 | API | `app/api/legal/enforcement/*` |
 | Воркер | `app/api/cron/system-jobs/legal-enforcement-parse/route.ts` (крон в `vercel.json`, раз в 5 мин) |
-| Интерфейс | `app/legal/enforcement/page.tsx`, вход с `/legal` |
-| Права | `lib/rbac.ts` — `/legal/enforcement` и `/api/legal/enforcement`, роль `admin` |
+| Интерфейс | `app/legal/page.tsx` → `app/components/EnforcementRegistry.tsx` (реестр), `app/legal/enforcement/[id]/page.tsx` → `app/components/EnforcementCaseCard.tsx` (карточка), общее — `app/components/enforcement-shared.ts` |
+| Распаковка архивов | `lib/archive/unpack.ts` (ZIP через adm-zip, RAR через node-unrar-js на WebAssembly; 7z/tar — честный отказ), `lib/legal-enforcement/archive.ts` раскладывает архив на документы карточки |
+| Права | `lib/rbac.ts` — `/legal` и `/api/legal` только `admin`; helpdesk-ветки (`/legal/helpdesk`, `/api/legal/consultant|contracts|counterparty`) остались у `admin, okk, rop, manager` |
 
 ## Что нужно сделать перед прод-запуском
 
@@ -93,6 +95,19 @@
 2. Создать приватный бакет Supabase Storage **`legal-enforcement`**.
 3. Убедиться, что `CRON_SECRET` на Vercel задан (иначе крон 401 и разбор встанет молча).
 4. При желании задать `LEGAL_ENFORCEMENT_MODEL` (по умолчанию `gpt-4o-mini`).
+
+## Как этим пользуется человек
+
+Реестр — плоская таблица, строка = производство. Новая строка заводится прямо в
+таблице (юрлицо, ИНН, проект, номер ИП если известен), файлы грузятся **и из
+строки реестра, и из карточки**. Клик по строке открывает карточку: поля,
+документы, «что нашёл бот» с цитатами, платежи, статус. Кнопка разбора называется
+«Расшифровать документы».
+
+Принимаются PDF, Word, txt, сканы-картинки и **архивы ZIP и RAR** — архив бот
+раскладывает на отдельные документы карточки и ставит их в очередь разбора
+следующим заходом воркера. 7z и tar не читаются: честный отказ с просьбой
+пересохранить, потому что пустой результат выглядел бы как пустой архив.
 
 ## Грабли
 

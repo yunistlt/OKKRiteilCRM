@@ -9,7 +9,8 @@ import { scanContractFile } from '@/lib/legal-antivirus';
 import { extractEnforcementFields, detectDocKind } from '@/lib/legal-enforcement/extract';
 import { saveExtractedFields, recalcCaseStatus } from '@/lib/legal-enforcement/facts';
 import { persistSuggestions, suggestPaymentsForCase } from '@/lib/legal-enforcement/payment-match';
-import { ENFORCEMENT_BUCKET } from '@/lib/legal-enforcement/types';
+import { ENFORCEMENT_BUCKET, isArchiveFile } from '@/lib/legal-enforcement/types';
+import { unpackArchiveDocument } from '@/lib/legal-enforcement/archive';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -70,6 +71,33 @@ async function handle(req: NextRequest) {
               .eq('id', document.id);
             continue;
           }
+        }
+
+        // Архив — не документ, а пачка документов: раскладываем и идём дальше.
+        // Разобраны они будут этим же воркером на следующем заходе.
+        if (isArchiveFile(document.content_type, document.file_name)) {
+          try {
+            const unpacked = await unpackArchiveDocument({
+              caseId,
+              documentId: Number(document.id),
+              bucket: document.storage_bucket || ENFORCEMENT_BUCKET,
+              storagePath: document.storage_path,
+            });
+            warnings.push(`Архив «${document.file_name}»: файлов ${unpacked.created}` +
+              (unpacked.skipped.length > 0 ? `, пропущено ${unpacked.skipped.length}` : ''));
+            // Ставим карточку снова в очередь — распакованные файлы ждут разбора.
+            await supabase
+              .from('legal_enforcement_cases')
+              .update({ parse_status: 'queued', updated_at: new Date().toISOString() })
+              .eq('id', caseId);
+          } catch (err: any) {
+            warnings.push(`Архив «${document.file_name}» не распаковался: ${String(err?.message || err)}`);
+            await supabase
+              .from('legal_enforcement_documents')
+              .update({ extract_status: 'failed', extract_warnings: { archive: String(err?.message || err) } })
+              .eq('id', document.id);
+          }
+          continue;
         }
 
         const extraction = await extractTextFromContract({

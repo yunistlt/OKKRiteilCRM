@@ -7,6 +7,9 @@ import { z } from 'zod';
 export const ENFORCEMENT_BUCKET = 'legal-enforcement';
 export const ENFORCEMENT_MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
+// Принимаем в любом виде, в каком приходят документы от приставов: PDF, Word,
+// скан-картинка и архив целиком. ZIP бот распаковывает сам — заставлять человека
+// доставать файлы по одному значит, что он просто не будет их грузить.
 export const ENFORCEMENT_ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
   'application/msword',
@@ -15,7 +18,22 @@ export const ENFORCEMENT_ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/tiff',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/vnd.rar',
+  'application/x-rar-compressed',
+  'application/octet-stream',
 ]);
+
+/** Внутри архива разбираем только то, из чего умеем доставать текст. */
+export const ENFORCEMENT_ARCHIVE_ENTRY_RE = /\.(pdf|docx?|txt|jpe?g|png|webp|tiff?)$/i;
+
+export function isArchiveFile(contentType?: string | null, fileName?: string | null) {
+  const type = String(contentType || '').toLowerCase();
+  if (/zip|rar|7z|compressed/.test(type)) return true;
+  return /\.(zip|rar|7z|tar|gz|tgz)$/i.test(String(fileName || ''));
+}
 
 /** Стадии карточки — ровно те, что просила Тамара. */
 export const ENFORCEMENT_STATUSES = [

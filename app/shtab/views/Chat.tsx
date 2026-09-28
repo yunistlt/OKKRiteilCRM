@@ -514,7 +514,7 @@ export default function Chat({ tamara }: ViewProps) {
                                 ref={fileRef}
                                 type="file"
                                 hidden
-                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls"
+                                accept=".pdf,.doc,.docx,.txt,.csv,.tsv,.xlsx,.xls,.zip,.rar"
                                 onChange={(e) => {
                                     const f = e.target.files?.[0];
                                     if (f) void attach(f);

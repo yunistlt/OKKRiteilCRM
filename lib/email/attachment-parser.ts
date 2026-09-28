@@ -2,6 +2,7 @@ import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { extractPdfText } from '@/lib/pdf-text';
 import { decodeTextBuffer } from '@/lib/text-decode';
+import { detectArchiveKind, unpackArchive, UnsupportedArchiveError } from '@/lib/archive/unpack';
 
 /**
  * Нормализует извлеченный текст: убирает лишние пробелы, переносы строк и дубли.
@@ -27,6 +28,28 @@ export async function extractTextFromBuffer(buffer: Buffer, filename: string): P
     }
 
     try {
+        // Архив — это пачка документов, а не документ. Читаем всё, что внутри, и
+        // склеиваем с подписью имени: без неё модель не поймёт, где кончился один
+        // документ и начался другой, и смешает факты из разных бумаг.
+        const archiveKind = detectArchiveKind(buffer, filename);
+        if (archiveKind === 'unsupported') {
+            return `[архив ${filename}: формат 7z/tar не читается, пересохраните в ZIP или RAR]`;
+        }
+        if (archiveKind === 'zip' || archiveKind === 'rar') {
+            const entries = await unpackArchive(buffer, filename, (name) =>
+                /\.(pdf|docx?|txt|csv|tsv|xlsx|xls)$/i.test(name));
+            if (entries.length === 0) return `[архив ${filename}: внутри нет файлов, из которых читается текст]`;
+
+            const parts: string[] = [];
+            for (const entry of entries) {
+                // Вложенные архивы не разворачиваем: одного уровня хватает, а
+                // рекурсия — это способ получить бомбу из одного маленького файла.
+                const text = await extractTextFromBuffer(entry.data, entry.name);
+                parts.push(`=== файл из архива: ${entry.name} ===\n${text || '[текст не извлёкся]'}`);
+            }
+            return parts.join('\n\n');
+        }
+
         if (ext === 'txt') {
             return normalizeText(decodeTextBuffer(buffer));
         }
@@ -60,6 +83,7 @@ export async function extractTextFromBuffer(buffer: Buffer, filename: string): P
             return normalizeText(text);
         }
     } catch (err: any) {
+        if (err instanceof UnsupportedArchiveError) return `[${err.message}]`;
         console.error(`Ошибка при извлечении текста из файла ${filename}:`, err);
     }
 
