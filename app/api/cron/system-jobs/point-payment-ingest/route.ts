@@ -5,7 +5,6 @@ import {
   processPointPayment,
   reconcileCrmPostings,
   notifyPendingForReview,
-  sendRequestedRenotifications,
 } from '@/lib/payments/service';
 import { supabase } from '@/utils/supabase';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -66,22 +65,13 @@ export async function GET(req: NextRequest) {
       console.error('[payments] notifyPendingForReview failed:', e?.message || e);
     }
 
-    // Переотправка уведомлений, запрошенных вручную (сменили проект → сообщение в другой чат).
-    let renotified = 0;
-    try {
-      renotified = await sendRequestedRenotifications(10);
-    } catch (e: any) {
-      console.error('[payments] sendRequestedRenotifications failed:', e?.message || e);
-    }
-
-    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified, renotified });
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified });
     return NextResponse.json({
       ok: true,
-      status: results.length || reconciled || pendingNotified || renotified ? 'processed' : 'idle',
+      status: results.length || reconciled || pendingNotified ? 'processed' : 'idle',
       processed: results.length,
       reconciled,
       pendingNotified,
-      renotified,
       results,
     });
   } catch (error: any) {

@@ -288,22 +288,21 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
   if (!token) return; // не сконфигурировано — тихо пропускаем
 
-  // Выбор чата — по проекту платежа. Проект уже определён при обработке (в т.ч. по
-  // плательщику и назначению) и сильнее факта матча: платёж за ПО, сцепившийся со старым
-  // заказом Цех-Успеха в RetailCRM, уходил в чат ЗМК (инцидент 2026-09-28, платёж 1565).
-  // Пере-детект — только фолбэк для старых строк без project.
+  // Выбор чата: сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе —
+  // по проекту из назначения (столярка/консалтинг → свой чат).
   const matched = row.status === 'matched' || row.status === 'manual';
+  // Проект уже определён при обработке (в т.ч. по плательщику) — берём его; пере-детект
+  // только как фолбэк для старых строк без project.
   const stored = row.project === 'stolyarka' || row.project === 'consulting' ? row.project : null;
-  const foreign =
-    stored ??
-    (matched
-      ? null
-      : detectForeignProject({
-          purpose: row.purpose,
-          recipientInn: row.recipient_inn,
-          payerName: row.payer_name,
-          payerInn: row.payer_inn,
-        }));
+  const foreign = matched
+    ? null
+    : stored ??
+      detectForeignProject({
+        purpose: row.purpose,
+        recipientInn: row.recipient_inn,
+        payerName: row.payer_name,
+        payerInn: row.payer_inn,
+      });
   const routed = Boolean(foreign);
   const zmk = routed ? { chatId: projectChatId(foreign as any), personal: false } : await zmktlChatId();
   const chatId = zmk.chatId;
@@ -334,38 +333,4 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
   if (!res.ok) {
     throw new Error(`Telegram payments notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
   }
-
-  // Координаты сообщения — чтобы при переносе платежа в другой проект бот смог удалить
-  // своё старое сообщение в прежнем чате (инцидент 2026-09-28: платёж за ПО в чате ЗМК).
-  // Не смогли распарсить — не беда, уведомление отправлено; молча пропускаем.
-  const messageId = await res
-    .json()
-    .then((j: any) => Number(j?.result?.message_id) || null)
-    .catch(() => null);
-  if (messageId) {
-    await supabase
-      .from('point_payments')
-      .update({ telegram_chat_id: String(chatId), telegram_message_id: messageId })
-      .eq('id', row.id)
-      .then(undefined, (e: any) => console.error('[payments] save message_id failed:', e?.message || e));
-  }
-}
-
-/**
- * Удаляет ранее отправленное уведомление об оплате (например, оно ушло в чат чужого проекта).
- * Телеграм разрешает боту удалять свои сообщения не старше 48 часов — более старое удаляют
- * руками, поэтому неудача здесь не считается ошибкой.
- */
-export async function deletePaymentNotification(
-  chatId: string,
-  messageId: number,
-): Promise<boolean> {
-  const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
-  if (!token) return false;
-  const res = await fetch(`https://api.telegram.org/bot${token}/deleteMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
-  }).catch(() => null);
-  return Boolean(res?.ok);
 }

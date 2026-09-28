@@ -1,12 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from './types';
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
-import {
-  notifyPaymentTelegram,
-  notifyPendingPaymentsTelegram,
-  notifyPaymentPushErrorTelegram,
-  deletePaymentNotification,
-} from './notify';
+import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
 import { classifyProject } from './projects';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
@@ -88,8 +83,7 @@ const SELECT_COLUMNS =
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
-  'raw_payload, notified_at, pending_notified_at, renotify_requested_at, ' +
-  'telegram_chat_id, telegram_message_id, created_at, updated_at';
+  'raw_payload, notified_at, pending_notified_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -303,15 +297,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     payerName: normalized.payerName,
     payerInn: normalized.payerInn,
   };
-  const project = classifyProject(
-    signals,
-    match.status === 'matched',
-    match.method === 'order_number',
-  );
-
-  // Чужой проект (столярка/консалтинг) в RetailCRM ЗМКТЛ не ведётся — совпавший номер счёта
-  // не повод заносить чужие деньги на заказ ЗМК.
-  const foreignProject = project === 'stolyarka' || project === 'consulting';
+  const project = classifyProject(signals, match.status === 'matched');
 
   const update: Record<string, any> = {
     match_method: match.method,
@@ -324,11 +310,11 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
     updated_at: new Date().toISOString(),
   };
 
-  if (autoMatch && !foreignProject) {
+  if (autoMatch) {
     update.status = 'matched';
     update.matched_order_id = match.matchedOrderId;
     update.matched_order_number = match.matchedOrderNumber;
-  } else if (foreignProject) {
+  } else if (project === 'stolyarka' || project === 'consulting') {
     // Чужой проект опознан (в RetailCRM ЗМКТЛ не ведётся) — действие не требуется.
     update.status = 'recognized';
   } else {
@@ -347,7 +333,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   let push: { movedToProduction: boolean; productionStatusName?: string; productionNotMovedReason?: string } = {
     movedToProduction: false,
   };
-  if (autoMatch && !foreignProject && updated) {
+  if (autoMatch && updated) {
     push = await pushMatchedPaymentToCrm(updated as PointPaymentRow);
   }
 
@@ -355,7 +341,7 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   //   • ЗМКТЛ — только по разнесённым (matched); неразобранные не шлём;
   //   • столярка/консалтинг (чужой проект) — всегда, независимо от матча, в свой чат.
   const u = updated as PointPaymentRow;
-  if (!row.notified_at && updated && (u.status === 'matched' || foreignProject)) {
+  if (!row.notified_at && updated && (u.status === 'matched' || project === 'stolyarka' || project === 'consulting')) {
     await notifyPaymentTelegram(u, {
       movedToProduction: push.movedToProduction,
       productionStatusName: push.productionStatusName,
@@ -526,50 +512,4 @@ export async function reconcileCrmPostings(limit = 10): Promise<number> {
     }
   }
   return reconciled;
-}
-
-
-/**
- * Переотправка уведомлений, запрошенных вручную (`renotify_requested_at`).
- *
- * Нужна, когда у платежа поправили проект: сообщение уже ушло в чат прежнего проекта, и
- * бот должен отправить его заново — в правильный чат (инцидент 2026-09-28: платёж за ПО
- * ушёл в чат ЗМК). Флаг ставится точечно по конкретным строкам, поэтому массовой рассылки
- * по истории быть не может. Сообщение в прежнем чате бот удалить не может: message_id
- * отправленных уведомлений мы не храним — старое сообщение убирают руками.
- */
-export async function sendRequestedRenotifications(limit = 10): Promise<number> {
-  const { data, error } = await supabase
-    .from('point_payments')
-    .select(SELECT_COLUMNS)
-    .not('renotify_requested_at', 'is', null)
-    .order('renotify_requested_at', { ascending: true })
-    .limit(limit);
-  if (error) throw error;
-
-  let sent = 0;
-  for (const row of (data || []) as PointPaymentRow[]) {
-    try {
-      // Сначала убираем своё сообщение в прежнем чате, потом шлём в правильный. Не вышло
-      // (сообщение старше 48 часов или координат нет) — всё равно отправляем новое.
-      if (row.telegram_chat_id && row.telegram_message_id) {
-        await deletePaymentNotification(String(row.telegram_chat_id), Number(row.telegram_message_id));
-      }
-      await notifyPaymentTelegram(row);
-      sent += 1;
-    } catch (e: any) {
-      // Не гасим флаг: следующий проход попробует снова.
-      console.error('[payments] renotify failed:', row.id, e?.message || e);
-      continue;
-    }
-    await supabase
-      .from('point_payments')
-      .update({
-        renotify_requested_at: null,
-        notified_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', row.id);
-  }
-  return sent;
 }
