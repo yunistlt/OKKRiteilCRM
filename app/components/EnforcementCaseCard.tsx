@@ -10,6 +10,7 @@ import {
 } from '@/lib/legal-enforcement/types';
 import { isArchiveName } from '@/lib/archive/names';
 import { ENFORCEMENT_STATUS_STYLES, formatDate, formatMoney, humanFieldValue } from './enforcement-shared';
+import EnforcementDocumentPreview from './EnforcementDocumentPreview';
 import type { Doc, EnforcementCase, Fact, PaymentLink, PaymentRow } from './enforcement-shared';
 
 export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
@@ -26,6 +27,7 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ id: number; name: string } | null>(null);
 
   /** Отправляет только поля карточки; суммы вводятся рублями, на сервере хранятся в копейках. */
   const saveFields = useCallback(async () => {
@@ -49,6 +51,18 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
     // load объявлен ниже и стабилен между отрисовками — ссылка на него здесь безопасна.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseId, draft]);
+
+  /** Файл лежит в закрытом хранилище — сперва берём короткоживущую подписанную ссылку. */
+  const downloadDocument = useCallback(async (documentId: number) => {
+    try {
+      const response = await fetch(`/api/legal/enforcement/documents/${documentId}?download=1`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Не удалось открыть файл');
+      window.open(payload.url, '_blank', 'noopener');
+    } catch (e: any) {
+      setError(e?.message || 'Не удалось открыть файл');
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +240,23 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
                             ? 'разбор не удался'
                             : 'ждёт разбора'}
                     </div>
+
+                    {doc.upload_status === 'uploaded' && !isArchiveName(doc.file_name) && (
+                      <div className="mt-1 flex gap-2">
+                        <button
+                          onClick={() => setPreview({ id: doc.id, name: doc.title || doc.file_name })}
+                          className="border border-gray-300 px-2 py-0.5 text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white"
+                        >
+                          Посмотреть
+                        </button>
+                        <button
+                          onClick={() => downloadDocument(doc.id)}
+                          className="border border-gray-300 px-2 py-0.5 text-xs font-bold text-gray-700 hover:bg-gray-900 hover:text-white"
+                        >
+                          Скачать
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -369,6 +400,14 @@ export default function EnforcementCaseCard({ caseId }: { caseId: number }) {
           Образцы видны в реестре, но в суммы долга не входят.
         </span>
       </section>
+
+      {preview && (
+        <EnforcementDocumentPreview
+          documentId={preview.id}
+          name={preview.name}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
