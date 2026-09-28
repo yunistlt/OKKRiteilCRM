@@ -92,7 +92,13 @@ export function formatDate(value: string | null | undefined) {
 
 export function humanFieldValue(field: string, value: any) {
   if (value === null || value === undefined || value === '') return '—';
-  if (field.endsWith('_kopecks')) return formatMoney(Number(value));
+  if (field.endsWith('_kopecks')) {
+    // В карточке суммы лежат числом в копейках, а в предложениях бота — строкой
+    // как в документе («1 250 000,00»). Число форматируем, строку показываем
+    // как есть: Number('1 250 000,00') даёт NaN, и на экране было «не число ₽».
+    const numeric = typeof value === 'number' ? value : Number(String(value).replace(/[\s\u00a0]/g, '').replace(',', '.'));
+    return Number.isFinite(numeric) ? formatMoney(numeric) : String(value);
+  }
   if (field === 'started_on' || field.startsWith('debt_period')) return formatDate(String(value));
   if (field === 'ground') {
     return ENFORCEMENT_GROUND_LABELS[value as keyof typeof ENFORCEMENT_GROUND_LABELS] || String(value);

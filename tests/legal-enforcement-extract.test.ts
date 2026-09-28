@@ -67,6 +67,10 @@ describe('как значения показываются человеку', ()
     expect(humanFieldValue('debt_period_from', '01.04.2026')).toBe('01.04.2026');
   });
 
+  it('сумма строкой из документа не превращается в «не число»', () => {
+    expect(humanFieldValue('debt_amount_kopecks', '1 250 000,00')).not.toContain('не число');
+  });
+
   it('деньги показываются с разрядами и копейками', () => {
     expect(humanFieldValue('debt_amount_kopecks', 125000000).replace(/ /g, ' ')).toBe('1 250 000,00 ₽');
   });
