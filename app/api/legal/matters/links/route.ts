@@ -8,6 +8,46 @@ import { matterLinkSchema } from '@/lib/legal-matters/types';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Что можно подключить к делу: судебные дела и исполнительные производства,
+ * которые ведутся в своих разделах. Отдаём кандидатов для выбора человеком —
+ * автоматически ничего не связываем: ошибочная связь искажает суммы по делу.
+ */
+export async function GET(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+    const term = (new URL(request.url).searchParams.get('q') || '').trim();
+
+    let courtQuery = supabase
+      .from('court_cases')
+      .select('id, case_number, court_name, plaintiff, defendant, amount_kopecks, status')
+      .order('registered_on', { ascending: false })
+      .limit(50);
+
+    let enforcementQuery = supabase
+      .from('legal_enforcement_cases')
+      .select('id, case_number, debtor_name, claimant_name, debt_amount_kopecks, status')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (term) {
+      courtQuery = courtQuery.or(`case_number.ilike.%${term}%,plaintiff.ilike.%${term}%,defendant.ilike.%${term}%`);
+      enforcementQuery = enforcementQuery.or(`case_number.ilike.%${term}%,debtor_name.ilike.%${term}%,claimant_name.ilike.%${term}%`);
+    }
+
+    const [{ data: courtCases }, { data: enforcementCases }] = await Promise.all([courtQuery, enforcementQuery]);
+
+    return NextResponse.json({
+      court_cases: courtCases || [],
+      enforcement_cases: enforcementCases || [],
+    });
+  } catch (error: any) {
+    return NextResponse.json({ error: error?.message || 'Не удалось получить кандидатов' }, { status: 500 });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const session = await getSession();

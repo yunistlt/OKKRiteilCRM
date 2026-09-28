@@ -19,6 +19,7 @@ import {
 import RiskAmount from './RiskAmount';
 import MatterEventForm from './MatterEventForm';
 import MatterMoneyBlock from './MatterMoneyBlock';
+import MatterLinkForm from './MatterLinkForm';
 
 type Card = {
   matter: MatterRowUi;
@@ -188,6 +189,7 @@ export default function MatterCard({ id }: { id: number }) {
                 <span className="text-gray-600">№ {link.target_id}</span>
               </div>
             ))}
+            <MatterLinkForm matterId={matter.id} onSaved={load} />
           </Panel>
 
           <Panel title="Документы">
