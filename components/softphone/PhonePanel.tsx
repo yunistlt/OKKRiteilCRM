@@ -9,6 +9,7 @@ import { DialPad } from './DialPad';
 import { ActiveCall } from './ActiveCall';
 import { IncomingCallAlert } from './IncomingCallAlert';
 import { CallHistory } from './CallHistory';
+import PendingActions from '@/components/assistant/PendingActions';
 
 interface ActiveCallState {
   callId: string;
@@ -163,6 +164,10 @@ export function PhonePanel() {
         )}
 
         {activeCall && <ActiveCall call={activeCall} onEndCall={() => setActiveCall(null)} />}
+
+        {/* Что помощник приготовил: письмо или звонок уйдут только по нажатию человека. */}
+        <PendingActions />
+
 
         {error && (
           <p className="border-b border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-snug text-amber-800">

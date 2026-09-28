@@ -8,6 +8,11 @@ import {
 } from '@/lib/okk-consultant-ai';
 import { buildConsultantTools, executeConsultantTool } from '@/lib/consultant-tools';
 import { MY_DAY_TOOLS, MY_DAY_TOOL_NAMES, executeMyDayTool } from '@/lib/sales-rop/my-day-tools';
+import {
+    ASSISTANT_ACTION_TOOLS,
+    ASSISTANT_ACTION_TOOL_NAMES,
+    executeAssistantActionTool,
+} from '@/lib/assistant/action-tools';
 
 // Семён в личке у менеджера.
 //
@@ -86,7 +91,14 @@ export async function askSemen(params: {
     const ctx = { retailCrmManagerId: params.managerId, role: 'manager' } as any;
     // Разбор собственного дня: цифра, которую нельзя разложить, вызывает спор,
     // а не работу.
-    const tools = [...buildConsultantTools(ctx), ...MY_DAY_TOOLS];
+    // Заметка в карточку — односторонняя запись, там действовать не от кого и нечем:
+    // подтверждать некому, поэтому инструменты действий подключаем только в личном чате.
+    const canAct = (params.promptKey ?? 'semen_manager_chat') === 'semen_manager_chat';
+    const tools = [
+        ...buildConsultantTools(ctx),
+        ...MY_DAY_TOOLS,
+        ...(canAct ? ASSISTANT_ACTION_TOOLS : []),
+    ];
 
     // Без этой строки модель не знает, какое сегодня число, и на вопрос про
     // «28 августа» уходит смотреть выходной день, отвечая «звонков не было».
@@ -146,9 +158,11 @@ export async function askSemen(params: {
                 }
                 usedTools.push(name);
                 const result = await (
-                    MY_DAY_TOOL_NAMES.has(name)
-                        ? executeMyDayTool(name, args, params.managerId)
-                        : executeConsultantTool(name, args, ctx)
+                    ASSISTANT_ACTION_TOOL_NAMES.includes(name)
+                        ? executeAssistantActionTool(name, args, { managerId: params.managerId })
+                        : MY_DAY_TOOL_NAMES.has(name)
+                            ? executeMyDayTool(name, args, params.managerId)
+                            : executeConsultantTool(name, args, ctx)
                 ).catch((e: any) => ({ available: false, reason: e.message }));
                 messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
             }
