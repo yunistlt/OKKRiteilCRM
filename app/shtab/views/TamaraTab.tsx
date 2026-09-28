@@ -15,6 +15,8 @@ const LOOPS: { state: TamaraState; when: string; what: string }[] = [
     { state: 'approve', when: 'проверка пройдена, шаг закрыт', what: 'кивок, расслабляется' },
     { state: 'alert', when: 'сигнал в статистике на Пульте', what: 'собранная поза, замирает' },
     { state: 'away', when: '90 секунд без действий', what: 'отходит вглубь, к своим бумагам' },
+    { state: 'greet', when: 'вход в Штаб, «привет»', what: 'улыбается, машет рукой, шаг навстречу (только живая)' },
+    { state: 'pleased', when: 'комплимент, похвала', what: 'сдержанная улыбка, ладонь к груди (только живая)' },
 ];
 
 export default function TamaraTab({ tamara }: ViewProps) {

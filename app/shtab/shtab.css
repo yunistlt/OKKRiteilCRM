@@ -192,6 +192,26 @@
 
 @media (max-width:900px){.shtab .fig.photo.outfit{max-height:100%}}
 
+/* Живая Тамара — ролики во весь рост. Все ролики стоят друг на друге и
+   видна одна: подмена src у одного видео мигала бы пустым кадром.
+   Высота — как у образа дня, ширина по пропорции. Кадр роликов шире фигуры:
+   в нём место под взмах руки, поэтому по ширине он не ужимается, а выходит за
+   колонку симметрично — сцена срезает пустые поля по краям, а не Тамару. */
+.shtab .live{position:relative;display:flex;align-items:flex-end;justify-content:center;
+  height:calc(var(--shtab-vh, 100vh) - 190px);flex:0 0 auto}
+.shtab .fig.photo.live-clip{position:absolute;bottom:0;left:50%;transform:translateX(-50%);
+  height:100%;width:auto;max-width:none;opacity:0}
+.shtab .fig.photo.live-clip.on{opacity:1}
+/* Покой стоит в потоке и задаёт размер: пропорции кадра у каждого образа свои. */
+.shtab .fig.photo.live-clip.base{position:relative;left:auto;transform:none}
+
+/* Ролик двигается сам: искусственное дыхание и наклоны картинки поверх
+   живого движения дали бы двойную качку. */
+.shtab .tam-live .figin,.shtab .tam-live .breath{animation:none}
+.shtab .tam-live .lean{transform:none!important}
+.shtab .tam-live[data-state="away"] .lean{opacity:.32}
+@media (max-width:900px){.shtab .live{height:100%}}
+
 /* Голова — отдельный слой поверх тела. .headwrap растянут по сцене, а .headpose
    внутри повторяет высоту тела (100% минус 8px запаса на дыхание) и по ширине
    ужимается до самого снимка — поэтому слои совпадают при любой высоте сцены

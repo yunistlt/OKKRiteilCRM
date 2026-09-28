@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 // Наставница слева: стоит постоянно, реагирует телом на то, что владелец пишет,
 // и говорит текстом. Липсинка нет и не планируется на этом этапе — общение
@@ -11,7 +11,18 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // делается scripts/shtab-cut-tamara-layers.py; там же лежит объяснение, почему
 // растушёвка на шее односторонняя.
 
-export type TamaraState = 'idle' | 'listening' | 'thinking' | 'object' | 'explain' | 'approve' | 'alert' | 'away';
+export type TamaraState =
+    | 'idle'
+    | 'listening'
+    | 'thinking'
+    | 'object'
+    | 'explain'
+    | 'approve'
+    | 'alert'
+    | 'away'
+    // Только у живой Тамары (ролики): поздоровалась, приняла комплимент.
+    | 'greet'
+    | 'pleased';
 
 export type TamaraMessage = {
     text: string;
@@ -27,22 +38,28 @@ const ROLE_TITLES: Partial<Record<TamaraState, string>> = {
 
 type Outfit = { slug: string; title: string; imageUrl: string; reason: string };
 
+type LiveClip = { webmUrl: string; hevcUrl: string | null; posterUrl: string; durationMs: number };
+type LiveSet = { outfitSlug: string; outfitTitle: string; clips: Record<string, LiveClip> };
+
 /**
- * Образ дня.
+ * Образ дня и ролики живой Тамары.
  *
- * Пока он не приехал — и если гардероб пуст или смена одежды выключена —
+ * Пока образ не приехал — и если гардероб пуст или смена одежды выключена —
  * показывается прежняя двухслойная фигура. Пустой силуэт на первом экране
  * Штаба хуже, чем вчерашняя одежда.
  */
-function useOutfit(): Outfit | null {
+function useOutfit(): { outfit: Outfit | null; live: LiveSet | null } {
     const [outfit, setOutfit] = useState<Outfit | null>(null);
+    const [live, setLive] = useState<LiveSet | null>(null);
 
     useEffect(() => {
         let alive = true;
         fetch('/api/shtab/tamara/outfit')
             .then((r) => r.json())
             .then((j) => {
-                if (alive && j?.ok && j.outfit) setOutfit(j.outfit as Outfit);
+                if (!alive || !j?.ok) return;
+                if (j.outfit) setOutfit(j.outfit as Outfit);
+                if (j.live) setLive(j.live as LiveSet);
             })
             .catch(() => undefined);
         return () => {
@@ -50,7 +67,102 @@ function useOutfit(): Outfit | null {
         };
     }, []);
 
-    return outfit;
+    return { outfit, live };
+}
+
+/**
+ * Safari не показывает прозрачность у WebM — для него отдельный файл HEVC с
+ * альфой. Остальные браузеры HEVC с альфой не понимают: Chrome на маке его
+ * проиграет, но на чёрном фоне. Поэтому выбор по браузеру, а не по canPlayType.
+ */
+function isSafari(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent;
+    return /safari/i.test(ua) && !/chrome|chromium|crios|fxios|android|edg/i.test(ua);
+}
+
+function clipSrc(clip: LiveClip, safari: boolean): string | null {
+    return safari ? clip.hevcUrl : clip.webmUrl;
+}
+
+/**
+ * Живая Тамара: ролики во весь рост вместо картинки.
+ *
+ * Покой крутится по кругу. На смену состояния, у которого есть свой ролик,
+ * включается он — один раз, — и по окончании она возвращается в покой. Все
+ * ролики начинаются и кончаются в одной и той же позе, поэтому стык не виден.
+ *
+ * Ролики держатся на странице все сразу и переключаются видимостью: подмена
+ * src у одного видео даёт мигание пустым кадром, пока грузится новый файл.
+ */
+function LiveFigure({ live, state }: { live: LiveSet; state: TamaraState }) {
+    const safari = useMemo(isSafari, []);
+    const names = useMemo(
+        () => Object.keys(live.clips).filter((name) => clipSrc(live.clips[name], safari)),
+        [live, safari],
+    );
+    const refs = useRef<Record<string, HTMLVideoElement | null>>({});
+    const [playing, setPlaying] = useState('idle');
+
+    // Состояние без своего ролика — покой: он честнее, чем застывший кадр.
+    useEffect(() => {
+        const next = state !== 'idle' && names.includes(state) ? state : null;
+        if (!next) return;
+        const video = refs.current[next];
+        if (!video) return;
+        video.currentTime = 0;
+        void video.play().catch(() => undefined);
+        setPlaying(next);
+    }, [state, names]);
+
+    useEffect(() => {
+        for (const name of names) {
+            const video = refs.current[name];
+            if (!video) continue;
+            if (name === playing) {
+                if (name === 'idle') void video.play().catch(() => undefined);
+            } else {
+                video.pause();
+            }
+        }
+    }, [playing, names]);
+
+    const backToIdle = useCallback(() => {
+        const idle = refs.current.idle;
+        if (idle) {
+            idle.currentTime = 0;
+            void idle.play().catch(() => undefined);
+        }
+        setPlaying('idle');
+    }, []);
+
+    if (!names.includes('idle')) return null;
+
+    return (
+        <span className="live" title={live.outfitTitle || undefined}>
+            {names.map((name) => {
+                const clip = live.clips[name];
+                return (
+                    <video
+                        key={name}
+                        ref={(el) => {
+                            refs.current[name] = el;
+                        }}
+                        className={`fig photo live-clip${name === 'idle' ? ' base' : ''}${name === playing ? ' on' : ''}`}
+                        src={clipSrc(clip, safari) ?? undefined}
+                        poster={name === 'idle' ? clip.posterUrl : undefined}
+                        muted
+                        playsInline
+                        preload="auto"
+                        autoPlay={name === 'idle'}
+                        loop={name === 'idle'}
+                        onEnded={name === 'idle' ? undefined : backToIdle}
+                        aria-hidden={name !== playing}
+                    />
+                );
+            })}
+        </span>
+    );
 }
 
 /** Через сколько без единого действия она отходит к своим бумагам. */
@@ -193,7 +305,9 @@ export default function Tamara({
 }) {
     const { state, message, log, typing } = view;
     const [draft, setDraft] = useState('');
-    const outfit = useOutfit();
+    const { outfit, live } = useOutfit();
+    // В Safari без HEVC-файла живой Тамары нет — тогда стоит картинка образа.
+    const liveReady = !!live?.clips.idle && !!clipSrc(live.clips.idle, isSafari());
 
     const ask = () => {
         const text = draft.trim();
@@ -203,7 +317,7 @@ export default function Tamara({
     };
 
     return (
-        <aside className={`tam${quiet ? ' tam-quiet' : ''}`} data-state={state}>
+        <aside className={`tam${quiet ? ' tam-quiet' : ''}${liveReady ? ' tam-live' : ''}`} data-state={state}>
             {quiet ? null : (
             <div className="bubble">
                 <div className="b-name">
@@ -239,7 +353,9 @@ export default function Tamara({
                             {/* Обычный <img>, а не next/image: слои накладываются
                                 попиксельно, и любой независимый ресайз сдвинул бы
                                 голову относительно тела. */}
-                            {outfit ? (
+                            {live && liveReady ? (
+                                <LiveFigure live={live} state={state} />
+                            ) : outfit ? (
                                 /* Образ дня приходит цельным кадром — голова на нём
                                    уже своя, второй слой её бы задвоил. */
                                 <img

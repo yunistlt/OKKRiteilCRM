@@ -6,6 +6,7 @@ import SettingProposals from './SettingProposals';
 import AdProposals from './AdProposals';
 import Rich from '../Rich';
 import { lookedInto } from '@/lib/shtab/tool-titles';
+import { moodOf } from '@/lib/shtab/tamara-mood';
 
 // Разговор с Тамарой: свои чаты, память и пересказ.
 //
@@ -273,7 +274,7 @@ export default function Chat({ tamara }: ViewProps) {
             tamara.say(
                 data.reply || 'Пусто.',
                 data.used_tools?.length ? `Смотрела: ${data.used_tools.join(', ')}.` : undefined,
-                'explain',
+                moodOf(question),
             );
         } catch (e) {
             setError((e as Error).message);

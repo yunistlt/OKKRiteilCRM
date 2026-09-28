@@ -38,10 +38,31 @@ const STEP = 9;
  */
 const LEASH = 60;
 
+/** Насколько замкнутый участок может отличаться от цвета фона, чтобы считаться им. */
+const HOLE_TOLERANCE = 7;
+
+/** Меньше этого — блик на ткани, а не просвет фона. */
+const HOLE_MIN_AREA = 40;
+
 /** Сколько пикселей у границы делаем полупрозрачными, чтобы не было пилы. */
 const FEATHER = 2;
 
 export async function cutout(input: Buffer): Promise<Buffer> {
+    const cut = await cutoutKeepFrame(input);
+
+    // Обрезаем по фигуре: поля вокруг — это и есть причина, по которой она
+    // выглядела мелкой.
+    return sharp(cut).trim({ threshold: 1 }).png().toBuffer();
+}
+
+/**
+ * Снять фон, не трогая размер кадра.
+ *
+ * Нужна видео: кадры ролика обрезаются одной общей рамкой, а не каждый по
+ * своей фигуре — иначе при каждом взмахе руки рамка менялась бы и Тамара на
+ * экране дёргалась.
+ */
+export async function cutoutKeepFrame(input: Buffer, opts: { holes?: boolean } = {}): Promise<Buffer> {
     const { data, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     const { width, height, channels } = info;
     const at = (x: number, y: number) => (y * width + x) * channels;
@@ -119,6 +140,40 @@ export async function cutout(input: Buffer): Promise<Buffer> {
         if (y < height - 1) push(x, y + 1, p);
     }
 
+    // Замкнутый фон: зазор между ног, просвет под согнутой рукой. Заливка от
+    // краёв туда не доходит, когда щиколотки или локоть касаются тела, и в
+    // просвете остаётся серый клочок. Снимаем участки, которые почти в точности
+    // цвета фона, — допуск узкий, чтобы кремовая блузка или белая рубашка им не
+    // считались: у них другой оттенок, а не только яркость.
+    if (opts.holes) {
+        const near = (i: number) =>
+            Math.max(Math.abs(data[i] - bg[0]), Math.abs(data[i + 1] - bg[1]), Math.abs(data[i + 2] - bg[2])) <=
+            HOLE_TOLERANCE;
+        const visited = new Uint8Array(width * height);
+        for (let start = 0; start < width * height; start += 1) {
+            if (isBg[start] || visited[start] || !near(start * channels)) continue;
+            const part: number[] = [start];
+            visited[start] = 1;
+            for (let k = 0; k < part.length; k += 1) {
+                const p = part[k];
+                const x = p % width;
+                const y = (p - x) / width;
+                const next = [
+                    x > 0 ? p - 1 : -1,
+                    x < width - 1 ? p + 1 : -1,
+                    y > 0 ? p - width : -1,
+                    y < height - 1 ? p + width : -1,
+                ];
+                for (const q of next) {
+                    if (q < 0 || visited[q] || isBg[q] || !near(q * channels)) continue;
+                    visited[q] = 1;
+                    part.push(q);
+                }
+            }
+            if (part.length >= HOLE_MIN_AREA) for (const p of part) isBg[p] = 1;
+        }
+    }
+
     for (let p = 0; p < width * height; p += 1) {
         if (isBg[p]) data[p * channels + 3] = 0;
     }
@@ -142,9 +197,5 @@ export async function cutout(input: Buffer): Promise<Buffer> {
         for (const p of edge) data[p * channels + 3] = Math.round(data[p * channels + 3] * 0.55);
     }
 
-    const cut = await sharp(data, { raw: { width, height, channels } }).png().toBuffer();
-
-    // Обрезаем по фигуре: поля вокруг — это и есть причина, по которой она
-    // выглядела мелкой.
-    return sharp(cut).trim({ threshold: 1 }).png().toBuffer();
+    return sharp(data, { raw: { width, height, channels } }).png().toBuffer();
 }
