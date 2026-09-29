@@ -183,6 +183,7 @@ export async function runTamara(opts: {
                 ? { max_completion_tokens: opts.prompt.maxTokens, reasoning_effort: 'none' }
                 : { temperature: opts.prompt.temperature, max_tokens: opts.prompt.maxTokens }),
             messages,
+            ...(opts.conversationId ? { prompt_cache_key: `tamara-chat-${opts.conversationId}` } : {}),
             ...(opts.withTools === false ? {} : { tools: SHTAB_TOOLS as any }),
             ...(opts.schema
                 ? {
@@ -284,6 +285,12 @@ async function runViaResponses(opts: {
             tools,
             reasoning: { effort: opts.effort },
             max_output_tokens: opts.prompt.maxTokens,
+            // Ключ кэша префикса. Без него подряд идущие реплики одного
+            // разговора попадают на разные машины и общий кусок контекста —
+            // свод, файлы, история — каждый раз считается свежим входом, а он
+            // вдесятеро дороже кэшированного. Ключ — сам разговор: именно его
+            // реплики делят префикс.
+            ...(opts.conversationId ? { prompt_cache_key: `tamara-chat-${opts.conversationId}` } : {}),
             ...(opts.schema
                 ? { text: { format: { type: 'json_schema', name: opts.schema.name, strict: true, schema: opts.schema.schema } } }
                 : {}),
@@ -319,7 +326,12 @@ async function runViaResponses(opts: {
                     ? await executeShtabTool(call.name, args, { conversationId: opts.conversationId ?? null })
                     : { available: false, reason: `Неизвестный инструмент: ${call.name}` };
                 usedTools.push({ name: call.name, args });
-                input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) });
+                // Таблицей, а не JSON — по той же причине, что и в ветке
+                // chat.completions: ответ инструмента едет к модели заново на
+                // каждом следующем витке, и его размер множится на их число.
+                // Рассуждающие модели ходят именно сюда, так что до этой правки
+                // экономия работала ровно там, где её никто не получал.
+                input.push({ type: 'function_call_output', call_id: call.call_id, output: formatToolResult(result) });
             }
             continue;
         }
