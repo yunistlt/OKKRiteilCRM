@@ -19,3 +19,20 @@ ON CONFLICT (model) DO UPDATE SET
     output_per_1m = EXCLUDED.output_per_1m,
     note = EXCLUDED.note,
     updated_at = NOW();
+
+-- Пересчёт уже записанных вызовов. Журнал хранит токены, а не только деньги,
+-- поэтому стоимость восстанавливается точно — тем же правилом, что и в
+-- recordAiUsage: свежий вход по полной ставке, кэшированный по своей.
+-- Трогаем только строки с нулевой ценой при ненулевых токенах: иначе затёрли бы
+-- корректно посчитанные записи, если тариф с тех пор менялся.
+-- Идемпотентно: повторный прогон ничего не найдёт, все строки уже с ценой.
+UPDATE ai_usage_events e
+SET cost_usd = ROUND((
+        (GREATEST(e.prompt_tokens - e.cached_tokens, 0)::numeric / 1e6) * p.input_per_1m
+      + (e.cached_tokens::numeric / 1e6) * p.cached_input_per_1m
+      + (e.completion_tokens::numeric / 1e6) * p.output_per_1m
+    )::numeric, 6)
+FROM ai_model_pricing p
+WHERE p.model = REGEXP_REPLACE(e.model, '-\d{4}-\d{2}-\d{2}$', '')
+  AND COALESCE(e.cost_usd, 0) = 0
+  AND (e.prompt_tokens > 0 OR e.completion_tokens > 0);
