@@ -3,6 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { getOpenAIClient } from '../utils/openai';
 import { recordAiUsage, AiAgent } from '@/lib/ai-usage';
+import { productNames } from '@/lib/own-crm/orders';
 
 /**
  * Звонки по заказам — через общую связь call_order_link.
@@ -102,7 +103,7 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
     while (true) {
         const { data: batch, error } = await supabase
             .from('orders')
-            .select('id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload')
+            .select('id, order_id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload, "managerComment", "customerComment", "statusUpdatedAt"')
             .in('status', workingCodes)
             .order('updated_at', { ascending: true })
             .range(from, from + PAGE_SIZE - 1);
@@ -196,14 +197,14 @@ export async function calculatePriorities(limit: number = 2000, skipAI: boolean 
         }).join(', ');
         const productInfo = items || 'No products listed';
 
-        const commentsContext = `Manager: "${payload.managerComment || 'None'}"\nCustomer: "${payload.customerComment || 'None'}"`;
+        const commentsContext = `Manager: "${order.managerComment ?? payload.managerComment ?? 'None'}"\nCustomer: "${order.customerComment ?? payload.customerComment ?? 'None'}"`;
 
 
         // Collect all possible activity timestamps (Logic preserved)
         const movementDates: number[] = [];
         if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
         if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
-        if (payload.statusUpdatedAt) movementDates.push(new Date(payload.statusUpdatedAt).getTime());
+        if (order.statusUpdatedAt || payload.statusUpdatedAt) movementDates.push(new Date(order.statusUpdatedAt || payload.statusUpdatedAt).getTime());
         if (lastCall) movementDates.push(new Date(lastCall.timestamp).getTime());
 
         // Get Last 3 calls for transcripts
@@ -315,7 +316,7 @@ export async function refreshStoredPriorityForOrder(orderId: number | string, sk
 
     const { data: order, error } = await supabase
         .from('orders')
-        .select('id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload')
+        .select('id, order_id, number, status, created_at, updated_at, manager_id, totalsumm, raw_payload, "managerComment", "customerComment", "statusUpdatedAt"')
         .eq('id', numericOrderId)
         .single();
 
@@ -382,12 +383,12 @@ export async function refreshStoredPriorityForOrder(orderId: number | string, sk
     const payload = order.raw_payload as any || {};
     const items = (payload.items || []).map((item: any) => `${item.offer?.name || 'Unknown'} (x${item.quantity})`).join(', ');
     const productInfo = items || 'No products listed';
-    const commentsContext = `Manager: "${payload.managerComment || 'None'}"\nCustomer: "${payload.customerComment || 'None'}"`;
+    const commentsContext = `Manager: "${order.managerComment ?? payload.managerComment ?? 'None'}"\nCustomer: "${order.customerComment ?? payload.customerComment ?? 'None'}"`;
 
     const movementDates: number[] = [];
     if (order.updated_at) movementDates.push(new Date(order.updated_at).getTime());
     if (order.created_at) movementDates.push(new Date(order.created_at).getTime());
-    if (payload.statusUpdatedAt) movementDates.push(new Date(payload.statusUpdatedAt).getTime());
+    if (order.statusUpdatedAt || payload.statusUpdatedAt) movementDates.push(new Date(order.statusUpdatedAt || payload.statusUpdatedAt).getTime());
     if (lastCall) movementDates.push(new Date(lastCall.timestamp).getTime());
 
     const callsWithTranscript = allCalls
@@ -654,20 +655,9 @@ async function fetchProductCatalog(): Promise<string[]> {
     }
 
     try {
-        const { data: orders } = await supabase
-            .from('orders')
-            .select('raw_payload')
-            .order('created_at', { ascending: false })
-            .limit(300);
-
-        const productSet = new Set<string>();
-        (orders || []).forEach((o: any) => {
-            const items = o.raw_payload?.items || [];
-            items.forEach((item: any) => {
-                const name = item.offer?.name || item.name;
-                if (name) productSet.add(name.trim());
-            });
-        });
+        // Названия берём из позиций заказа (таблица order_items), а не из
+        // трёхсот сырых raw_payload: то же самое, но без тяжёлой выборки JSON.
+        const productSet = new Set<string>(await productNames(2000));
 
         // Add core keywords as fallback
         const coreKeywords = [
