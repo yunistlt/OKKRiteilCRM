@@ -1,8 +1,8 @@
 import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
-import { detectForeignProject, projectChatId } from './projects';
+import { detectForeignProject } from './projects';
 import { supabase } from '@/utils/supabase';
-import { ownerTelegramChatId } from '@/lib/telegram';
+import { sendNotification } from '@/lib/notify/send';
 
 /**
  * Куда уходят платёжные сообщения ЗМКТЛ.
@@ -16,26 +16,21 @@ import { ownerTelegramChatId } from '@/lib/telegram';
  * Возвращает и признак личного чата: в личке нет топиков форума, message_thread_id
  * туда слать нельзя.
  */
-async function zmktlChatId(): Promise<{ chatId: string | undefined; personal: boolean }> {
-  const owner = await ownerTelegramChatId().catch(() => '');
-  if (owner) return { chatId: owner, personal: true };
-  return { chatId: projectChatId('zmktl'), personal: false };
-}
+// Чат больше не выбирается здесь: адресат — свойство типа сообщения (lib/notify).
+// Было наоборот, и правка маршрута платежей увела их из общего чата в личку
+// владельца (инцидент 28.09.2026) — заодно с не связанными правками.
 
 // Снабженец проекта ЗМК (константа): его тег ставим в каждое уведомление об оплате.
 // Личность — запись в managers (по умолчанию id 13, Лариса Хоменко); сам ник берём из
 // managers.raw_data.telegram_username, поэтому появится в сообщении сразу, как только он там задан.
 const SUPPLY_MANAGER_ID = process.env.TELEGRAM_PAYMENTS_SUPPLY_MANAGER_ID || '13';
 
-// Уведомление об оплате в Telegram через отдельного бота (@okkzmk_bot).
-// Не пересекается с алертами Игоря (TELEGRAM_BOT_TOKEN). Чат выбирается по ПРОЕКТУ
-// платежа (см. projects.ts): ЗМКТЛ → чат ЗМК, столярка/консалтинг → свои чаты.
-// ENV:
-//   TELEGRAM_PAYMENTS_BOT_TOKEN     — токен бота уведомлений
-//   TELEGRAM_PAYMENTS_CHAT_ID       — чат ЗМКТЛ (по умолчанию)
-//   TELEGRAM_PAYMENTS_THREAD_ID     — (опц.) топик форума для чата ЗМКТЛ
-//   TELEGRAM_PROJECT_STOLYARKA_CHAT — чат столярки
-//   TELEGRAM_PROJECT_CONSULTING_CHAT— чат консалтинга
+// Уведомления об оплатах шлём типами сообщений (lib/notify/catalog.ts):
+//   payment.received            — разнесённая оплата ЗМКТЛ → общий чат отдела;
+//   payment.pending_digest      — поступления без заказа → общий чат отдела;
+//   payment.push_error          — оплата не прошла в CRM → владельцу в личку;
+//   payment.project_stolyarka / payment.project_consulting → чаты своих проектов.
+// Адресата любого типа человек меняет в интерфейсе (/settings/notifications).
 
 const SOURCE_LABELS: Record<string, string> = { tochka: 'Точка', tbank: 'Т-Банк' };
 
@@ -165,10 +160,7 @@ export async function notifyPendingPaymentsTelegram(
     rows: PointPaymentRow[],
     opts: { totalCount: number; totalKopecks: number },
 ): Promise<void> {
-    const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
-    if (!token || rows.length === 0) return;
-    const { chatId, personal } = await zmktlChatId();
-    if (!chatId) return;
+    if (rows.length === 0) return;
 
     const MAX_ROWS = 10;
     const lines: string[] = [];
@@ -197,23 +189,7 @@ export async function notifyPendingPaymentsTelegram(
     const reviewers = await resolveReviewTags().catch(() => []);
     if (reviewers.length) lines.push(`🧾 Разбор: ${reviewers.join(' ')}`);
 
-    const body: Record<string, unknown> = {
-        chat_id: chatId,
-        text: lines.join('\n'),
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-    };
-    const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-    if (!personal && threadId) body.message_thread_id = Number(threadId);
-
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-        throw new Error(`Telegram pending notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    }
+    await sendNotification('payment.pending_digest', lines.join('\n'));
 }
 
 /**
@@ -238,9 +214,6 @@ async function resolveReviewTags(): Promise<string[]> {
 export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error: string): Promise<void> {
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
     if (!token) return;
-    const { chatId, personal } = await zmktlChatId();
-    if (!chatId) return;
-
     const lines: string[] = [];
     lines.push(`❗ <b>Оплата не проведена в CRM</b>`);
     lines.push(`<b>${esc(formatRub(Number(row.amount_kopecks)))}</b>${row.payer_name ? ` · ${esc(row.payer_name)}` : ''}`);
@@ -253,19 +226,9 @@ export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error
     const reviewers = await resolveReviewTags().catch(() => []);
     if (reviewers.length) lines.push(`🧾 ${reviewers.join(' ')}`);
 
-    const body: Record<string, unknown> = {
-        chat_id: chatId,
-        text: lines.join('\n'),
-        parse_mode: 'HTML',
-        disable_web_page_preview: true,
-    };
-    const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-    if (!personal && threadId) body.message_thread_id = Number(threadId);
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-    });
+    await sendNotification('payment.push_error', lines.join('\n')).catch((e) =>
+        console.error('[payments] push error notify failed:', e?.message || e),
+    );
 }
 
 function plural(n: number, one: string, few: string, many: string): string {
@@ -285,11 +248,9 @@ function daysSince(date: string | null): number | null {
 
 /** Отправляет уведомление об оплате. No-op, если бот/чат не сконфигурированы. */
 export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOptions = {}): Promise<void> {
-  const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
-  if (!token) return; // не сконфигурировано — тихо пропускаем
-
-  // Выбор чата: сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе —
-  // по проекту из назначения (столярка/консалтинг → свой чат).
+  // Тип сообщения зависит от проекта платежа; адресат каждого типа — в настройках.
+  // Сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе — по проекту
+  // из назначения (столярка/консалтинг → свой чат).
   const matched = row.status === 'matched' || row.status === 'manual';
   // Проект уже определён при обработке (в т.ч. по плательщику) — берём его; пере-детект
   // только как фолбэк для старых строк без project.
@@ -304,9 +265,12 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
         payerInn: row.payer_inn,
       });
   const routed = Boolean(foreign);
-  const zmk = routed ? { chatId: projectChatId(foreign as any), personal: false } : await zmktlChatId();
-  const chatId = zmk.chatId;
-  if (!chatId) return;
+  const code =
+    foreign === 'stolyarka'
+      ? 'payment.project_stolyarka'
+      : foreign === 'consulting'
+        ? 'payment.project_consulting'
+        : 'payment.received';
 
   // Теги ответственных — только для ЗМК (у чужих проектов нет заказа/снабженца ЗМК).
   const tagOpts: NotifyOptions = { ...opts };
@@ -315,22 +279,5 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
     tagOpts.supplyTag = opts.supplyTag ?? (await resolveSupplyTag().catch(() => null));
   }
 
-  const body: Record<string, unknown> = {
-    chat_id: chatId,
-    text: buildMessage(row, routed, tagOpts),
-    parse_mode: 'HTML',
-    disable_web_page_preview: true,
-  };
-  // Топик форума — только для чата по умолчанию (у маршрутных чатов свой).
-  const threadId = process.env.TELEGRAM_PAYMENTS_THREAD_ID;
-  if (!routed && !zmk.personal && threadId) body.message_thread_id = Number(threadId);
-
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    throw new Error(`Telegram payments notify → ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  }
+  await sendNotification(code, buildMessage(row, routed, tagOpts));
 }

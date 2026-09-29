@@ -13,8 +13,9 @@ import {
     firstNameOf,
     formatOwnerReport,
     formatPersonalPlan,
-    splitTelegramMessage,
 } from '@/lib/sales-rop/format';
+import { sendNotification } from '@/lib/notify/send';
+import type { NotifyContext } from '@/lib/notify/route';
 import type { OwnerRow } from '@/lib/sales-rop/format';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { analyzeClient } from '@/lib/sales-rop/analyst';
@@ -252,25 +253,13 @@ async function loadDirectChats(): Promise<Map<number, string>> {
     return new Map(((data ?? []) as any[]).map((r) => [Number(r.manager_id), String(r.telegram_chat_id)]));
 }
 
-async function sendToChat(chatId: string, text: string): Promise<void> {
-    const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
-    if (!token || !chatId) return;
-    // Длинный план уходит несколькими сообщениями подряд: Telegram не принимает
-    // больше 4096 символов за раз, а обрезать список задач нельзя — пропавшая
-    // строка это несделанная работа.
-    for (const chunk of splitTelegramMessage(text)) {
-        const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: chunk,
-                parse_mode: 'HTML',
-                disable_web_page_preview: true,
-            }),
-        });
-        if (!res.ok) throw new Error(`Telegram → ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    }
+/**
+ * Отправка по ТИПУ сообщения: куда уедет план или сводка, решают настройки
+ * маршрутов (lib/notify), а не это место в коде. Личный план — в личку менеджеру,
+ * сводка — в общий чат; поменять это можно в интерфейсе, не трогая код.
+ */
+async function sendTyped(code: string, text: string, ctx: NotifyContext = {}): Promise<void> {
+    await sendNotification(code, text, ctx);
 }
 
 /**
@@ -280,9 +269,15 @@ async function sendToChat(chatId: string, text: string): Promise<void> {
  * не должен оставлять без плана остальной отдел. Провал не прячем: он вернётся
  * строкой и попадёт владельцу.
  */
-async function sendToChatSafe(chatId: string, text: string, who: string, failures: string[]): Promise<void> {
+async function sendTypedSafe(
+    code: string,
+    text: string,
+    who: string,
+    failures: string[],
+    ctx: NotifyContext = {},
+): Promise<void> {
     try {
-        await sendToChat(chatId, text);
+        await sendNotification(code, text, ctx);
     } catch (e: any) {
         failures.push(`${who}: ${String(e?.message ?? e).slice(0, 160)}`);
     }
@@ -647,11 +642,8 @@ async function loadClientTouchTasks(settings: Settings, today: string): Promise<
  */
 export async function notifyOwnerFailure(where: string, error: string, tail?: string): Promise<void> {
     try {
-        const settings = await loadSettings();
-        const chat = settings.ownerChatId || settings.chatId;
-        if (!chat) return;
-        await sendToChat(
-            chat,
+        await sendTyped(
+            'sales.bot_failure',
             `⚠️ Бот-РОП: ${where} не отработал.\n\nОшибка: ${String(error).slice(0, 300)}\n\n` +
                 (tail ?? 'Планы и отчёты сегодня не ушли. Запустить вручную можно повторным вызовом крона.'),
         );
@@ -943,8 +935,12 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             const dm = bucket.managerId !== null ? direct.get(bucket.managerId) : undefined;
             // Нет личного чата — план всё равно уходит в общий: человек не должен
             // остаться без работы из-за того, что не написал боту.
-            const target = dm || settings.chatId;
-            if (target && text) await sendToChatSafe(target, text, bucket.name, failures);
+            if (text) {
+                await sendTypedSafe('sales.plan_daily_dm', text, bucket.name, failures, {
+                    managerChatId: dm ?? null,
+                    fallbackToGroup: true,
+                });
+            }
         }
 
         // Копия владельцу — те же сообщения слово в слово, с пометкой, чьё.
@@ -959,8 +955,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             for (let i = 0; i < buckets.length; i += 1) {
                 const text = messages[i];
                 if (!text) continue;
-                await sendToChatSafe(
-                    settings.ownerChatId,
+                await sendTypedSafe(
+                    'sales.plan_copy_owner',
                     `📨 Копия плана: ${buckets[i].name}\n\n${text}`,
                     'копия плана владельцу',
                     failures,
@@ -979,7 +975,7 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
                 const where = b.managerId !== null && direct.has(b.managerId) ? '' : ' (плана в личке нет — смотри выше)';
                 lines.push(`${who} — ${live.length} шт. на ${Math.round(sum).toLocaleString('ru-RU')} ₽${where}`);
             }
-            await sendToChatSafe(settings.chatId, lines.join('\n'), 'сводка в общий чат', failures);
+            await sendTypedSafe('sales.plan_daily_group', lines.join('\n'), 'сводка в общий чат', failures);
         }
         sent = true;
 
@@ -1400,11 +1396,16 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             const managerId = managerIds[i];
             const dm = managerId === null ? undefined : direct.get(managerId);
             const text = preview[i + 1];
-            if (text) await sendToChatSafe(dm || settings.chatId, text, String(managerId ?? 'без менеджера'), failures);
+            if (text) {
+                await sendTypedSafe('sales.evening_review_dm', text, String(managerId ?? 'без менеджера'), failures, {
+                    managerChatId: dm ?? null,
+                    fallbackToGroup: true,
+                });
+            }
         }
 
         if (settings.ownerReport && settings.ownerChatId) {
-            await sendToChatSafe(settings.ownerChatId, ownerText, 'отчёт владельцу', failures);
+            await sendTypedSafe('sales.owner_report', ownerText, 'отчёт владельцу', failures);
         }
         sent = true;
         if (failures.length > 0) degraded.push(`отправка: ${failures.join('; ')}`);
