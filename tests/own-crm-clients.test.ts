@@ -8,8 +8,8 @@ import { describe, it, expect, vi } from 'vitest';
 const { db } = vi.hoisted(() => ({
     db: {
         clients: [
-            { external_id: '100', inn: null, kpp: null, company_name: 'ООО Ромашка', orders_count: 3, total_summ: 500000 },
-            { external_id: '200', inn: '7701234567', kpp: '770101001', company_name: 'ООО «Ромашка»', orders_count: 1, total_summ: 120000 },
+            { id: '100', inn: null, kpp: null, company_name: 'ООО Ромашка', orders_count: 3, total_summ: 500000 },
+            { id: '200', inn: '7701234567', kpp: '770101001', company_name: 'ООО «Ромашка»', orders_count: 1, total_summ: 120000 },
         ],
         orders: [
             { number: '54872', contragent: { INN: '7701234567', KPP: '770101001', legalName: 'Общество с ограниченной ответственностью «Ромашка»', legalAddress: 'Москва, Тверская, 1' } },
@@ -27,11 +27,11 @@ vi.mock('@/utils/supabase', () => {
             eq: (col: string, val: any) => {
                 if (col === 'cust_id') return chain(db.canon.filter((r) => r.cust_id === val));
                 if (col === 'group_key') return chain(db.canon.filter((r) => r.group_key === val));
-                if (col === 'external_id') return chain(db.clients.filter((r) => r.external_id === val));
+                if (col === 'id') return chain(db.clients.filter((r) => r.id === val));
                 if (col === 'inn') return chain(db.clients.filter((r) => r.inn === val));
                 return c;
             },
-            in: (_col: string, vals: any[]) => chain(db.clients.filter((r) => vals.includes(r.external_id))),
+            in: (_col: string, vals: any[]) => chain(db.clients.filter((r) => vals.includes(r.id))),
             filter: () => c,
             not: () => c,
             order: () => c,

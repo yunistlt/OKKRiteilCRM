@@ -91,6 +91,9 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     { key: 'messenger', title: 'Мессенджер', section: 'Связь', path: '/messenger', route: '/messenger' },
 
     // ── Юридический отдел ─────────────────────────────────────────────────
+    { key: 'clients', title: 'Клиенты', section: 'ОКК', path: '/clients', route: '/clients' },
+    { key: 'client-card', title: 'Карточка клиента', section: 'ОКК', path: '/clients/1', route: '/clients/[id]' },
+
     { key: 'legal', title: 'Реестр исполнительных производств', section: 'Юридический отдел', path: '/legal', route: '/legal' },
     { key: 'legal-helpdesk', title: 'Юридический помощник', section: 'Юридический отдел', path: '/legal/helpdesk', route: '/legal/helpdesk' },
     { key: 'legal-enforcement-case', title: 'Карточка исполнительного производства', section: 'Юридический отдел', path: '/legal/enforcement/1', route: '/legal/enforcement/[id]' },

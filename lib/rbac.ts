@@ -21,6 +21,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/telegram', label: 'API Telegram-ботов', description: 'Вебхуки Telegram (ассистент РОПа); проверка — секрет вебхука.', category: 'Управление', allowed: ['admin'] },
     { prefix: '/api/calls', label: 'API телефона', description: 'Звонки менеджера из интерфейса: начать звонок, история, поток событий.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/assistant', label: 'API помощника менеджера', description: 'Действия, которые помощник подготовил: письмо клиенту и звонок — выполняются только после подтверждения человеком.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/clients', label: 'Клиенты', description: 'Реестр клиентов и карточка клиента: реквизиты, связанные карточки одного юрлица, заказы.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/orders', label: 'Заказы', description: 'Рабочий список заказов с панелью фильтров и статусами — отдельно от дашборда ОКК.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/settings/ai/training-examples', label: 'Примеры обучения', description: 'Управление обучающими примерами и датасетом.', category: 'Система', allowed: ['admin'] },
