@@ -140,7 +140,7 @@ export default function NotificationsSettingsPage() {
                 key={r.code}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: 'minmax(260px, 2fr) minmax(220px, 1fr) 110px',
+                  gridTemplateColumns: 'minmax(240px, 2fr) minmax(200px, 1fr) minmax(150px, 1fr) 100px',
                   gap: 12,
                   borderBottom: '1px solid #e5e5e5',
                   padding: '8px 10px',
@@ -179,6 +179,29 @@ export default function NotificationsSettingsPage() {
                       ))}
                     </select>
                   )}
+                </div>
+
+                <div>
+                  <input
+                    value={r.chatId ?? ''}
+                    placeholder="свой чат (необязательно)"
+                    onChange={(e) =>
+                      setRoutes((rs) =>
+                        rs.map((x) => (x.code === r.code ? { ...x, chatId: e.target.value || null } : x)),
+                      )
+                    }
+                    onBlur={(e) => save(r, { chatId: e.target.value || null })}
+                    style={{
+                      width: '100%',
+                      fontSize: 13,
+                      padding: '5px 6px',
+                      border: '1px solid #ccc',
+                      borderRadius: 0,
+                    }}
+                  />
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>
+                    Пусто — адрес берётся по роли адресата
+                  </div>
                 </div>
 
                 <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center', paddingTop: 6 }}>
