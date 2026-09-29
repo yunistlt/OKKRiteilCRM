@@ -19,6 +19,8 @@ export type OrderFieldMeta = {
 type Cache = {
   fields: Map<string, OrderFieldMeta>;
   values: Map<string, Map<string, string>>;
+  /** Названия элементов обычных справочников RetailCRM: статусы, магазины, способы заказа. */
+  entities: Map<string, Map<string, string>>;
   loadedAt: number;
 };
 
@@ -30,9 +32,10 @@ async function load(): Promise<Cache> {
     return cache;
   }
 
-  const [fieldsRes, dictRes] = await Promise.all([
+  const [fieldsRes, dictRes, entityRes] = await Promise.all([
     supabase.from('retailcrm_custom_fields').select('code, name, type, dictionary').eq('entity', 'order'),
     supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').not('dictionary_code', 'is', null),
+    supabase.from('retailcrm_dictionaries').select('entity_type, item_code, item_name').is('dictionary_code', null),
   ]);
 
   const fields = new Map<string, OrderFieldMeta>();
@@ -48,7 +51,18 @@ async function load(): Promise<Cache> {
     values.get(row.dictionary_code)!.set(String(row.item_code), row.item_name);
   }
 
-  cache = { fields, values, loadedAt: Date.now() };
+  const entities = new Map<string, Map<string, string>>();
+  for (const row of (entityRes.data || []) as any[]) {
+    if (!row.entity_type) {
+      continue;
+    }
+    if (!entities.has(row.entity_type)) {
+      entities.set(row.entity_type, new Map());
+    }
+    entities.get(row.entity_type)!.set(String(row.item_code), row.item_name);
+  }
+
+  cache = { fields, values, entities, loadedAt: Date.now() };
   return cache;
 }
 
@@ -94,4 +108,18 @@ export async function fieldValue(code: string, value: unknown): Promise<string |
 export async function orderFields(): Promise<OrderFieldMeta[]> {
   const { fields } = await load();
   return Array.from(fields.values());
+}
+
+/**
+ * Название элемента обычного справочника RetailCRM по его коду:
+ * статус заказа, магазин, способ заказа. Неизвестный код отдаём как есть —
+ * пробел должно быть видно, а не замаскировано.
+ */
+export async function entityName(entityType: string, code: unknown): Promise<string | null> {
+  if (code === null || code === undefined || code === '') {
+    return null;
+  }
+
+  const { entities } = await load();
+  return entities.get(entityType)?.get(String(code)) || String(code);
 }
