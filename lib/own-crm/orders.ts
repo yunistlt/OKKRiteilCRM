@@ -158,3 +158,78 @@ export async function describeOrder(order: OwnOrder): Promise<OrderFact[]> {
 
   return facts;
 }
+
+/** Позиция заказа. Имена полей — RetailCRM, как в таблице order_items. */
+export type OwnOrderItem = {
+  id: number;
+  order_id: number;
+  quantity: number | null;
+  initialPrice: number | null;
+  discountTotal: number | null;
+  status: string | null;
+  offer: { id?: number; name?: string; article?: string; xmlId?: string } | null;
+};
+
+/** Позиции заказов по идентификаторам заказа в RetailCRM. */
+export async function loadOrderItems(crmOrderIds: number[]): Promise<Map<number, OwnOrderItem[]>> {
+  const result = new Map<number, OwnOrderItem[]>();
+  if (!crmOrderIds.length) {
+    return result;
+  }
+
+  const { data, error } = await supabase
+    .from('order_items')
+    .select('id, order_id, quantity, "initialPrice", "discountTotal", status, offer')
+    .in('order_id', crmOrderIds)
+    .order('ordering', { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  for (const row of (data || []) as unknown as OwnOrderItem[]) {
+    const list = result.get(row.order_id) || [];
+    list.push(row);
+    result.set(row.order_id, list);
+  }
+
+  return result;
+}
+
+/** Состав заказа строкой: «Верстак (x2), Стеллаж (x1)». */
+export function itemsToText(items: OwnOrderItem[] | undefined): string {
+  if (!items || !items.length) {
+    return '';
+  }
+
+  return items
+    .map((item) => `${item.offer?.name || 'Без названия'} (x${item.quantity ?? 1})`)
+    .join(', ');
+}
+
+/**
+ * Названия товаров из последних позиций заказов — для поиска и подсказок.
+ * Сортируем по дате позиции, а не по её номеру: номера RetailCRM не идут
+ * строго по времени, и свежие товары выпадали из каталога.
+ */
+export async function productNames(limit = 5000): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('order_items')
+    .select('offer')
+    .order('createdAt', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  const names = new Set<string>();
+  for (const row of (data || []) as any[]) {
+    const name = row.offer?.name;
+    if (name) {
+      names.add(String(name).trim());
+    }
+  }
+
+  return Array.from(names);
+}
