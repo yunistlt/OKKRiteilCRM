@@ -111,25 +111,3 @@ export async function ownerTelegramChatId(): Promise<string> {
     }
 }
 
-export async function sendTelegramTechNotification(message: string) {
-    const chatId = await ownerTelegramChatId();
-
-    if (!chatId) {
-        console.warn('[Telegram] Нет адреса владельца для технического алерта — сообщение не отправлено.');
-        return;
-    }
-
-    return sendTelegramMessage(chatId, message);
-}
-
-/**
- * Legacy wrapper for Igor's notifications using default TELEGRAM_CHAT_ID
- */
-export async function sendTelegramNotification(message: string) {
-    const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!chatId) {
-        console.warn('[Telegram] TELEGRAM_CHAT_ID not set for default notification.');
-        return;
-    }
-    return sendTelegramMessage(chatId, message);
-}

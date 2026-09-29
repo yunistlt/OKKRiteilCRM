@@ -2,7 +2,7 @@ import { supabase } from '@/utils/supabase';
 import { matchCallToOrders, RawCall, saveMatches } from '@/lib/call-matching';
 import { safeEnqueueSystemJob } from '@/lib/system-jobs';
 import { bestEffortInsertIncomingLegacyCall } from '@/lib/telphin-legacy-compat';
-import { sendTelegramNotification } from '@/lib/telegram';
+import { sendNotification } from '@/lib/notify/send';
 import { syncCanonicalTelphinCallFromWebhook } from '@/lib/telphin-webhook-sync';
 import { broadcastCallEvent } from '@/lib/call-broadcast';
 import { NextRequest, NextResponse } from 'next/server';
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
         `Заказ: ${matchedOrderId ?? 'не найден'}`,
       ].join('\n');
 
-      await sendTelegramNotification(message);
+      await sendNotification('calls.missed_incoming', message);
     }
 
     // Отправляем SSE событие о входящем звонке

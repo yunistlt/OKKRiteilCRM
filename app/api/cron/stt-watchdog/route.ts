@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSystemJobsPipelineRuntimeEnabled } from '@/lib/system-jobs';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
 import { isSttPullMode } from '@/lib/transcribe';
-import { sendTelegramTechNotification } from '@/lib/telegram';
+import { sendNotification } from '@/lib/notify/send';
 import { supabase } from '@/utils/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     let action = 'none';
     if (stalled && !alerted) {
-      await sendTelegramTechNotification(
+      await sendNotification('system.stt_watchdog', 
         `⚠️ STT-воркер не тянет: за час обработано ${doneLastHour}, в очереди ${waiting} звонков на расшифровку` +
         (minutesSince !== null ? ` (последняя активность ${minutesSince} мин назад)` : '') + `.\n` +
         `Проверьте воркер на Timeweb: systemctl status stt-worker`,
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       await setAlerted(true);
       action = 'alerted';
     } else if (!stalled && alerted) {
-      await sendTelegramTechNotification(`✅ STT-воркер снова в норме (за час обработано ${doneLastHour}).`);
+      await sendNotification('system.stt_watchdog', `✅ STT-воркер снова в норме (за час обработано ${doneLastHour}).`);
       await setAlerted(false);
       action = 'recovered';
     }

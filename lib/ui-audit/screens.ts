@@ -101,6 +101,7 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     { key: 'settings-access', title: 'Доступы и права', section: 'Система', path: '/settings/access', route: '/settings/access' },
     { key: 'settings-managers', title: 'Менеджеры', section: 'Система', path: '/settings/managers', route: '/settings/managers' },
     { key: 'settings-statuses', title: 'Статусы заказов', section: 'Система', path: '/settings/statuses', route: '/settings/statuses' },
+    { key: 'settings-notifications', title: 'Уведомления', section: 'Система', path: '/settings/notifications', route: '/settings/notifications' },
     { key: 'settings-sales-rop', title: 'Бот-РОП', section: 'Система', path: '/settings/sales-rop', route: '/settings/sales-rop' },
     { key: 'settings-rules', title: 'Правила', section: 'Система', path: '/settings/rules', route: '/settings/rules' },
     { key: 'settings-templates', title: 'Шаблоны документов', section: 'Система', path: '/settings/templates', route: '/settings/templates' },

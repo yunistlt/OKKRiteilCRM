@@ -105,6 +105,7 @@ export default function Sidebar() {
                 { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
                 { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
+                { name: 'Уведомления', href: '/settings/notifications', icon: '🔔', allowed: ['admin'] },
                 { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
                 { name: 'Режим тестировщика', href: '/settings/qa', icon: '🧪', allowed: ['admin'] },
             ]

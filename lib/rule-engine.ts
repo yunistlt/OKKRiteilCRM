@@ -3,7 +3,7 @@ import { supabase } from '@/utils/supabase';
 import { toLegacyEventRow, STATUS_FIELD, parseEventValue } from '@/lib/order-events';
 import { analyzeTranscript, analyzeText } from './semantic';
 import { evaluateChecklist } from './quality-control';
-import { sendTelegramNotification } from './telegram';
+import { sendNotification } from '@/lib/notify/send';
 
 export interface RuleLogicBlock {
     block: string;

@@ -2,7 +2,7 @@ import { isCronHeaderAuthorized } from '@/lib/cron-auth';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { generateHumanNotification } from '@/lib/semantic';
-import { sendTelegramNotification } from '@/lib/telegram';
+import { sendNotification } from '@/lib/notify/send';
 
 // Vercel Cron will hit this endpoint every 10 minutes
 export async function GET(req: Request) {
@@ -73,7 +73,7 @@ export async function GET(req: Request) {
         );
 
         // 4. Send and Mark as Notified
-        await sendTelegramNotification(aiMessage);
+        await sendNotification('quality.rule_violation', aiMessage);
 
         const { error: updError } = await supabase
             .from('okk_violations')
