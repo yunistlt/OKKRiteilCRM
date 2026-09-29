@@ -63,6 +63,11 @@ export interface NotifyOptions {
   managerTag?: string | null;
   /** Тег снабженца (Лариса), напр. «@nick». Пусто, пока ник не задан в managers. */
   supplyTag?: string | null;
+  /**
+   * Статус заказа на момент отправки — для досылки, когда перевод в производство
+   * делали не сейчас. Говорим, где заказ стоит, а не выдумываем факт перевода.
+   */
+  currentStatusName?: string | null;
 }
 
 // Тег участника по его managers.id: @ник, если задан telegram_username; иначе ФИО (без пинга);
@@ -140,6 +145,8 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
       lines.push(`🏭 Заказ №${num} переведён в статус «${esc(name)}»`);
     } else if (opts.productionNotMovedReason) {
       lines.push(`❗ Заказ №${num} НЕ переведён в производство — ${esc(opts.productionNotMovedReason)}`);
+    } else if (opts.currentStatusName) {
+      lines.push(`🏭 Заказ №${num} в статусе «${esc(opts.currentStatusName)}»`);
     }
   } else {
     lines.push(`🟡 Требует ручного разбора — <a href="${paymentsPageLink()}">открыть</a>`);

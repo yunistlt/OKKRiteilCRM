@@ -357,6 +357,28 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
 }
 
 /**
+ * Человеческое имя текущего статуса заказа. Имена статусов — из справочника
+ * RetailCRM, не выдумываем свои.
+ */
+async function orderStatusName(orderNumber: string | null): Promise<string | null> {
+  if (!orderNumber) return null;
+  const { data: order } = await supabase
+    .from('orders')
+    .select('status')
+    .eq('number', String(orderNumber))
+    .limit(1)
+    .maybeSingle();
+  const code = (order as any)?.status;
+  if (!code) return null;
+  const { data: st } = await supabase
+    .from('statuses')
+    .select('name')
+    .eq('code', String(code))
+    .maybeSingle();
+  return ((st as any)?.name as string) || null;
+}
+
+/**
  * Досылка уведомлений по просьбе человека.
  *
  * Бывает, что сообщение ушло не туда (маршрут был неверным) или не ушло вовсе —
@@ -380,7 +402,11 @@ export async function resendRequestedNotifications(limit = 20): Promise<number> 
   for (const row of rows) {
     let chatId: string | null = null;
     try {
-      const res = await notifyPaymentTelegram(row);
+      // Перевод в производство делали не сейчас, поэтому говорим, где заказ стоит
+      // сегодня: без этой строки досланное сообщение выглядит обрезанным.
+      const res = await notifyPaymentTelegram(row, {
+        currentStatusName: await orderStatusName(row.matched_order_number),
+      });
       chatId = res?.chatId ?? null;
       if (chatId) sent += 1;
       else console.warn('[payments] resend skipped:', row.id, res?.skipped ?? 'unknown');
