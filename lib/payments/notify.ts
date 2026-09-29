@@ -2,7 +2,7 @@ import type { PointPaymentRow } from './service';
 import { kopecksToRubles } from './types';
 import { detectForeignProject } from './projects';
 import { supabase } from '@/utils/supabase';
-import { sendNotification } from '@/lib/notify/send';
+import { sendNotification, type SendResult } from '@/lib/notify/send';
 
 /**
  * Куда уходят платёжные сообщения ЗМКТЛ.
@@ -246,8 +246,15 @@ function daysSince(date: string | null): number | null {
     return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
 
-/** Отправляет уведомление об оплате. No-op, если бот/чат не сконфигурированы. */
-export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOptions = {}): Promise<void> {
+/**
+ * Отправляет уведомление об оплате и возвращает исход: в какой чат ушло или
+ * почему пропущено. Исход нужен вызывающему, чтобы не выдавать ненастроенный
+ * адрес за доставленное сообщение.
+ */
+export async function notifyPaymentTelegram(
+  row: PointPaymentRow,
+  opts: NotifyOptions = {},
+): Promise<SendResult> {
   // Тип сообщения зависит от проекта платежа; адресат каждого типа — в настройках.
   // Сматченный на заказ RetailCRM → всегда ЗМКТЛ (заказ реальный); иначе — по проекту
   // из назначения (столярка/консалтинг → свой чат).
@@ -279,5 +286,5 @@ export async function notifyPaymentTelegram(row: PointPaymentRow, opts: NotifyOp
     tagOpts.supplyTag = opts.supplyTag ?? (await resolveSupplyTag().catch(() => null));
   }
 
-  await sendNotification(code, buildMessage(row, routed, tagOpts));
+  return sendNotification(code, buildMessage(row, routed, tagOpts));
 }

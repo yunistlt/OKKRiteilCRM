@@ -378,17 +378,23 @@ export async function resendRequestedNotifications(limit = 20): Promise<number> 
   const rows = (data ?? []) as PointPaymentRow[];
   let sent = 0;
   for (const row of rows) {
+    let chatId: string | null = null;
     try {
-      await notifyPaymentTelegram(row);
-      sent += 1;
+      const res = await notifyPaymentTelegram(row);
+      chatId = res?.chatId ?? null;
+      if (chatId) sent += 1;
+      else console.warn('[payments] resend skipped:', row.id, res?.skipped ?? 'unknown');
     } catch (e: any) {
       console.error('[payments] resend notify failed:', row.id, e?.message || e);
     }
+    // Отметку «уведомлено» ставим только по факту отправки: иначе ненастроенный
+    // адрес выглядел бы в базе как доставленное сообщение, и тишину в чате было
+    // бы нечем объяснить.
     await supabase
       .from('point_payments')
       .update({
         renotify_requested_at: null,
-        notified_at: new Date().toISOString(),
+        ...(chatId ? { notified_at: new Date().toISOString(), telegram_chat_id: chatId } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
