@@ -5,6 +5,7 @@ import {
   processPointPayment,
   reconcileCrmPostings,
   notifyPendingForReview,
+  resendRequestedNotifications,
 } from '@/lib/payments/service';
 import { supabase } from '@/utils/supabase';
 import { recordWorkerFailure, recordWorkerSuccess } from '@/lib/system-worker-state';
@@ -65,13 +66,23 @@ export async function GET(req: NextRequest) {
       console.error('[payments] notifyPendingForReview failed:', e?.message || e);
     }
 
-    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified });
+    // Досылка по просьбе человека: сообщение ушло не в тот чат или не ушло вовсе.
+    // Сбой досылки не должен ронять воркер — деньги важнее повторного сообщения.
+    let resent = 0;
+    try {
+      resent = await resendRequestedNotifications();
+    } catch (e: any) {
+      console.error('[payments] resendRequestedNotifications failed:', e?.message || e);
+    }
+
+    await recordWorkerSuccess(WORKER_KEY, { processed: results.length, reconciled, pendingNotified, resent });
     return NextResponse.json({
       ok: true,
-      status: results.length || reconciled || pendingNotified ? 'processed' : 'idle',
+      status: results.length || reconciled || pendingNotified || resent ? 'processed' : 'idle',
       processed: results.length,
       reconciled,
       pendingNotified,
+      resent,
       results,
     });
   } catch (error: any) {
