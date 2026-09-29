@@ -363,8 +363,8 @@ export async function similarClientsBuy(
  * не по customer.id — иначе постоянный клиент выглядит новым.
  */
 export async function clientKeyForOrder(orderId: number): Promise<string | null> {
-    const { data: order } = await supabase.from('orders').select('raw_payload').eq('id', orderId).maybeSingle();
-    const custId = (order as any)?.raw_payload?.customer?.id;
+    const { data: order } = await supabase.from('orders').select('"customer"').eq('id', orderId).maybeSingle();
+    const custId = (order as any)?.customer?.id;
     if (!custId) return null;
     const { data } = await supabase
         .from('salary_client_canon')

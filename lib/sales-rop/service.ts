@@ -487,7 +487,7 @@ async function loadSilentCancelTasks(settings: Settings, today: string): Promise
     const ids = Array.from(closedAt.keys());
     const { data: orders } = await supabase
         .from('orders')
-        .select('id, number, status, total_summ, manager_id, raw_payload')
+        .select('id, number, status, total_summ, manager_id, "customer"')
         .in('id', ids);
 
     // Разговор ПОСЛЕ закрытия тоже снимает вопрос: менеджер мог перезвонить и
@@ -541,7 +541,7 @@ async function loadSilentCancelTasks(settings: Settings, today: string): Promise
         tasks.push({
             orderId: id,
             number: String(o.number ?? ''),
-            client: String(o.raw_payload?.customer?.nickName || o.raw_payload?.customer?.name || ''),
+            client: String(o.customer?.nickName || o.customer?.name || ''),
             statusCode: String(o.status),
             statusName: closed.statusName,
             amount: Number(o.total_summ ?? 0),

@@ -48,7 +48,28 @@ export async function getOutreachSettings(): Promise<OutreachSettings> {
     return { ...DEFAULTS, ...data } as OutreachSettings;
 }
 
-/** Достаёт email клиента из raw_payload заказа (customer → contact → верхний уровень). */
+/**
+ * Собирает из колонок заказа тот же вид, что раньше приходил из raw_payload:
+ * customer, contact, contragent и верхний уровень. Нужен, чтобы помощники ниже
+ * работали и с колонками, и со старым JSON.
+ */
+export function orderShape(row: any): any {
+    if (!row) {
+        return {};
+    }
+    if (row.raw_payload && !row.customer && !row.contact) {
+        return row.raw_payload;
+    }
+    return {
+        customer: row.customer ?? null,
+        contact: row.contact ?? null,
+        contragent: row.contragent ?? null,
+        email: row.email ?? null,
+        firstName: row.firstName ?? null,
+    };
+}
+
+/** Достаёт email клиента (customer → contact → верхний уровень). */
 export function extractCustomerEmail(raw: any): string | null {
     const cands = [
         raw?.customer?.email,
@@ -134,7 +155,12 @@ interface OrderRow {
     number: string;
     status: string;
     manager_id: number | null;
-    raw_payload: any;
+    customer?: any;
+    contact?: any;
+    contragent?: any;
+    email?: string | null;
+    firstName?: string | null;
+    raw_payload?: any;
     created_at: string;
 }
 
@@ -163,7 +189,7 @@ export async function runOutreachBatch(opts?: { dryRun?: boolean; limit?: number
     const since = new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString();
     const { data: orders, error } = await supabase
         .from('orders')
-        .select('order_id, number, status, manager_id, raw_payload, created_at')
+        .select('order_id, number, status, manager_id, created_at, "customer", "contact", "contragent", "email", "firstName"')
         .eq('status', settings.pickup_status)
         .gte('created_at', since)
         .order('created_at', { ascending: true })
@@ -199,7 +225,9 @@ export async function runOutreachBatch(opts?: { dryRun?: boolean; limit?: number
         const orderId = Number(o.order_id);
         if (seen.has(orderId)) { bump('already_sent'); continue; }
 
-        const raw = o.raw_payload || {};
+        // Поля берём из колонок заказа (они те же, что у RetailCRM), а помощникам
+        // отдаём привычный вид — их подписи не меняем.
+        const raw = orderShape(o);
 
         if (settings.exclude_known_clients && isKnownClient(raw)) {
             await logOutcome(orderId, o.number, null, 'skipped_known', 'постоянный клиент', o.manager_id);
@@ -326,7 +354,7 @@ export async function runTimeoutReturns(opts?: { dryRun?: boolean }): Promise<Ti
         // Текущее состояние заказа: ещё на боте и в статусе «новый»?
         const { data: ord } = await supabase
             .from('orders')
-            .select('status, manager_id, raw_payload')
+            .select('status, manager_id, "customer", "contact", "email"')
             .eq('order_id', orderId)
             .maybeSingle();
 
@@ -342,7 +370,7 @@ export async function runTimeoutReturns(opts?: { dryRun?: boolean }): Promise<Ti
         let managerId: number | null = row.original_manager_id ? Number(row.original_manager_id) : null;
         if (!managerId) {
             if (!ctx) ctx = await getAssignmentContext();
-            const email = extractCustomerEmail(ord.raw_payload || {});
+            const email = extractCustomerEmail(orderShape(ord));
             const a = await resolveAssignment(email || '', ctx);
             managerId = a.managerId;
         }

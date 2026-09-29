@@ -233,7 +233,7 @@ export async function writeClientSummary(customerId: number, text: string, site:
         const { data: orderRow } = await supabase
             .from('orders')
             .select('site')
-            .filter('raw_payload->customer->>id', 'eq', String(customerId))
+            .filter('customer->>id', 'eq', String(customerId))
             .not('site', 'is', null)
             .limit(1)
             .maybeSingle();
