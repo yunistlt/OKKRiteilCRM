@@ -2,6 +2,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
+import { fieldValue } from '@/lib/own-crm/field-names';
 import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
 import { analyzeOrderForRouting, RoutingOptions, RoutingResult } from '@/lib/ai-router';
 import { transcribeCall, isTranscribable } from '@/lib/transcribe';
@@ -145,51 +146,22 @@ export async function POST(request: Request) {
 
         const customRoutingPrompt = routingPromptData?.content || undefined;
 
-        // 0d. Fetch Custom Field Definitions from Supabase for human names
-        let cfDictionary: Record<string, Record<string, string>> = {};
-        try {
-            const { data: dbDict } = await supabase
-                .from('retailcrm_dictionaries')
-                .select('dictionary_code, item_code, item_name');
-
-            if (dbDict) {
-                dbDict.forEach((item: any) => {
-                    if (!cfDictionary[item.dictionary_code]) {
-                        cfDictionary[item.dictionary_code] = {};
-                    }
-                    cfDictionary[item.dictionary_code][item.item_code] = item.item_name;
-                } );
+        // 0d. Русские названия значений берём из справочников RetailCRM через общий
+        // слой (lib/own-crm/field-names): код поля -> его справочник -> название.
+        // Раньше здесь был свой список соответствий, и причина отмены в нём
+        // разъезжалась со справочником — агент видел код вместо текста.
+        const humanCustomField = async (fields: Record<string, any>, codes: string[]) => {
+            for (const code of codes) {
+                const raw = fields?.[code];
+                if (raw === undefined || raw === null || raw === '') {
+                    continue;
+                }
+                const human = await fieldValue(code, raw);
+                if (human) {
+                    return human;
+                }
             }
-        } catch (cfErr) {
-            console.warn('[AIRouter] Failed to fetch custom field definitions from DB:', cfErr);
-        }
-
-        const getHumanName = (fieldCode: string, optionCode: any) => {
-            if (!optionCode) return '';
-            // Try normalized match
-            const dict = cfDictionary[fieldCode];
-            if (dict && dict[optionCode]) return dict[optionCode];
-            
-            // Fallback for some common field mappings to Supabase dictionary_code
-            const mapping: Record<string, string> = {
-                'tovarnaya_kategoriya': 'kategoriya_klienta',
-                'product_category': 'kategoriya_klienta',
-                'category': 'kategoriya_klienta',
-                'kategoriya': 'kategoriya_klienta',
-                'type_customer': 'kategoriya_klienta',
-                'typ_castomer': 'kategoriya_klienta',
-                'kategoriya_klienta': 'kategoriya_klienta',
-                'sfera_deiatelnosti': 'sfera_deiatelnosti',
-                'industry': 'sfera_deiatelnosti',
-                'forma_zakupki': 'forma_zakupki',
-                'purchase_form': 'forma_zakupki'
-            };
-            const altCode = mapping[fieldCode];
-            if (altCode && cfDictionary[altCode] && cfDictionary[altCode][optionCode]) {
-                return cfDictionary[altCode][optionCode];
-            }
-
-            return optionCode;
+            return '';
         };
 
         console.log(`[AIRouter] Custom Routing Prompt present: ${!!customRoutingPrompt}`);
@@ -265,21 +237,10 @@ export async function POST(request: Request) {
                     console.log(`[AIRouter] Order ${order.id} keys:`, Object.keys(cfs).filter(k => k.includes('cat') || k.includes('kat') || k.includes('type')));
                 }
 
-                const catValue = cfs.tovarnaya_kategoriya ? getHumanName('tovarnaya_kategoriya', cfs.tovarnaya_kategoriya) :
-                                 cfs.product_category ? getHumanName('product_category', cfs.product_category) :
-                                 cfs.kategoriya_klienta ? getHumanName('kategoriya_klienta', cfs.kategoriya_klienta) :
-                                 cfs.category ? getHumanName('category', cfs.category) :
-                                 cfs.kategoriya ? getHumanName('kategoriya', cfs.kategoriya) :
-                                 cfs.type_customer ? getHumanName('type_customer', cfs.type_customer) :
-                                 cfs.typ_castomer ? getHumanName('typ_castomer', cfs.typ_castomer) : '';
-
-                const pfValue = cfs.forma_zakupki ? getHumanName('forma_zakupki', cfs.forma_zakupki) :
-                                cfs.purchase_form ? getHumanName('purchase_form', cfs.purchase_form) : '';
-
-                const sphValue = cfs.sfera_deiatelnosti ? getHumanName('sfera_deiatelnosti', cfs.sfera_deiatelnosti) :
-                                 cfs.industry ? getHumanName('sfera_deiatelnosti', cfs.industry) : '';
-
-                const prichinaValue = cfs.prichiny_otmeny ? getHumanName('prichiny_otmeny', cfs.prichiny_otmeny) : '';
+                const catValue = await humanCustomField(cfs, ['typ_castomer', 'kategoria_klienta', 'tovarnaya_kategoriya', 'product_category', 'category', 'kategoriya', 'type_customer']);
+                const pfValue = await humanCustomField(cfs, ['typ_customer_margin', 'kategoria_klienta_po_vidu', 'forma_zakupki', 'purchase_form']);
+                const sphValue = await humanCustomField(cfs, ['sfera_deiatelnosti', 'industry']);
+                const prichinaValue = await humanCustomField(cfs, ['prichiny_otmeny']);
 
                 const extraData = {
                     manager_name: retailcrmOrder.manager?.firstName 
