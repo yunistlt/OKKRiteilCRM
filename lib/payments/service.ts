@@ -83,7 +83,7 @@ const SELECT_COLUMNS =
   'status, match_method, match_confidence, extracted_invoice_number, extracted_invoice_numbers, ' +
   'match_candidates, matched_order_number, matched_order_id, retailcrm_payment_id, ' +
   'retailcrm_synced_at, retailcrm_error, crm_posting, posting_checked_at, ' +
-  'raw_payload, notified_at, pending_notified_at, created_at, updated_at';
+  'raw_payload, notified_at, pending_notified_at, renotify_requested_at, created_at, updated_at';
 
 export interface PointPaymentRow {
   id: number;
@@ -354,6 +354,46 @@ export async function processPointPayment(row: PointPaymentRow): Promise<{ statu
   }
 
   return { status: (updated as PointPaymentRow).status };
+}
+
+/**
+ * Досылка уведомлений по просьбе человека.
+ *
+ * Бывает, что сообщение ушло не туда (маршрут был неверным) или не ушло вовсе —
+ * например, после ручной привязки платежа к заказу. Отправляет бот сам, на
+ * следующем прогоне: человек только помечает платежи, а не шлёт руками.
+ *
+ * Метка снимается независимо от исхода отправки: повторять бесконечно нельзя,
+ * иначе чат зальёт одним и тем же платежом.
+ */
+export async function resendRequestedNotifications(limit = 20): Promise<number> {
+  const { data, error } = await supabase
+    .from('point_payments')
+    .select(SELECT_COLUMNS)
+    .not('renotify_requested_at', 'is', null)
+    .order('renotify_requested_at', { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+
+  const rows = (data ?? []) as PointPaymentRow[];
+  let sent = 0;
+  for (const row of rows) {
+    try {
+      await notifyPaymentTelegram(row);
+      sent += 1;
+    } catch (e: any) {
+      console.error('[payments] resend notify failed:', row.id, e?.message || e);
+    }
+    await supabase
+      .from('point_payments')
+      .update({
+        renotify_requested_at: null,
+        notified_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', row.id);
+  }
+  return sent;
 }
 
 /**
