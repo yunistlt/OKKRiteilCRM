@@ -130,7 +130,9 @@ function buildMessage(row: PointPaymentRow, routed: boolean, opts: NotifyOptions
     const order = link
       ? `<a href="${link}">№${esc(row.matched_order_number)}</a>`
       : `№${esc(row.matched_order_number)}`;
-    const synced = row.retailcrm_synced_at ? ' — проброшен в RetailCRM' : '';
+    // Человеческим языком: в сообщении речь об оплате, а не о внутренней механике
+    // синхронизации. «Проброшен в RetailCRM» людям в чате ничего не объясняет.
+    const synced = row.retailcrm_synced_at ? ' — оплата занесена в CRM' : ' — оплата в CRM ещё не занесена';
     lines.push(`✅ Заказ ${order}${synced}`);
     const num = esc(String(row.matched_order_number));
     if (opts.movedToProduction) {
