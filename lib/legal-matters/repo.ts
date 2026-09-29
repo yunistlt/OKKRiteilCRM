@@ -188,6 +188,10 @@ export async function addMatterEvent(input: {
 
   const patch: Record<string, any> = { updated_at: new Date().toISOString() };
   if (stageAfter) patch.stage = stageAfter;
+
+  // Первое же действие переводит дело из «Новое» в «В работе»: дело на стадии
+  // «Переговоры» со статусом «Новое» руководителя только путает.
+  if (String(matter.status) === 'new') patch.status = 'in_work';
   if (input.next_action !== undefined) patch.next_action = input.next_action;
   if (input.next_action_due !== undefined) patch.next_action_due = input.next_action_due;
 
