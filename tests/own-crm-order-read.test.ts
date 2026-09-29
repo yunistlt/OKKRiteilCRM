@@ -24,6 +24,7 @@ vi.mock('@/utils/supabase', () => {
         const c: any = {
             eq: () => c,
             not: () => c,
+            is: () => c,
             then: (res: any) => res({ data: rows, error: null }),
         };
         return c;
@@ -32,7 +33,13 @@ vi.mock('@/utils/supabase', () => {
         supabase: {
             from(table: string) {
                 return {
-                    select: () => chain(table === 'retailcrm_custom_fields' ? data.fields : data.dictionaries),
+                    // Справочники спрашивают дважды: значения своих полей и
+                    // обычные справочники RetailCRM (статусы и прочее).
+                    select: (cols: string) => {
+                        if (table === 'retailcrm_custom_fields') return chain(data.fields);
+                        if (cols.includes('entity_type')) return chain([]);
+                        return chain(data.dictionaries);
+                    },
                 };
             },
         },

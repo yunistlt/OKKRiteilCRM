@@ -9,6 +9,9 @@
  *    клиента берём из его последнего заказа, где они есть.
  * 2. Одно юрлицо заведено в CRM несколькими карточками. Их связь уже посчитана
  *    в `salary_client_canon` — читаем её, ничего там не меняя.
+ *
+ * Номер клиента — это `clients.id` (он же `customer.id` в заказе). Колонка
+ * `external_id` заполнена лишь у 640 карточек из 20 695 и опорой быть не может.
  */
 import { supabase } from '@/utils/supabase';
 
@@ -28,7 +31,7 @@ export async function clientRequisites(customerId: number | string): Promise<Cli
     const { data: card } = await supabase
         .from('clients')
         .select('inn, kpp, company_name')
-        .eq('external_id', id)
+        .eq('id', id)
         .maybeSingle();
 
     const { data: orders } = await supabase
@@ -92,12 +95,12 @@ export async function relatedClients(customerId: number | string): Promise<Relat
     if (inn) {
         const { data: sameInn } = await supabase
             .from('clients')
-            .select('external_id')
+            .select('id')
             .eq('inn', inn);
 
         for (const row of (sameInn || []) as any[]) {
-            if (String(row.external_id) !== id && !found.has(String(row.external_id))) {
-                found.set(String(row.external_id), 'ИНН');
+            if (String(row.id) !== id && !found.has(String(row.id))) {
+                found.set(String(row.id), 'ИНН');
             }
         }
     }
@@ -108,14 +111,14 @@ export async function relatedClients(customerId: number | string): Promise<Relat
 
     const { data: cards } = await supabase
         .from('clients')
-        .select('external_id, company_name, orders_count, total_summ')
-        .in('external_id', Array.from(found.keys()));
+        .select('id, company_name, orders_count, total_summ')
+        .in('id', Array.from(found.keys()));
 
     return (cards || []).map((card: any) => ({
-        customerId: String(card.external_id),
+        customerId: String(card.id),
         name: card.company_name || null,
         ordersCount: card.orders_count ?? null,
         totalSumm: card.total_summ ?? null,
-        reason: found.get(String(card.external_id)) || 'канон',
+        reason: found.get(String(card.id)) || 'канон',
     }));
 }
