@@ -11,6 +11,7 @@
  * (см. lib/email.ts buildOrderThreadSubject / sendOrderEmail).
  */
 import { supabase } from '@/utils/supabase';
+import { loadOrderItems, type OwnOrderItem } from '@/lib/own-crm/orders';
 import { getOpenAIClient, isOpenAIConfigured } from '@/utils/openai';
 import { recordAiUsage } from '@/lib/ai-usage';
 import { formatRub } from '@/lib/format';
@@ -45,25 +46,34 @@ export async function getPostponedStatusCodes(): Promise<string[]> {
     return codes.length ? codes : ['otlozeno'];
 }
 
-function pickEmail(p: any): string | null {
-    return p?.contact?.email || p?.email || p?.customer?.email || null;
+/**
+ * Данные заказа берём из колонок (contact, company, email...), raw_payload
+ * оставлен запасным путём. Состав заказа — из таблицы позиций order_items.
+ */
+function pickEmail(row: any): string | null {
+    const p = row?.raw_payload || {};
+    return row?.contact?.email || row?.email || p?.contact?.email || p?.email || p?.customer?.email || null;
 }
 
-function pickContactName(p: any): string | null {
-    return p?.contact?.firstName || p?.firstName || null;
+function pickContactName(row: any): string | null {
+    const p = row?.raw_payload || {};
+    return row?.contact?.firstName || row?.firstName || p?.contact?.firstName || p?.firstName || null;
 }
 
-function pickCustomerName(p: any): string | null {
-    return p?.customer?.nickName || p?.company || null;
+function pickCustomerName(row: any): string | null {
+    const p = row?.raw_payload || {};
+    // Имя юрлица лежит внутри объекта company. Раньше сюда попадал сам объект —
+    // в письмо ушло бы «[object Object]».
+    return p?.customer?.nickName || row?.company?.name || p?.company?.name || null;
 }
 
-function extractItems(p: any): OrderItemLine[] {
-    return (p?.items || []).map((it: any): OrderItemLine => {
-        const unit = it.initialPrice != null ? Number(it.initialPrice) : Number(it.price || 0);
+function itemsToLines(items: OwnOrderItem[] | undefined): OrderItemLine[] {
+    return (items || []).map((it): OrderItemLine => {
+        const unit = Number(it.initialPrice || 0);
         const qty = Number(it.quantity || 0);
         const discount = Number(it.discountTotal || 0);
         return {
-            name: (it.offer && (it.offer.displayName || it.offer.name)) || it.productName || 'Позиция',
+            name: (it.offer as any)?.displayName || it.offer?.name || 'Позиция',
             qty,
             sum: Math.max(0, unit * qty - discount),
         };
@@ -85,7 +95,7 @@ export async function getPostponedRelevanceCandidates(opts: {
     // 1) Заказы сейчас в «Отложено» (+ опц. менеджер).
     let q = supabase
         .from('orders')
-        .select('order_id, number, status, totalsumm, manager_id, raw_payload')
+        .select('order_id, number, status, totalsumm, manager_id, raw_payload, "contact", "company", "email", "firstName", "managerComment"')
         .in('status', codes);
     if (opts.managerId != null) q = q.eq('manager_id', opts.managerId);
     const { data: orders } = await q.limit(1000);
@@ -116,22 +126,23 @@ export async function getPostponedRelevanceCandidates(opts: {
         }
     }
 
+    const matched = (orders as any[]).filter((o) => movedInfo.has(o.order_id));
+    const itemsByOrder = await loadOrderItems(matched.map((o) => o.order_id));
+
     const out: PostponedCandidate[] = [];
-    for (const o of orders as any[]) {
-        const mv = movedInfo.get(o.order_id);
-        if (!mv) continue; // переведён в «Отложено» не в этом окне
-        const p = o.raw_payload || {};
+    for (const o of matched) {
+        const mv = movedInfo.get(o.order_id)!;
         out.push({
             orderId: o.order_id,
             number: o.number || String(o.order_id),
             total: Number(o.totalsumm || 0),
-            customerName: pickCustomerName(p),
-            contactName: pickContactName(p),
-            toEmail: pickEmail(p),
+            customerName: pickCustomerName(o),
+            contactName: pickContactName(o),
+            toEmail: pickEmail(o),
             movedAt: mv.movedAt,
             fromStatusCode: mv.fromCode,
-            items: extractItems(p),
-            reasonText: p.managerComment || null,
+            items: itemsToLines(itemsByOrder.get(o.order_id)),
+            reasonText: o.managerComment ?? o.raw_payload?.managerComment ?? null,
         });
     }
     out.sort((a, b) => new Date(b.movedAt).getTime() - new Date(a.movedAt).getTime());
@@ -142,7 +153,7 @@ export async function getPostponedRelevanceCandidates(opts: {
 export async function getCandidateByOrderId(orderId: number): Promise<PostponedCandidate | null> {
     const { data: o } = await supabase
         .from('orders')
-        .select('order_id, number, totalsumm, raw_payload')
+        .select('order_id, number, totalsumm, raw_payload, "contact", "company", "email", "firstName", "managerComment"')
         .eq('order_id', orderId)
         .maybeSingle();
     if (!o) return null;
@@ -172,13 +183,13 @@ export async function getCandidateByOrderId(orderId: number): Promise<PostponedC
         orderId: (o as any).order_id,
         number: (o as any).number || String(orderId),
         total: Number((o as any).totalsumm || 0),
-        customerName: pickCustomerName(p),
-        contactName: pickContactName(p),
-        toEmail: pickEmail(p),
+        customerName: pickCustomerName(o),
+        contactName: pickContactName(o),
+        toEmail: pickEmail(o),
         movedAt: movedAt || new Date(0).toISOString(),
         fromStatusCode: fromCode,
-        items: extractItems(p),
-        reasonText: p.managerComment || null,
+        items: itemsToLines((await loadOrderItems([orderId])).get(orderId)),
+        reasonText: (o as any).managerComment ?? p.managerComment ?? null,
     };
 }
 
