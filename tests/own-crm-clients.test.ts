@@ -53,6 +53,7 @@ vi.mock('@/utils/supabase', () => {
 });
 
 import { clientRequisites, relatedClients } from '@/lib/own-crm/clients';
+import { isReseller } from '@/lib/own-crm/okved';
 
 describe('реквизиты клиента', () => {
     it('берёт недостающее из заказа и говорит, из какого', async () => {
@@ -81,5 +82,22 @@ describe('связанные карточки', () => {
     it('сам себя в связанные не берёт', async () => {
         const list = await relatedClients('200');
         expect(list.map((x) => x.customerId)).not.toContain('200');
+    });
+});
+
+describe('посредник или конечный заказчик', () => {
+    it('оптовая и розничная торговля — посредник', () => {
+        expect(isReseller('46.51')).toBe(true);
+        expect(isReseller('47.19')).toBe(true);
+    });
+
+    it('производство — конечный заказчик', () => {
+        expect(isReseller('31.01')).toBe(false);
+        expect(isReseller('25.11')).toBe(false);
+    });
+
+    it('без кода не гадаем', () => {
+        expect(isReseller(null)).toBe(false);
+        expect(isReseller('')).toBe(false);
     });
 });

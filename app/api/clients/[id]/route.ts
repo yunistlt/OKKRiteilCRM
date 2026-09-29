@@ -37,6 +37,18 @@ export async function GET(_request: Request, { params }: { params: { id: string 
 
     const orders = (ordersRes.data || []) as any[];
 
+    // Что известно о компании: данные ЕГРЮЛ и стадия отношений собираются в
+    // продажах и ключуются по ИНН. Читаем, ничего там не меняя.
+    let relation: any = null;
+    if (requisites.inn) {
+        const { data } = await supabase
+            .from('sales_client_relation')
+            .select('stage, okved_code, activity, region, company_status, branches, employees, revenue, potential, next_contact_at, last_touch_at, enriched_at')
+            .eq('inn', requisites.inn)
+            .maybeSingle();
+        relation = data || null;
+    }
+
     const [statusesRes, managersRes] = await Promise.all([
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
         supabase.from('managers').select('id, first_name, last_name'),
@@ -50,6 +62,7 @@ export async function GET(_request: Request, { params }: { params: { id: string 
     return NextResponse.json({
         client,
         requisites,
+        relation,
         related,
         orders: orders.map((o) => ({
             orderId: o.order_id,

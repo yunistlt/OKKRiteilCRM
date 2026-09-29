@@ -15,6 +15,8 @@
  */
 import { supabase } from '@/utils/supabase';
 
+export { isReseller } from './okved';
+
 export type ClientRequisites = {
     inn: string | null;
     kpp: string | null;
@@ -122,3 +124,4 @@ export async function relatedClients(customerId: number | string): Promise<Relat
         reason: found.get(String(card.id)) || 'канон',
     }));
 }
+

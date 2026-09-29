@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
+import { isReseller } from '@/lib/own-crm/okved';
 
 type Requisites = {
     inn: string | null;
@@ -13,6 +14,18 @@ type Requisites = {
     legalName: string | null;
     legalAddress: string | null;
     fromOrderNumber: string | null;
+};
+
+type Relation = {
+    stage: string | null;
+    okved_code: string | null;
+    activity: string | null;
+    region: string | null;
+    company_status: string | null;
+    branches: number | null;
+    potential: string | number | null;
+    next_contact_at: string | null;
+    last_touch_at: string | null;
 };
 
 type Related = {
@@ -53,6 +66,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const router = useRouter();
     const [client, setClient] = useState<any>(null);
     const [requisites, setRequisites] = useState<Requisites | null>(null);
+    const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -66,6 +80,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             if (!response.ok) throw new Error(payload.error || 'Не удалось открыть карточку клиента');
             setClient(payload.client);
             setRequisites(payload.requisites);
+            setRelation(payload.relation || null);
             setRelated(payload.related || []);
             setOrders(payload.orders || []);
             setError(null);
@@ -141,6 +156,30 @@ export default function ClientCard({ clientId }: { clientId: string }) {
 
                 <div className="bg-white text-xs">
                     <div className="border-b border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        О компании
+                    </div>
+                    {!relation && (
+                        <div className="px-4 py-3 text-gray-500">
+                            Данных о компании нет: они подтягиваются по ИНН из ЕГРЮЛ, а ИНН у клиента неизвестен.
+                        </div>
+                    )}
+                    {relation && (
+                        <>
+                            <Field label="Чем занимается" value={relation.activity} />
+                            <Field label="Регион" value={relation.region} />
+                            <Field label="Состояние" value={relation.company_status} />
+                            <Field label="Филиалов" value={relation.branches ? formatIntRu(relation.branches) : null} />
+                            <Field
+                                label="Роль в сделке"
+                                value={isReseller(relation.okved_code)
+                                    ? 'Скорее посредник — основной вид деятельности торговля'
+                                    : 'Скорее конечный заказчик'}
+                            />
+                            <Field label="Следующий контакт" value={relation.next_contact_at ? new Date(relation.next_contact_at).toLocaleDateString('ru-RU') : null} />
+                        </>
+                    )}
+
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
                         Карточки того же юрлица
                     </div>
                     {related.length === 0 && (
