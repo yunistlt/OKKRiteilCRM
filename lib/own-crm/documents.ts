@@ -115,27 +115,77 @@ export async function vatPercentForSite(siteCode: string | null | undefined): Pr
     return Number.isFinite(rate) && rate > 0 ? rate : 0;
 }
 
-/** Данные для КП и счёта по заказу. */
-export async function orderDocumentData(orderId: number, sellerCode?: string | null): Promise<OrderDocumentData | null> {
-    const { data: order } = await supabase
-        .from('orders')
-        .select('order_id, number, site, "contragent", "customer", "firstName", "lastName"')
-        .eq('id', orderId)
-        .maybeSingle();
+/**
+ * Заказ для документа. Ищем у себя по обоим номерам, а если заказ создан
+ * минуту назад и ещё не приехал синхронизацией — берём его прямо из RetailCRM.
+ * Иначе менеджер не может выставить КП сразу после создания заказа.
+ */
+async function loadOrderForDocument(orderKey: number) {
+    for (const column of ['order_id', 'id'] as const) {
+        const { data } = await supabase
+            .from('orders')
+            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName"')
+            .eq(column, orderKey)
+            .maybeSingle();
 
-    if (!order) {
+        if (data) {
+            return { order: data as any, fresh: null as any };
+        }
+    }
+
+    const { url, key } = await getCrmConfig();
+    const response = await fetch(`${url}/api/v5/orders/${orderKey}?by=id&apiKey=${key}`);
+    const payload = await response.json().catch(() => null);
+    if (!payload?.order) {
         return null;
     }
 
+    const fresh = payload.order;
+    return {
+        order: {
+            order_id: fresh.id,
+            number: fresh.number,
+            site: fresh.site,
+            contragent: fresh.contragent || {},
+            customer: fresh.customer || {},
+            firstName: fresh.firstName,
+            lastName: fresh.lastName,
+        },
+        fresh,
+    };
+}
+
+/** Данные для КП и счёта по заказу. */
+export async function orderDocumentData(orderId: number, sellerCode?: string | null): Promise<OrderDocumentData | null> {
+    const found = await loadOrderForDocument(orderId);
+    if (!found) {
+        return null;
+    }
+
+    const order = found.order;
     const crmOrderId = (order as any).order_id ?? orderId;
-    const { data: rows } = await supabase
-        .from('order_items')
-        .select('"offer", "quantity", "initialPrice", "discountTotal", "vatRate"')
-        .eq('order_id', crmOrderId)
-        .order('ordering', { ascending: true });
+
+    let rows: any[] = [];
+    if (found.fresh) {
+        // Заказ взят прямо из RetailCRM — состав берём оттуда же.
+        rows = (found.fresh.items || []).map((item: any) => ({
+            offer: item.offer,
+            quantity: item.quantity,
+            initialPrice: item.initialPrice,
+            discountTotal: item.discountTotal,
+            vatRate: item.vatRate,
+        }));
+    } else {
+        const { data } = await supabase
+            .from('order_items')
+            .select('"offer", "quantity", "initialPrice", "discountTotal", "vatRate"')
+            .eq('order_id', crmOrderId)
+            .order('ordering', { ascending: true });
+        rows = data || [];
+    }
 
     const items: DocumentItem[] = (rows || []).map((row: any) => ({
-        name: row.offer?.displayName || row.offer?.name || 'Позиция',
+        name: row.offer?.displayName || row.offer?.name || row.productName || 'Позиция',
         quantity: Number(row.quantity || 0),
         // Цена за единицу с учётом скидки по позиции — то, что клиент увидит в счёте.
         price: Math.max(0, Number(row.initialPrice || 0) - (Number(row.quantity || 0) > 0

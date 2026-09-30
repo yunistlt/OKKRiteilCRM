@@ -12,6 +12,7 @@
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
+import { usableManagerId } from './create-order';
 
 export type EditableItem = {
     /** id позиции в RetailCRM. Пусто — позиция новая. */
@@ -144,7 +145,10 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     if (edit.customerComment !== undefined) orderData.customerComment = edit.customerComment ?? '';
     if (edit.managerComment !== undefined) orderData.managerComment = edit.managerComment ?? '';
     if (edit.statusCode) orderData.status = edit.statusCode;
-    if (edit.managerId) orderData.managerId = edit.managerId;
+    // Менеджера шлём только настоящего: у внутренних учёток бывает номер,
+    // которого в RetailCRM нет, и тогда отклоняется вся правка.
+    const managerId = await usableManagerId(edit.managerId);
+    if (managerId) orderData.managerId = managerId;
     if (edit.customFields && Object.keys(edit.customFields).length) orderData.customFields = edit.customFields;
 
     // Контактные данные заказа кладём как есть: имена полей у RetailCRM свои,

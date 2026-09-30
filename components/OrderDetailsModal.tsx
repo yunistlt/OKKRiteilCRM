@@ -212,6 +212,29 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     // От какого нашего юрлица выставляем счёт. Пусто — от юрлица магазина заказа.
     const [sellerCode, setSellerCode] = useState('');
     const [sellerOptions, setSellerOptions] = useState<Array<{ code: string; name: string }>>([]);
+    /**
+     * Карточка занимает ровно рабочую область — без меню слева и чата справа.
+     * Позицию берём у контейнера страницы: «absolute inset-0» внутри него
+     * растягивало карточку на всю длину списка, а «fixed inset-0» закрывало
+     * меню и чат (поймано 30.09.2026).
+     */
+    const [frame, setFrame] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+
+    useEffect(() => {
+        const measure = () => {
+            const area = document.querySelector('[data-ui-audit="page-scroller"]');
+            if (!area) {
+                setFrame(null);
+                return;
+            }
+            const box = area.getBoundingClientRect();
+            setFrame({ top: box.top, left: box.left, width: box.width, height: box.height });
+        };
+
+        measure();
+        window.addEventListener('resize', measure);
+        return () => window.removeEventListener('resize', measure);
+    }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
     const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -1290,13 +1313,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     return (
         <div
-            className="absolute inset-0 z-[130] flex"
+            className="fixed z-[130] flex"
             role="dialog"
             aria-modal="true"
             data-ui-audit="order-modal"
-            // Карточка подкрашена цветом своего статуса — еле заметно, чтобы
-            // состояние заказа читалось боковым зрением.
-            style={{ backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff' }}
+            // Цвет — от статуса заказа, еле заметный; размеры — по рабочей области.
+            style={{
+                backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff',
+                top: frame?.top ?? 0,
+                left: frame?.left ?? 0,
+                width: frame?.width ?? '100%',
+                height: frame?.height ?? '100%',
+            }}
         >
             <div
                 className="flex h-full w-full flex-col overflow-hidden"

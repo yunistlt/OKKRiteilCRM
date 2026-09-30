@@ -8,6 +8,7 @@
  * Магазин выбирается проверенным путём (`resolveLeadSite`): настроенный, а если
  * он пропал в RetailCRM — запасной. 30.09.2026 это спасло приём заявок.
  */
+import { supabase } from '@/utils/supabase';
 import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
 import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
 
@@ -42,6 +43,30 @@ export type NewOrder = {
 export type CreatedOrder = { id: number; number: string; site: string };
 
 const DEFAULT_STATUS = 'novyi-1';
+
+/**
+ * Менеджер, которого RetailCRM примет.
+ *
+ * У наших внутренних учёток бывает номер менеджера, которого в RetailCRM нет:
+ * у админской стоит 999 «Системный Администратор», и заказ от неё не
+ * создавался вовсе — CRM отвечала «User with code=999 does not exist»
+ * (поймано 30.09.2026). Проверяем по справочнику менеджеров: настоящие приехали
+ * из CRM и у них заполнены исходные данные.
+ */
+export async function usableManagerId(managerId: number | null | undefined): Promise<number | null> {
+    if (!managerId) {
+        return null;
+    }
+
+    const { data } = await supabase
+        .from('managers')
+        .select('id, active, raw_data')
+        .eq('id', managerId)
+        .maybeSingle();
+
+    const known = data && (data as any).raw_data && (data as any).active !== false;
+    return known ? Number(managerId) : null;
+}
 
 /** Сумма позиции с учётом количества — считаем на нашей стороне, чтобы показать человеку. */
 export function itemTotal(item: NewOrderItem): number {
@@ -122,7 +147,8 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     if (order.email) orderData.email = order.email;
     if (order.customerComment) orderData.customerComment = order.customerComment;
     if (order.managerComment) orderData.managerComment = order.managerComment;
-    if (order.managerId) orderData.managerId = order.managerId;
+    const managerId = await usableManagerId(order.managerId);
+    if (managerId) orderData.managerId = managerId;
     if (customerId) orderData.customer = { id: customerId, type: 'customer_corporate' };
 
     const result = await postRetailCrm('orders/create', 'order', orderData, site);

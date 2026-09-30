@@ -25,6 +25,26 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
     const [sending, setSending] = useState(false);
     // Вложения: клиенту часто нужно приложить КП, счёт или чертёж.
     const [files, setFiles] = useState<File[]>([]);
+    const [attaching, setAttaching] = useState<'proposal' | 'invoice' | null>(null);
+
+    /** Приложить к письму документ по этому заказу: КП или счёт. */
+    const attachOrderDocument = async (kind: 'proposal' | 'invoice') => {
+        setAttaching(kind);
+        try {
+            const response = await fetch(`/api/orders/${orderNumber}/document?kind=${kind}`);
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || 'Документ не получился');
+            }
+            const blob = await response.blob();
+            const name = kind === 'invoice' ? `Счёт №${orderNumber}.pdf` : `КП №${orderNumber}.pdf`;
+            setFiles((prev) => [...prev, new File([blob], name, { type: 'application/pdf' })]);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Документ не получился');
+        } finally {
+            setAttaching(null);
+        }
+    };
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
 
@@ -212,8 +232,24 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             {error && <p className="mt-2 border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
 
             <div className="mt-3 flex items-center gap-3">
+                {/* Документы по заказу прикладываются одной кнопкой: искать их на
+                    диске незачем, они формируются из этой же карточки. */}
+                <button
+                    onClick={() => attachOrderDocument('proposal')}
+                    disabled={attaching !== null}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {attaching === 'proposal' ? 'Готовлю КП…' : 'Приложить КП'}
+                </button>
+                <button
+                    onClick={() => attachOrderDocument('invoice')}
+                    disabled={attaching !== null}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {attaching === 'invoice' ? 'Готовлю счёт…' : 'Приложить счёт'}
+                </button>
                 <label className="cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">
-                    Прикрепить файлы
+                    Файл с компьютера
                     <input
                         type="file"
                         multiple
