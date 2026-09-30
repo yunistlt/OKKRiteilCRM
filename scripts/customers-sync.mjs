@@ -46,14 +46,18 @@ for (;;) {
 }
 console.log(`\nвсего: ${saved}`)
 
-// Связь контакта с юрлицом — из заказов, без лишних обращений к их API.
+// Кто из контактов относится к какому клиенту — по заказам, без лишних
+// обращений к их API. Покупатель заказа это наша карточка клиента, а контакт —
+// человек, с которым говорят.
 const linked = await sql`
-  insert into customer_companies (customer_id, company_id, orders_count, updated_at)
-  select ("customer"->>'id')::bigint, ("company"->>'id')::bigint, count(*)::int, now()
+  insert into client_contacts (client_id, contact_id, orders_count, last_order_at, updated_at)
+  select ("customer"->>'id')::bigint, ("contact"->>'id')::bigint, count(*)::int, max("createdAt"), now()
     from orders
-   where "customer"->>'id' ~ '^[0-9]+$' and "company"->>'id' ~ '^[0-9]+$'
+   where "customer"->>'id' ~ '^[0-9]+$' and "contact"->>'id' ~ '^[0-9]+$'
+     and "customer"->>'id' <> "contact"->>'id'
    group by 1, 2
-  on conflict (customer_id, company_id) do update set orders_count = excluded.orders_count, updated_at = now()
-  returning customer_id`
-console.log('связей контакт-юрлицо:', linked.length)
+  on conflict (client_id, contact_id) do update set
+    orders_count = excluded.orders_count, last_order_at = excluded.last_order_at, updated_at = now()
+  returning client_id`
+console.log('связей клиент-контакт:', linked.length)
 await sql.end()

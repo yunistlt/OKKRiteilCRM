@@ -112,6 +112,56 @@ export async function clientEmails(addresses: string[], limit = 20): Promise<Cli
     }));
 }
 
+export type ClientContact = {
+    id: number;
+    name: string | null;
+    phones: string[];
+    email: string | null;
+    ordersCount: number;
+    lastOrderAt: string | null;
+};
+
+/**
+ * Контактные лица клиента — люди, с которыми говорят.
+ *
+ * В RetailCRM клиент и контактное лицо — разные сущности, телефоны и почта
+ * лежат у контакта. Связь выведена из заказов (`client_contacts`): у 12 807
+ * клиентов из 20 699 так находится живой телефон.
+ */
+export async function clientContacts(clientId: string | number): Promise<ClientContact[]> {
+    const { data: links } = await supabase
+        .from('client_contacts')
+        .select('contact_id, orders_count, last_order_at')
+        .eq('client_id', clientId)
+        .order('orders_count', { ascending: false })
+        .limit(20);
+
+    const ids = (links || []).map((row: any) => row.contact_id);
+    if (!ids.length) {
+        return [];
+    }
+
+    const { data: people } = await supabase
+        .from('customers')
+        .select('"id","firstName","lastName","patronymic","phones","email"')
+        .in('id', ids);
+
+    const byId = new Map((people || []).map((row: any) => [Number(row.id), row]));
+
+    return (links || []).map((link: any) => {
+        const person: any = byId.get(Number(link.contact_id)) || {};
+        const name = [person.lastName, person.firstName, person.patronymic].filter(Boolean).join(' ').trim();
+        return {
+            id: Number(link.contact_id),
+            name: name || null,
+            phones: person.phones || [],
+            email: person.email || null,
+            ordersCount: Number(link.orders_count || 0),
+            lastOrderAt: link.last_order_at || null,
+        };
+    });
+}
+
 /** Телефон клиента — из его последнего заказа: в карточках он не заполняется. */
 export async function clientPhone(customerId: string): Promise<string | null> {
     const { data } = await supabase

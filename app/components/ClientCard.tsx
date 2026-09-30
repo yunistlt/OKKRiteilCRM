@@ -36,6 +36,15 @@ type Related = {
     reason: string;
 };
 
+type ContactRow = {
+    id: number;
+    name: string | null;
+    phones: string[];
+    email: string | null;
+    ordersCount: number;
+    lastOrderAt: string | null;
+};
+
 type CallRow = {
     at: string;
     direction: string;
@@ -101,6 +110,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [calls, setCalls] = useState<CallRow[]>([]);
     const [emails, setEmails] = useState<EmailRow[]>([]);
     const [phone, setPhone] = useState<string | null>(null);
+    const [contacts, setContacts] = useState<ContactRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -118,6 +128,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setCalls(payload.calls || []);
             setEmails(payload.emails || []);
             setPhone(payload.phone || null);
+            setContacts(payload.contacts || []);
             setError(null);
         } catch (err: any) {
             setError(err.message);
@@ -182,11 +193,28 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     )}
 
                     <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
-                        Связь
+                        Контактные лица
                     </div>
-                    <Field label="Контактное лицо" value={client?.contact_name} />
-                    <Field label="Телефон" value={phone || client?.phones?.[0]} />
-                    <Field label="Почта" value={client?.email || client?.contact_email} />
+                    {contacts.length === 0 && (
+                        <>
+                            <div className="px-4 py-3 text-gray-500">Контактных лиц не нашли — показываем связь из заказа.</div>
+                            <Field label="Телефон" value={phone} />
+                            <Field label="Почта" value={client?.email || client?.contact_email} />
+                        </>
+                    )}
+                    {contacts.map((person) => (
+                        <div key={person.id} className="border-b border-gray-100 px-4 py-3">
+                            <div className="font-semibold text-gray-900">{person.name || 'Без имени'}</div>
+                            <div className="text-[11px] text-gray-500">
+                                {person.phones[0] || 'телефон неизвестен'}
+                                {person.email ? ` · ${person.email}` : ''}
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                                заказов с ним: {formatIntRu(person.ordersCount)}
+                                {person.lastOrderAt ? ` · последний ${new Date(person.lastOrderAt).toLocaleDateString('ru-RU')}` : ''}
+                            </div>
+                        </div>
+                    ))}
                 </div>
 
                 <div className="bg-white text-xs">
