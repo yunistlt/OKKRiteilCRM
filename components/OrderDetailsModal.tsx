@@ -8,6 +8,7 @@ import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
 import { formatQualityCriterionLabel } from '@/lib/quality-labels';
 import OrderReplyForm from '@/components/orders/OrderReplyForm';
+import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 
@@ -18,6 +19,10 @@ interface OrderDetailsModalProps {
 }
 
 interface OrderDetails {
+    /** Цвет статуса — им подкрашивается карточка. Назначен людьми в настройках. */
+    statusColor?: string | null;
+    statusName?: string | null;
+    statusGroup?: string | null;
     order: any;
     calls: any[];
     emails: any[];
@@ -41,10 +46,12 @@ const viewTabs = [
 const sectionNavItems = [
     { id: 'order-common', label: 'Основное' },
     { id: 'order-customer', label: 'Клиент' },
+    // Доп. данные идут сразу за клиентом: менеджер смотрит их в начале работы
+    // с заказом, а не в самом низу карточки.
+    { id: 'order-custom-fields', label: 'Доп. данные' },
     { id: 'order-list', label: 'Состав заказа' },
     { id: 'order-delivery', label: 'Отгрузка и доставка' },
-    { id: 'order-payment', label: 'Оплата' },
-    { id: 'order-custom-fields', label: 'Доп. данные' }
+    { id: 'order-payment', label: 'Оплата' }
 ] as const;
 
 type ViewTab = typeof viewTabs[number]['id'];
@@ -62,6 +69,50 @@ type ScoreBreakdownEntry = {
     recommended_fix?: string | null;
 };
 
+/**
+ * Поле карточки, которое можно править. Режима «только просмотр» у нас нет:
+ * открыл карточку — можешь менять. Поля без обработчика остаются показом
+ * (например, вычисленные значения вроде «обновлён»).
+ */
+const EditField = ({ label, value, onChange, required, type = 'text', options }: {
+    label: string;
+    value: any;
+    onChange?: (value: any) => void;
+    required?: boolean;
+    type?: 'text' | 'number' | 'date';
+    options?: Array<{ value: string; label: string }>;
+}) => (
+    <div className="space-y-1">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+            {label}
+            {required && <span className="text-red-500">*</span>}
+        </div>
+        {onChange && options ? (
+            <select
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
+            >
+                <option value="">Не выбрано</option>
+                {options.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+            </select>
+        ) : onChange ? (
+            <input
+                type={type}
+                value={value ?? ''}
+                onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
+            />
+        ) : (
+            <div className="px-3 py-2 border text-sm bg-gray-50 border-gray-200 text-gray-900">
+                {value ?? <span className="text-gray-400">Не указано</span>}
+            </div>
+        )}
+    </div>
+);
+
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
     <div className="space-y-1">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
@@ -73,6 +124,22 @@ const InfoField = ({ label, value, required }: InfoFieldProps) => (
         </div>
     </div>
 );
+
+/**
+ * Очень слабый оттенок цвета статуса: цвет подмешивается к белому, а НЕ
+ * задаётся прозрачностью. Прозрачный фон просвечивает насквозь — карточка
+ * тогда показывает список заказов под собой (поймано 30.09.2026).
+ */
+const tintFromColor = (color?: string | null, strength = 0.22): string | undefined => {
+    if (!color || !/^#[0-9a-f]{6}$/i.test(color)) {
+        return undefined;
+    }
+    const mix = (channel: number) => Math.round(255 - (255 - channel) * strength);
+    const r = mix(parseInt(color.slice(1, 3), 16));
+    const g = mix(parseInt(color.slice(3, 5), 16));
+    const b = mix(parseInt(color.slice(5, 7), 16));
+    return `rgb(${r}, ${g}, ${b})`;
+};
 
 const pickValue = (...values: any[]) => {
     for (const value of values) {
@@ -131,6 +198,19 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [error, setError] = useState<string | null>(null);
     const [replyOpen, setReplyOpen] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
+    // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
+    // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; xmlId?: string | null }>>([]);
+    const [draftClientComment, setDraftClientComment] = useState('');
+    const [draftManagerComment, setDraftManagerComment] = useState('');
+    const [dirty, setDirty] = useState(false);
+    const [savingOrder, setSavingOrder] = useState(false);
+    const [saveNote, setSaveNote] = useState<string | null>(null);
+    // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
+    // «cf.<код>» для своих полей RetailCRM и «delivery.<поле>» для доставки.
+    const [draftFields, setDraftFields] = useState<Record<string, any>>({});
+    const [catalogQuery, setCatalogQuery] = useState('');
+    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
     const [panel, setPanel] = useState<PanelKind | null>(null);
     const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
@@ -205,6 +285,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             const json = await res.json();
             if (json.error) throw new Error(json.error);
             setData(json);
+
+            // Карточка редактируемая: сразу кладём значения в черновик, чтобы
+            // менеджер правил их на месте, а не в отдельном окне.
+            const payload = json?.raw_payload ?? {};
+            const rawItems = Array.isArray(payload.items) ? payload.items : [];
+            setDraftItems(rawItems.map((item: any) => ({
+                id: item.id ?? null,
+                name: item.offer?.displayName || item.offer?.name || item.productName || 'Позиция',
+                quantity: Number(item.quantity || 0),
+                price: Number(item.initialPrice ?? item.price ?? 0),
+            })));
+            setDraftFields({});
+            setDraftClientComment(String(payload.customerComment ?? ''));
+            setDraftManagerComment(String(payload.managerComment ?? ''));
+            setDirty(false);
+            setSaveNote(null);
             // Проверка контрагента по ИНН — в фоне, не блокирует показ карточки заказа.
             const inn = json?.order?.inn || json?.raw_payload?.inn || json?.order?.customer_inn;
             if (inn) {
@@ -214,6 +310,81 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             setError(e.message);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const setField = (key: string, value: any) => {
+        setDraftFields((prev) => ({ ...prev, [key]: value }));
+        setDirty(true);
+    };
+
+    /** Значение поля: сначала из черновика, потом из заказа. */
+    const fieldValue = (key: string, original: any) => (key in draftFields ? draftFields[key] : original);
+
+    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number }>) => {
+        setDraftItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+        setDirty(true);
+    };
+
+    const removeItem = (index: number) => {
+        setDraftItems((prev) => prev.filter((_, i) => i !== index));
+        setDirty(true);
+    };
+
+    const addItem = (item?: { id: string; name: string; price: number }) => {
+        setDraftItems((prev) => [...prev, item
+            ? { id: null, name: item.name, quantity: 1, price: item.price, xmlId: item.id }
+            : { id: null, name: '', quantity: 1, price: 0 }]);
+        setDirty(true);
+        setCatalogQuery('');
+        setCatalogFound([]);
+    };
+
+    /** Сохранить правку заказа в CRM. Пока обе системы живые, заказ меняется там. */
+    const saveOrder = async () => {
+        setSavingOrder(true);
+        setSaveNote(null);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: draftItems.map((row) => ({
+                        id: row.id ?? null,
+                        name: row.name,
+                        quantity: row.quantity,
+                        price: row.price,
+                        xmlId: row.xmlId ?? null,
+                    })),
+                    customerComment: draftClientComment,
+                    managerComment: draftManagerComment,
+                    // Правка остальных полей: раскладываем ключи по местам заказа.
+                    contact: Object.fromEntries(
+                        Object.entries(draftFields)
+                            .filter(([key]) => !key.includes('.'))
+                            .map(([key, value]) => [key, value]),
+                    ),
+                    customFields: Object.fromEntries(
+                        Object.entries(draftFields)
+                            .filter(([key]) => key.startsWith('cf.'))
+                            .map(([key, value]) => [key.slice(3), value]),
+                    ),
+                    delivery: Object.fromEntries(
+                        Object.entries(draftFields)
+                            .filter(([key]) => key.startsWith('delivery.'))
+                            .map(([key, value]) => [key.slice('delivery.'.length), value]),
+                    ),
+                }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось сохранить');
+            setSaveNote(payload.changed?.length ? `Сохранено: ${payload.changed.join(', ')}` : 'Изменений не было');
+            setDirty(false);
+            void fetchDetails();
+        } catch (e: any) {
+            setSaveNote(e.message);
+        } finally {
+            setSavingOrder(false);
         }
     };
 
@@ -445,7 +616,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <h3 className="text-lg font-semibold text-gray-900 mb-4">Контроль</h3>
                         <div className="grid md:grid-cols-3 gap-4">
                             <InfoField label="Категория товара" required value={productCategory || '—'} />
-                            <InfoField label="Дата следующего контакта" value={formatDate(nextContact)} />
+                            <EditField label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
                             <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
@@ -466,12 +637,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-4">
                             <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
-                            <InfoField label="Контакт" value={contactName || '—'} />
-                            <InfoField label="Email" value={payload.email || contact.email || customer.email || '—'} />
-                            <InfoField label="Основной телефон" value={primaryPhone || '—'} />
-                            <InfoField label="Доп. телефон (2)" value={secondaryPhone || '—'} />
-                            <InfoField label="Доп. телефон (3)" value={thirdPhone || '—'} />
-                            <InfoField label="Доп. Email" value={additionalEmail || '—'} />
+                            <EditField label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
+                            <EditField label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
+                            <EditField label="Основной телефон" value={fieldValue('phone', primaryPhone || '')} onChange={(v) => setField('phone', v)} />
+                            <EditField label="Доп. телефон (2)" value={fieldValue('cf.dop_telefon2', secondaryPhone || '')} onChange={(v) => setField('cf.dop_telefon2', v)} />
+                            <EditField label="Доп. телефон (3)" value={fieldValue('cf.dop_telefon3', thirdPhone || '')} onChange={(v) => setField('cf.dop_telefon3', v)} />
+                            <EditField label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                             <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
                             <InfoField label="Партнёр" value={customer.partner || '—'} />
                         </div>
@@ -479,7 +650,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                     <div className="bg-white border border-gray-200 p-6">
                         <div className="grid md:grid-cols-2 gap-4">
-                            <InfoField label="Должность" value={customFields.dolzhnost || names.field('position', payload.position) || '—'} />
+                            <EditField label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
@@ -487,63 +658,145 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Основание подписи" value={contractBasis || '—'} />
                             <InfoField label="Когда нужно оборудование" value={logisticNeedBy || '—'} />
                             <InfoField label="Для кого закупка" value={logisticBuyerType || '—'} />
-                            <InfoField label="Адрес фактический" value={logisticAddress || '—'} />
+                            <EditField label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                             <InfoField label="Комментарий клиента" value={clientComment || '—'} />
+                        </div>
+                    </div>
+                </section>
+
+<section id="order-custom-fields" className="space-y-6">
+                    <div className="bg-white border border-gray-200 p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <InfoField label="Roistat" value={roistat || '—'} />
+                            <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
+                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
+                            <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
+                            <EditField label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
+                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
+                            <EditField label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
+                            <InfoField label="Изменение менеджера" value={changeManager || '—'} />
+                            <InfoField label="Контрагент" value={names.resolve('contragentType', payload.contragent?.contragentType) || '—'} />
+                            <InfoField label="Email" value={payload.email || '—'} />
+                            <InfoField label="Телефон" value={primaryPhone || '—'} />
+                            <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />
+                        </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 p-6">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
+                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
+                            {operatorComment || 'Комментариев нет.'}
                         </div>
                     </div>
                 </section>
 
                 <section id="order-list">
                     <div className="bg-white border border-gray-200 p-0 overflow-hidden">
-                        <div className="p-6 border-b">
+                        {/* Состав правится прямо здесь: режима «только просмотр» у нас нет. */}
+                        <div className="flex items-center justify-between gap-3 p-6 border-b">
                             <h3 className="text-lg font-semibold text-gray-900">Состав заказа</h3>
+                            <button
+                                onClick={() => addItem()}
+                                className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                            >
+                                Добавить позицию руками
+                            </button>
                         </div>
-                        <div className="overflow-x-auto">
+
+                        <div className="px-6 pt-4">
+                            <input
+                                value={catalogQuery}
+                                onChange={async (e) => {
+                                    const text = e.target.value;
+                                    setCatalogQuery(text);
+                                    if (text.trim().length < 3) { setCatalogFound([]); return; }
+                                    try {
+                                        const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(text.trim())}`);
+                                        const payload = await res.json();
+                                        setCatalogFound(payload.items || []);
+                                    } catch {
+                                        setCatalogFound([]);
+                                    }
+                                }}
+                                placeholder="Найти товар на сайте и добавить в заказ"
+                                className="w-full border border-gray-300 px-3 py-2 text-sm"
+                            />
+                            {catalogFound.length > 0 && (
+                                <div className="mt-1 max-h-48 overflow-auto border border-gray-200">
+                                    {catalogFound.map((found) => (
+                                        <button
+                                            key={found.id}
+                                            onClick={() => addItem(found)}
+                                            className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-amber-50"
+                                        >
+                                            <div className="text-gray-900">{found.name}</div>
+                                            <div className="text-xs text-gray-500">
+                                                {formatCurrency(found.price)}{found.priceLive ? ' · цена с сайта' : ' · цена из витрины'}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="overflow-x-auto p-6">
                             <table className="min-w-full text-sm">
                                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
-                                        <th className="px-4 py-3 text-left">№</th>
-                                        <th className="px-4 py-3 text-left">Товар / услуга</th>
-                                        <th className="px-4 py-3 text-left">Свойства</th>
-                                        <th className="px-4 py-3 text-left">Артикул</th>
-                                        <th className="px-4 py-3 text-left">Статус</th>
-                                        <th className="px-4 py-3 text-left">Кол-во</th>
-                                        <th className="px-4 py-3 text-left">Цена</th>
-                                        <th className="px-4 py-3 text-left">Стоимость</th>
+                                        <th className="px-3 py-3 text-left">№</th>
+                                        <th className="px-3 py-3 text-left">Товар / услуга</th>
+                                        <th className="w-28 px-3 py-3 text-right">Кол-во</th>
+                                        <th className="w-36 px-3 py-3 text-right">Цена</th>
+                                        <th className="w-36 px-3 py-3 text-right">Стоимость</th>
+                                        <th className="w-10 px-3 py-3"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
-                                    {items.length === 0 ? (
+                                    {draftItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="text-center py-10 text-gray-500">
-                                                В заказе нет позиций. Добавьте их в Retail CRM, чтобы увидеть здесь.
+                                            <td colSpan={6} className="py-10 text-center text-gray-500">
+                                                Позиций нет — найдите товар на сайте или добавьте руками.
                                             </td>
                                         </tr>
-                                    ) : (
-                                        items.map((item: any, index: number) => {
-                                            const price = extractItemPrice(item);
-                                            const qty = extractItemQuantity(item);
-                                            const cost = price * qty;
-                                            const sku = pickValue(item.sku, item.article, item.offer?.article, item.offer?.externalId);
-                                            const properties = [...toArray(item.offer?.properties), ...toArray(item.properties)]
-                                                .map((prop: any) => prop.name || prop.value)
-                                                .filter(Boolean)
-                                                .join(', ');
-                                            return (
-                                                <tr key={item.id || index} className="hover:bg-gray-50">
-                                                    <td className="px-4 py-3">{index + 1}</td>
-                                                    <td className="px-4 py-3 font-semibold text-gray-900">{item.offer?.displayName || item.name || item.title}</td>
-                                                    <td className="px-4 py-3 text-gray-500">{properties || '—'}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-500">{sku || '—'}</td>
-                                                    <td className="px-4 py-3 text-gray-500">{item.status || '—'}</td>
-                                                    <td className="px-4 py-3">{qty}</td>
-                                                    <td className="px-4 py-3">{formatCurrency(price)}</td>
-                                                    <td className="px-4 py-3 font-semibold">{formatCurrency(cost)}</td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
+                                    ) : draftItems.map((row, index) => (
+                                        <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
+                                            <td className="px-3 py-2 text-gray-500">{index + 1}</td>
+                                            <td className="px-3 py-2">
+                                                <input
+                                                    value={row.name}
+                                                    onChange={(e) => changeItem(index, { name: e.target.value })}
+                                                    className="w-full border border-gray-300 px-2 py-1"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <NumberInput
+                                                    value={row.quantity}
+                                                    onChange={(v: number | null) => changeItem(index, { quantity: Number(v) || 0 })}
+                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2">
+                                                <NumberInput
+                                                    value={row.price}
+                                                    onChange={(v: number | null) => changeItem(index, { price: Number(v) || 0 })}
+                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2 text-right font-semibold text-gray-900">
+                                                {formatCurrency(Math.max(0, row.price * row.quantity))}
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                <button
+                                                    onClick={() => removeItem(index)}
+                                                    className="text-gray-400 hover:text-red-600"
+                                                    title="Убрать позицию"
+                                                >
+                                                    ×
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
                                 </tbody>
                             </table>
                         </div>
@@ -554,21 +807,41 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <div className="font-semibold text-gray-900">Итого: {formatCurrency((totalSummValue || 0) + (logisticCost || 0))}</div>
                         </div>
                     </div>
+                    <div className="grid lg:grid-cols-2 gap-6">
+                        <div className="bg-white border border-gray-200 p-6">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий клиента</h4>
+                            <textarea
+                                value={draftClientComment}
+                                onChange={(e) => { setDraftClientComment(e.target.value); setDirty(true); }}
+                                rows={6}
+                                placeholder="Что просит клиент"
+                                className="w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
+                            />
+                        </div>
+                        <div className="bg-white border border-gray-200 p-6">
+                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий менеджера</h4>
+                            <textarea
+                                value={draftManagerComment}
+                                onChange={(e) => { setDraftManagerComment(e.target.value); setDirty(true); }}
+                                rows={6}
+                                placeholder="Договорённости, обещания, что делать дальше"
+                                className="w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
+                            />
+                        </div>
+                    </div>
                 </section>
 
                 <section id="order-delivery" className="space-y-6">
                     <div className="bg-white border border-gray-200 p-6">
+                        {/* Складских полей здесь нет: склада у компании нет, всё идёт
+                            прямо с производства (решение владельца 30.09.2026). */}
                         <div className="flex items-center gap-3 mb-4">
-                            <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-semibold">Склад</span>
                             <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
                         </div>
                         <div className="grid md:grid-cols-2 gap-4">
-                            <InfoField label="Склад отгрузки" value={logisticWarehouse || 'Не указан'} />
                             <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
-                            <InfoField label="Платное хранение" value={formatBooleanYesNo(shipping.paidStorage)} />
-                            <InfoField label="Срок изготовления (дни)" value={logisticDeadline || '—'} />
-                            <InfoField label="Комментарий логисту" value={logisticComment || '—'} />
-                            <InfoField label="Склад / адрес" value={shipping.address || logisticAddress || '—'} />
+                            <EditField label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
+                            <EditField label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </div>
 
@@ -577,30 +850,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Тип доставки" value={names.resolve('deliveryType', delivery.code || delivery.type) || 'Не указан'} />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
                             <InfoField label="Время доставки" value={logisticTime || '—'} />
-                            <InfoField label="Стоимость" value={formatCurrency(logisticCost)} />
+                            <EditField label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
                             <InfoField label="Себестоимость" value={formatCurrency(logisticSelfCost)} />
                             <InfoField label="Регион" value={logisticRegion || '—'} />
                             <InfoField label="Город" value={logisticCity || '—'} />
                             <InfoField label="Метро" value={logisticMetro || '—'} />
                             <InfoField label="Индекс" value={logisticIndex || '—'} />
-                            <InfoField label="Адрес" value={logisticAddress || '—'} />
+                            <EditField label="Адрес доставки" value={fieldValue('delivery.address', logisticAddress || '')} onChange={(v) => setField('delivery.address', v)} />
                             <InfoField label="Получатель" value={logisticReceiver || '—'} />
                             <InfoField label="Коммент клиента" value={delivery.comment || '—'} />
-                        </div>
-                    </div>
-
-                    <div className="grid lg:grid-cols-2 gap-6">
-                        <div className="bg-white border border-gray-200 p-6">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии клиента</h4>
-                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
-                                {clientComment || 'Комментариев нет.'}
-                            </div>
-                        </div>
-                        <div className="bg-white border border-gray-200 p-6">
-                            <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарии оператора</h4>
-                            <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
-                                {operatorComment || 'Комментариев нет.'}
-                            </div>
                         </div>
                     </div>
 
@@ -618,12 +876,34 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             </button>
                         </div>
 
+                        {/* Письмо пишется в отдельном окне поверх карточки: так менеджер
+                            видит только письмо и не теряет место в заказе. */}
                         {replyOpen && (
-                            <div className="mb-4">
-                                <OrderReplyForm
-                                    orderNumber={String(data.order?.number ?? orderId)}
-                                    onClose={() => setReplyOpen(false)}
-                                />
+                            <div
+                                className="fixed inset-0 z-50 flex items-start justify-center overflow-auto bg-black/40 p-6"
+                                onClick={() => setReplyOpen(false)}
+                            >
+                                <div
+                                    className="w-full max-w-3xl bg-white p-4 shadow-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="mb-3 flex items-center justify-between border-b border-gray-200 pb-2">
+                                        <h3 className="text-lg font-semibold text-gray-900">
+                                            Письмо по заказу №{String(data.order?.number ?? orderId)}
+                                        </h3>
+                                        <button
+                                            onClick={() => setReplyOpen(false)}
+                                            className="px-2 text-xl leading-none text-gray-400 hover:text-gray-900"
+                                            title="Закрыть"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                    <OrderReplyForm
+                                        orderNumber={String(data.order?.number ?? orderId)}
+                                        onClose={() => setReplyOpen(false)}
+                                    />
+                                </div>
                             </div>
                         )}
                         {data.emails && data.emails.length > 0 ? (
@@ -679,32 +959,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     )}
                 </section>
 
-                <section id="order-custom-fields" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
-                        <div className="grid md:grid-cols-2 gap-4">
-                            <InfoField label="Roistat" value={roistat || '—'} />
-                            <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
-                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
-                            <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
-                            <InfoField label="Маржа" value={marginValue ? `${marginValue} %` : '—'} />
-                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
-                            <InfoField label="Датасчёт" value={dsDocument || '—'} />
-                            <InfoField label="Изменение менеджера" value={changeManager || '—'} />
-                            <InfoField label="Контрагент" value={names.resolve('contragentType', payload.contragent?.contragentType) || '—'} />
-                            <InfoField label="Email" value={payload.email || '—'} />
-                            <InfoField label="Телефон" value={primaryPhone || '—'} />
-                            <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />
-                        </div>
-                    </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
-                        <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
-                            {operatorComment || 'Комментариев нет.'}
-                        </div>
-                    </div>
-                </section>
             </div>
         );
     };
@@ -1027,13 +1282,37 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     };
 
     return (
-        <div className="fixed inset-0 z-[130] flex bg-white" role="dialog" aria-modal="true" data-ui-audit="order-modal">
-            <div className="flex h-full w-full flex-col overflow-hidden bg-white">
-                <header className="border-b bg-white px-4 py-4 md:px-6 md:py-5">
+        <div
+            className="absolute inset-0 z-[130] flex"
+            role="dialog"
+            aria-modal="true"
+            data-ui-audit="order-modal"
+            // Карточка подкрашена цветом своего статуса — еле заметно, чтобы
+            // состояние заказа читалось боковым зрением.
+            style={{ backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff' }}
+        >
+            <div
+                className="flex h-full w-full flex-col overflow-hidden"
+                style={{ backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff' }}
+            >
+                <header
+                    className="border-b px-4 py-4 md:px-6 md:py-5"
+                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.35) || '#ffffff' }}
+                >
                     <div className="flex flex-wrap items-start justify-between gap-4 md:gap-6">
                         <div className="min-w-0">
                             <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>
-                            <h2 className="text-2xl font-semibold text-gray-900">Заказ #{orderId}</h2>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <h2 className="text-2xl font-semibold text-gray-900">Заказ #{orderId}</h2>
+                                {data?.statusName && (
+                                    <span
+                                        className="px-3 py-1 text-xs font-semibold text-gray-900"
+                                        style={{ backgroundColor: data.statusColor || '#e5e7eb' }}
+                                    >
+                                        {data.statusName}
+                                    </span>
+                                )}
+                            </div>
                             {data?.order && (
                                 <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-2">
                                     <span>Сумма: <strong>{formatCurrency(data.order.totalsumm)}</strong></span>
@@ -1081,12 +1360,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
-                            <a
-                                href={`/orders/${orderId}/edit`}
-                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-                            >
-                                Править заказ
-                            </a>
                             <a
                                 href={`/api/orders/${orderId}/document?kind=proposal`}
                                 target="_blank"
@@ -1239,10 +1512,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     )}
                 </main>
 
-                <footer className="border-t bg-white px-6 py-4 flex items-center justify-between">
-                    <div className="flex gap-3">
-                        <button className="px-4 py-2 bg-green-600 text-white text-sm font-semibold hover:bg-green-700">Сохранить</button>
-                        <button className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200">Сохранить и выйти</button>
+                <footer
+                    className="border-t px-6 py-4 flex items-center justify-between"
+                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.35) || '#ffffff' }}
+                >
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={saveOrder}
+                            disabled={!dirty || savingOrder}
+                            className="px-4 py-2 bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400"
+                        >
+                            {savingOrder ? 'Сохраняю…' : 'Сохранить'}
+                        </button>
+                        <button
+                            onClick={async () => { await saveOrder(); onClose(); }}
+                            disabled={!dirty || savingOrder}
+                            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:text-gray-400"
+                        >
+                            Сохранить и выйти
+                        </button>
+                        {saveNote && <span className="text-xs text-gray-600">{saveNote}</span>}
+                        {dirty && !saveNote && <span className="text-xs text-amber-700">Есть несохранённые изменения</span>}
                     </div>
                     <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Закрыть</button>
                 </footer>

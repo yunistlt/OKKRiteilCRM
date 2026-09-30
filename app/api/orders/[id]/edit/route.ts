@@ -24,6 +24,8 @@ const bodySchema = z.object({
     statusCode: z.string().trim().max(100).optional().nullable(),
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
+    contact: z.record(z.string(), z.any()).optional(),
+    delivery: z.record(z.string(), z.any()).optional(),
 });
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {

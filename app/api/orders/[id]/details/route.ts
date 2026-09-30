@@ -129,8 +129,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .eq('retailcrm_order_id', order.order_id)
             .maybeSingle();
 
+        // Цвет статуса — тот же источник, что у списка заказов: цвета уже
+        // назначены людьми, выдумывать свои нельзя.
+        const { data: statusRow } = await supabase
+            .from('statuses')
+            .select('color, name, group_name')
+            .eq('code', order.status)
+            .maybeSingle();
+
         // Return structured data
         return NextResponse.json({
+            statusColor: (statusRow as any)?.color || null,
+            statusName: (statusRow as any)?.name || null,
+            statusGroup: (statusRow as any)?.group_name || null,
             order: {
                 ...order,
                 manager_name: order.managers ? `${order.managers.first_name || ''} ${order.managers.last_name || ''}`.trim() : 'Не определен'

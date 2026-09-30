@@ -29,6 +29,10 @@ export type OrderEdit = {
     statusCode?: string | null;
     managerId?: number | null;
     customFields?: Record<string, unknown>;
+    /** Поля самого заказа: имя контакта, телефон, почта. */
+    contact?: Record<string, unknown>;
+    /** Доставка: адрес и стоимость. */
+    delivery?: Record<string, unknown>;
 };
 
 export type EditResult =
@@ -44,6 +48,8 @@ export function describeEdit(edit: OrderEdit): string[] {
     if (edit.statusCode) changed.push('статус');
     if (edit.managerId) changed.push('менеджер');
     if (edit.customFields && Object.keys(edit.customFields).length) changed.push('дополнительные поля');
+    if (edit.contact && Object.keys(edit.contact).length) changed.push('контактные данные');
+    if (edit.delivery && Object.keys(edit.delivery).length) changed.push('доставку');
     return changed;
 }
 
@@ -140,6 +146,24 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     if (edit.statusCode) orderData.status = edit.statusCode;
     if (edit.managerId) orderData.managerId = edit.managerId;
     if (edit.customFields && Object.keys(edit.customFields).length) orderData.customFields = edit.customFields;
+
+    // Контактные данные заказа кладём как есть: имена полей у RetailCRM свои,
+    // и мы их не переводим.
+    for (const [key, value] of Object.entries(edit.contact || {})) {
+        if (value !== undefined) {
+            orderData[key] = value;
+        }
+    }
+
+    if (edit.delivery && Object.keys(edit.delivery).length) {
+        orderData.delivery = {};
+        if (edit.delivery.address !== undefined) {
+            orderData.delivery.address = { text: String(edit.delivery.address ?? '') };
+        }
+        if (edit.delivery.cost !== undefined) {
+            orderData.delivery.cost = Number(edit.delivery.cost) || 0;
+        }
+    }
 
     if (!Object.keys(orderData).length) {
         return { ok: true, changed: [] };

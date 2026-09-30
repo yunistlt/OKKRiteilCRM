@@ -29,6 +29,14 @@ const BodySchema = z.object({
     replyTo: z.string().email().optional(),
     orderId: z.number().int().positive().optional(),
     force: z.boolean().optional(), // осознанная повторная отправка по уже отправленному заказу
+    // Вложения приходят строкой base64: отдельного хранилища для них не нужно,
+    // письмо уходит сразу. Ограничение — 15 МБ на всё письмо, дальше почтовые
+    // серверы начинают отказывать.
+    attachments: z.array(z.object({
+        filename: z.string().min(1).max(255),
+        contentType: z.string().max(200).optional(),
+        contentBase64: z.string().min(1),
+    })).max(10).optional(),
 });
 
 /** Следующий порядковый номер сообщения в переписке по заказу (по тегам `[#N/order]` во входящих). */
@@ -76,6 +84,15 @@ export async function POST(req: Request) {
 
     const seq = body.seq ?? (await nextThreadSeq(body.orderNumber));
 
+    const totalBytes = (body.attachments || [])
+        .reduce((sum, file) => sum + Math.ceil(file.contentBase64.length * 3 / 4), 0);
+    if (totalBytes > 15 * 1024 * 1024) {
+        return NextResponse.json(
+            { ok: false, error: 'Вложения тяжелее 15 МБ — почта такое письмо не примет' },
+            { status: 413 },
+        );
+    }
+
     const result = await sendOrderEmail({
         to: body.to,
         orderNumber: body.orderNumber,
@@ -84,6 +101,11 @@ export async function POST(req: Request) {
         seq,
         fromName: body.fromName,
         replyTo: body.replyTo,
+        attachments: (body.attachments || []).map((file) => ({
+            filename: file.filename,
+            content: Buffer.from(file.contentBase64, 'base64'),
+            contentType: file.contentType,
+        })),
     });
 
     if (!result.sent) {
