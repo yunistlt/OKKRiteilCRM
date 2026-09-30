@@ -209,6 +209,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     // Правка остальных полей карточки. Ключи: имя поля заказа (firstName, phone…),
     // «cf.<код>» для своих полей RetailCRM и «delivery.<поле>» для доставки.
     const [draftFields, setDraftFields] = useState<Record<string, any>>({});
+    // От какого нашего юрлица выставляем счёт. Пусто — от юрлица магазина заказа.
+    const [sellerCode, setSellerCode] = useState('');
+    const [sellerOptions, setSellerOptions] = useState<Array<{ code: string; name: string }>>([]);
     const [catalogQuery, setCatalogQuery] = useState('');
     const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
@@ -297,6 +300,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 price: Number(item.initialPrice ?? item.price ?? 0),
             })));
             setDraftFields({});
+            fetch(`/api/orders/${orderId}/sellers`)
+                .then((r) => r.json())
+                .then((payload) => setSellerOptions(payload.sellers || []))
+                .catch(() => setSellerOptions([]));
             setDraftClientComment(String(payload.customerComment ?? ''));
             setDraftManagerComment(String(payload.managerComment ?? ''));
             setDirty(false);
@@ -1360,8 +1367,21 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
+                            {/* Юрлиц у компании несколько, у каждого свои реквизиты —
+                                счёт и КП можно выставить от любого. */}
+                            <select
+                                value={sellerCode}
+                                onChange={(e) => setSellerCode(e.target.value)}
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700"
+                                title="От какого юрлица выставляем документы"
+                            >
+                                <option value="">Юрлицо заказа</option>
+                                {sellerOptions.map((option) => (
+                                    <option key={option.code} value={option.code}>{option.name}</option>
+                                ))}
+                            </select>
                             <a
-                                href={`/api/orders/${orderId}/document?kind=proposal`}
+                                href={`/api/orders/${orderId}/document?kind=proposal${sellerCode ? `&seller=${sellerCode}` : ''}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
@@ -1369,7 +1389,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 Коммерческое предложение
                             </a>
                             <a
-                                href={`/api/orders/${orderId}/document?kind=invoice`}
+                                href={`/api/orders/${orderId}/document?kind=invoice${sellerCode ? `&seller=${sellerCode}` : ''}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"

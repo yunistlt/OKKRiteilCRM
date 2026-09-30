@@ -8,6 +8,35 @@ import {
     pdf,
     Font,
 } from '@react-pdf/renderer';
+import path from 'path';
+
+/**
+ * Шрифт с кириллицей. Стандартный Helvetica русских букв не знает: 30.09.2026
+ * счёт и КП вышли набором кракозябр вместо названий товаров и реквизитов.
+ * PT Sans лежит в public/fonts и покрывает кириллицу.
+ */
+const FONT_FAMILY = 'PTSans';
+let fontsRegistered = false;
+
+function ensureFonts() {
+    if (fontsRegistered) {
+        return;
+    }
+    try {
+        Font.register({
+            family: FONT_FAMILY,
+            fonts: [
+                { src: path.join(process.cwd(), 'public/fonts/PTSans-Regular.ttf'), fontWeight: 'normal' },
+                { src: path.join(process.cwd(), 'public/fonts/PTSans-Bold.ttf'), fontWeight: 'bold' },
+            ],
+        });
+        fontsRegistered = true;
+    } catch (error) {
+        // Без шрифта документ всё равно соберётся, но по-русски читаться не будет —
+        // поэтому говорим об этом в логе громко.
+        console.error('[pdf] Не удалось подключить шрифт с кириллицей:', error);
+    }
+}
 
 export interface ProposalItem {
     name: string;
@@ -30,7 +59,7 @@ export interface ProposalData {
 // ── Стили ────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
     page: {
-        fontFamily: 'Helvetica',
+        fontFamily: FONT_FAMILY,
         fontSize: 10,
         paddingTop: 40,
         paddingBottom: 50,
@@ -49,7 +78,7 @@ const styles = StyleSheet.create({
         borderBottomColor: '#10b981',
     },
     headerLeft: { flexDirection: 'column' },
-    companyName: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: '#0f172a' },
+    companyName: { fontSize: 16, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#0f172a' },
     companyTagline: { fontSize: 9, color: '#64748b', marginTop: 2 },
     headerRight: { alignItems: 'flex-end' },
     docLabel: { fontSize: 9, color: '#64748b', textTransform: 'uppercase', letterSpacing: 1 },
@@ -57,7 +86,7 @@ const styles = StyleSheet.create({
 
     // Заголовок
     titleBlock: { marginBottom: 20 },
-    title: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#0f172a', marginBottom: 6 },
+    title: { fontSize: 18, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#0f172a', marginBottom: 6 },
     clientInfo: { fontSize: 10, color: '#475569' },
 
     // Введение
@@ -80,7 +109,7 @@ const styles = StyleSheet.create({
         padding: '8 10',
         borderRadius: 4,
     },
-    tableHeaderText: { fontSize: 8, color: '#ffffff', fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
+    tableHeaderText: { fontSize: 8, color: '#ffffff', fontFamily: FONT_FAMILY, fontWeight: 'bold', textTransform: 'uppercase' },
     tableRow: {
         flexDirection: 'row',
         borderBottomWidth: 1,
@@ -120,8 +149,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#0f172a',
         borderRadius: 4,
     },
-    grandTotalLabel: { fontSize: 10, color: '#ffffff', fontFamily: 'Helvetica-Bold' },
-    grandTotalValue: { fontSize: 12, color: '#10b981', fontFamily: 'Helvetica-Bold' },
+    grandTotalLabel: { fontSize: 10, color: '#ffffff', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
+    grandTotalValue: { fontSize: 12, color: '#10b981', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
 
     // Условия
     conditions: {
@@ -130,7 +159,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#f8fafc',
         borderRadius: 6,
     },
-    conditionsTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#475569', marginBottom: 6, textTransform: 'uppercase' },
+    conditionsTitle: { fontSize: 9, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#475569', marginBottom: 6, textTransform: 'uppercase' },
     conditionRow: { flexDirection: 'row', marginBottom: 3 },
     conditionBullet: { fontSize: 9, color: '#10b981', marginRight: 6 },
     conditionText: { fontSize: 9, color: '#475569', flex: 1 },
@@ -268,6 +297,7 @@ function ProposalPDF({ data }: { data: ProposalData }) {
 
 // ── Публичная функция генерации PDF ──────────────────────────────────────────
 export async function generateProposalPDF(data: ProposalData): Promise<Buffer> {
+    ensureFonts();
     const doc = React.createElement(ProposalPDF, { data });
     const instance = pdf(doc as any);
     const blob = await instance.toBlob();
@@ -303,14 +333,14 @@ export interface InvoiceData {
 }
 
 const invStyles = StyleSheet.create({
-    page: { fontFamily: 'Helvetica', fontSize: 9, padding: 40, color: '#1e293b', backgroundColor: '#fff' },
+    page: { fontFamily: FONT_FAMILY, fontSize: 9, padding: 40, color: '#1e293b', backgroundColor: '#fff' },
     // Шапка
     topBorder: { height: 4, backgroundColor: '#0f172a', marginBottom: 16 },
     headerRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
     sellerBlock: { width: '55%' },
     invoiceMeta: { width: '40%', alignItems: 'flex-end' },
-    bold: { fontFamily: 'Helvetica-Bold' },
-    lg: { fontSize: 18, fontFamily: 'Helvetica-Bold', color: '#0f172a', marginBottom: 4 },
+    bold: { fontFamily: FONT_FAMILY, fontWeight: 'bold' },
+    lg: { fontSize: 18, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#0f172a', marginBottom: 4 },
     sm: { fontSize: 8, color: '#64748b', lineHeight: 1.4 },
     // Банковские реквизиты
     bankBox: {
@@ -318,19 +348,19 @@ const invStyles = StyleSheet.create({
         border: 1, borderColor: '#e2e8f0', borderRadius: 4,
         padding: 10, marginBottom: 14,
     },
-    bankTitle: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },
+    bankTitle: { fontSize: 8, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6, letterSpacing: 0.5 },
     bankRow: { flexDirection: 'row', marginBottom: 3 },
     bankLabel: { width: '38%', fontSize: 8, color: '#94a3b8' },
-    bankValue: { width: '62%', fontSize: 8, color: '#1e293b', fontFamily: 'Helvetica-Bold' },
+    bankValue: { width: '62%', fontSize: 8, color: '#1e293b', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     // Плательщик
     payerBox: { border: 1, borderColor: '#e2e8f0', borderRadius: 4, padding: 10, marginBottom: 14 },
-    payerTitle: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6 },
+    payerTitle: { fontSize: 8, fontFamily: FONT_FAMILY, fontWeight: 'bold', color: '#475569', textTransform: 'uppercase', marginBottom: 6 },
     payerRow: { flexDirection: 'row', marginBottom: 3 },
     payerLabel: { width: '28%', fontSize: 8, color: '#94a3b8' },
     payerValue: { width: '72%', fontSize: 8, color: '#1e293b' },
     // Таблица
     tblHeader: { flexDirection: 'row', backgroundColor: '#0f172a', padding: '6 8', marginBottom: 0 },
-    tblHeaderText: { fontSize: 7.5, color: '#fff', fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
+    tblHeaderText: { fontSize: 7.5, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold', textTransform: 'uppercase' },
     tblRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', padding: '6 8' },
     tblAlt: { backgroundColor: '#f8fafc' },
     cNum: { width: '5%' }, cName: { width: '38%' }, cQty: { width: '9%', textAlign: 'right' },
@@ -343,8 +373,8 @@ const invStyles = StyleSheet.create({
     totLabel: { fontSize: 8.5, color: '#64748b' },
     totVal: { fontSize: 8.5, color: '#1e293b' },
     grandRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5, padding: '7 8', backgroundColor: '#0f172a', borderRadius: 3 },
-    grandLabel: { fontSize: 9, color: '#fff', fontFamily: 'Helvetica-Bold' },
-    grandVal: { fontSize: 11, color: '#10b981', fontFamily: 'Helvetica-Bold' },
+    grandLabel: { fontSize: 9, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
+    grandVal: { fontSize: 11, color: '#10b981', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     // Подпись
     signBlock: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
     signCol: { width: '45%' },
@@ -395,7 +425,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     <View style={invStyles.invoiceMeta}>
                         <Text style={[invStyles.sm, { marginBottom: 2 }]}>Дата выставления: {today}</Text>
                         {dueDate && <Text style={[invStyles.sm, { color: '#ef4444' }]}>Срок оплаты: {dueDate}</Text>}
-                        <Text style={[invStyles.sm, { marginTop: 8, fontFamily: 'Helvetica-Bold' }]}>Оплата: банковский перевод</Text>
+                        <Text style={[invStyles.sm, { marginTop: 8, fontFamily: FONT_FAMILY, fontWeight: 'bold' }]}>Оплата: банковский перевод</Text>
                     </View>
                 </View>
 
@@ -527,6 +557,7 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
 }
 
 export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
+    ensureFonts();
     const doc = React.createElement(InvoicePDF, { data });
     const instance = pdf(doc as any);
     const blob = await instance.toBlob();

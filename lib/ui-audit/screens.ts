@@ -105,6 +105,7 @@ export const UI_AUDIT_SCREENS: UiAuditScreen[] = [
     { key: 'settings', title: 'Настройки', section: 'Система', path: '/settings', route: '/settings' },
     { key: 'settings-status', title: 'Статус систем', section: 'Система', path: '/settings/status', route: '/settings/status' },
     { key: 'settings-access', title: 'Доступы и права', section: 'Система', path: '/settings/access', route: '/settings/access' },
+    { key: 'settings-legal-entities', title: 'Наши юрлица', section: 'Система', path: '/settings/legal-entities', route: '/settings/legal-entities' },
     { key: 'settings-managers', title: 'Менеджеры', section: 'Система', path: '/settings/managers', route: '/settings/managers' },
     { key: 'settings-statuses', title: 'Статусы заказов', section: 'Система', path: '/settings/statuses', route: '/settings/statuses' },
     { key: 'settings-notifications', title: 'Уведомления', section: 'Система', path: '/settings/notifications', route: '/settings/notifications' },

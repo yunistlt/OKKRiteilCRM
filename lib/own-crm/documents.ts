@@ -26,8 +26,14 @@ export type Seller = {
     address: string;
 };
 
+export type SellerOption = { code: string; name: string };
+
 export type OrderDocumentData = {
     orderNumber: string;
+    /** Ставка НДС по факту позиций заказа, а не выдуманная. */
+    vatPercent: number;
+    /** От каких юрлиц можно выставить счёт. */
+    sellerOptions: SellerOption[];
     items: DocumentItem[];
     payerCompany: string | null;
     payerName: string | null;
@@ -79,8 +85,38 @@ export async function sellerFromSite(siteCode: string | null | undefined): Promi
     };
 }
 
+/** Все наши юрлица — это магазины в RetailCRM, у каждого свои реквизиты. */
+export async function sellerOptions(): Promise<SellerOption[]> {
+    const sites = await siteDirectory().catch(() => ({}));
+    return Object.entries(sites as Record<string, any>)
+        .filter(([, site]) => site?.contragent?.legalName)
+        .map(([code, site]) => ({ code, name: site.contragent.legalName || site.name || code }));
+}
+
+/**
+ * Ставка НДС берётся из карточки нашего юрлица — её задаёт человек в настройках
+ * (`/settings/legal-entities`). В коде её нет и быть не должно: у ИП и у ООО
+ * она разная и меняется решением, а не выкаткой.
+ *
+ * Не задана — считаем, что НДС нет: выдумывать ставку для счёта нельзя.
+ */
+export async function vatPercentForSite(siteCode: string | null | undefined): Promise<number> {
+    if (!siteCode) {
+        return 0;
+    }
+
+    const { data } = await supabase
+        .from('legal_entities')
+        .select('vat_percent')
+        .eq('site_code', siteCode)
+        .maybeSingle();
+
+    const rate = Number((data as any)?.vat_percent);
+    return Number.isFinite(rate) && rate > 0 ? rate : 0;
+}
+
 /** Данные для КП и счёта по заказу. */
-export async function orderDocumentData(orderId: number): Promise<OrderDocumentData | null> {
+export async function orderDocumentData(orderId: number, sellerCode?: string | null): Promise<OrderDocumentData | null> {
     const { data: order } = await supabase
         .from('orders')
         .select('order_id, number, site, "contragent", "customer", "firstName", "lastName"')
@@ -94,7 +130,7 @@ export async function orderDocumentData(orderId: number): Promise<OrderDocumentD
     const crmOrderId = (order as any).order_id ?? orderId;
     const { data: rows } = await supabase
         .from('order_items')
-        .select('"offer", "quantity", "initialPrice", "discountTotal"')
+        .select('"offer", "quantity", "initialPrice", "discountTotal", "vatRate"')
         .eq('order_id', crmOrderId)
         .order('ordering', { ascending: true });
 
@@ -118,7 +154,11 @@ export async function orderDocumentData(orderId: number): Promise<OrderDocumentD
         payerInn: contragent.INN || null,
         payerKpp: contragent.KPP || null,
         payerAddress: contragent.legalAddress || null,
-        seller: await sellerFromSite((order as any).site),
+        // Юрлицо: по умолчанию то, чьему магазину принадлежит заказ, но счёт
+        // можно выставить и от другого — юрлиц у компании несколько.
+        seller: await sellerFromSite(sellerCode || (order as any).site),
+        sellerOptions: await sellerOptions(),
+        vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
 }

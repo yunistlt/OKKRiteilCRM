@@ -22,6 +22,8 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/calls', label: 'API телефона', description: 'Звонки менеджера из интерфейса: начать звонок, история, поток событий.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/assistant', label: 'API помощника менеджера', description: 'Действия, которые помощник подготовил: письмо клиенту и звонок — выполняются только после подтверждения человеком.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/orders', label: 'API заказов', description: 'Данные заказа, документы (КП и счёт), письма и задачи по заказу.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/settings/legal-entities', label: 'Наши юрлица', description: 'Карточки наших юрлиц: ставка НДС, подписанты, связь с магазином RetailCRM.', category: 'Система', allowed: ['admin', 'rop'] },
+    { prefix: '/api/settings/legal-entities', label: 'API наших юрлиц', description: 'Чтение и правка карточек юрлиц.', category: 'Система', allowed: ['admin', 'rop'] },
     { prefix: '/orders', label: 'Заказы и правка заказа', description: 'Список заказов, карточка, правка состава и комментариев.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/orders/new', label: 'Новый заказ', description: 'Создание заказа менеджером: клиент, состав из каталога сайта, комментарий.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/orders/create', label: 'API создания заказа', description: 'Заводит заказ в RetailCRM из нашего интерфейса.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },

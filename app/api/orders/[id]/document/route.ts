@@ -25,7 +25,10 @@ export async function GET(request: Request, { params }: { params: { id: string }
         return NextResponse.json({ error: 'Неверный номер заказа' }, { status: 400 });
     }
 
-    const data = await orderDocumentData(orderId);
+    // Счёт можно выставить от любого нашего юрлица: их несколько, и у каждого
+    // свои реквизиты и своя ставка налога.
+    const seller = new URL(request.url).searchParams.get('seller');
+    const data = await orderDocumentData(orderId, seller);
     if (!data) {
         return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }
@@ -51,7 +54,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
             title: `Счёт по заказу №${data.orderNumber}`,
             items,
             discount_pct: 0,
-            vat_pct: 20,
+            vat_pct: data.vatPercent,
             payer_company: data.payerCompany || undefined,
             payer_name: data.payerName || undefined,
             payer_inn: data.payerInn || undefined,
