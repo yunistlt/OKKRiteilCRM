@@ -29,6 +29,22 @@ const MAX_TOOL_ITERATIONS = 30;
 const KNOWLEDGE_THRESHOLD = 0.35;
 const KNOWLEDGE_LIMIT = 4;
 
+/**
+ * Снимок схемы завода ищется отдельной квотой, а не в общей очереди.
+ *
+ * Иначе он в неё не проходит. Замер 30.09.2026 на живом вопросе «чего не хватает
+ * на заказы недели»: четыре места заняли методички про узкие места и очереди
+ * (0.482…0.444), а таблицы ЦехУспеха встали шестыми (0.419) — и модель пошла
+ * выяснять колонки запросами, как до всей этой работы. Так будет всегда: вопрос
+ * владельца звучит про дело, а не про имена колонок, и по смыслу он ближе к
+ * рассуждению, чем к схеме. Схема нужна не вместо знаний, а вместе с ними.
+ *
+ * Две статьи: больше в контекст не влезает без толку — они по две-три тысячи
+ * токенов каждая и едут к модели на каждом витке разбора.
+ */
+const SCHEMA_LIMIT = 2;
+const SCHEMA_TYPE = 'schema';
+
 /** Сколько последних реплик отдаём модели как контекст разговора. */
 const HISTORY_DEPTH = 8;
 
@@ -84,14 +100,33 @@ export type KnowledgeHit = { slug: string; title: string; content: string; sourc
 export async function searchTamaraKnowledge(query: string): Promise<KnowledgeHit[]> {
     if (!isOpenAIConfigured() || !query.trim()) return [];
     try {
+        // Эмбеддинг считается один на оба поиска: вопрос-то один, а платим за
+        // каждый вызов.
         const embedding = await generateEmbedding(query);
-        const { data, error } = await supabase.rpc('match_shtab_kb', {
-            query_embedding: embedding,
-            match_threshold: KNOWLEDGE_THRESHOLD,
-            match_count: KNOWLEDGE_LIMIT,
-        });
-        if (error) throw new Error(error.message);
-        return (data ?? []) as KnowledgeHit[];
+
+        const [knowledge, schema] = await Promise.all([
+            // Знания — всё, кроме схемы: пусть методички соревнуются между собой.
+            supabase.rpc('match_shtab_kb_by_type', {
+                query_embedding: embedding,
+                match_threshold: KNOWLEDGE_THRESHOLD,
+                match_count: KNOWLEDGE_LIMIT,
+                want_types: [],
+                exclude_types: [SCHEMA_TYPE],
+            }),
+            supabase.rpc('match_shtab_kb_by_type', {
+                query_embedding: embedding,
+                match_threshold: KNOWLEDGE_THRESHOLD,
+                match_count: SCHEMA_LIMIT,
+                want_types: [SCHEMA_TYPE],
+                exclude_types: [],
+            }),
+        ]);
+        if (knowledge.error) throw new Error(knowledge.error.message);
+        if (schema.error) throw new Error(schema.error.message);
+
+        // Схема впереди: она отвечает на вопрос «чем писать запрос», и читать её
+        // модели надо раньше рассуждений о деле.
+        return [...((schema.data ?? []) as KnowledgeHit[]), ...((knowledge.data ?? []) as KnowledgeHit[])];
     } catch {
         // Знания — приправа, а не основа ответа: без них Тамара всё равно
         // отвечает по инструментам, поэтому сбой поиска не должен ронять разговор.

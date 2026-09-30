@@ -14,6 +14,14 @@ import { SHTAB_KB_SEED, formatShtabKbForEmbedding } from '@/lib/shtab/kb-content
 
 export type Embedder = (text: string) => Promise<number[]>;
 
+/**
+ * Префикс slug у статей, которые пишет не человек, а ночной снимок схемы завода
+ * (lib/shtab/tseh-schema-kb.ts). Живёт здесь, а не там, чтобы засев и снимок не
+ * ссылались друг на друга по кругу: снимок знает про засев, засев про снимок —
+ * только эту строку.
+ */
+export const SCHEMA_SLUG_PREFIX = 'tseh-shema-';
+
 export type SeedReport = {
     inserted: string[];
     updated: string[];
@@ -87,11 +95,18 @@ export async function seedShtabKb(
 
     // Статью, выброшенную из kb-content.ts, гасим, а не удаляем: вернут — не
     // придётся платить за эмбеддинг заново, и видно, что она когда-то была.
+    //
+    // Снимок схемы завода сюда не относится: его пишет ночной крон из живой
+    // базы, в kb-content.ts таких статей нет и быть не может. Без этой оговорки
+    // обычный засев гасил бы их все, и Тамара наутро снова шла бы выяснять
+    // строение базы запросами.
     const slugs = SHTAB_KB_SEED.map((r) => r.slug);
     const removed = await sql<{ slug: string }[]>`
         UPDATE public.shtab_kb
            SET is_active = false, updated_at = now()
-         WHERE is_active AND slug <> ALL(${slugs})
+         WHERE is_active
+           AND slug <> ALL(${slugs})
+           AND slug NOT LIKE ${SCHEMA_SLUG_PREFIX + '%'}
         RETURNING slug
     `;
     for (const r of removed) {
