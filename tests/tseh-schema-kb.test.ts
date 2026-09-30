@@ -124,6 +124,25 @@ describe('снимок и рукописные знания не мешают д
     });
 });
 
+describe('схема едет своей квотой, а не в общей очереди знаний', () => {
+    const source = fs.readFileSync(path.join(process.cwd(), 'lib/shtab/tamara.ts'), 'utf8');
+
+    // Замер 30.09.2026: в общей очереди схема встала шестой (0.419) после
+    // четырёх методичек (0.482…0.444) и до модели не доехала вовсе.
+    it('поиск знаний исключает схему, а схему ищет отдельно', () => {
+        expect(source).toContain('exclude_types: [SCHEMA_TYPE]');
+        expect(source).toContain('want_types: [SCHEMA_TYPE]');
+    });
+
+    it('эмбеддинг считается один на оба поиска — за каждый вызов платим', () => {
+        expect((source.match(/await generateEmbedding\(query\)/g) ?? []).length).toBe(1);
+    });
+
+    it('схема идёт впереди знаний: чем писать запрос, читается раньше рассуждений', () => {
+        expect(source).toMatch(/\[\.\.\.\(\(schema\.data[\s\S]{0,120}knowledge\.data/);
+    });
+});
+
 describe('модель больше не отправляется в разведку', () => {
     const tools = fs.readFileSync(path.join(process.cwd(), 'lib/shtab/tamara-data-tools.ts'), 'utf8');
     const kb = fs.readFileSync(path.join(process.cwd(), 'lib/shtab/kb-content.ts'), 'utf8');
