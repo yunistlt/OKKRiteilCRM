@@ -38,6 +38,36 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             body_text: string | null;
         }>;
 
+        // Исходящие письма живут в своём журнале — без них переписка выглядит
+        // односторонней: видно, что писал клиент, и не видно, что ответили мы.
+        const { data: sent } = await supabase
+            .from('order_email_sends')
+            .select('to_email, subject, created_at, sent_by')
+            .eq('order_number', orderNumber)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        const outgoing = (sent || []).map((row: any) => ({
+            direction: 'исходящее' as const,
+            party: row.to_email as string | null,
+            partyName: null as string | null,
+            subject: row.subject as string | null,
+            at: row.created_at as string | null,
+            preview: row.sent_by ? `Отправил: ${row.sent_by}` : '',
+        }));
+
+        const incoming = thread.map((m) => ({
+            direction: 'входящее' as const,
+            party: m.from_email,
+            partyName: m.from_name,
+            subject: m.subject,
+            at: m.received_at,
+            preview: (m.body_text || '').replace(/\s+/g, ' ').slice(0, 200),
+        }));
+
+        const conversation = [...incoming, ...outgoing]
+            .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime());
+
         const last = thread[0] || null;
 
         // Адресат из заказа — на случай, когда клиент ещё не писал.
@@ -54,7 +84,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
             to: last?.from_email || orderEmail || null,
             toName: last?.from_name || null,
             subjectText: stripOrderThreadTag(last?.subject || '') || `По заказу №${orderNumber}`,
-            hasThread: thread.length > 0,
+            hasThread: conversation.length > 0,
+            // Переписка целиком: и что писал клиент, и что отвечали мы.
+            conversation: conversation.slice(0, 20),
             thread: thread.slice(0, 5).map((m) => ({
                 from: m.from_email,
                 fromName: m.from_name,

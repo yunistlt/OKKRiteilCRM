@@ -1078,6 +1078,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         <div className="flex flex-wrap gap-2">
+                            {/* КП и счёт собираются из самого заказа: позиции, плательщик из
+                                контрагента, продавец из реквизитов магазина в RetailCRM.
+                                Ничего не вводится руками — документ всегда совпадает с заказом. */}
+                            <a
+                                href={`/api/orders/${orderId}/document?kind=proposal`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                                Коммерческое предложение
+                            </a>
+                            <a
+                                href={`/api/orders/${orderId}/document?kind=invoice`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                                Счёт на оплату
+                            </a>
                             <div className="relative">
                                 <button
                                     onClick={() => setPrintOpen((v) => !v)}
