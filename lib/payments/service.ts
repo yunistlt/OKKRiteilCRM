@@ -3,6 +3,7 @@ import { NormalizedPointPayment, kopecksToRubles, isBankSyncExternalId } from '.
 import { matchPaymentToOrder, classifyNonCustomerPayment } from './matching';
 import { notifyPaymentTelegram, notifyPendingPaymentsTelegram, notifyPaymentPushErrorTelegram } from './notify';
 import { classifyProject } from './projects';
+import { registerPushFailure, clearPushFailure, explainPushError } from './push-retry';
 import { moveOrderToProductionAfterPayment } from './production';
 import {
   createRetailCrmOrderPayment,
@@ -223,6 +224,8 @@ async function pushMatchedPaymentToCrm(
 
     // После оплаты — перевести заказ в «Передано в производство» (не откатывая назад).
     // Не критично: сбой не должен ломать проброс оплаты (функция не бросает).
+    await clearPushFailure(row.id).catch(() => undefined);
+
     const mv = await moveOrderToProductionAfterPayment(row.matched_order_id, {
       currentStatus: order?.status ?? null,
       site: order?.site ?? null,
@@ -241,11 +244,23 @@ async function pushMatchedPaymentToCrm(
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
-    // Деньги есть, а в CRM их нет — молчать нельзя: зовём ответственных за разбор.
-    // Уведомление не должно подменять исходную ошибку, поэтому глушим его сбой.
-    await notifyPaymentPushErrorTelegram(row, reason).catch((e) =>
-      console.error('[payments] push error notify failed:', e?.message || e),
-    );
+
+    // Деньги есть, а в CRM их нет — молчать нельзя. Но и повторять одно и то же
+    // сообщение при каждой попытке тоже нельзя: платёж крон пробует снова каждые
+    // несколько минут, и при поломке на стороне RetailCRM человек получал поток
+    // одинаковых «Оплата не проведена» (30.09.2026).
+    const failure = await registerPushFailure(row.id, reason).catch(() => ({
+      attempts: 1,
+      shouldNotify: true,
+      explanation: explainPushError(reason, 1),
+    }));
+
+    if (failure.shouldNotify) {
+      await notifyPaymentPushErrorTelegram(row, reason, failure.explanation).catch((e) =>
+        console.error('[payments] push error notify failed:', e?.message || e),
+      );
+    }
+
     throw new Error(`RetailCRM payment create failed: ${reason}`);
   }
 }
