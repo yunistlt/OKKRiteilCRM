@@ -212,6 +212,10 @@
         {
             "path": "/api/cron/sync-customers",
             "schedule": "17 * * * *"
+        },
+        {
+            "path": "/api/cron/error-digest",
+            "schedule": "35 * * * *"
         }
     ]
 }
