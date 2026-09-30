@@ -12,6 +12,7 @@ type ClientRow = {
     contact_name: string | null;
     inn: string | null;
     phones: string[] | null;
+    phone_from_order: string | null;
     email: string | null;
     orders_count: number | null;
     total_summ: number | null;
@@ -156,7 +157,7 @@ export default function ClientsRegistry() {
                                 <td className="px-4 py-3 font-semibold text-gray-900">{row.company_name || <Dash />}</td>
                                 <td className="px-4 py-3">{row.contact_name || <Dash />}</td>
                                 <td className="px-4 py-3">{row.inn || <Dash />}</td>
-                                <td className="px-4 py-3">{row.phones?.[0] || <Dash />}</td>
+                                <td className="px-4 py-3">{row.phone_from_order || row.phones?.[0] || <Dash />}</td>
                                 <td className="px-4 py-3">{row.email || <Dash />}</td>
                                 <td className="px-4 py-3 text-right">{row.orders_count ? formatIntRu(row.orders_count) : <Dash />}</td>
                                 <td className="px-4 py-3 text-right">{row.total_summ ? formatRub(row.total_summ) : <Dash />}</td>
