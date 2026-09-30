@@ -83,6 +83,14 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'group_sales',
   },
   {
+    code: 'system.crm_site_missing',
+    name: 'Магазин заявок пропал в RetailCRM',
+    description: 'RetailCRM перестала принимать настроенный магазин — заявки с почты заводятся в запасном. Нужно проверить магазин в CRM.',
+    group: 'system',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
     code: 'payment.push_error',
     name: 'Оплата не проведена в CRM',
     description: 'Платёж привязан к заказу, но RetailCRM его не принял — сбой, чинится руками.',
