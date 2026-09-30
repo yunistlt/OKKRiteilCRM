@@ -2,6 +2,10 @@
     "framework": "nextjs",
     "crons": [
         {
+            "path": "/api/cron/tseh-schema-kb",
+            "schedule": "40 1 * * *"
+        },
+        {
             "path": "/api/cron/rop-bind",
             "schedule": "*/10 4-15 * * 1-5"
         },
