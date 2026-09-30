@@ -25,6 +25,10 @@ const SAMPLE: TsehTable[] = [
     table('billsfromsuppliers', ['ID', 'IDSupplier']),
     table('itemsordersbillsfromsuppliers', ['ID', 'IDBill']),
     table('employees', ['ID', 'FIO']),
+    table('texcards', ['ID', 'IDDetail']),
+    table('payments', ['ID', 'Summa']),
+    table('saleswb', ['ID']),
+    table('docslib', ['ID']),
     table('somethingelse', ['ID']),
 ];
 
@@ -52,7 +56,30 @@ describe('нарезка схемы на статьи', () => {
     });
 
     it('статей немного: поиск отдаёт в контекст всего четыре', () => {
-        expect(articles.length).toBeLessThanOrEqual(6);
+        expect(articles.length).toBeLessThanOrEqual(10);
+    });
+
+    // Техкарты в базе называются texcards, а не techcards. На этом уже
+    // погорели: ядро производства уезжало в «прочее», где лежала половина базы.
+    it('техкарты попадают к производству, а не в «прочее»', () => {
+        const prod = articles.find((a) => a.slug === `${SCHEMA_SLUG_PREFIX}proizvodstvo`)!;
+        expect(prod.content).toMatch(/(^|\n)texcards:/);
+    });
+
+    it('деньги, продажи и документы разведены по своим статьям', () => {
+        const at = (key: string) => articles.find((a) => a.slug === `${SCHEMA_SLUG_PREFIX}${key}`)!.content;
+        expect(at('dengi')).toMatch(/(^|\n)payments:/);
+        expect(at('prodazhi')).toMatch(/(^|\n)saleswb:/);
+        expect(at('dokumenty')).toMatch(/(^|\n)docslib:/);
+    });
+
+    // Четыре статьи разом едут в контекст и потом на каждом витке разбора.
+    // Статья на восемь тысяч токенов — это ровно та цена, от которой уходим.
+    it('ни одна статья не разрастается: в живой базе самая большая около 3 тысяч токенов', () => {
+        for (const a of articles) {
+            const roughTokens = formatArticleForEmbedding(a).length / 3.3;
+            expect(roughTokens, `статья ${a.slug}`).toBeLessThan(4000);
+        }
     });
 
     it('каждая статья говорит не ходить за схемой запросами', () => {

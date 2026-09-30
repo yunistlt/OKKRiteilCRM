@@ -96,7 +96,7 @@ const GROUPS: Array<{ key: string; title: string; tags: string[]; match: (t: str
     {
         key: 'postavshchiki',
         title: 'Таблицы ЦехУспеха: поставщики, счета и приход материалов',
-        tags: ['цехуспех', 'схема', 'поставщики', 'счета', 'закупки', 'материалы', 'склад'],
+        tags: ['цехуспех', 'схема', 'поставщики', 'счета', 'закупки', 'приход', 'склад'],
         match: (t) => /supplier|bill|import|wh$|warehouse/.test(t),
     },
     {
@@ -107,22 +107,42 @@ const GROUPS: Array<{ key: string; title: string; tags: string[]; match: (t: str
     },
     {
         key: 'proizvodstvo',
-        title: 'Таблицы ЦехУспеха: производство, наряды и техкарты',
-        tags: ['цехуспех', 'схема', 'производство', 'наряды', 'техкарты', 'операции', 'цех'],
-        match: (t) => /task|oper|tech|route|product|plan|shift|nomenclature/.test(t),
+        title: 'Таблицы ЦехУспеха: производство, техкарты, детали и материалы',
+        tags: ['цехуспех', 'схема', 'производство', 'техкарты', 'детали', 'чертежи', 'материалы', 'наряды', 'цех'],
+        // texcard, а не techcard: в базе именно так, и на этом уже один раз
+        // погорели — техкарты, ядро производства, уезжали в «прочее».
+        match: (t) => /texcard|tech|detail|drawing|material|instrument|manufact|workshop|takt|oper|route|shift|nomenclature|sets?$|packs|marks|timesheet|day/.test(t),
+    },
+    {
+        key: 'dengi',
+        title: 'Таблицы ЦехУспеха: деньги — платежи, бюджет, себестоимость, цены',
+        tags: ['цехуспех', 'схема', 'деньги', 'платежи', 'бюджет', 'себестоимость', 'цены', 'баланс', 'кредит'],
+        match: (t) => /payment|balan|budget|cost|price|credit|account|month|fixed/.test(t),
+    },
+    {
+        key: 'prodazhi',
+        title: 'Таблицы ЦехУспеха: продажи, воронки и маркетплейсы',
+        tags: ['цехуспех', 'схема', 'продажи', 'воронка', 'маркетплейсы', 'озон', 'вайлдберриз', 'яндекс', 'лиды'],
+        match: (t) => /sale|funnel|ozon|yandex|yd$|wb$|market|retail|lead/.test(t),
+    },
+    {
+        key: 'dokumenty',
+        title: 'Таблицы ЦехУспеха: документы, файлы, почта и звонки',
+        tags: ['цехуспех', 'схема', 'документы', 'файлы', 'почта', 'звонки', 'чат', 'уведомления'],
+        match: (t) => /doc|file|email|mail|chat|call|voip|notif|templat|report/.test(t),
     },
     {
         key: 'lyudi',
         title: 'Таблицы ЦехУспеха: сотрудники, зарплата и контрагенты',
-        tags: ['цехуспех', 'схема', 'сотрудники', 'зарплата', 'контрагенты', 'клиенты', 'люди'],
-        match: (t) => /employ|staff|salary|person|user|agent|client|counterpart|firm/.test(t),
+        tags: ['цехуспех', 'схема', 'сотрудники', 'зарплата', 'контрагенты', 'клиенты', 'люди', 'компании'],
+        match: (t) => /employ|staff|salary|person|user|agent|client|counterpart|firm|compan|contact|profess|position|depart/.test(t),
     },
 ];
 
 const REST_GROUP = {
     key: 'prochee',
-    title: 'Таблицы ЦехУспеха: всё остальное',
-    tags: ['цехуспех', 'схема', 'справочники', 'таблицы', 'прочее'],
+    title: 'Таблицы ЦехУспеха: справочники и настройки',
+    tags: ['цехуспех', 'схема', 'справочники', 'настройки', 'прочее', 'редкие таблицы'],
 };
 
 function groupOf(table: string): string {
