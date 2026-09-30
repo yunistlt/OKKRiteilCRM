@@ -640,8 +640,10 @@ ${historyLog.split('\n').slice(-10).join('\n')}
         orderData.customerComment += `\nИнтересовался товарами: ${params.items.join(', ')}`;
     }
 
-    const { site: configSite } = await getCrmConfig();
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, configSite);
+    // Магазин — тот же проверенный, что выбран в начале функции. Раньше здесь
+    // заново брался магазин из окружения, и заявка с сайта уходила в него мимо
+    // проверки.
+    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
 
     if (!orderResult.success) {
         console.error('Failed to create order:', JSON.stringify(orderResult, null, 2));
