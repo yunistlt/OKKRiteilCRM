@@ -1082,6 +1082,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
                             <a
+                                href={`/orders/${orderId}/edit`}
+                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                            >
+                                Править заказ
+                            </a>
+                            <a
                                 href={`/api/orders/${orderId}/document?kind=proposal`}
                                 target="_blank"
                                 rel="noopener noreferrer"
