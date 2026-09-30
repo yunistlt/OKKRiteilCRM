@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { resolveLeadSite, reportSiteSubstitution } from './lead-site';
 import { fetchRetailCrmOrder } from './orders';
 import {
     buildLeadCustomerCustomFields,
@@ -345,7 +346,12 @@ export async function createEmailLead(params: {
     attachmentText?: string;
     fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
-    const { site } = await getCrmConfig();
+    // Магазин берём не вслепую из окружения, а с проверкой по справочнику
+    // RetailCRM: если настроенный пропал, переходим на запасной и сообщаем
+    // владельцу (инцидент 30.09.2026 — заявки не заводились четыре часа).
+    const choice = await resolveLeadSite();
+    await reportSiteSubstitution(choice);
+    const site = choice.site || (await getCrmConfig()).site;
 
     // Клиент всегда корпоративный (B2B): контрагента ищем/заводим по ИНН, email, телефону.
     const customerLookup = await ensureCorporateCustomerId({
@@ -527,7 +533,11 @@ export async function createLeadInCrm(params: {
     fieldHints?: LeadFieldHints;
 }) {
     console.log('Creating lead in RetailCRM:', params);
-    const { site } = await getCrmConfig();
+    // Тот же выбор магазина с проверкой, что и у заявок с почты: заявка с сайта
+    // не должна теряться из-за магазина, пропавшего в RetailCRM.
+    const siteChoice = await resolveLeadSite();
+    await reportSiteSubstitution(siteChoice);
+    const site = siteChoice.site || (await getCrmConfig()).site;
 
     // Категорию товара подсказывает каталог, если Елена подобрала позиции.
     const fieldHints: LeadFieldHints = {
@@ -654,7 +664,12 @@ export async function createSecretaryLead(params: {
     managerId?: number | null;   // выбранный по нагрузке менеджер
     fieldHints?: LeadFieldHints;
 }): Promise<{ id: number; number: string }> {
-    const { site } = await getCrmConfig();
+    // Магазин берём не вслепую из окружения, а с проверкой по справочнику
+    // RetailCRM: если настроенный пропал, переходим на запасной и сообщаем
+    // владельцу (инцидент 30.09.2026 — заявки не заводились четыре часа).
+    const choice = await resolveLeadSite();
+    await reportSiteSubstitution(choice);
+    const site = choice.site || (await getCrmConfig()).site;
 
     // 1. Клиент всегда корпоративный (B2B): ищем контрагента по телефону, иначе заводим
     const customerLookup = await ensureCorporateCustomerId({
