@@ -46,7 +46,7 @@ async function fetchRetailCrm(path: string, method: 'GET' | 'POST', body?: any) 
 }
 
 // More standard fetch for RetailCRM
-async function postRetailCrm(path: string, rootKey: string, data: any, site?: string) {
+export async function postRetailCrm(path: string, rootKey: string, data: any, site?: string) {
     const { url: baseUrl, key: apiKey, site: configSite } = await getCrmConfig();
     const targetSite = site || configSite;
     const url = `${baseUrl}/api/v5/${path}?apiKey=${apiKey}${targetSite ? `&site=${targetSite}` : ''}`;
@@ -245,7 +245,7 @@ export type CorporateLeadDetails = {
  * Вместе с id отдаёт hint: карточка, похожая на этого клиента по почте или телефону, но не
  * найденная по основному ключу. Бот к ней не привязывается — только подсказывает менеджеру.
  */
-async function ensureCorporateCustomerId(
+export async function ensureCorporateCustomerId(
     params: {
         details?: CorporateLeadDetails | null;
         name?: string | null;
