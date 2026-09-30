@@ -97,6 +97,30 @@ export async function getTelphinExtensionId(token: string, clientId: string, ext
     return resolved;
 }
 
+/**
+ * Зарегистрирован ли аппарат менеджера в Телфине.
+ *
+ * Звонок из интерфейса идёт в два плеча: сначала Телфин звонит на добавочный
+ * менеджера, тот поднимает трубку, и только потом набирается клиент. Если
+ * софтфон не запущен, первое плечо звонит в пустоту — а интерфейс показывал
+ * «набираем номер» и молчал о причине (поймано 30.09.2026).
+ */
+export async function isExtensionOnline(extensionNumber: string): Promise<boolean> {
+    try {
+        const token = await getTelphinToken();
+        const { clientId } = await getTelphinIdentity(token);
+        const extensionId = await getTelphinExtensionId(token, clientId, extensionNumber);
+        const res = await fetchTelphin(`${TELPHIN_API}/extension/${extensionId}/registration/`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        const data = await res.json();
+        return Boolean(data?.registered);
+    } catch {
+        // Не смогли проверить — не мешаем звонить: вдруг дело в самой проверке.
+        return true;
+    }
+}
+
 export async function initiateMakeCall(params: {
     extensionId: string;   // короткий номер добавочного-инициатора (напр. 105)
     source: string;        // первое плечо — очередь ОП (напр. 200)
@@ -166,6 +190,15 @@ export async function initiateManagerOutgoingCall(params: {
     }
 
     const managerExtension = manager.telphin_extension;
+
+    // Аппарат не в сети — звонок уйдёт в пустоту. Честно говорим об этом,
+    // вместо того чтобы показывать «набираем номер».
+    if (!(await isExtensionOnline(managerExtension))) {
+        throw new Error(
+            `Ваш телефон (добавочный ${managerExtension}) не в сети — звонок не дойдёт. `
+            + 'Запустите Linphone и дождитесь, пока он подключится.',
+        );
+    }
 
     // Первое плечо — аппарат САМОГО менеджера, а не очередь ОП: звонок поднимает
     // тот, кто нажал кнопку. Очередь (TELPHIN_CALLBACK_SOURCE) здесь не при делах —

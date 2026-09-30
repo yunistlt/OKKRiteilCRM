@@ -138,7 +138,13 @@ export function PhonePanel() {
   }
 
   return (
-    <aside data-ui-audit-zone="phone" className="fixed right-0 top-0 z-[130] flex h-screen w-80 flex-col border-l border-gray-200 bg-white">
+    // Телефон занимает только верх правой колонки: чат с Семёном должен
+    // оставаться доступен во время разговора — менеджер спрашивает у него
+    // прямо при клиенте (требование владельца 30.09.2026).
+    <aside
+      data-ui-audit-zone="phone"
+      className="fixed right-0 top-0 z-[130] flex max-h-[60vh] w-80 flex-col border-b border-l border-gray-200 bg-white shadow-none"
+    >
       <div className="flex items-center justify-between bg-gray-900 px-3 py-2">
         <span className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-white">
           <Phone size={14} />

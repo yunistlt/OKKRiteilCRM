@@ -245,6 +245,14 @@ export const NOTIFY_TYPES: NotifyTypeDef[] = [
     target: 'owner_dm',
   },
   {
+    code: 'system.errors_digest',
+    name: 'Ошибки в системе',
+    description: 'Сводка сбоев за последний час: заявки, оплаты, план работ, задачи конвейера. Про каждую ошибку сообщаем один раз.',
+    group: 'system',
+    bot: 'igor',
+    target: 'owner_dm',
+  },
+  {
     code: 'system.crash',
     name: 'Авария системы',
     description: 'Упал крон или воркер — сообщение с текстом ошибки.',
