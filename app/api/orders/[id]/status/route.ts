@@ -24,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { data: order } = await supabase
         .from('orders')
-        .select('status')
+        .select('status, is_own')
         .eq('order_id', String(id))
         .maybeSingle();
 
@@ -59,7 +59,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
 
-    const writeEnabled = await isRetailcrmOutboundWriteEnabled();
+    // У своего заказа рубильник исходящих записей ни при чём: менять статус
+    // можно всегда, менять его негде, кроме нашей базы.
+    const writeEnabled = (order as any).is_own ? true : await isRetailcrmOutboundWriteEnabled();
 
     return NextResponse.json({
         ok: true,
@@ -88,7 +90,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const { data: order } = await supabase
         .from('orders')
-        .select('status, site')
+        .select('id, status, site, is_own')
         .eq('order_id', String(id))
         .maybeSingle();
 
@@ -112,6 +114,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const allowed = ((transitions || []) as any[]).some((t) => t.from_status_id === from.id && t.to_status_id === to.id);
     if (!allowed) {
         return NextResponse.json({ error: 'transition_not_allowed' }, { status: 409 });
+    }
+
+    // Свой заказ меняем у себя: в RetailCRM его нет, и рубильник исходящих
+    // записей к нему не относится.
+    if ((order as any).is_own) {
+        const { data: row } = await supabase
+            .from('orders')
+            .select('raw_payload')
+            .eq('order_id', String(id))
+            .maybeSingle();
+        const payload = { ...(((row as any)?.raw_payload) || {}), status: body.status };
+        await supabase.from('orders').update({ status: body.status, raw_payload: payload }).eq('order_id', String(id));
+        return NextResponse.json({ ok: true, status: body.status, own: true });
     }
 
     // Пока свой функционал не достроен, наружу не пишем — см. lib/retailcrm/outbound-guard.

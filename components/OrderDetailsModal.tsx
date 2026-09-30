@@ -11,6 +11,7 @@ import OrderReplyForm from '@/components/orders/OrderReplyForm';
 import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
+import OwnOrderPayments from '@/components/own-crm/OwnOrderPayments';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -970,6 +971,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
+                    {/* Свой заказ: оплаты ведём у себя — в RetailCRM этого заказа нет. */}
+                    {order.is_own && <OwnOrderPayments orderId={Number(order.id)} />}
+
                     {paymentsSummary.length > 0 && (
                         <div className="bg-white border border-gray-200 p-6">
                             <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Оплаты в CRM</h4>
@@ -1338,7 +1342,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="min-w-0">
                             <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>
                             <div className="flex flex-wrap items-center gap-3">
-                                <h2 className="text-2xl font-semibold text-gray-900">Заказ #{orderId}</h2>
+                                <h2 className="text-2xl font-semibold text-gray-900">Заказ #{data?.order?.number ?? orderId}</h2>
+                                {/* Свой заказ ведётся только у нас — менеджер должен это видеть:
+                                    в RetailCRM его нет, и искать там нечего. */}
+                                {data?.order?.is_own && (
+                                    <span className="bg-gray-900 px-3 py-1 text-xs font-black uppercase tracking-widest text-white">
+                                        Наша база
+                                    </span>
+                                )}
                                 {data?.statusName && (
                                     <span
                                         className="px-3 py-1 text-xs font-semibold text-gray-900"

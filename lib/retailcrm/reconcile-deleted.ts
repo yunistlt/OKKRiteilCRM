@@ -22,6 +22,9 @@ export async function reconcileDeletedOrders(batchSize = DEFAULT_BATCH): Promise
     const { data, error } = await supabase
         .from('orders')
         .select('order_id, crm_deleted_at')
+        // Свои заказы в RetailCRM не существуют по определению — сверка пометила
+        // бы их удалёнными в первый же час, и менеджер остался бы без заказов.
+        .eq('is_own', false)
         .order('crm_checked_at', { ascending: true, nullsFirst: true })
         .limit(batchSize);
     if (error) throw new Error(error.message);

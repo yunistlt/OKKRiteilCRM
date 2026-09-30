@@ -11,6 +11,7 @@
 import { supabase } from '@/utils/supabase';
 import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
 import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
+import { isOwnCrmManager, insertOwnOrder } from './own-order-insert';
 
 export type NewOrderItem = {
     /** Название позиции — то, что увидит клиент в счёте. */
@@ -112,6 +113,10 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
         throw new Error(problems.join('; '));
     }
 
+    // Менеджер, переведённый на нашу базу, получает заказ здесь же: в
+    // RetailCRM он не уходит (решение владельца 30.09.2026).
+    const ownManager = await isOwnCrmManager(order.managerId);
+
     const choice = await resolveLeadSite();
     await reportSiteSubstitution(choice);
     const site = choice.site;
@@ -150,6 +155,11 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     const managerId = await usableManagerId(order.managerId);
     if (managerId) orderData.managerId = managerId;
     if (customerId) orderData.customer = { id: customerId, type: 'customer_corporate' };
+
+    if (ownManager) {
+        const own = await insertOwnOrder({ ...orderData, managerId: order.managerId });
+        return { id: own.id, number: own.number, site: own.order.site };
+    }
 
     const result = await postRetailCrm('orders/create', 'order', orderData, site);
     if (!result?.success) {

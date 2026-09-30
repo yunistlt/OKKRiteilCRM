@@ -13,6 +13,7 @@ import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 import { usableManagerId } from './create-order';
+import { editOwnOrder } from './own-orders';
 
 export type EditableItem = {
     /** id позиции в RetailCRM. Пусто — позиция новая. */
@@ -78,7 +79,7 @@ export function validateItems(items: EditableItem[]): string[] {
 async function findOrder(orderKey: number) {
     const byCrm = await supabase
         .from('orders')
-        .select('id, order_id, number, site')
+        .select('id, order_id, number, site, is_own')
         .eq('order_id', orderKey)
         .maybeSingle();
 
@@ -88,7 +89,7 @@ async function findOrder(orderKey: number) {
 
     const byRow = await supabase
         .from('orders')
-        .select('id, order_id, number, site')
+        .select('id, order_id, number, site, is_own')
         .eq('id', orderKey)
         .maybeSingle();
 
@@ -110,10 +111,6 @@ async function findOrder(orderKey: number) {
 }
 
 export async function editOrder(orderKey: number, edit: OrderEdit): Promise<EditResult> {
-    if (!(await isRetailcrmOutboundWriteEnabled())) {
-        return { ok: false, reason: RETAILCRM_WRITE_BLOCKED_MESSAGE };
-    }
-
     if (edit.items) {
         const problems = validateItems(edit.items);
         if (problems.length) {
@@ -124,6 +121,17 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     const order = await findOrder(orderKey);
     if (!order) {
         return { ok: false, reason: 'Заказ не найден' };
+    }
+
+    // Свой заказ правим у себя: в RetailCRM его нет, и рубильник исходящих
+    // записей к нему не относится — он про чужие заказы.
+    if ((order as any).is_own) {
+        await editOwnOrder(Number((order as any).id), edit);
+        return { ok: true, changed: describeEdit(edit) };
+    }
+
+    if (!(await isRetailcrmOutboundWriteEnabled())) {
+        return { ok: false, reason: RETAILCRM_WRITE_BLOCKED_MESSAGE };
     }
 
     const crmOrderId = (order as any).order_id;

@@ -68,6 +68,29 @@ export async function saveManagerExtensions(items: { managerId: number; extensio
     }
 }
 
+/**
+ * Кто работает в нашей CRM.
+ *
+ * У такого менеджера заявки бота создаются сразу у нас и в RetailCRM не уходят
+ * (решение владельца 30.09.2026: переводим одного менеджера целиком).
+ */
+export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boolean }[]) {
+    try {
+        for (const { managerId, ownCrm } of items) {
+            const { error } = await supabase.from('managers').update({ own_crm: ownCrm }).eq('id', managerId);
+            if (error) {
+                const missing = error.code === '42703' || (error.message || '').includes('own_crm');
+                if (missing) return { success: false, errorType: 'COLUMN_MISSING' as const };
+                throw error;
+            }
+        }
+        revalidatePath('/settings/managers');
+        return { success: true };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
+
 function sanitizeLoginCandidate(value: string | null | undefined) {
     return (value || '')
         .trim()

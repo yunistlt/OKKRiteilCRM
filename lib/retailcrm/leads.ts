@@ -7,6 +7,7 @@ import {
     unspecifiedLabel,
     type LeadFieldHints,
 } from './lead-defaults';
+import { routeNewOrder } from '@/lib/own-crm/own-order-insert';
 
 export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -483,7 +484,7 @@ ${bodyPart}${attLine}${duplicateReason}`;
     }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
         throw new Error(`Email lead create failed: ${errorMessage}`);
@@ -643,7 +644,7 @@ ${historyLog.split('\n').slice(-10).join('\n')}
     // Магазин — тот же проверенный, что выбран в начале функции. Раньше здесь
     // заново брался магазин из окружения, и заявка с сайта уходила в него мимо
     // проверки.
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
 
     if (!orderResult.success) {
         console.error('Failed to create order:', JSON.stringify(orderResult, null, 2));
@@ -723,7 +724,7 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
     }
     if (params.managerId) orderData.managerId = params.managerId;
 
-    const orderResult = await postRetailCrm('orders/create', 'order', orderData, site);
+    const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
         throw new Error(`Secretary order create failed: ${errorMessage}`);

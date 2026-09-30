@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions } from './actions';
+import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions, saveOwnCrmManagers } from './actions';
 import Link from 'next/link';
 
 type RosterInfo = { inSalary: boolean; candidates: { code: string; name: string }[]; resolvedName: string | null; needsChoice: boolean };
@@ -14,6 +14,8 @@ export default function ManagerSettingsPage() {
     const [roleChoice, setRoleChoice] = useState<Record<number, string>>({}); // managerId → выбранная схема (для 2+ ролей)
     const [extensions, setExtensions] = useState<Record<number, string>>({}); // managerId → добавочный Телфина
     const [origExtensions, setOrigExtensions] = useState<Record<number, string>>({}); // исходные значения для диффа
+    const [ownCrmIds, setOwnCrmIds] = useState<Set<number>>(new Set()); // кто работает в нашей CRM
+    const [origOwnCrmIds, setOrigOwnCrmIds] = useState<Set<number>>(new Set());
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState('');
@@ -39,6 +41,11 @@ export default function ManagerSettingsPage() {
                 for (const m of (mData || [])) extMap[m.id] = m.telphin_extension || '';
                 setExtensions(extMap);
                 setOrigExtensions(extMap);
+
+                // Кто переведён на нашу базу
+                const own = new Set<number>((mData || []).filter((m: any) => m.own_crm).map((m: any) => Number(m.id)));
+                setOwnCrmIds(own);
+                setOrigOwnCrmIds(new Set(own));
 
                 // 3. Реестр ЗП (участие + роль из групп RetailCRM)
                 const rosterRows = await getSalaryRoster();
@@ -84,6 +91,14 @@ export default function ManagerSettingsPage() {
         });
     };
 
+    const toggleOwnCrm = (id: number) => {
+        setOwnCrmIds((prev) => {
+            const n = new Set(prev);
+            n.has(id) ? n.delete(id) : n.add(id);
+            return n;
+        });
+    };
+
     const handleExtensionChange = (id: number, value: string) => {
         setExtensions((prev) => ({ ...prev, [id]: value.replace(/[^0-9]/g, '') }));
     };
@@ -114,6 +129,22 @@ export default function ManagerSettingsPage() {
                     alert('Поле «Доб. Телфин» не создано в БД. Примените миграцию 20260628_telphin_secretary.sql');
                 } else {
                     alert('Ошибка сохранения добавочных: ' + (extRes.error || 'неизвестная'));
+                }
+            }
+
+            // Наша CRM — сохраняем только изменившихся
+            const ownChanged = managers
+                .map((m: any) => Number(m.id))
+                .filter((id) => ownCrmIds.has(id) !== origOwnCrmIds.has(id))
+                .map((id) => ({ managerId: id, ownCrm: ownCrmIds.has(id) }));
+            if (ownChanged.length > 0) {
+                const ownRes = await saveOwnCrmManagers(ownChanged);
+                if (ownRes.success) {
+                    setOrigOwnCrmIds(new Set(ownCrmIds));
+                } else if (ownRes.errorType === 'COLUMN_MISSING') {
+                    alert('Поле «Наша CRM» не создано в БД. Примените миграцию 20261001_own_orders.sql');
+                } else {
+                    alert('Ошибка сохранения признака «Наша CRM»: ' + (ownRes.error || 'неизвестная'));
                 }
             }
 
@@ -152,7 +183,7 @@ export default function ManagerSettingsPage() {
             <div className="flex flex-col gap-4 mb-6">
                 {/* Mobile-first text */}
                 <p className="text-sm text-gray-500 font-medium">
-                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора).
+                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора). «Наша CRM» — менеджер работает в нашей базе: заявки на него создаются здесь и в RetailCRM не уходят, номер заказа с буквой «А».
                 </p>
                 <button
                     onClick={handleSave}
@@ -266,6 +297,12 @@ NOTIFY pgrst, 'reload config';`}
                                             className="w-16 border border-gray-300 rounded px-1 py-0.5 text-[10px] tabular-nums outline-none"
                                         />
                                     </div>
+                                    <button type="button" onClick={() => toggleOwnCrm(m.id)} title="Заказы ведутся в нашей базе" className="flex items-center gap-1">
+                                        <span className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">Наша CRM</span>
+                                        <div className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${ownCrmIds.has(m.id) ? 'bg-gray-900' : 'bg-gray-200'}`}>
+                                            <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition ${ownCrmIds.has(m.id) ? 'translate-x-4' : 'translate-x-0'}`} />
+                                        </div>
+                                    </button>
                                 </div>
                             </div>
                         ))}
@@ -283,6 +320,7 @@ NOTIFY pgrst, 'reload config';`}
                                     <th className="p-4 md:p-6">Доступ в ОКК</th>
                                     <th className="p-4 md:p-6">В ЗП / Роль</th>
                                     <th className="p-4 md:p-6">Доб. Телфин</th>
+                                    <th className="p-4 md:p-6">Наша CRM</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -358,6 +396,13 @@ NOTIFY pgrst, 'reload config';`}
                                                 placeholder="не настроено"
                                                 className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-xs tabular-nums focus:border-blue-500 outline-none"
                                             />
+                                        </td>
+                                        <td className="p-4 md:p-6" onClick={(e) => e.stopPropagation()}>
+                                            <button type="button" onClick={() => toggleOwnCrm(m.id)} title="Заказы этого менеджера ведутся в нашей базе">
+                                                <div className={`w-10 h-5 md:w-12 md:h-6 rounded-full p-1 transition-all duration-300 ${ownCrmIds.has(m.id) ? 'bg-gray-900' : 'bg-gray-200'}`}>
+                                                    <div className={`w-3 h-3 md:w-4 md:h-4 bg-white rounded-full transition-all duration-300 ${ownCrmIds.has(m.id) ? 'translate-x-5 md:translate-x-6' : 'translate-x-0'}`}></div>
+                                                </div>
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}
