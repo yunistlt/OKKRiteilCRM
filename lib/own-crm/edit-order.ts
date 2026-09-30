@@ -85,7 +85,21 @@ async function findOrder(orderKey: number) {
         .eq('id', orderKey)
         .maybeSingle();
 
-    return (byRow.data as any) || null;
+    if (byRow.data) {
+        return byRow.data as any;
+    }
+
+    // Заказ может быть создан минуту назад и ещё не приехать к нам
+    // синхронизацией — тогда спрашиваем саму RetailCRM. Иначе только что
+    // созданный заказ нельзя было бы поправить.
+    const { url, key } = await getCrmConfig();
+    const response = await fetch(`${url}/api/v5/orders/${orderKey}?by=id&apiKey=${key}`);
+    const payload = await response.json().catch(() => null);
+    if (payload?.order) {
+        return { id: payload.order.id, order_id: payload.order.id, number: payload.order.number, site: payload.order.site };
+    }
+
+    return null;
 }
 
 export async function editOrder(orderKey: number, edit: OrderEdit): Promise<EditResult> {
