@@ -23,6 +23,28 @@ interface ThreadState {
 export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderReplyFormProps) {
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    // Вложения: клиенту часто нужно приложить КП, счёт или чертёж.
+    const [files, setFiles] = useState<File[]>([]);
+    const [attaching, setAttaching] = useState<'proposal' | 'invoice' | null>(null);
+
+    /** Приложить к письму документ по этому заказу: КП или счёт. */
+    const attachOrderDocument = async (kind: 'proposal' | 'invoice') => {
+        setAttaching(kind);
+        try {
+            const response = await fetch(`/api/orders/${orderNumber}/document?kind=${kind}`);
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.error || 'Документ не получился');
+            }
+            const blob = await response.blob();
+            const name = kind === 'invoice' ? `Счёт №${orderNumber}.pdf` : `КП №${orderNumber}.pdf`;
+            setFiles((prev) => [...prev, new File([blob], name, { type: 'application/pdf' })]);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Документ не получился');
+        } finally {
+            setAttaching(null);
+        }
+    };
     const [error, setError] = useState<string | null>(null);
     const [done, setDone] = useState(false);
 
@@ -91,12 +113,20 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 .map((line) => (line.trim() ? `<p>${line.replace(/</g, '&lt;')}</p>` : '<p>&nbsp;</p>'))
                 .join('');
 
+            // Вложения отправляем вместе с письмом: читаем файлы в браузере и
+            // передаём содержимое строкой — отдельного хранилища для этого не нужно.
+            const attachments = await Promise.all(files.map(async (file) => ({
+                filename: file.name,
+                contentType: file.type || 'application/octet-stream',
+                contentBase64: Buffer.from(await file.arrayBuffer()).toString('base64'),
+            })));
+
             const res = await fetch('/api/orders/send-email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 // force: письмо пишет человек, он и решает, сколько раз отвечать по заказу.
                 // Защита от двойного клика — блокировка кнопки на время отправки.
-                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true }),
+                body: JSON.stringify({ orderNumber, to: to.trim(), subjectText: subject.trim(), html, force: true, attachments }),
             });
 
             const data = await res.json();
@@ -202,6 +232,31 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
             {error && <p className="mt-2 border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
 
             <div className="mt-3 flex items-center gap-3">
+                {/* Документы по заказу прикладываются одной кнопкой: искать их на
+                    диске незачем, они формируются из этой же карточки. */}
+                <button
+                    onClick={() => attachOrderDocument('proposal')}
+                    disabled={attaching !== null}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {attaching === 'proposal' ? 'Готовлю КП…' : 'Приложить КП'}
+                </button>
+                <button
+                    onClick={() => attachOrderDocument('invoice')}
+                    disabled={attaching !== null}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {attaching === 'invoice' ? 'Готовлю счёт…' : 'Приложить счёт'}
+                </button>
+                <label className="cursor-pointer border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100">
+                    Файл с компьютера
+                    <input
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files || [])])}
+                    />
+                </label>
                 <button
                     onClick={send}
                     disabled={sending}
@@ -212,6 +267,26 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 </button>
                 <span className="text-[11px] text-gray-500">Уйдёт с общего ящика компании rop@zmktlt.ru</span>
             </div>
+
+            {files.length > 0 && (
+                <div className="mt-2 border border-gray-200 bg-white p-2">
+                    <p className="mb-1 text-[10px] font-black uppercase text-gray-400">Вложения</p>
+                    <ul className="space-y-1">
+                        {files.map((file, index) => (
+                            <li key={`${file.name}-${index}`} className="flex items-center justify-between text-xs text-gray-700">
+                                <span>{file.name} · {Math.round(file.size / 1024)} КБ</span>
+                                <button
+                                    onClick={() => setFiles((prev) => prev.filter((_, i) => i !== index))}
+                                    className="px-2 text-gray-400 hover:text-red-600"
+                                    title="Убрать вложение"
+                                >
+                                    ×
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
 
             {thread?.thread?.length ? (
                 <div className="mt-4 border-t border-gray-200 pt-3">

@@ -36,6 +36,33 @@ type Related = {
     reason: string;
 };
 
+type ContactRow = {
+    id: number;
+    name: string | null;
+    phones: string[];
+    email: string | null;
+    ordersCount: number;
+    lastOrderAt: string | null;
+};
+
+type CallRow = {
+    at: string;
+    direction: string;
+    durationSec: number | null;
+    managerName: string | null;
+    orderNumber: string | null;
+    missed: boolean;
+    hasRecording: boolean;
+};
+
+type EmailRow = {
+    at: string;
+    from: string | null;
+    subject: string | null;
+    outcome: string;
+    orderNumber: string | null;
+};
+
 type OrderRow = {
     orderId: number;
     number: string | null;
@@ -44,6 +71,17 @@ type OrderRow = {
     createdAt: string | null;
     managerName: string | null;
 };
+
+/** Длительность звонка словами: «1 мин 20 с», а не 80. */
+function formatDuration(seconds: number | null) {
+    if (!seconds) {
+        return 'без разговора';
+    }
+    if (seconds < 60) {
+        return `${seconds} с`;
+    }
+    return `${Math.floor(seconds / 60)} мин ${seconds % 60} с`;
+}
 
 function Dash() {
     return <span className="text-gray-300">—</span>;
@@ -69,6 +107,10 @@ export default function ClientCard({ clientId }: { clientId: string }) {
     const [relation, setRelation] = useState<Relation | null>(null);
     const [related, setRelated] = useState<Related[]>([]);
     const [orders, setOrders] = useState<OrderRow[]>([]);
+    const [calls, setCalls] = useState<CallRow[]>([]);
+    const [emails, setEmails] = useState<EmailRow[]>([]);
+    const [phone, setPhone] = useState<string | null>(null);
+    const [contacts, setContacts] = useState<ContactRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +125,10 @@ export default function ClientCard({ clientId }: { clientId: string }) {
             setRelation(payload.relation || null);
             setRelated(payload.related || []);
             setOrders(payload.orders || []);
+            setCalls(payload.calls || []);
+            setEmails(payload.emails || []);
+            setPhone(payload.phone || null);
+            setContacts(payload.contacts || []);
             setError(null);
         } catch (err: any) {
             setError(err.message);
@@ -147,11 +193,28 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     )}
 
                     <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
-                        Связь
+                        Контактные лица
                     </div>
-                    <Field label="Контактное лицо" value={client?.contact_name} />
-                    <Field label="Телефон" value={client?.phones?.[0]} />
-                    <Field label="Почта" value={client?.email || client?.contact_email} />
+                    {contacts.length === 0 && (
+                        <>
+                            <div className="px-4 py-3 text-gray-500">Контактных лиц не нашли — показываем связь из заказа.</div>
+                            <Field label="Телефон" value={phone} />
+                            <Field label="Почта" value={client?.email || client?.contact_email} />
+                        </>
+                    )}
+                    {contacts.map((person) => (
+                        <div key={person.id} className="border-b border-gray-100 px-4 py-3">
+                            <div className="font-semibold text-gray-900">{person.name || 'Без имени'}</div>
+                            <div className="text-[11px] text-gray-500">
+                                {person.phones[0] || 'телефон неизвестен'}
+                                {person.email ? ` · ${person.email}` : ''}
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                                заказов с ним: {formatIntRu(person.ordersCount)}
+                                {person.lastOrderAt ? ` · последний ${new Date(person.lastOrderAt).toLocaleDateString('ru-RU')}` : ''}
+                            </div>
+                        </div>
+                    ))}
                 </div>
 
                 <div className="bg-white text-xs">
@@ -160,7 +223,9 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     </div>
                     {!relation && (
                         <div className="px-4 py-3 text-gray-500">
-                            Данных о компании нет: они подтягиваются по ИНН из ЕГРЮЛ, а ИНН у клиента неизвестен.
+                            {requisites?.inn
+                                ? `Данные из ЕГРЮЛ по ИНН ${requisites.inn} ещё не собирали — они подтягиваются по клиентам отдела продаж.`
+                                : 'Данных о компании нет: они подтягиваются по ИНН, а он у клиента неизвестен.'}
                         </div>
                     )}
                     {relation && (
@@ -219,6 +284,46 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                                 {order.statusName || <Dash />}
                                 {order.createdAt ? ` · ${new Date(order.createdAt).toLocaleDateString('ru-RU')}` : ''}
                                 {order.managerName ? ` · ${order.managerName}` : ''}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        Звонки
+                    </div>
+                    {calls.length === 0 && (
+                        <div className="px-4 py-3 text-gray-500">
+                            Звонков не нашли. Они связываются с клиентом через номера его заказов — звонок без номера заказа сюда не попадёт.
+                        </div>
+                    )}
+                    {calls.map((call, index) => (
+                        <div key={`${call.at}-${index}`} className="border-b border-gray-100 px-4 py-3">
+                            <div className="flex items-baseline justify-between gap-2">
+                                <span className="text-gray-900">
+                                    {call.direction}
+                                    {call.missed && <span className="ml-2 text-red-600">пропущен</span>}
+                                </span>
+                                <span className="text-gray-500">{formatDuration(call.durationSec)}</span>
+                            </div>
+                            <div className="text-[11px] text-gray-500">
+                                {new Date(call.at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                {call.managerName ? ` · ${call.managerName}` : ''}
+                                {call.orderNumber ? ` · заказ №${call.orderNumber}` : ''}
+                                {call.hasRecording ? ' · есть запись' : ''}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="border-y border-gray-200 bg-gray-100 px-4 py-2 font-bold uppercase tracking-wide text-gray-700">
+                        Письма
+                    </div>
+                    {emails.length === 0 && <div className="px-4 py-3 text-gray-500">Писем от этого адреса нет.</div>}
+                    {emails.map((mail, index) => (
+                        <div key={`${mail.at}-${index}`} className="border-b border-gray-100 px-4 py-3">
+                            <div className="text-gray-900">{mail.subject || 'Без темы'}</div>
+                            <div className="text-[11px] text-gray-500">
+                                {new Date(mail.at).toLocaleDateString('ru-RU')} · {mail.outcome}
+                                {mail.orderNumber ? ` · заказ №${mail.orderNumber}` : ''}
                             </div>
                         </div>
                     ))}

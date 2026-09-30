@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { clientRequisites, relatedClients } from '@/lib/own-crm/clients';
+import { clientCalls, clientEmails, clientPhone, clientContacts } from '@/lib/own-crm/client-activity';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,11 +60,24 @@ export async function GET(_request: Request, { params }: { params: { id: string 
         (managersRes.data || []).map((m: any) => [Number(m.id), [m.last_name, m.first_name].filter(Boolean).join(' ')])
     );
 
+    // Звонки, письма и телефон — отдельным шагом: они не мешают открыть
+    // карточку, если какой-то источник подведёт.
+    const [calls, emails, phone, contacts] = await Promise.all([
+        clientCalls(id).catch(() => []),
+        clientEmails([(client as any).email, (client as any).contact_email]).catch(() => []),
+        clientPhone(id).catch(() => null),
+        clientContacts(id).catch(() => []),
+    ]);
+
     return NextResponse.json({
         client,
         requisites,
         relation,
         related,
+        calls,
+        emails,
+        phone,
+        contacts,
         orders: orders.map((o) => ({
             orderId: o.order_id,
             number: o.number,

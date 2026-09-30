@@ -105,6 +105,7 @@ export default function Sidebar() {
                 { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },
                 { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
                 { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
+                { name: 'Наши юрлица', href: '/settings/legal-entities', icon: '🏛️', allowed: ['admin', 'rop'] },
                 { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
                 { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
                 { name: 'Уведомления', href: '/settings/notifications', icon: '🔔', allowed: ['admin'] },

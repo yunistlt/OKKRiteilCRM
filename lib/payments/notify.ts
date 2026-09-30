@@ -220,7 +220,7 @@ async function resolveReviewTags(): Promise<string[]> {
  * есть, в CRM их нет и заказ не поедет в производство — это надо чинить руками, поэтому
  * зовём тех же, кто разбирает поступления.
  */
-export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error: string): Promise<void> {
+export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error: string, explanation?: string): Promise<void> {
     const token = process.env.TELEGRAM_PAYMENTS_BOT_TOKEN;
     if (!token) return;
     const lines: string[] = [];
@@ -231,9 +231,14 @@ export async function notifyPaymentPushErrorTelegram(row: PointPaymentRow, error
         lines.push(`Заказ ${link ? `<a href="${link}">№${esc(row.matched_order_number)}</a>` : `№${esc(row.matched_order_number)}`} — статус не изменится, пока оплата не проведена`);
     }
     lines.push(`Причина: ${esc(String(error).slice(0, 300))}`);
+    // Человеку важно понимать, ждать ему или чинить: при сбое на стороне
+    // RetailCRM платёж проводится сам, звать никого не нужно.
+    if (explanation) lines.push(explanation);
     lines.push(`🔗 <a href="${paymentsPageLink()}">Открыть платёж</a>`);
     const reviewers = await resolveReviewTags().catch(() => []);
-    if (reviewers.length) lines.push(`🧾 ${reviewers.join(' ')}`);
+    if (reviewers.length && !explanation?.includes('делать ничего не нужно')) {
+        lines.push(`🧾 ${reviewers.join(' ')}`);
+    }
 
     await sendNotification('payment.push_error', lines.join('\n')).catch((e) =>
         console.error('[payments] push error notify failed:', e?.message || e),

@@ -68,6 +68,28 @@ export async function GET(request: Request) {
         }
     }
 
+    // Телефон в карточках клиентов не заполнен ни у одного из 20 699 — берём его
+    // из последнего заказа. Один запрос на страницу, не по клиенту.
+    const ids = rows.map((r) => String(r.id)).filter(Boolean);
+    const phones = new Map<string, string>();
+    if (ids.length) {
+        const { data: withPhone } = await supabase
+            .from('orders')
+            .select('"customer", phone, "createdAt"')
+            .filter('customer->>id', 'in', `(${ids.join(',')})`)
+            .not('phone', 'is', null)
+            .order('createdAt', { ascending: false });
+
+        for (const row of (withPhone || []) as any[]) {
+            const key = String(row.customer?.id ?? '');
+            if (key && !phones.has(key) && row.phone) {
+                phones.set(key, String(row.phone));
+            }
+        }
+    }
+
+    rows = rows.map((row) => ({ ...row, phone_from_order: phones.get(String(row.id)) || null }));
+
     return NextResponse.json({
         clients: rows,
         total: count ?? rows.length,
