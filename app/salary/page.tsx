@@ -196,7 +196,6 @@ export default function SalaryDashboard() {
     return (
         <div className="w-full space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-semibold">Зарплата ОП</h1>
                 <div className="flex border border-input">
                     <button
                         onClick={() => setTab('dashboard')}

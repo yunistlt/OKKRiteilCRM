@@ -242,19 +242,36 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [frame, setFrame] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
 
     useEffect(() => {
+        const area = document.querySelector('[data-ui-audit="page-scroller"]');
+        if (!area) {
+            setFrame(null);
+            return;
+        }
+
         const measure = () => {
-            const area = document.querySelector('[data-ui-audit="page-scroller"]');
-            if (!area) {
-                setFrame(null);
-                return;
-            }
             const box = area.getBoundingClientRect();
-            setFrame({ top: box.top, left: box.left, width: box.width, height: box.height });
+            setFrame((prev) =>
+                prev && prev.top === box.top && prev.left === box.left && prev.width === box.width && prev.height === box.height
+                    ? prev
+                    : { top: box.top, left: box.left, width: box.width, height: box.height },
+            );
         };
 
         measure();
+        // Замер один раз не годится: рабочая область съезжает, когда человек
+        // сворачивает меню слева или тянет колонку плана справа, и карточка
+        // оставалась на старом месте — поверх списка, со сдвигом (01.10.2026).
+        const observer = new ResizeObserver(measure);
+        observer.observe(area);
+        observer.observe(document.body);
         window.addEventListener('resize', measure);
-        return () => window.removeEventListener('resize', measure);
+        window.addEventListener('scroll', measure, true);
+
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', measure);
+            window.removeEventListener('scroll', measure, true);
+        };
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
     const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);

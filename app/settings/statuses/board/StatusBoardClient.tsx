@@ -129,8 +129,8 @@ export default function StatusBoardClient() {
     return (
         <div className="flex flex-col bg-white">
             <div className="px-6 pt-5">
-                <h1 className="text-2xl font-semibold text-gray-900">Статусы и переходы</h1>
-                <p className="mt-1 max-w-3xl text-sm text-gray-500">
+                {/* Название раздела — в шапке приложения, здесь только пояснение. */}
+                <p className="max-w-3xl text-sm text-gray-500">
                     Это статусы нашей будущей CRM — отдельные от RetailCRM. Строка: из какого статуса
                     переходим, колонка: в какой. Галочка разрешает переход. Клик по статусу открывает его
                     настройку, клик по группе — состав группы.

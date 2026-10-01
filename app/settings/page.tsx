@@ -6,7 +6,6 @@ import Link from 'next/link';
 export default function SettingsIndexPage() {
     return (
         <div className="w-full px-4 py-6 md:px-6 md:py-8">
-            <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-2 md:mb-4">Настройки</h1>
             <p className="text-gray-500 mb-8 md:mb-12 text-base md:text-lg">Управление конфигурацией системы мониторинга и контроля.</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">

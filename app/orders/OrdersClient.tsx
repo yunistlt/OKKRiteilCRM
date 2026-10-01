@@ -234,12 +234,9 @@ export default function OrdersClient() {
 
     return (
         <div className="flex flex-col bg-white">
-            <div className="flex items-baseline gap-3 px-6 pb-2 pt-5">
-                <h1 className="text-2xl font-semibold text-gray-900">Заказы</h1>
-                <span className="text-sm text-gray-600">
-                    {loading ? 'загружаем…' : `${pagination.totalCount.toLocaleString('ru-RU')}`}
-                </span>
-            </div>
+            {/* Названия раздела здесь нет: оно уже в шапке (ЗАКАЗЫ), а счётчик —
+                в колонке статусов строкой «Все N». Дубль съедал высоту списка
+                (закон «один заголовок на экран», golds/GOLD_DESIGN_UX.md). */}
 
             <OrdersFilterPanel
                 value={filter}

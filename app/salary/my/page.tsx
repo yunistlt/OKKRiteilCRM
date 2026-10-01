@@ -83,7 +83,6 @@ export default function MySalaryPage() {
     return (
         <div className="mx-auto max-w-5xl space-y-3 p-3">
             <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-semibold">Моя зарплата</h1>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                     {isOpen && <span className="border border-amber-500 px-2 py-1 text-[11px] font-bold uppercase tracking-wide text-amber-600">{MONTHS[month - 1]} открыт — прогноз</span>}
                     <Button variant="outline" size="sm" onClick={() => setSimOpen(true)} title="Покрутить свои показатели и увидеть, как меняется ЗП">
