@@ -3,6 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 import { resolveManagerRoles, setManagerRoleChoice } from '@/lib/salary/roles';
+import { takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
 
 // ── Реестр ЗП: участие (пофамильно) + роль из групп RetailCRM ────────────────
 
@@ -71,11 +72,18 @@ export async function saveManagerExtensions(items: { managerId: number; extensio
 /**
  * Кто работает в нашей CRM.
  *
- * У такого менеджера заявки бота создаются сразу у нас и в RetailCRM не уходят
- * (решение владельца 30.09.2026: переводим одного менеджера целиком).
+ * Включение — это переезд: менеджер работает только у нас, и его заказы
+ * RetailCRM тоже становятся нашими (решение владельца 01.10.2026). Поэтому
+ * вместе с флагом забираем все его заказы: иначе он работал бы в двух системах,
+ * а заявки живут месяцами и годами.
+ *
+ * Выключение флага заказы не возвращает — вернуть их в RetailCRM автоматически
+ * нельзя, см. TAKEOVER_IRREVERSIBLE_NOTE.
  */
 export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boolean }[]) {
     try {
+        const taken: Array<{ managerId: number; orders: number }> = [];
+
         for (const { managerId, ownCrm } of items) {
             const { error } = await supabase.from('managers').update({ own_crm: ownCrm }).eq('id', managerId);
             if (error) {
@@ -83,12 +91,24 @@ export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boo
                 if (missing) return { success: false, errorType: 'COLUMN_MISSING' as const };
                 throw error;
             }
+
+            if (ownCrm) {
+                const result = await takeoverManagerOrders(managerId);
+                taken.push({ managerId, orders: result.taken });
+            }
         }
+
         revalidatePath('/settings/managers');
-        return { success: true };
+        revalidatePath('/orders');
+        return { success: true, taken };
     } catch (e: any) {
         return { success: false, error: e.message };
     }
+}
+
+/** Сколько заказов заберёт переезд — спрашиваем до того, как нажали. */
+export async function previewOwnCrmTakeover(managerId: number) {
+    return takeoverPreview(managerId);
 }
 
 function sanitizeLoginCandidate(value: string | null | undefined) {

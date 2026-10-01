@@ -21,7 +21,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
-import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemId } from './own-order-insert';
+import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
 export { isOwnCrmManager, nextOwnOrderNumber };
 
@@ -42,7 +42,7 @@ export async function ownCrmManagers(): Promise<Array<{ id: number; name: string
 }
 
 /** Заказ в том же виде, в котором его присылает RetailCRM. */
-function buildPayload(order: NewOrder, params: { id: number; number: string; site: string; itemId: (index: number) => number }) {
+function buildPayload(order: NewOrder, params: { id: number; number: string; site: string; itemIds: number[] }) {
     const now = new Date();
     return {
         id: params.id,
@@ -61,7 +61,7 @@ function buildPayload(order: NewOrder, params: { id: number; number: string; sit
         currency: 'RUB',
         totalSumm: orderTotal(order.items),
         summ: orderTotal(order.items),
-        items: order.items.map((item, index) => itemPayload(item, params.itemId(index + 1))),
+        items: order.items.map((item, index) => itemPayload(item, params.itemIds[index])),
         customFields: {},
     };
 }
@@ -101,6 +101,7 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
     const { number, seq } = await nextOwnOrderNumber();
     const id = OWN_ID_BASE + seq;
     const site = OWN_SITE;
+    const itemIds = await ownItemIds(order.items.length);
 
     const { error } = await supabase.from('orders').insert({
         id,
@@ -111,7 +112,7 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
         manager_id: order.managerId ?? null,
         is_own: true,
         created_at: new Date().toISOString(),
-        raw_payload: buildPayload(order, { id, number, site, itemId: (index) => ownItemId(seq, index) }),
+        raw_payload: buildPayload(order, { id, number, site, itemIds }),
     });
 
     if (error) {
@@ -148,8 +149,12 @@ export async function editOwnOrder(
     const payload: any = { ...(((data as any)?.raw_payload) || {}) };
 
     if (edit.items) {
-        const seq = rowId - OWN_ID_BASE;
-        payload.items = edit.items.map((item, index) => itemPayload(item as NewOrderItem, Number(item.id) || ownItemId(seq, index + 1)));
+        // Номера нужны только новым позициям; у приехавших из RetailCRM они свои.
+        const fresh = await ownItemIds(edit.items.filter((item) => !item.id).length);
+        let freshIndex = 0;
+        payload.items = edit.items.map((item) =>
+            itemPayload(item as NewOrderItem, Number(item.id) || fresh[freshIndex++]),
+        );
         const total = edit.items.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
         payload.totalSumm = total;
         payload.summ = total;

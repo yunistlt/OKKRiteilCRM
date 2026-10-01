@@ -25,16 +25,37 @@ export const OWN_ID_BASE = 900_000_000;
 export const OWN_SITE = 'own-crm';
 
 /**
- * Номер позиции своего заказа.
+ * Номера для позиций, которые добавили мы.
  *
  * `order_items.id` — общий на все заказы первичный ключ, и у позиций RetailCRM
  * он уже дошёл до 106 857 и растёт. Если нумеровать свои позиции с единицы,
  * триггер состава по `ON CONFLICT (id)` перепишет чужую позицию и перевесит её
- * на наш заказ. Поэтому свои позиции живут в своём диапазоне: номер заказа × 1000
- * плюс номер строки.
+ * на наш заказ. Считать от номера заказа тоже нельзя: у забранного заказа
+ * RetailCRM номер маленький, и арифметика уезжает в чужой диапазон. Поэтому
+ * номера выдаёт отдельный счётчик `own_order_item_seq`.
  */
-export function ownItemId(seq: number, index: number): number {
-    return OWN_ID_BASE + seq * 1000 + index;
+export async function ownItemIds(count: number): Promise<number[]> {
+    if (count <= 0) {
+        return [];
+    }
+
+    const { data, error } = await supabase.rpc('next_own_order_item_ids', { count_needed: count });
+    const ids = ((data ?? []) as any[]).map((row) => Number(typeof row === 'object' ? Object.values(row)[0] : row));
+
+    if (error || ids.length !== count || ids.some((id) => !Number.isFinite(id))) {
+        // Счётчик недоступен — берём от максимума своих позиций, чтобы правка
+        // состава не встала совсем. Чужой диапазон всё равно не трогаем.
+        const { data: rows } = await supabase
+            .from('order_items')
+            .select('id')
+            .gte('id', OWN_ID_BASE)
+            .order('id', { ascending: false })
+            .limit(1);
+        const start = Number((rows as any[])?.[0]?.id ?? OWN_ID_BASE) + 1;
+        return Array.from({ length: count }, (_, index) => start + index);
+    }
+
+    return ids;
 }
 
 export type CrmLikeOrderResult = {
@@ -94,6 +115,7 @@ function itemsTotal(items: any[] | undefined): number {
  */
 export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult> {
     const { number, seq } = await nextOwnOrderNumber();
+    const itemIds = await ownItemIds((orderData.items || []).length);
     const id = OWN_ID_BASE + seq;
     const total = itemsTotal(orderData.items);
 
@@ -110,7 +132,7 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         // документы и состав читают именно `offer.name`.
         items: (orderData.items || []).map((item: any, index: number) => ({
             ...item,
-            id: item.id ?? ownItemId(seq, index + 1),
+            id: item.id ?? itemIds[index],
             price: item.price ?? item.initialPrice ?? 0,
             offer: item.offer?.name
                 ? item.offer

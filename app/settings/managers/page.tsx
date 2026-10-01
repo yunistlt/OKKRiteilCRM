@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions, saveOwnCrmManagers } from './actions';
+import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions, saveOwnCrmManagers, previewOwnCrmTakeover } from './actions';
 import Link from 'next/link';
 
 type RosterInfo = { inSalary: boolean; candidates: { code: string; name: string }[]; resolvedName: string | null; needsChoice: boolean };
@@ -91,7 +91,27 @@ export default function ManagerSettingsPage() {
         });
     };
 
-    const toggleOwnCrm = (id: number) => {
+    /**
+     * Переезд менеджера — решение с последствиями: его заказы RetailCRM
+     * становятся нашими, обратно автоматически не возвращаются. Поэтому
+     * показываем, сколько заказов заберём, и спрашиваем до включения.
+     */
+    const toggleOwnCrm = async (id: number) => {
+        const turningOn = !ownCrmIds.has(id);
+
+        if (turningOn) {
+            const preview = await previewOwnCrmTakeover(id);
+            const confirmed = window.confirm(
+                `Переезд менеджера в нашу CRM.\n\n`
+                + `Его заказов: ${preview.total.toLocaleString('ru-RU')} — все они станут нашими.\n`
+                + `По ним: правки идут только в нашу базу, данные из RetailCRM больше не принимаются, наружу ничего не уходит.\n`
+                + `В RetailCRM эти заказы застынут на сегодняшнем дне — в цех передавать руками.\n\n`
+                + `Выключение переключателя заказы не вернёт: в RetailCRM по ним останется версия на день переезда.\n\n`
+                + `Переводим?`,
+            );
+            if (!confirmed) return;
+        }
+
         setOwnCrmIds((prev) => {
             const n = new Set(prev);
             n.has(id) ? n.delete(id) : n.add(id);
@@ -141,6 +161,10 @@ export default function ManagerSettingsPage() {
                 const ownRes = await saveOwnCrmManagers(ownChanged);
                 if (ownRes.success) {
                     setOrigOwnCrmIds(new Set(ownCrmIds));
+                    const movedOrders = (ownRes.taken || []).reduce((sum: number, t: any) => sum + t.orders, 0);
+                    if (movedOrders > 0) {
+                        setSaveMessage(`Переезд выполнен: ${movedOrders.toLocaleString('ru-RU')} заказов теперь ведутся в нашей CRM.`);
+                    }
                 } else if (ownRes.errorType === 'COLUMN_MISSING') {
                     alert('Поле «Наша CRM» не создано в БД. Примените миграцию 20261001_own_orders.sql');
                 } else {
@@ -183,7 +207,7 @@ export default function ManagerSettingsPage() {
             <div className="flex flex-col gap-4 mb-6">
                 {/* Mobile-first text */}
                 <p className="text-sm text-gray-500 font-medium">
-                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора). «Наша CRM» — менеджер работает в нашей базе: заявки на него создаются здесь и в RetailCRM не уходят, номер заказа с буквой «А».
+                    «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора). «Наша CRM» — переезд менеджера: он работает только у нас, и его заказы RetailCRM тоже становятся нашими. По таким заказам данные из RetailCRM не принимаются и наружу не отправляются; новые заявки получают номер с буквой «А».
                 </p>
                 <button
                     onClick={handleSave}

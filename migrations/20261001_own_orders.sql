@@ -67,3 +67,19 @@ CREATE OR REPLACE FUNCTION public.nextval_own_order_number()
 RETURNS BIGINT
 LANGUAGE sql
 AS $$ SELECT nextval('public.own_order_number_seq') $$;
+
+-- Номера позиций, добавленных у нас.
+--
+-- `order_items.id` — общий ключ на все заказы, у RetailCRM он дошёл до 106 857
+-- и растёт. Считать номер позиции от номера заказа нельзя: у забранного заказа
+-- RetailCRM номер маленький, и арифметика уезжала в чужой диапазон. Поэтому
+-- отдельный счётчик с заведомо недостижимого для RetailCRM значения.
+CREATE SEQUENCE IF NOT EXISTS public.own_order_item_seq START 900000000;
+
+COMMENT ON SEQUENCE public.own_order_item_seq IS
+  'Номера позиций, добавленных в нашей CRM: свой диапазон, не пересекается с RetailCRM';
+
+CREATE OR REPLACE FUNCTION public.next_own_order_item_ids(count_needed INTEGER)
+RETURNS SETOF BIGINT
+LANGUAGE sql
+AS $$ SELECT nextval('public.own_order_item_seq') FROM generate_series(1, GREATEST(count_needed, 0)) $$;
