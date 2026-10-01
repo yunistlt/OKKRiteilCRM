@@ -39,6 +39,20 @@ const money = (v: number | null) =>
 
 const day = (v: string | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
+/** Тот же цвет, но темнее — для рамки поверх бледной заливки статуса. */
+function darken(hex: string, amount: number): string {
+    const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!match) return '#9ca3af';
+
+    const value = parseInt(match[1], 16);
+    const mix = (channel: number) => Math.max(0, Math.round(channel * (1 - amount)));
+    const r = mix((value >> 16) & 255);
+    const g = mix((value >> 8) & 255);
+    const b = mix(value & 255);
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
 export default function OrdersClient() {
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
     const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -109,16 +123,21 @@ export default function OrdersClient() {
     const cell = (order: OrderRow, key: string) => {
         switch (key) {
             case 'status':
+                // Цвет статуса из справочника бледный сам по себе — добавляем к нему
+                // рамку того же цвета потемнее, иначе метка тонет в белом фоне.
                 return (
                     <span
-                        className="inline-block rounded px-2 py-1 text-xs font-medium text-gray-800"
-                        style={{ backgroundColor: order.statusColor || '#eef2f7' }}
+                        className="inline-block border px-2 py-1 text-xs font-bold text-gray-900"
+                        style={{
+                            backgroundColor: order.statusColor || '#eef2f7',
+                            borderColor: darken(order.statusColor || '#eef2f7', 0.35),
+                        }}
                     >
                         {order.statusLabel}
                     </span>
                 );
             case 'number':
-                return <span className="font-medium text-blue-600">{order.number}</span>;
+                return <span className="font-bold text-blue-700">{order.number}</span>;
             case 'customer':
                 return order.customerName || '—';
             case 'contragent':
@@ -127,7 +146,7 @@ export default function OrdersClient() {
                 return order.managerName || '—';
             case 'managerComment':
                 return order.managerComment
-                    ? <span className="whitespace-pre-line text-gray-700">{order.managerComment.split('\n').slice(0, 5).join('\n')}</span>
+                    ? <span className="whitespace-pre-line text-gray-800">{order.managerComment.split('\n').slice(0, 5).join('\n')}</span>
                     : '—';
             case 'customerComment':
                 return order.customerComment || '—';
@@ -141,7 +160,7 @@ export default function OrdersClient() {
                 return order.email || '—';
             case 'items':
                 return order.items.length === 0 ? '—' : (
-                    <ul className="list-disc space-y-1 pl-4 text-gray-700">
+                    <ul className="list-disc space-y-1 pl-4 text-gray-800">
                         {order.items.map((i, idx) => (
                             <li key={idx}>
                                 {i.name}
@@ -151,7 +170,7 @@ export default function OrdersClient() {
                             </li>
                         ))}
                         {order.itemsTotal > order.items.length && (
-                            <li className="list-none text-gray-400">и ещё {order.itemsTotal - order.items.length}</li>
+                            <li className="list-none text-gray-600">и ещё {order.itemsTotal - order.items.length}</li>
                         )}
                     </ul>
                 );
@@ -162,7 +181,7 @@ export default function OrdersClient() {
                     <span className="whitespace-nowrap">
                         {day(order.createdAt)}
                         <br />
-                        <span className="text-gray-500">
+                        <span className="text-gray-600">
                             {order.createdAt ? new Date(order.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                     </span>
@@ -174,7 +193,7 @@ export default function OrdersClient() {
                 const label = `${order.daysInStatus} дн.`;
                 return (
                     <span
-                        className={`whitespace-nowrap ${order.overdue ? 'font-semibold text-red-600' : 'text-gray-700'}`}
+                        className={`whitespace-nowrap ${order.overdue ? 'font-semibold text-red-600' : 'text-gray-800'}`}
                         title={
                             order.normDays != null
                                 ? `Норматив ${order.normDays} дн.${order.statusSinceApproximate ? ' · отсчёт от создания заказа: смены статуса нет в истории' : ''}`
@@ -197,7 +216,7 @@ export default function OrdersClient() {
         <div className="flex flex-col bg-white">
             <div className="flex items-baseline gap-3 px-6 pb-2 pt-5">
                 <h1 className="text-2xl font-semibold text-gray-900">Заказы</h1>
-                <span className="text-sm text-gray-400">
+                <span className="text-sm text-gray-600">
                     {loading ? 'загружаем…' : `${pagination.totalCount.toLocaleString('ru-RU')}`}
                 </span>
             </div>
@@ -231,7 +250,7 @@ export default function OrdersClient() {
 
                     <table className="w-full border-collapse text-sm">
                         <thead>
-                            <tr className="border-b border-gray-200 bg-gray-50 text-left align-bottom text-gray-500">
+                            <tr className="border-b-2 border-gray-300 bg-gray-100 text-left align-bottom font-bold text-gray-700">
                                 {columns.map((key) => (
                                     <th key={key} className="px-4 py-3 text-[13px] font-normal">
                                         {headerFor(key)}
@@ -250,10 +269,10 @@ export default function OrdersClient() {
                                         key={order.orderId}
                                         data-ui-audit="order-row"
                                         onClick={() => setOpenOrderId(order.orderId)}
-                                        className={`cursor-pointer border-b border-gray-100 align-top hover:bg-blue-50/40 ${order.overdue ? 'bg-red-50/50' : ''}`}
+                                        className={`cursor-pointer border-b border-gray-200 align-top hover:bg-blue-50 ${order.overdue ? 'bg-red-50' : ''}`}
                                     >
                                         {columns.map((key) => (
-                                            <td key={key} className="px-4 py-4 text-[13px] leading-relaxed text-gray-800">
+                                            <td key={key} className="px-4 py-4 text-[13px] leading-relaxed text-gray-900">
                                                 {cell(order, key)}
                                             </td>
                                         ))}
@@ -274,15 +293,15 @@ export default function OrdersClient() {
                         <button
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             disabled={page === 1}
-                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:text-gray-300"
+                            className="rounded-md border border-gray-400 px-3 py-1.5 text-sm text-gray-800 disabled:text-gray-400"
                         >
                             Назад
                         </button>
-                        <span className="text-sm text-gray-500">{page} / {pagination.totalPages}</span>
+                        <span className="text-sm text-gray-700">{page} / {pagination.totalPages}</span>
                         <button
                             onClick={() => setPage((p) => Math.min(pagination.totalPages, p + 1))}
                             disabled={page >= pagination.totalPages}
-                            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 disabled:text-gray-300"
+                            className="rounded-md border border-gray-400 px-3 py-1.5 text-sm text-gray-800 disabled:text-gray-400"
                         >
                             Вперёд
                         </button>

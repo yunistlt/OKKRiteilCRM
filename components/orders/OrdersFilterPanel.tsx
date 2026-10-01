@@ -81,7 +81,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
            выбирает столько, сколько ему нужно. Держим плотность — мелкие
            подписи, узкие поля, шесть колонок (решение владельца 01.10.2026). */
         <div className="flex flex-col bg-white px-4 pb-2">
-            <button onClick={() => setOpen((v) => !v)} className="mb-1 shrink-0 self-start text-[11px] uppercase tracking-wide text-blue-600 hover:underline">
+            <button onClick={() => setOpen((v) => !v)} className="mb-1 shrink-0 self-start text-[11px] font-bold uppercase tracking-wide text-blue-700 hover:underline">
                 {open ? 'Свернуть фильтр ⌃' : 'Развернуть фильтр ⌄'}
             </button>
 
@@ -105,7 +105,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                             key={m.v}
                                             onClick={() => set({ marks: draft.marks.includes(m.v) ? draft.marks.filter((x) => x !== m.v) : [...draft.marks, m.v] })}
                                             className={`px-2 py-1 text-[11px] font-semibold ${
-                                                draft.marks.includes(m.v) ? 'bg-blue-600 text-white' : 'border border-gray-300 text-gray-500 hover:bg-gray-50'
+                                                draft.marks.includes(m.v) ? 'bg-blue-600 text-white' : 'border border-gray-400 text-gray-500 hover:bg-gray-50'
                                             }`}
                                         >
                                             {m.l}
@@ -137,7 +137,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                 <select
                                     value={draft.control}
                                     onChange={(e) => set({ control: e.target.value })}
-                                    className="w-full border border-gray-300 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none"
+                                    className="w-full border border-gray-400 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none"
                                 >
                                     <option value="">Любой</option>
                                     <option value="yes">На контроле</option>
@@ -187,14 +187,14 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                     <div className="mt-2 flex shrink-0 flex-wrap items-center gap-2">
                         <button
                             onClick={() => onApply(draft)}
-                            className="border border-gray-300 bg-gray-50 px-4 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-100"
+                            className="border border-gray-400 bg-gray-50 px-4 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-100"
                         >
                             Применить
                         </button>
                         <button
                             onClick={() => { setDraft(EMPTY_FILTER); onApply(EMPTY_FILTER); }}
                             title="Сбросить фильтр"
-                            className="border border-gray-300 bg-gray-50 px-2 py-1 text-sm leading-none text-red-500 hover:bg-gray-100"
+                            className="border border-gray-400 bg-gray-50 px-2 py-1 text-sm leading-none text-red-500 hover:bg-gray-100"
                         >
                             ✕
                         </button>
@@ -246,7 +246,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <label className="mb-0.5 block truncate text-[10px] uppercase tracking-wide text-gray-500" title={label}>{label}</label>
+            <label className="mb-0.5 block truncate text-[10px] font-bold uppercase tracking-wide text-gray-600" title={label}>{label}</label>
             {children}
         </div>
     );
@@ -258,7 +258,7 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full border border-gray-300 px-2 py-1 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
+            className="w-full border border-gray-400 px-2 py-1 text-xs text-gray-800 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
         />
     );
 }
@@ -266,9 +266,9 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
 function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void }) {
     return (
         <div className="flex items-center gap-1">
-            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full min-w-0 border border-gray-300 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
-            <span className="text-[10px] text-gray-400">—</span>
-            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full min-w-0 border border-gray-300 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full min-w-0 border border-gray-400 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <span className="text-[10px] text-gray-600">—</span>
+            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full min-w-0 border border-gray-400 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
         </div>
     );
 }
@@ -283,9 +283,9 @@ function Multi({ options, selected, onChange }: { options: Option[]; selected: s
         <div className="relative">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="w-full truncate border border-gray-300 px-2 py-1 text-left text-xs hover:border-blue-500"
+                className="w-full truncate border border-gray-400 px-2 py-1 text-left text-xs hover:border-blue-500"
             >
-                <span className={selected.length ? 'text-gray-800' : 'text-gray-400'}>{label}</span>
+                <span className={selected.length ? 'text-gray-900' : 'text-gray-500'}>{label}</span>
             </button>
             {open && (
                 <div className="absolute z-30 mt-0.5 max-h-60 w-full min-w-[220px] overflow-y-auto border border-gray-200 bg-white shadow-lg">

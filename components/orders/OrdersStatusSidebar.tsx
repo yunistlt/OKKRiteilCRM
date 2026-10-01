@@ -28,7 +28,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
         return (
             <button
                 onClick={() => setCollapsed(false)}
-                className="border-r border-gray-200 bg-white px-3 py-3 text-sm text-gray-500 hover:text-gray-800"
+                className="border-r border-gray-300 bg-white px-3 py-3 text-sm text-gray-700 hover:text-gray-900"
                 title="Показать статусы"
             >
                 →
@@ -40,7 +40,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
         <aside className="w-60 shrink-0 border-r border-gray-200 bg-white">
             <button
                 onClick={() => setCollapsed(true)}
-                className="px-4 py-3 text-sm text-gray-500 hover:text-gray-800"
+                className="px-4 py-3 text-sm text-gray-700 hover:text-gray-900"
             >
                 ← Свернуть
             </button>
@@ -52,7 +52,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                 }`}
             >
                 <span>Все</span>
-                <span className="text-gray-400">{totalAll.toLocaleString('ru-RU')}</span>
+                <span className="font-semibold text-gray-600">{totalAll.toLocaleString('ru-RU')}</span>
             </button>
 
             {tree.map((group) => {
@@ -74,7 +74,7 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                                     {group.groupName}
                                 </span>
                             </span>
-                            <span className="shrink-0 text-xs text-gray-400">{group.total.toLocaleString('ru-RU')}</span>
+                            <span className="shrink-0 text-xs font-semibold text-gray-600">{group.total.toLocaleString('ru-RU')}</span>
                         </button>
 
                         {group.statuses.map((status) => {
@@ -85,11 +85,11 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                                     onClick={() => onSelect(isSelected ? selected.filter((c) => c !== status.code) : [...selected, status.code])}
                                     style={isSelected ? { backgroundColor: status.color || group.color || '#e0e7ff' } : undefined}
                                     className={`flex w-full items-start justify-between gap-2 py-1 pl-8 pr-4 text-left text-sm ${
-                                        isSelected ? 'font-medium text-gray-900' : 'text-gray-700 hover:bg-gray-50'
+                                        isSelected ? 'font-bold text-gray-900' : 'text-gray-800 hover:bg-gray-100'
                                     }`}
                                 >
                                     <span className="min-w-0 flex-1 leading-snug">{status.label}</span>
-                                    <span className="shrink-0 text-xs text-gray-500">{status.count.toLocaleString('ru-RU')}</span>
+                                    <span className="shrink-0 text-xs font-semibold text-gray-600">{status.count.toLocaleString('ru-RU')}</span>
                                 </button>
                             );
                         })}
