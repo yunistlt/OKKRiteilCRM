@@ -72,9 +72,9 @@ export default function Sidebar() {
             // лежат вместе, как в любой CRM (решение владельца 01.10.2026).
             title: 'CRM',
             items: [
+                { name: 'Мой день', href: '/analytics', icon: '🎯', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Аналитика', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
             ]

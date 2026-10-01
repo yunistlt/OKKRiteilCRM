@@ -31,7 +31,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/clients', label: 'Клиенты', description: 'Реестр клиентов и карточка клиента: реквизиты, связанные карточки одного юрлица, заказы.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/clients', label: 'API клиентов', description: 'Данные реестра и карточки клиента.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/orders', label: 'Заказы', description: 'Рабочий список заказов с панелью фильтров и статусами — отдельно от дашборда ОКК.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager'] },
-    { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop', 'manager'] },
+    { prefix: '/agents', label: 'Каталог ИИ-агентов', description: 'Справочная страница со всеми агентами, их ролями, связями и prompt contract.', category: 'Управление', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/settings/ai/training-examples', label: 'Примеры обучения', description: 'Управление обучающими примерами и датасетом.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/settings/training-examples', label: 'API примеров обучения', description: 'Серверные операции для примеров обучения.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/notifications', label: 'Уведомления', description: 'Куда уходит каждый тип сообщения: оплаты, планы, сбои системы.', category: 'Система', allowed: ['admin'] },
@@ -79,7 +79,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/okk', label: 'Контроль качества', description: 'Основной экран ОКК и оценки заказов.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/api/okk', label: 'API ОКК', description: 'Серверные методы экрана контроля качества.', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
     { prefix: '/api/orders', label: 'API карточки заказа', description: 'Чтение карточки заказа и её анализ (используется в ОКК и отчётах ЗП).', category: 'ОКК', allowed: ['admin', 'okk', 'rop', 'manager', 'demo'] },
-    { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
+    { prefix: '/analytics', label: 'Аналитика', description: 'Раздел аналитики и сводных показателей.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop', 'manager'] },
     { prefix: '/api/analysis', label: 'API аналитики', description: 'Серверные маршруты аналитики.', category: 'Аналитика', allowed: ['admin', 'okk', 'rop'] },
     { prefix: '/legal', label: 'Юридический отдел', description: 'Реестр исполнительных производств (ИП ФССП).', category: 'Юридический отдел', allowed: ['admin', 'jurist'] },
     { prefix: '/legal/helpdesk', label: 'Юридический помощник', description: 'Дарья (helpdesk по базе знаний) и загрузка договоров на анализ.', category: 'Юридический отдел', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
@@ -123,7 +123,9 @@ export function hasAnyRole(session: AppSession | null | undefined, allowed: AppR
 }
 
 export function getDefaultPathForRole(role: AppRole | null | undefined): string {
-    if (role === 'manager') return '/okk';
+    // Менеджер начинает день со своего рабочего стола: что делать сейчас, а не
+    // с таблицы качества (решение владельца 01.10.2026).
+    if (role === 'manager') return '/analytics';
     if (role === 'rop') return '/okk';
     if (role === 'okk') return '/okk';
     if (role === 'demo') return '/okk';

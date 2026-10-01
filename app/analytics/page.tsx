@@ -3,8 +3,14 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import MyDayClient from './MyDayClient';
+import { useAuth } from '@/components/auth/AuthProvider';
 
 function HubContent() {
+    const { user } = useAuth();
+    // Отчёты — для руководства: у менеджера к ним нет доступа, и показывать
+    // карточки, ведущие в отказ, нельзя.
+    const showReports = ['admin', 'okk', 'rop'].includes(String(user?.role ?? ''));
+
     return (
         <div className="w-full px-4 py-6 md:px-6 md:py-8">
             <div className="flex flex-col md:flex-row md:items-center gap-4 mb-10 md:mb-12">
@@ -23,9 +29,11 @@ function HubContent() {
                 Отчёты остаются ниже — они нужны реже, чем следующее действие. */}
             <MyDayClient />
 
+            {showReports && (
             <h2 className="mb-4 mt-10 text-lg font-black uppercase tracking-tight text-gray-900">Отчёты</h2>
+            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
+            <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8 ${showReports ? '' : 'hidden'}`}>
 
                 {/* 1. Efficiency */}
                 <Link href="/efficiency" className="group block p-6 md:p-8 bg-white border border-gray-100 shadow-xl shadow-gray-200/50 hover:shadow-2xl hover:shadow-blue-200/40 hover:-translate-y-1 transition-all">
