@@ -70,6 +70,16 @@ export async function GET(request: Request) {
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
         const tasks = ((data ?? []) as TaskRow[]).map(toTask);
+
+        // Текст утреннего сообщения — тот же, что ушёл в Telegram, с пояснениями
+        // и советами. Его читают утром целиком, прежде чем браться за работу.
+        const { data: message } = await supabase
+            .from('sales_rop_morning_message')
+            .select('text')
+            .eq('plan_date', date)
+            .eq('manager_id', ownManagerId)
+            .maybeSingle();
+
         return NextResponse.json({
             scope: 'own',
             date,
@@ -77,6 +87,7 @@ export async function GET(request: Request) {
             total: tasks.length,
             done: tasks.filter((t) => t.done).length,
             rule: RULE,
+            letter: (message as any)?.text ?? null,
         });
     }
 
@@ -121,6 +132,21 @@ export async function GET(request: Request) {
         }))
         .sort((a, b) => b.total - a.total);
 
+    // Руководителю — письма всех менеджеров подряд: он читает то же, что и они.
+    const { data: messages } = await supabase
+        .from('sales_rop_morning_message')
+        .select('manager_id, text')
+        .eq('plan_date', date);
+
+    const letterByManager = new Map<number, string>(
+        ((messages ?? []) as any[]).map((m) => [Number(m.manager_id), String(m.text)]),
+    );
+
+    const letter = managers
+        .map((m) => letterByManager.get(m.managerId))
+        .filter(Boolean)
+        .join('\n\n— — —\n\n') || null;
+
     return NextResponse.json({
         scope: 'department',
         date,
@@ -128,5 +154,6 @@ export async function GET(request: Request) {
         total: rows.length,
         done: rows.filter((r) => r.touched === true).length,
         rule: RULE,
+        letter,
     });
 }

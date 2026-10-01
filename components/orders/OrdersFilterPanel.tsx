@@ -105,7 +105,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                         <button
                                             key={m.v}
                                             onClick={() => set({ marks: draft.marks.includes(m.v) ? draft.marks.filter((x) => x !== m.v) : [...draft.marks, m.v] })}
-                                            className={`px-2 py-1 text-[11px] font-semibold ${
+                                            className={`h-[30px] px-3 text-[11px] font-semibold ${
                                                 draft.marks.includes(m.v) ? 'bg-blue-600 text-white' : 'border border-gray-400 text-gray-500 hover:bg-gray-50'
                                             }`}
                                         >
@@ -138,7 +138,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                                 <select
                                     value={draft.control}
                                     onChange={(e) => set({ control: e.target.value })}
-                                    className="w-full border border-gray-400 px-2 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none"
+                                    className="h-[30px] w-full border border-gray-400 bg-white px-2 text-xs text-gray-800 focus:border-blue-500 focus:outline-none"
                                 >
                                     <option value="">Любой</option>
                                     <option value="yes">На контроле</option>
@@ -247,7 +247,7 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
     return (
         <div>
-            <label className="mb-0.5 block truncate text-[10px] font-bold uppercase tracking-wide text-gray-600" title={label}>{label}</label>
+            <label className="mb-0.5 block truncate text-[12px] text-gray-600" title={label}>{label}</label>
             {children}
         </div>
     );
@@ -259,7 +259,7 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
-            className="w-full border border-gray-400 px-2 py-1 text-xs text-gray-800 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+            className="h-[30px] w-full border border-gray-400 px-2 text-xs text-gray-800 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
         />
     );
 }
@@ -270,7 +270,7 @@ function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFro
     return (
         <div className="flex items-center gap-1">
             <RelativeDateInput value={from} onChange={onFrom} title="С какой даты" />
-            <span className="text-[10px] text-gray-600">—</span>
+            <span className="shrink-0 text-xs text-gray-400">—</span>
             <RelativeDateInput value={to} onChange={onTo} title="По какую дату" />
         </div>
     );
@@ -286,7 +286,7 @@ function Multi({ options, selected, onChange }: { options: Option[]; selected: s
         <div className="relative">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="w-full truncate border border-gray-400 px-2 py-1 text-left text-xs hover:border-blue-500"
+                className="h-[30px] w-full truncate border border-gray-400 bg-white px-2 text-left text-xs hover:border-blue-500"
             >
                 <span className={selected.length ? 'text-gray-900' : 'text-gray-500'}>{label}</span>
             </button>

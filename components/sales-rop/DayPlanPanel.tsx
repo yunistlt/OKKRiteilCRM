@@ -38,7 +38,7 @@ type Plan = {
     note?: string;
 };
 
-export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
+export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
     const [plan, setPlan] = useState<Plan | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -96,13 +96,18 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
                     >
                         ↻
                     </button>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="text-xs font-bold text-gray-300 hover:text-white"
-                    >
-                        Закрыть
-                    </button>
+                    {/* Закрывать план нельзя: он должен быть перед глазами весь день
+                        (требование владельца 01.10.2026). Кнопка есть только на
+                        телефоне, где панель открывается поверх экрана. */}
+                    {onClose && (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="text-xs font-bold text-gray-300 hover:text-white md:hidden"
+                        >
+                            Закрыть
+                        </button>
+                    )}
                 </div>
             </header>
 

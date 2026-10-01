@@ -81,11 +81,13 @@ export default function Header() {
                 </h1>
 
                 <div className="ml-auto flex items-center gap-2">
+                {/* На рабочем месте план висит постоянно справа; кнопка нужна
+                    только на телефоне, где он открывается поверх экрана. */}
                 <button
                     type="button"
                     onClick={() => setPlanOpen(!planOpen)}
                     title="План на день"
-                    className={`hidden h-9 items-center gap-1.5 px-3 text-xs font-black uppercase tracking-widest md:flex ${
+                    className={`flex h-9 items-center gap-1.5 px-3 text-xs font-black uppercase tracking-widest md:hidden ${
                         planOpen ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                 >

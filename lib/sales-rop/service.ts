@@ -795,6 +795,8 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
     }
 
     const preview: string[] = [];
+    // Тексты утренних сообщений — чтобы показать их в CRM такими же, как в чате.
+    const morningTexts: Array<{ plan_date: string; manager_id: number; text: string }> = [];
     const rows: any[] = [];
     const planned: Task[] = [];
 
@@ -848,18 +850,24 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
               }).catch(() => null)
             : null;
 
-        preview.push(
-            formatMorning(
-                { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
-                CRM_BASE,
-                {
-                    greeting: written?.greeting || settings.morningGreeting,
-                    farewell: written?.farewell || settings.morningFarewell,
-                    date: new Date(today),
-                    advices,
-                },
-            ),
+        const morningText = formatMorning(
+            { managerId: bucket.managerId, managerName: bucket.name, telegramUsername: bucket.tg, tasks: bucket.tasks },
+            CRM_BASE,
+            {
+                greeting: written?.greeting || settings.morningGreeting,
+                farewell: written?.farewell || settings.morningFarewell,
+                date: new Date(today),
+                advices,
+            },
         );
+        preview.push(morningText);
+
+        // Тот же текст показываем в CRM при первом входе за день. Сохраняем
+        // именно отправленный: пересобранный через час будет другим, и человек
+        // решит, что одна из систем врёт.
+        if (!opts.dryRun && bucket.managerId) {
+            morningTexts.push({ plan_date: today, manager_id: bucket.managerId, text: morningText });
+        }
         for (const t of bucket.tasks) {
             rows.push(taskRow(today, t));
             planned.push(t);
@@ -871,6 +879,14 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
         // то, что подошло бы под правило вечером.
         const { error } = await supabase.from('sales_rop_task').upsert(rows, { onConflict: 'plan_date,order_id' });
         if (error) throw new Error(error.message);
+    }
+
+    if (morningTexts.length > 0) {
+        // Не критично: не сохранился текст — в CRM покажем список задач.
+        const { error } = await supabase
+            .from('sales_rop_morning_message')
+            .upsert(morningTexts, { onConflict: 'plan_date,manager_id' });
+        if (error) console.warn('[sales-rop] Текст утреннего плана не сохранился:', error.message);
     }
 
     // Дата следующего контакта в карточке заказа. План должен всплыть у
