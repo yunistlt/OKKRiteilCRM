@@ -30,6 +30,8 @@ interface OrderDetails {
     calls: any[];
     emails: any[];
     history: any[];
+    /** Названия и цвета статусов — для плашек в истории. */
+    statusPalette?: Record<string, { name: string; color: string | null }>;
     priority?: any;
     insights?: any;
     raw_payload: any;
@@ -138,7 +140,12 @@ const InfoField = ({ label, value, required }: InfoFieldProps) => (
  * задаётся прозрачностью. Прозрачный фон просвечивает насквозь — карточка
  * тогда показывает список заказов под собой (поймано 30.09.2026).
  */
-const tintFromColor = (color?: string | null, strength = 0.22): string | undefined => {
+/**
+ * Тон карточки по цвету статуса — «очень нежный, еле заметный» (требование
+ * владельца 30.09.2026). Цвета статусов теперь берутся от этапа и они насыщенные
+ * (оранжевый «Новый», красный «Тендер»), поэтому примеси нужно совсем немного.
+ */
+const tintFromColor = (color?: string | null, strength = 0.07): string | undefined => {
     if (!color || !/^#[0-9a-f]{6}$/i.test(color)) {
         return undefined;
     }
@@ -1350,7 +1357,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             data-ui-audit="order-modal"
             // Цвет — от статуса заказа, еле заметный; размеры — по рабочей области.
             style={{
-                backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff',
+                backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff',
                 top: frame?.top ?? 0,
                 left: frame?.left ?? 0,
                 width: frame?.width ?? '100%',
@@ -1359,11 +1366,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         >
             <div
                 className="flex h-full w-full flex-col overflow-hidden"
-                style={{ backgroundColor: tintFromColor(data?.statusColor, 0.18) || '#ffffff' }}
+                style={{ backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff' }}
             >
                 <header
                     className="border-b px-4 py-4 md:px-6 md:py-5"
-                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.35) || '#ffffff' }}
+                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
                     <div className="flex flex-wrap items-start justify-between gap-4 md:gap-6">
                         <div className="min-w-0">
@@ -1544,6 +1551,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             kind={panel}
                             orderNumber={String(data?.order?.number ?? orderId)}
                             history={data?.history}
+                            statusPalette={data?.statusPalette}
                             onClose={() => setPanel(null)}
                             onTasksChanged={(done, total) => setTaskCount({ done, total })}
                         />
@@ -1600,7 +1608,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                 <footer
                     className="border-t px-6 py-4 flex items-center justify-between"
-                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.35) || '#ffffff' }}
+                    style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
                     <div className="flex items-center gap-3">
                         <button

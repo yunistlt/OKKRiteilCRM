@@ -62,19 +62,25 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
 
                 return (
                     <div key={group.groupCode ?? group.groupName} className="pt-3">
+                        {/* Этап читается первым: цветная полоса слева и название
+                            цветом этапа, как в RetailCRM. Серый квадратик рядом с
+                            серым текстом раньше сливался в кашу. */}
                         <button
                             onClick={() => onSelect(groupSelected ? [] : groupCodes)}
-                            className={`flex w-full items-start justify-between gap-2 px-4 py-1 text-left ${
-                                groupSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
+                            style={{ borderLeftColor: accent, backgroundColor: groupSelected ? tint(accent) : undefined }}
+                            className={`flex w-full items-start justify-between gap-2 border-l-4 px-3 py-1.5 text-left ${
+                                groupSelected ? '' : 'hover:bg-gray-50'
                             }`}
                         >
-                            <span className="flex min-w-0 items-center gap-2">
-                                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: accent }} />
-                                <span className="truncate text-sm font-semibold" style={{ color: darken(accent) }}>
-                                    {group.groupName}
-                                </span>
+                            <span
+                                className="truncate text-[13px] font-black uppercase tracking-wide"
+                                style={{ color: darken(accent) }}
+                            >
+                                {group.groupName}
                             </span>
-                            <span className="shrink-0 text-xs font-semibold text-gray-600">{group.total.toLocaleString('ru-RU')}</span>
+                            <span className="shrink-0 text-xs font-bold" style={{ color: darken(accent) }}>
+                                {group.total.toLocaleString('ru-RU')}
+                            </span>
                         </button>
 
                         {group.statuses.map((status) => {
@@ -83,8 +89,11 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                                 <button
                                     key={status.code}
                                     onClick={() => onSelect(isSelected ? selected.filter((c) => c !== status.code) : [...selected, status.code])}
-                                    style={isSelected ? { backgroundColor: status.color || group.color || '#e0e7ff' } : undefined}
-                                    className={`flex w-full items-start justify-between gap-2 py-1 pl-8 pr-4 text-left text-sm ${
+                                    style={{
+                                        backgroundColor: isSelected ? tint(status.color || accent) : undefined,
+                                        borderLeftColor: isSelected ? darken(status.color || accent) : 'transparent',
+                                    }}
+                                    className={`flex w-full items-start justify-between gap-2 border-l-4 py-1 pl-5 pr-3 text-left text-[13px] ${
                                         isSelected ? 'font-bold text-gray-900' : 'text-gray-800 hover:bg-gray-100'
                                     }`}
                                 >
@@ -100,6 +109,15 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
             {tree.length === 0 && <p className="px-4 py-4 text-sm text-gray-500">Заказов под текущий фильтр нет.</p>}
         </aside>
     );
+}
+
+/** Та же краска, подмешанная к белому: фон выбранной строки, по которому читается текст. */
+function tint(hex: string): string {
+    const m = /^#?([\da-f]{6})$/i.exec(hex);
+    if (!m) return '#eef2ff';
+    const num = parseInt(m[1], 16);
+    const mix = (channel: number) => Math.round(255 - (255 - channel) * 0.25);
+    return `rgb(${mix((num >> 16) & 255)}, ${mix((num >> 8) & 255)}, ${mix(num & 255)})`;
 }
 
 /** Пастельные цвета статусов слишком светлые для текста — затемняем до читаемого. */

@@ -9,14 +9,19 @@ interface HistoryItem {
     field?: string;
     old_value?: string;
     new_value?: string;
+    old_status_code?: string | null;
+    new_status_code?: string | null;
     occurred_at?: string;
     user_data?: { firstName?: string; lastName?: string };
 }
+
+export type StatusPalette = Record<string, { name: string; color: string | null }>;
 
 interface OrderSidePanelProps {
     kind: PanelKind;
     orderNumber: string;
     history?: HistoryItem[];
+    statusPalette?: StatusPalette;
     onClose: () => void;
     onTasksChanged?: (done: number, total: number) => void;
 }
@@ -27,7 +32,7 @@ const TITLES: Record<PanelKind, string> = {
     tasks: 'Задачи',
 };
 
-export default function OrderSidePanel({ kind, orderNumber, history, onClose, onTasksChanged }: OrderSidePanelProps) {
+export default function OrderSidePanel({ kind, orderNumber, history, statusPalette, onClose, onTasksChanged }: OrderSidePanelProps) {
     return (
         <div className="border border-gray-300 bg-white">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
@@ -36,7 +41,7 @@ export default function OrderSidePanel({ kind, orderNumber, history, onClose, on
             </div>
 
             <div className="max-h-[420px] overflow-y-auto p-3">
-                {kind === 'history' && <HistoryList items={history || []} />}
+                {kind === 'history' && <HistoryList items={history || []} palette={statusPalette || {}} />}
                 {kind === 'files' && <FilesList orderNumber={orderNumber} />}
                 {kind === 'tasks' && <TasksList orderNumber={orderNumber} onChanged={onTasksChanged} />}
             </div>
@@ -44,33 +49,106 @@ export default function OrderSidePanel({ kind, orderNumber, history, onClose, on
     );
 }
 
-function HistoryList({ items }: { items: HistoryItem[] }) {
+/**
+ * История заказа — как в RetailCRM: две вкладки и таблица «параметр / было /
+ * стало / кто / когда». Менеджеры читают историю там же и так же, и своя
+ * выдумка тут только мешала бы (требование владельца 01.10.2026).
+ */
+function HistoryList({ items, palette }: { items: HistoryItem[]; palette: StatusPalette }) {
+    const [tab, setTab] = useState<'status' | 'order'>('order');
+
     if (!items.length) {
         return <p className="text-sm text-gray-500">Изменений по заказу пока не записано.</p>;
     }
 
+    const statusItems = items.filter((h) => h.field === 'status');
+    const shown = tab === 'status' ? statusItems : items;
+
     return (
-        <ul className="divide-y divide-gray-100">
-            {items.map((h, i) => (
-                <li key={i} className="py-2">
-                    <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-bold text-gray-900">{h.field_label || 'Изменение'}</span>
-                        <span className="shrink-0 text-[11px] text-gray-400">
-                            {h.occurred_at ? new Date(h.occurred_at).toLocaleString('ru-RU') : ''}
-                        </span>
-                    </div>
-                    <p className="text-xs text-gray-700">
-                        {h.old_value ? <span className="text-gray-400 line-through">{h.old_value}</span> : <span className="text-gray-400">пусто</span>}
-                        <span className="mx-1 text-gray-400">→</span>
-                        <span className="font-medium">{h.new_value || 'пусто'}</span>
-                    </p>
-                    <p className="text-[11px] text-gray-400">
-                        {[h.user_data?.firstName, h.user_data?.lastName].filter(Boolean).join(' ') || 'Система'}
-                    </p>
-                </li>
-            ))}
-        </ul>
+        <div>
+            <div className="mb-2 flex gap-4 border-b border-gray-200">
+                {([
+                    ['status', `Изменения статуса (${statusItems.length})`],
+                    ['order', `Изменения заказа (${items.length})`],
+                ] as const).map(([key, label]) => (
+                    <button
+                        key={key}
+                        onClick={() => setTab(key)}
+                        className={`-mb-px border-b-2 px-1 pb-2 text-sm font-bold ${
+                            tab === key ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-800'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {shown.length === 0 ? (
+                <p className="py-3 text-sm text-gray-500">Здесь пока пусто.</p>
+            ) : (
+                <table className="w-full table-fixed text-left">
+                    <thead>
+                        <tr className="border-b border-gray-300 bg-gray-100 text-[11px] font-bold uppercase tracking-wide text-gray-600">
+                            <th className="w-1/5 px-2 py-1.5">Изменённый параметр</th>
+                            <th className="w-1/5 px-2 py-1.5">Старое значение</th>
+                            <th className="w-1/5 px-2 py-1.5">Новое значение</th>
+                            <th className="w-1/5 px-2 py-1.5">Кем изменено</th>
+                            <th className="w-1/5 px-2 py-1.5">Время изменения</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {shown.map((h, i) => (
+                            <tr key={i} className="border-b border-gray-100 align-top">
+                                <td className="px-2 py-2 text-[12px] font-semibold text-gray-900">{h.field_label || 'Изменение'}</td>
+                                <td className="px-2 py-2 text-[12px] text-gray-700">
+                                    <Value text={h.old_value} statusCode={h.old_status_code} palette={palette} />
+                                </td>
+                                <td className="px-2 py-2 text-[12px] text-gray-900">
+                                    <Value text={h.new_value} statusCode={h.new_status_code} palette={palette} />
+                                </td>
+                                <td className="px-2 py-2 text-[12px] text-gray-700">
+                                    {[h.user_data?.firstName, h.user_data?.lastName].filter(Boolean).join(' ') || 'Система'}
+                                </td>
+                                <td className="whitespace-nowrap px-2 py-2 text-[12px] text-gray-600">
+                                    {h.occurred_at ? new Date(h.occurred_at).toLocaleString('ru-RU') : ''}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            )}
+        </div>
     );
+}
+
+/** Значение в истории: статус — цветной плашкой, остальное текстом. */
+function Value({ text, statusCode, palette }: { text?: string; statusCode?: string | null; palette: StatusPalette }) {
+    if (!text) {
+        return <span className="text-gray-400">—</span>;
+    }
+
+    const status = statusCode ? palette[statusCode] : undefined;
+    if (status) {
+        return (
+            <span
+                className="inline-block px-2 py-0.5 text-[11px] font-bold"
+                style={{ backgroundColor: status.color || '#eef2f7', color: readableOn(status.color || '#eef2f7') }}
+            >
+                {status.name}
+            </span>
+        );
+    }
+
+    return <span className="whitespace-pre-line break-words">{text}</span>;
+}
+
+/** Белый или почти чёрный поверх цвета статуса — по яркости фона. */
+function readableOn(hex: string): string {
+    const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+    if (!match) return '#111827';
+    const value = parseInt(match[1], 16);
+    const luminance = (0.299 * ((value >> 16) & 255) + 0.587 * ((value >> 8) & 255) + 0.114 * (value & 255)) / 255;
+    return luminance > 0.6 ? '#111827' : '#ffffff';
 }
 
 function FilesList({ orderNumber }: { orderNumber: string }) {

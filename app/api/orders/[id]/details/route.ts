@@ -104,11 +104,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         }
 
 
+        // Статусы в истории лежат кодами ('novyi-1'). Человеку нужен их русский
+        // вид и цвет — как в RetailCRM (закон: в интерфейсе только человеческий язык).
+        const [{ data: statusDict }, { data: ownStatusRows }, { data: ownGroupRows }] = await Promise.all([
+            supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'status'),
+            supabase.from('crm_statuses').select('external_code, group_id'),
+            supabase.from('crm_status_groups').select('id, color'),
+        ]);
+
+        const groupColor = new Map<string, string | null>(
+            ((ownGroupRows as any[]) ?? []).map((g) => [String(g.id), g.color || null]),
+        );
+        const statusPalette: Record<string, { name: string; color: string | null }> = {};
+        for (const row of ((statusDict as any[]) ?? [])) {
+            statusPalette[row.item_code] = { name: row.item_name || row.item_code, color: null };
+        }
+        for (const row of ((ownStatusRows as any[]) ?? [])) {
+            const code = row.external_code;
+            if (!code) continue;
+            statusPalette[code] = {
+                name: statusPalette[code]?.name ?? code,
+                color: groupColor.get(String(row.group_id)) ?? null,
+            };
+        }
+
+        const asStatus = (value: string) => statusPalette[value]?.name ?? value;
+
         const history = ((rawHistory as any[]) ?? []).map((h) => ({
             field: h.field,
             field_label: fieldLabel(h.field),
-            old_value: formatEventValue(h.old_value),
-            new_value: formatEventValue(h.new_value),
+            old_value: h.field === 'status' ? asStatus(formatEventValue(h.old_value)) : formatEventValue(h.old_value),
+            new_value: h.field === 'status' ? asStatus(formatEventValue(h.new_value)) : formatEventValue(h.new_value),
+            old_status_code: h.field === 'status' ? formatEventValue(h.old_value) || null : null,
+            new_status_code: h.field === 'status' ? formatEventValue(h.new_value) || null : null,
             user_data: h.user_data?.id != null
                 ? userNames.get(Number(h.user_data.id)) ?? { firstName: 'RetailCRM', lastName: '' }
                 : { firstName: 'Система', lastName: '' },
@@ -139,7 +167,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         // Return structured data
         return NextResponse.json({
-            statusColor: (statusRow as any)?.color || null,
+            // Палитра статусов — для плашек в истории, как в RetailCRM.
+            statusPalette,
+            statusColor: groupColor.get(String(((ownStatusRows as any[]) ?? []).find((r) => r.external_code === order.status)?.group_id)) || (statusRow as any)?.color || null,
             statusName: (statusRow as any)?.name || null,
             statusGroup: (statusRow as any)?.group_name || null,
             order: {

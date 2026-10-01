@@ -88,7 +88,7 @@ export async function GET(req: Request) {
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
         // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
         // человек, а не RetailCRM. Связь по external_code.
-        supabase.from('crm_status_groups').select('id, external_code, ordering'),
+        supabase.from('crm_status_groups').select('id, external_code, ordering, color'),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -100,9 +100,17 @@ export async function GET(req: Request) {
     const cfNames = new Map<string, string>(
         ((cfDict || []) as any[]).map((d) => [`${d.dictionary_code}:${d.item_code}`, d.item_name])
     );
-    const statusColorMap = new Map<string, string | null>(
-        ((statusColors || []) as any[]).map((s) => [s.code, s.color || null])
+    // Цвет плашки статуса — цвет его этапа, как в RetailCRM: пастельные цвета
+    // из таблицы statuses слишком бледные, и список выглядел выцветшим.
+    const groupColorById = new Map<string, string | null>(
+        ((ownGroups || []) as any[]).map((g) => [String(g.id), g.color || null]),
     );
+    const statusColorMap = new Map<string, string | null>([
+        ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
+        ...((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id && groupColorById.get(String(s.group_id)))
+            .map((s) => [String(s.external_code), groupColorById.get(String(s.group_id))!] as [string, string | null]),
+    ]);
 
     // Дерево статусов с количествами для левой колонки.
     const counts = new Map<string, number>();

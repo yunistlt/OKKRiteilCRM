@@ -39,18 +39,24 @@ const money = (v: number | null) =>
 
 const day = (v: string | null) => (v ? new Date(v).toLocaleDateString('ru-RU') : '—');
 
-/** Тот же цвет, но темнее — для рамки поверх бледной заливки статуса. */
-function darken(hex: string, amount: number): string {
+/**
+ * Цвет текста поверх заливки статуса.
+ *
+ * Цвета статусов заводит человек, среди них есть и тёмно-красный, и бледно-жёлтый.
+ * Один и тот же цвет текста для всех читался бы то плохо, то никак, поэтому
+ * считаем яркость фона и берём белый или почти чёрный.
+ */
+function readableOn(hex: string): string {
     const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-    if (!match) return '#9ca3af';
+    if (!match) return '#111827';
 
     const value = parseInt(match[1], 16);
-    const mix = (channel: number) => Math.max(0, Math.round(channel * (1 - amount)));
-    const r = mix((value >> 16) & 255);
-    const g = mix((value >> 8) & 255);
-    const b = mix(value & 255);
+    const r = (value >> 16) & 255;
+    const g = (value >> 8) & 255;
+    const b = value & 255;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
-    return `rgb(${r}, ${g}, ${b})`;
+    return luminance > 0.6 ? '#111827' : '#ffffff';
 }
 
 export default function OrdersClient() {
@@ -123,14 +129,14 @@ export default function OrdersClient() {
     const cell = (order: OrderRow, key: string) => {
         switch (key) {
             case 'status':
-                // Цвет статуса из справочника бледный сам по себе — добавляем к нему
-                // рамку того же цвета потемнее, иначе метка тонет в белом фоне.
+                // Плашка во всю ширину колонки, как в RetailCRM: статусы разной
+                // длины иначе дают рваный край и список выглядит хаосом.
                 return (
                     <span
-                        className="inline-block border px-2 py-1 text-xs font-bold text-gray-900"
+                        className="block w-full px-2 py-1.5 text-xs font-bold leading-snug"
                         style={{
                             backgroundColor: order.statusColor || '#eef2f7',
-                            borderColor: darken(order.statusColor || '#eef2f7', 0.35),
+                            color: readableOn(order.statusColor || '#eef2f7'),
                         }}
                     >
                         {order.statusLabel}
@@ -272,7 +278,16 @@ export default function OrdersClient() {
                                         className={`cursor-pointer border-b border-gray-200 align-top hover:bg-blue-50 ${order.overdue ? 'bg-red-50' : ''}`}
                                     >
                                         {columns.map((key) => (
-                                            <td key={key} className="px-4 py-4 text-[13px] leading-relaxed text-gray-900">
+                                            <td
+                                                key={key}
+                                                // У статуса плашка во всю ячейку: свои отступы ей не нужны,
+                                                // а ширина колонки задана, чтобы плашки были одинаковые.
+                                                className={
+                                                    key === 'status'
+                                                        ? 'w-44 px-2 py-3 text-[13px] leading-relaxed text-gray-900'
+                                                        : 'px-4 py-4 text-[13px] leading-relaxed text-gray-900'
+                                                }
+                                            >
                                                 {cell(order, key)}
                                             </td>
                                         ))}
