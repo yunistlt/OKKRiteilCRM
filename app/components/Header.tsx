@@ -94,8 +94,9 @@ export default function Header() {
                     План дня
                 </button>
 
-                {/* Быстрая ссылка на мессенджер */}
-                <Link href="/messenger" className="relative flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground">
+                {/* Быстрая ссылка на мессенджер. На «Моём дне» её нет: экран про
+                    одно следующее действие, лишние кнопки там шумят. */}
+                <Link href="/messenger" className={`relative h-9 w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground ${pathname.startsWith('/analytics') ? 'hidden' : 'flex'}`}>
                     <span className="text-lg">💬</span>
                     {unreadCount > 0 && (
                         <span className="absolute top-0.5 right-0.5 flex h-4 min-w-[16px] items-center justify-center bg-red-600 px-1 text-[9px] font-bold text-white">

@@ -13,14 +13,8 @@ function HubContent() {
 
     return (
         <div className="w-full px-4 py-4 md:px-6">
-            <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center">
-                <div className="flex items-center gap-4">
-                    <div>
-                        <h1 className="text-2xl font-black tracking-tight text-gray-900 md:text-3xl">Мой день</h1>
-                        <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest mt-1">Что сделать сейчас, чтобы ближе подойти к продаже</p>
-                    </div>
-                </div>
-            </div>
+            {/* Заголовок не дублируем: он уже стоит в шапке страницы, а место
+                на экране нужно очереди действий (требование владельца 01.10.2026). */}
 
             {/* Рабочий стол менеджера: очередь действий, план и показатели.
                 Отчёты остаются ниже — они нужны реже, чем следующее действие. */}
