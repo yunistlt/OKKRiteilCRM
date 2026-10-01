@@ -89,8 +89,8 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
     /** Кнопка рядом с полем — например «Звонок» у телефона. */
     action?: ReactNode;
 }) => (
-    <div className="space-y-1">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+    <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
             {label}
             {required && <span className="text-red-500">*</span>}
         </div>
@@ -98,7 +98,7 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
             <select
                 value={value ?? ''}
                 onChange={(e) => onChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
+                className="w-full px-2 py-1 border border-gray-300 bg-white text-sm text-gray-900"
             >
                 <option value="">Не выбрано</option>
                 {options.map((option) => (
@@ -111,12 +111,12 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
                     type={type}
                     value={value ?? ''}
                     onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
+                    className="w-full px-2 py-1 border border-gray-300 bg-white text-sm text-gray-900"
                 />
                 {action}
             </div>
         ) : (
-            <div className="px-3 py-2 border text-sm bg-gray-50 border-gray-200 text-gray-900">
+            <div className="px-2 py-1 border text-sm bg-gray-50 border-gray-200 text-gray-900">
                 {value ?? <span className="text-gray-400">Не указано</span>}
             </div>
         )}
@@ -124,12 +124,12 @@ const EditField = ({ label, value, onChange, required, type = 'text', options, a
 );
 
 const InfoField = ({ label, value, required }: InfoFieldProps) => (
-    <div className="space-y-1">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+    <div className="space-y-0.5">
+        <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
             {label}
             {required && <span className="text-red-500">*</span>}
         </div>
-        <div className="px-3 py-2 border text-sm bg-gray-50 border-gray-200 text-gray-900">
+        <div className="px-2 py-1 border text-sm bg-gray-50 border-gray-200 text-gray-900">
             {value ?? <span className="text-gray-400">Не указано</span>}
         </div>
     </div>
@@ -643,15 +643,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
         return (
             <div className="space-y-12">
-                <section id="order-common" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
+                <section id="order-common" className="space-y-3">
+                    <div className="bg-white border border-gray-200 p-4">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
                             <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1">
                                 {orderStatusCode ? statusName(orderStatusCode) : 'Статус не задан'}
                             </span>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-2">
+                        <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
                             <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
@@ -663,9 +663,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Контроль</h3>
-                        <div className="grid md:grid-cols-3 gap-4">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Контроль</h3>
+                        <div className="grid md:grid-cols-3 gap-2">
                             <InfoField label="Категория товара" required value={productCategory || '—'} />
                             <EditField label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
                             <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
@@ -682,10 +682,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                 </section>
 
-                <section id="order-customer" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Клиент</h3>
-                        <div className="grid md:grid-cols-2 gap-4">
+                <section id="order-customer" className="space-y-3">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Клиент</h3>
+                        <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Тип клиента" value={customer.type === 'customer_corporate' ? 'Юридическое лицо' : 'Клиент'} />
                             <InfoField label="Компания" value={companyName || '—'} />
                             <EditField label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
@@ -716,8 +716,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
-                        <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <div className="grid md:grid-cols-2 gap-2">
                             <EditField label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
@@ -732,10 +732,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                 </section>
 
-<section id="order-custom-fields" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Дополнительные данные</h3>
-                        <div className="grid md:grid-cols-2 gap-4">
+<section id="order-custom-fields" className="space-y-3">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Дополнительные данные</h3>
+                        <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Roistat" value={roistat || '—'} />
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
@@ -751,7 +751,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
+                    <div className="bg-white border border-gray-200 p-4">
                         <h4 className="text-sm font-semibold text-gray-900 mb-4">Комментарии менеджера</h4>
                         <div className="text-sm text-gray-700 whitespace-pre-line bg-gray-50 border border-gray-100 p-4 min-h-[120px]">
                             {operatorComment || 'Комментариев нет.'}
@@ -876,7 +876,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
                     <div className="grid lg:grid-cols-2 gap-6">
-                        <div className="bg-white border border-gray-200 p-6">
+                        <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий клиента</h4>
                             <textarea
                                 value={draftClientComment}
@@ -886,7 +886,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 className="w-full border border-gray-200 bg-white p-3 text-sm text-gray-800"
                             />
                         </div>
-                        <div className="bg-white border border-gray-200 p-6">
+                        <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 mb-3">Комментарий менеджера</h4>
                             <textarea
                                 value={draftManagerComment}
@@ -899,22 +899,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                 </section>
 
-                <section id="order-delivery" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
+                <section id="order-delivery" className="space-y-3">
+                    <div className="bg-white border border-gray-200 p-4">
                         {/* Складских полей здесь нет: склада у компании нет, всё идёт
                             прямо с производства (решение владельца 30.09.2026). */}
                         <div className="flex items-center gap-3 mb-4">
                             <h3 className="text-lg font-semibold text-gray-900">Отгрузка и доставка</h3>
                         </div>
-                        <div className="grid md:grid-cols-2 gap-4">
+                        <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Дата отгрузки" value={formatDate(shipping.date || logisticDate)} />
                             <EditField label="Срок изготовления, дней" type="number" value={fieldValue('cf.srok_izgot', customFields.srok_izgot ?? '')} onChange={(v) => setField('cf.srok_izgot', v)} />
                             <EditField label="Комментарий логисту" value={fieldValue('cf.komment_diveleri', customFields.komment_diveleri || '')} onChange={(v) => setField('cf.komment_diveleri', v)} />
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
-                        <div className="grid md:grid-cols-2 gap-4">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Тип доставки" value={names.resolve('deliveryType', delivery.code || delivery.type) || 'Не указан'} />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
                             <InfoField label="Время доставки" value={logisticTime || '—'} />
@@ -930,7 +930,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-200 p-6">
+                    <div className="bg-white border border-gray-200 p-4">
                         <div className="flex items-center justify-between mb-4">
                             <div>
                                 <p className="text-xs uppercase text-gray-400">Коммуникации</p>
@@ -992,10 +992,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                 </section>
 
-                <section id="order-payment" className="space-y-6">
-                    <div className="bg-white border border-gray-200 p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Оплата</h3>
-                        <div className="grid md:grid-cols-3 gap-4">
+                <section id="order-payment" className="space-y-3">
+                    <div className="bg-white border border-gray-200 p-4">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Оплата</h3>
+                        <div className="grid md:grid-cols-3 gap-2">
                             <InfoField label="Сумма заказа" value={formatCurrency(totalSummValue)} />
                             <InfoField label="Предоплата" value={formatCurrency(toNumber(payload.prepaySum))} />
                             <InfoField label="Ожидается" value={formatCurrency(toNumber(payload.purchaseSumm))} />
@@ -1012,7 +1012,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     {order.is_own && <OwnOrderPayments orderId={Number(order.id)} />}
 
                     {paymentsSummary.length > 0 && (
-                        <div className="bg-white border border-gray-200 p-6">
+                        <div className="bg-white border border-gray-200 p-4">
                             <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Оплаты в CRM</h4>
                             <div className="space-y-3">
                                 {paymentsSummary.map((payment: any) => (
@@ -1372,7 +1372,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 style={{ backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff' }}
             >
                 <header
-                    className={`border-b transition-all ${compactHeader ? 'px-4 py-1.5 md:px-6' : 'px-4 py-4 md:px-6 md:py-5'}`}
+                    className={`border-b transition-all ${compactHeader ? 'px-4 py-1 md:px-6' : 'px-4 py-4 md:px-6 md:py-5'}`}
                     style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
                     <div className={`flex flex-wrap justify-between gap-2 md:gap-6 ${compactHeader ? 'items-center' : 'items-start'}`}>
@@ -1450,7 +1450,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             </div>
                         </div>
 
-                        <div className={`flex flex-wrap gap-2 ${compactHeader ? '[&_a]:py-1 [&_button]:py-1 [&_select]:py-1 [&_a]:text-xs [&_button]:text-xs [&_select]:text-xs' : ''}`}>
+                        <div className={`flex flex-wrap ${compactHeader ? 'gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]' : 'gap-2'}`}>
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
@@ -1578,7 +1578,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button
                                 key={tab.id}
                                 onClick={() => setViewTab(tab.id)}
-                                className={`${compactHeader ? 'py-2' : 'py-4'} px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                className={`${compactHeader ? 'py-1 text-[13px]' : 'py-4'} px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                             >
                                 {tab.label}
                             </button>
@@ -1587,7 +1587,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 </nav>
 
                 <main
-                    className="flex-1 overflow-y-auto bg-slate-50 px-6 py-6"
+                    className="flex-1 overflow-y-auto bg-slate-50 px-4 py-3"
                     onScroll={(e) => {
                         // Небольшой запас, чтобы шапка не дрожала на границе.
                         const top = (e.target as HTMLElement).scrollTop;
@@ -1602,7 +1602,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="p-4 bg-red-50 text-red-600">Ошибка загрузки: {error}</div>
                     ) : (
                         data && (
-                            <div className="space-y-8">
+                            <div className="space-y-4">
                                 {viewTab === 'card' ? (
                                     <>
                                         <div className="bg-white border border-gray-200 px-4 py-2 flex flex-wrap gap-2 text-sm">
@@ -1627,29 +1627,31 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     )}
                 </main>
 
+                {/* Нижняя полоса вдвое ниже прежней: это служебные кнопки, а место
+                    на экране нужно данным заказа (требование владельца 01.10.2026). */}
                 <footer
-                    className="border-t px-6 py-4 flex items-center justify-between"
+                    className="flex items-center justify-between border-t px-4 py-1"
                     style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={saveOrder}
                             disabled={!dirty || savingOrder}
-                            className="px-4 py-2 bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400"
+                            className="bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700 disabled:bg-gray-200 disabled:text-gray-400"
                         >
                             {savingOrder ? 'Сохраняю…' : 'Сохранить'}
                         </button>
                         <button
                             onClick={async () => { await saveOrder(); onClose(); }}
                             disabled={!dirty || savingOrder}
-                            className="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-semibold hover:bg-gray-200 disabled:text-gray-400"
+                            className="bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-200 disabled:text-gray-400"
                         >
                             Сохранить и выйти
                         </button>
-                        {saveNote && <span className="text-xs text-gray-600">{saveNote}</span>}
-                        {dirty && !saveNote && <span className="text-xs text-amber-700">Есть несохранённые изменения</span>}
+                        {saveNote && <span className="text-[11px] text-gray-600">{saveNote}</span>}
+                        {dirty && !saveNote && <span className="text-[11px] text-amber-700">Есть несохранённые изменения</span>}
                     </div>
-                    <button onClick={onClose} className="px-4 py-2 border border-gray-300 text-sm text-gray-600 hover:bg-gray-50">Закрыть</button>
+                    <button onClick={onClose} className="border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50">Закрыть</button>
                 </footer>
             </div>
         </div>
