@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
 import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
+import { loadOrderCalls } from '@/lib/own-crm/order-calls';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,33 +27,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
         if (orderError) throw orderError;
 
-        // 2. Звонки заказа.
-        //
-        // Связь берём из call_order_link: привязку сделала RetailCRM, а наш
-        // матчинг по номеру телефона остался запасным путём и ошибается
-        // примерно в трети случаев. Сортировка по времени разговора, а не по
-        // времени сопоставления: второе отстаёт, иногда на несколько суток.
-        const { data: matches } = await supabase
-            .from('call_order_link')
-            .select('telphin_call_id, source, started_at')
-            .eq('order_id', id)
-            .order('started_at', { ascending: false });
-
-        const callIds = ((matches ?? []) as any[]).map((m) => m.telphin_call_id).filter(Boolean);
-
-        let calls: any[] = [];
-        if (callIds.length > 0) {
-            // Step B: Fetch calls and their transcriptions
-            const { data: callsData, error: callsError } = await supabase
-                .from('raw_telphin_calls')
-                .select('*')
-                .in('telphin_call_id', callIds)
-                .order('started_at', { ascending: false });
-
-            if (callsError) console.error('[Details] Error fetching calls:', callsError);
-
-            calls = callsData || [];
-        }
+        // 2. Звонки заказа — все разговоры, о которых знаем: см. lib/own-crm/order-calls.ts.
+        const calls = await loadOrderCalls({
+            orderNumber: String(order.number ?? order.order_id),
+            orderRowId: Number(order.id),
+        });
 
         // 3. Коммуникации (письма, сообщения, комментарии) — из истории заказа
         //    (order_history_log; raw_order_events заморожена, см. lib/order-events.ts)
@@ -178,15 +157,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             },
             priority: priority, // Return priority data
             insights: metrics?.insights || null,
-            calls: calls.map(c => ({
-                id: c.telphin_call_id,
-                date: c.started_at,
-                type: c.direction,
-                duration: c.duration_sec,
-                transcription: c.transcript || c.call_transcriptions?.[0]?.transcription_text || null,
-                summary: c.summary || c.call_transcriptions?.[0]?.summary || null,
-                link: c.recording_url
-            })),
+            calls,
             emails: emails,
             history: history || [],
             raw_payload: order.raw_payload
