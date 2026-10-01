@@ -215,6 +215,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [replyOpen, setReplyOpen] = useState(false);
+    // Шапка ужимается при прокрутке, как в RetailCRM: развёрнутая съедала треть
+    // экрана, а менеджеру при работе с полями нужны только номер, сумма и дата.
+    const [compactHeader, setCompactHeader] = useState(false);
     const [printOpen, setPrintOpen] = useState(false);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
@@ -1369,14 +1372,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 style={{ backgroundColor: tintFromColor(data?.statusColor, 0.07) || '#ffffff' }}
             >
                 <header
-                    className="border-b px-4 py-4 md:px-6 md:py-5"
+                    className={`border-b transition-all ${compactHeader ? 'px-4 py-1.5 md:px-6' : 'px-4 py-4 md:px-6 md:py-5'}`}
                     style={{ backgroundColor: tintFromColor(data?.statusColor, 0.14) || '#ffffff' }}
                 >
-                    <div className="flex flex-wrap items-start justify-between gap-4 md:gap-6">
+                    <div className={`flex flex-wrap justify-between gap-2 md:gap-6 ${compactHeader ? 'items-center' : 'items-start'}`}>
                         <div className="min-w-0">
-                            <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>
+                            {!compactHeader && <p className="text-xs uppercase text-gray-400 mb-1">Заявка</p>}
                             <div className="flex flex-wrap items-center gap-3">
-                                <h2 className="text-2xl font-semibold text-gray-900">Заказ #{data?.order?.number ?? orderId}</h2>
+                                <h2 className={compactHeader ? 'text-base font-bold text-gray-900' : 'text-2xl font-semibold text-gray-900'}>
+                                    Заказ #{data?.order?.number ?? orderId}
+                                </h2>
+                                {/* В ужатом виде — то же, что у RetailCRM: номер, сумма, дата. */}
+                                {compactHeader && data?.order && (
+                                    <span className="text-sm text-gray-700">
+                                        <span className="mx-1 text-gray-400">•</span>
+                                        <strong>{formatCurrency(data.order.totalsumm)}</strong>
+                                        <span className="mx-1 text-gray-400">•</span>
+                                        {formatDateTime(data.order.created_at)}
+                                    </span>
+                                )}
                                 {/* Свой заказ ведётся только у нас — менеджер должен это видеть:
                                     в RetailCRM его нет, и искать там нечего. */}
                                 {data?.order?.is_own && (
@@ -1393,7 +1407,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </span>
                                 )}
                             </div>
-                            {data?.order && (
+                            {data?.order && !compactHeader && (
                                 <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-2">
                                     <span>Сумма: <strong>{formatCurrency(data.order.totalsumm)}</strong></span>
                                     <span>Поступил: {formatDateTime(data.order.created_at)}</span>
@@ -1401,7 +1415,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 </div>
                             )}
                             {/* Блок светофора по контрагенту */}
-                            {counterpartyScoreLoading ? (
+                            {compactHeader ? null : counterpartyScoreLoading ? (
                                 <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">Проверка контрагента...</div>
                             ) : counterpartyScore ? (
                                 <div className="mt-2 flex items-center gap-2">
@@ -1418,7 +1432,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         {/* Deal Score Header Block */}
-                        <div className="flex items-center gap-4 ml-auto mr-4 group relative">
+                        <div className={`flex items-center gap-4 ml-auto mr-4 group relative ${compactHeader ? 'hidden' : ''}`}>
                             <div className="text-right">
                                 <p className="text-[10px] uppercase tracking-widest font-black text-gray-400 mb-0.5">Deal Score</p>
                                 {qualityScoreLoading ? (
@@ -1436,7 +1450,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
+                        <div className={`flex flex-wrap gap-2 ${compactHeader ? '[&_a]:py-1 [&_button]:py-1 [&_select]:py-1 [&_a]:text-xs [&_button]:text-xs [&_select]:text-xs' : ''}`}>
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
@@ -1527,7 +1541,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold ${compactHeader ? 'hidden' : 'mt-4'}`}>
                         <OrderStatusSwitcher
                             orderId={data?.order?.number ?? orderId}
                             currentLabel={headerBadges[0]?.label ?? 'Сменить статус'}
@@ -1564,7 +1578,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button
                                 key={tab.id}
                                 onClick={() => setViewTab(tab.id)}
-                                className={`py-4 px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
+                                className={`${compactHeader ? 'py-2' : 'py-4'} px-4 border-b-2 -mb-px transition-colors ${viewTab === tab.id ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500 hover:text-gray-800'}`}
                             >
                                 {tab.label}
                             </button>
@@ -1572,7 +1586,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     </div>
                 </nav>
 
-                <main className="flex-1 overflow-y-auto bg-slate-50 px-6 py-6">
+                <main
+                    className="flex-1 overflow-y-auto bg-slate-50 px-6 py-6"
+                    onScroll={(e) => {
+                        // Небольшой запас, чтобы шапка не дрожала на границе.
+                        const top = (e.target as HTMLElement).scrollTop;
+                        setCompactHeader((prev) => (prev ? top > 20 : top > 60));
+                    }}
+                >
                     {loading ? (
                         <div className="flex justify-center py-20">
                             <div className="animate-spin h-10 w-10 border-b-2 border-blue-600"></div>
