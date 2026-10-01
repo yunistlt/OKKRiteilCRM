@@ -237,7 +237,7 @@ export default function StatusBoardClient() {
                                     <th
                                         key={s.id}
                                         className="border border-gray-200 p-0 align-bottom"
-                                        style={{ backgroundColor: s.color || groupOf(s)?.color || '#f8fafc', minWidth: 112, maxWidth: 112 }}
+                                        style={{ backgroundColor: groupOf(s)?.color || '#f8fafc', minWidth: 112, maxWidth: 112 }}
                                     >
                                         <button
                                             onClick={() => setEditStatus(s)}
@@ -280,7 +280,7 @@ export default function StatusBoardClient() {
                                     )}
                                     <th
                                         className="sticky left-8 z-10 border border-gray-200 p-0 text-left"
-                                        style={{ backgroundColor: from.color || groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
+                                        style={{ backgroundColor: groupOf(from)?.color || '#f8fafc', minWidth: 220, maxWidth: 220 }}
                                     >
                                         <div className="px-3 py-2">
                                             <button
@@ -370,7 +370,8 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     id: draft.id,
                     name: draft.name.trim(),
                     groupId: draft.group_id ?? null,
-                    color: draft.color ?? null,
+                    // Цвет статуса не храним — он всегда цвет его группы.
+                    color: null,
                     ordering: draft.ordering ?? 100,
                     normDays: draft.norm_days ?? null,
                     isWorking: draft.is_working ?? true,
@@ -432,16 +433,19 @@ function StatusModal({ status, groups, onClose, onSaved }: {
                     />
                 </Labeled>
                 <Labeled label="Цвет">
-                    <div className="flex items-center gap-2">
-                        <input
-                            type="color"
-                            value={draft.color || '#eef2f7'}
-                            onChange={(e) => setDraft({ ...draft, color: e.target.value })}
-                            className="h-9 w-14 cursor-pointer rounded border border-gray-300"
+                    {/* Цвет назначается группе, у статуса своего цвета нет
+                        (решение владельца 01.10.2026): иначе доска и список
+                        заказов расходились в цвете одного и того же этапа. */}
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <span
+                            className="h-6 w-6 border border-gray-300"
+                            style={{ backgroundColor: groups.find((g) => g.id === draft.group_id)?.color || '#f1f5f9' }}
                         />
-                        <button onClick={() => setDraft({ ...draft, color: null })} className="text-sm text-blue-600 hover:underline">
-                            Цвет группы
-                        </button>
+                        <span>
+                            {draft.group_id
+                                ? `Берётся у группы «${groups.find((g) => g.id === draft.group_id)?.name ?? 'Без группы'}»`
+                                : 'Группа не выбрана — цвета не будет'}
+                        </span>
                     </div>
                 </Labeled>
             </div>
@@ -579,7 +583,8 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                             onChange={() => setMembers((prev) => prev.includes(s.id) ? prev.filter((c) => c !== s.id) : [...prev, s.id])}
                             className="h-4 w-4 rounded border-gray-300 text-blue-600"
                         />
-                        <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: s.color || '#e5e7eb' }} />
+                        {/* Цвет — всегда цвет группы: у статуса своего нет. */}
+                        <span className="h-3 w-3" style={{ backgroundColor: members.includes(s.id) ? (draft.color || '#eef2f7') : '#e5e7eb' }} />
                         <span className="flex-1">{s.name}</span>
                         {s.group_id && s.group_id !== group.id && <span className="text-xs text-gray-400">сейчас в другой группе</span>}
                     </label>

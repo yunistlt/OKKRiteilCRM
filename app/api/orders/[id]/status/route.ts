@@ -55,7 +55,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         .map((s) => ({
             code: s.external_code as string,
             name: s.name as string,
-            color: (s.color || groupById.get(s.group_id)?.color || null) as string | null,
+            // Цвет статуса — это цвет его группы (решение владельца 01.10.2026):
+            // на уровне статуса цвет не назначается.
+            color: (groupById.get(s.group_id)?.color || null) as string | null,
             groupName: (groupById.get(s.group_id)?.name ?? 'Без группы') as string,
             groupColor: (groupById.get(s.group_id)?.color ?? null) as string | null,
             groupIcon: (groupById.get(s.group_id)?.icon ?? null) as string | null,
