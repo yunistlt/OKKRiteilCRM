@@ -9,6 +9,7 @@
  *   Дата следующего контакта     → data_kontakta
  *   В каком месяце закупка       → kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoialo_pole_dlia_daty
  */
+import { resolveDate } from './relative-date';
 
 export const CUSTOM_FIELD_CODES = {
     category: 'typ_castomer',
@@ -136,14 +137,24 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     if (filter.control === 'yes') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'true');
     if (filter.control === 'no') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'false');
 
-    if (filter.contactFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.nextContact), filter.contactFrom);
-    if (filter.contactTo) q = q.lte(cf(CUSTOM_FIELD_CODES.nextContact), filter.contactTo);
+    // Даты могут быть смещением («неделю назад»): разворачиваем их здесь, в
+    // момент запроса, — поэтому сохранённый фильтр «заказы на завтра» завтра
+    // означает уже другой день, как в RetailCRM.
+    const contactFrom = resolveDate(filter.contactFrom);
+    const contactTo = resolveDate(filter.contactTo);
+    const purchaseFrom = resolveDate(filter.purchaseFrom);
+    const purchaseTo = resolveDate(filter.purchaseTo);
+    const createdFrom = resolveDate(filter.createdFrom);
+    const createdTo = resolveDate(filter.createdTo);
 
-    if (filter.purchaseFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.purchaseMonth), filter.purchaseFrom);
-    if (filter.purchaseTo) q = q.lte(cf(CUSTOM_FIELD_CODES.purchaseMonth), filter.purchaseTo);
+    if (contactFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.nextContact), contactFrom);
+    if (contactTo) q = q.lte(cf(CUSTOM_FIELD_CODES.nextContact), contactTo);
 
-    if (filter.createdFrom) q = q.gte('created_at', filter.createdFrom);
-    if (filter.createdTo) q = q.lte('created_at', `${filter.createdTo}T23:59:59`);
+    if (purchaseFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.purchaseMonth), purchaseFrom);
+    if (purchaseTo) q = q.lte(cf(CUSTOM_FIELD_CODES.purchaseMonth), purchaseTo);
+
+    if (createdFrom) q = q.gte('created_at', createdFrom);
+    if (createdTo) q = q.lte('created_at', `${createdTo}T23:59:59`);
 
     if (filter.contragent) q = q.ilike('raw_payload->contragent->>legalName', `%${safe(filter.contragent)}%`);
     if (filter.managerComment) q = q.ilike('raw_payload->>managerComment', `%${safe(filter.managerComment)}%`);

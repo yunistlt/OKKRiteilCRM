@@ -58,7 +58,9 @@ function readableOn(hex: string): string {
     const b = value & 255;
     const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 
-    return luminance > 0.6 ? '#111827' : '#ffffff';
+    // Порог высокий: на фирменном оранжевом этапов белый текст читается лучше
+    // и выглядит спокойнее — так же, как в RetailCRM.
+    return luminance > 0.72 ? '#111827' : '#ffffff';
 }
 
 export default function OrdersClient() {
@@ -135,7 +137,7 @@ export default function OrdersClient() {
                 // длины иначе дают рваный край и список выглядит хаосом.
                 return (
                     <span
-                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs font-bold leading-snug"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-[13px] font-semibold leading-snug"
                         style={{
                             backgroundColor: order.statusColor || '#eef2f7',
                             color: readableOn(order.statusColor || '#eef2f7'),
@@ -287,7 +289,7 @@ export default function OrdersClient() {
                                                 // а ширина колонки задана, чтобы плашки были одинаковые.
                                                 className={
                                                     key === 'status'
-                                                        ? 'w-44 px-2 py-3 text-[13px] leading-relaxed text-gray-900'
+                                                        ? 'w-48 px-2 py-3 text-[13px] leading-relaxed text-gray-900'
                                                         : 'px-4 py-4 text-[13px] leading-relaxed text-gray-900'
                                                 }
                                             >
