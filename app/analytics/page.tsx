@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import Link from 'next/link';
+import MyDayClient from './MyDayClient';
 
 function HubContent() {
     return (
@@ -12,11 +13,17 @@ function HubContent() {
                         <svg className="w-5 h-5 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7 7-7" /></svg>
                     </Link>
                     <div>
-                        <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight">Центр Аналитики</h1>
-                        <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest mt-1">Выберите отчет для детального анализа</p>
+                        <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight">Мой день</h1>
+                        <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest mt-1">Что сделать сейчас, чтобы ближе подойти к продаже</p>
                     </div>
                 </div>
             </div>
+
+            {/* Рабочий стол менеджера: очередь действий, план и показатели.
+                Отчёты остаются ниже — они нужны реже, чем следующее действие. */}
+            <MyDayClient />
+
+            <h2 className="mb-4 mt-10 text-lg font-black uppercase tracking-tight text-gray-900">Отчёты</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
 
