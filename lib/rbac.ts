@@ -54,7 +54,7 @@ export const DEFAULT_ROUTE_RULES: RouteRule[] = [
     { prefix: '/api/crm-statuses', label: 'API своих статусов', description: 'Группы, статусы и переходы внутренней CRM.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/statuses', label: 'Статусы заказов', description: 'Настройка словаря статусов заказов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/api/dictionaries', label: 'API справочников RetailCRM', description: 'Чтение русских названий кодов (типы заказа, магазины, значения полей) для интерфейса.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist', 'demo'] },
-    { prefix: '/api/statuses', label: 'API статусов заказов', description: 'CRUD-операции по статусам заказов.', category: 'Система', allowed: ['admin'] },
+    { prefix: '/api/statuses', label: 'API статусов заказов', description: 'Каталог статусов: по нему интерфейс показывает русские названия вместо кодов.', category: 'Система', allowed: ['admin', 'okk', 'rop', 'manager', 'demo', 'jurist'] },
     { prefix: '/api/dict/statuses', label: 'API словаря статусов', description: 'Служебные методы словаря статусов.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/qa', label: 'Режим тестировщика', description: 'Проверка вёрстки по голдам: список экранов, панель проверок.', category: 'Система', allowed: ['admin'] },
     { prefix: '/settings/status', label: 'Статус систем', description: 'Мониторинг сервисов и интеграций.', category: 'Система', allowed: ['admin'] },

@@ -32,7 +32,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const [{ data: statuses }, { data: groups }, { data: transitions }] = await Promise.all([
         supabase.from('crm_statuses').select('id, name, color, group_id, external_code, ordering').eq('active', true),
-        supabase.from('crm_status_groups').select('id, name, color, ordering'),
+        supabase.from('crm_status_groups').select('id, name, color, ordering, icon'),
         supabase.from('crm_status_transitions').select('from_status_id, to_status_id'),
     ]);
 
@@ -47,15 +47,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const groupById = new Map(((groups || []) as any[]).map((g) => [g.id, g]));
 
+    // Показываем весь каталог статусов, как в RetailCRM: человек видит, куда
+    // заказ вообще может пойти. Перейти можно только в разрешённые матрицей —
+    // у остальных стоит allowed: false (требование владельца 01.10.2026).
     const options = list
-        .filter((s) => allowedIds.has(s.id) && s.external_code)
+        .filter((s) => s.external_code)
         .map((s) => ({
             code: s.external_code as string,
             name: s.name as string,
             color: (s.color || groupById.get(s.group_id)?.color || null) as string | null,
             groupName: (groupById.get(s.group_id)?.name ?? 'Без группы') as string,
+            groupColor: (groupById.get(s.group_id)?.color ?? null) as string | null,
+            groupIcon: (groupById.get(s.group_id)?.icon ?? null) as string | null,
             groupOrdering: (groupById.get(s.group_id)?.ordering ?? 999) as number,
             ordering: s.ordering as number,
+            allowed: allowedIds.has(s.id),
+            current: s.external_code === order.status,
         }))
         .sort((a, b) => a.groupOrdering - b.groupOrdering || a.ordering - b.ordering || a.name.localeCompare(b.name));
 

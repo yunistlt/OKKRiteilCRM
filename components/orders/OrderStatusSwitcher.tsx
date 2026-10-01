@@ -1,25 +1,63 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import StatusIcon from '@/components/orders/StatusIcon';
 
 interface Option {
     code: string;
     name: string;
     color: string | null;
     groupName: string;
+    groupColor: string | null;
+    groupIcon: string | null;
+    /** Разрешён ли переход в этот статус по матрице переходов. */
+    allowed: boolean;
+    current: boolean;
 }
 
 interface OrderStatusSwitcherProps {
     orderId: number | string;
     currentLabel?: string | null;
+    /** Цвет этапа: кнопка статуса окрашивается в него, как в RetailCRM. */
+    color?: string | null;
     onChanged?: (code: string) => void;
+}
+
+/** Та же краска, подмешанная к белому: фон блока этапа в списке. */
+function tint(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#f8fafc';
+
+    const value = parseInt(match[1], 16);
+    const mix = (channel: number) => Math.round(255 - (255 - channel) * 0.35);
+    return `rgb(${mix((value >> 16) & 255)}, ${mix((value >> 8) & 255)}, ${mix(value & 255)})`;
+}
+
+/** Цвет этапа, затемнённый до читаемого текста поверх его же заливки. */
+function darken(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#334155';
+
+    const value = parseInt(match[1], 16);
+    const mix = (channel: number) => Math.round(channel * 0.45);
+    return `rgb(${mix((value >> 16) & 255)}, ${mix((value >> 8) & 255)}, ${mix(value & 255)})`;
+}
+
+/** Белый или почти чёрный текст — по яркости цвета этапа. */
+function readableOn(hex: string | null | undefined): string {
+    const match = hex ? /^#?([0-9a-f]{6})$/i.exec(hex.trim()) : null;
+    if (!match) return '#111827';
+
+    const value = parseInt(match[1], 16);
+    const luminance = (0.299 * ((value >> 16) & 255) + 0.587 * ((value >> 8) & 255) + 0.114 * (value & 255)) / 255;
+    return luminance > 0.72 ? '#111827' : '#ffffff';
 }
 
 /**
  * Смена статуса заказа из карточки. Показываем только те статусы, в которые разрешён
  * переход по нашей матрице, сгруппированные и окрашенные — как в RetailCRM.
  */
-export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }: OrderStatusSwitcherProps) {
+export default function OrderStatusSwitcher({ orderId, currentLabel, color, onChanged }: OrderStatusSwitcherProps) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -86,14 +124,15 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
         <div className="relative inline-block">
             <button
                 onClick={() => setOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-800 hover:border-blue-500"
+                style={color ? { backgroundColor: color, color: readableOn(color), borderColor: color } : undefined}
+                className="flex items-center gap-2 border border-gray-300 px-3 py-2 text-sm font-semibold hover:opacity-90"
             >
                 <span>{currentLabel || 'Статус'}</span>
-                <span className="text-gray-400">▾</span>
+                <span className="opacity-70">▾</span>
             </button>
 
             {open && (
-                <div className="absolute left-0 z-50 mt-1 w-80 rounded-md border border-gray-200 bg-white shadow-lg">
+                <div className="absolute right-0 z-50 mt-1 w-80 border border-gray-200 bg-white shadow-lg">
                     {loading && <p className="px-3 py-3 text-sm text-gray-500">Загружаем переходы…</p>}
 
                     {!loading && data && !data.writeEnabled && (
@@ -115,24 +154,48 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, onChanged }
                         </p>
                     )}
 
-                    {!loading && data?.known && data.options.length === 0 && (
-                        <p className="px-3 py-3 text-sm text-gray-600">
-                            Из этого статуса переходы не разрешены.
+                    {!loading && data?.known && !data.options.some((o) => o.allowed) && (
+                        <p className="border-b border-gray-200 px-3 py-2 text-xs leading-snug text-gray-600">
+                            Из этого статуса переходы не настроены — список ниже показан целиком,
+                            но перейти пока некуда. Переходы задаются на экране «Статусы и переходы».
                         </p>
                     )}
 
+                    {/* Список как в RetailCRM: этапы цветными блоками, внутри статусы.
+                        Виден весь каталог, но перейти можно только в разрешённые
+                        матрицей переходов (требование владельца 01.10.2026). */}
                     {Object.entries(grouped).map(([groupName, options]) => (
-                        <div key={groupName}>
-                            <p className="bg-gray-50 px-3 py-1 text-xs text-gray-500">{groupName}</p>
+                        <div key={groupName} style={{ backgroundColor: tint(options[0]?.groupColor) }}>
+                            <p
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-bold"
+                                style={{ color: darken(options[0]?.groupColor) }}
+                            >
+                                <StatusIcon icon={options[0]?.groupIcon} color={darken(options[0]?.groupColor)} size={14} />
+                                {groupName}
+                            </p>
                             {options.map((o) => (
                                 <button
                                     key={o.code}
-                                    onClick={() => change(o.code)}
-                                    disabled={saving}
-                                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-800 hover:bg-blue-50 disabled:text-gray-400"
+                                    onClick={() => o.allowed && change(o.code)}
+                                    disabled={saving || !o.allowed || o.current}
+                                    title={
+                                        o.current
+                                            ? 'Текущий статус заказа'
+                                            : o.allowed
+                                                ? `Перевести в «${o.name}»`
+                                                : 'Переход в этот статус не настроен'
+                                    }
+                                    className={`flex w-full items-center gap-2 px-3 py-1.5 pl-8 text-left text-[13px] ${
+                                        o.current
+                                            ? 'font-bold'
+                                            : o.allowed
+                                                ? 'hover:bg-white/60'
+                                                : 'cursor-not-allowed opacity-40'
+                                    }`}
+                                    style={{ color: darken(options[0]?.groupColor) }}
                                 >
-                                    <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: o.color || '#e5e7eb' }} />
                                     <span className="truncate">{o.name}</span>
+                                    {o.current && <span className="ml-auto shrink-0 text-[11px]">сейчас</span>}
                                 </button>
                             ))}
                         </div>

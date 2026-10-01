@@ -542,9 +542,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             headerCustomFields?.control
                 ? { label: 'Контроль', className: 'bg-amber-100 text-amber-700' }
                 : null,
-            statusLabel
-                ? { label: statusLabel, className: 'bg-blue-100 text-blue-700' }
-                : null
         ].filter(Boolean) as { label: string; className: string }[]
     );
 
@@ -646,10 +643,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 <section id="order-common" className="space-y-3">
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="flex justify-between items-center mb-4">
+                            {/* Статус показываем один раз — в баре сверху. Три одинаковых
+                                плашки на экране только мешали (требование владельца 01.10.2026). */}
                             <h3 className="text-lg font-semibold text-gray-900">Основное</h3>
-                            <span className="text-xs uppercase font-semibold text-blue-600 bg-blue-50 px-3 py-1">
-                                {orderStatusCode ? statusName(orderStatusCode) : 'Статус не задан'}
-                            </span>
                         </div>
                         <div className="grid gap-2 md:grid-cols-2">
                             <InfoField label="Страна" required value={countryValue} />
@@ -1538,25 +1534,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             >
                                 История
                             </button>
+                            {/* Статус — справа в той же полосе, как в RetailCRM: одно
+                                место, человеческим языком, с цветом этапа. */}
+                            <OrderStatusSwitcher
+                                orderId={data?.order?.number ?? orderId}
+                                currentLabel={statusLabel ?? 'Сменить статус'}
+                                color={data?.statusColor ?? null}
+                                onChanged={() => fetchDetails()}
+                            />
                             <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
-                    <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold ${compactHeader ? 'hidden' : 'mt-4'}`}>
-                        <OrderStatusSwitcher
-                            orderId={data?.order?.number ?? orderId}
-                            currentLabel={headerBadges[0]?.label ?? 'Сменить статус'}
-                            onChanged={() => fetchDetails()}
-                        />
-                        {headerBadges.length > 0 ? (
-                            headerBadges.map(badge => (
+                    {/* Пометки клиента — рядом со статусом, одной строкой. */}
+                    {headerBadges.length > 0 && (
+                        <div className={`flex flex-wrap items-center gap-2 text-xs font-semibold ${compactHeader ? 'hidden' : 'mt-2'}`}>
+                            {headerBadges.map(badge => (
                                 <span key={badge.label} className={`px-3 py-1 ${badge.className}`}>
                                     {badge.label}
                                 </span>
-                            ))
-                        ) : (
-                            <span className="px-3 py-1 bg-gray-100 text-gray-500">Статусы не найдены</span>
-                        )}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </header>
 
                 {panel && (
