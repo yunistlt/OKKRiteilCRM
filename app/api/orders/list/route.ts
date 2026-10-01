@@ -88,7 +88,7 @@ export async function GET(req: Request) {
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
         // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
         // человек, а не RetailCRM. Связь по external_code.
-        supabase.from('crm_status_groups').select('id, external_code, ordering, color'),
+        supabase.from('crm_status_groups').select('id, external_code, ordering, color, icon'),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -104,6 +104,15 @@ export async function GET(req: Request) {
     // из таблицы statuses слишком бледные, и список выглядел выцветшим.
     const groupColorById = new Map<string, string | null>(
         ((ownGroups || []) as any[]).map((g) => [String(g.id), g.color || null]),
+    );
+    // Иконка этапа — её видит менеджер раньше, чем читает название статуса.
+    const groupIconById = new Map<string, string | null>(
+        ((ownGroups || []) as any[]).map((g) => [String(g.id), g.icon || null]),
+    );
+    const statusIconMap = new Map<string, string | null>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id)
+            .map((s) => [String(s.external_code), groupIconById.get(String(s.group_id)) ?? null]),
     );
     const statusColorMap = new Map<string, string | null>([
         ...((statusColors || []) as any[]).map((s) => [s.code, s.color || null] as [string, string | null]),
@@ -140,7 +149,7 @@ export async function GET(req: Request) {
             .filter((s) => s.external_code && s.group_id)
             .map((s) => [String(s.external_code), groupOrderById.get(String(s.group_id)) ?? 999]),
     );
-    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; ordering: number }> }>();
+    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number }> }>();
 
     for (const st of ((statusDict || []) as any[])) {
         const count = counts.get(st.item_code) ?? 0;
@@ -157,6 +166,7 @@ export async function GET(req: Request) {
             label: st.item_name || st.item_code,
             count,
             color: statusColorMap.get(st.item_code) || null,
+            icon: statusIconMap.get(st.item_code) || null,
             // Порядок статуса внутри группы — наш; у RetailCRM он свой и местами нулевой.
             ordering: statusOrderByCode.get(st.item_code) ?? st.ordering ?? 999,
         });
@@ -176,6 +186,7 @@ export async function GET(req: Request) {
                 groupName: value.groupName,
                 total: value.statuses.reduce((sum, s) => sum + s.count, 0),
                 color: value.statuses.find((s) => s.color)?.color ?? null,
+                icon: value.statuses.find((s) => s.icon)?.icon ?? null,
                 ordering: byCode ?? byStatus ?? 999,
                 statuses: value.statuses
                     .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
@@ -193,6 +204,7 @@ export async function GET(req: Request) {
             status: row.status,
             statusLabel: statusNames.get(row.status) || row.status,
             statusColor: statusColorMap.get(row.status) || null,
+            statusIcon: statusIconMap.get(row.status) || null,
             createdAt: row.created_at,
             managerName: managerNames.get(Number(row.manager_id)) || null,
             totalSumm: row.totalsumm != null ? Number(row.totalsumm) : null,

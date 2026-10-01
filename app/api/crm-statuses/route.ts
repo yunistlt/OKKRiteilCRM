@@ -35,6 +35,8 @@ const GroupSchema = z.object({
     code: z.string().regex(/^[a-z0-9_-]{2,60}$/).optional(),
     name: z.string().min(1).max(120),
     color: z.string().max(20).nullable().optional(),
+    /** Код иконки этапа из нашего набора (components/orders/StatusIcon.tsx). */
+    icon: z.string().max(40).nullable().optional(),
     ordering: z.number().int().optional(),
     active: z.boolean().optional(),
     members: z.array(z.string().uuid()).optional(),   // состав группы
@@ -76,6 +78,8 @@ export async function PUT(req: Request) {
     if (body.kind === 'group') {
         const row: Record<string, any> = { name: body.name, updated_at: new Date().toISOString() };
         if (body.color !== undefined) row.color = body.color;
+        // Иконка этапа: RetailCRM её по API не отдаёт, выбираем сами.
+        if (body.icon !== undefined) row.icon = body.icon || null;
         if (body.ordering !== undefined) row.ordering = body.ordering;
         if (body.active !== undefined) row.active = body.active;
 

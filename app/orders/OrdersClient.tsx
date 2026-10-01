@@ -7,6 +7,7 @@ import ViewSettingsModal from '@/components/orders/ViewSettingsModal';
 import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
+import StatusIcon from '@/components/orders/StatusIcon';
 
 interface OrderRow {
     orderId: number;
@@ -14,6 +15,7 @@ interface OrderRow {
     status: string;
     statusLabel: string;
     statusColor: string | null;
+    statusIcon: string | null;
     createdAt: string;
     managerName: string | null;
     totalSumm: number | null;
@@ -133,12 +135,13 @@ export default function OrdersClient() {
                 // длины иначе дают рваный край и список выглядит хаосом.
                 return (
                     <span
-                        className="block w-full px-2 py-1.5 text-xs font-bold leading-snug"
+                        className="flex w-full items-center gap-1.5 px-2 py-1.5 text-xs font-bold leading-snug"
                         style={{
                             backgroundColor: order.statusColor || '#eef2f7',
                             color: readableOn(order.statusColor || '#eef2f7'),
                         }}
                     >
+                        <StatusIcon icon={order.statusIcon} color={readableOn(order.statusColor || '#eef2f7')} />
                         {order.statusLabel}
                     </span>
                 );

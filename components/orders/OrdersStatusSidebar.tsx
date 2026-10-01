@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
+import StatusIcon from './StatusIcon';
 
 export interface StatusGroup {
     groupCode: string | null;
     groupName: string;
     total: number;
     color?: string | null;
-    statuses: Array<{ code: string; label: string; count: number; color?: string | null }>;
+    /** Иконка этапа — её выбирают в настройке этапа. */
+    icon?: string | null;
+    statuses: Array<{ code: string; label: string; count: number; color?: string | null; icon?: string | null }>;
 }
 
 interface OrdersStatusSidebarProps {
@@ -72,11 +75,11 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                                 groupSelected ? '' : 'hover:bg-gray-50'
                             }`}
                         >
-                            <span
-                                className="truncate text-[13px] font-black uppercase tracking-wide"
-                                style={{ color: darken(accent) }}
-                            >
-                                {group.groupName}
+                            <span className="flex min-w-0 items-center gap-1.5" style={{ color: darken(accent) }}>
+                                <StatusIcon icon={group.icon} color={darken(accent)} size={15} />
+                                <span className="truncate text-[13px] font-black uppercase tracking-wide">
+                                    {group.groupName}
+                                </span>
                             </span>
                             <span className="shrink-0 text-xs font-bold" style={{ color: darken(accent) }}>
                                 {group.total.toLocaleString('ru-RU')}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import ViewSettingsModal from './ViewSettingsModal';
 import { EMPTY_FILTER, isFilterEmpty, type OrdersFilter } from '@/lib/orders-filter';
 import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/orders-view';
+import RelativeDateInput from './RelativeDateInput';
 
 interface Option { value: string; label: string }
 
@@ -264,11 +265,13 @@ function Text({ value, onChange, placeholder }: { value: string; onChange: (v: s
 }
 
 function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFrom: (v: string) => void; onTo: (v: string) => void }) {
+    // Даты выбираются и относительно сегодня («неделю назад», «через месяц») —
+    // так же, как в RetailCRM: конкретное число менеджер обычно не помнит.
     return (
         <div className="flex items-center gap-1">
-            <input type="date" value={from} onChange={(e) => onFrom(e.target.value)} className="w-full min-w-0 border border-gray-400 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <RelativeDateInput value={from} onChange={onFrom} title="С какой даты" />
             <span className="text-[10px] text-gray-600">—</span>
-            <input type="date" value={to} onChange={(e) => onTo(e.target.value)} className="w-full min-w-0 border border-gray-400 px-1 py-1 text-xs text-gray-800 focus:border-blue-500 focus:outline-none" />
+            <RelativeDateInput value={to} onChange={onTo} title="По какую дату" />
         </div>
     );
 }

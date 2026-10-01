@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { STATUS_ICONS } from '@/components/orders/StatusIcon';
 
 interface CrmStatus {
     id: string;
@@ -16,6 +17,7 @@ interface CrmStatus {
 }
 
 interface CrmGroup {
+    icon?: string | null;
     id: string;
     code: string;
     name: string;
@@ -491,6 +493,7 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                     id: draft.id,
                     name: draft.name.trim(),
                     color: draft.color ?? null,
+                    icon: draft.icon ?? null,
                     ordering: draft.ordering ?? 100,
                     active: draft.active ?? true,
                     members,
@@ -537,6 +540,31 @@ function GroupModal({ group, statuses, onClose, onSaved }: {
                         onChange={(e) => setDraft({ ...draft, color: e.target.value })}
                         className="h-9 w-full cursor-pointer rounded border border-gray-300"
                     />
+                </Labeled>
+                {/* Иконка этапа: по ней менеджер узнаёт этап быстрее, чем читает
+                    название. В RetailCRM так же, но по API они её не отдают. */}
+                <Labeled label="Иконка">
+                    <div className="flex flex-wrap gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setDraft({ ...draft, icon: null })}
+                            title="Без иконки"
+                            className={`flex h-8 w-8 items-center justify-center border text-xs ${!draft.icon ? 'border-blue-600 bg-blue-50' : 'border-gray-300'}`}
+                        >
+                            —
+                        </button>
+                        {STATUS_ICONS.map((item) => (
+                            <button
+                                key={item.code}
+                                type="button"
+                                onClick={() => setDraft({ ...draft, icon: item.code })}
+                                title={item.label}
+                                className={`flex h-8 w-8 items-center justify-center border ${draft.icon === item.code ? 'border-blue-600 bg-blue-50' : 'border-gray-300 hover:bg-gray-50'}`}
+                            >
+                                <item.Icon size={16} strokeWidth={2.5} />
+                            </button>
+                        ))}
+                    </div>
                 </Labeled>
             </div>
 
