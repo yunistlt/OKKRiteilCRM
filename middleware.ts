@@ -31,7 +31,13 @@ export async function middleware(request: NextRequest) {
         pathname.startsWith('/api/monitoring') ||
         pathname.startsWith('/api/stt') ||
         pathname.startsWith('/api/telphin') ||
-        pathname.startsWith('/api/widget');
+        pathname.startsWith('/api/widget') ||
+        // Файлы приложения-установки: браузер обновляет воркер фоновым запросом,
+        // и если тот упирается в редирект на вход, воркер остаётся старым
+        // навсегда — интерфейс после выкатки не обновлялся, пока человек не
+        // чистил кеш руками (инцидент 01.10.2026).
+        pathname === '/messenger-sw.js' ||
+        pathname === '/manifest.webmanifest';
     const isAuthRoute = pathname === '/login';
     const isProtectedRoute = !isPublicRoute;
 

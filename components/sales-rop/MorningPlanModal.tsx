@@ -18,14 +18,16 @@ import { formatRub } from '@/lib/format';
 /** Сколько секунд окно держится: столько нужно, чтобы прочитать план. */
 const READING_SECONDS = 15;
 
+type MorningTask = { orderId: number; orderNumber: string; client: string; amount: number; reason: string; done: boolean };
+
 export type MorningPlan = {
     scope: 'own' | 'department';
     date: string;
     total: number;
     done: number;
     letter: string | null;
-    tasks?: Array<{ orderNumber: string; client: string; amount: number; reason: string; done: boolean }>;
-    managers?: Array<{ name: string; tasks: Array<{ orderNumber: string; client: string; amount: number; reason: string; done: boolean }> }>;
+    tasks?: MorningTask[];
+    managers?: Array<{ name: string; tasks: MorningTask[] }>;
 };
 
 export default function MorningPlanModal({ plan, onClose }: { plan: MorningPlan; onClose: () => void }) {
@@ -85,7 +87,9 @@ export default function MorningPlanModal({ plan, onClose }: { plan: MorningPlan;
                             {fallbackTasks.map((task, index) => (
                                 <li key={`${task.orderNumber}-${index}`} className="border-b border-gray-100 pb-2">
                                     <div className="flex items-baseline justify-between gap-3">
-                                        <span className="text-sm font-bold text-blue-700">№{task.orderNumber}</span>
+                                        <a href={`/orders?order=${task.orderId}`} className="text-sm font-bold text-blue-700 hover:underline">
+                                            №{task.orderNumber}
+                                        </a>
                                         <span className="text-sm tabular-nums text-gray-700">{formatRub(task.amount)}</span>
                                     </div>
                                     <p className="text-sm text-gray-900">{task.client}</p>

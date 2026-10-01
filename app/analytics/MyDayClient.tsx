@@ -195,19 +195,19 @@ function NowCard({ action }: { action: Action | null }) {
 
                 <div className="space-y-2">
                     <Link
-                        href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                        href={`/orders?order=${action.orderId}`}
                         className="flex items-center justify-center gap-2 bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
                     >
                         <Phone size={14} /> Позвонить
                     </Link>
                     <Link
-                        href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                        href={`/orders?order=${action.orderId}`}
                         className="flex items-center justify-center gap-2 border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                     >
                         <Mail size={14} /> Написать
                     </Link>
                     <Link
-                        href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                        href={`/orders?order=${action.orderId}`}
                         className="flex items-center justify-center gap-2 border border-gray-300 bg-white px-4 py-2 text-sm font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                     >
                         Открыть сделку <ArrowRight size={14} />
@@ -257,7 +257,7 @@ function NextQueue({ actions }: { actions: Action[] }) {
                         </p>
 
                         <Link
-                            href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                            href={`/orders?order=${action.orderId}`}
                             className="mt-2 border border-gray-300 px-2 py-1.5 text-center text-xs font-bold text-gray-800 hover:bg-gray-900 hover:text-white"
                         >
                             {action.action}
@@ -353,7 +353,7 @@ function TaskTable({
                                 <td className="px-3 py-2 text-gray-600">{action.reason}</td>
                                 <td className="px-3 py-2 text-right">
                                     <Link
-                                        href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                                        href={`/orders?order=${action.orderId}`}
                                         className="text-xs font-bold text-blue-700 hover:underline"
                                     >
                                         №{action.orderNumber}
@@ -505,7 +505,7 @@ function UpcomingCard({ actions }: { actions: Action[] }) {
                     <li key={action.orderNumber} className="flex items-baseline justify-between gap-2">
                         <div className="min-w-0">
                             <Link
-                                href={`/orders?number=${encodeURIComponent(action.orderNumber)}`}
+                                href={`/orders?order=${action.orderId}`}
                                 className="block truncate text-xs font-semibold text-gray-900 hover:text-blue-700"
                             >
                                 {action.client}

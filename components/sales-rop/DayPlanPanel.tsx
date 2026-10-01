@@ -128,9 +128,9 @@ export default function DayPlanPanel({ onClose }: { onClose?: () => void }) {
                                 className={`px-3 py-2 ${task.done ? 'bg-green-50/60' : ''}`}
                             >
                                 <div className="flex items-baseline justify-between gap-2">
-                                    {/* Переход в заказ: открываем список, отфильтрованный по номеру. */}
+                                    {/* Один клик — и открыта карточка заказа, а не список. */}
                                     <a
-                                        href={`/orders?number=${encodeURIComponent(task.orderNumber)}`}
+                                        href={`/orders?order=${task.orderId}`}
                                         className={`text-sm font-bold ${task.done ? 'text-gray-400 line-through' : 'text-blue-700 hover:underline'}`}
                                     >
                                         №{task.orderNumber}

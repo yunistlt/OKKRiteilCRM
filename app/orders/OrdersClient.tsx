@@ -8,6 +8,7 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
+import { useSearchParams } from 'next/navigation';
 
 interface OrderRow {
     orderId: number;
@@ -64,6 +65,11 @@ function readableOn(hex: string): string {
 }
 
 export default function OrdersClient() {
+    // Ссылка вида /orders?order=54895 открывает карточку сразу: из плана дня и
+    // из «Моего дня» в заказ попадают одним кликом, а не через фильтр списка
+    // (требование владельца 01.10.2026).
+    const searchParams = useSearchParams();
+
     const [filter, setFilter] = useState<OrdersFilter>(EMPTY_FILTER);
     const [orders, setOrders] = useState<OrderRow[]>([]);
     const [statusTree, setStatusTree] = useState<StatusGroup[]>([]);
@@ -71,7 +77,10 @@ export default function OrdersClient() {
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ totalCount: 0, totalPages: 1 });
     const [loading, setLoading] = useState(true);
-    const [openOrderId, setOpenOrderId] = useState<number | null>(null);
+    const [openOrderId, setOpenOrderId] = useState<number | null>(() => {
+        const requested = Number(searchParams.get('order'));
+        return Number.isFinite(requested) && requested > 0 ? requested : null;
+    });
 
     const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
     const [columnsOpen, setColumnsOpen] = useState(false);
