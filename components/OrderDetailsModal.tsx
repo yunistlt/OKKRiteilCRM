@@ -838,7 +838,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                         {/* Расчёты из калькулятора «Бот-Инженер». Находим по номеру
                             заказа, который менеджер вписал в калькуляторе. */}
-                        {(calcItems.length > 0 || calcNote) && (
+                        {/* Блок видно всегда, даже когда расчётов нет: иначе менеджер
+                            не знает, что такая связь вообще есть (закон «заглушки
+                            видимы в интерфейсе»). */}
+                        {(
                             <div className="border-b border-gray-200 px-6 py-4">
                                 <div className="mb-2 flex items-baseline justify-between gap-3">
                                     <h4 className="text-sm font-semibold text-gray-900">Расчёты из калькулятора</h4>
@@ -872,7 +875,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     </div>
                                 ))}
                                 {calcItems.length === 0 && !calcNote && (
-                                    <p className="text-xs text-gray-500">Расчётов с этим номером заказа в калькуляторе нет.</p>
+                                    <p className="text-xs text-gray-500">
+                                        Расчётов с этим номером заказа нет. Посчитайте изделие в калькуляторе
+                                        «Бот-Инженер» и впишите там в поле «Номер заказа» номер{' '}
+                                        {data?.order?.number ?? orderId} вместо «Б/Н» — расчёт появится здесь,
+                                        и его можно будет взять в заказ одной кнопкой.
+                                    </p>
                                 )}
                             </div>
                         )}
