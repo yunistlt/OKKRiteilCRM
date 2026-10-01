@@ -1,7 +1,10 @@
 # 📑 Архив описательных файлов проекта OKKRiteilCRM
 
-**Дата обновления:** 13 мая 2026  
+**Дата обновления:** 1 октября 2026  
 **Статус:** Систематизированная структура документации
+
+> Главная тема сейчас — **своя CRM**: [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md)
+> (as-built) и [own-crm/ROADMAP.md](own-crm/ROADMAP.md) (задачи). Начинать с них.
 
 ---
 
@@ -11,6 +14,14 @@
 
 | Модуль | Статус | Основные документы | Ответственный |
 |--------|--------|-----------------|---------|
+| **Своя CRM (переезд с RetailCRM)** | 🟡 В работе | [docs/own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) ← начни отсюда, [ROADMAP.md](own-crm/ROADMAP.md), [FIELDS.md](own-crm/FIELDS.md) | Владелец |
+| **Телефон в интерфейсе (софтфон)** | 🟢 Production | [docs/softphone/OVERVIEW.md](softphone/OVERVIEW.md) | Team Sales |
+| **Автоприём писем (Катерина)** | 🟢 Production | [docs/email-secretary/OVERVIEW.md](email-secretary/OVERVIEW.md) | Team Sales |
+| **Секретарь Телфина (входящие звонки)** | 🟢 Production | [docs/secretary/OVERVIEW.md](secretary/OVERVIEW.md) | Team Sales |
+| **Бот-РОП (план дня, разбор вечера)** | 🟢 Production | [docs/sales-rop/](sales-rop/) | Team Sales |
+| **Претензионно-исковая работа (реестр дел)** | 🟡 В работе | [docs/legal-matters/OVERVIEW.md](legal-matters/OVERVIEW.md) | Team Legal |
+| **Суды по подписке («Страж»)** | 🟢 Production | [docs/court-watch/OVERVIEW.md](court-watch/OVERVIEW.md) | Team Legal |
+| **Адресация уведомлений** | 🟢 Production | [docs/notifications/OVERVIEW.md](notifications/OVERVIEW.md) | All |
 | **ОКК (контроль качества)** | 🟢 Production | [docs/okk/OVERVIEW.md](okk/OVERVIEW.md) | Team ОКК |
 | **ОКК Консультант (Семён)** | 🟢 Production | [docs/okk-consultant/](okk-consultant/) | Team ОКК |
 | **Юридические ИИ (Лев, Дарья, Борис, Григорий)** | 🟡 4 спринта | [docs/legal-ai/](legal-ai/) | Team Legal |
@@ -103,7 +114,10 @@
 
 | Область | Master Source | Документ |
 |---------|--------------|----------|
-| **ОКК роли** | AI_STAFF_ROLES.md | [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) |
+| **Роли ИИ-команды** | `docs/ai-team/STAFF_ROLES.md` | [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) |
+| **Своя CRM (as-built)** | `docs/own-crm/OVERVIEW.md` | [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) |
+| **Интеграция RetailCRM** | `lib/retailcrm/` | `lib/retailcrm/README.md`, `API.md`, `NAMING.md` |
+| **Границы ОКК ↔ ЛВЖ** | `docs/BOUNDARY_OKK_LVZ.md` | [BOUNDARY_OKK_LVZ.md](BOUNDARY_OKK_LVZ.md) |
 | **ОКК план** | PLAN.md | [okk-consultant/PLAN.md](okk-consultant/PLAN.md) |
 | **Legal план** | IMPLEMENTATION_PLAN.md | [legal-ai/IMPLEMENTATION_PLAN.md](legal-ai/IMPLEMENTATION_PLAN.md) |
 | **Real-time архитектура** | ACTUALIZATION_PLAN.md | [realtime-pipeline/ACTUALIZATION_PLAN.md](realtime-pipeline/ACTUALIZATION_PLAN.md) |
@@ -113,9 +127,10 @@
 ## 🎓 Для новых членов команды
 
 Начните отсюда:
-1. 📖 [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — познакомьтесь с командой ИИ
-2. 🎯 [okk-consultant/README.md](okk-consultant/README.md) — обзор консультанта
-3. 📚 Выберите свой модуль из таблицы выше
+1. 📖 [own-crm/OVERVIEW.md](own-crm/OVERVIEW.md) — куда движется сервис (своя CRM)
+2. 📖 [ai-team/STAFF_ROLES.md](ai-team/STAFF_ROLES.md) — познакомьтесь с командой ИИ
+3. 🎯 [okk-consultant/README.md](okk-consultant/README.md) — обзор консультанта
+4. 📚 Выберите свой модуль из таблицы выше
 
 ---
 

@@ -28,13 +28,13 @@ npm run legal:regression               # legal agents regression
 npm run messenger:api-smoke            # smoke test against deployed messenger API
 ```
 
-Migrations are raw SQL in `migrations/` (123+ files, date-prefixed). There is no migration runner framework — `scripts/migrate.js` / `scripts/apply-migration.js` execute a hardcoded file via `postgres`-js against `DATABASE_URL` from `.env.local`. To apply a new migration, point one of those scripts at it or run the SQL directly. Migrations must be additive/backwards-compatible (new columns with defaults, no breaking changes).
+Migrations are raw SQL in `migrations/` (341 files as of 2026-10-01, date-prefixed). There is no migration runner framework — `scripts/migrate.js` / `scripts/apply-migration.js` execute a hardcoded file via `postgres`-js against `DATABASE_URL` from `.env.local`. To apply a new migration, point one of those scripts at it or run the SQL directly. Migrations must be additive/backwards-compatible (new columns with defaults, no breaking changes).
 
 ## Architecture
 
 ### Request flow & auth
-- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) bypass auth; everything else requires a session.
-- Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | demo`.
+- `middleware.ts` gates every route. Public prefixes (`/login`, `/api/auth`, `/api/cron`, `/api/sync`, `/api/matching`, `/api/monitoring`, `/api/widget`) plus the PWA files `/messenger-sw.js` and `/manifest.webmanifest` bypass auth (the service worker MUST stay public — behind auth the browser's background update request gets redirected to login and the UI stays frozen on cached code); everything else requires a session.
+- Auth is JWT-based via `jose` (`lib/auth.ts`), supporting two sources: Supabase tokens (`sb-access-token`) and a legacy `auth_session` cookie. Roles: `admin | okk | rop | manager | jurist | demo` (`AppRole` in `lib/auth.ts`). **Passwords are currently stored in plain text** — `verifyPassword` compares strings despite the `password_hash` column name; known debt, task `P-5` in `docs/own-crm/ROADMAP.md`.
 - RBAC is a route-prefix → allowed-roles table in `lib/rbac.ts` (`DEFAULT_ROUTE_RULES`). `lib/rbac-server.ts` resolves it server-side (rules can be overridden in DB). When adding a page or API route, add a matching `RouteRule` or it inherits the longest-prefix match — `tests/rbac-coverage.test.ts` enforces this (page↔API role parity + a baseline of legacy uncovered routes; new routes must get their own rule).
 
 ### Database access
@@ -47,7 +47,7 @@ External events (RetailCRM order changes, Telphin call/recording webhooks) are *
 - **Job queue**: `lib/system-jobs.ts` defines `SystemJobType`, `enqueueSystemJob`, `claimSystemJobs`, `completeSystemJob`, `failSystemJob`, idempotency keys, retry/backoff, concurrency keys, and dead-lettering.
 - **Worker routes**: `app/api/cron/system-jobs/<job>/route.ts`. Each is a `GET` handler (`export const dynamic = 'force-dynamic'`, `maxDuration = 300`), checks `CRON_SECRET` via `Authorization: Bearer`, gates on a runtime feature flag (`isSystemJobsPipelineRuntimeEnabled`), claims a small batch with a concurrency cap, and records success/failure via `lib/system-worker-state.ts`.
 - **Schedules**: `vercel.json` `crons` — most run every 1–2 minutes (order delta/upsert, call match, transcription, semantic rules, score refresh), plus nightly reconciliation, watchdog (every 5 min), system audit (every 4h).
-- **Principles** (`docs/ARCHITECTURE.md`): webhook-first with poller fallback; each domain object has one canonical table (`orders`, `raw_telphin_calls`, `raw_order_events`) — legacy tables are read-only fallbacks; idempotency everywhere; graceful degradation when OpenAI/RetailCRM are down.
+- **Principles** (`docs/ARCHITECTURE.md`): webhook-first with poller fallback; each domain object has one canonical table (`orders`, `raw_telphin_calls`, `raw_order_events`) — legacy tables are read-only fallbacks. **Calls are mid-migration:** the owner's rule is that `retailcrm_calls` (order number straight from RetailCRM) is the source of truth and our matching (`call_order_matches`, ~29% wrong) is only a fallback; OKK and transcription still read `raw_telphin_calls` — task `C-3`; idempotency everywhere; graceful degradation when OpenAI/RetailCRM are down.
 
 ### AI agents
 Each agent is a specialized module that reads from one table and writes to one table/queue — they hand off via tables, not synchronous calls. The personas (Семён/OKK consultant, Анна/order facts, Максим/rules & penalties, Игорь/SLA, Елена/lead catcher, plus the Legal team Лев/Дарья/Борис/Григорий) are the **source of truth** documented in `docs/ai-team/STAFF_ROLES.md`. Read it before modifying agent logic.
@@ -60,6 +60,7 @@ Major subsystems (each is a cluster of `lib/*.ts` + `app/api/*` + `app/<feature>
 - **Legal AI** — `lib/legal-*.ts` (consultant, contract analysis, OCR, antivirus, counterparty check).
 - **Lead Catcher ("Елена")** — `app/api/lead-catcher/*`, `app/lead-catcher`, embeddable widget (`/api/widget`).
 - **Corporate Messenger** — `lib/messenger/`, `app/messenger`. Has web-push and a separate release runbook.
+- **Своя CRM (own-crm)** — `lib/own-crm/`, `app/orders`, `app/clients`, `migrations/2026092*`/`2026100*`. The strategic track: RetailCRM is a temporary source, order/client fields now live in `orders`/`clients` columns named exactly as RetailCRM names them (126 columns in `orders`), filled by triggers `orders_fill_retailcrm_columns` / `order_items_sync`. `orders.is_own` + `managers.own_crm` mark orders that live only here. **Read `docs/own-crm/OVERVIEW.md` (as-built) and `docs/own-crm/ROADMAP.md` (numbered tasks Z/K/T/M/C/A/P) before touching orders, clients or sync.**
 - **Salary ОП ("Зарплата")** — `lib/salary/`, `app/salary`, `app/api/salary/*`. Composable bonus-block engine (per-manager schemes/roles), effective-dated, zero-hardcode. **Read `docs/salary/OVERVIEW.md` (as-built canonical guide) before changing anything.** UI follows `golds/`.
 
 ### Conventions
