@@ -10,9 +10,15 @@ import { useMorningPlan } from '@/components/sales-rop/useMorningPlan';
 import { useColumnWidth } from '@/components/consultant/useColumnWidth';
 import { useDayPlan } from '@/components/sales-rop/DayPlanContext';
 
-/** На этих экранах правой колонки нет — и утреннее окно там не всплывает. */
+/**
+ * Экраны без правой колонки.
+ *
+ * «Мой день» — сам по себе рабочий стол: план и очередь там крупнее и полнее,
+ * чем в узкой колонке, и дублировать их справа незачем (решение владельца
+ * 01.10.2026).
+ */
 function hideConsultantPath(pathname: string): boolean {
-    return pathname === '/login' || pathname.startsWith('/messenger');
+    return pathname === '/login' || pathname.startsWith('/messenger') || pathname.startsWith('/analytics');
 }
 
 function GlobalConsultantShellContent({ children }: { children: React.ReactNode }) {

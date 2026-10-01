@@ -12,14 +12,11 @@ function HubContent() {
     const showReports = ['admin', 'okk', 'rop'].includes(String(user?.role ?? ''));
 
     return (
-        <div className="w-full px-4 py-6 md:px-6 md:py-8">
-            <div className="flex flex-col md:flex-row md:items-center gap-4 mb-10 md:mb-12">
+        <div className="w-full px-4 py-4 md:px-6">
+            <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center">
                 <div className="flex items-center gap-4">
-                    <Link href="/" className="p-2.5 md:p-3 bg-white rounded-xl md:rounded-2xl shadow-sm border border-gray-100 text-gray-400 hover:text-blue-600 transition-all">
-                        <svg className="w-5 h-5 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7 7-7" /></svg>
-                    </Link>
                     <div>
-                        <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight">Мой день</h1>
+                        <h1 className="text-2xl font-black tracking-tight text-gray-900 md:text-3xl">Мой день</h1>
                         <p className="text-gray-400 font-bold uppercase text-[9px] md:text-[10px] tracking-widest mt-1">Что сделать сейчас, чтобы ближе подойти к продаже</p>
                     </div>
                 </div>

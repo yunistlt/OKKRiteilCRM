@@ -42,7 +42,7 @@ export default function Header() {
         if (pathname.startsWith('/okk')) return 'Контроль Качества';
         if (pathname.startsWith('/legal')) return 'Юридический отдел';
         if (pathname.startsWith('/messenger')) return 'Мессенджер';
-        if (pathname.startsWith('/analytics')) return 'Аналитика';
+        if (pathname.startsWith('/analytics')) return 'Мой день';
         if (pathname.startsWith('/efficiency')) return 'Эффективность';
         if (pathname.startsWith('/settings/status')) return 'Статус Систем';
         if (pathname.startsWith('/settings/managers')) return 'Менеджеры';
