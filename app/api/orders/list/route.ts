@@ -26,9 +26,10 @@ export async function GET(req: Request) {
     }
 
     // Нормативы читаем до запроса: по ним собирается условие просрочки.
+    // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
     const { data: ownStatuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, norm_days')
+        .select('external_code, norm_days, ordering, group_id')
         .not('external_code', 'is', null);
     const normByStatus = new Map<string, number | null>(
         ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
@@ -70,7 +71,14 @@ export async function GET(req: Request) {
     const rows = listResult.data || [];
     const managerIds = Array.from(new Set(rows.map((r: any) => r.manager_id).filter(Boolean)));
 
-    const [{ data: managers }, { data: statusDict }, { data: statusColors }, { data: groupDict }, { data: cfDict }] = await Promise.all([
+    const [
+        { data: managers },
+        { data: statusDict },
+        { data: statusColors },
+        { data: groupDict },
+        { data: cfDict },
+        { data: ownGroups },
+    ] = await Promise.all([
         managerIds.length
             ? supabase.from('managers').select('id, first_name, last_name').in('id', managerIds)
             : Promise.resolve({ data: [] as any[] }),
@@ -78,6 +86,9 @@ export async function GET(req: Request) {
         supabase.from('statuses').select('code, color, group_name'),
         supabase.from('retailcrm_dictionaries').select('item_code, item_name').eq('entity_type', 'statusGroup'),
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
+        // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
+        // человек, а не RetailCRM. Связь по external_code.
+        supabase.from('crm_status_groups').select('id, external_code, ordering'),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -101,6 +112,26 @@ export async function GET(req: Request) {
     }
 
     const groupNames = new Map<string, string>(((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name]));
+
+    // Наш порядок: группы и статусы идут так, как их выстроили на доске
+    // «Статусы и переходы». Раньше колонка сортировалась по числу заказов, и
+    // сверху оказывался «Отменен» — работа начинается не с него.
+    const groupOrderById = new Map<string, number>(((ownGroups || []) as any[]).map((g) => [String(g.id), Number(g.ordering ?? 999)]));
+    const groupOrderByCode = new Map<string, number>(
+        ((ownGroups || []) as any[])
+            .filter((g) => g.external_code)
+            .map((g) => [String(g.external_code), Number(g.ordering ?? 999)]),
+    );
+    const statusOrderByCode = new Map<string, number>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code)
+            .map((s) => [String(s.external_code), Number(s.ordering ?? 999)]),
+    );
+    const statusGroupOrder = new Map<string, number>(
+        ((ownStatuses || []) as any[])
+            .filter((s) => s.external_code && s.group_id)
+            .map((s) => [String(s.external_code), groupOrderById.get(String(s.group_id)) ?? 999]),
+    );
     const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; ordering: number }> }>();
 
     for (const st of ((statusDict || []) as any[])) {
@@ -118,21 +149,33 @@ export async function GET(req: Request) {
             label: st.item_name || st.item_code,
             count,
             color: statusColorMap.get(st.item_code) || null,
-            ordering: st.ordering ?? 999,
+            // Порядок статуса внутри группы — наш; у RetailCRM он свой и местами нулевой.
+            ordering: statusOrderByCode.get(st.item_code) ?? st.ordering ?? 999,
         });
     }
 
     const statusTree = Array.from(grouped.entries())
-        .map(([groupCode, value]) => ({
-            groupCode: groupCode === '__none__' ? null : groupCode,
-            groupName: value.groupName,
-            total: value.statuses.reduce((sum, s) => sum + s.count, 0),
-            color: value.statuses.find((s) => s.color)?.color ?? null,
-            statuses: value.statuses
-                .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
-                .map(({ ordering, ...rest }) => rest),
-        }))
-        .sort((a, b) => b.total - a.total);
+        .map(([groupCode, value]) => {
+            // Порядок группы: по её коду, а если связь по коду не сошлась —
+            // по группе любого из её статусов. Без этого группа уезжает в конец.
+            const byCode = groupCode === '__none__' ? undefined : groupOrderByCode.get(groupCode);
+            const byStatus = value.statuses
+                .map((s) => statusGroupOrder.get(s.code))
+                .find((order) => order !== undefined);
+
+            return {
+                groupCode: groupCode === '__none__' ? null : groupCode,
+                groupName: value.groupName,
+                total: value.statuses.reduce((sum, s) => sum + s.count, 0),
+                color: value.statuses.find((s) => s.color)?.color ?? null,
+                ordering: byCode ?? byStatus ?? 999,
+                statuses: value.statuses
+                    .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
+                    .map(({ ordering, ...rest }) => rest),
+            };
+        })
+        .sort((a, b) => a.ordering - b.ordering || a.groupName.localeCompare(b.groupName))
+        .map(({ ordering, ...rest }) => rest);
 
     const orders = rows.map((row: any) => {
         const payload = row.raw_payload ?? {};

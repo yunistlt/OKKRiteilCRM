@@ -63,8 +63,6 @@ export default function Sidebar() {
             items: [
                 { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Штаб', href: '/shtab', icon: '🧭', allowed: ['admin'] },
-                { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
-                { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
                 { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
             ]
@@ -77,6 +75,8 @@ export default function Sidebar() {
                 { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Аналитика', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
+                { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
+                { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
             ]
         },
         {
