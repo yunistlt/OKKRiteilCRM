@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
-import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter } from '@/lib/orders-filter';
+import { parseOrdersFilter, applyOrdersFilter, applyOverdueFilter, filterToCountParams } from '@/lib/orders-filter';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,15 +52,11 @@ export async function GET(req: Request) {
             .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range(from, from + pageSize - 1),
-        // Количества по статусам считаем без фильтра по статусу, иначе в колонке
-        // останется только выбранный — навигация сломается.
-        (() => {
-            const q = applyOrdersFilter(
-                supabase.from('orders').select('status').is('crm_deleted_at', null),
-                { ...filter, statuses: [] }
-            );
-            return filter.overdueOnly ? applyOverdueFilter(q, norms) : q;
-        })(),
+        // Количества по статусам считает база: выборкой их посчитать нельзя —
+        // Supabase отдаёт максимум 1000 строк, и на 30 тысячах заказов целые
+        // этапы пропадали из колонки. Фильтр по самому статусу не применяем,
+        // иначе в колонке останется только выбранный и по ней не переключиться.
+        supabase.rpc('orders_status_counts', { p: filterToCountParams({ ...filter, statuses: [] }, norms) }),
     ]);
 
     if (listResult.error) {
@@ -125,7 +121,7 @@ export async function GET(req: Request) {
     const counts = new Map<string, number>();
     for (const row of ((statusResult.data || []) as any[])) {
         if (!row.status) continue;
-        counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
+        counts.set(row.status, Number(row.orders_count ?? 0));
     }
 
     const groupNames = new Map<string, string>(((groupDict || []) as any[]).map((g) => [g.item_code, g.item_name]));

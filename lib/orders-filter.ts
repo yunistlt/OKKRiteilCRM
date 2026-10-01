@@ -163,6 +163,41 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     return q;
 }
 
+/**
+ * Фильтр в виде, понятном счётчику статусов в базе (`orders_status_counts`).
+ *
+ * Даты разворачиваем здесь же: в базу уходят готовые числа, а смещения
+ * («неделю назад») остаются делом кода — одно правило на оба пути.
+ */
+export function filterToCountParams(
+    filter: OrdersFilter,
+    norms: Array<{ status: string; normDays: number }>,
+): Record<string, unknown> {
+    return {
+        number: filter.number || '',
+        customer: filter.customer || '',
+        managers: filter.managers.filter(Boolean),
+        vip: filter.marks.includes('vip'),
+        bad: filter.marks.includes('bad'),
+        sumFrom: filter.sumFrom || '',
+        sumTo: filter.sumTo || '',
+        categories: filter.categories,
+        sferas: filter.sferas,
+        control: filter.control || '',
+        contactFrom: resolveDate(filter.contactFrom),
+        contactTo: resolveDate(filter.contactTo),
+        purchaseFrom: resolveDate(filter.purchaseFrom),
+        purchaseTo: resolveDate(filter.purchaseTo),
+        createdFrom: resolveDate(filter.createdFrom),
+        createdTo: resolveDate(filter.createdTo),
+        contragent: filter.contragent || '',
+        managerComment: filter.managerComment || '',
+        customerComment: filter.customerComment || '',
+        overdueOnly: Boolean(filter.overdueOnly),
+        norms,
+    };
+}
+
 /** Есть ли хоть одно заполненное условие — для подсветки кнопки сброса. */
 export function isFilterEmpty(filter: OrdersFilter): boolean {
     return Object.values(filter).every((v) => (Array.isArray(v) ? v.length === 0 : !v));
