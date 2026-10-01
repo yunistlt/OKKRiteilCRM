@@ -115,7 +115,16 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
         }
     };
 
-    const grouped = (data?.options || []).reduce<Record<string, Option[]>>((acc, o) => {
+    // В списке только те статусы, куда переход разрешён матрицей, плюс текущий
+    // (требование владельца 02.10.2026): весь каталог с серыми строками читался
+    // как «всё сломано». Если из текущего статуса переходов нет вовсе —
+    // показываем каталог целиком и честно пишем об этом выше.
+    const anyAllowed = (data?.options || []).some((o) => o.allowed);
+    const visibleOptions = anyAllowed
+        ? (data?.options || []).filter((o) => o.allowed || o.current)
+        : (data?.options || []);
+
+    const grouped = visibleOptions.reduce<Record<string, Option[]>>((acc, o) => {
         (acc[o.groupName] ||= []).push(o);
         return acc;
     }, {});
@@ -154,16 +163,14 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
                         </p>
                     )}
 
-                    {!loading && data?.known && !data.options.some((o) => o.allowed) && (
+                    {!loading && data?.known && !anyAllowed && (
                         <p className="border-b border-gray-200 px-3 py-2 text-xs leading-snug text-gray-600">
                             Из этого статуса переходы не настроены — список ниже показан целиком,
                             но перейти пока некуда. Переходы задаются на экране «Статусы и переходы».
                         </p>
                     )}
 
-                    {/* Список как в RetailCRM: этапы цветными блоками, внутри статусы.
-                        Виден весь каталог, но перейти можно только в разрешённые
-                        матрицей переходов (требование владельца 01.10.2026). */}
+                    {/* Этапы цветными блоками, внутри — только разрешённые переходы. */}
                     {Object.entries(grouped).map(([groupName, options]) => (
                         <div key={groupName} style={{ backgroundColor: tint(options[0]?.groupColor) }}>
                             <p
