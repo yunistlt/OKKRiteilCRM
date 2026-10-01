@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
     const { data: ownStatuses } = await supabase
         .from('crm_statuses')
-        .select('external_code, norm_days, ordering, group_id')
+        .select('external_code, name, norm_days, ordering, group_id, active')
         .not('external_code', 'is', null);
     const normByStatus = new Map<string, number | null>(
         ((ownStatuses || []) as any[]).map((s) => [s.external_code, s.norm_days])
@@ -154,38 +154,66 @@ export async function GET(req: Request) {
             .map((s) => [String(s.external_code), String(s.group_id)]),
     );
 
-    const grouped = new Map<string, { groupName: string; groupCode: string | null; ordering: number; statuses: Array<{ code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number }> }>();
+    type TreeStatus = { code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number };
+    const grouped = new Map<string, { groupName: string; groupCode: string | null; ordering: number; statuses: TreeStatus[] }>();
 
+    const pushStatus = (key: string, group: { groupName: string; groupCode: string | null; ordering: number }, status: TreeStatus) => {
+        if (!grouped.has(key)) grouped.set(key, { ...group, statuses: [] });
+        grouped.get(key)!.statuses.push(status);
+    };
+
+    // ЗАКОН: в колонке всегда видны ВСЕ активные статусы с доски, в её порядке,
+    // даже с нулём заказов. Менеджер должен видеть пустой этап, а не догадываться,
+    // что он есть (требование владельца 01.10.2026).
+    const shownCodes = new Set<string>();
+    for (const own of ((ownStatuses || []) as any[])) {
+        if (own.active === false) continue;
+        const code = String(own.external_code);
+        const group = own.group_id ? ownGroupById.get(String(own.group_id)) : undefined;
+        if (!group) continue; // статус без группы на доске — показывать его негде
+
+        shownCodes.add(code);
+        pushStatus(
+            String(own.group_id),
+            { groupName: group.name, groupCode: group.code, ordering: group.ordering },
+            {
+                code,
+                // Название — из справочника RetailCRM (закон «имена из RetailCRM»),
+                // своё имя с доски — только если в справочнике его нет.
+                label: statusNames.get(code) || String(own.name || code),
+                count: counts.get(code) ?? 0,
+                color: statusColorMap.get(code) || null,
+                icon: statusIconMap.get(code) || null,
+                ordering: Number(own.ordering ?? 999),
+            },
+        );
+    }
+
+    // Статус, которого на доске нет, но заказы в нём есть: показываем по группе
+    // RetailCRM последним, чтобы заказы не пропали из колонки.
     for (const st of ((statusDict || []) as any[])) {
-        const count = counts.get(st.item_code) ?? 0;
+        const code = String(st.item_code);
+        if (shownCodes.has(code)) continue;
+        const count = counts.get(code) ?? 0;
         if (!count) continue;
 
-        const ownGroupId = ownGroupIdByStatus.get(String(st.item_code));
-        const ownGroup = ownGroupId ? ownGroupById.get(ownGroupId) : undefined;
-        // Статуса нет на доске — показываем по группе RetailCRM, чтобы он не
-        // исчез из колонки, но порядок у него будет последним.
-        const key = ownGroupId || (st.group_code ? `rc:${st.group_code}` : '__none__');
-
-        if (!grouped.has(key)) {
-            grouped.set(key, {
-                groupName: ownGroup?.name
-                    || (st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы'),
-                groupCode: ownGroup?.code ?? (st.group_code ? String(st.group_code) : null),
-                ordering: ownGroup?.ordering
-                    ?? (st.group_code ? (groupOrderByCode.get(String(st.group_code)) ?? 999) : 999),
-                statuses: [],
-            });
-        }
-
-        grouped.get(key)!.statuses.push({
-            code: st.item_code,
-            label: st.item_name || st.item_code,
-            count,
-            color: statusColorMap.get(st.item_code) || null,
-            icon: statusIconMap.get(st.item_code) || null,
-            // Порядок статуса внутри группы — наш; у RetailCRM он свой и местами нулевой.
-            ordering: statusOrderByCode.get(st.item_code) ?? 999,
-        });
+        const key = st.group_code ? `rc:${st.group_code}` : '__none__';
+        pushStatus(
+            key,
+            {
+                groupName: st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы',
+                groupCode: st.group_code ? String(st.group_code) : null,
+                ordering: st.group_code ? (groupOrderByCode.get(String(st.group_code)) ?? 9999) : 9999,
+            },
+            {
+                code,
+                label: st.item_name || code,
+                count,
+                color: statusColorMap.get(code) || null,
+                icon: statusIconMap.get(code) || null,
+                ordering: Number(st.ordering ?? 9999),
+            },
+        );
     }
 
     const statusTree = Array.from(grouped.values())

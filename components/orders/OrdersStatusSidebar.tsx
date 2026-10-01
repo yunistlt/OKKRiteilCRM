@@ -98,8 +98,10 @@ export default function OrdersStatusSidebar({ tree, selected, onSelect }: Orders
                                         isSelected ? 'font-semibold text-gray-900' : 'text-gray-800 hover:bg-gray-50'
                                     }`}
                                 >
-                                    <span className="min-w-0 flex-1 leading-snug">{status.label}</span>
-                                    <span className="shrink-0 text-[13px] text-gray-500">{status.count.toLocaleString('ru-RU')}</span>
+                                    {/* Пустой этап виден всегда (с нулём) — но бледнее,
+                                        чтобы не спорить за внимание с рабочими. */}
+                                    <span className={`min-w-0 flex-1 leading-snug ${status.count === 0 && !isSelected ? 'text-gray-400' : ''}`}>{status.label}</span>
+                                    <span className={`shrink-0 text-[13px] ${status.count === 0 ? 'text-gray-300' : 'text-gray-500'}`}>{status.count.toLocaleString('ru-RU')}</span>
                                 </button>
                             );
                         })}

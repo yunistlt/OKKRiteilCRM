@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
@@ -275,6 +275,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
     const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);
+    // Что ответил каталог: «не подключён», «не ответил», «цены из витрины».
+    // Молчать нельзя — пустой список человек читает как «товара нет».
+    const [catalogNote, setCatalogNote] = useState<string | null>(null);
+    const catalogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [printTemplates, setPrintTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
     const [panel, setPanel] = useState<PanelKind | null>(null);
     const [taskCount, setTaskCount] = useState<{ done: number; total: number } | null>(null);
@@ -788,21 +792,37 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="px-6 pt-4">
                             <input
                                 value={catalogQuery}
-                                onChange={async (e) => {
+                                onChange={(e) => {
                                     const text = e.target.value;
                                     setCatalogQuery(text);
-                                    if (text.trim().length < 3) { setCatalogFound([]); return; }
-                                    try {
-                                        const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(text.trim())}`);
-                                        const payload = await res.json();
-                                        setCatalogFound(payload.items || []);
-                                    } catch {
-                                        setCatalogFound([]);
-                                    }
+                                    if (catalogTimer.current) clearTimeout(catalogTimer.current);
+                                    if (text.trim().length < 3) { setCatalogFound([]); setCatalogNote(null); return; }
+                                    // Запрос не на каждую букву: каталог живёт в соседнем
+                                    // проекте, а цену уточняет сайт.
+                                    catalogTimer.current = setTimeout(async () => {
+                                        try {
+                                            const res = await fetch(`/api/catalog/search?q=${encodeURIComponent(text.trim())}`);
+                                            const payload = await res.json();
+                                            setCatalogFound(payload.items || []);
+                                            setCatalogNote(
+                                                payload.unavailable
+                                                    ? `Каталог сайта не подключён: ${payload.note || 'нет доступа'}. Позицию можно вписать руками.`
+                                                    : (payload.items || []).length === 0
+                                                        ? 'На сайте ничего не нашлось — впишите позицию руками.'
+                                                        : payload.note || null,
+                                            );
+                                        } catch {
+                                            setCatalogFound([]);
+                                            setCatalogNote('Каталог сайта не ответил. Позицию можно вписать руками.');
+                                        }
+                                    }, 300);
                                 }}
                                 placeholder="Найти товар на сайте и добавить в заказ"
                                 className="w-full border border-gray-300 px-3 py-2 text-sm"
                             />
+                            {catalogNote && (
+                                <p className="mt-1 text-xs text-amber-800">{catalogNote}</p>
+                            )}
                             {catalogFound.length > 0 && (
                                 <div className="mt-1 max-h-48 overflow-auto border border-gray-200">
                                     {catalogFound.map((found) => (
