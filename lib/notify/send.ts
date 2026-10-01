@@ -6,6 +6,7 @@
  * не может увести куда-то ещё сообщения другого типа.
  */
 import { resolveRoute, type NotifyContext } from './route';
+import { deliverToConsultantChat } from './consultant-chat';
 
 /** Телеграм не принимает больше 4096 символов — длинный план режем по строкам. */
 export function splitForTelegram(text: string, limit = 3900): string[] {
@@ -24,6 +25,8 @@ export function splitForTelegram(text: string, limit = 3900): string[] {
 }
 
 export interface SendResult {
+  /** Куда ушло: чат с Семёном в CRM или Telegram. */
+  channel?: 'consultant_chat' | 'telegram';
   sent: boolean;
   /** Почему не отправлено: выключено человеком, нет адреса, нет токена бота. */
   skipped?: 'disabled' | 'no_chat' | 'no_token';
@@ -36,6 +39,19 @@ export async function sendNotification(
   text: string,
   ctx: NotifyContext = {},
 ): Promise<SendResult> {
+  // Личные сообщения менеджеру — в чат с Семёном: советы нужны там, где человек
+  // работает, а не в соседнем мессенджере (требование владельца 01.10.2026).
+  // Telegram остаётся запасным путём: не нашли учётку — письмо уходит как раньше.
+  if (ctx.managerId) {
+    const delivered = await deliverToConsultantChat({
+      managerId: ctx.managerId,
+      text,
+      kind: code,
+    }).catch(() => false);
+
+    if (delivered) return { sent: true, channel: 'consultant_chat' };
+  }
+
   const route = await resolveRoute(code, ctx);
   if (!route.enabled) return { sent: false, skipped: 'disabled' };
   if (!route.token) return { sent: false, skipped: 'no_token' };

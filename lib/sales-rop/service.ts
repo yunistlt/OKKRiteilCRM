@@ -953,6 +953,9 @@ export async function runMorning(today: string, opts: { dryRun?: boolean } = {})
             // остаться без работы из-за того, что не написал боту.
             if (text) {
                 await sendTypedSafe('sales.plan_daily_dm', text, bucket.name, failures, {
+                    // Менеджер назван — план ляжет в его чат с Семёном в CRM;
+                    // Telegram останется запасным путём.
+                    managerId: bucket.managerId ?? null,
                     managerChatId: dm ?? null,
                     fallbackToGroup: true,
                 });
@@ -1414,6 +1417,7 @@ export async function runEvening(today: string, opts: { dryRun?: boolean } = {})
             const text = preview[i + 1];
             if (text) {
                 await sendTypedSafe('sales.evening_review_dm', text, String(managerId ?? 'без менеджера'), failures, {
+                    managerId: managerId ?? null,
                     managerChatId: dm ?? null,
                     fallbackToGroup: true,
                 });
