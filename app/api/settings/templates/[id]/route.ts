@@ -14,6 +14,8 @@ const PatchSchema = z.object({
     kind: z.enum(['document', 'email']),
     name: z.string().min(1).max(120).optional(),
     subject: z.string().min(1).max(300).optional(),
+    mode: z.enum(['static', 'ai']).optional(),
+    prompt: z.string().max(4000).optional(),
     body: z.string().min(1).optional(),
     orientation: z.enum(['portrait', 'landscape']).optional(),
     page_format: z.string().max(20).optional(),

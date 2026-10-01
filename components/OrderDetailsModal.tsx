@@ -3,6 +3,8 @@
 import { ReactNode, useCallback, useEffect, useState } from 'react';
 import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-counterparty-check';
 import CallInitiator from './calls/CallInitiator';
+import PhoneFieldCall from './calls/PhoneFieldCall';
+import { useAuth } from '@/components/auth/AuthProvider';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -75,13 +77,15 @@ type ScoreBreakdownEntry = {
  * открыл карточку — можешь менять. Поля без обработчика остаются показом
  * (например, вычисленные значения вроде «обновлён»).
  */
-const EditField = ({ label, value, onChange, required, type = 'text', options }: {
+const EditField = ({ label, value, onChange, required, type = 'text', options, action }: {
     label: string;
     value: any;
     onChange?: (value: any) => void;
     required?: boolean;
     type?: 'text' | 'number' | 'date';
     options?: Array<{ value: string; label: string }>;
+    /** Кнопка рядом с полем — например «Звонок» у телефона. */
+    action?: ReactNode;
 }) => (
     <div className="space-y-1">
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center gap-1">
@@ -100,12 +104,15 @@ const EditField = ({ label, value, onChange, required, type = 'text', options }:
                 ))}
             </select>
         ) : onChange ? (
-            <input
-                type={type}
-                value={value ?? ''}
-                onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
-            />
+            <div className="flex items-stretch gap-1">
+                <input
+                    type={type}
+                    value={value ?? ''}
+                    onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 bg-white text-sm text-gray-900"
+                />
+                {action}
+            </div>
         ) : (
             <div className="px-3 py-2 border text-sm bg-gray-50 border-gray-200 text-gray-900">
                 {value ?? <span className="text-gray-400">Не указано</span>}
@@ -194,6 +201,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     const statusName = useStatusNames();
     const names = useDictionaryNames();
+    // Звоним от имени того, кто сидит в карточке: Телфин набирает его добавочный.
+    const { user } = useAuth();
+    const callManagerId = user?.retail_crm_manager_id ? String(user.retail_crm_manager_id) : null;
     const [data, setData] = useState<OrderDetails | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -670,9 +680,26 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Компания" value={companyName || '—'} />
                             <EditField label="Контакт" value={fieldValue('firstName', contactName)} onChange={(v) => setField('firstName', v)} />
                             <EditField label="Email" value={fieldValue('email', payload.email || contact.email || customer.email || '')} onChange={(v) => setField('email', v)} />
-                            <EditField label="Основной телефон" value={fieldValue('phone', primaryPhone || '')} onChange={(v) => setField('phone', v)} />
-                            <EditField label="Доп. телефон (2)" value={fieldValue('cf.dop_telefon2', secondaryPhone || '')} onChange={(v) => setField('cf.dop_telefon2', v)} />
-                            <EditField label="Доп. телефон (3)" value={fieldValue('cf.dop_telefon3', thirdPhone || '')} onChange={(v) => setField('cf.dop_telefon3', v)} />
+                            {/* Звонок набирает то, что сейчас в поле: номер часто
+                                правят прямо здесь и звонят, не сохраняя заказ. */}
+                            <EditField
+                                label="Основной телефон"
+                                value={fieldValue('phone', primaryPhone || '')}
+                                onChange={(v) => setField('phone', v)}
+                                action={<PhoneFieldCall phone={String(fieldValue('phone', primaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
+                            />
+                            <EditField
+                                label="Доп. телефон (2)"
+                                value={fieldValue('cf.dop_telefon2', secondaryPhone || '')}
+                                onChange={(v) => setField('cf.dop_telefon2', v)}
+                                action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon2', secondaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
+                            />
+                            <EditField
+                                label="Доп. телефон (3)"
+                                value={fieldValue('cf.dop_telefon3', thirdPhone || '')}
+                                onChange={(v) => setField('cf.dop_telefon3', v)}
+                                action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
+                            />
                             <EditField label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                             <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
                             <InfoField label="Партнёр" value={customer.partner || '—'} />

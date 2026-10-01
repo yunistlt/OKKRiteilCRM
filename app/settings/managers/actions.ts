@@ -3,7 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 import { resolveManagerRoles, setManagerRoleChoice } from '@/lib/salary/roles';
-import { takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
+import { returnManagerOrders, takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
 
 // ── Реестр ЗП: участие (пофамильно) + роль из групп RetailCRM ────────────────
 
@@ -77,8 +77,9 @@ export async function saveManagerExtensions(items: { managerId: number; extensio
  * вместе с флагом забираем все его заказы: иначе он работал бы в двух системах,
  * а заявки живут месяцами и годами.
  *
- * Выключение флага заказы не возвращает — вернуть их в RetailCRM автоматически
- * нельзя, см. TAKEOVER_IRREVERSIBLE_NOTE.
+ * Выключение флага возвращает заказы под RetailCRM: синхронизация снова начнёт
+ * их обновлять. Наработанное у нас за это время при этом затрётся снимком из
+ * RetailCRM — правки наружу не уходили (см. TAKEOVER_ROLLBACK_NOTE).
  */
 export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boolean }[]) {
     try {
@@ -95,6 +96,9 @@ export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boo
             if (ownCrm) {
                 const result = await takeoverManagerOrders(managerId);
                 taken.push({ managerId, orders: result.taken });
+            } else {
+                const returned = await returnManagerOrders(managerId);
+                taken.push({ managerId, orders: -returned });
             }
         }
 

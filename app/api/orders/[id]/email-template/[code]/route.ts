@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
 import { buildOrderContext, renderTemplate } from '@/lib/templates/render';
+import { writeLetter } from '@/lib/templates/ai-letter';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
     const { data: template } = await supabase
         .from('email_templates')
-        .select('name, subject, body')
+        .select('name, subject, body, mode, prompt')
         .eq('code', code)
         .maybeSingle();
 
@@ -28,6 +29,25 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const context = await buildOrderContext(String(id));
     if (!context) {
         return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
+    }
+
+    // Шаблон с заданием: письмо пишет ИИ под этот заказ, менеджер правит руками.
+    if ((template as any).mode === 'ai') {
+        if (!(template as any).prompt) {
+            return NextResponse.json({ error: 'template_without_prompt' }, { status: 500 });
+        }
+        try {
+            const letter = await writeLetter(String((template as any).prompt), context);
+            return NextResponse.json({
+                ok: true,
+                name: template.name,
+                subject: letter.subject,
+                html: letter.text.split('\n').map((line) => `<p>${line}</p>`).join(''),
+                byAi: true,
+            });
+        } catch (e: any) {
+            return NextResponse.json({ error: 'ai_failed', details: e.message }, { status: 502 });
+        }
     }
 
     const subject = renderTemplate(template.subject, context);

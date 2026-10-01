@@ -63,8 +63,6 @@ export default function Sidebar() {
             items: [
                 { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
                 { name: 'Штаб', href: '/shtab', icon: '🧭', allowed: ['admin'] },
-                { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
                 { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
@@ -72,9 +70,13 @@ export default function Sidebar() {
             ]
         },
         {
-            title: 'Аналитика',
+            // Своя CRM — отдельный раздел меню: заказы, клиенты и аналитика по ним
+            // лежат вместе, как в любой CRM (решение владельца 01.10.2026).
+            title: 'CRM',
             items: [
-                { name: 'Хаб Аналитики', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
+                { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Аналитика', href: '/analytics', icon: '📊', allowed: ['admin', 'okk', 'rop'] },
             ]
         },
         {

@@ -74,12 +74,43 @@ export async function takeoverManagerOrders(managerId: number): Promise<Takeover
 }
 
 /**
- * Вернуть заказы в RetailCRM одним движением нельзя: пока они были нашими,
- * правки наружу не уходили, и в RetailCRM лежит версия на день переезда.
- * Поэтому снятие флага у менеджера оставляет его заказы нашими, а новые заявки
- * снова пойдут в RetailCRM. Текст — чтобы сказать это человеку в интерфейсе.
+ * Вернуть заказы под RetailCRM можно: снимаем флаг — и синхронизация снова
+ * начинает их обновлять. Механика обратима.
+ *
+ * Теряется при возврате другое: всё, что менеджер наработал у нас за это время.
+ * Правки наружу не уходили, поэтому первый же снимок из RetailCRM перезапишет
+ * состав, комментарии и статус версией, которая лежит там. Оплаты из нашего
+ * журнала в RetailCRM тоже не появятся, а заказы, заведённые у нас (номер с
+ * буквой «А»), там не возникнут — их в RetailCRM нет вовсе.
  */
-export const TAKEOVER_IRREVERSIBLE_NOTE =
-    'Заказы, забранные в нашу CRM, остаются нашими даже если выключить переключатель: '
-    + 'в RetailCRM по ним лежит версия на день переезда, и вернуть их туда автоматически нельзя. '
-    + 'Новые заявки после выключения снова будут создаваться в RetailCRM.';
+export const TAKEOVER_ROLLBACK_NOTE =
+    'Вернуть заказы под RetailCRM можно — снять переключатель, и синхронизация снова начнёт их обновлять. '
+    + 'Но то, что менеджер наработает у нас за это время, при возврате затрётся версией из RetailCRM: '
+    + 'правки наружу не уходят. Заказы, заведённые у нас (номер с буквой «А»), в RetailCRM не появятся.';
+
+/** Вернуть заказы менеджера под RetailCRM: снимаем флаг «наш». */
+export async function returnManagerOrders(managerId: number): Promise<number> {
+    let returned = 0;
+
+    for (;;) {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('id')
+            .eq('manager_id', managerId)
+            .eq('is_own', true)
+            // Заказы, заведённые у нас, не возвращаем: в RetailCRM их нет,
+            // и сверка удалённых тут же пометила бы их удалёнными.
+            .lt('id', 900_000_000)
+            .limit(1000);
+
+        if (error) throw new Error(error.message);
+        const ids = ((data ?? []) as any[]).map((r) => Number(r.id));
+        if (!ids.length) break;
+
+        const { error: e } = await supabase.from('orders').update({ is_own: false }).in('id', ids);
+        if (e) throw new Error(e.message);
+        returned += ids.length;
+    }
+
+    return returned;
+}

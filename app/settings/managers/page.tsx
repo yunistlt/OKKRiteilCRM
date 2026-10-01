@@ -99,6 +99,17 @@ export default function ManagerSettingsPage() {
     const toggleOwnCrm = async (id: number) => {
         const turningOn = !ownCrmIds.has(id);
 
+        if (!turningOn) {
+            const confirmed = window.confirm(
+                'Вернуть заказы менеджера под RetailCRM?\n\n'
+                + 'Синхронизация снова начнёт их обновлять, и всё, что наработали у нас за это время '
+                + '(правки состава, комментарии, статусы), затрётся версией из RetailCRM.\n'
+                + 'Заказы, заведённые у нас (номер с буквой «А»), останутся нашими — в RetailCRM их нет.\n\n'
+                + 'Возвращаем?',
+            );
+            if (!confirmed) return;
+        }
+
         if (turningOn) {
             const preview = await previewOwnCrmTakeover(id);
             const confirmed = window.confirm(
@@ -106,7 +117,8 @@ export default function ManagerSettingsPage() {
                 + `Его заказов: ${preview.total.toLocaleString('ru-RU')} — все они станут нашими.\n`
                 + `По ним: правки идут только в нашу базу, данные из RetailCRM больше не принимаются, наружу ничего не уходит.\n`
                 + `В RetailCRM эти заказы застынут на сегодняшнем дне — в цех передавать руками.\n\n`
-                + `Выключение переключателя заказы не вернёт: в RetailCRM по ним останется версия на день переезда.\n\n`
+                + `Вернуть назад можно: снять переключатель, и синхронизация снова начнёт их обновлять. `
+                + `Но наработанное у нас за это время затрётся версией из RetailCRM.\n\n`
                 + `Переводим?`,
             );
             if (!confirmed) return;
@@ -164,6 +176,8 @@ export default function ManagerSettingsPage() {
                     const movedOrders = (ownRes.taken || []).reduce((sum: number, t: any) => sum + t.orders, 0);
                     if (movedOrders > 0) {
                         setSaveMessage(`Переезд выполнен: ${movedOrders.toLocaleString('ru-RU')} заказов теперь ведутся в нашей CRM.`);
+                    } else if (movedOrders < 0) {
+                        setSaveMessage(`Возврат выполнен: ${Math.abs(movedOrders).toLocaleString('ru-RU')} заказов снова обновляются из RetailCRM.`);
                     }
                 } else if (ownRes.errorType === 'COLUMN_MISSING') {
                     alert('Поле «Наша CRM» не создано в БД. Примените миграцию 20261001_own_orders.sql');

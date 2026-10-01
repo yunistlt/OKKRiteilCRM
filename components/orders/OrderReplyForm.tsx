@@ -52,8 +52,12 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
     const [thread, setThread] = useState<ThreadState | null>(null);
-    const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string }>>([]);
+    const [templates, setTemplates] = useState<Array<{ id: string; code: string; name: string; mode?: string }>>([]);
     const [applyingTemplate, setApplyingTemplate] = useState(false);
+    // Черновик: письмо часто пишут не за один присест — ждут расчёт или уходят на звонок.
+    const [savingDraft, setSavingDraft] = useState(false);
+    const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+    const [draftNote, setDraftNote] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -70,6 +74,22 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                 const tplRes = await fetch('/api/settings/templates?kind=email&active=true');
                 const tplData = await tplRes.json();
                 if (!cancelled && tplRes.ok) setTemplates(tplData.email || []);
+
+                // Недописанное письмо возвращаем на место, вместе с тем, что
+                // человек уже набрал: иначе он начинает заново.
+                const draftRes = await fetch(`/api/orders/${orderNumber}/email-draft`);
+                const draftData = await draftRes.json().catch(() => null);
+                if (!cancelled && draftRes.ok && draftData?.draft) {
+                    if (draftData.draft.to) setTo(draftData.draft.to);
+                    if (draftData.draft.subject) setSubject(draftData.draft.subject);
+                    if (draftData.draft.body) setBody(draftData.draft.body);
+                    setDraftSavedAt(draftData.draft.savedAt || null);
+                    setDraftNote(
+                        (draftData.draft.attachments || []).length
+                            ? `Черновик восстановлен. К нему прикладывали: ${(draftData.draft.attachments || []).join(', ')} — вложения нужно приложить заново.`
+                            : 'Черновик восстановлен.',
+                    );
+                }
             } catch (e) {
                 if (!cancelled) setError(e instanceof Error ? e.message : 'Не удалось загрузить переписку');
             } finally {
@@ -87,14 +107,49 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
         try {
             const res = await fetch(`/api/orders/${orderNumber}/email-template/${code}`);
             const data = await res.json();
-            if (!res.ok || !data.ok) throw new Error(data.details || data.error || 'Шаблон не собрался');
+            if (!res.ok || !data.ok) {
+                throw new Error(
+                    data.details
+                        || (data.error === 'ai_failed' ? 'ИИ не смог написать письмо — напишите руками.' : null)
+                        || (data.error === 'template_without_prompt' ? 'У шаблона нет задания для ИИ — поправьте его в настройках.' : null)
+                        || 'Шаблон не собрался',
+                );
+            }
             setSubject(data.subject || '');
             // Тело приходит готовым HTML — в поле показываем текстом, разметку уберём при отправке.
             setBody(htmlToPlainText(data.html || ''));
+            // Письмо от ИИ читает человек: он отвечает за то, что уйдёт клиенту.
+            setDraftNote(data.byAi ? 'Письмо написал ИИ по данным заказа — прочитайте и поправьте перед отправкой.' : null);
         } catch (e) {
             setError(e instanceof Error ? e.message : 'Шаблон не собрался');
         } finally {
             setApplyingTemplate(false);
+        }
+    };
+
+    /** Сохранить письмо, не отправляя. Вложения не храним — только их названия. */
+    const saveDraft = async () => {
+        setError(null);
+        setSavingDraft(true);
+        try {
+            const res = await fetch(`/api/orders/${orderNumber}/email-draft`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    to: to.trim(),
+                    subject: subject.trim(),
+                    body,
+                    attachments: files.map((f) => f.name),
+                }),
+            });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.ok) throw new Error(data?.error || 'Черновик не сохранился');
+            setDraftSavedAt(data.savedAt);
+            setDraftNote('Черновик сохранён — письмо не отправлено.');
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Черновик не сохранился');
+        } finally {
+            setSavingDraft(false);
         }
     };
 
@@ -135,6 +190,9 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                     ? 'Почта не настроена на сервере — письмо не отправлено.'
                     : (data.error || 'Письмо не ушло'));
             }
+
+            // Письмо ушло — черновик больше не нужен, иначе он всплывёт снова.
+            await fetch(`/api/orders/${orderNumber}/email-draft`, { method: 'DELETE' }).catch(() => undefined);
 
             setDone(true);
             onSent?.();
@@ -188,7 +246,9 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                             <option key={t.id} value={t.code}>{t.name}</option>
                         ))}
                     </select>
-                    <p className="mt-1 text-[11px] text-gray-500">Тема и текст подставятся из шаблона, дальше правьте руками.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">
+                        Тема и текст подставятся из шаблона, дальше правьте руками. Шаблоны с пометкой «ИИ» пишут письмо под этот заказ.
+                    </p>
                 </div>
             )}
 
@@ -231,6 +291,13 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
 
             {error && <p className="mt-2 border border-red-300 bg-red-50 px-2 py-1.5 text-xs text-red-700">{error}</p>}
 
+            {draftNote && (
+                <p className="mt-2 border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-600">
+                    {draftNote}
+                    {draftSavedAt && <span className="ml-1 text-gray-400">({new Date(draftSavedAt).toLocaleString('ru-RU')})</span>}
+                </p>
+            )}
+
             <div className="mt-3 flex items-center gap-3">
                 {/* Документы по заказу прикладываются одной кнопкой: искать их на
                     диске незачем, они формируются из этой же карточки. */}
@@ -257,6 +324,13 @@ export default function OrderReplyForm({ orderNumber, onClose, onSent }: OrderRe
                         onChange={(e) => setFiles((prev) => [...prev, ...Array.from(e.target.files || [])])}
                     />
                 </label>
+                <button
+                    onClick={saveDraft}
+                    disabled={savingDraft || sending}
+                    className="border border-gray-300 bg-white px-3 py-2 text-sm font-bold text-gray-700 hover:bg-gray-100 disabled:text-gray-400"
+                >
+                    {savingDraft ? 'Сохраняем…' : 'Сохранить черновик'}
+                </button>
                 <button
                     onClick={send}
                     disabled={sending}

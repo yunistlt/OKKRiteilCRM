@@ -77,17 +77,17 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     const show = (key: string) => fields.includes(key);
 
     return (
-        /* Потолок на весь раздел фильтров, вместе с переключателем и кнопками:
-           пятая часть высоты окна, дальше поля прокручиваются внутри
-           (требование владельца 01.10.2026). */
-        <div className={`flex flex-col bg-white px-4 pb-2 ${open ? 'max-h-[20vh]' : ''}`}>
+        /* Высоту не режем: прокрутка внутри шапки неудобна, а полей человек
+           выбирает столько, сколько ему нужно. Держим плотность — мелкие
+           подписи, узкие поля, шесть колонок (решение владельца 01.10.2026). */
+        <div className="flex flex-col bg-white px-4 pb-2">
             <button onClick={() => setOpen((v) => !v)} className="mb-1 shrink-0 self-start text-[11px] uppercase tracking-wide text-blue-600 hover:underline">
                 {open ? 'Свернуть фильтр ⌃' : 'Развернуть фильтр ⌄'}
             </button>
 
             {open && (
-                <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="grid min-h-0 flex-1 gap-x-3 gap-y-1.5 overflow-y-auto md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
+                <div className="flex flex-col">
+                    <div className="grid gap-x-3 gap-y-1.5 md:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-7">
                         {show('number') && (
                             <Field label="Номер заказа"><Text value={draft.number} onChange={(v) => set({ number: v })} /></Field>
                         )}
