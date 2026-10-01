@@ -23,14 +23,17 @@ export type PlanTask = {
     statusName: string;
     done: boolean;
     doneBy: string | null;
+    /** Чей заказ — показываем только в плане отдела. */
+    managerName?: string;
 };
 
 type Plan = {
+    scope: 'own' | 'department';
     date: string;
-    tasks: PlanTask[];
+    tasks?: PlanTask[];
+    managers?: Array<{ managerId: number; name: string; tasks: PlanTask[]; total: number; done: number }>;
     total: number;
     done: number;
-    amount: number;
     rule: string;
     note?: string;
 };
@@ -59,6 +62,12 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
 
     const left = plan ? plan.total - plan.done : 0;
 
+    // План отдела показываем тем же списком, что и свой, — добавляется только
+    // подпись, чей это заказ (решение владельца 01.10.2026).
+    const tasks: PlanTask[] = plan?.scope === 'department'
+        ? (plan.managers ?? []).flatMap((m) => m.tasks.map((t) => ({ ...t, managerName: m.name })))
+        : (plan?.tasks ?? []);
+
     return (
         <section
             data-ui-audit-zone="day-plan"
@@ -66,13 +75,15 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
         >
             <header className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-900 px-3 py-2">
                 <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">План на день</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">
+                        {plan?.scope === 'department' ? 'План отдела на день' : 'План на день'}
+                    </p>
                     <p className="truncate text-sm font-bold text-white">
                         {plan ? new Date(plan.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) : '—'}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {plan && plan.total > 0 && (
+                    {plan && tasks.length > 0 && (
                         <span className="text-xs text-gray-300">
                             Осталось <b className="text-white">{left}</b> из {plan.total}
                         </span>
@@ -100,15 +111,15 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
                     <p className="px-3 py-4 text-sm text-gray-500">Поднимаем план…</p>
                 ) : error ? (
                     <p className="px-3 py-4 text-sm text-amber-800">{error}</p>
-                ) : !plan || plan.total === 0 ? (
+                ) : !plan || tasks.length === 0 ? (
                     <p className="px-3 py-4 text-sm text-gray-600">
                         {plan?.note || 'На сегодня задач в плане нет.'}
                     </p>
                 ) : (
                     <ul className="divide-y divide-gray-100">
-                        {plan.tasks.map((task) => (
+                        {tasks.map((task) => (
                             <li
-                                key={task.orderNumber}
+                                key={`${task.managerName ?? ''}-${task.orderNumber}`}
                                 className={`px-3 py-2 ${task.done ? 'bg-green-50/60' : ''}`}
                             >
                                 <div className="flex items-baseline justify-between gap-2">
@@ -124,6 +135,9 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
                                 <p className={`truncate text-xs ${task.done ? 'text-gray-400' : 'text-gray-800'}`} title={task.client}>
                                     {task.client}
                                 </p>
+                                {task.managerName && (
+                                    <p className="text-[11px] font-semibold text-gray-500">{task.managerName}</p>
+                                )}
                                 {task.reason && (
                                     <p className="mt-0.5 text-[11px] leading-snug text-gray-500">{task.reason}</p>
                                 )}
@@ -138,7 +152,7 @@ export default function DayPlanPanel({ onClose }: { onClose: () => void }) {
                 )}
             </div>
 
-            {plan && plan.total > 0 && (
+            {plan && tasks.length > 0 && (
                 <p className="shrink-0 border-t border-gray-200 px-3 py-1.5 text-[11px] leading-snug text-gray-500">
                     {plan.rule}
                 </p>
