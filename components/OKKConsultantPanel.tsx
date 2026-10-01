@@ -89,7 +89,14 @@ function getDefaultDesktopWidth(): number {
     return clampDesktopWidth(window.innerWidth * DEFAULT_DESKTOP_WIDTH_RATIO);
 }
 
-export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: PanelOrder | null }) {
+export default function OKKConsultantPanel({
+    selectedOrder,
+    stacked = false,
+}: {
+    selectedOrder: PanelOrder | null;
+    /** Над панелью открыт план дня: занимаем нижнюю треть колонки, а не всю высоту. */
+    stacked?: boolean;
+}) {
     const pathname = usePathname();
     const section = useMemo(() => getConsultantSectionByPath(pathname), [pathname]);
     const { screenHint } = useConsultantScreen();
@@ -502,8 +509,12 @@ export default function OKKConsultantPanel({ selectedOrder }: { selectedOrder: P
             <aside
                 data-ui-audit-zone="consultant"
                 data-ui-exception="whatsapp"
-                className="relative hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-l border-slate-800/80 bg-[#0f1726] text-slate-100 md:flex md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]"
-                style={desktopWidth ? { width: `${desktopWidth}px`, minWidth: `${desktopWidth}px`, maxWidth: `${desktopWidth}px` } : undefined}
+                className={`relative hidden min-h-0 flex-col overflow-hidden border-l border-slate-800/80 bg-[#0f1726] text-slate-100 md:flex ${
+                    stacked
+                        ? 'h-full w-full min-w-0 max-w-none flex-1 border-l-0'
+                        : 'h-full shrink-0 md:w-[15vw] md:min-w-[15vw] md:max-w-[15vw]'
+                }`}
+                style={!stacked && desktopWidth ? { width: `${desktopWidth}px`, minWidth: `${desktopWidth}px`, maxWidth: `${desktopWidth}px` } : undefined}
             >
                 <div
                     className="absolute inset-y-0 left-0 z-10 hidden w-3 cursor-col-resize md:block"

@@ -9,6 +9,7 @@ import { getEffectiveRoleCapabilities } from '@/lib/access-control-server';
 import { enrichSessionWithManagerIdentity } from '@/lib/manager-identity';
 import { getEffectiveRouteRules } from '@/lib/rbac-server';
 import GlobalConsultantShell from '@/components/GlobalConsultantShell';
+import { DayPlanProvider } from '@/components/sales-rop/DayPlanContext';
 import PwaBootstrap from './components/PwaBootstrap';
 import SystemAlertsBanner from './components/SystemAlertsBanner';
 
@@ -71,13 +72,17 @@ export default async function RootLayout({
                     <Suspense fallback={<div className="w-72 bg-gray-900 h-screen" />}>
                         <Sidebar />
                     </Suspense>
-                    <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
-                        <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
-                        <Header />
-                        <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
-                            <GlobalConsultantShell>{children}</GlobalConsultantShell>
-                        </main>
-                    </div>
+                    {/* План дня знают и шапка (кнопка), и рабочая область (сама
+                        панель), поэтому состояние живёт выше них обоих. */}
+                    <DayPlanProvider>
+                        <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
+                            <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
+                            <Header />
+                            <main className="flex-1 flex flex-col min-h-0 min-w-0 relative overflow-y-auto overflow-x-hidden">
+                                <GlobalConsultantShell>{children}</GlobalConsultantShell>
+                            </main>
+                        </div>
+                    </DayPlanProvider>
                     {session ? <PhonePanel /> : null}
                     {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}
                 </AuthProvider>

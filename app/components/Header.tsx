@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useDayPlan } from '@/components/sales-rop/DayPlanContext';
 
 type NavigatorWithBadge = Navigator & {
     setAppBadge?: (count?: number) => Promise<void>;
@@ -12,6 +13,8 @@ type NavigatorWithBadge = Navigator & {
 export default function Header() {
     const [unreadCount, setUnreadCount] = useState(0);
     const pathname = usePathname();
+    // План дня открывается сам утром; кнопка нужна, чтобы вернуть его после закрытия.
+    const { open: planOpen, setOpen: setPlanOpen } = useDayPlan();
     const hideOnMessengerMobile = pathname.startsWith('/messenger');
 
     useEffect(() => {
@@ -77,6 +80,18 @@ export default function Header() {
                     {getPageTitle()}
                 </h1>
 
+                <div className="ml-auto flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => setPlanOpen(!planOpen)}
+                    title="План на день"
+                    className={`hidden h-9 items-center gap-1.5 px-3 text-xs font-black uppercase tracking-widest md:flex ${
+                        planOpen ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+                    }`}
+                >
+                    План дня
+                </button>
+
                 {/* Быстрая ссылка на мессенджер */}
                 <Link href="/messenger" className="relative flex h-9 w-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground">
                     <span className="text-lg">💬</span>
@@ -86,6 +101,7 @@ export default function Header() {
                         </span>
                     )}
                 </Link>
+                </div>
             </div>
         </header>
     );
