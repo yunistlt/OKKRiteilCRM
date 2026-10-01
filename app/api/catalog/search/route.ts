@@ -29,12 +29,17 @@ export async function GET(request: Request) {
             name: item.name,
             price: item.price,
             priceLive: item.priceSource === 'live',
+            priceSource: item.priceSource,
             category: item.category,
             url: item.url,
             active: item.active,
         })),
-        note: items.some((i: any) => i.priceSource !== 'live')
-            ? 'Часть цен — из витрины, а не живые с сайта'
-            : null,
+        // Три разных сообщения: нет цены вообще — это работа для сайта, а не
+        // «цена из витрины» (требование владельца 02.10.2026).
+        note: items.some((i: any) => i.priceSource === 'none')
+            ? `У ${items.filter((i: any) => i.priceSource === 'none').length} из ${items.length} товаров на сайте не указана цена — её надо актуализировать`
+            : items.some((i: any) => i.priceSource === 'cache')
+                ? 'Часть цен — из выгрузки каталога, а не живые с сайта: сверьте перед КП'
+                : null,
     });
 }

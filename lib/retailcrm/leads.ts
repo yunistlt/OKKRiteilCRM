@@ -496,7 +496,7 @@ ${bodyPart}${attLine}${duplicateReason}`;
 // Форматирует найденные в каталоге ЗМК позиции с реальной ценой — для менеджера.
 // Цена показывается только менеджеру в комментарии заказа; клиенту в чате она не озвучивается.
 export function formatMatchedCatalogProducts(
-    products?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>
+    products?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' | 'none' }>
 ): string {
     if (!products || products.length === 0) return '';
     const lines = products
@@ -507,7 +507,8 @@ export function formatMatchedCatalogProducts(
                 const note = p.priceSource === 'cache' ? ' (из кэша, сверьте на сайте)' : ' (актуально с сайта)';
                 priceStr = `${Math.round(p.price).toLocaleString('ru-RU')} ₽${note}`;
             } else {
-                priceStr = 'цена не указана';
+                // Цены нет ни живой, ни в выгрузке: на сайте её не задали.
+                priceStr = 'цены на сайте нет — надо актуализировать';
             }
             return `${i + 1}. ${p.name} — ${priceStr}${p.url ? ` — ${p.url}` : ''}`;
         });
@@ -528,7 +529,7 @@ export async function createLeadInCrm(params: {
     history?: Array<{ role: string; content: string }>;
     visitedPages?: Array<{ url: string; title: string }>;
     managerId?: number | null;
-    matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' }>;
+    matchedCatalogProducts?: Array<{ name: string; price: number; url?: string; category?: string; priceSource?: 'live' | 'cache' | 'none' }>;
     corporateDetails?: CorporateLeadDetails | null;
     orderMethod?: string;
     fieldHints?: LeadFieldHints;

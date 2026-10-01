@@ -46,23 +46,31 @@ export type CatalogProductRef = {
     price?: number;      // цена из кэша (fallback)
     url?: string;
     category?: string;
-    priceSource?: 'live' | 'cache';
+    /**
+     * Откуда цена: 'live' — спросили у сайта сейчас, 'cache' — снимок выгрузки,
+     * 'none' — цены нет ни там, ни там: на сайте её не задали, и её надо
+     * актуализировать (так и пишем человеку, а не показываем 0 ₽).
+     */
+    priceSource?: 'live' | 'cache' | 'none';
 };
 
 /**
  * Обогащает найденные в каталоге позиции АКТУАЛЬНОЙ ценой с сайта (по ID).
- * Если живую цену получить не удалось — оставляет кэш-цену и помечает источник как 'cache'.
- * Запросы к сайту идут параллельно; безопасно вызывать без токена (вернёт кэш).
+ * Живой цены нет — остаётся цена из выгрузки ('cache'). Нет и её (ноль или
+ * пусто) — это 'none': на сайте цену не задали, товар продавать по ней нельзя.
+ * Запросы к сайту идут параллельно; безопасно вызывать без токена.
  */
 export async function enrichWithLivePrice<T extends CatalogProductRef>(
     products: T[] | null | undefined
-): Promise<Array<T & { price: number; priceSource: 'live' | 'cache' }>> {
+): Promise<Array<T & { price: number; priceSource: 'live' | 'cache' | 'none' }>> {
     const list = Array.isArray(products) ? products : [];
     return Promise.all(
         list.map(async (p) => {
             const live = p.id !== undefined ? await fetchLiveProductPrice(p.id) : null;
-            const price = live ?? (typeof p.price === 'number' ? p.price : 0);
-            return { ...p, price, priceSource: (live ? 'live' : 'cache') as 'live' | 'cache' };
+            const cached = typeof p.price === 'number' && p.price > 0 ? p.price : 0;
+            const price = live ?? cached;
+            const source: 'live' | 'cache' | 'none' = live ? 'live' : price > 0 ? 'cache' : 'none';
+            return { ...p, price, priceSource: source };
         })
     );
 }

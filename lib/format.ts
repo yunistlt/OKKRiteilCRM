@@ -56,3 +56,15 @@ export function parseNumberRu(input: string): number | null {
     const n = Number(cleaned);
     return Number.isFinite(n) ? n : null;
 }
+
+/**
+ * Подпись к цене товара из каталога сайта — человеческим языком.
+ * 'none' значит, что цены на сайте нет: её надо актуализировать, и показывать
+ * вместо неё 0 ₽ нельзя (требование владельца 02.10.2026).
+ */
+export function priceSourceLabel(source: 'live' | 'cache' | 'none' | undefined, priceLive?: boolean): string {
+    const resolved = source ?? (priceLive ? 'live' : 'cache');
+    if (resolved === 'live') return 'цена с сайта';
+    if (resolved === 'cache') return 'цена из выгрузки — сверьте перед КП';
+    return 'цены на сайте нет — надо актуализировать';
+}

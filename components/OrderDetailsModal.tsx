@@ -5,6 +5,7 @@ import { checkCounterpartyByInn, CounterpartyScoreResult } from '@/lib/legal-cou
 import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
 import { useAuth } from '@/components/auth/AuthProvider';
+import { priceSourceLabel } from '@/lib/format';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -274,7 +275,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         };
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
-    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean }>>([]);
+    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean; priceSource?: 'live' | 'cache' | 'none' }>>([]);
     // Что ответил каталог: «не подключён», «не ответил», «цены из витрины».
     // Молчать нельзя — пустой список человек читает как «товара нет».
     const [catalogNote, setCatalogNote] = useState<string | null>(null);
@@ -833,7 +834,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         >
                                             <div className="text-gray-900">{found.name}</div>
                                             <div className="text-xs text-gray-500">
-                                                {formatCurrency(found.price)}{found.priceLive ? ' · цена с сайта' : ' · цена из витрины'}
+                                                {found.priceSource === 'none' ? 'Цена не указана' : formatCurrency(found.price)}
+                                                {' · '}
+                                                <span className={found.priceSource === 'none' ? 'text-amber-800' : ''}>
+                                                    {priceSourceLabel(found.priceSource, found.priceLive)}
+                                                </span>
                                             </div>
                                         </button>
                                     ))}
