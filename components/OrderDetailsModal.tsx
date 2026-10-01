@@ -276,6 +276,13 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
     const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean; priceSource?: 'live' | 'cache' | 'none' }>>([]);
+    /**
+     * Расчёты из калькулятора «Бот-Инженер» по этому заказу: менеджер считает
+     * там изделие и вписывает номер нашего заказа, мы находим расчёт по номеру.
+     */
+    const [calcItems, setCalcItems] = useState<Array<{ type: string; id: string; title: string; price: number; quantity: number; weightKg: number | null; author: string | null; createdAt: string | null; params: string; inOrder: boolean }>>([]);
+    const [calcNote, setCalcNote] = useState<string | null>(null);
+    const [calcTaking, setCalcTaking] = useState<string | null>(null);
     // Что ответил каталог: «не подключён», «не ответил», «цены из витрины».
     // Молчать нельзя — пустой список человек читает как «товара нет».
     const [catalogNote, setCatalogNote] = useState<string | null>(null);
@@ -322,6 +329,45 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             .then((d) => setTaskCount({ done: d.done ?? 0, total: d.total ?? 0 }))
             .catch(() => setTaskCount(null));
     }, [data?.order?.number, orderId]);
+
+    // Расчёты калькулятора тянем один раз на открытие карточки: их немного, и
+    // менеджеру нужно видеть их сразу, а не нажимать «обновить».
+    const loadCalculations = useCallback(async () => {
+        if (!orderId) return;
+        try {
+            const res = await fetch(`/api/orders/${orderId}/calculations`);
+            const payload = await res.json();
+            setCalcItems(payload.items || []);
+            setCalcNote(payload.available === false ? payload.reason : null);
+        } catch {
+            setCalcItems([]);
+            setCalcNote('Не удалось спросить калькулятор о расчётах по этому заказу');
+        }
+    }, [orderId]);
+
+    useEffect(() => {
+        if (isOpen && orderId) loadCalculations();
+    }, [isOpen, orderId, loadCalculations]);
+
+    const takeCalculation = async (item: { type: string; id: string; title: string }) => {
+        if (!confirm(`Взять «${item.title}» из калькулятора в состав заказа?`)) return;
+        setCalcTaking(`${item.type}:${item.id}`);
+        try {
+            const res = await fetch(`/api/orders/${orderId}/calculations`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: item.type, id: item.id }),
+            });
+            const payload = await res.json();
+            if (!res.ok) throw new Error(payload.error || 'Не удалось взять расчёт');
+            await fetchDetails();
+            await loadCalculations();
+        } catch (e: any) {
+            alert(e.message || 'Не удалось взять расчёт');
+        } finally {
+            setCalcTaking(null);
+        }
+    };
 
     useEffect(() => {
         if (!printOpen || printTemplates.length) return;
@@ -789,6 +835,47 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 Добавить позицию руками
                             </button>
                         </div>
+
+                        {/* Расчёты из калькулятора «Бот-Инженер». Находим по номеру
+                            заказа, который менеджер вписал в калькуляторе. */}
+                        {(calcItems.length > 0 || calcNote) && (
+                            <div className="border-b border-gray-200 px-6 py-4">
+                                <div className="mb-2 flex items-baseline justify-between gap-3">
+                                    <h4 className="text-sm font-semibold text-gray-900">Расчёты из калькулятора</h4>
+                                    <span className="text-xs text-gray-500">по номеру заказа {data?.order?.number ?? orderId}</span>
+                                </div>
+                                {calcNote && <p className="mb-2 text-xs text-amber-800">{calcNote}</p>}
+                                {calcItems.map((item) => (
+                                    <div key={`${item.type}:${item.id}`} className="flex flex-wrap items-center gap-3 border border-gray-200 px-3 py-2 text-sm">
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-gray-900">{item.title}</div>
+                                            <div className="text-xs text-gray-500">
+                                                {item.params && `${item.params} · `}
+                                                {item.quantity > 1 && `${item.quantity} шт · `}
+                                                {item.weightKg ? `${Math.round(item.weightKg).toLocaleString('ru-RU')} кг · ` : ''}
+                                                {item.author || 'автор не указан'}
+                                                {item.createdAt ? ` · ${new Date(item.createdAt).toLocaleDateString('ru-RU')}` : ''}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm font-semibold text-gray-900">{formatCurrency(item.price)}</div>
+                                        {item.inOrder ? (
+                                            <span className="text-xs text-gray-500">уже в заказе</span>
+                                        ) : (
+                                            <button
+                                                onClick={() => takeCalculation(item)}
+                                                disabled={calcTaking === `${item.type}:${item.id}`}
+                                                className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:bg-gray-100 disabled:text-gray-400"
+                                            >
+                                                {calcTaking === `${item.type}:${item.id}` ? 'Берём…' : 'Взять из калькулятора'}
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                                {calcItems.length === 0 && !calcNote && (
+                                    <p className="text-xs text-gray-500">Расчётов с этим номером заказа в калькуляторе нет.</p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="px-6 pt-4">
                             <input
