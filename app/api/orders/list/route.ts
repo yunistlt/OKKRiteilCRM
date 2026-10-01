@@ -84,7 +84,7 @@ export async function GET(req: Request) {
         supabase.from('retailcrm_dictionaries').select('dictionary_code, item_code, item_name').eq('entity_type', 'customField').in('dictionary_code', ['typ_castomer', 'sfera_deiatelnosti']),
         // Порядок групп — наш, с доски «Статусы и переходы»: его утверждал
         // человек, а не RetailCRM. Связь по external_code.
-        supabase.from('crm_status_groups').select('id, external_code, ordering, color, icon'),
+        supabase.from('crm_status_groups').select('id, name, external_code, ordering, color, icon'),
     ]);
 
     const managerNames = new Map<number, string>(
@@ -129,7 +129,6 @@ export async function GET(req: Request) {
     // Наш порядок: группы и статусы идут так, как их выстроили на доске
     // «Статусы и переходы». Раньше колонка сортировалась по числу заказов, и
     // сверху оказывался «Отменен» — работа начинается не с него.
-    const groupOrderById = new Map<string, number>(((ownGroups || []) as any[]).map((g) => [String(g.id), Number(g.ordering ?? 999)]));
     const groupOrderByCode = new Map<string, number>(
         ((ownGroups || []) as any[])
             .filter((g) => g.external_code)
@@ -140,23 +139,44 @@ export async function GET(req: Request) {
             .filter((s) => s.external_code)
             .map((s) => [String(s.external_code), Number(s.ordering ?? 999)]),
     );
-    const statusGroupOrder = new Map<string, number>(
+    // ЗАКОН: состав и порядок левой колонки берём с доски «Статусы и переходы»
+    // (`crm_status_groups` / `crm_statuses`), а не из групп RetailCRM. Статус,
+    // переставленный человеком в другую группу, должен ехать туда же и здесь.
+    const ownGroupById = new Map<string, { name: string; ordering: number; code: string | null }>(
+        ((ownGroups || []) as any[]).map((g) => [
+            String(g.id),
+            { name: String(g.name || 'Без названия'), ordering: Number(g.ordering ?? 999), code: g.external_code ? String(g.external_code) : null },
+        ]),
+    );
+    const ownGroupIdByStatus = new Map<string, string>(
         ((ownStatuses || []) as any[])
             .filter((s) => s.external_code && s.group_id)
-            .map((s) => [String(s.external_code), groupOrderById.get(String(s.group_id)) ?? 999]),
+            .map((s) => [String(s.external_code), String(s.group_id)]),
     );
-    const grouped = new Map<string, { groupName: string; statuses: Array<{ code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number }> }>();
+
+    const grouped = new Map<string, { groupName: string; groupCode: string | null; ordering: number; statuses: Array<{ code: string; label: string; count: number; color: string | null; icon: string | null; ordering: number }> }>();
 
     for (const st of ((statusDict || []) as any[])) {
         const count = counts.get(st.item_code) ?? 0;
         if (!count) continue;
-        const key = st.group_code || '__none__';
+
+        const ownGroupId = ownGroupIdByStatus.get(String(st.item_code));
+        const ownGroup = ownGroupId ? ownGroupById.get(ownGroupId) : undefined;
+        // Статуса нет на доске — показываем по группе RetailCRM, чтобы он не
+        // исчез из колонки, но порядок у него будет последним.
+        const key = ownGroupId || (st.group_code ? `rc:${st.group_code}` : '__none__');
+
         if (!grouped.has(key)) {
             grouped.set(key, {
-                groupName: st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы',
+                groupName: ownGroup?.name
+                    || (st.group_code ? (groupNames.get(st.group_code) || 'Прочее') : 'Без группы'),
+                groupCode: ownGroup?.code ?? (st.group_code ? String(st.group_code) : null),
+                ordering: ownGroup?.ordering
+                    ?? (st.group_code ? (groupOrderByCode.get(String(st.group_code)) ?? 999) : 999),
                 statuses: [],
             });
         }
+
         grouped.get(key)!.statuses.push({
             code: st.item_code,
             label: st.item_name || st.item_code,
@@ -164,31 +184,22 @@ export async function GET(req: Request) {
             color: statusColorMap.get(st.item_code) || null,
             icon: statusIconMap.get(st.item_code) || null,
             // Порядок статуса внутри группы — наш; у RetailCRM он свой и местами нулевой.
-            ordering: statusOrderByCode.get(st.item_code) ?? st.ordering ?? 999,
+            ordering: statusOrderByCode.get(st.item_code) ?? 999,
         });
     }
 
-    const statusTree = Array.from(grouped.entries())
-        .map(([groupCode, value]) => {
-            // Порядок группы: по её коду, а если связь по коду не сошлась —
-            // по группе любого из её статусов. Без этого группа уезжает в конец.
-            const byCode = groupCode === '__none__' ? undefined : groupOrderByCode.get(groupCode);
-            const byStatus = value.statuses
-                .map((s) => statusGroupOrder.get(s.code))
-                .find((order) => order !== undefined);
-
-            return {
-                groupCode: groupCode === '__none__' ? null : groupCode,
-                groupName: value.groupName,
-                total: value.statuses.reduce((sum, s) => sum + s.count, 0),
-                color: value.statuses.find((s) => s.color)?.color ?? null,
-                icon: value.statuses.find((s) => s.icon)?.icon ?? null,
-                ordering: byCode ?? byStatus ?? 999,
-                statuses: value.statuses
-                    .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
-                    .map(({ ordering, ...rest }) => rest),
-            };
-        })
+    const statusTree = Array.from(grouped.values())
+        .map((value) => ({
+            groupCode: value.groupCode,
+            groupName: value.groupName,
+            total: value.statuses.reduce((sum, s) => sum + s.count, 0),
+            color: value.statuses.find((s) => s.color)?.color ?? null,
+            icon: value.statuses.find((s) => s.icon)?.icon ?? null,
+            ordering: value.ordering,
+            statuses: value.statuses
+                .sort((a, b) => a.ordering - b.ordering || a.label.localeCompare(b.label))
+                .map(({ ordering, ...rest }) => rest),
+        }))
         .sort((a, b) => a.ordering - b.ordering || a.groupName.localeCompare(b.groupName))
         .map(({ ordering, ...rest }) => rest);
 

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useDayPlan } from '@/components/sales-rop/DayPlanContext';
+import { useAuth } from '@/components/auth/AuthProvider';
+import { resolvePageTitle } from '@/lib/nav';
 
 type NavigatorWithBadge = Navigator & {
     setAppBadge?: (count?: number) => Promise<void>;
@@ -15,6 +17,7 @@ export default function Header() {
     const pathname = usePathname();
     // План дня открывается сам утром; кнопка нужна, чтобы вернуть его после закрытия.
     const { open: planOpen, setOpen: setPlanOpen } = useDayPlan();
+    const { permissionRules } = useAuth();
     const hideOnMessengerMobile = pathname.startsWith('/messenger');
 
     useEffect(() => {
@@ -36,26 +39,10 @@ export default function Header() {
         }
     };
 
-    const getPageTitle = () => {
-        if (pathname === '/') return 'Центр Управления';
-        if (pathname.startsWith('/agents')) return 'Каталог ИИ-агентов';
-        if (pathname.startsWith('/okk')) return 'Контроль Качества';
-        if (pathname.startsWith('/legal')) return 'Юридический отдел';
-        if (pathname.startsWith('/messenger')) return 'Мессенджер';
-        if (pathname.startsWith('/analytics')) return 'Мой день';
-        if (pathname.startsWith('/efficiency')) return 'Эффективность';
-        if (pathname.startsWith('/settings/status')) return 'Статус Систем';
-        if (pathname.startsWith('/settings/managers')) return 'Менеджеры';
-        if (pathname.startsWith('/settings/rules')) return 'Правила (Rules)';
-        if (pathname.startsWith('/settings/ai-tools')) return 'AI Инструменты';
-        if (pathname.startsWith('/settings/ai')) return 'Настройка Промпта';
-        if (pathname.startsWith('/settings')) return 'Настройки';
-        if (pathname.startsWith('/admin')) return 'Администрирование';
-        if (pathname.startsWith('/salary/settings')) return 'Настройки мотивации';
-        if (pathname.startsWith('/salary/my')) return 'Моя зарплата';
-        if (pathname.startsWith('/salary')) return 'Зарплата и мотивация';
-        return 'Центр Управления';
-    };
+    // Название подраздела — из меню (`lib/nav.ts`), а не из списка в шапке:
+    // раньше на «Заказах», «Клиентах» и любом новом экране писалось
+    // «Центр Управления».
+    const getPageTitle = () => resolvePageTitle(pathname, permissionRules);
 
     useEffect(() => {
         const baseTitle = getPageTitle();

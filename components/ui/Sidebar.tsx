@@ -3,23 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import type { AppRole } from '@/lib/auth';
 import { canAccessPathWithRules } from '@/lib/rbac';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
-
-interface NavItem {
-    name: string;
-    href: string;
-    icon: string;
-    agent?: string;
-    allowed?: AppRole[];
-}
-
-interface NavGroup {
-    title: string;
-    items: NavItem[];
-}
+import { NAV_GROUPS, type NavGroup } from '@/lib/nav';
 
 export default function Sidebar() {
     const pathname = usePathname();
@@ -57,72 +44,7 @@ export default function Sidebar() {
         return () => window.removeEventListener('open-mobile-sidebar', handleOpenMobileSidebar);
     }, []);
 
-    const groups: NavGroup[] = [
-        {
-            title: 'Управление',
-            items: [
-                { name: 'Центр Управления', href: '/', icon: '🏠', allowed: ['admin', 'okk', 'rop'] },
-                { name: 'Штаб', href: '/shtab', icon: '🧭', allowed: ['admin'] },
-                { name: 'Все ИИ-агенты', href: '/agents', icon: '🧠', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Согласование Отмен', href: '/settings/ai-tools', icon: '🤖', agent: 'anna', allowed: ['admin', 'okk'] },
-            ]
-        },
-        {
-            // Своя CRM — отдельный раздел меню: заказы, клиенты и аналитика по ним
-            // лежат вместе, как в любой CRM (решение владельца 01.10.2026).
-            title: 'CRM',
-            items: [
-                { name: 'Мой день', href: '/analytics', icon: '🎯', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
-                { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
-            ]
-        },
-        {
-            title: 'Зарплата',
-            items: [
-                { name: 'Зарплата ОП', href: '/salary', icon: '💰', allowed: ['admin', 'rop'] },
-                { name: 'Моя зарплата', href: '/salary/my', icon: '🧾', allowed: ['admin', 'rop', 'manager'] },
-                { name: 'Настройки мотивации', href: '/salary/settings', icon: '⚙️', allowed: ['admin', 'rop'] },
-            ]
-        },
-        {
-            title: 'Связь',
-            items: [
-                { name: 'Ловец Лидов', href: '/okk/lead-catcher', icon: '🎯', agent: 'elena' },
-                { name: 'Мессенджер', href: '/messenger', icon: '💬' },
-            ]
-        },
-        {
-            title: 'Юридический отдел',
-            items: [
-                { name: 'Претензионно-исковая работа', href: '/legal/matters', icon: '⚖️', allowed: ['admin', 'jurist'] },
-                { name: 'Юридический отдел', href: '/legal', icon: '📑', allowed: ['admin', 'okk', 'rop', 'manager', 'jurist'] },
-            ]
-        },
-        {
-            title: 'Система',
-            items: [
-                { name: 'Статус Систем', href: '/settings/status', icon: '🛰️', agent: 'igor', allowed: ['admin'] },
-                { name: 'Доступы и права', href: '/settings/access', icon: '🛡️', allowed: ['admin'] },
-                { name: 'Менеджеры', href: '/settings/managers', icon: '👤', allowed: ['admin'] },
-                { name: 'Наши юрлица', href: '/settings/legal-entities', icon: '🏛️', allowed: ['admin', 'rop'] },
-                { name: 'Статусы Заказов', href: '/settings/statuses', icon: '📂', allowed: ['admin'] },
-                { name: 'Бот-РОП', href: '/settings/sales-rop', icon: '📋', allowed: ['admin', 'rop'] },
-                { name: 'Уведомления', href: '/settings/notifications', icon: '🔔', allowed: ['admin'] },
-                { name: 'Правила (Rules)', href: '/settings/rules', icon: '⚖️', allowed: ['admin'] },
-                { name: 'Режим тестировщика', href: '/settings/qa', icon: '🧪', allowed: ['admin'] },
-            ]
-        },
-        {
-            title: 'AI Центр',
-            items: [
-                { name: 'Настройка Промпта', href: '/settings/ai', icon: '✍️', allowed: ['admin'] },
-                { name: 'Примеры обучения', href: '/settings/ai/training-examples', icon: '📚', allowed: ['admin'] },
-            ]
-        }
-    ];
+    const groups: NavGroup[] = NAV_GROUPS;
 
     const visibleGroups = groups
         .map((group) => ({
