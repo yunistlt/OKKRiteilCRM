@@ -9,14 +9,21 @@ import { useEffect, useState } from 'react';
 type Item = { entity_type: string; dictionary_code: string | null; item_code: string; item_name: string };
 type Field = { entity: string; code: string; name: string; dictionary: string };
 
+type Option = { value: string; label: string };
+
 type Catalog = {
     /** entity_type|dictionary_code|item_code → item_name */
     names: Record<string, string>;
     /** код пользовательского поля → код справочника */
     fieldDictionary: Record<string, string>;
+    /**
+     * Списки значений: ими заполняются выпадающие списки в карточке заказа.
+     * Ключ тот же, что у названий, но без кода значения.
+     */
+    lists: Record<string, Option[]>;
 };
 
-const EMPTY: Catalog = { names: {}, fieldDictionary: {} };
+const EMPTY: Catalog = { names: {}, fieldDictionary: {}, lists: {} };
 let cache: Catalog | null = null;
 let inflight: Promise<Catalog> | null = null;
 
@@ -29,10 +36,18 @@ async function loadCatalog(): Promise<Catalog> {
         .then((r) => (r.ok ? r.json() : { items: [], fields: [] }))
         .then((data: { items: Item[]; fields: Field[] }) => {
             const names: Record<string, string> = {};
-            for (const it of data.items ?? []) names[key(it.entity_type, it.dictionary_code, it.item_code)] = it.item_name;
+            const lists: Record<string, Option[]> = {};
+            for (const it of data.items ?? []) {
+                names[key(it.entity_type, it.dictionary_code, it.item_code)] = it.item_name;
+                const listKey = `${it.entity_type}|${it.dictionary_code ?? ''}`;
+                (lists[listKey] ||= []).push({ value: it.item_code, label: it.item_name || it.item_code });
+            }
+            for (const listKey of Object.keys(lists)) {
+                lists[listKey].sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+            }
             const fieldDictionary: Record<string, string> = {};
             for (const f of data.fields ?? []) fieldDictionary[f.code] = f.dictionary;
-            cache = { names, fieldDictionary };
+            cache = { names, fieldDictionary, lists };
             return cache;
         })
         .catch(() => EMPTY)
@@ -72,6 +87,10 @@ export type DictionaryResolver = {
     field: (fieldCode: string, value: string | null | undefined) => string;
     /** Значение справочника по коду справочника. */
     dictionary: (dictionaryCode: string, value: string | null | undefined) => string;
+    /** Список значений системного перечисления — для выпадающего списка. */
+    enumOptions: (entity: DictionaryEntity) => Option[];
+    /** Список значений пользовательского поля по его коду. */
+    fieldOptions: (fieldCode: string) => Option[];
     ready: boolean;
 };
 
@@ -110,5 +129,10 @@ export function useDictionaryNames(): DictionaryResolver {
             return dict ? dictionary(dict, String(value)) : String(value);
         },
         dictionary,
+        enumOptions: (entity) => catalog.lists[`${entity}|`] ?? [],
+        fieldOptions: (fieldCode) => {
+            const dict = catalog.fieldDictionary[fieldCode];
+            return dict ? (catalog.lists[`customField|${dict}`] ?? []) : [];
+        },
     };
 }

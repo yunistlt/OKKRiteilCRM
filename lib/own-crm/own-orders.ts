@@ -210,6 +210,9 @@ export async function editOwnOrder(
         payload.delivery = { ...(payload.delivery || {}) };
         if (edit.delivery.address !== undefined) payload.delivery.address = { text: String(edit.delivery.address ?? '') };
         if (edit.delivery.cost !== undefined) payload.delivery.cost = Number(edit.delivery.cost) || 0;
+        // Тип доставки — код из справочника RetailCRM (deliveryType).
+        if (edit.delivery.code !== undefined) payload.delivery.code = String(edit.delivery.code ?? '') || undefined;
+        if (edit.delivery.date !== undefined) payload.delivery.date = String(edit.delivery.date ?? '') || undefined;
     }
 
     const update: Record<string, unknown> = { raw_payload: payload };

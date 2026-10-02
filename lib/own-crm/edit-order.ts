@@ -192,6 +192,9 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
         if (edit.delivery.address !== undefined) {
             orderData.delivery.address = { text: String(edit.delivery.address ?? '') };
         }
+        if (edit.delivery.code !== undefined && String(edit.delivery.code ?? '')) {
+            orderData.delivery.code = String(edit.delivery.code);
+        }
         if (edit.delivery.cost !== undefined) {
             orderData.delivery.cost = Number(edit.delivery.cost) || 0;
         }

@@ -795,7 +795,15 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Тип заказа" value={names.resolve('orderType', payload.orderType) || 'Не указан'} />
                             <InfoField label="Менеджер" value={order.manager_name || changeManager || 'Не назначен'} />
                             <InfoField label="Магазин" required value={names.resolve('site', payload.site || order.site || payload.slug) || '—'} />
-                            <InfoField label="Способ оформления" value={names.resolve('orderMethod', payload.orderMethod) || payload.orderMethodName || 'Не указан'} />
+                            {/* Справочники — выпадающими списками, как в RetailCRM:
+                                значения тянем из синканутого каталога
+                                (замечание Евгении 02.10.2026: «не работают кнопки»). */}
+                            <EditField
+                                label="Способ оформления"
+                                value={fieldValue('orderMethod', payload.orderMethod || '')}
+                                options={names.enumOptions('orderMethod')}
+                                onChange={(v) => setField('orderMethod', v)}
+                            />
                             <InfoField label="Дата поступления" value={createdDate} />
                             <InfoField label="Обновлён" value={statusUpdated} />
                             <InfoField label="Привилегия" value={privilegeType || '—'} />
@@ -805,11 +813,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <div className="bg-white border border-gray-200 p-4">
                         <h3 className="text-base font-semibold text-gray-900 mb-2">Контроль</h3>
                         <div className="grid md:grid-cols-3 gap-2">
-                            <InfoField label="Категория товара" required value={productCategory || '—'} />
+                            <EditField
+                                label="Категория товара"
+                                required
+                                value={fieldValue('cf.typ_castomer', customFields.typ_castomer || '')}
+                                options={names.fieldOptions('typ_castomer')}
+                                onChange={(v) => setField('cf.typ_castomer', v)}
+                            />
                             <EditField label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
                             <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
-                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
+                            <EditField
+                                label="Форма закупки"
+                                value={fieldValue('cf.typ_customer_margin', customFields.typ_customer_margin || '')}
+                                options={names.fieldOptions('typ_customer_margin')}
+                                onChange={(v) => setField('cf.typ_customer_margin', v)}
+                            />
                             <InfoField label="Сегмент покупателя" value={sphere || 'Требуется уточнить'} />
                             <InfoField label="VIP" value={formatBooleanYesNo(contact.vip || customer.vip)} />
                             <InfoField label="BAD" value={formatBooleanYesNo(contact.bad || customer.bad)} />
@@ -862,12 +881,26 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-2">
                             <EditField label="Должность" value={fieldValue('cf.dolzhnost', customFields.dolzhnost || '')} onChange={(v) => setField('cf.dolzhnost', v)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
-                            <InfoField label="Сфера деятельности" required value={sphere || 'Требуется уточнить'} />
+                            <EditField
+                                label="Сфера деятельности"
+                                required
+                                value={fieldValue('cf.sfera_deiatelnosti', customFields.sfera_deiatelnosti || '')}
+                                options={names.fieldOptions('sfera_deiatelnosti')}
+                                onChange={(v) => setField('cf.sfera_deiatelnosti', v)}
+                            />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
                             <InfoField label="Документооборот" value={documentsViaEDO} />
                             <InfoField label="Основание подписи" value={contractBasis || '—'} />
-                            <InfoField label="Когда нужно оборудование" value={logisticNeedBy || '—'} />
-                            <InfoField label="Для кого закупка" value={logisticBuyerType || '—'} />
+                            <EditField
+                                label="Когда нужно оборудование"
+                                value={fieldValue('cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo', customFields.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo || logisticNeedBy || '')}
+                                onChange={(v) => setField('cf.kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoyalo', v)}
+                            />
+                            <EditField
+                                label="Для кого закупка"
+                                value={fieldValue('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', customFields.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete || logisticBuyerType || '')}
+                                onChange={(v) => setField('cf.vy_dlya_sebya_ili_dlya_zakazchika_priobretaete', v)}
+                            />
                             <EditField label="Адрес фактический" value={fieldValue('cf.adres_fakt', customFields.adres_fakt || logisticAddress || '')} onChange={(v) => setField('cf.adres_fakt', v)} />
                         </div>
                     </div>
@@ -879,7 +912,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         <div className="grid md:grid-cols-2 gap-2">
                             <InfoField label="Roistat" value={roistat || '—'} />
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
-                            <InfoField label="Форма закупки" value={purchaseForm || 'Требуется уточнить'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
                             <EditField label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
@@ -1227,7 +1259,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                     <div className="bg-white border border-gray-200 p-4">
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Тип доставки" value={names.resolve('deliveryType', delivery.code || delivery.type) || 'Не указан'} />
+                            <EditField
+                                label="Тип доставки"
+                                value={fieldValue('delivery.code', delivery.code || delivery.type || '')}
+                                options={names.enumOptions('deliveryType')}
+                                onChange={(v) => setField('delivery.code', v)}
+                            />
                             <InfoField label="Дата доставки" value={formatDate(delivery.date || expectedDelivery)} />
                             <InfoField label="Время доставки" value={logisticTime || '—'} />
                             <EditField label="Стоимость доставки" type="number" value={fieldValue('delivery.cost', logisticCost ?? 0)} onChange={(v) => setField('delivery.cost', v)} />
@@ -1302,9 +1339,22 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <div className="space-y-3">
                                 {data.emails.map((email) => (
                                     <div key={email.id || email.date} className="border border-gray-200 p-4 bg-white">
-                                        <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+                                        <div className="flex items-center justify-between gap-2 text-xs text-gray-500 mb-2">
                                             <span>{email.date ? new Date(email.date).toLocaleString('ru-RU') : 'Без даты'}</span>
-                                            <span className="px-2 py-0.5 bg-gray-100 font-semibold">{email.type}</span>
+                                            {/* Значок направления: сразу видно, письмо нам или от нас. */}
+                                            <span
+                                                className={`flex items-center gap-1.5 px-2 py-0.5 font-semibold ${
+                                                    email.source === 'incoming'
+                                                        ? 'bg-green-50 text-green-800'
+                                                        : email.source === 'outgoing'
+                                                            ? 'bg-blue-50 text-blue-800'
+                                                            : 'bg-gray-100'
+                                                }`}
+                                            >
+                                                {email.source === 'incoming' && <span aria-hidden>↓</span>}
+                                                {email.source === 'outgoing' && <span aria-hidden>↑</span>}
+                                                {email.type}
+                                            </span>
                                         </div>
                                         <p className="text-sm text-gray-800 whitespace-pre-line">{email.text}</p>
                                     </div>
