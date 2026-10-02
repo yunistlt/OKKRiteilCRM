@@ -10,6 +10,7 @@ import {
     Svg,
     Circle,
     G,
+    Image,
 } from '@react-pdf/renderer';
 import path from 'path';
 
@@ -341,6 +342,10 @@ export interface InvoiceData {
     seller_seal_place?: string | null;
     /** Ставить ли печать: ИП работает без печати, только подпись. */
     seller_has_seal?: boolean;
+    /** Настоящий оттиск печати (data URI). Если есть — ставим его, а не рисунок. */
+    seal_image?: string | null;
+    /** Подпись руководителя (data URI). */
+    signature_image?: string | null;
     /** Менеджер заказа — вторая подпись в счёте. */
     manager_name?: string | null;
     /** Срок изготовления в днях — из заказа. */
@@ -399,7 +404,7 @@ const invStyles = StyleSheet.create({
     signBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
     signCol: { width: '32%' },
     sealCol: { width: '30%', alignItems: 'center' },
-    signLabel: { fontSize: 8, color: '#94a3b8', marginBottom: 20 },
+    signLabel: { fontSize: 8, color: '#94a3b8', marginBottom: 6 },
     signLine: { borderBottomWidth: 1, borderBottomColor: '#94a3b8', marginBottom: 4 },
     signName: { fontSize: 8, color: '#475569' },
     footer: { position: 'absolute', bottom: 28, left: 40, right: 40, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
@@ -571,6 +576,10 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                 <View style={invStyles.signBlock}>
                     <View style={invStyles.signCol}>
                         <Text style={invStyles.signLabel}>{data.signer_title || 'Руководитель'}</Text>
+                        {/* Подпись — картинкой над линией, если загружена. */}
+                        {data.signature_image ? (
+                            <Image src={data.signature_image} style={{ width: 110, height: 28, objectFit: 'contain' }} />
+                        ) : null}
                         <View style={invStyles.signLine} />
                         <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
                     </View>
@@ -581,9 +590,14 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                     </View>
                     {/* Печать организации — своя на каждое юрлицо, рисуется по
                         его реквизитам (решение владельца 02.10.2026). */}
-                    {/* ИП работает без печати — только подпись (указание
-                        владельца 02.10.2026). */}
-                    {data.seller_has_seal === false ? null : (
+                    {/* Печать: настоящий оттиск, если загружен в настройках
+                        юрлица; иначе рисунок по реквизитам. У ИП печати нет
+                        вовсе (указание владельца 02.10.2026). */}
+                    {data.seal_image ? (
+                        <View style={invStyles.sealCol}>
+                            <Image src={data.seal_image} style={{ width: 110, height: 110, objectFit: 'contain' }} />
+                        </View>
+                    ) : data.seller_has_seal === false ? null : (
                         <View style={invStyles.sealCol}>
                             <OrganizationSeal
                                 fullName={data.seller_full_name || seller.name}
@@ -638,12 +652,22 @@ function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
      * Текст по дуге. `startDeg` — где начинается (0 — верх, по часовой),
      * `flip` — для нижней дуги: буквы доворачиваются, чтобы читались снизу.
      */
-    const arc = (text: string, radius: number, fontSize: number, centerDeg: number, flip: boolean) => {
+    const arc = (text: string, radius: number, fontSize: number, centerDeg: number, flip: boolean, maxSweep = 160) => {
         const letters = Array.from(text);
         if (!letters.length) return null;
 
-        // Ширина буквы в градусах: исходим из её физической ширины на радиусе.
-        const stepDeg = ((fontSize * 0.62) / (2 * Math.PI * radius)) * 360;
+        // Ширина буквы в градусах — от её физической ширины на этом радиусе.
+        // Если строка в отведённый сектор не влезает, уменьшаем шрифт: иначе
+        // буквы идут по кругу больше оборота и наезжают друг на друга (так и
+        // вышло в первом варианте — владелец это увидел 02.10.2026).
+        let size = fontSize;
+        let stepDeg = ((size * 0.62) / (2 * Math.PI * radius)) * 360;
+        while (stepDeg * letters.length > maxSweep && size > 2.2) {
+            size -= 0.2;
+            stepDeg = ((size * 0.62) / (2 * Math.PI * radius)) * 360;
+        }
+        const fit = size;
+
         const sweep = stepDeg * letters.length;
         const first = centerDeg - sweep / 2 + stepDeg / 2;
 
@@ -657,8 +681,8 @@ function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
                     <G transform={`rotate(${spin} ${center} ${y})`}>
                         <Text
                             x={center}
-                            y={flip ? y + fontSize * 0.35 : y + fontSize * 0.35}
-                            style={{ fontFamily: FONT_FAMILY, fontSize, fill: ink }}
+                            y={y + fit * 0.35}
+                            style={{ fontFamily: FONT_FAMILY, fontSize: fit, fill: ink }}
                             textAnchor="middle"
                         >
                             {letter}
@@ -681,8 +705,8 @@ function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
             <Circle cx={center} cy={center} r={40} stroke={ink} strokeWidth={0.7} fill="none" />
 
             {/* Наименование — сверху, место — снизу. */}
-            {arc(name, 57, nameSize, 0, false)}
-            {placeText ? arc(placeText, 57, 4.6, 180, true) : null}
+            {arc(name, 58, nameSize, 0, false, 230)}
+            {placeText ? arc(placeText, 50, 4.4, 180, true, 150) : null}
 
             {/* Середина: короткое имя крупно, под ним реквизиты. */}
             <Text
@@ -694,13 +718,13 @@ function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
                 {(shortName || '').toUpperCase()}
             </Text>
             {ogrn ? (
-                <Text x={center} y={center + 13} style={{ fontFamily: FONT_FAMILY, fontSize: 5, fill: ink }} textAnchor="middle">
+                <Text x={center} y={center + 12} style={{ fontFamily: FONT_FAMILY, fontSize: 4.4, fill: ink }} textAnchor="middle">
                     ОГРН {ogrn}
                 </Text>
             ) : null}
             {inn ? (
-                <Text x={center} y={center + 21} style={{ fontFamily: FONT_FAMILY, fontSize: 5, fill: ink }} textAnchor="middle">
-                    ИНН {inn}{kpp ? ` / КПП ${kpp}` : ''}
+                <Text x={center} y={center + 19} style={{ fontFamily: FONT_FAMILY, fontSize: 4.4, fill: ink }} textAnchor="middle">
+                    ИНН {inn}{kpp ? `  КПП ${kpp}` : ''}
                 </Text>
             ) : null}
             <Text x={center} y={center - 12} style={{ fontFamily: FONT_FAMILY, fontSize: 4.6, fill: ink }} textAnchor="middle">

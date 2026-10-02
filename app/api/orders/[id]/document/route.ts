@@ -72,6 +72,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
             seller_full_name: data.sellerFullName,
             seller_seal_place: data.sellerSealPlace,
             seller_has_seal: data.sellerHasSeal,
+            seal_image: data.sealImage,
+            signature_image: data.signatureImage,
             manager_name: data.managerName,
             production_days: data.productionDays,
             shipping_terms: data.shippingTerms,

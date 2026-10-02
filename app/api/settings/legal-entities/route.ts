@@ -23,7 +23,7 @@ export async function GET() {
     const [{ data: entities }, sellers] = await Promise.all([
         supabase
             .from('legal_entities')
-            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, seal_place, note')
+            .select('id, short_name, full_name, inn, kind, active, site_code, vat_percent, signer_name, signer_title, seal_place, seal_image_path, signature_image_path, note')
             .order('sort_order', { ascending: true }),
         sellerOptions().catch(() => []),
     ]);

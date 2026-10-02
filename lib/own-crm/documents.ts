@@ -69,6 +69,10 @@ export type OrderDocumentData = {
      * (указание владельца 02.10.2026).
      */
     sellerHasSeal: boolean;
+    /** Настоящий оттиск печати картинкой, если загружен в настройках юрлица. */
+    sealImage: string | null;
+    /** Подпись руководителя картинкой. */
+    signatureImage: string | null;
     total: number;
 };
 
@@ -339,13 +343,20 @@ async function managerNameOf(managerId: unknown): Promise<string | null> {
  * Елабуга»). И то, и другое ведётся в нашем справочнике юрлиц и заполняется
  * из ЕГРЮЛ: RetailCRM отдаёт только короткое имя и банковский адрес.
  */
-async function sellerSealOf(seller: Seller | null): Promise<{ sellerFullName: string | null; sellerSealPlace: string | null; sellerHasSeal: boolean }> {
+async function sellerSealOf(seller: Seller | null): Promise<{
+    sellerFullName: string | null;
+    sellerSealPlace: string | null;
+    sellerHasSeal: boolean;
+    sealImage: string | null;
+    signatureImage: string | null;
+}> {
     const inn = seller?.inn?.trim();
-    if (!inn) return { sellerFullName: null, sellerSealPlace: null, sellerHasSeal: false };
+    const empty = { sellerFullName: null, sellerSealPlace: null, sellerHasSeal: false, sealImage: null, signatureImage: null };
+    if (!inn) return empty;
 
     const { data } = await supabase
         .from('legal_entities')
-        .select('full_name, short_name, seal_place, kind')
+        .select('full_name, short_name, seal_place, kind, seal_image_path, signature_image_path')
         .eq('inn', inn)
         .maybeSingle();
 
@@ -357,5 +368,28 @@ async function sellerSealOf(seller: Seller | null): Promise<{ sellerFullName: st
         sellerFullName: row?.full_name || row?.short_name || null,
         sellerSealPlace: row?.seal_place || null,
         sellerHasSeal: !soleTrader,
+        sealImage: await imageDataUri(row?.seal_image_path),
+        signatureImage: await imageDataUri(row?.signature_image_path),
     };
+}
+
+/**
+ * Картинка из хранилища в виде data URI: генератор PDF работает с байтами, а
+ * бакет приватный и ссылкой его не отдать.
+ */
+async function imageDataUri(path: unknown): Promise<string | null> {
+    const key = String(path ?? '').trim();
+    if (!key) return null;
+
+    try {
+        const file = await supabase.storage.from('okk-assets').download(key);
+        if (!file.data) return null;
+
+        const bytes = Buffer.from(await file.data.arrayBuffer());
+        const type = file.data.type || (key.endsWith('.png') ? 'image/png' : 'image/jpeg');
+        return `data:${type};base64,${bytes.toString('base64')}`;
+    } catch (e: any) {
+        console.warn('[documents] картинка не прочиталась:', key, e.message);
+        return null;
+    }
 }
