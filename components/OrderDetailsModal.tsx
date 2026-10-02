@@ -2199,13 +2199,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 )}
                             </div>
                             <button
-                                disabled
-                                title="Раздел ещё не сделан"
-                                className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-400 cursor-not-allowed"
-                            >
-                                Действия · в разработке
-                            </button>
-                            <button
                                 onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
                                 className={`shrink-0 whitespace-nowrap border ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                             >
