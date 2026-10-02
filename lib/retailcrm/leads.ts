@@ -8,6 +8,7 @@ import {
     type LeadFieldHints,
 } from './lead-defaults';
 import { routeNewOrder } from '@/lib/own-crm/own-order-insert';
+import { assignManagerForNewOrder } from '@/lib/own-crm/assign-manager';
 
 export async function getCrmConfig() {
     const url = process.env.RETAILCRM_URL || process.env.RETAILCRM_BASE_URL;
@@ -335,6 +336,20 @@ function isFormWithoutTZ(params: {
  * Статус «Новая» (novyi-1). Менеджер назначается сразу, если передан.
  * Возвращает id и номер созданного заказа.
  */
+/**
+ * Заявка без менеджера не создаётся (требование владельца 02.10.2026): её
+ * никто не ведёт, она не попадает ни в план дня, ни в зарплату, ни в ОКК.
+ * Если поток не назвал менеджера — выбираем так же, как автоприём почты.
+ */
+async function ensureManager(orderData: any): Promise<void> {
+    const assignment = await assignManagerForNewOrder({
+        managerId: orderData?.managerId,
+        email: orderData?.email,
+        phone: orderData?.phone,
+    });
+    orderData.managerId = assignment.managerId;
+}
+
 export async function createEmailLead(params: {
     email: string;
     name?: string;
@@ -484,6 +499,7 @@ ${bodyPart}${attLine}${duplicateReason}`;
     }
     if (assignedManagerId) orderData.managerId = assignedManagerId;
 
+    await ensureManager(orderData);
     const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');
@@ -645,6 +661,7 @@ ${historyLog.split('\n').slice(-10).join('\n')}
     // Магазин — тот же проверенный, что выбран в начале функции. Раньше здесь
     // заново брался магазин из окружения, и заявка с сайта уходила в него мимо
     // проверки.
+    await ensureManager(orderData);
     const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
 
     if (!orderResult.success) {
@@ -725,6 +742,7 @@ ${params.summary?.trim() || 'не распознано — уточнить у �
     }
     if (params.managerId) orderData.managerId = params.managerId;
 
+    await ensureManager(orderData);
     const orderResult = (await routeNewOrder(orderData)) ?? await postRetailCrm('orders/create', 'order', orderData, site);
     if (!orderResult.success) {
         const errorMessage = orderResult.errors ? JSON.stringify(orderResult.errors) : (orderResult.errorMsg || 'Unknown error');

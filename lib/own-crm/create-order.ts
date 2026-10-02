@@ -10,6 +10,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { itemTotalWithDiscount, orderTotals } from './discount';
+import { assignManagerForNewOrder } from './assign-manager';
 import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
 import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
 import { isOwnCrmManager, insertOwnOrder } from './own-order-insert';
@@ -127,9 +128,21 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
         throw new Error(problems.join('; '));
     }
 
+    // У заявки обязательно есть менеджер (требование владельца 02.10.2026):
+    // если учётка не даёт годного (у админской номер 999, которого в CRM нет),
+    // выбираем так же, как автоприём почты, а не создаём заказ-сироту.
+    const assignment = await assignManagerForNewOrder({
+        managerId: order.managerId,
+        email: order.email,
+        phone: order.phone,
+    });
+    const managerId = assignment.managerId;
+
     // Менеджер, переведённый на нашу базу, получает заказ здесь же: в
-    // RetailCRM он не уходит (решение владельца 30.09.2026).
-    const ownManager = await isOwnCrmManager(order.managerId);
+    // RetailCRM он не уходит (решение владельца 30.09.2026). Смотрим на того,
+    // кого НАЗНАЧИЛИ: иначе заявка без менеджера уходила бы в RetailCRM даже
+    // после назначения на Женю.
+    const ownManager = await isOwnCrmManager(managerId);
 
     const choice = await resolveLeadSite();
     await reportSiteSubstitution(choice);
@@ -166,12 +179,11 @@ export async function createManagerOrder(order: NewOrder): Promise<CreatedOrder>
     if (order.email) orderData.email = order.email;
     if (order.customerComment) orderData.customerComment = order.customerComment;
     if (order.managerComment) orderData.managerComment = order.managerComment;
-    const managerId = await usableManagerId(order.managerId);
-    if (managerId) orderData.managerId = managerId;
+    orderData.managerId = managerId;
     if (customerId) orderData.customer = { id: customerId, type: 'customer_corporate' };
 
     if (ownManager) {
-        const own = await insertOwnOrder({ ...orderData, managerId: order.managerId });
+        const own = await insertOwnOrder({ ...orderData, managerId });
         return { id: own.id, number: own.number, site: own.order.site };
     }
 
