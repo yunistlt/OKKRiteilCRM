@@ -18,14 +18,33 @@ export const maxDuration = 300;
  */
 const BATCH = 40;
 
+/** Сколько писем ещё без текста в таблице. */
+async function pending(table: string): Promise<number> {
+    const { count } = await supabase
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .is('body_text', null)
+        .is('body_html', null)
+        .not('imap_uid', 'is', null);
+    return count ?? 0;
+}
+
+/** Исходящие добираем первыми: по ним жалуются менеджеры. */
+async function nextTable(): Promise<string> {
+    return (await pending('outgoing_emails')) > 0 ? 'outgoing_emails' : 'incoming_emails';
+}
+
 export async function GET(req: Request) {
     if (!isCronHeaderAuthorized(req)) {
         return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(req.url);
-    const folder = searchParams.get('folder') || 'Sent';
-    const table = searchParams.get('table') === 'incoming' ? 'incoming_emails' : 'outgoing_emails';
+    const asked = searchParams.get('table');
+    // Планировщик зовёт без параметров: сперва добираем исходящие, а когда они
+    // кончились — входящие. Так один заход расписания закрывает оба ящика.
+    const table = asked === 'incoming' ? 'incoming_emails' : asked === 'outgoing' ? 'outgoing_emails' : await nextTable();
+    const folder = searchParams.get('folder') || (table === 'incoming_emails' ? 'INBOX' : 'Sent');
 
     const { data: rows, error } = await supabase
         .from(table)
@@ -62,12 +81,13 @@ export async function GET(req: Request) {
         }
     }
 
-    const { count } = await supabase
-        .from(table)
-        .select('id', { count: 'exact', head: true })
-        .is('body_text', null)
-        .is('body_html', null)
-        .not('imap_uid', 'is', null);
-
-    return NextResponse.json({ ok: true, table, filled, missing, left: count ?? 0 });
+    return NextResponse.json({
+        ok: true,
+        table,
+        filled,
+        missing,
+        left: await pending(table),
+        leftIncoming: await pending('incoming_emails'),
+        leftOutgoing: await pending('outgoing_emails'),
+    });
 }
