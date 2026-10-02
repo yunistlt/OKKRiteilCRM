@@ -98,6 +98,18 @@ export default function Header() {
                     ))}
                 </h1>
 
+                {/* Завести заказ руками — рядом с названием раздела.
+                    Справа нельзя: там кнопка телефона (right-16) и панель звонка
+                    шириной 320px, они бы её перекрывали во время разговора. */}
+                {pathname === '/orders' && (
+                    <Link
+                        href="/orders/new"
+                        className="ml-4 shrink-0 bg-blue-600 px-3 py-1.5 text-xs font-black uppercase tracking-widest text-white hover:bg-blue-700"
+                    >
+                        + Новый заказ
+                    </Link>
+                )}
+
                 <div className="ml-auto flex items-center gap-2">
                 {/* На рабочем месте план висит постоянно справа; кнопка нужна
                     только на телефоне, где он открывается поверх экрана. */}

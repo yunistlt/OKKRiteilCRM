@@ -98,9 +98,9 @@ export function orderTotal(
 export function validateNewOrder(order: NewOrder): string[] {
     const problems: string[] = [];
 
-    if (!order.items.length) {
-        problems.push('В заказе нет ни одной позиции');
-    }
+    // Позиций может не быть: заявка приходит до просчёта — менеджер заводит её
+    // сразу после звонка, а состав добавляет, когда посчитает (решение владельца
+    // 02.10.2026, то же правило, что и при сохранении карточки).
 
     order.items.forEach((item, index) => {
         if (!item.name?.trim()) {

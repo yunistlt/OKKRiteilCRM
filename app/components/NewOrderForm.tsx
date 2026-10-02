@@ -120,7 +120,7 @@ export default function NewOrderForm() {
                     <span className="text-base font-bold text-gray-900">{formatRub(total)}</span>
                     <button
                         onClick={submit}
-                        disabled={saving || rows.length === 0}
+                        disabled={saving}
                         className="bg-gray-900 px-4 py-2 font-semibold text-white hover:bg-gray-700 disabled:bg-gray-300"
                     >
                         {saving ? 'Создаю…' : 'Создать заказ'}

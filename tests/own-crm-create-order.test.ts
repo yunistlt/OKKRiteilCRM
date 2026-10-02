@@ -33,8 +33,8 @@ describe('проверка заказа до отправки', () => {
         expect(validateNewOrder(base as any)).toEqual([]);
     });
 
-    it('без позиций не пускаем', () => {
-        expect(validateNewOrder({ ...base, items: [] } as any)).toContain('В заказе нет ни одной позиции');
+    it('без позиций пускаем: заявка приходит до просчёта', () => {
+        expect(validateNewOrder({ ...base, items: [] } as any)).toEqual([]);
     });
 
     it('без клиента не пускаем', () => {
