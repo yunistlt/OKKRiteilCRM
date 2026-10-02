@@ -68,6 +68,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
             seller_ks: data.seller?.ks,
             seller_rs: data.seller?.rs,
             seller_address: data.seller?.address,
+            seller_ogrn: data.seller?.ogrn,
+            production_days: data.productionDays,
+            shipping_terms: data.shippingTerms,
+            signer_name: data.signerName,
+            signer_title: data.signerTitle,
         })
         : await generateProposalPDF({
             title: `Коммерческое предложение по заказу №${data.orderNumber}`,

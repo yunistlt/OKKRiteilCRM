@@ -795,7 +795,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const companyName = pickValue(customer.nickName, customer.companyName, customer.name);
         const productCategory = names.field('typ_castomer', pickValue(customFields.typ_castomer, customFields.tovarnaya_kategoriya, customFields.product_category, payload.category));
         const nextContact = pickValue(customFields.data_kontakta, customFields.next_contact_date, customFields.follow_up_date);
-        const cancelDate = pickValue(payload.cancelledAt, customFields.data_otmeny);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
         const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
         // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
@@ -877,7 +876,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 onChange={(v) => setField('cf.typ_castomer', v)}
                             />
                             <EditField label="Дата следующего контакта" type="date" value={fieldValue('cf.data_kontakta', String(customFields.data_kontakta || '').slice(0, 10))} onChange={(v) => setField('cf.data_kontakta', v)} />
-                            <InfoField label="Дата отмены" value={formatDate(cancelDate)} />
                             <InfoField label="Сегмент клиента" value={segments || '—'} />
                             <EditField
                                 label="Форма закупки"

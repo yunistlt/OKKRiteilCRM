@@ -8,6 +8,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { getCrmConfig } from '@/lib/retailcrm/leads';
+import { loadClientRequisites } from './client-requisites';
 
 export type DocumentItem = {
     name: string;
@@ -24,6 +25,8 @@ export type Seller = {
     ks: string;
     rs: string;
     address: string;
+    /** ОГРН — нужен для печати организации. */
+    ogrn: string;
 };
 
 export type SellerOption = { code: string; name: string };
@@ -41,6 +44,20 @@ export type OrderDocumentData = {
     payerKpp: string | null;
     payerAddress: string | null;
     seller: Seller | null;
+    /**
+     * Срок изготовления в днях — «Срок изготовления в днях*» из заказа. Женя
+     * 02.10.2026: «в счёте нет сроков производства».
+     */
+    productionDays: number | null;
+    /**
+     * Как клиент получает: название способа доставки из справочника RetailCRM
+     * плюс адрес. При самовывозе адрес — это откуда забирать, и менеджер
+     * вписывает его руками в заказе (решение владельца 02.10.2026).
+     */
+    shippingTerms: string | null;
+    /** Кто подписывает счёт — из справочника наших юрлиц. */
+    signerName: string | null;
+    signerTitle: string | null;
     total: number;
 };
 
@@ -82,6 +99,7 @@ export async function sellerFromSite(siteCode: string | null | undefined): Promi
         ks: contragent.corrAccount || '',
         rs: contragent.bankAccount || '',
         address: contragent.legalAddress || site?.address || '',
+        ogrn: contragent.OGRN || contragent.OGRNIP || '',
     };
 }
 
@@ -124,7 +142,7 @@ async function loadOrderForDocument(orderKey: number) {
     for (const column of ['order_id', 'id'] as const) {
         const { data } = await supabase
             .from('orders')
-            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName"')
+            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName", "delivery", "customFields"')
             .eq(column, orderKey)
             .maybeSingle();
 
@@ -150,6 +168,8 @@ async function loadOrderForDocument(orderKey: number) {
             customer: fresh.customer || {},
             firstName: fresh.firstName,
             lastName: fresh.lastName,
+            delivery: fresh.delivery || {},
+            customFields: fresh.customFields || {},
         },
         fresh,
     };
@@ -195,20 +215,89 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
 
     const contragent = (order as any).contragent || {};
     const customer = (order as any).customer || {};
+    const delivery = (order as any).delivery || {};
+    const customFields = (order as any).customFields || {};
+
+    /**
+     * Реквизиты плательщика: в заказе их часто нет — хозяин реквизитов карточка
+     * клиента (решение владельца 02.10.2026), а в заказе лежит один тип
+     * контрагента. Женя 02.10.2026: «платёжные данные подтянулись из CRM
+     * (постоянный заказчик), но в счёте они не отражены» — счёт читал только
+     * заказ. Поэтому: сначала заказ, чего нет — из карточки клиента.
+     */
+    const clientRequisites = customer.id ? await loadClientRequisites(String(customer.id)) : null;
+    const payerCompany = contragent.legalName || clientRequisites?.legalName || customer.nickName || null;
+    const payerInn = contragent.INN || clientRequisites?.inn || null;
+    const payerKpp = contragent.KPP || clientRequisites?.kpp || null;
+    const payerAddress = contragent.legalAddress || clientRequisites?.legalAddress || null;
+
+    const seller = await sellerFromSite(sellerCode || (order as any).site);
 
     return {
         orderNumber: String((order as any).number || crmOrderId),
         items,
-        payerCompany: contragent.legalName || customer.nickName || null,
+        payerCompany,
         payerName: [(order as any).lastName, (order as any).firstName].filter(Boolean).join(' ') || null,
-        payerInn: contragent.INN || null,
-        payerKpp: contragent.KPP || null,
-        payerAddress: contragent.legalAddress || null,
+        payerInn,
+        payerKpp,
+        payerAddress,
         // Юрлицо: по умолчанию то, чьему магазину принадлежит заказ, но счёт
         // можно выставить и от другого — юрлиц у компании несколько.
-        seller: await sellerFromSite(sellerCode || (order as any).site),
+        seller,
         sellerOptions: await sellerOptions(),
         vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
+        productionDays: Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
+        shippingTerms: await shippingTermsText(delivery),
+        ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     };
+}
+
+/**
+ * Условия получения человеческим языком: «Самовывоз, г. Тольятти, …» или
+ * «Доставка Деловые Линии, адрес». Название способа — из справочника RetailCRM
+ * (закон «имена из RetailCRM»), адрес — тот, что менеджер ввёл в заказе.
+ */
+async function shippingTermsText(delivery: any): Promise<string | null> {
+    const code = String(delivery?.code ?? '').trim();
+    const address = String(delivery?.address?.text ?? delivery?.address?.building ?? delivery?.address ?? '').trim();
+
+    let name = '';
+    if (code) {
+        const { data } = await supabase
+            .from('retailcrm_dictionaries')
+            .select('item_name')
+            .eq('entity_type', 'deliveryType')
+            .eq('item_code', code)
+            .maybeSingle();
+        name = String((data as any)?.item_name ?? '').trim();
+    }
+
+    // Адрес менеджеры пишут свободным текстом, иногда с переносами и
+    // заметками про габариты — в счёте это должно быть одной строкой.
+    const oneLine = address
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 300);
+
+    const parts = [name || null, oneLine && oneLine !== '[object Object]' ? oneLine : null].filter(Boolean);
+    if (!parts.length) return null;
+    return parts.join(', ');
+}
+
+/** Подписант счёта — из справочника наших юрлиц, по ИНН или коду магазина. */
+async function signerOf(siteCode: string | null | undefined, seller: Seller | null): Promise<{ signerName: string | null; signerTitle: string | null }> {
+    const inn = seller?.inn?.trim();
+    const code = String(siteCode ?? '').trim();
+    if (!inn && !code) return { signerName: null, signerTitle: null };
+
+    const { data } = await supabase
+        .from('legal_entities')
+        .select('inn, site_code, signer_name, signer_title')
+        .or([inn ? `inn.eq.${inn}` : null, code ? `site_code.eq.${code}` : null].filter(Boolean).join(','))
+        .limit(1)
+        .maybeSingle();
+
+    const row = data as any;
+    return { signerName: row?.signer_name || null, signerTitle: row?.signer_title || null };
 }

@@ -7,6 +7,9 @@ import {
     StyleSheet,
     pdf,
     Font,
+    Svg,
+    Circle,
+    G,
 } from '@react-pdf/renderer';
 import path from 'path';
 
@@ -330,6 +333,15 @@ export interface InvoiceData {
     seller_ks?: string;   // корр. счёт
     seller_rs?: string;   // расч. счёт
     seller_address?: string;
+    /** ОГРН продавца — для печати организации. */
+    seller_ogrn?: string;
+    /** Срок изготовления в днях — из заказа. */
+    production_days?: number | null;
+    /** Как получает клиент: способ доставки и адрес (при самовывозе — откуда). */
+    shipping_terms?: string | null;
+    /** Кто подписывает счёт: ФИО и должность из справочника наших юрлиц. */
+    signer_name?: string | null;
+    signer_title?: string | null;
 }
 
 const invStyles = StyleSheet.create({
@@ -376,8 +388,9 @@ const invStyles = StyleSheet.create({
     grandLabel: { fontSize: 9, color: '#fff', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     grandVal: { fontSize: 11, color: '#10b981', fontFamily: FONT_FAMILY, fontWeight: 'bold' },
     // Подпись
-    signBlock: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
-    signCol: { width: '45%' },
+    signBlock: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, borderTopWidth: 1, borderTopColor: '#e2e8f0', paddingTop: 12 },
+    signCol: { width: '32%' },
+    sealCol: { width: '30%', alignItems: 'center' },
     signLabel: { fontSize: 8, color: '#94a3b8', marginBottom: 20 },
     signLine: { borderBottomWidth: 1, borderBottomColor: '#94a3b8', marginBottom: 4 },
     signName: { fontSize: 8, color: '#475569' },
@@ -529,21 +542,45 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                 </View>
 
                 {/* Сумма прописью — placeholder */}
-                <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                <Text style={[invStyles.sm, { marginBottom: data.production_days || data.shipping_terms ? 6 : 16 }]}>
                     Всего наименований {data.items.length}, на сумму {formatMoney(total)}
                 </Text>
+
+                {/* Сроки и получение: без них счёт не отвечает на вопросы клиента
+                    «когда» и «откуда забирать» (замечание Евгении 02.10.2026). */}
+                {data.production_days ? (
+                    <Text style={[invStyles.sm, { marginBottom: 4 }]}>
+                        Срок изготовления: {data.production_days} дн.
+                    </Text>
+                ) : null}
+                {data.shipping_terms ? (
+                    <Text style={[invStyles.sm, { marginBottom: 16 }]}>
+                        Условия получения: {data.shipping_terms}
+                    </Text>
+                ) : null}
 
                 {/* Подпись */}
                 <View style={invStyles.signBlock}>
                     <View style={invStyles.signCol}>
-                        <Text style={invStyles.signLabel}>Руководитель</Text>
+                        <Text style={invStyles.signLabel}>{data.signer_title || 'Руководитель'}</Text>
                         <View style={invStyles.signLine} />
-                        <Text style={invStyles.signName}>____________________</Text>
+                        <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
                     </View>
                     <View style={invStyles.signCol}>
                         <Text style={invStyles.signLabel}>Главный бухгалтер</Text>
                         <View style={invStyles.signLine} />
                         <Text style={invStyles.signName}>____________________</Text>
+                    </View>
+                    {/* Печать организации — своя на каждое юрлицо, рисуется по
+                        его реквизитам (решение владельца 02.10.2026). */}
+                    <View style={invStyles.sealCol}>
+                        <OrganizationSeal
+                            name={seller.name}
+                            inn={seller.inn}
+                            kpp={seller.kpp}
+                            ogrn={data.seller_ogrn}
+                            city={cityFromAddress(seller.address)}
+                        />
                     </View>
                 </View>
 
@@ -554,6 +591,89 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
             </Page>
         </Document>
     );
+}
+
+/**
+ * Печать организации — «для документов», своя на каждое юрлицо.
+ *
+ * Решение владельца 02.10.2026: печати делаем сами, по кругу — реквизиты
+ * организации (ИНН и прочие). Рисуем вектором прямо в PDF: картинок печатей
+ * у нас нет, а RetailCRM их через API не отдаёт (проверено 02.10.2026 —
+ * справочник магазинов даёт только реквизиты, метода печатных форм нет).
+ *
+ * Это печать для документов, не гербовая: она удостоверяет счёт, а не
+ * подменяет подпись — подпись руководителя рядом остаётся за человеком.
+ */
+function OrganizationSeal({ name, inn, kpp, ogrn, city }: {
+    name: string;
+    inn?: string;
+    kpp?: string;
+    ogrn?: string;
+    city?: string;
+}) {
+    const size = 128;
+    const center = size / 2;
+    const ink = '#1d4ed8';
+
+    // Текст по окружности: каждая буква — своя, повёрнутая к центру.
+    const ring = (text: string, radius: number, fontSize: number, startDeg: number, sweepDeg: number) => {
+        const letters = Array.from(text);
+        if (!letters.length) return null;
+        const step = sweepDeg / Math.max(1, letters.length);
+
+        return letters.map((letter, index) => {
+            const angle = startDeg + step * (index + 0.5);
+            return (
+                <G key={`${radius}-${index}`} transform={`rotate(${angle} ${center} ${center})`}>
+                    <Text
+                        x={center}
+                        y={center - radius}
+                        style={{ fontFamily: FONT_FAMILY, fontSize, fill: ink }}
+                        textAnchor="middle"
+                    >
+                        {letter}
+                    </Text>
+                </G>
+            );
+        });
+    };
+
+    const upper = name.toUpperCase();
+    const lower = [inn ? `ИНН ${inn}` : null, kpp ? `КПП ${kpp}` : null].filter(Boolean).join(' · ');
+
+    return (
+        <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            <Circle cx={center} cy={center} r={62} stroke={ink} strokeWidth={2} fill="none" />
+            <Circle cx={center} cy={center} r={56} stroke={ink} strokeWidth={0.8} fill="none" />
+            <Circle cx={center} cy={center} r={34} stroke={ink} strokeWidth={0.8} fill="none" />
+
+            {/* Название — по верхней дуге, реквизиты — по нижней. */}
+            {ring(upper, 48, upper.length > 34 ? 5 : 6.5, -110, 220)}
+            {ring(lower, 44, 5.5, 110, 140)}
+
+            {/* В центре — то, по чему организацию узнают в документах. */}
+            <Text x={center} y={center - 6} style={{ fontFamily: FONT_FAMILY, fontSize: 6, fill: ink }} textAnchor="middle">
+                ДЛЯ ДОКУМЕНТОВ
+            </Text>
+            {ogrn ? (
+                <Text x={center} y={center + 4} style={{ fontFamily: FONT_FAMILY, fontSize: 5.5, fill: ink }} textAnchor="middle">
+                    ОГРН {ogrn}
+                </Text>
+            ) : null}
+            {city ? (
+                <Text x={center} y={center + 14} style={{ fontFamily: FONT_FAMILY, fontSize: 5.5, fill: ink }} textAnchor="middle">
+                    {city}
+                </Text>
+            ) : null}
+        </Svg>
+    );
+}
+
+/** Город из юридического адреса: «445028, Самарская обл., г. Тольятти, …» → «г. Тольятти». */
+function cityFromAddress(address?: string): string | undefined {
+    if (!address) return undefined;
+    const match = /(?:^|,\s*)(?:г\.?|город)\s*([А-ЯЁ][а-яё-]+)/.exec(address);
+    return match ? `г. ${match[1]}` : undefined;
 }
 
 export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
