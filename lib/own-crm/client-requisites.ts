@@ -5,6 +5,15 @@
  * заказа, это атрибуты заказчика; в заказ они подтягиваются из карточки
  * клиента». RetailCRM держит их на заказе — поэтому старые реквизиты мы оттуда
  * и забираем (`fromOrderNumber`), но дальше живут они у клиента.
+ *
+ * Живут в таблице клиентов (`clients`): она у нас уже есть и синкается с
+ * RetailCRM. Часть колонок оттуда и приехала (`company_name`, `inn`, `kpp`,
+ * `contragent_type`), остальные добавлены именами RetailCRM
+ * (`legalName`, `bank`, `bankAccount`, `BIK`, `corrAccount`, `legalAddress`,
+ * `OGRN`, `OGRNIP`, `bankAddress`). Отдельной таблицы нет намеренно: одна
+ * сущность — одна таблица. Синхронизация реквизиты больше не стирает —
+ * `upsert_clients` дополняет их через COALESCE (миграция
+ * `20261002_client_requisites_in_clients.sql`).
  */
 import { supabase } from '@/utils/supabase';
 
@@ -89,43 +98,56 @@ export function toOrderContragent(requisites: Partial<Requisites>): Record<strin
 function rowToRequisites(row: any): Requisites {
     return {
         contragentType: text(row.contragent_type),
-        legalName: text(row.legal_name),
+        legalName: text(row.legalName) || text(row.company_name),
         inn: text(row.inn),
         kpp: text(row.kpp),
-        ogrn: text(row.ogrn),
-        ogrnip: text(row.ogrnip),
-        legalAddress: text(row.legal_address),
+        ogrn: text(row.OGRN),
+        ogrnip: text(row.OGRNIP),
+        legalAddress: text(row.legalAddress),
         bank: text(row.bank),
-        bankAccount: text(row.bank_account),
-        bik: text(row.bik),
-        corrAccount: text(row.corr_account),
-        bankAddress: text(row.bank_address),
+        bankAccount: text(row.bankAccount),
+        bik: text(row.BIK),
+        corrAccount: text(row.corrAccount),
+        bankAddress: text(row.bankAddress),
     };
 }
 
+const CLIENT_COLUMNS =
+    'contragent_type, company_name, inn, kpp, "legalName", "legalAddress", "bank", "bankAccount", "BIK", "corrAccount", "bankAddress", "OGRN", "OGRNIP", requisites_updated_at, requisites_updated_by';
+
+/** Есть ли в карточке хоть что-то, кроме пустоты. */
+function filled(requisites: Requisites): boolean {
+    return Object.values(requisites).some((value) => Boolean(value));
+}
+
 /**
- * Реквизиты клиента. Пока их не внесли в карточку — показываем те, что лежат
- * в его последнем заказе, и честно говорим, откуда они (закон «цифры
+ * Реквизиты клиента из его карточки. Пока их там нет — показываем те, что
+ * лежат в последнем заказе, и честно говорим, откуда они (закон «цифры
  * раскладываются»).
  */
 export async function loadClientRequisites(clientId: number | string): Promise<ClientRequisitesCard> {
     const id = String(clientId ?? '').trim();
     if (!id) return { ...EMPTY, source: 'none', fromOrderNumber: null, updatedAt: null, updatedBy: null };
 
-    const { data: saved } = await supabase
-        .from('client_requisites')
-        .select('*')
-        .eq('client_id', id)
-        .eq('is_primary', true)
+    const { data: card } = await supabase
+        .from('clients')
+        .select(CLIENT_COLUMNS)
+        .eq('id', id)
         .maybeSingle();
 
-    if (saved) {
+    const fromCard = card ? rowToRequisites(card) : { ...EMPTY };
+
+    // Банковские реквизиты в карточке — признак того, что их вносил человек:
+    // из RetailCRM приезжают только название, ИНН, КПП и тип.
+    const ownEntry = Boolean((card as any)?.requisites_updated_at) || Boolean(fromCard.bankAccount || fromCard.bank);
+
+    if (ownEntry && filled(fromCard)) {
         return {
-            ...rowToRequisites(saved),
+            ...fromCard,
             source: 'client',
             fromOrderNumber: null,
-            updatedAt: (saved as any).updated_at ?? null,
-            updatedBy: (saved as any).updated_by ?? null,
+            updatedAt: (card as any)?.requisites_updated_at ?? null,
+            updatedBy: (card as any)?.requisites_updated_by ?? null,
         };
     }
 
@@ -139,8 +161,21 @@ export async function loadClientRequisites(clientId: number | string): Promise<C
 
     const last = (orders || [])[0] as any;
     if (last?.contragent) {
+        const fromOrder = fromOrderContragent(last.contragent);
+        // Карточка главнее в том, что в ней есть: заказ только дополняет.
         return {
-            ...fromOrderContragent(last.contragent),
+            contragentType: fromCard.contragentType || fromOrder.contragentType,
+            legalName: fromCard.legalName || fromOrder.legalName,
+            inn: fromCard.inn || fromOrder.inn,
+            kpp: fromCard.kpp || fromOrder.kpp,
+            ogrn: fromCard.ogrn || fromOrder.ogrn,
+            ogrnip: fromCard.ogrnip || fromOrder.ogrnip,
+            legalAddress: fromCard.legalAddress || fromOrder.legalAddress,
+            bank: fromCard.bank || fromOrder.bank,
+            bankAccount: fromCard.bankAccount || fromOrder.bankAccount,
+            bik: fromCard.bik || fromOrder.bik,
+            corrAccount: fromCard.corrAccount || fromOrder.corrAccount,
+            bankAddress: fromCard.bankAddress || fromOrder.bankAddress,
             source: 'order',
             fromOrderNumber: text(last.number),
             updatedAt: null,
@@ -148,10 +183,16 @@ export async function loadClientRequisites(clientId: number | string): Promise<C
         };
     }
 
-    return { ...EMPTY, source: 'none', fromOrderNumber: null, updatedAt: null, updatedBy: null };
+    return {
+        ...fromCard,
+        source: filled(fromCard) ? 'client' : 'none',
+        fromOrderNumber: null,
+        updatedAt: (card as any)?.requisites_updated_at ?? null,
+        updatedBy: (card as any)?.requisites_updated_by ?? null,
+    };
 }
 
-/** Сохранить основные реквизиты клиента. */
+/** Сохранить реквизиты в карточке клиента. */
 export async function saveClientRequisites(
     clientId: number | string,
     requisites: Partial<Requisites>,
@@ -160,35 +201,26 @@ export async function saveClientRequisites(
     const id = Number(clientId);
     if (!Number.isFinite(id)) throw new Error('Не понял, какому клиенту сохранять реквизиты');
 
-    const row = {
-        client_id: id,
-        is_primary: true,
+    const row: Record<string, unknown> = {
         contragent_type: text(requisites.contragentType),
-        legal_name: text(requisites.legalName),
+        legalName: text(requisites.legalName),
+        // `company_name` приезжает из RetailCRM и показывается в списке клиентов:
+        // держим его в согласии с юридическим названием, если его внесли.
+        ...(text(requisites.legalName) ? { company_name: text(requisites.legalName) } : {}),
         inn: text(requisites.inn),
         kpp: text(requisites.kpp),
-        ogrn: text(requisites.ogrn),
-        ogrnip: text(requisites.ogrnip),
-        legal_address: text(requisites.legalAddress),
+        OGRN: text(requisites.ogrn),
+        OGRNIP: text(requisites.ogrnip),
+        legalAddress: text(requisites.legalAddress),
         bank: text(requisites.bank),
-        bank_account: text(requisites.bankAccount),
-        bik: text(requisites.bik),
-        corr_account: text(requisites.corrAccount),
-        bank_address: text(requisites.bankAddress),
-        updated_by: text(actor),
-        updated_at: new Date().toISOString(),
+        bankAccount: text(requisites.bankAccount),
+        BIK: text(requisites.bik),
+        corrAccount: text(requisites.corrAccount),
+        bankAddress: text(requisites.bankAddress),
+        requisites_updated_by: text(actor),
+        requisites_updated_at: new Date().toISOString(),
     };
 
-    const { data: existing } = await supabase
-        .from('client_requisites')
-        .select('id')
-        .eq('client_id', id)
-        .eq('is_primary', true)
-        .maybeSingle();
-
-    const { error } = existing
-        ? await supabase.from('client_requisites').update(row).eq('id', (existing as any).id)
-        : await supabase.from('client_requisites').insert(row);
-
+    const { error } = await supabase.from('clients').update(row).eq('id', id);
     if (error) throw new Error(`Не удалось сохранить реквизиты: ${error.message}`);
 }
