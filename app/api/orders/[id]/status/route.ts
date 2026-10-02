@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { editOrder } from '@/lib/own-crm/edit-order';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
 
@@ -16,18 +17,33 @@ const BodySchema = z.object({ status: z.string().min(1).max(120) });
  * связь с RetailCRM — через external_code. Сам заказ живёт в RetailCRM, поэтому пишем
  * туда: иначе ближайший синк вернёт старый статус и менеджер решит, что кнопка врёт.
  */
+/**
+ * Заказ по тому, что пришло в адресе: это может быть и номер RetailCRM, и наш
+ * номер с буквой («1025А»). Карточка зовёт этот маршрут номером заказа, а не
+ * внутренним идентификатором — у своих заказов они разные, и смена статуса
+ * отвечала «order_not_found» (поймано 02.10.2026).
+ */
+async function findOrder(id: string, columns: string) {
+    const key = decodeURIComponent(String(id)).trim();
+
+    // `order_id` числовой: сравнивать его с «1025А» нельзя — база откажется
+    // приводить тип. Поэтому по нему ищем только числа.
+    if (/^\d+$/.test(key)) {
+        const byCrmId = await supabase.from('orders').select(columns).eq('order_id', key).maybeSingle();
+        if (byCrmId.data) return byCrmId.data as any;
+    }
+
+    const byNumber = await supabase.from('orders').select(columns).eq('number', key).maybeSingle();
+    return (byNumber.data as any) ?? null;
+}
+
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
     const { id } = await params;
 
-    const { data: order } = await supabase
-        .from('orders')
-        .select('status, is_own')
-        .eq('order_id', String(id))
-        .maybeSingle();
-
+    const order = await findOrder(id, 'status, is_own');
     if (!order) return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
 
     const [{ data: statuses }, { data: groups }, { data: transitions }] = await Promise.all([
@@ -97,12 +113,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: 'invalid_body', details: e?.errors ?? String(e) }, { status: 400 });
     }
 
-    const { data: order } = await supabase
-        .from('orders')
-        .select('id, status, site, is_own')
-        .eq('order_id', String(id))
-        .maybeSingle();
-
+    const order = await findOrder(id, 'id, order_id, status, site, is_own');
     if (!order) return NextResponse.json({ error: 'order_not_found' }, { status: 404 });
     if (order.status === body.status) return NextResponse.json({ ok: true, unchanged: true });
 
@@ -128,13 +139,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Свой заказ меняем у себя: в RetailCRM его нет, и рубильник исходящих
     // записей к нему не относится.
     if ((order as any).is_own) {
-        const { data: row } = await supabase
-            .from('orders')
-            .select('raw_payload')
-            .eq('order_id', String(id))
-            .maybeSingle();
-        const payload = { ...(((row as any)?.raw_payload) || {}), status: body.status };
-        await supabase.from('orders').update({ status: body.status, raw_payload: payload }).eq('order_id', String(id));
+        // Через editOwnOrder, а не прямым update: он же пишет историю заказа
+        // («Статус заказа: Новый → В просчёте»).
+        const result = await editOrder(Number((order as any).id), { statusCode: body.status });
+        if (!result.ok) return NextResponse.json({ error: 'own_update_failed', details: result.reason }, { status: 409 });
         return NextResponse.json({ ok: true, status: body.status, own: true });
     }
 
@@ -143,13 +151,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return NextResponse.json({ error: 'crm_write_disabled', message: RETAILCRM_WRITE_BLOCKED_MESSAGE }, { status: 423 });
     }
 
-    const result = await updateExistingOrderInCrm(Number(id), { status: body.status }, order.site || undefined);
+    const result = await updateExistingOrderInCrm(Number((order as any).order_id ?? id), { status: body.status }, order.site || undefined);
     if (!result.success) {
         return NextResponse.json({ error: 'crm_rejected', details: result.errorMsg || null }, { status: 502 });
     }
 
     // Локальную копию поправим сразу, чтобы список не показывал старое до ближайшего синка.
-    await supabase.from('orders').update({ status: body.status }).eq('order_id', String(id));
+    await supabase.from('orders').update({ status: body.status }).eq('id', (order as any).id);
 
     return NextResponse.json({ ok: true, status: body.status });
 }
