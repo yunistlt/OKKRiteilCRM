@@ -7,6 +7,7 @@ import PhoneFieldCall from './calls/PhoneFieldCall';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
+import { uniquePhones } from '@/lib/own-crm/phones';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -658,12 +659,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const paymentEntries = toArray(paymentSource);
         const contactPhones = (Array.isArray(contact.phones) ? contact.phones.map((p: any) => p.number).filter(Boolean) : []) as string[];
         const storedPhones = (Array.isArray(order.customer_phones) ? order.customer_phones : []) as string[];
-        const normalizedPhones = [
-            payload.phone, 
-            order.phone, 
-            ...(Array.isArray(contactPhones) ? contactPhones : []), 
-            ...(Array.isArray(storedPhones) ? storedPhones : [])
-        ].filter(Boolean);
+        // Телефоны: один и тот же номер приходит из нескольких мест (поле
+        // заказа, колонка, контакт, карточка клиента) и записан по-разному —
+        // «+7 (812) 670-23-03» и «+78126702303». Без склейки по цифрам все три
+        // поля показывали рабочий номер, а мобильный не был виден вовсе
+        // (поймано 02.10.2026).
+        const normalizedPhones = uniquePhones([
+            payload.phone,
+            payload.additionalPhone,
+            order.phone,
+            ...(Array.isArray(contactPhones) ? contactPhones : []),
+            ...(Array.isArray(storedPhones) ? storedPhones : []),
+            customFields.dop_telefon2,
+            customFields.dop_telefon3,
+        ]);
         const [primaryPhone, secondaryPhone, thirdPhone] = normalizedPhones;
         const segments = Array.isArray(contact.segments) ? contact.segments.map((segment: any) => segment.name).filter(Boolean).join(', ') : null;
         const companyName = pickValue(customer.nickName, customer.companyName, customer.name);
@@ -709,7 +718,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
         const privilegeType = pickValue(payload.privilegeType);
-        const contactName = [contact.lastName, contact.firstName, contact.patronymic].filter(Boolean).join(' ').trim() || pickValue(payload.firstName, payload.lastName);
+        // Имя контакта: сначала то, что стоит в самом заказе — его правит
+        // менеджер в этой карточке. `contact` приезжает из RetailCRM и держит
+        // латиницу («Belyaeva Irina»), поэтому он только запасной вариант:
+        // иначе правка «Беляева Ирина» сохранялась, но на экран не попадала.
+        const contactName = [payload.lastName, payload.firstName, payload.patronymic].filter(Boolean).join(' ').trim()
+            || [contact.lastName, contact.firstName, contact.patronymic].filter(Boolean).join(' ').trim();
         const expectedDelivery = pickValue(customFields.when_need_delivery, customFields.plan_delivery_date);
         const paymentsSummary = paymentEntries.length > 0 ? paymentEntries : [];
         const items = Array.isArray(payload.items) ? payload.items : toArray(order.items);
@@ -775,17 +789,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 onChange={(v) => setField('phone', v)}
                                 action={<PhoneFieldCall phone={String(fieldValue('phone', primaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
+                            {/* Второй номер — поле заказа `additionalPhone`: читаем и
+                                пишем одно и то же место, иначе введённый номер
+                                пропадал с экрана после сохранения. */}
                             <EditField
                                 label="Доп. телефон (2)"
-                                value={fieldValue('cf.dop_telefon2', secondaryPhone || '')}
-                                onChange={(v) => setField('cf.dop_telefon2', v)}
-                                action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon2', secondaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
+                                value={fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '')}
+                                onChange={(v) => setField('additionalPhone', v)}
+                                action={<PhoneFieldCall phone={String(fieldValue('additionalPhone', payload.additionalPhone || secondaryPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
                             <EditField
                                 label="Доп. телефон (3)"
-                                value={fieldValue('cf.dop_telefon3', thirdPhone || '')}
+                                value={fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '')}
                                 onChange={(v) => setField('cf.dop_telefon3', v)}
-                                action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
+                                action={<PhoneFieldCall phone={String(fieldValue('cf.dop_telefon3', customFields.dop_telefon3 || thirdPhone || '') ?? '')} managerId={callManagerId} orderId={String(orderId)} />}
                             />
                             <EditField label="Доп. Email" value={fieldValue('cf.poshta', additionalEmail || '')} onChange={(v) => setField('cf.poshta', v)} />
                             <InfoField label="Диалоги" value={payload.dialogsCount ? `${payload.dialogsCount} открыто` : 'Нет открытых диалогов'} />
