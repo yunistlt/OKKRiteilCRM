@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ViewSettingsModal from './ViewSettingsModal';
 import { EMPTY_FILTER, isFilterEmpty, type OrdersFilter } from '@/lib/orders-filter';
 import { FILTER_FIELDS, DEFAULT_FILTER_FIELDS, normalizeSelection } from '@/lib/orders-view';
@@ -280,12 +280,33 @@ function DateRange({ from, to, onFrom, onTo }: { from: string; to: string; onFro
 
 function Multi({ options, selected, onChange }: { options: Option[]; selected: string[]; onChange: (v: string[]) => void }) {
     const [open, setOpen] = useState(false);
+    const boxRef = useRef<HTMLDivElement | null>(null);
     const label = selected.length === 0
         ? 'Выберите значения'
         : options.filter((o) => selected.includes(o.value)).map((o) => o.label).join(', ') || `Выбрано: ${selected.length}`;
 
+    // Список закрывается кликом рядом и по Escape: после выбора значений было
+    // непонятно, как его свернуть (замечание владельца 02.10.2026).
+    useEffect(() => {
+        if (!open) return;
+
+        const onDocumentClick = (event: MouseEvent) => {
+            if (!boxRef.current?.contains(event.target as Node)) setOpen(false);
+        };
+        const onKey = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setOpen(false);
+        };
+
+        document.addEventListener('mousedown', onDocumentClick);
+        document.addEventListener('keydown', onKey);
+        return () => {
+            document.removeEventListener('mousedown', onDocumentClick);
+            document.removeEventListener('keydown', onKey);
+        };
+    }, [open]);
+
     return (
-        <div className="relative">
+        <div className="relative" ref={boxRef}>
             <button
                 onClick={() => setOpen((v) => !v)}
                 className="h-[30px] w-full truncate border border-gray-400 bg-white px-2 text-left text-xs hover:border-blue-500"
@@ -308,6 +329,14 @@ function Multi({ options, selected, onChange }: { options: Option[]; selected: s
                                 <span className="truncate">{o.label}</span>
                             </label>
                         ))
+                    )}
+                    {options.length > 0 && (
+                        <button
+                            onClick={() => setOpen(false)}
+                            className="sticky bottom-0 w-full border-t border-gray-200 bg-gray-50 px-2 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
+                        >
+                            Готово
+                        </button>
                     )}
                 </div>
             )}
