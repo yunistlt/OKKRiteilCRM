@@ -14,6 +14,7 @@
  */
 import { useEffect, useState } from 'react';
 import { formatRub } from '@/lib/format';
+import { renderLetter } from '@/lib/sales-rop/letter-render';
 
 /** Сколько секунд окно держится: столько нужно, чтобы прочитать план. */
 const READING_SECONDS = 15;
@@ -78,10 +79,28 @@ export default function MorningPlanModal({ plan, onClose }: { plan: MorningPlan;
 
                 <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                     {plan.letter ? (
-                        // Письмо показываем как есть: это ровно то, что пришло в чат.
-                        <pre className="whitespace-pre-wrap break-words font-sans text-sm leading-6 text-gray-900">
-                            {plan.letter}
-                        </pre>
+                        // Тот же текст, что в Telegram, но разметка бота разобрана:
+                        // номера заказов — ссылками на нашу карточку, а не строкой
+                        // «<a href=…>» и не в RetailCRM (поймано 02.10.2026).
+                        <div className="whitespace-pre-wrap break-words text-sm leading-6 text-gray-900">
+                            {renderLetter(plan.letter).map((segments, lineIndex) => (
+                                <p key={lineIndex} className="min-h-[2px]">
+                                    {segments.map((segment, index) =>
+                                        segment.kind === 'order' ? (
+                                            <a
+                                                key={index}
+                                                href={`/orders?order=${segment.order}`}
+                                                className="font-bold text-blue-700 hover:underline"
+                                            >
+                                                {segment.label}
+                                            </a>
+                                        ) : (
+                                            <span key={index}>{segment.text}</span>
+                                        ),
+                                    )}
+                                </p>
+                            ))}
+                        </div>
                     ) : fallbackTasks.length > 0 ? (
                         <ul className="space-y-3">
                             {fallbackTasks.map((task, index) => (
