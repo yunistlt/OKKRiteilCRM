@@ -88,6 +88,31 @@ export default function OrdersClient() {
         return Number.isFinite(requested) && requested > 0 ? requested : null;
     });
 
+    /**
+     * В ссылке может стоять НОМЕР заказа, а не идентификатор: у своих заказов он
+     * с кириллической «А» («1039А»), и такая ссылка раньше просто открывала
+     * список. Номер переводим в идентификатор и открываем карточку.
+     */
+    useEffect(() => {
+        const requested = (searchParams.get('order') || '').trim();
+        if (!requested || Number.isFinite(Number(requested))) return;
+
+        let cancelled = false;
+        void (async () => {
+            try {
+                const res = await fetch(`/api/orders/list?page=1&pageSize=20&number=${encodeURIComponent(requested)}`);
+                const payload = await res.json();
+                const found = (payload.rows || payload.orders || []).find(
+                    (row: any) => String(row.number) === requested,
+                );
+                if (!cancelled && found?.orderId) setOpenOrderId(Number(found.orderId));
+            } catch {
+                // Молча: не открылась карточка — человек видит список и найдёт заказ сам.
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [searchParams]);
+
     const [columns, setColumns] = useState<string[]>(DEFAULT_COLUMNS);
     const [columnsOpen, setColumnsOpen] = useState(false);
 

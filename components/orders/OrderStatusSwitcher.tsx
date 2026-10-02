@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import StatusIcon from '@/components/orders/StatusIcon';
 
 interface Option {
@@ -59,6 +60,15 @@ function readableOn(hex: string | null | undefined): string {
  */
 export default function OrderStatusSwitcher({ orderId, currentLabel, color, onChanged }: OrderStatusSwitcherProps) {
     const [open, setOpen] = useState(false);
+    /**
+     * Список рисуем поверх страницы, а не внутри полосы кнопок.
+     *
+     * Полоса кнопок в карточке прокручивается по горизонтали (`overflow-x-auto`)
+     * и имеет высоту ~26px, поэтому выпадающий список обрезался ею начисто:
+     * человек нажимал — и «ничего не происходило» (Андрей 02.10.2026).
+     */
+    const buttonRef = useRef<HTMLButtonElement | null>(null);
+    const [menuBox, setMenuBox] = useState<{ top: number; left: number } | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -86,6 +96,24 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
     }, [orderId]);
 
     useEffect(() => { if (open && !data) load(); }, [open, data, load]);
+
+    // Позицию считаем от кнопки и держим при прокрутке страницы.
+    useEffect(() => {
+        if (!open) { setMenuBox(null); return; }
+        const place = () => {
+            const rect = buttonRef.current?.getBoundingClientRect();
+            if (!rect) return;
+            const width = 320;
+            setMenuBox({ top: rect.bottom + 4, left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) });
+        };
+        place();
+        window.addEventListener('scroll', place, true);
+        window.addEventListener('resize', place);
+        return () => {
+            window.removeEventListener('scroll', place, true);
+            window.removeEventListener('resize', place);
+        };
+    }, [open]);
 
     const change = async (code: string) => {
         setSaving(true);
@@ -132,6 +160,7 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
     return (
         <div className="relative inline-block">
             <button
+                ref={buttonRef}
                 onClick={() => setOpen((v) => !v)}
                 style={color ? { backgroundColor: color, color: readableOn(color), borderColor: color } : undefined}
                 className="flex items-center gap-2 border border-gray-300 px-3 py-2 text-sm font-semibold hover:opacity-90"
@@ -140,8 +169,14 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
                 <span className="opacity-70">▾</span>
             </button>
 
-            {open && (
-                <div className="absolute right-0 z-50 mt-1 w-80 border border-gray-200 bg-white shadow-lg">
+            {open && menuBox && createPortal(
+                <>
+                {/* Клик мимо списка закрывает его — как в любом меню. */}
+                <div className="fixed inset-0 z-[998]" onClick={() => setOpen(false)} />
+                <div
+                    className="fixed z-[999] w-80 max-h-[70vh] overflow-y-auto border border-gray-200 bg-white shadow-lg"
+                    style={{ top: menuBox.top, left: menuBox.left }}
+                >
                     {loading && <p className="px-3 py-3 text-sm text-gray-500">Загружаем переходы…</p>}
 
                     {!loading && data && !data.writeEnabled && (
@@ -211,6 +246,8 @@ export default function OrderStatusSwitcher({ orderId, currentLabel, color, onCh
                     {error && <p className="border-t border-gray-200 px-3 py-2 text-xs text-red-700">{error}</p>}
                     {saving && <p className="border-t border-gray-200 px-3 py-2 text-xs text-gray-500">Меняем статус…</p>}
                 </div>
+                </>,
+                document.body,
             )}
         </div>
     );
