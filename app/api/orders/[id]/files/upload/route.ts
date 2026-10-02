@@ -15,11 +15,14 @@ export const maxDuration = 60;
 
 const BUCKET = 'okk-assets';
 /** Больше 25 МБ в заказ не кладём: такие файлы отправляют ссылкой. */
+import { safeStorageSegment } from '@/lib/storage-path';
+
 const MAX_BYTES = 25 * 1024 * 1024;
 
 function storagePath(orderNumber: string, fileName: string): string {
-    const safe = fileName.replace(/[^\w.\-]+/g, '_').slice(-120) || 'file';
-    return `order-files/${orderNumber}/manual/${Date.now()}-${safe}`;
+    // И номер, и имя — латиницей: у своих заказов номер с кириллической «А»
+    // («1038А»), и хранилище отказывалось принимать такой ключ.
+    return `order-files/${safeStorageSegment(orderNumber, 40)}/manual/${Date.now()}-${safeStorageSegment(fileName)}`;
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
