@@ -10,6 +10,7 @@ import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders
 import StatusIcon from '@/components/orders/StatusIcon';
 import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { formatRub } from '@/lib/format';
 
 interface OrderRow {
@@ -291,6 +292,19 @@ export default function OrdersClient() {
             {/* Названия раздела здесь нет: оно уже в шапке (ЗАКАЗЫ), а счётчик —
                 в колонке статусов строкой «Все N». Дубль съедал высоту списка
                 (закон «один заголовок на экран», golds/GOLD_DESIGN_UX.md). */}
+
+            {/* Завести заказ руками: менеджер принял заявку по телефону или
+                разговору — заказ нужен сразу, как в RetailCRM (просьба владельца
+                02.10.2026). Кнопка крупная и на виду, потому что ею пользуются
+                каждый день. */}
+            <div className="flex items-center justify-end gap-2 px-4 pt-3">
+                <Link
+                    href="/orders/new"
+                    className="bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                    + Новый заказ
+                </Link>
+            </div>
 
             <OrdersFilterPanel
                 value={filter}
