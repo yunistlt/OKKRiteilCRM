@@ -1,6 +1,7 @@
 import { supabase } from '@/utils/supabase';
 import { fetchRetailCrmOrder } from '@/lib/retailcrm/orders';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
+import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 
 // Перевод заказа в «Передано в производство» после поступления оплаты.
 // Код статуса берётся из справочника (slug RetailCRM), с возможностью override через env.
@@ -76,6 +77,8 @@ export async function moveOrderToProductionAfterPayment(
       if (error) {
         return { moved: false, notMovedReason: `статус не записался: ${error.message}` };
       }
+      // Заказ встал в очередь, из которой ЦехУспех забирает его сам.
+      await queueOrderForProduction(orderId);
       return { moved: true, statusName: prodName };
     }
 

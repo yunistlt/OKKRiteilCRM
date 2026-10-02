@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth';
 import { supabase } from '@/utils/supabase';
+import { PRODUCTION_STATUS } from '@/lib/payments/production';
+import { queueOrderForProduction } from '@/lib/own-crm/tseh-outbox';
 import { editOrder } from '@/lib/own-crm/edit-order';
 import { updateExistingOrderInCrm } from '@/lib/retailcrm/leads';
 import { isRetailcrmOutboundWriteEnabled, RETAILCRM_WRITE_BLOCKED_MESSAGE } from '@/lib/retailcrm/outbound-guard';
@@ -143,6 +145,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // («Статус заказа: Новый → В просчёте»).
         const result = await editOrder(Number((order as any).id), { statusCode: body.status });
         if (!result.ok) return NextResponse.json({ error: 'own_update_failed', details: result.reason }, { status: 409 });
+
+        // Руками поставили «Передано в производство» — заказ так же встаёт в
+        // очередь, из которой его забирает ЦехУспех.
+        if (body.status === PRODUCTION_STATUS) {
+            await queueOrderForProduction(Number((order as any).order_id ?? (order as any).id));
+        }
+
         return NextResponse.json({ ok: true, status: body.status, own: true });
     }
 
