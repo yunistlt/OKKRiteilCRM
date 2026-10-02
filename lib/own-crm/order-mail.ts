@@ -82,7 +82,7 @@ export async function loadOrderMail(params: {
         number || Number.isFinite(orderId)
             ? supabase
                 .from('order_email_sends')
-                .select('id, subject, to_email, created_at, order_number, order_id, message_id')
+                .select('id, subject, to_email, created_at, order_number, order_id, message_id, body_text')
                 .or([
                     number ? `order_number.eq.${number}` : null,
                     Number.isFinite(orderId) ? `order_id.eq.${orderId}` : null,
@@ -132,7 +132,9 @@ export async function loadOrderMail(params: {
         })),
         ...((outgoing.data ?? []) as any[]).map((row) => {
             const twin = row.message_id ? bodyByMessageId.get(String(row.message_id)) : null;
-            const body = twin?.body_text ?? null;
+            // Свой текст надёжнее: он есть сразу после отправки, а копия из папки
+            // «Отправленные» приезжает позже — её берём только для старых писем.
+            const body = row.body_text ?? twin?.body_text ?? null;
             return {
                 id: `out-${row.id}`,
                 date: row.created_at || null,

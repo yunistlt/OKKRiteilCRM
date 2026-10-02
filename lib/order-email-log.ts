@@ -33,9 +33,14 @@ export async function recordOrderEmailSend(rec: {
     messageId?: string | null;
     appendedToSent: boolean;
     sentBy?: string | null;
+    /** Тело письма: сохраняем сразу, иначе до прихода синка «Отправленных» текста нет. */
+    bodyHtml?: string | null;
+    bodyText?: string | null;
 }): Promise<void> {
     try {
         await supabase.from('order_email_sends').insert({
+            body_html: rec.bodyHtml ?? null,
+            body_text: rec.bodyText ?? null,
             order_number: rec.orderNumber,
             order_id: rec.orderId ?? null,
             to_email: rec.toEmail,

@@ -121,6 +121,19 @@ export async function POST(req: Request) {
         messageId: result.messageId,
         appendedToSent: result.appendedToSent,
         sentBy: session.user.email || session.user.role,
+        // Текст кладём сразу: лента переписки иначе ждёт синк «Отправленных»
+        // и до тех пор показывает письмо без текста.
+        bodyHtml: body.html,
+        bodyText: String(body.html || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim(),
     });
 
     // Отправлено, но если копия не легла в Sent — отдаём 200 с предупреждением (письмо ушло клиенту).
