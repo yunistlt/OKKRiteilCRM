@@ -178,6 +178,8 @@ export async function editOwnOrder(
         /** Разовая скидка на заказ: рублями и процентом, как в RetailCRM. */
         discountAmount?: number | null;
         discountPercent?: number | null;
+        /** Реквизиты заказчика — на заказе, как в RetailCRM. */
+        contragent?: Record<string, unknown>;
     },
 ): Promise<void> {
     const { data, error } = await supabase
@@ -226,6 +228,16 @@ export async function editOwnOrder(
     for (const [key, value] of Object.entries(edit.contact || {})) {
         if (value !== undefined) payload[key] = value;
     }
+    if (edit.contragent && Object.keys(edit.contragent).length) {
+        payload.contragent = { ...(payload.contragent || {}) };
+        for (const [field, value] of Object.entries(edit.contragent)) {
+            if (value === undefined) continue;
+            const text = String(value ?? '').trim();
+            if (text) payload.contragent[field] = text;
+            else delete payload.contragent[field];
+        }
+    }
+
     if (edit.delivery && Object.keys(edit.delivery).length) {
         payload.delivery = { ...(payload.delivery || {}) };
         if (edit.delivery.address !== undefined) payload.delivery.address = { text: String(edit.delivery.address ?? '') };
@@ -299,6 +311,10 @@ export async function editOwnOrder(
             oldValue: await customFieldValueName(code, before.customFields?.[code]),
             newValue: await customFieldValueName(code, value),
         });
+    }
+    for (const [field, value] of Object.entries(edit.contragent || {})) {
+        if (String(value ?? '') === String(before.contragent?.[field] ?? '')) continue;
+        history.push({ field: `contragent_${field}`, oldValue: before.contragent?.[field], newValue: value as any });
     }
     if (edit.delivery?.code !== undefined && String(edit.delivery.code ?? '') !== String(before.delivery?.code ?? '')) {
         history.push({ field: 'delivery_type', oldValue: before.delivery?.code, newValue: edit.delivery.code as any });

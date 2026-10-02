@@ -552,6 +552,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             .filter(([key]) => key.startsWith('delivery.'))
                             .map(([key, value]) => [key.slice('delivery.'.length), value]),
                     ),
+                    contragent: Object.fromEntries(
+                        Object.entries(draftFields)
+                            .filter(([key]) => key.startsWith('contragent.'))
+                            .map(([key, value]) => [key.slice('contragent.'.length), value]),
+                    ),
                 }),
             });
             const payload = await res.json();
@@ -924,6 +929,82 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
                     </div>
 
+                </section>
+
+                <section id="order-requisites" className="space-y-3">
+                    {/* Реквизиты заказчика живут на ЗАКАЗЕ, как в RetailCRM
+                        (`contragent`): у покупателя они почти всегда пусты, а в
+                        счёт и КП идут именно эти. Вносятся здесь — Евгения
+                        02.10.2026: «не могу найти, куда внести реквизиты». */}
+                    <div className="bg-white border border-gray-200 p-4">
+                        <h3 className="text-base font-semibold text-gray-900 mb-2">Реквизиты заказчика</h3>
+                        <div className="grid md:grid-cols-2 gap-2">
+                            <EditField
+                                label="Тип контрагента"
+                                value={fieldValue('contragent.contragentType', payload.contragent?.contragentType || '')}
+                                options={names.enumOptions('contragentType')}
+                                onChange={(v) => setField('contragent.contragentType', v)}
+                            />
+                            <EditField
+                                label="Юридическое название"
+                                value={fieldValue('contragent.legalName', payload.contragent?.legalName || '')}
+                                onChange={(v) => setField('contragent.legalName', v)}
+                            />
+                            <EditField
+                                label="ИНН"
+                                value={fieldValue('contragent.INN', payload.contragent?.INN || '')}
+                                onChange={(v) => setField('contragent.INN', v)}
+                            />
+                            <EditField
+                                label="КПП"
+                                value={fieldValue('contragent.KPP', payload.contragent?.KPP || '')}
+                                onChange={(v) => setField('contragent.KPP', v)}
+                            />
+                            <EditField
+                                label="ОГРН"
+                                value={fieldValue('contragent.OGRN', payload.contragent?.OGRN || '')}
+                                onChange={(v) => setField('contragent.OGRN', v)}
+                            />
+                            <EditField
+                                label="ОГРНИП"
+                                value={fieldValue('contragent.OGRNIP', payload.contragent?.OGRNIP || '')}
+                                onChange={(v) => setField('contragent.OGRNIP', v)}
+                            />
+                            <EditField
+                                label="Юридический адрес"
+                                value={fieldValue('contragent.legalAddress', payload.contragent?.legalAddress || '')}
+                                onChange={(v) => setField('contragent.legalAddress', v)}
+                            />
+                            <EditField
+                                label="Банк"
+                                value={fieldValue('contragent.bank', payload.contragent?.bank || '')}
+                                onChange={(v) => setField('contragent.bank', v)}
+                            />
+                            <EditField
+                                label="Расчётный счёт"
+                                value={fieldValue('contragent.bankAccount', payload.contragent?.bankAccount || '')}
+                                onChange={(v) => setField('contragent.bankAccount', v)}
+                            />
+                            <EditField
+                                label="БИК"
+                                value={fieldValue('contragent.BIK', payload.contragent?.BIK || '')}
+                                onChange={(v) => setField('contragent.BIK', v)}
+                            />
+                            <EditField
+                                label="Корреспондентский счёт"
+                                value={fieldValue('contragent.corrAccount', payload.contragent?.corrAccount || '')}
+                                onChange={(v) => setField('contragent.corrAccount', v)}
+                            />
+                            <EditField
+                                label="Адрес банка"
+                                value={fieldValue('contragent.bankAddress', payload.contragent?.bankAddress || '')}
+                                onChange={(v) => setField('contragent.bankAddress', v)}
+                            />
+                        </div>
+                        <p className="mt-2 text-xs text-gray-500">
+                            Эти реквизиты идут в счёт и коммерческое предложение по этому заказу.
+                        </p>
+                    </div>
                 </section>
 
                 <section id="order-list">

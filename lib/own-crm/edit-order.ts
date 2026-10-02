@@ -47,6 +47,8 @@ export type OrderEdit = {
     contact?: Record<string, unknown>;
     /** Доставка: адрес и стоимость. */
     delivery?: Record<string, unknown>;
+    /** Реквизиты заказчика (ИНН, банк, юрадрес) — на заказе, как в RetailCRM. */
+    contragent?: Record<string, unknown>;
 };
 
 export type EditResult =
@@ -57,6 +59,7 @@ export type EditResult =
 export function describeEdit(edit: OrderEdit): string[] {
     const changed: string[] = [];
     if (edit.items) changed.push('состав заказа');
+    if (edit.contragent && Object.keys(edit.contragent).length) changed.push('реквизиты заказчика');
     if (edit.discountAmount !== undefined || edit.discountPercent !== undefined) changed.push('разовую скидку');
     if (edit.customerComment !== undefined) changed.push('комментарий клиента');
     if (edit.managerComment !== undefined) changed.push('комментарий менеджера');
@@ -164,6 +167,13 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
             ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
             ...(item.xmlId ? { offer: { xmlId: item.xmlId } } : {}),
         }));
+    }
+
+    // Реквизиты заказчика: RetailCRM принимает их объектом `contragent`.
+    if (edit.contragent && Object.keys(edit.contragent).length) {
+        orderData.contragent = Object.fromEntries(
+            Object.entries(edit.contragent).filter(([, value]) => value !== undefined),
+        );
     }
 
     // Разовая скидка на заказ. Ноль отправляем тоже: так скидку снимают.

@@ -34,6 +34,8 @@ const bodySchema = z.object({
     managerId: z.coerce.number().int().positive().optional().nullable(),
     customFields: z.record(z.string(), z.any()).optional(),
     contact: z.record(z.string(), z.any()).optional(),
+    /** Реквизиты заказчика — они живут на заказе, как в RetailCRM. */
+    contragent: z.record(z.string(), z.any()).optional(),
     delivery: z.record(z.string(), z.any()).optional(),
 });
 
