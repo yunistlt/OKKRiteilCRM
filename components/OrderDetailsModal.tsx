@@ -2009,14 +2009,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         Наша база
                                     </span>
                                 )}
-                                {data?.statusName && (
-                                    <span
-                                        className="px-2 py-0.5 text-[11px] font-semibold text-gray-900"
-                                        style={{ backgroundColor: data.statusColor || '#e5e7eb' }}
-                                    >
-                                        {data.statusName}
-                                    </span>
-                                )}
                             </div>
                             {data?.order && !compactHeader && (
                                 <div className="mt-0.5 flex flex-wrap gap-3 text-xs text-gray-600">

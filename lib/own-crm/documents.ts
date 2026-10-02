@@ -228,8 +228,13 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
             : 0)),
     }));
 
-    const contragent = (order as any).contragent || {};
-    const customer = (order as any).customer || {};
+    const contragent = (order as any).contragent || (order as any).raw_payload?.contragent || {};
+    /**
+     * Клиента берём из `raw_payload`: колонка `orders.customer` мёртвая — синк
+     * её не заполняет (закон проекта). Счёт без клиента не найдёт реквизиты
+     * плательщика в его карточке, и плательщик в документе останется пустым.
+     */
+    const customer = (order as any).customer || (order as any).raw_payload?.customer || {};
     const delivery = (order as any).delivery || (order as any).raw_payload?.delivery || {};
     // Кастом-поля заказа лежат в raw_payload: своей колонки под них нет.
     const customFields = (order as any).customFields
