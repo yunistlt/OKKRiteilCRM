@@ -42,6 +42,33 @@ export type OrderMailEntry = {
     attachments: number;
 };
 
+/**
+ * Текст письма из HTML. Часть писем приходит вообще без текстовой части —
+ * у них заполнен только `body_html`, и лента показывала пустоту.
+ */
+const textFromHtml = (html: unknown): string =>
+    String(html ?? '')
+        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|tr|li|h[1-6])>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+/** Текст письма: берём текстовую часть, а если её нет — вытаскиваем из HTML. */
+const mailBody = (row: { body_text?: unknown; body_html?: unknown }): string | null => {
+    const plain = String(row.body_text ?? '').trim();
+    if (plain) return plain.replace(/ /g, ' ');
+    const fromHtml = textFromHtml(row.body_html);
+    return fromHtml ? fromHtml.replace(/ /g, ' ') : null;
+};
+
 const preview = (value: unknown, limit = 600): string => {
     const text = String(value ?? '').replace(/ /g, ' ').trim();
     return text.length > limit ? `${text.slice(0, limit)}…` : text;
@@ -74,7 +101,7 @@ export async function loadOrderMail(params: {
         incomingFilters.length
             ? supabase
                 .from('incoming_emails')
-                .select('id, subject, from_email, from_name, body_text, received_at, created_at, attachments_meta')
+                .select('id, subject, from_email, from_name, body_text, body_html, received_at, created_at, attachments_meta')
                 .or(incomingFilters.join(','))
                 .order('received_at', { ascending: false })
                 .limit(limit)
@@ -125,16 +152,16 @@ export async function loadOrderMail(params: {
             type: 'Входящее письмо',
             party: row.from_name || row.from_email || null,
             subject: row.subject || null,
-            body: row.body_text ? String(row.body_text).replace(/\u00a0/g, ' ').trim() : null,
+            body: mailBody(row),
             attachments: countAttachments(row.attachments_meta),
-            text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
+            text: [row.subject ? `Тема: ${row.subject}` : null, preview(mailBody(row))].filter(Boolean).join('\n\n'),
             source: 'incoming' as const,
         })),
         ...((outgoing.data ?? []) as any[]).map((row) => {
             const twin = row.message_id ? bodyByMessageId.get(String(row.message_id)) : null;
             // Свой текст надёжнее: он есть сразу после отправки, а копия из папки
             // «Отправленные» приезжает позже — её берём только для старых писем.
-            const body = row.body_text ?? twin?.body_text ?? null;
+            const body = mailBody(row) ?? (twin ? mailBody(twin) : null);
             return {
                 id: `out-${row.id}`,
                 date: row.created_at || null,
@@ -156,9 +183,9 @@ export async function loadOrderMail(params: {
                 type: 'Исходящее письмо',
                 party: row.to_email || null,
                 subject: row.subject || null,
-                body: row.body_text ? String(row.body_text).replace(/\u00a0/g, ' ').trim() : null,
+                body: mailBody(row),
                 attachments: countAttachments(row.attachments_meta),
-                text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
+                text: [row.subject ? `Тема: ${row.subject}` : null, preview(mailBody(row))].filter(Boolean).join('\n\n'),
                 source: 'outgoing' as const,
             })),
     ];
