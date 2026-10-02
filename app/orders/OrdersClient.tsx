@@ -78,7 +78,9 @@ export default function OrdersClient() {
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ totalCount: 0, totalPages: 1 });
     // Итого по всему фильтру, а не по странице: считает база (orders_filter_totals).
-    const [totals, setTotals] = useState({ count: 0, sum: 0 });
+    // sum = null значит «не посчитано» (старая сборка или сбой запроса) — ноль
+    // здесь врал бы, а ноль у суммы заказов встречается только по-настоящему.
+    const [totals, setTotals] = useState<{ count: number; sum: number | null }>({ count: 0, sum: null });
     const [loading, setLoading] = useState(true);
     const [openOrderId, setOpenOrderId] = useState<number | null>(() => {
         const requested = Number(searchParams.get('order'));
@@ -132,7 +134,7 @@ export default function OrdersClient() {
             });
             setTotals({
                 count: Number(data.totals?.count ?? data.pagination?.totalCount ?? 0),
-                sum: Number(data.totals?.sum ?? 0),
+                sum: data.totals?.sum === undefined || data.totals?.sum === null ? null : Number(data.totals.sum),
             });
         } catch (e) {
             console.error(e);
@@ -324,7 +326,12 @@ export default function OrdersClient() {
                     Заказов по фильтру: <b className="text-gray-900">{totals.count.toLocaleString('ru-RU')}</b>
                 </span>
                 <span className="text-gray-600">
-                    Сумма по фильтру: <b className="text-gray-900">{formatRub(totals.sum)}</b>
+                    Сумма по фильтру:{' '}
+                    {totals.sum === null ? (
+                        <b className="text-gray-400" title="Сумму считает база; этот ответ её не вернул">—</b>
+                    ) : (
+                        <b className="text-gray-900">{formatRub(totals.sum)}</b>
+                    )}
                 </span>
             </div>
 
