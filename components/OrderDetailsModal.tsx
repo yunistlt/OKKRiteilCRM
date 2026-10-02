@@ -798,9 +798,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const cancelDate = pickValue(payload.cancelledAt, customFields.data_otmeny);
         const purchaseForm = names.field('typ_customer_margin', pickValue(customFields.typ_customer_margin, customFields.purchase_form, customFields.forma_zakupki));
         const sphere = names.field('sfera_deiatelnosti', pickValue(customFields.sfera_deiatelnosti, customFields.sfera_deyatelnosti, customFields.sphere_of_activity) || payload.industry);
-        // Документооборот (не ЭДО) остаётся в блоке клиента; «через ЭДО»,
-        // «счёт действителен» и Roistat уехали во вкладку «Технические данные».
-        const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot);
         // Часовой пояс — справочник chasovoi_poias из RetailCRM, не хардкод.
         const timezoneValue = names.field('chasovoi_poias', pickValue(customFields.chasovoi_poias, customFields.timezone)) || null;
         const logisticDeadline = pickValue(customFields.srok_izgot, shipping.productionDays, delivery.productionDays);
@@ -1031,7 +1028,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 onChange={(v) => setField('cf.sfera_deiatelnosti', v)}
                             />
                             <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
-                            <InfoField label="Документооборот" value={documentsViaEDO} />
                             <InfoField label="Основание подписи" value={contractBasis || '—'} />
                             <EditField
                                 label="Когда нужно оборудование"
@@ -1571,6 +1567,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         const createdDate = formatDateTime(pickValue(payload.createdAt, order.created_at));
         const statusUpdated = formatDateTime(pickValue(payload.statusUpdatedAt, order.updated_at));
         const privilegeType = pickValue(payload.privilegeType);
+        const documentFlow = formatBooleanYesNo(customFields.dokumentooborot);
         const documentsViaEDO = formatBooleanYesNo(customFields.dokumentooborot_cherez_edo);
         const invoiceValidDays = pickValue(customFields.schiot_deistvitelen_v_techenie_dnei);
         const roistat = pickValue(customFields.roistat, payload.roistat);
@@ -1591,6 +1588,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                     <InfoField label="Дата поступления" value={createdDate} />
                     <InfoField label="Обновлён" value={statusUpdated} />
                     <InfoField label="Привилегия" value={privilegeType || '—'} />
+                    <InfoField label="Документооборот" value={documentFlow} />
                     <InfoField label="Документооборот через ЭДО" value={documentsViaEDO} />
                     <InfoField label="Счёт действителен (дней)" value={invoiceValidDays || '—'} />
                     <InfoField label="Roistat" value={roistat || '—'} />
