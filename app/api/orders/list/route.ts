@@ -20,10 +20,9 @@ export async function GET(req: Request) {
     const pageSize = Math.min(200, Math.max(10, parseInt(searchParams.get('pageSize') || '50', 10)));
     const filter = parseOrdersFilter(searchParams);
 
-    // Менеджер видит только свои заказы — как в остальных разделах.
-    if (session.user.role === 'manager' && session.user.retail_crm_manager_id) {
-        filter.managers = [String(session.user.retail_crm_manager_id)];
-    }
+    // Менеджер видит заказы всех менеджеров (решение владельца 02.10.2026): без общего
+    // списка не распознать ни дубли, ни постоянных клиентов — это двойная работа.
+    // Фильтр «Менеджеры» остаётся за пользователем и больше не перезаписывается.
 
     // Нормативы читаем до запроса: по ним собирается условие просрочки.
     // Оттуда же берём порядок показа — он утверждён на доске «Статусы и переходы».
