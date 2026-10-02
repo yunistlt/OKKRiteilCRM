@@ -14,6 +14,7 @@
  * `create-order.ts` начинают ссылаться друг на друга по кругу.
  */
 import { supabase } from '@/utils/supabase';
+import { findOrCreateOwnClient } from './own-client';
 import { itemLabel, managerName, moneyValue, statusName, writeOwnHistory } from './history-write';
 
 /**
@@ -116,6 +117,24 @@ function itemsTotal(items: any[] | undefined): number {
  */
 export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult> {
     const { number, seq } = await nextOwnOrderNumber();
+
+    /**
+     * Клиент заказа — карточка в НАШЕЙ базе.
+     *
+     * Раньше заявка ссылалась на карточку RetailCRM, которой у нас нет, и в
+     * заказе пустовали компания и реквизиты (разбор заказа 1039А, 02.10.2026).
+     * Ищем по ИНН, затем по названию с почтой или телефоном, не нашли — заводим
+     * свою. В RetailCRM такие карточки не уходят.
+     */
+    const contragent = orderData.contragent || {};
+    const customerHints = {
+        inn: contragent.INN || orderData.inn || null,
+        companyName: contragent.legalName || orderData.companyName || orderData.customer?.nickName || null,
+        email: orderData.email || null,
+        phone: orderData.phone || (orderData.phones || [])[0]?.number || null,
+        contactName: [orderData.firstName, orderData.lastName].filter(Boolean).join(' ') || null,
+    };
+    const client = await findOrCreateOwnClient(customerHints);
     const itemIds = await ownItemIds((orderData.items || []).length);
     const id = OWN_ID_BASE + seq;
     const total = itemsTotal(orderData.items);
@@ -125,6 +144,17 @@ export async function insertOwnOrder(orderData: any): Promise<CrmLikeOrderResult
         id,
         number,
         site: OWN_SITE,
+        // Клиента карточка читает из `customer.id` — закон проекта.
+        ...(client
+            ? {
+                customer: {
+                    ...(orderData.customer || {}),
+                    id: client.id,
+                    type: 'customer_corporate',
+                    ...(customerHints.companyName ? { nickName: customerHints.companyName } : {}),
+                },
+            }
+            : {}),
         createdAt: orderData.createdAt || new Date().toISOString().slice(0, 19).replace('T', ' '),
         currency: orderData.currency || 'RUB',
         totalSumm: orderData.totalSumm ?? total,

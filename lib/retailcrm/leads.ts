@@ -1,4 +1,5 @@
 import { supabase } from '@/utils/supabase';
+import { isOwnCrmManager } from '@/lib/own-crm/own-order-insert';
 import { resolveLeadSite, reportSiteSubstitution } from './lead-site';
 import { fetchRetailCrmOrder } from './orders';
 import {
@@ -563,19 +564,31 @@ export async function createLeadInCrm(params: {
         ...params.fieldHints,
     };
 
+    /**
+     * Заявка менеджера нашей CRM клиента в RetailCRM не заводит.
+     *
+     * Курс на свою CRM: карточку найдёт или создаст у себя `insertOwnOrder`
+     * (по ИНН, затем по названию с почтой или телефоном). Раньше карточка
+     * появлялась в RetailCRM, у нас её не было, и в заказе пустовали компания и
+     * реквизиты — разбор заказа 1039А (решение владельца 02.10.2026).
+     */
+    const ownOrder = params.managerId ? await isOwnCrmManager(params.managerId) : false;
+
     // 1. Клиент всегда корпоративный (B2B)
-    const customerLookup = await ensureCorporateCustomerId({
-        details: params.corporateDetails,
-        name: params.corporateDetails?.contactName || params.name,
-        phone: params.phone,
-        email: params.email,
-        fieldHints,
-    }, site);
+    const customerLookup = ownOrder
+        ? { id: null as number | null, hint: null as string | null }
+        : await ensureCorporateCustomerId({
+            details: params.corporateDetails,
+            name: params.corporateDetails?.contactName || params.name,
+            phone: params.phone,
+            email: params.email,
+            fieldHints,
+        }, site);
     let customerId: number | null = customerLookup.id;
     const existingCustomerHint = customerLookup.hint;
     let isCorp = customerId !== null;
 
-    if (!customerId) {
+    if (!customerId && !ownOrder) {
         // Откат на физлицо: контрагента завести не удалось — лид терять нельзя.
         const existing = params.phone ? await findCustomerByPhone(params.phone) : null;
         if (existing) {

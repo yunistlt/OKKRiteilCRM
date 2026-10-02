@@ -49,11 +49,17 @@ export interface OrderTemplateContext {
 
 /** Собирает данные заказа для шаблона. Возвращает null, если заказа нет. */
 export async function buildOrderContext(orderNumber: string): Promise<OrderTemplateContext | null> {
-    const { data: order } = await supabase
-        .from('orders')
-        .select('order_id, number, raw_payload')
-        .eq('order_id', orderNumber)
-        .maybeSingle();
+    /**
+     * Ключом приходит и номер заказа, и его идентификатор. У своих заказов номер
+     * с кириллической «А» («1020А») — сравнивать его с числовой колонкой нельзя,
+     * база откажется, и шаблон «не собирался» (Ирина 02.10.2026).
+     */
+    const key = decodeURIComponent(String(orderNumber ?? '')).trim();
+    const numeric = /^\d+$/.test(key);
+
+    const { data: order } = numeric
+        ? await supabase.from('orders').select('order_id, number, raw_payload').eq('order_id', key).maybeSingle()
+        : await supabase.from('orders').select('order_id, number, raw_payload').eq('number', key).maybeSingle();
 
     if (!order) return null;
 
