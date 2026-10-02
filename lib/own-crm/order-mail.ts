@@ -7,7 +7,9 @@
  * потом «пропали письма». Правда в том, что письма лежат в своих таблицах:
  *
  *  - входящие — `incoming_emails` (их разбирает Катерина, автоприём почты);
- *  - исходящие — `order_email_sends` (письма по заказу из карточки).
+ *  - исходящие — `order_email_sends` (письма по заказу из карточки) и
+ *    `outgoing_emails` (папка «Отправленные» ящика: там письма RetailCRM и
+ *    переписка менеджеров через веб-почту).
  *
  * Третий путь привязки — **тег в теме**: наши письма по заказу уходят с
  * `[#магазин/номер]`, и он же возвращается в ответах клиента. По нему письмо
@@ -58,7 +60,7 @@ export async function loadOrderMail(params: {
         number ? `subject.ilike.%/${number}]%` : null,
     ].filter(Boolean) as string[];
 
-    const [incoming, outgoing] = await Promise.all([
+    const [incoming, outgoing, sent] = await Promise.all([
         incomingFilters.length
             ? supabase
                 .from('incoming_emails')
@@ -78,10 +80,20 @@ export async function loadOrderMail(params: {
                 .order('created_at', { ascending: false })
                 .limit(limit)
             : Promise.resolve({ data: [] as any[], error: null }),
+        // Папка «Отправленные»: привязка по тегу темы или по номеру заказа.
+        number
+            ? supabase
+                .from('outgoing_emails')
+                .select('id, subject, to_email, sent_at, body_text')
+                .or(`order_number.eq.${number},subject.ilike.%/${number}]%`)
+                .order('sent_at', { ascending: false })
+                .limit(limit)
+            : Promise.resolve({ data: [] as any[], error: null }),
     ]);
 
     if (incoming.error) console.warn('[order-mail] входящие не прочитались:', incoming.error.message);
     if (outgoing.error) console.warn('[order-mail] исходящие не прочитались:', outgoing.error.message);
+    if (sent.error) console.warn('[order-mail] «Отправленные» не прочитались:', sent.error.message);
 
     const entries: OrderMailEntry[] = [
         ...((incoming.data ?? []) as any[]).map((row) => ({
@@ -98,6 +110,14 @@ export async function loadOrderMail(params: {
             type: 'Исходящее письмо',
             party: row.to_email || null,
             text: row.subject ? `Тема: ${row.subject}` : 'Письмо отправлено',
+            source: 'outgoing' as const,
+        })),
+        ...((sent.data ?? []) as any[]).map((row) => ({
+            id: `sent-${row.id}`,
+            date: row.sent_at || null,
+            type: 'Исходящее письмо',
+            party: row.to_email || null,
+            text: [row.subject ? `Тема: ${row.subject}` : null, preview(row.body_text)].filter(Boolean).join('\n\n'),
             source: 'outgoing' as const,
         })),
     ];
