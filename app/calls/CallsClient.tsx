@@ -34,6 +34,10 @@ export default function CallsClient() {
     const [missed, setMissed] = useState(false);
     const [search, setSearch] = useState('');
     const [query, setQuery] = useState('');
+    // Дата и длительность: звонок не всегда привязан к заказу, и его ищут по дате.
+    const [from, setFrom] = useState('');
+    const [to, setTo] = useState('');
+    const [minSec, setMinSec] = useState('');
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [openId, setOpenId] = useState<number | null>(null);
@@ -44,6 +48,9 @@ export default function CallsClient() {
             const params = new URLSearchParams({ direction, limit: '200' });
             if (missed) params.set('missed', '1');
             if (query) params.set('search', query);
+            if (from) params.set('from', from);
+            if (to) params.set('to', to);
+            if (minSec) params.set('minSec', minSec);
             const res = await fetch(`/api/calls/list?${params.toString()}`);
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || 'Не удалось получить звонки');
@@ -54,7 +61,7 @@ export default function CallsClient() {
         } finally {
             setLoading(false);
         }
-    }, [direction, missed, query]);
+    }, [direction, missed, query, from, to, minSec]);
 
     useEffect(() => {
         void load();
@@ -96,6 +103,22 @@ export default function CallsClient() {
                 >
                     Только без ответа
                 </button>
+                <label className="flex items-center gap-1 text-sm text-gray-600">
+                    с
+                    <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="border border-gray-200 px-2 py-1.5 text-sm" />
+                </label>
+                <label className="flex items-center gap-1 text-sm text-gray-600">
+                    по
+                    <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="border border-gray-200 px-2 py-1.5 text-sm" />
+                </label>
+                <select value={minSec} onChange={(e) => setMinSec(e.target.value)} className="border border-gray-200 px-3 py-1.5 text-sm text-gray-700">
+                    <option value="">Любая длительность</option>
+                    <option value="1">Состоявшиеся (от 1 сек)</option>
+                    <option value="30">От 30 секунд</option>
+                    <option value="60">От 1 минуты</option>
+                    <option value="180">От 3 минут</option>
+                    <option value="600">От 10 минут</option>
+                </select>
                 <form
                     onSubmit={(e) => {
                         e.preventDefault();

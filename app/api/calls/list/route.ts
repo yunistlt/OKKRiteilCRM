@@ -26,6 +26,9 @@ export async function GET(req: Request) {
     const search = (searchParams.get('search') || '').trim();
     const from = searchParams.get('from');
     const to = searchParams.get('to');
+    // Длительность в секундах: менеджер ищет разговор, а не гудки.
+    const minSec = parseInt(searchParams.get('minSec') || '', 10);
+    const maxSec = parseInt(searchParams.get('maxSec') || '', 10);
 
     let query = supabase
         .from('retailcrm_calls')
@@ -38,6 +41,8 @@ export async function GET(req: Request) {
     if (missed === '1') query = query.eq('is_missed', true);
     if (from) query = query.gte('call_date', `${from}T00:00:00+03:00`);
     if (to) query = query.lte('call_date', `${to}T23:59:59+03:00`);
+    if (Number.isFinite(minSec)) query = query.gte('duration_sec', minSec);
+    if (Number.isFinite(maxSec)) query = query.lte('duration_sec', maxSec);
     if (search) query = query.or(`phone.ilike.%${search}%,order_number.ilike.%${search}%,manager_name.ilike.%${search}%`);
 
     const { data, error } = await query;
