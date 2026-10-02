@@ -43,34 +43,107 @@ async function resolveCategories(rows: any[]): Promise<Record<string, string>> {
     return Object.fromEntries((data ?? []).map((c: any) => [String(c.id), c.name]));
 }
 
+/**
+ * Разбор запроса на то, чем ищут.
+ *
+ * Модель («РШС-3-6», «ШСО-П-202») и габариты («1900x1400x620») — самое
+ * различающее в названии, и именно они рубились старым разбором: дефис делил
+ * «РШС-3-6» на «ршс», «3», «6», короткие куски отбрасывались, и от модели
+ * оставалось «ршс» — общее для сотен товаров. Держим такие куски целыми.
+ */
+export function catalogQueryParts(query: string): { models: string[]; words: string[] } {
+    const text = String(query ?? '').toLowerCase().replace(/\u00a0/g, ' ');
+
+    // Кусок с буквами и цифрами через дефис/точку — это модель или габариты.
+    const models = (text.match(/[a-zа-яё0-9]+(?:[-.x×][a-zа-яё0-9]+)+/gi) ?? [])
+        .map((part) => part.replace(/[.,;]+$/, ''))
+        .filter((part) => /\d/.test(part) && part.length >= 4);
+
+    const words = text
+        .split(/[^a-zа-яё0-9]+/i)
+        .filter((word) => word.length >= 3 && !models.some((model) => model.includes(word)));
+
+    return { models: Array.from(new Set(models)).slice(0, 4), words: Array.from(new Set(words)).slice(0, 6) };
+}
+
 export async function catalogSearch(query: string, limit = 15): Promise<Record<string, unknown>> {
     if (!marketingConfigured()) {
         return { available: false, reason: `Каталог не подключён: нет ${URL_KEY} / ${KEY_KEY}` };
     }
-    const words = query
-        .toLowerCase()
-        .split(/[^a-zа-яё0-9]+/i)
-        .filter((w) => w.length >= 3)
-        .slice(0, 6);
-    if (words.length === 0) return { available: false, reason: 'Слишком короткий запрос.' };
+
+    const { models, words } = catalogQueryParts(query);
+    if (!models.length && !words.length) return { available: false, reason: 'Слишком короткий запрос.' };
+
+    const take = Math.min(50, Math.max(1, limit));
 
     try {
-        // Поиск широкий, через ИЛИ по словам, а потом ранжирование по числу
-        // совпавших: строгое И ломается о лишнее слово в вопросе.
-        const or = words.map((w) => `name.ilike.%${w}%`).join(',');
-        const { data, error } = await client()
-            .from('marketing_products')
-            .select('id, sku, name, price, full_url, category_id, meta')
-            .or(or)
-            .limit(60);
-        if (error) throw new Error(error.message);
+        /**
+         * Ищем сужением, а не расширением.
+         *
+         * Старый поиск брал «ИЛИ» по словам, обрезал выдачу шестьюдесятью
+         * строками и только потом ранжировал. На «Шкаф сушильный РШС-3-6 ЗМК
+         * Комфорт (1900x1400x620 мм)» под «ИЛИ» подходило 1 573 товара, в
+         * первые 60 (порядок базы, по id) нужный не попадал — менеджер вводил
+         * точное название и не находил ничего (замечание Евгении 02.10.2026).
+         *
+         * Теперь: сначала все слова вместе («И»), потом только модель, потом
+         * «И» с отбрасыванием слов с конца, и лишь в конце «ИЛИ» — но выдачу
+         * ранжируем на большой выборке, а не на случайной горстке.
+         */
+        const search = async (parts: string[]) => {
+            if (!parts.length) return [] as any[];
+            let request = client()
+                .from('marketing_products')
+                .select('id, sku, name, price, full_url, category_id, meta');
+            for (const part of parts) request = request.ilike('name', `%${part}%`);
+            const { data, error } = await request.limit(take);
+            if (error) throw new Error(error.message);
+            return (data ?? []) as any[];
+        };
 
-        const rows = (data ?? [])
-            .map((d: any) => ({ d, score: words.reduce((a, w) => a + (String(d.name ?? '').toLowerCase().includes(w) ? 1 : 0), 0) }))
-            .filter((x) => x.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, Math.min(50, Math.max(1, limit)))
-            .map((x) => x.d);
+        const attempts: string[][] = [];
+        if (models.length || words.length) attempts.push([...models, ...words]);
+        if (models.length) attempts.push(models);
+        // Отбрасываем слова с конца: лишнее слово в вводе не должно ронять поиск.
+        for (let drop = 1; drop < words.length; drop++) {
+            attempts.push([...models, ...words.slice(0, words.length - drop)]);
+        }
+        if (models.length) {
+            // Модель по частям: «ршс-3-6» → «ршс-3» (в каталоге бывает другой разделитель).
+            for (const model of models) {
+                const head = model.split(/[-.x×]/).slice(0, 2).join('-');
+                if (head.length >= 4) attempts.push([head, ...words.slice(0, 1)]);
+            }
+        }
+
+        let rows: any[] = [];
+        for (const parts of attempts) {
+            rows = await search(parts);
+            if (rows.length) break;
+        }
+
+        if (!rows.length) {
+            // Последняя попытка — «ИЛИ», как раньше, но с большой выборкой и
+            // ранжированием по числу совпавших слов.
+            const all = [...models, ...words];
+            const or = all.map((part) => `name.ilike.%${part}%`).join(',');
+            const { data, error } = await client()
+                .from('marketing_products')
+                .select('id, sku, name, price, full_url, category_id, meta')
+                .or(or)
+                .limit(500);
+            if (error) throw new Error(error.message);
+
+            rows = (data ?? [])
+                .map((row: any) => ({
+                    row,
+                    score: all.reduce((sum, part) => sum + (String(row.name ?? '').toLowerCase().includes(part) ? 1 : 0), 0),
+                }))
+                .filter((hit) => hit.score > 0)
+                .sort((left, right) => right.score - left.score)
+                .slice(0, take)
+                .map((hit) => hit.row);
+        }
 
         const cats = await resolveCategories(rows);
         return {

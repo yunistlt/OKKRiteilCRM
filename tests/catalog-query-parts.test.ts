@@ -1,0 +1,40 @@
+import { describe, it, expect } from 'vitest';
+import { catalogQueryParts } from '@/lib/shtab/lvz';
+
+/**
+ * Поиск товара по точному названию должен находить этот товар.
+ * Инцидент 02.10.2026: «Шкаф сушильный РШС-3-6 ЗМК Комфорт (1900x1400x620 мм)»
+ * не находился — модель рубилась дефисом на «ршс», «3», «6», и от неё
+ * оставалось общее для сотен товаров «ршс».
+ */
+describe('разбор запроса по каталогу', () => {
+    it('модель с дефисами остаётся целой', () => {
+        const { models } = catalogQueryParts('Шкаф сушильный РШС-3-6 ЗМК Комфорт (1900x1400x620 мм)');
+        expect(models).toContain('ршс-3-6');
+    });
+
+    it('габариты — тоже ключ поиска', () => {
+        const { models } = catalogQueryParts('Шкаф сушильный РШС-3-6 ЗМК Комфорт (1900x1400x620 мм)');
+        expect(models).toContain('1900x1400x620');
+    });
+
+    it('слова модели не дублируются отдельными словами', () => {
+        const { words } = catalogQueryParts('РШС-3-6 шкаф');
+        expect(words).toEqual(['шкаф']);
+    });
+
+    it('обычные слова длиной от трёх букв остаются', () => {
+        const { models, words } = catalogQueryParts('Сушильный шкаф Тропик 500');
+        expect(models).toEqual([]);
+        expect(words).toEqual(['сушильный', 'шкаф', 'тропик', '500']);
+    });
+
+    it('русские буквы не теряются (ё и регистр)', () => {
+        const { words } = catalogQueryParts('ЁМКОСТЬ Для Воды');
+        expect(words).toEqual(['ёмкость', 'для', 'воды']);
+    });
+
+    it('пустой запрос даёт пустой разбор', () => {
+        expect(catalogQueryParts('  ')).toEqual({ models: [], words: [] });
+    });
+});
