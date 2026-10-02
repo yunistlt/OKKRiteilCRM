@@ -138,11 +138,20 @@ export async function initiateMakeCall(params: {
     }
 
     // POST /api/ver1.0/extension/{extension_id}/callback/
-    // src_num (массив) — первое плечо (очередь ОП), dst_num — второе плечо (клиент).
-    // Номера — только цифры (Телфин не принимает '+'). caller_id — компанийский DID, чтобы
-    // клиент видел узнаваемый номер (иначе Телфин ставит дефолт транка). Настраивается env.
+    // src_num (массив) — первое плечо, dst_num — второе плечо (клиент).
+    // Номера — только цифры (Телфин не принимает '+').
+    //
+    // Кому какой номер показывается — не очевидно и стоило путаницы (Ирина
+    // 02.10.2026: «я набираю номер клиента, а звоню нам»):
+    //  * `caller_id_number` / `caller_id_name` видит ПЕРВОЕ плечо, то есть сам
+    //    менеджер на своём аппарате. Туда ставим номер КЛИЕНТА — так менеджер
+    //    видит, с кем его соединяют, и может перезвонить сам. Это же советует
+    //    документация Телфина, когда первое плечо — внутренний номер.
+    //  * `src_ani` видит КЛИЕНТ — туда идёт наш городской номер, иначе Телфин
+    //    подставит номер транка.
     const digits = (s: string) => String(s).replace(/[^\d]/g, '');
-    const callerId = process.env.TELPHIN_CALLBACK_CALLER_ID || '74993504490';
+    const companyNumber = process.env.TELPHIN_CALLBACK_CALLER_ID || '74993504490';
+    const clientNumber = digits(params.destination);
     const res = await fetchTelphin(`${TELPHIN_API}/extension/${extensionId}/callback/`, {
         method: 'POST',
         headers: {
@@ -151,8 +160,10 @@ export async function initiateMakeCall(params: {
         },
         body: JSON.stringify({
             src_num: [digits(params.source)],
-            dst_num: digits(params.destination),
-            caller_id_number: callerId
+            dst_num: clientNumber,
+            caller_id_number: clientNumber,
+            caller_id_name: clientNumber,
+            src_ani: companyNumber
         })
     });
 
