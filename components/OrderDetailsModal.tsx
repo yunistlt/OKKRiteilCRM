@@ -931,13 +931,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <InfoField label="Причина отмены" value={names.field('prichiny_otmeny', payload.cancelReason || customFields.prichiny_otmeny) || '—'} />
                             <InfoField label="Плановая дата закупки" value={formatDate(planPurchaseDate)} />
                             <EditField label="Маржа, %" value={fieldValue('cf.marzha', customFields.marzha || '')} onChange={(v) => setField('cf.marzha', v)} />
-                            <InfoField label="Часовой пояс" value={timezoneValue || '—'} />
                             <EditField label="Датасчёт" type="date" value={fieldValue('cf.datacheta', String(customFields.datacheta || '').slice(0, 10))} onChange={(v) => setField('cf.datacheta', v)} />
                             <InfoField label="Изменение менеджера" value={changeManager || '—'} />
-                            <InfoField label="Контрагент" value={names.resolve('contragentType', payload.contragent?.contragentType) || '—'} />
-                            <InfoField label="Email" value={payload.email || '—'} />
-                            <InfoField label="Телефон" value={primaryPhone || '—'} />
-                            <InfoField label="Файлы" value={data.emails?.length ? `${data.emails.length} вложений` : 'Нет файлов'} />
                         </div>
                     </div>
 
@@ -958,7 +953,6 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-2">
-                            <InfoField label="Тип контрагента" value={names.resolve('contragentType', requisites?.client?.contragentType || requisites?.inOrder?.contragentType) || '—'} />
                             <InfoField label="Юридическое название" value={requisites?.client?.legalName || requisites?.inOrder?.legalName || '—'} />
                             <InfoField label="ИНН" value={requisites?.client?.inn || requisites?.inOrder?.inn || '—'} />
                             <InfoField label="КПП" value={requisites?.client?.kpp || requisites?.inOrder?.kpp || '—'} />
