@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Header from "./components/Header";
+import { BreadcrumbsProvider } from "@/components/ui/BreadcrumbsContext";
 import { Suspense } from 'react';
 import { getSession } from '@/lib/auth';
 import { AuthProvider } from '@/components/auth/AuthProvider';
@@ -75,6 +76,9 @@ export default async function RootLayout({
                     {/* План дня знают и шапка (кнопка), и рабочая область (сама
                         панель), поэтому состояние живёт выше них обоих. */}
                     <DayPlanProvider>
+                      {/* Хлебные крошки: карточка, открытая поверх страницы, дописывает
+                          свою крошку к названию раздела в шапке. */}
+                      <BreadcrumbsProvider>
                         <div className="flex-1 flex flex-col min-h-0 min-w-0 relative h-screen">
                             <Suspense fallback={null}><SystemAlertsBanner /></Suspense>
                             <Header />
@@ -82,6 +86,7 @@ export default async function RootLayout({
                                 <GlobalConsultantShell>{children}</GlobalConsultantShell>
                             </main>
                         </div>
+                      </BreadcrumbsProvider>
                     </DayPlanProvider>
                     {session ? <PhonePanel /> : null}
                     {session ? <Suspense fallback={null}><QaOverlay /></Suspense> : null}

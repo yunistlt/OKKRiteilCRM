@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useDayPlan } from '@/components/sales-rop/DayPlanContext';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { resolvePageTitle } from '@/lib/nav';
+import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 
 type NavigatorWithBadge = Navigator & {
     setAppBadge?: (count?: number) => Promise<void>;
@@ -18,6 +19,7 @@ export default function Header() {
     // План дня открывается сам утром; кнопка нужна, чтобы вернуть его после закрытия.
     const { open: planOpen, setOpen: setPlanOpen } = useDayPlan();
     const { permissionRules } = useAuth();
+    const { crumbs } = useBreadcrumbs();
     const hideOnMessengerMobile = pathname.startsWith('/messenger');
 
     useEffect(() => {
@@ -63,8 +65,37 @@ export default function Header() {
         <header data-ui-audit-zone="header" className={`${hideOnMessengerMobile ? 'hidden md:block ' : ''}bg-white border-b border-border sticky top-0 z-50`}>
             <div className="px-6 flex justify-between items-center h-14">
 
-                <h1 className="text-base font-bold uppercase tracking-tight text-foreground">
-                    {getPageTitle()}
+                {/* Название раздела — первая крошка. Открытый поверх экран
+                    добавляет свою, и по разделу можно вернуться назад. */}
+                <h1 className="flex min-w-0 items-center gap-2 text-base font-bold uppercase tracking-tight text-foreground">
+                    {crumbs.length > 0 && crumbs[0].back ? (
+                        <button
+                            type="button"
+                            onClick={() => crumbs[0].back?.()}
+                            className="shrink-0 uppercase text-blue-700 hover:underline"
+                            title="Вернуться к списку"
+                        >
+                            {getPageTitle()}
+                        </button>
+                    ) : (
+                        <span className="truncate">{getPageTitle()}</span>
+                    )}
+                    {crumbs.map((crumb, index) => (
+                        <span key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-2">
+                            <span className="shrink-0 font-normal text-muted-foreground">/</span>
+                            {index < crumbs.length - 1 && crumb.back ? (
+                                <button
+                                    type="button"
+                                    onClick={() => crumb.back?.()}
+                                    className="truncate uppercase text-blue-700 hover:underline"
+                                >
+                                    {crumb.label}
+                                </button>
+                            ) : (
+                                <span className="truncate">{crumb.label}</span>
+                            )}
+                        </span>
+                    ))}
                 </h1>
 
                 <div className="ml-auto flex items-center gap-2">
