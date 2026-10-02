@@ -22,6 +22,8 @@ import { itemLabel, managerName, moneyValue, statusName, writeOwnHistory } from 
  * идентификатор RetailCRM (сейчас ~55 тысяч), 900 млн он не достигнет никогда.
  */
 export const OWN_ID_BASE = 900_000_000;
+/** База человеческого номера своего заказа: 900001, 900002… */
+export const OWN_NUMBER_BASE = 900_000;
 
 /** Магазин своих заказов. Это не магазин RetailCRM — подставлять чужой нельзя. */
 export const OWN_SITE = 'own-crm';
@@ -70,6 +72,14 @@ export type CrmLikeOrderResult = {
 };
 
 /** Следующий номер своего заказа: 1001А. Буква — признак нашего заказа. */
+/**
+ * Номер своего заказа: 900001, 900002…
+ *
+ * Шесть знаков и девятка в начале — на разряд длиннее номеров RetailCRM (54935),
+ * поэтому свой заказ виден сразу и ни с чем не путается. Прежний формат с
+ * кириллической «А» («1039А») оказался неудобен: буква мешала в поиске, ломала
+ * ссылки и пути в хранилище (решение владельца 02.10.2026).
+ */
 export async function nextOwnOrderNumber(): Promise<{ number: string; seq: number }> {
     const { data, error } = await supabase.rpc('nextval_own_order_number');
 
@@ -83,11 +93,11 @@ export async function nextOwnOrderNumber(): Promise<{ number: string; seq: numbe
             .order('id', { ascending: false })
             .limit(1);
         const seq = Number((rows as any[])?.[0]?.id ?? OWN_ID_BASE) - OWN_ID_BASE + 1;
-        return { number: `${1000 + seq}А`, seq };
+        return { number: String(OWN_NUMBER_BASE + seq), seq };
     }
 
     const seq = Number(data);
-    return { number: `${1000 + seq}А`, seq };
+    return { number: String(OWN_NUMBER_BASE + seq), seq };
 }
 
 /** Работает ли этот менеджер в нашей базе. */
