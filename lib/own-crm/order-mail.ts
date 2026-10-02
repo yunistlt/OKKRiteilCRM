@@ -9,8 +9,13 @@
  *  - входящие — `incoming_emails` (их разбирает Катерина, автоприём почты);
  *  - исходящие — `order_email_sends` (письма по заказу из карточки).
  *
- * Отсюда и собираем, а комментарии остаются там, где им место: в своём поле
- * карточки и в истории заказа.
+ * Третий путь привязки — **тег в теме**: наши письма по заказу уходят с
+ * `[#магазин/номер]`, и он же возвращается в ответах клиента. По нему письмо
+ * цепляется к заказу, даже если автоприём не проставил связь (так же делает
+ * RetailCRM; решение владельца 02.10.2026: «письма очень важны»). На 02.10 в
+ * ящике 1 506 писем с тегом, из них 931 без иной привязки.
+ *
+ * Комментарии остаются там, где им место: в своём поле карточки и в истории.
  */
 import { supabase } from '@/utils/supabase';
 
@@ -49,6 +54,8 @@ export async function loadOrderMail(params: {
     const incomingFilters = [
         number ? `created_crm_order_number.eq.${number}` : null,
         Number.isFinite(orderId) ? `linked_order_id.eq.${orderId}` : null,
+        // Тег в теме: «[#2/49583] …» и ответы «Re: [#2/49583] …».
+        number ? `subject.ilike.%/${number}]%` : null,
     ].filter(Boolean) as string[];
 
     const [incoming, outgoing] = await Promise.all([

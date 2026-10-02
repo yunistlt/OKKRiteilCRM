@@ -176,13 +176,29 @@ function FilesList({ orderNumber }: { orderNumber: string }) {
 
     return (
         <>
-            <p className="mb-2 border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] leading-snug text-amber-800">
-                Это опись вложений: сами файлы остались в почте rop@zmktlt.ru, у нас они не хранятся — открыть отсюда нельзя.
-            </p>
             <ul className="divide-y divide-gray-100">
                 {files.map((f, i) => (
                     <li key={i} className="py-2">
-                        <p className="text-sm font-bold text-gray-900">{f.filename}</p>
+                        {/* Файл открывается: при первом нажатии он докачивается из
+                            письма и дальше отдаётся из нашего хранилища
+                            (требование владельца 02.10.2026). */}
+                        {f.downloadable !== false && f.emailId ? (
+                            <a
+                                href={`/api/orders/${orderNumber}/files/download?emailId=${encodeURIComponent(String(f.emailId))}&name=${encodeURIComponent(f.filename)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-bold text-blue-700 hover:underline"
+                            >
+                                {f.filename}
+                            </a>
+                        ) : (
+                            <p className="text-sm font-bold text-gray-900">
+                                {f.filename}
+                                <span className="ml-2 text-[11px] font-normal text-amber-800">
+                                    письма уже нет в ящике — открыть нельзя
+                                </span>
+                            </p>
+                        )}
                         <p className="text-[11px] text-gray-500">
                             {size(f.size)}
                             {f.fromName || f.fromEmail ? ` · от ${f.fromName || f.fromEmail}` : ''}
