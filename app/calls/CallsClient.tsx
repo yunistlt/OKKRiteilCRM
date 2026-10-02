@@ -2,6 +2,7 @@
 
 // Все звонки компании: кто звонил, кому, по какому заказу, с записью и расшифровкой.
 import { useCallback, useEffect, useState } from 'react';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Call = {
     id: number;
@@ -144,7 +145,7 @@ export default function CallsClient() {
                                     </td>
                                     <td className="whitespace-nowrap px-3 py-2 text-gray-800">{call.phone || '—'}</td>
                                     <td className="px-3 py-2 text-gray-700">{call.managerName || '—'}</td>
-                                    <td className="px-3 py-2 text-gray-700">{call.orderNumber || '—'}</td>
+                                    <td className="px-3 py-2"><OrderNumberLink number={call.orderNumber} /></td>
                                     <td className="whitespace-nowrap px-3 py-2 text-gray-700">{formatDuration(call.durationSec)}</td>
                                     <td className="whitespace-nowrap px-3 py-2">
                                         {call.recordingUrl ? (

@@ -13,6 +13,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { Phone, Mail, ArrowRight, Flame, Clock, Lightbulb } from 'lucide-react';
 import { formatRub } from '@/lib/format';
 
@@ -189,7 +190,9 @@ function NowCard({ action }: { action: Action | null }) {
                 <div>
                     <p className="text-[11px] uppercase tracking-wide text-gray-500">Сделка</p>
                     <p className="text-2xl font-bold tabular-nums text-gray-900">{formatRub(action.amount)}</p>
-                    <p className="mt-1 text-xs text-gray-600">Заказ №{action.orderNumber}</p>
+                    <p className="mt-1 text-xs text-gray-600">
+                        Заказ №<OrderNumberLink number={action.orderNumber} />
+                    </p>
                 </div>
 
                 <div className="space-y-2">

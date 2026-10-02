@@ -3,6 +3,7 @@
 // Документы на согласовании: юрист читает договор, правит текст и решает —
 // согласовать или вернуть менеджеру. Строка = один договор по заказу.
 import { useCallback, useEffect, useState } from 'react';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Contract = {
     id: number;
@@ -140,7 +141,7 @@ export default function ApprovalsClient() {
                                 <span className="text-xs font-semibold text-gray-600">{row.statusLabel} · редакция {row.version}</span>
                             </div>
                             <div className="mt-1 text-xs text-gray-500">
-                                Заказ {row.order_number} · составил {row.created_by || '—'} · {formatDate(row.created_at)}
+                                составил {row.created_by || '—'} · {formatDate(row.created_at)}
                             </div>
                             {row.terms_text && (
                                 <div className="mt-1 text-xs text-gray-600">Условия от менеджера: {row.terms_text}</div>
@@ -149,6 +150,9 @@ export default function ApprovalsClient() {
                                 <div className="mt-1 text-xs text-gray-600">Замечание юриста: {row.review_comment}</div>
                             )}
                         </button>
+                        <div className="px-4 pb-2 text-xs text-gray-600">
+                            Заказ <OrderNumberLink number={row.order_number} />
+                        </div>
 
                         {openId === row.id && current && (
                             <div className="border-t border-gray-200 px-4 py-3">

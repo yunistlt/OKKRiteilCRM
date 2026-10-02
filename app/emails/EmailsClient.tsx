@@ -4,6 +4,7 @@
 // и менеджеру нужно видеть переписку коллег — иначе не отличить дубль от нового
 // клиента.
 import { useCallback, useEffect, useState } from 'react';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Email = {
     id: string;
@@ -129,7 +130,11 @@ export default function EmailsClient() {
                                     </span>
                                     <span>{mail.party || '—'}</span>
                                     {mail.typeLabel && <span>{mail.typeLabel}</span>}
-                                    {mail.orderNumber && <span>Заказ {mail.orderNumber}</span>}
+                                    {mail.orderNumber && (
+                                        <span>
+                                            Заказ <OrderNumberLink number={mail.orderNumber} />
+                                        </span>
+                                    )}
                                     {mail.attachments && <span>с вложениями</span>}
                                 </div>
                                 {!open && (

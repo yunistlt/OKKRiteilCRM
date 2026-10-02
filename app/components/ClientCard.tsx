@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatIntRu, formatRub } from '@/lib/format';
 import { isReseller } from '@/lib/own-crm/okved';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 
 type Requisites = {
     contragentType?: string | null;
@@ -529,7 +530,9 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                     {orders.map((order) => (
                         <div key={order.orderId} className="border-b border-gray-100 px-4 py-3">
                             <div className="flex items-baseline justify-between gap-2">
-                                <span className="font-semibold text-gray-900">№{order.number}</span>
+                                <span className="font-semibold text-gray-900">
+                                    №<OrderNumberLink number={order.number} />
+                                </span>
                                 <span className="text-gray-900">{order.total ? formatRub(order.total) : <Dash />}</span>
                             </div>
                             <div className="text-[11px] text-gray-500">
@@ -560,7 +563,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             <div className="text-[11px] text-gray-500">
                                 {new Date(call.at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}
                                 {call.managerName ? ` · ${call.managerName}` : ''}
-                                {call.orderNumber ? ` · заказ №${call.orderNumber}` : ''}
+                                {call.orderNumber ? <> · заказ №<OrderNumberLink number={call.orderNumber} /></> : ''}
                                 {call.hasRecording ? ' · есть запись' : ''}
                             </div>
                         </div>
@@ -575,7 +578,7 @@ export default function ClientCard({ clientId }: { clientId: string }) {
                             <div className="text-gray-900">{mail.subject || 'Без темы'}</div>
                             <div className="text-[11px] text-gray-500">
                                 {new Date(mail.at).toLocaleDateString('ru-RU')} · {mail.outcome}
-                                {mail.orderNumber ? ` · заказ №${mail.orderNumber}` : ''}
+                                {mail.orderNumber ? <> · заказ №<OrderNumberLink number={mail.orderNumber} /></> : ''}
                             </div>
                         </div>
                     ))}

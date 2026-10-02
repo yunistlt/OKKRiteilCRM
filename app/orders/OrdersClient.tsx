@@ -8,6 +8,7 @@ import OrderDetailsModal from '@/components/OrderDetailsModal';
 import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/orders-filter';
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
+import OrderNumberLink from '@/components/ui/OrderNumberLink';
 import { useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
 
@@ -185,7 +186,7 @@ export default function OrdersClient() {
                     </span>
                 );
             case 'number':
-                return <span className="font-bold text-blue-700">{order.number}</span>;
+                return <OrderNumberLink number={order.number} className="font-bold text-blue-700 hover:underline" />;
             case 'customer':
                 return order.customerName || '—';
             case 'contragent':
