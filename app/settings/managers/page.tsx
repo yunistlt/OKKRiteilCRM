@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions, saveOwnCrmManagers, previewOwnCrmTakeover } from './actions';
+import { saveManagerSettings, getSalaryRoster, saveSalaryRoster, saveManagerExtensions, saveOwnCrmManagers, previewOwnCrmTakeover, previewStaffTakeover, runStaffTakeover } from './actions';
 import Link from 'next/link';
 
 type RosterInfo = { inSalary: boolean; candidates: { code: string; name: string }[]; resolvedName: string | null; needsChoice: boolean };
@@ -21,6 +21,11 @@ export default function ManagerSettingsPage() {
     const [search, setSearch] = useState('');
     const [showSqlGuide, setShowSqlGuide] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
+    // Переезд всего отдела одним действием (решение владельца 02.10.2026:
+    // 04.10.2026 включаем свою CRM всем сотрудникам).
+    const [staffPlan, setStaffPlan] = useState<any[] | null>(null);
+    const [staffBusy, setStaffBusy] = useState(false);
+    const [staffDone, setStaffDone] = useState<string | null>(null);
 
     useEffect(() => {
         async function load() {
@@ -208,6 +213,44 @@ export default function ManagerSettingsPage() {
         }
     };
 
+    const openStaffTakeover = async () => {
+        setStaffBusy(true);
+        setStaffDone(null);
+        try {
+            const result = await previewStaffTakeover();
+            if (!result.success) throw new Error(result.error);
+            setStaffPlan(result.rows);
+        } catch (e: any) {
+            alert('Не удалось посчитать переезд: ' + e.message);
+        } finally {
+            setStaffBusy(false);
+        }
+    };
+
+    const confirmStaffTakeover = async () => {
+        setStaffBusy(true);
+        try {
+            const result = await runStaffTakeover();
+            if (!result.success) throw new Error(result.error);
+
+            const moved = (result.moved || []).map((row: any) => `${row.name} — ${row.orders.toLocaleString('ru-RU')} заказов`);
+            setStaffDone(moved.length
+                ? `Переведены: ${moved.join('; ')}.`
+                : 'Переводить было некого — все уже работают в нашей CRM.');
+            setStaffPlan(null);
+
+            const refreshed = await fetch('/api/managers').then((r) => r.json());
+            setManagers(refreshed || []);
+            const own = new Set<number>((refreshed || []).filter((m: any) => m.own_crm).map((m: any) => Number(m.id)));
+            setOwnCrmIds(own);
+            setOrigOwnCrmIds(new Set(own));
+        } catch (e: any) {
+            alert('Переезд не прошёл: ' + e.message);
+        } finally {
+            setStaffBusy(false);
+        }
+    };
+
     if (loading) return (
         <div className="flex flex-col items-center justify-center min-h-[400px]">
             <div className="animate-spin rounded-[50%] h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
@@ -223,14 +266,80 @@ export default function ManagerSettingsPage() {
                 <p className="text-sm text-gray-500 font-medium">
                     «Контроль» — анализ нарушений. «В ЗП» — участие в расчёте зарплаты (роль приходит из групп RetailCRM; при нескольких ролях выберите нужную). «Доб. Телфин» — внутренний номер для перевода звонка AI-секретарём (пусто = не настроено, перевод на оператора). «Наша CRM» — переезд менеджера: он работает только у нас, и его заказы RetailCRM тоже становятся нашими. По таким заказам данные из RetailCRM не принимаются и наружу не отправляются; новые заявки получают номер с буквой «А».
                 </p>
-                <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm md:w-auto md:px-8"
-                >
-                    {saving ? 'Сохранение...' : 'Сохранить изменения'}
-                </button>
+                <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                    <button
+                        onClick={handleSave}
+                        disabled={saving}
+                        className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold uppercase tracking-wider text-xs hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm md:w-auto md:px-8"
+                    >
+                        {saving ? 'Сохранение...' : 'Сохранить изменения'}
+                    </button>
+                    {/* Одно действие на весь отдел: 04.10.2026 своя CRM включается всем. */}
+                    <button
+                        onClick={openStaffTakeover}
+                        disabled={staffBusy}
+                        className="w-full border border-gray-300 py-3 px-4 text-xs font-bold uppercase tracking-wider text-gray-700 hover:bg-gray-100 disabled:text-gray-400 md:w-auto"
+                    >
+                        {staffBusy && !staffPlan ? 'Считаем…' : 'Перевести весь отдел в нашу CRM'}
+                    </button>
+                </div>
             </div>
+
+            {staffDone && (
+                <div className="mb-4 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">{staffDone}</div>
+            )}
+
+            {staffPlan && (
+                <div className="mb-6 border border-gray-300 bg-white">
+                    <div className="border-b border-gray-200 bg-gray-100 px-4 py-2 text-xs font-bold uppercase tracking-wide text-gray-700">
+                        Переезд всего отдела — что произойдёт
+                    </div>
+                    <table className="w-full text-xs">
+                        <thead>
+                            <tr className="border-b border-gray-200 text-left text-[11px] uppercase tracking-wide text-gray-500">
+                                <th className="px-4 py-2">Сотрудник</th>
+                                <th className="px-4 py-2">Заказов</th>
+                                <th className="px-4 py-2">Уже наши</th>
+                                <th className="px-4 py-2">Что будет</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {staffPlan.map((row: any) => (
+                                <tr key={row.managerId} className="border-b border-gray-100">
+                                    <td className="px-4 py-2 font-semibold text-gray-900">{row.name}</td>
+                                    <td className="px-4 py-2">{Number(row.orders).toLocaleString('ru-RU')}</td>
+                                    <td className="px-4 py-2">{Number(row.own).toLocaleString('ru-RU')}</td>
+                                    <td className={`px-4 py-2 ${row.willTake ? 'text-gray-900' : 'text-gray-500'}`}>
+                                        {row.willTake
+                                            ? `переведём, заберём ${(Number(row.orders) - Number(row.own)).toLocaleString('ru-RU')} заказов`
+                                            : `пропустим: ${row.skip}`}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <div className="border-t border-gray-200 px-4 py-3 text-xs text-gray-600">
+                        После перевода эти заказы живут только у нас: данные из RetailCRM по ним не
+                        принимаются и наружу не отправляются, в RetailCRM они застынут на сегодняшнем
+                        виде. Обратно вернуть можно, но наработанное у нас затрётся снимком из RetailCRM.
+                    </div>
+                    <div className="flex items-center gap-3 border-t border-gray-200 px-4 py-3">
+                        <button
+                            onClick={confirmStaffTakeover}
+                            disabled={staffBusy || !staffPlan.some((row: any) => row.willTake)}
+                            className="border border-gray-900 bg-gray-900 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-black disabled:border-gray-300 disabled:bg-gray-300"
+                        >
+                            {staffBusy ? 'Переводим…' : `Перевести ${staffPlan.filter((row: any) => row.willTake).length} сотрудников`}
+                        </button>
+                        <button
+                            onClick={() => setStaffPlan(null)}
+                            className="text-xs font-bold text-gray-500 hover:underline"
+                        >
+                            Отменить
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {saveMessage && (
                 <div className="mb-4 rounded-2xl border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">

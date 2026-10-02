@@ -114,3 +114,94 @@ export async function returnManagerOrders(managerId: number): Promise<number> {
 
     return returned;
 }
+
+// ── Переезд всего отдела одним действием ────────────────────────────────────
+
+export type StaffTakeoverRow = {
+    managerId: number;
+    name: string;
+    /** Живых заказов в RetailCRM и у нас. */
+    orders: number;
+    /** Сколько уже наши. */
+    own: number;
+    /** Есть ли у человека вход в ОКК: без него работать здесь физически нельзя. */
+    hasAccount: boolean;
+    /** Переведём ли его этим действием. */
+    willTake: boolean;
+    /** Если не переведём — почему, человеческим языком. */
+    skip: string | null;
+};
+
+/**
+ * Кого затронет переезд всего отдела — показываем до нажатия.
+ *
+ * Решение владельца 02.10.2026: 04.10.2026 своя CRM включается всем
+ * сотрудникам, и нужно одно действие вместо галочки на каждого. Но «все» —
+ * это люди, а в справочнике RetailCRM активны ещё и служебные записи
+ * («Инженеры ЗМК», «Поддержка», администратор). Поэтому: берём активных, у
+ * кого есть заказы и есть вход в ОКК; остальных показываем с причиной, почему
+ * пропускаем, — закон «любое число раскладывается».
+ */
+export async function takeoverEveryonePreview(): Promise<StaffTakeoverRow[]> {
+    const { data: managers, error } = await supabase
+        .from('managers')
+        .select('id, first_name, last_name, own_crm')
+        .eq('active', true);
+    if (error) throw new Error(error.message);
+
+    const ids = ((managers ?? []) as any[]).map((row) => Number(row.id));
+    if (!ids.length) return [];
+
+    const { data: accounts } = await supabase
+        .from('users')
+        .select('retail_crm_manager_id')
+        .in('retail_crm_manager_id', ids);
+    const withAccount = new Set(((accounts ?? []) as any[]).map((row) => Number(row.retail_crm_manager_id)));
+
+    const rows: StaffTakeoverRow[] = [];
+    for (const manager of (managers ?? []) as any[]) {
+        const id = Number(manager.id);
+        const counts = await takeoverPreview(id);
+        const name = [manager.last_name, manager.first_name].filter(Boolean).join(' ').trim() || `Менеджер ${id}`;
+        const hasAccount = withAccount.has(id);
+
+        let skip: string | null = null;
+        if (manager.own_crm) skip = 'уже работает в нашей CRM';
+        else if (counts.total === 0) skip = 'нет заказов — переводить нечего';
+        else if (!hasAccount) skip = 'нет входа в ОКК — сначала создайте доступ, иначе работать будет негде';
+
+        rows.push({
+            managerId: id,
+            name,
+            orders: counts.total,
+            own: counts.own,
+            hasAccount,
+            willTake: !skip,
+            skip,
+        });
+    }
+
+    return rows.sort((left, right) => right.orders - left.orders);
+}
+
+/**
+ * Перевести весь отдел одним действием: ставим флаг и забираем заказы тем,
+ * кого показал предпросмотр. Кого пропускаем — там и остаётся.
+ */
+export async function takeoverEveryone(): Promise<{ moved: Array<{ name: string; orders: number }>; skipped: Array<{ name: string; reason: string }> }> {
+    const plan = await takeoverEveryonePreview();
+
+    const moved: Array<{ name: string; orders: number }> = [];
+    for (const row of plan.filter((candidate) => candidate.willTake)) {
+        const { error } = await supabase.from('managers').update({ own_crm: true }).eq('id', row.managerId);
+        if (error) throw new Error(`${row.name}: ${error.message}`);
+
+        const result = await takeoverManagerOrders(row.managerId);
+        moved.push({ name: row.name, orders: result.taken });
+    }
+
+    return {
+        moved,
+        skipped: plan.filter((row) => row.skip).map((row) => ({ name: row.name, reason: row.skip as string })),
+    };
+}

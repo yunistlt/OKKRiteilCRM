@@ -3,7 +3,7 @@
 import { supabase } from '@/utils/supabase';
 import { revalidatePath } from 'next/cache';
 import { resolveManagerRoles, setManagerRoleChoice } from '@/lib/salary/roles';
-import { returnManagerOrders, takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
+import { returnManagerOrders, takeoverEveryone, takeoverEveryonePreview, takeoverManagerOrders, takeoverPreview } from '@/lib/own-crm/takeover';
 
 // ── Реестр ЗП: участие (пофамильно) + роль из групп RetailCRM ────────────────
 
@@ -113,6 +113,29 @@ export async function saveOwnCrmManagers(items: { managerId: number; ownCrm: boo
 /** Сколько заказов заберёт переезд — спрашиваем до того, как нажали. */
 export async function previewOwnCrmTakeover(managerId: number) {
     return takeoverPreview(managerId);
+}
+
+/**
+ * Переезд всего отдела одним действием (решение владельца 02.10.2026:
+ * 04.10.2026 включаем свою CRM всем сотрудникам).
+ */
+export async function previewStaffTakeover() {
+    try {
+        return { success: true as const, rows: await takeoverEveryonePreview() };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
+}
+
+export async function runStaffTakeover() {
+    try {
+        const result = await takeoverEveryone();
+        revalidatePath('/settings/managers');
+        revalidatePath('/orders');
+        return { success: true as const, ...result };
+    } catch (e: any) {
+        return { success: false as const, error: e.message };
+    }
 }
 
 function sanitizeLoginCandidate(value: string | null | undefined) {
