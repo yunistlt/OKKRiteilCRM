@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { orderDocumentData } from '@/lib/own-crm/documents';
+import { supabase } from '@/utils/supabase';
 import { generateInvoicePDF, generateProposalPDF } from '@/lib/pdf-generator';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +21,25 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     const kind = new URL(request.url).searchParams.get('kind') === 'invoice' ? 'invoice' : 'proposal';
-    const orderId = Number(params.id);
+
+    /**
+     * В маршрут приходит либо идентификатор заказа (кнопки в карточке), либо его
+     * НОМЕР — форма письма прикладывает КП по номеру, а у своих заказов он с
+     * кириллической «А» («1020А»). Раньше номер молча превращался в NaN, и
+     * менеджер получал «Неверный номер заказа» (Ирина 02.10.2026).
+     */
+    const raw = decodeURIComponent(String(params.id));
+    let orderId = Number(raw);
     if (!Number.isFinite(orderId)) {
-        return NextResponse.json({ error: 'Неверный номер заказа' }, { status: 400 });
+        const { data: found } = await supabase
+            .from('orders')
+            .select('order_id')
+            .eq('number', raw)
+            .maybeSingle();
+        orderId = Number(found?.order_id);
+    }
+    if (!Number.isFinite(orderId)) {
+        return NextResponse.json({ error: 'Заказ не найден' }, { status: 404 });
     }
 
     // Счёт можно выставить от любого нашего юрлица: их несколько, и у каждого
