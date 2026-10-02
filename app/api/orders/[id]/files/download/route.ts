@@ -27,7 +27,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!session?.user) return NextResponse.json({ error: 'Неавторизован' }, { status: 401 });
 
     const { id } = await params;
-    const orderNumber = String(id);
+    // Номер своего заказа содержит кириллическую «А» («1020А») — в адресе он
+    // приезжает закодированным.
+    const orderNumber = decodeURIComponent(String(id)).trim();
     const url = new URL(request.url);
     const emailId = url.searchParams.get('emailId') || '';
     const filename = url.searchParams.get('name') || '';
@@ -46,8 +48,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
     if (!letter) return NextResponse.json({ error: 'Письмо не найдено' }, { status: 404 });
 
+    // Письмо считается «по этому заказу», если так сказал автоприём
+    // (created_crm_order_number / linked_order_id) или если в теме стоит наш
+    // тег с этим номером.
+    const { data: order } = await supabase
+        .from('orders')
+        .select('order_id')
+        .eq('number', orderNumber)
+        .maybeSingle();
+
     const belongs =
-        String((letter as any).created_crm_order_number ?? '') === orderNumber
+        String((letter as any).created_crm_order_number ?? '').trim() === orderNumber
+        || (order?.order_id != null && String((letter as any).linked_order_id ?? '') === String((order as any).order_id))
         || String((letter as any).subject ?? '').includes(`/${orderNumber}]`);
 
     if (!belongs) {
