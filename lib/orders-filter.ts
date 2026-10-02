@@ -100,6 +100,24 @@ export function parseOrdersFilter(searchParams: URLSearchParams): OrdersFilter {
 
 const cf = (code: string) => `raw_payload->customFields->>${code}`;
 
+/**
+ * Колонки заказа под фильтр — те же имена, что у RetailCRM (миграция
+ * 20260928_orders_retailcrm_columns.sql).
+ *
+ * Через JSON фильтр по дате молча не работал: PostgREST отказывался сравнивать
+ * `raw_payload->customFields->>data_kontakta` через gte/lte, запрос падал с
+ * пустой ошибкой, и список оставался прежним (поймано 02.10.2026). Колонки
+ * типизированы (date, boolean) — сравнение честное и по индексу.
+ */
+const COLUMNS = {
+    nextContact: 'data_kontakta',
+    // Имя Postgres укоротил до 63 знаков — так и лежит в базе.
+    purchaseMonth: 'kogda_vam_nuzhno_chtoby_oborudovanie_uzhe_stoialo_pole_dlia_dat',
+    category: 'typ_castomer',
+    sfera: 'sfera_deiatelnosti',
+    control: 'control',
+} as const;
+
 /** Навешивает условия фильтра на запрос к orders. */
 export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     let q = query;
@@ -131,11 +149,11 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     if (filter.sumFrom) q = q.gte('totalsumm', Number(filter.sumFrom));
     if (filter.sumTo) q = q.lte('totalsumm', Number(filter.sumTo));
 
-    if (filter.categories.length) q = q.in(cf(CUSTOM_FIELD_CODES.category), filter.categories);
-    if (filter.sferas.length) q = q.in(cf(CUSTOM_FIELD_CODES.sfera), filter.sferas);
+    if (filter.categories.length) q = q.in(COLUMNS.category, filter.categories);
+    if (filter.sferas.length) q = q.in(COLUMNS.sfera, filter.sferas);
 
-    if (filter.control === 'yes') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'true');
-    if (filter.control === 'no') q = q.eq(cf(CUSTOM_FIELD_CODES.control), 'false');
+    if (filter.control === 'yes') q = q.eq(COLUMNS.control, true);
+    if (filter.control === 'no') q = q.eq(COLUMNS.control, false);
 
     // Даты могут быть смещением («неделю назад»): разворачиваем их здесь, в
     // момент запроса, — поэтому сохранённый фильтр «заказы на завтра» завтра
@@ -147,11 +165,11 @@ export function applyOrdersFilter(query: any, filter: OrdersFilter) {
     const createdFrom = resolveDate(filter.createdFrom);
     const createdTo = resolveDate(filter.createdTo);
 
-    if (contactFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.nextContact), contactFrom);
-    if (contactTo) q = q.lte(cf(CUSTOM_FIELD_CODES.nextContact), contactTo);
+    if (contactFrom) q = q.gte(COLUMNS.nextContact, contactFrom);
+    if (contactTo) q = q.lte(COLUMNS.nextContact, contactTo);
 
-    if (purchaseFrom) q = q.gte(cf(CUSTOM_FIELD_CODES.purchaseMonth), purchaseFrom);
-    if (purchaseTo) q = q.lte(cf(CUSTOM_FIELD_CODES.purchaseMonth), purchaseTo);
+    if (purchaseFrom) q = q.gte(COLUMNS.purchaseMonth, purchaseFrom);
+    if (purchaseTo) q = q.lte(COLUMNS.purchaseMonth, purchaseTo);
 
     if (createdFrom) q = q.gte('created_at', createdFrom);
     if (createdTo) q = q.lte('created_at', `${createdTo}T23:59:59`);
@@ -177,6 +195,9 @@ export function filterToCountParams(
         number: filter.number || '',
         customer: filter.customer || '',
         managers: filter.managers.filter(Boolean),
+        // Статусы нужны «Итого по фильтру» (orders_filter_totals); счётчики
+        // колонки их намеренно игнорируют — иначе по колонке не переключиться.
+        statuses: filter.statuses.filter(Boolean),
         vip: filter.marks.includes('vip'),
         bad: filter.marks.includes('bad'),
         sumFrom: filter.sumFrom || '',

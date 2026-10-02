@@ -47,7 +47,7 @@ export async function GET(req: Request) {
 
     const from = (page - 1) * pageSize;
 
-    const [listResult, statusResult] = await Promise.all([
+    const [listResult, statusResult, totalsResult] = await Promise.all([
         base()
             .select('order_id, number, status, created_at, status_since, manager_id, totalsumm, raw_payload', { count: 'exact' })
             .order('created_at', { ascending: false })
@@ -57,6 +57,9 @@ export async function GET(req: Request) {
         // этапы пропадали из колонки. Фильтр по самому статусу не применяем,
         // иначе в колонке останется только выбранный и по ней не переключиться.
         supabase.rpc('orders_status_counts', { p: filterToCountParams({ ...filter, statuses: [] }, norms) }),
+        // Итого по фильтру — тоже из базы: по странице его посчитать нельзя,
+        // соврёт так же, как врали счётчики статусов.
+        supabase.rpc('orders_filter_totals', { p: filterToCountParams(filter, norms) }),
     ]);
 
     if (listResult.error) {
@@ -277,6 +280,11 @@ export async function GET(req: Request) {
             pageSize,
             totalCount: listResult.count ?? 0,
             totalPages: Math.max(1, Math.ceil((listResult.count ?? 0) / pageSize)),
+        },
+        // Итого по всему фильтру, а не по странице.
+        totals: {
+            count: Number((totalsResult.data as any)?.[0]?.orders_count ?? listResult.count ?? 0),
+            sum: Number((totalsResult.data as any)?.[0]?.total_sum ?? 0),
         },
     });
 }

@@ -120,7 +120,7 @@ export default function RelativeDateInput({
     };
 
     return (
-        <div className="relative w-full min-w-0" ref={boxRef}>
+        <div className="relative w-full min-w-[104px]" ref={boxRef}>
             <button
                 type="button"
                 onClick={toggle}

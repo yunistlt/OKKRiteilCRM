@@ -9,6 +9,7 @@ import { EMPTY_FILTER, filterToSearchParams, type OrdersFilter } from '@/lib/ord
 import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders-view';
 import StatusIcon from '@/components/orders/StatusIcon';
 import { useSearchParams } from 'next/navigation';
+import { formatRub } from '@/lib/format';
 
 interface OrderRow {
     orderId: number;
@@ -76,6 +77,8 @@ export default function OrdersClient() {
     const [managers, setManagers] = useState<Array<{ value: string; label: string }>>([]);
     const [page, setPage] = useState(1);
     const [pagination, setPagination] = useState({ totalCount: 0, totalPages: 1 });
+    // Итого по всему фильтру, а не по странице: считает база (orders_filter_totals).
+    const [totals, setTotals] = useState({ count: 0, sum: 0 });
     const [loading, setLoading] = useState(true);
     const [openOrderId, setOpenOrderId] = useState<number | null>(() => {
         const requested = Number(searchParams.get('order'));
@@ -126,6 +129,10 @@ export default function OrdersClient() {
             setPagination({
                 totalCount: data.pagination?.totalCount ?? 0,
                 totalPages: data.pagination?.totalPages ?? 1,
+            });
+            setTotals({
+                count: Number(data.totals?.count ?? data.pagination?.totalCount ?? 0),
+                sum: Number(data.totals?.sum ?? 0),
             });
         } catch (e) {
             console.error(e);
@@ -308,6 +315,17 @@ export default function OrdersClient() {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Итого под таблицей — по всему фильтру, как в RetailCRM: менеджеру
+                нужна сумма отобранных заказов, а не текущей страницы. */}
+            <div className="flex flex-wrap items-center justify-end gap-x-6 gap-y-1 border-t border-gray-200 bg-gray-50 px-6 py-2 text-sm">
+                <span className="text-gray-600">
+                    Заказов по фильтру: <b className="text-gray-900">{totals.count.toLocaleString('ru-RU')}</b>
+                </span>
+                <span className="text-gray-600">
+                    Сумма по фильтру: <b className="text-gray-900">{formatRub(totals.sum)}</b>
+                </span>
             </div>
 
             {pagination.totalPages > 1 && (

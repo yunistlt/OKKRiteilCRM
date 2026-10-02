@@ -150,17 +150,17 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
                             <Field label="Наименование контрагента"><Text value={draft.contragent} onChange={(v) => set({ contragent: v })} /></Field>
                         )}
                         {show('contact') && (
-                            <Field label="Дата следующего контакта">
+                            <Field label="Дата следующего контакта" wide>
                                 <DateRange from={draft.contactFrom} to={draft.contactTo} onFrom={(v) => set({ contactFrom: v })} onTo={(v) => set({ contactTo: v })} />
                             </Field>
                         )}
                         {show('created') && (
-                            <Field label="Дата оформления заказа">
+                            <Field label="Дата оформления заказа" wide>
                                 <DateRange from={draft.createdFrom} to={draft.createdTo} onFrom={(v) => set({ createdFrom: v })} onTo={(v) => set({ createdTo: v })} />
                             </Field>
                         )}
                         {show('purchase') && (
-                            <Field label="В каком месяце планируете закупку?">
+                            <Field label="В каком месяце планируете закупку?" wide>
                                 <DateRange from={draft.purchaseFrom} to={draft.purchaseTo} onFrom={(v) => set({ purchaseFrom: v })} onTo={(v) => set({ purchaseTo: v })} />
                             </Field>
                         )}
@@ -244,9 +244,11 @@ export default function OrdersFilterPanel({ value, managers, statuses, onApply }
     );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+    // Диапазон дат в одну колонку не влезал: дата обрезалась до «02.1…»
+    // (поймано 02.10.2026). Поэтому такие поля занимают две колонки сетки.
     return (
-        <div>
+        <div className={wide ? 'md:col-span-2' : undefined}>
             <label className="mb-0.5 block truncate text-[12px] text-gray-600" title={label}>{label}</label>
             {children}
         </div>
