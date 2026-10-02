@@ -203,7 +203,9 @@ export async function editOwnOrder(
         else delete payload.discountManualPercent;
     }
 
-    if (edit.items) {
+    // Пустой состав не трогаем: карточка шлёт позиции при любой правке, и пустой
+    // список стёр бы состав заказа при сохранении одних только контактов.
+    if (edit.items?.length) {
         // Номера нужны только новым позициям; у приехавших из RetailCRM они свои.
         const fresh = await ownItemIds(edit.items.filter((item) => !item.id).length);
         let freshIndex = 0;
@@ -300,7 +302,7 @@ export async function editOwnOrder(
             newValue: await managerName(edit.managerId),
         });
     }
-    if (edit.items) {
+    if (edit.items?.length) {
         const was = (before.items || []).map((item: any) => itemLabel({
             name: item.offer?.name || item.productName,
             quantity: item.quantity,

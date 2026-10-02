@@ -83,10 +83,9 @@ export function describeEdit(edit: OrderEdit): string[] {
 export function validateItems(items: EditableItem[]): string[] {
     const problems: string[] = [];
 
-    if (!items.length) {
-        problems.push('В заказе должна остаться хотя бы одна позиция');
-    }
-
+    // Пустой состав — не ошибка: заявка приходит до просчёта, позиций ещё нет,
+    // а карточку надо сохранять (внести телефон, реквизиты). Решение владельца
+    // 02.10.2026 — иначе менеджер не может сохранить страницу вообще.
     items.forEach((item, index) => {
         if (!item.name?.trim()) problems.push(`Позиция ${index + 1}: не указано название`);
         if (!(Number(item.quantity) > 0)) problems.push(`Позиция ${index + 1}: количество должно быть больше нуля`);
@@ -162,9 +161,11 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
     const site = (order as any).site;
     const orderData: any = {};
 
-    if (edit.items) {
+    if (edit.items?.length) {
         // RetailCRM заменяет состав целиком: присылаем все позиции, которые должны
         // остаться. Позиция без id считается новой, пропавшая — удалённой.
+        // Пустой массив не отправляем: карточка шлёт состав при любой правке, и
+        // пустой список стёр бы позиции заказа в CRM.
         orderData.items = edit.items.map((item) => ({
             ...(item.id ? { id: item.id } : {}),
             productName: item.name.trim(),
