@@ -146,6 +146,24 @@ export default function OrdersClient() {
 
     useEffect(() => { load(); }, [load]);
 
+    // Адрес и открытая карточка не должны расходиться: раньше в строке
+    // оставался прежний «?order=28348», а на экране был уже другой заказ —
+    // человек видел адрес одного заказа и карточку другого (поймано
+    // 02.10.2026). Заодно ссылку на карточку можно просто скопировать.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const url = new URL(window.location.href);
+        const current = url.searchParams.get('order');
+        const next = openOrderId === null ? null : String(openOrderId);
+
+        if (current === next) return;
+        if (next === null) url.searchParams.delete('order');
+        else url.searchParams.set('order', next);
+
+        window.history.replaceState(null, '', `${url.pathname}${url.search}`);
+    }, [openOrderId]);
+
 
     const headerFor = (key: string) => ORDER_COLUMNS.find((c) => c.key === key)?.label ?? key;
 

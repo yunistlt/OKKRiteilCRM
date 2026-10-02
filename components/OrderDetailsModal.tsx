@@ -1296,7 +1296,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 ))}
                             </div>
                         ) : (
-                            <p className="text-sm text-gray-500">Писем по заказу ещё нет.</p>
+                            <p className="text-sm text-gray-500">
+                                Писем по заказу ещё нет. Здесь появятся входящие письма, которые
+                                разобрала почта, и письма, отправленные из этой карточки.
+                            </p>
                         )}
                     </div>
                 </section>
