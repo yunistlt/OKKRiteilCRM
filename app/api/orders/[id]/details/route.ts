@@ -61,6 +61,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 type: entry.party ? `${entry.type} · ${entry.party}` : entry.type,
                 fieldCode: entry.source,
                 text: entry.text,
+                // Тема и текст письма — карточка показывает именно их. Без этих
+                // полей лента писала «Без темы» и «текст не сохранён», хотя
+                // письмо лежало в базе целиком.
+                subject: entry.subject,
+                body: entry.body,
+                attachments: entry.attachments,
                 source: entry.source,
             })),
             ...((events ?? []).map((e) => ({
@@ -69,6 +75,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
                 type: fieldLabel(e.field),
                 fieldCode: e.field,
                 text: formatEventValue(e.new_value),
+                subject: null,
+                body: null,
+                attachments: 0,
                 source: 'retailcrm',
             }))),
         ].sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')));
