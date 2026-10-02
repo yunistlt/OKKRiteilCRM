@@ -40,6 +40,8 @@ export const NAV_GROUPS: NavGroup[] = [
                 { name: 'Мой день', href: '/analytics', icon: '🎯', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Заказы', href: '/orders', icon: '🧾', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Клиенты', href: '/clients', icon: '🏢', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Письма', href: '/emails', icon: '✉️', allowed: ['admin', 'okk', 'rop', 'manager'] },
+                { name: 'Звонки', href: '/calls', icon: '📞', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Статусы и переходы', href: '/settings/statuses/board', icon: '🔀', allowed: ['admin'] },
                 { name: 'Контроль Качества', href: '/okk', icon: '📋', agent: 'maxim' },
             ]
@@ -55,8 +57,6 @@ export const NAV_GROUPS: NavGroup[] = [
         {
             title: 'Связь',
             items: [
-                { name: 'Письма', href: '/emails', icon: '✉️', allowed: ['admin', 'okk', 'rop', 'manager'] },
-                { name: 'Звонки', href: '/calls', icon: '📞', allowed: ['admin', 'okk', 'rop', 'manager'] },
                 { name: 'Ловец Лидов', href: '/okk/lead-catcher', icon: '🎯', agent: 'elena' },
                 { name: 'Мессенджер', href: '/messenger', icon: '💬' },
             ]
