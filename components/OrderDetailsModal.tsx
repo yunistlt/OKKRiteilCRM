@@ -2010,7 +2010,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             </div>
                         </div>
 
-                        <div className={`flex flex-wrap ${compactHeader ? 'gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]' : 'gap-2'}`}>
+                        {/* Одна строка, а не две: вторая строка кнопок съедала
+                            высоту рабочей области (требование владельца
+                            02.10.2026). Поэтому панель не переносится, а на
+                            узком экране прокручивается по горизонтали. */}
+                        <div className={`flex flex-nowrap items-center overflow-x-auto ${compactHeader ? 'gap-1 [&_a]:px-2 [&_a]:py-0.5 [&_a]:text-[11px] [&_button]:px-2 [&_button]:py-0.5 [&_button]:text-[11px] [&_select]:px-2 [&_select]:py-0.5 [&_select]:text-[11px]' : 'gap-1.5 [&_a]:px-2 [&_a]:py-1 [&_a]:text-xs [&_button]:px-2 [&_button]:py-1 [&_button]:text-xs [&_select]:px-2 [&_select]:py-1 [&_select]:text-xs'}`}>
                             {/* КП и счёт собираются из самого заказа: позиции, плательщик из
                                 контрагента, продавец из реквизитов магазина в RetailCRM.
                                 Ничего не вводится руками — документ всегда совпадает с заказом. */}
@@ -2019,7 +2023,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <select
                                 value={sellerCode}
                                 onChange={(e) => setSellerCode(e.target.value)}
-                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700"
+                                className="w-36 shrink-0 border border-gray-200 text-gray-700"
                                 title="От какого юрлица выставляем документы"
                             >
                                 <option value="">Юрлицо заказа</option>
@@ -2031,7 +2035,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 href={`/api/orders/${orderId}/document?kind=proposal${sellerCode ? `&seller=${sellerCode}` : ''}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                                className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-700 hover:bg-gray-50"
                             >
                                 Коммерческое предложение
                             </a>
@@ -2039,14 +2043,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 href={`/api/orders/${orderId}/document?kind=invoice${sellerCode ? `&seller=${sellerCode}` : ''}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                                className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-700 hover:bg-gray-50"
                             >
                                 Счёт на оплату
                             </a>
                             <div className="relative">
                                 <button
                                     onClick={() => setPrintOpen((v) => !v)}
-                                    className="px-3 py-2 border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+                                    className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-700 hover:bg-gray-50"
                                 >
                                     Печать
                                 </button>
@@ -2076,25 +2080,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <button
                                 disabled
                                 title="Раздел ещё не сделан"
-                                className="px-3 py-2 border border-gray-200 text-sm text-gray-400 cursor-not-allowed"
+                                className="shrink-0 whitespace-nowrap border border-gray-200 text-gray-400 cursor-not-allowed"
                             >
                                 Действия · в разработке
                             </button>
                             <button
                                 onClick={() => setPanel(panel === 'tasks' ? null : 'tasks')}
-                                className={`px-3 py-2 border text-sm ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                className={`shrink-0 whitespace-nowrap border ${panel === 'tasks' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 Задачи {taskCount ? `${taskCount.done}/${taskCount.total}` : ''}
                             </button>
                             <button
                                 onClick={() => setPanel(panel === 'files' ? null : 'files')}
-                                className={`px-3 py-2 border text-sm ${panel === 'files' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                className={`shrink-0 whitespace-nowrap border ${panel === 'files' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 Файлы
                             </button>
                             <button
                                 onClick={() => setPanel(panel === 'history' ? null : 'history')}
-                                className={`px-3 py-2 border text-sm ${panel === 'history' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+                                className={`shrink-0 whitespace-nowrap border ${panel === 'history' ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 История
                             </button>
@@ -2106,7 +2110,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 color={data?.statusColor ?? null}
                                 onChanged={() => fetchDetails()}
                             />
-                            <button onClick={onClose} className="px-3 py-2 border border-gray-300 text-sm text-gray-500 hover:bg-gray-50">✕</button>
+                            <button onClick={onClose} className="shrink-0 border border-gray-300 text-gray-500 hover:bg-gray-50">✕</button>
                         </div>
                     </div>
                     {/* Пометки клиента — рядом со статусом, одной строкой. */}
