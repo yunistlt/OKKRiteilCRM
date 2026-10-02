@@ -386,11 +386,25 @@ export async function GET(req: Request) {
                 const isForwarded = (e.subject ? /^(?:fwd?|fw)\s*:/i.test(e.subject) : false) ||
                     (e.body_text ? /---\s*Пересылаемое сообщение\s*---|---\s*Forwarded message\s*---/i.test(e.body_text) : false) ||
                     (e.body_html ? /---\s*Пересылаемое сообщение\s*---|---\s*Forwarded message\s*---/i.test(stripHtml(e.body_html)) : false);
-                const leadContact = (isRobotLead || isForwarded)
-                    ? extractLeadContact((e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html))
-                    : {};
-                const custEmail = leadContact.email || e.from_email || '';
-                const custName = leadContact.name || e.from_name || undefined;
+                /**
+                 * Контакты из тела письма разбираем у ВСЕХ писем, а не только у
+                 * роботных и пересланных: клиент пишет сам и телефон с компанией
+                 * оставляет в подписи. Раньше они терялись — в заказе 1039А была
+                 * только почта, хотя в письме стояли «ООО ЭЛКО», «Оксана» и
+                 * «8(846)201-00-17» (разбор 02.10.2026).
+                 *
+                 * Отправитель остаётся главным: из тела берём только то, чего в
+                 * письме-конверте нет.
+                 */
+                const leadContact = extractLeadContact(
+                    (e.body_text && e.body_text.trim()) ? e.body_text : stripHtml(e.body_html),
+                );
+                const custEmail = (isRobotLead || isForwarded)
+                    ? (leadContact.email || e.from_email || '')
+                    : (e.from_email || leadContact.email || '');
+                const custName = (isRobotLead || isForwarded)
+                    ? (leadContact.name || e.from_name || undefined)
+                    : (e.from_name || leadContact.name || undefined);
                 const custPhone = leadContact.phone || undefined;
 
                 // Уведомления «Электронного стража» картотеки арбитражных дел разбираем
@@ -664,12 +678,19 @@ export async function GET(req: Request) {
                         const order = await createEmailLead({
                             email: custEmail || '',
                             name: custName,
-                            phone: custPhone,
+                            // Телефон: из подписи письма, иначе из разбора реквизитов.
+                            phone: custPhone || v?.corporateDetails?.contactPhone || undefined,
+                            // Название компании из подписи — чтобы карточка контрагента
+                            // завелась с именем, а не безымянной.
+                            corporateDetails: v?.corporateDetails?.companyName
+                                ? v.corporateDetails
+                                : (leadContact.company
+                                    ? { ...(v?.corporateDetails || {}), companyName: leadContact.company, contactPhone: custPhone || null }
+                                    : v?.corporateDetails || null),
                             subject: e.subject || undefined,
                             bodySnippet: (bodyForComment || '').slice(0, 1500),
                             attachmentNames: attNames,
                             managerId: assignedManagerId,
-                            corporateDetails: v?.corporateDetails || null,
                             attachmentText: attachmentText || undefined,
                         });
                         createdOrderId = order.id;
