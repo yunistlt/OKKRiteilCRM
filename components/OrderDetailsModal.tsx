@@ -771,6 +771,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             || [contact.lastName, contact.firstName, contact.patronymic].filter(Boolean).join(' ').trim();
         const expectedDelivery = pickValue(customFields.when_need_delivery, customFields.plan_delivery_date);
         const paymentsSummary = paymentEntries.length > 0 ? paymentEntries : [];
+        const isOwn = Boolean(order.is_own);
+        const crmBase = (process.env.NEXT_PUBLIC_RETAILCRM_URL || '').replace(/\/+$/, '');
+        const crmOrderUrl = crmBase && order.order_id ? `${crmBase}/orders/${order.order_id}/edit` : null;
         const items = Array.isArray(payload.items) ? payload.items : toArray(order.items);
         const computedItemsTotal = items.reduce((sum: number, item: any) => {
             const price = extractItemPrice(item);
@@ -1282,6 +1285,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     />
                                 </div>
                             </div>
+                        )}
+                        {/* Письма, которые отправляла и получала сама RetailCRM
+                            (её модуль «Коммуникации»), через API недоступны —
+                            в 191 методе их нет. Поэтому даём прямую ссылку на
+                            карточку заказа там (02.10.2026). */}
+                        {!isOwn && crmOrderUrl && (
+                            <p className="mb-3 text-xs text-gray-600">
+                                Письма, которые отправляла сама RetailCRM, остались у неё:{' '}
+                                <a href={crmOrderUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline">
+                                    открыть коммуникации заказа в RetailCRM
+                                </a>
+                            </p>
                         )}
                         {data.emails && data.emails.length > 0 ? (
                             <div className="space-y-3">
