@@ -42,6 +42,8 @@ export async function fetchLiveProductPrice(productId: string | number): Promise
 
 export type CatalogProductRef = {
     id?: string | number;
+    /** Артикул — по нему состав заказа строит ссылку на карточку сайта. */
+    article?: string | null;
     name: string;
     price?: number;      // цена из кэша (fallback)
     url?: string;

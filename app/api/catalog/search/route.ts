@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
         items: items.map((item: any) => ({
             id: item.id,
+            article: (item as any).article ?? null,
             name: item.name,
             price: item.price,
             priceLive: item.priceSource === 'live',

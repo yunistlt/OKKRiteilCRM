@@ -228,7 +228,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [draftOrderDiscount, setDraftOrderDiscount] = useState({ amount: 0, percent: 0 });
     // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
     // (item.discountTotal): цена со скидкой = price − discount.
-    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; xmlId?: string | null }>>([]);
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; article?: string | null; xmlId?: string | null }>>([]);
+    // Ссылки на карточки товаров сайта по артикулу: название в составе кликабельно.
+    const [catalogLinks, setCatalogLinks] = useState<Record<string, { url: string; name: string }>>({});
     const [draftClientComment, setDraftClientComment] = useState('');
     const [draftManagerComment, setDraftManagerComment] = useState('');
     const [dirty, setDirty] = useState(false);
@@ -281,7 +283,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         };
     }, []);
     const [catalogQuery, setCatalogQuery] = useState('');
-    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; name: string; price: number; priceLive: boolean; priceSource?: 'live' | 'cache' | 'none' }>>([]);
+    const [catalogFound, setCatalogFound] = useState<Array<{ id: string; article?: string | null; name: string; price: number; priceLive: boolean; priceSource?: 'live' | 'cache' | 'none' }>>([]);
     /**
      * Расчёты из калькулятора «Бот-Инженер» по этому заказу: менеджер считает
      * там изделие и вписывает номер нашего заказа, мы находим расчёт по номеру.
@@ -355,6 +357,27 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         if (isOpen && orderId) loadCalculations();
     }, [isOpen, orderId, loadCalculations]);
 
+    // Ссылки на карточки товаров сайта — по артикулам позиций этого заказа.
+    useEffect(() => {
+        const articles = Array.from(new Set(draftItems.map((row) => row.article).filter(Boolean))) as string[];
+        if (!articles.length) { setCatalogLinks({}); return; }
+
+        let cancelled = false;
+        fetch('/api/catalog/links', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ articles }),
+        })
+            .then((r) => r.json())
+            .then((payload) => { if (!cancelled) setCatalogLinks(payload.links || {}); })
+            .catch(() => { if (!cancelled) setCatalogLinks({}); });
+
+        return () => { cancelled = true; };
+        // Зависим от набора артикулов, а не от самих позиций: иначе запрос
+        // уходил бы на каждое нажатие в поле количества.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draftItems.map((row) => row.article).join('|')]);
+
     const takeCalculation = async (item: { type: string; id: string; title: string }) => {
         if (!confirm(`Взять «${item.title}» из калькулятора в состав заказа?`)) return;
         setCalcTaking(`${item.type}:${item.id}`);
@@ -417,6 +440,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
                 discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
+                article: item.offer?.article ?? null,
+                xmlId: item.offer?.xmlId ?? null,
             })));
             setDraftOrderDiscount({
                 amount: Number(payload.discountManualAmount ?? 0),
@@ -461,10 +486,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
         setDirty(true);
     };
 
-    const addItem = (item?: { id: string; name: string; price: number }) => {
-        setDraftItems((prev) => [...prev, item
-            ? { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, xmlId: item.id }
-            : { id: null, name: '', quantity: 1, price: 0, discount: 0 }]);
+    const addItem = (item?: { id: string; name: string; price: number; article?: string | null }) => {
+        if (!item) return; // товары только из каталога: руками названия не вводим
+        setDraftItems((prev) => [...prev, { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, article: item.article ?? null, xmlId: item.id }]);
         setDirty(true);
         setCatalogQuery('');
         setCatalogFound([]);
@@ -485,6 +509,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         quantity: row.quantity,
                         price: row.price,
                         discountAmount: row.discount || 0,
+                        article: row.article ?? null,
                         xmlId: row.xmlId ?? null,
                     })),
                     discountAmount: draftOrderDiscount.amount || 0,
@@ -851,12 +876,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         {/* Состав правится прямо здесь: режима «только просмотр» у нас нет. */}
                         <div className="flex items-center justify-between gap-3 p-6 border-b">
                             <h3 className="text-lg font-semibold text-gray-900">Состав заказа</h3>
-                            <button
-                                onClick={() => addItem()}
-                                className="border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100"
-                            >
-                                Добавить позицию руками
-                            </button>
+                            {/* Руками позиции не вводим: товары берутся из каталога
+                                сайта (решение владельца 02.10.2026) — поиск ниже. */}
+                            <span className="text-xs text-gray-500">Товары добавляются из каталога сайта — поиск ниже</span>
                         </div>
 
                         {/* Расчёты из калькулятора «Бот-Инженер». Находим по номеру
@@ -947,7 +969,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     {catalogFound.map((found) => (
                                         <button
                                             key={found.id}
-                                            onClick={() => addItem(found)}
+                                            onClick={() => addItem({ id: found.id, name: found.name, price: found.price, article: found.article ?? null })}
                                             className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm hover:bg-amber-50"
                                         >
                                             <div className="text-gray-900">{found.name}</div>
@@ -988,16 +1010,26 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     ) : draftItems.map((row, index) => (
                                         <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
                                             <td className="w-8 px-2 py-2 align-top text-gray-500">{index + 1}</td>
-                                            <td className="px-3 py-2">
-                                                {/* Название целиком, с переносом: в одну строку оно
-                                                    обрезалось и «Капитошку» приходилось искать
-                                                    мышкой (поймано 02.10.2026). */}
-                                                <textarea
-                                                    value={row.name}
-                                                    rows={Math.min(5, Math.max(1, Math.ceil(row.name.length / 48)))}
-                                                    onChange={(e) => changeItem(index, { name: e.target.value })}
-                                                    className="w-full resize-y break-words border border-gray-300 px-2 py-1 leading-snug"
-                                                />
+                                            {/* Название не правится: товар берётся из базы.
+                                                Есть артикул и карточка на сайте — название
+                                                ведёт на неё (решение владельца 02.10.2026). */}
+                                            <td className="px-3 py-2 align-top">
+                                                {row.article && catalogLinks[row.article]?.url ? (
+                                                    <a
+                                                        href={catalogLinks[row.article].url}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="break-words font-medium leading-snug text-blue-700 hover:underline"
+                                                        title="Открыть карточку товара на сайте"
+                                                    >
+                                                        {row.name}
+                                                    </a>
+                                                ) : (
+                                                    <span className="break-words leading-snug text-gray-900">{row.name}</span>
+                                                )}
+                                                {row.article && (
+                                                    <div className="mt-0.5 font-mono text-[11px] text-gray-400">{row.article}</div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2">
                                                 <NumberInput

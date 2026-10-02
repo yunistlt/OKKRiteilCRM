@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { formatEventValue, COMMUNICATION_FIELD_PATTERNS } from '@/lib/order-events';
+import { formatEventValue, MAIL_FEED_FIELD_PATTERNS } from '@/lib/order-events';
 import { buildFieldLabelResolver } from '@/lib/order-field-labels';
 import { loadOrderCalls } from '@/lib/own-crm/order-calls';
 
@@ -39,7 +39,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             .from('order_history_log')
             .select('field, old_value, new_value, occurred_at')
             .eq('retailcrm_order_id', order.order_id)
-            .or(COMMUNICATION_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
+            .or(MAIL_FEED_FIELD_PATTERNS.map((p) => `field.ilike.${p}`).join(','))
             .order('occurred_at', { ascending: false })
             .limit(10);
 

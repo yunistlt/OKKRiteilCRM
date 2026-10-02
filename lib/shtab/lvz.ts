@@ -60,7 +60,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
         const or = words.map((w) => `name.ilike.%${w}%`).join(',');
         const { data, error } = await client()
             .from('marketing_products')
-            .select('id, name, price, full_url, category_id, meta')
+            .select('id, sku, name, price, full_url, category_id, meta')
             .or(or)
             .limit(60);
         if (error) throw new Error(error.message);
@@ -78,6 +78,9 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
             note: 'Цена — снимок на момент импорта витрины, а не актуальный прайс.',
             items: rows.map((d: any) => ({
                 id: String(d.id),
+                // Артикул — ключ к карточке товара на сайте (по нему состав
+                // заказа строит ссылку, см. lib/own-crm/catalog-links.ts).
+                article: d.sku ? String(d.sku) : null,
                 name: d.name,
                 price: Number(d.price) || 0,
                 url: d.full_url || '',
