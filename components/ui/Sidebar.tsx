@@ -8,6 +8,9 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { resolveMessengerAvatarSrc } from '@/lib/messenger/avatar';
 import { NAV_GROUPS, type NavGroup } from '@/lib/nav';
 
+const BUILD_SHA = process.env.NEXT_PUBLIC_BUILD_SHA || '';
+const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
+
 export default function Sidebar() {
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -126,9 +129,20 @@ export default function Sidebar() {
             `}>
                 {/* Logo Section */}
                 <div className={`flex ${isCollapsed && !isMobileOpen ? 'px-3 py-5 flex-col items-center gap-3' : 'p-6 items-center justify-between'}`}>
-                    <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
-                        OKK<span className="text-white group-hover:text-blue-200">{isCollapsed ? '' : 'CRM'}</span>
-                    </Link>
+                    <div className="min-w-0">
+                        <Link href="/" className="text-xl font-black tracking-tighter text-blue-400 group">
+                            OKK<span className="text-white group-hover:text-blue-200">{isCollapsed ? '' : 'CRM'}</span>
+                        </Link>
+                        {/* Номер сборки: по нему видно, дошло ли обновление до прода. */}
+                        {BUILD_SHA && (
+                            <p
+                                className="mt-0.5 font-mono text-[10px] leading-none text-gray-500"
+                                title={BUILD_TIME ? `Собрано ${new Date(BUILD_TIME).toLocaleString('ru-RU')}` : undefined}
+                            >
+                                {isCollapsed && !isMobileOpen ? BUILD_SHA : `сборка ${BUILD_SHA}`}
+                            </p>
+                        )}
+                    </div>
                     <button 
                         onClick={() => setIsCollapsed(!isCollapsed)}
                         className="hidden md:flex h-10 w-10 shrink-0 items-center justify-center border border-white/15 bg-white/15 text-white hover:bg-blue-500 hover:border-blue-300/40"

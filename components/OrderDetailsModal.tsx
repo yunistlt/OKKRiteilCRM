@@ -222,7 +222,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [printOpen, setPrintOpen] = useState(false);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
-    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; xmlId?: string | null }>>([]);
+    // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
+    // (item.discountTotal): цена со скидкой = price − discount.
+    const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; xmlId?: string | null }>>([]);
     const [draftClientComment, setDraftClientComment] = useState('');
     const [draftManagerComment, setDraftManagerComment] = useState('');
     const [dirty, setDirty] = useState(false);
@@ -410,6 +412,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 name: item.offer?.displayName || item.offer?.name || item.productName || 'Позиция',
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
+                discount: Number(item.discountTotal ?? 0),
             })));
             setDraftFields({});
             fetch(`/api/orders/${orderId}/sellers`)
@@ -452,8 +455,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
     const addItem = (item?: { id: string; name: string; price: number }) => {
         setDraftItems((prev) => [...prev, item
-            ? { id: null, name: item.name, quantity: 1, price: item.price, xmlId: item.id }
-            : { id: null, name: '', quantity: 1, price: 0 }]);
+            ? { id: null, name: item.name, quantity: 1, price: item.price, discount: 0, xmlId: item.id }
+            : { id: null, name: '', quantity: 1, price: 0, discount: 0 }]);
         setDirty(true);
         setCatalogQuery('');
         setCatalogFound([]);
@@ -947,8 +950,9 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                     <tr>
                                         <th className="px-3 py-3 text-left">№</th>
                                         <th className="px-3 py-3 text-left">Товар / услуга</th>
-                                        <th className="w-28 px-3 py-3 text-right">Кол-во</th>
-                                        <th className="w-36 px-3 py-3 text-right">Цена</th>
+                                        <th className="w-24 px-3 py-3 text-right">Кол-во</th>
+                                        <th className="w-32 px-3 py-3 text-right">Цена</th>
+                                        <th className="w-32 px-3 py-3 text-right">Скидка</th>
                                         <th className="w-36 px-3 py-3 text-right">Стоимость</th>
                                         <th className="w-10 px-3 py-3"></th>
                                     </tr>
@@ -956,7 +960,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 <tbody className="divide-y">
                                     {draftItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="py-10 text-center text-gray-500">
+                                            <td colSpan={7} className="py-10 text-center text-gray-500">
                                                 Позиций нет — найдите товар на сайте или добавьте руками.
                                             </td>
                                         </tr>
@@ -964,10 +968,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
                                             <td className="px-3 py-2 text-gray-500">{index + 1}</td>
                                             <td className="px-3 py-2">
-                                                <input
+                                                {/* Название целиком, с переносом: в одну строку оно
+                                                    обрезалось и «Капитошку» приходилось искать
+                                                    мышкой (поймано 02.10.2026). */}
+                                                <textarea
                                                     value={row.name}
+                                                    rows={Math.min(5, Math.max(1, Math.ceil(row.name.length / 48)))}
                                                     onChange={(e) => changeItem(index, { name: e.target.value })}
-                                                    className="w-full border border-gray-300 px-2 py-1"
+                                                    className="w-full resize-y break-words border border-gray-300 px-2 py-1 leading-snug"
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -984,8 +992,25 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                     className="w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
+                                            {/* Скидку показываем, но не правим: наружу в RetailCRM
+                                                мы её пока не отправляем, а молча «применить» её
+                                                только у себя — значит разойтись с CRM. */}
+                                            <td className="px-3 py-2 text-right text-gray-700">
+                                                {row.discount > 0 ? (
+                                                    <span title="Скидка на единицу товара, из RetailCRM">
+                                                        −{formatCurrency(row.discount)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-gray-400">—</span>
+                                                )}
+                                            </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                                                {formatCurrency(Math.max(0, row.price * row.quantity))}
+                                                {formatCurrency(Math.max(0, (row.price - row.discount) * row.quantity))}
+                                                {row.discount > 0 && (
+                                                    <div className="text-xs font-normal text-gray-400 line-through">
+                                                        {formatCurrency(Math.max(0, row.price * row.quantity))}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2 text-right">
                                                 <button
@@ -1001,12 +1026,43 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                 </tbody>
                             </table>
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-6 px-6 py-4 bg-gray-50 border-t text-sm text-gray-600">
-                            <div>Стоимость товаров: {formatCurrency(totalSummValue || computedItemsTotal)}</div>
-                            <div>Стоимость доставки: {formatCurrency(logisticCost)}</div>
-                            <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
-                            <div className="font-semibold text-gray-900">Итого: {formatCurrency((totalSummValue || 0) + (logisticCost || 0))}</div>
-                        </div>
+                        {/* Итоги считаем по составу, как в RetailCRM: отдельно
+                            стоимость товаров, отдельно сумма скидок, и только
+                            потом итог. Раньше скидки в карточке не было вовсе —
+                            итог показывался без неё и расходился с CRM. */}
+                        {(() => {
+                            const itemsGross = draftItems.reduce((sum, row) => sum + Math.max(0, row.price * row.quantity), 0);
+                            const discountTotal = draftItems.reduce((sum, row) => sum + Math.max(0, row.discount * row.quantity), 0);
+                            const delivery = Number(logisticCost) || 0;
+                            const ourTotal = itemsGross - discountTotal + delivery;
+                            // Итог, который знает RetailCRM: колонку обновляет синхронизация,
+                            // а снимок состава (raw_payload) бывает старее её. Расхождение не
+                            // прячем — иначе «скидка исчезла» выглядит как ошибка счёта.
+                            const crmTotal = Number(toNumber(pickValue(order.totalsumm, payload.totalSumm)) ?? 0);
+                            const stale = crmTotal > 0 && Math.abs(crmTotal - ourTotal) > 1;
+
+                            return (
+                                <div className="flex flex-wrap items-center justify-end gap-6 px-6 py-4 bg-gray-50 border-t text-sm text-gray-600">
+                                    <div>Стоимость товаров: {formatCurrency(itemsGross)}</div>
+                                    <div className={discountTotal > 0 ? 'text-gray-900' : undefined}>
+                                        Сумма скидок по заказу: {discountTotal > 0 ? `−${formatCurrency(discountTotal)}` : formatCurrency(0)}
+                                    </div>
+                                    <div>Стоимость доставки: {formatCurrency(delivery)}</div>
+                                    <div>Себестоимость: {formatCurrency(logisticSelfCost)}</div>
+                                    <div className="font-semibold text-gray-900">
+                                        Итого: {formatCurrency(ourTotal)}
+                                    </div>
+                                    {stale && (
+                                        <div
+                                            className="w-full text-right text-xs text-amber-800"
+                                            title="Состав и скидки в карточке — из снимка заказа; синхронизация его ещё не обновила"
+                                        >
+                                            По данным RetailCRM: {formatCurrency(crmTotal)} — состав в карточке из устаревшего снимка
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                     <div className="grid lg:grid-cols-2 gap-6">
                         <div className="bg-white border border-gray-200 p-4">
