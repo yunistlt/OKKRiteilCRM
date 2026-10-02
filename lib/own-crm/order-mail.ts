@@ -121,7 +121,7 @@ export async function loadOrderMail(params: {
         number
             ? supabase
                 .from('outgoing_emails')
-                .select('id, subject, to_email, sent_at, body_text, message_id, attachments_meta')
+                .select('id, subject, to_email, sent_at, body_text, body_html, message_id, attachments_meta')
                 .or(`order_number.eq.${number},subject.ilike.%/${number}]%`)
                 .order('sent_at', { ascending: false })
                 .limit(limit)

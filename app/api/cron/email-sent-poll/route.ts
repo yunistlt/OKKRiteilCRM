@@ -85,6 +85,8 @@ export async function GET(req: Request) {
                     to_email: mail.toEmail,
                     sent_at: mail.receivedAt,
                     body_text: mail.bodyText,
+                    // Часть писем уходит одним HTML — без него в ленте заказа пусто.
+                    body_html: mail.bodyHtml,
                     has_attachments: mail.hasAttachments,
                     attachments_meta: mail.attachmentsMeta ?? [],
                     order_number: orderNumber,
