@@ -8,6 +8,7 @@ import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
 import { orderTotals } from '@/lib/own-crm/discount';
 import { uniquePhones } from '@/lib/own-crm/phones';
+import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -356,6 +357,18 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     useEffect(() => {
         if (isOpen && orderId) loadCalculations();
     }, [isOpen, orderId, loadCalculations]);
+
+    // Крошка в шапке — человеческим номером заказа («Заказ #1021А»), а не
+    // внутренним идентификатором: у своих заказов он вида 900000021 и человека
+    // только путает (поймано 02.10.2026).
+    const { setCrumbs } = useBreadcrumbs();
+    const humanOrderNumber = data?.order?.number ?? data?.raw_payload?.number ?? null;
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setCrumbs([{ label: `Заказ #${humanOrderNumber ?? orderId}`, back: onClose }]);
+        return () => setCrumbs([]);
+    }, [isOpen, humanOrderNumber, orderId, onClose, setCrumbs]);
 
     // Ссылки на карточки товаров сайта — по артикулам позиций этого заказа.
     useEffect(() => {

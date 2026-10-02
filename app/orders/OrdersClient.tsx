@@ -10,7 +10,6 @@ import { ORDER_COLUMNS, DEFAULT_COLUMNS, normalizeSelection } from '@/lib/orders
 import StatusIcon from '@/components/orders/StatusIcon';
 import { useSearchParams } from 'next/navigation';
 import { formatRub } from '@/lib/format';
-import { useBreadcrumbs } from '@/components/ui/BreadcrumbsContext';
 
 interface OrderRow {
     orderId: number;
@@ -83,7 +82,6 @@ export default function OrdersClient() {
     // здесь врал бы, а ноль у суммы заказов встречается только по-настоящему.
     const [totals, setTotals] = useState<{ count: number; sum: number | null }>({ count: 0, sum: null });
     const [loading, setLoading] = useState(true);
-    const { setCrumbs } = useBreadcrumbs();
     const [openOrderId, setOpenOrderId] = useState<number | null>(() => {
         const requested = Number(searchParams.get('order'));
         return Number.isFinite(requested) && requested > 0 ? requested : null;
@@ -148,12 +146,6 @@ export default function OrdersClient() {
 
     useEffect(() => { load(); }, [load]);
 
-    // Крошка карточки в шапке: «Заказы / Заказ #54911», клик по «Заказы»
-    // закрывает карточку. Отдельной строки под крошки не заводим.
-    useEffect(() => {
-        setCrumbs(openOrderId === null ? [] : [{ label: `Заказ #${openOrderId}`, back: () => setOpenOrderId(null) }]);
-        return () => setCrumbs([]);
-    }, [openOrderId, setCrumbs]);
 
     const headerFor = (key: string) => ORDER_COLUMNS.find((c) => c.key === key)?.label ?? key;
 
