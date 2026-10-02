@@ -58,6 +58,10 @@ export type OrderDocumentData = {
     /** Кто подписывает счёт — из справочника наших юрлиц. */
     signerName: string | null;
     signerTitle: string | null;
+    /** Менеджер заказа: вторая подпись в счёте (решение владельца 02.10.2026). */
+    managerName: string | null;
+    /** Полное наименование продавца и его адрес — для оттиска печати. */
+    sellerFullName: string | null;
     total: number;
 };
 
@@ -142,7 +146,7 @@ async function loadOrderForDocument(orderKey: number) {
     for (const column of ['order_id', 'id'] as const) {
         const { data } = await supabase
             .from('orders')
-            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName", "delivery", "customFields"')
+            .select('id, order_id, number, site, "contragent", "customer", "firstName", "lastName", "delivery", manager_id, raw_payload')
             .eq(column, orderKey)
             .maybeSingle();
 
@@ -215,8 +219,11 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
 
     const contragent = (order as any).contragent || {};
     const customer = (order as any).customer || {};
-    const delivery = (order as any).delivery || {};
-    const customFields = (order as any).customFields || {};
+    const delivery = (order as any).delivery || (order as any).raw_payload?.delivery || {};
+    // Кастом-поля заказа лежат в raw_payload: своей колонки под них нет.
+    const customFields = (order as any).customFields
+        || (order as any).raw_payload?.customFields
+        || {};
 
     /**
      * Реквизиты плательщика: в заказе их часто нет — хозяин реквизитов карточка
@@ -247,6 +254,8 @@ export async function orderDocumentData(orderId: number, sellerCode?: string | n
         sellerOptions: await sellerOptions(),
         vatPercent: await vatPercentForSite(sellerCode || (order as any).site),
         productionDays: Number(customFields.srok_izgot) > 0 ? Number(customFields.srok_izgot) : null,
+        managerName: await managerNameOf((order as any).manager_id),
+        sellerFullName: await sellerFullNameOf(seller),
         shippingTerms: await shippingTermsText(delivery),
         ...(await signerOf(sellerCode || (order as any).site, seller)),
         total: items.reduce((sum, item) => sum + item.price * item.quantity, 0),
@@ -300,4 +309,38 @@ async function signerOf(siteCode: string | null | undefined, seller: Seller | nu
 
     const row = data as any;
     return { signerName: row?.signer_name || null, signerTitle: row?.signer_title || null };
+}
+
+/** Менеджер заказа фамилией — он вторым подписывает счёт. */
+async function managerNameOf(managerId: unknown): Promise<string | null> {
+    const id = Number(managerId);
+    if (!Number.isFinite(id) || id <= 0) return null;
+
+    const { data } = await supabase
+        .from('managers')
+        .select('first_name, last_name')
+        .eq('id', id)
+        .maybeSingle();
+
+    const row = data as any;
+    return [row?.first_name, row?.last_name].filter(Boolean).join(' ').trim() || null;
+}
+
+/**
+ * Полное наименование юрлица — для оттиска печати: на печати стоит
+ * «ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "…"», а не короткое имя.
+ * Берём из нашего справочника юрлиц (RetailCRM отдаёт только короткое).
+ */
+async function sellerFullNameOf(seller: Seller | null): Promise<string | null> {
+    const inn = seller?.inn?.trim();
+    if (!inn) return null;
+
+    const { data } = await supabase
+        .from('legal_entities')
+        .select('full_name, short_name')
+        .eq('inn', inn)
+        .maybeSingle();
+
+    const row = data as any;
+    return row?.full_name || row?.short_name || null;
 }

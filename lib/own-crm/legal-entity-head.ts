@@ -82,6 +82,10 @@ export async function refreshSignersFromEgrul(): Promise<HeadUpdate[]> {
             : info?.managerName?.trim() || null;
         const title = soleTrader ? 'Индивидуальный предприниматель' : humanTitle(info?.managerTitle);
 
+        if (info?.fullName) {
+            await supabase.from('legal_entities').update({ full_name: info.fullName }).eq('id', row.id);
+        }
+
         if (!name) {
             results.push({
                 inn: String(row.inn),
@@ -97,7 +101,11 @@ export async function refreshSignersFromEgrul(): Promise<HeadUpdate[]> {
 
         const { error: saveError } = await supabase
             .from('legal_entities')
-            .update({ signer_name: name, signer_title: title })
+            .update({
+                signer_name: name,
+                signer_title: title,
+                ...(info?.fullName ? { full_name: info.fullName } : {}),
+            })
             .eq('id', row.id);
         if (saveError) throw new Error(`${row.short_name}: ${saveError.message}`);
 

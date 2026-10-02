@@ -335,6 +335,10 @@ export interface InvoiceData {
     seller_address?: string;
     /** ОГРН продавца — для печати организации. */
     seller_ogrn?: string;
+    /** Полное наименование продавца — по кольцу печати. */
+    seller_full_name?: string | null;
+    /** Менеджер заказа — вторая подпись в счёте. */
+    manager_name?: string | null;
     /** Срок изготовления в днях — из заказа. */
     production_days?: number | null;
     /** Как получает клиент: способ доставки и адрес (при самовывозе — откуда). */
@@ -567,19 +571,20 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
                         <Text style={invStyles.signName}>{data.signer_name || '____________________'}</Text>
                     </View>
                     <View style={invStyles.signCol}>
-                        <Text style={invStyles.signLabel}>Главный бухгалтер</Text>
+                        <Text style={invStyles.signLabel}>Менеджер</Text>
                         <View style={invStyles.signLine} />
-                        <Text style={invStyles.signName}>____________________</Text>
+                        <Text style={invStyles.signName}>{data.manager_name || '____________________'}</Text>
                     </View>
                     {/* Печать организации — своя на каждое юрлицо, рисуется по
                         его реквизитам (решение владельца 02.10.2026). */}
                     <View style={invStyles.sealCol}>
                         <OrganizationSeal
-                            name={seller.name}
+                            fullName={data.seller_full_name || seller.name}
+                            shortName={sealShortName(seller.name)}
                             inn={seller.inn}
                             kpp={seller.kpp}
                             ogrn={data.seller_ogrn}
-                            city={cityFromAddress(seller.address)}
+                            place={sealPlace(seller.address)}
                         />
                     </View>
                 </View>
@@ -594,86 +599,131 @@ function InvoicePDF({ data }: { data: InvoiceData }) {
 }
 
 /**
- * Печать организации — «для документов», своя на каждое юрлицо.
+ * Печать организации — своя на каждое юрлицо, рисуется по её реквизитам.
  *
- * Решение владельца 02.10.2026: печати делаем сами, по кругу — реквизиты
- * организации (ИНН и прочие). Рисуем вектором прямо в PDF: картинок печатей
- * у нас нет, а RetailCRM их через API не отдаёт (проверено 02.10.2026 —
- * справочник магазинов даёт только реквизиты, метода печатных форм нет).
+ * Решение владельца 02.10.2026: печати делаем сами. Образец — настоящая печать
+ * ЗМК: по внешнему кольцу полное наименование, по нижней дуге — страна, область
+ * и город, в середине короткое имя крупно, под ним ОГРН и ИНН/КПП.
  *
- * Это печать для документов, не гербовая: она удостоверяет счёт, а не
- * подменяет подпись — подпись руководителя рядом остаётся за человеком.
+ * Две вещи, на которых первый вариант выглядел неправильно и обе здесь учтены:
+ * буквы нижней дуги надо доворачивать на 180°, иначе текст внизу стоит вверх
+ * ногами; и шаг между буквами считается от длины строки, иначе короткое
+ * название растягивается на весь круг, а длинное наезжает само на себя.
+ *
+ * Это печать для документов, а не гербовая: она удостоверяет счёт, подпись
+ * руководителя рядом остаётся за человеком.
  */
-function OrganizationSeal({ name, inn, kpp, ogrn, city }: {
-    name: string;
+function OrganizationSeal({ fullName, shortName, inn, kpp, ogrn, place }: {
+    fullName: string;
+    shortName?: string;
     inn?: string;
     kpp?: string;
     ogrn?: string;
-    city?: string;
+    /** «Российская Федерация, Самарская область, Тольятти». */
+    place?: string;
 }) {
-    const size = 128;
+    const size = 150;
     const center = size / 2;
-    const ink = '#1d4ed8';
+    const ink = '#2347c5';
 
-    // Текст по окружности: каждая буква — своя, повёрнутая к центру.
-    const ring = (text: string, radius: number, fontSize: number, startDeg: number, sweepDeg: number) => {
+    /**
+     * Текст по дуге. `startDeg` — где начинается (0 — верх, по часовой),
+     * `flip` — для нижней дуги: буквы доворачиваются, чтобы читались снизу.
+     */
+    const arc = (text: string, radius: number, fontSize: number, centerDeg: number, flip: boolean) => {
         const letters = Array.from(text);
         if (!letters.length) return null;
-        const step = sweepDeg / Math.max(1, letters.length);
+
+        // Ширина буквы в градусах: исходим из её физической ширины на радиусе.
+        const stepDeg = ((fontSize * 0.62) / (2 * Math.PI * radius)) * 360;
+        const sweep = stepDeg * letters.length;
+        const first = centerDeg - sweep / 2 + stepDeg / 2;
 
         return letters.map((letter, index) => {
-            const angle = startDeg + step * (index + 0.5);
+            const angle = first + stepDeg * index;
+            const y = flip ? center + radius : center - radius;
+            const spin = flip ? 180 : 0;
+
             return (
-                <G key={`${radius}-${index}`} transform={`rotate(${angle} ${center} ${center})`}>
-                    <Text
-                        x={center}
-                        y={center - radius}
-                        style={{ fontFamily: FONT_FAMILY, fontSize, fill: ink }}
-                        textAnchor="middle"
-                    >
-                        {letter}
-                    </Text>
+                <G key={`${radius}-${centerDeg}-${index}`} transform={`rotate(${angle} ${center} ${center})`}>
+                    <G transform={`rotate(${spin} ${center} ${y})`}>
+                        <Text
+                            x={center}
+                            y={flip ? y + fontSize * 0.35 : y + fontSize * 0.35}
+                            style={{ fontFamily: FONT_FAMILY, fontSize, fill: ink }}
+                            textAnchor="middle"
+                        >
+                            {letter}
+                        </Text>
+                    </G>
                 </G>
             );
         });
     };
 
-    const upper = name.toUpperCase();
-    const lower = [inn ? `ИНН ${inn}` : null, kpp ? `КПП ${kpp}` : null].filter(Boolean).join(' · ');
+    const name = fullName.toUpperCase();
+    const nameSize = name.length > 70 ? 4.2 : name.length > 50 ? 5 : 6;
+    const placeText = (place || '').toUpperCase();
 
     return (
         <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-            <Circle cx={center} cy={center} r={62} stroke={ink} strokeWidth={2} fill="none" />
-            <Circle cx={center} cy={center} r={56} stroke={ink} strokeWidth={0.8} fill="none" />
-            <Circle cx={center} cy={center} r={34} stroke={ink} strokeWidth={0.8} fill="none" />
+            {/* Кольца: толстое внешнее и два тонких, как на настоящей печати. */}
+            <Circle cx={center} cy={center} r={72} stroke={ink} strokeWidth={2.6} fill="none" />
+            <Circle cx={center} cy={center} r={65} stroke={ink} strokeWidth={0.7} fill="none" />
+            <Circle cx={center} cy={center} r={40} stroke={ink} strokeWidth={0.7} fill="none" />
 
-            {/* Название — по верхней дуге, реквизиты — по нижней. */}
-            {ring(upper, 48, upper.length > 34 ? 5 : 6.5, -110, 220)}
-            {ring(lower, 44, 5.5, 110, 140)}
+            {/* Наименование — сверху, место — снизу. */}
+            {arc(name, 57, nameSize, 0, false)}
+            {placeText ? arc(placeText, 57, 4.6, 180, true) : null}
 
-            {/* В центре — то, по чему организацию узнают в документах. */}
-            <Text x={center} y={center - 6} style={{ fontFamily: FONT_FAMILY, fontSize: 6, fill: ink }} textAnchor="middle">
-                ДЛЯ ДОКУМЕНТОВ
+            {/* Середина: короткое имя крупно, под ним реквизиты. */}
+            <Text
+                x={center}
+                y={center + 1}
+                style={{ fontFamily: FONT_FAMILY, fontSize: 14, fill: ink }}
+                textAnchor="middle"
+            >
+                {(shortName || '').toUpperCase()}
             </Text>
             {ogrn ? (
-                <Text x={center} y={center + 4} style={{ fontFamily: FONT_FAMILY, fontSize: 5.5, fill: ink }} textAnchor="middle">
+                <Text x={center} y={center + 13} style={{ fontFamily: FONT_FAMILY, fontSize: 5, fill: ink }} textAnchor="middle">
                     ОГРН {ogrn}
                 </Text>
             ) : null}
-            {city ? (
-                <Text x={center} y={center + 14} style={{ fontFamily: FONT_FAMILY, fontSize: 5.5, fill: ink }} textAnchor="middle">
-                    {city}
+            {inn ? (
+                <Text x={center} y={center + 21} style={{ fontFamily: FONT_FAMILY, fontSize: 5, fill: ink }} textAnchor="middle">
+                    ИНН {inn}{kpp ? ` / КПП ${kpp}` : ''}
                 </Text>
             ) : null}
+            <Text x={center} y={center - 12} style={{ fontFamily: FONT_FAMILY, fontSize: 4.6, fill: ink }} textAnchor="middle">
+                ДЛЯ ДОКУМЕНТОВ
+            </Text>
         </Svg>
     );
 }
 
-/** Город из юридического адреса: «445028, Самарская обл., г. Тольятти, …» → «г. Тольятти». */
-function cityFromAddress(address?: string): string | undefined {
+/**
+ * Место на печати из юридического адреса: «445028, Самарская обл.,
+ * г. Тольятти, ул. …» → «Российская Федерация, Самарская область, Тольятти».
+ */
+export function sealPlace(address?: string): string | undefined {
     if (!address) return undefined;
-    const match = /(?:^|,\s*)(?:г\.?|город)\s*([А-ЯЁ][а-яё-]+)/.exec(address);
-    return match ? `г. ${match[1]}` : undefined;
+
+    const region = /([А-ЯЁ][а-яё-]+(?:ая|ий|ой))\s*(?:обл\.?|область|край|респ\.?|республика)/i.exec(address);
+    const city = /(?:^|,\s*)(?:г\.?|город)\s*([А-ЯЁ][а-яё-]+)/.exec(address);
+
+    const parts = ['Российская Федерация'];
+    if (region) parts.push(`${region[1]} область`);
+    if (city) parts.push(city[1]);
+    return parts.join(', ');
+}
+
+/** Короткое имя для середины печати: «ООО "ПОБТ"» → «ПОБТ». */
+export function sealShortName(name?: string): string {
+    if (!name) return '';
+    const quoted = /[«"]([^»"]+)[»"]/.exec(name);
+    if (quoted) return quoted[1];
+    return name.replace(/^(ООО|АО|НАО|ЗАО|ПАО|ИП)\s*/i, '').trim();
 }
 
 export async function generateInvoicePDF(data: InvoiceData): Promise<Buffer> {
