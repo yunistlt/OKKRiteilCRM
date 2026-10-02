@@ -6,6 +6,7 @@ import CallInitiator from './calls/CallInitiator';
 import PhoneFieldCall from './calls/PhoneFieldCall';
 import { useAuth } from '@/components/auth/AuthProvider';
 import { priceSourceLabel } from '@/lib/format';
+import { orderTotals } from '@/lib/own-crm/discount';
 import { isVisibleBreakdownKey } from '@/lib/okk-consultant';
 import { useStatusNames } from '@/components/useStatusNames';
 import { useDictionaryNames } from '@/components/useDictionaryNames';
@@ -222,6 +223,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     const [printOpen, setPrintOpen] = useState(false);
     // Карточка заказа редактируемая сразу: режима «только просмотр» у нас нет.
     // Правка копится в состоянии и уходит в CRM одной кнопкой сверху.
+    // Разовая скидка на заказ — рублями и процентом, как в RetailCRM.
+    const [draftOrderDiscount, setDraftOrderDiscount] = useState({ amount: 0, percent: 0 });
     // discount — скидка на ЕДИНИЦУ товара, как её считает RetailCRM
     // (item.discountTotal): цена со скидкой = price − discount.
     const [draftItems, setDraftItems] = useState<Array<{ id?: number | null; name: string; quantity: number; price: number; discount: number; xmlId?: string | null }>>([]);
@@ -412,8 +415,12 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                 name: item.offer?.displayName || item.offer?.name || item.productName || 'Позиция',
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
-                discount: Number(item.discountTotal ?? 0),
+                discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),
             })));
+            setDraftOrderDiscount({
+                amount: Number(payload.discountManualAmount ?? 0),
+                percent: Number(payload.discountManualPercent ?? 0),
+            });
             setDraftFields({});
             fetch(`/api/orders/${orderId}/sellers`)
                 .then((r) => r.json())
@@ -443,7 +450,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
     /** Значение поля: сначала из черновика, потом из заказа. */
     const fieldValue = (key: string, original: any) => (key in draftFields ? draftFields[key] : original);
 
-    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number }>) => {
+    const changeItem = (index: number, patch: Partial<{ name: string; quantity: number; price: number; discount: number }>) => {
         setDraftItems((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
         setDirty(true);
     };
@@ -476,8 +483,11 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                         name: row.name,
                         quantity: row.quantity,
                         price: row.price,
+                        discountAmount: row.discount || 0,
                         xmlId: row.xmlId ?? null,
                     })),
+                    discountAmount: draftOrderDiscount.amount || 0,
+                    discountPercent: draftOrderDiscount.percent || 0,
                     customerComment: draftClientComment,
                     managerComment: draftManagerComment,
                     // Правка остальных полей: раскладываем ключи по местам заказа.
@@ -948,7 +958,8 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             <table className="min-w-full text-sm">
                                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                                     <tr>
-                                        <th className="px-3 py-3 text-left">№</th>
+                                        {/* Номер позиции — узкой колонкой: места он не стоит. */}
+                                        <th className="w-8 px-2 py-3 text-left">№</th>
                                         <th className="px-3 py-3 text-left">Товар / услуга</th>
                                         <th className="w-24 px-3 py-3 text-right">Кол-во</th>
                                         <th className="w-32 px-3 py-3 text-right">Цена</th>
@@ -966,7 +977,7 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                         </tr>
                                     ) : draftItems.map((row, index) => (
                                         <tr key={row.id ?? `new-${index}`} className="hover:bg-gray-50">
-                                            <td className="px-3 py-2 text-gray-500">{index + 1}</td>
+                                            <td className="w-8 px-2 py-2 align-top text-gray-500">{index + 1}</td>
                                             <td className="px-3 py-2">
                                                 {/* Название целиком, с переносом: в одну строку оно
                                                     обрезалось и «Капитошку» приходилось искать
@@ -992,17 +1003,14 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                                                     className="w-full border border-gray-300 px-2 py-1 text-right"
                                                 />
                                             </td>
-                                            {/* Скидку показываем, но не правим: наружу в RetailCRM
-                                                мы её пока не отправляем, а молча «применить» её
-                                                только у себя — значит разойтись с CRM. */}
-                                            <td className="px-3 py-2 text-right text-gray-700">
-                                                {row.discount > 0 ? (
-                                                    <span title="Скидка на единицу товара, из RetailCRM">
-                                                        −{formatCurrency(row.discount)}
-                                                    </span>
-                                                ) : (
-                                                    <span className="text-gray-400">—</span>
-                                                )}
+                                            {/* Скидка на единицу товара — рублями, как в RetailCRM
+                                                (их `discountManualAmount`). Правится здесь же. */}
+                                            <td className="px-3 py-2">
+                                                <NumberInput
+                                                    value={row.discount}
+                                                    onChange={(v: number | null) => changeItem(index, { discount: Math.max(0, Number(v) || 0) })}
+                                                    className="w-full border border-gray-300 px-2 py-1 text-right"
+                                                />
                                             </td>
                                             <td className="px-3 py-2 text-right font-semibold text-gray-900">
                                                 {formatCurrency(Math.max(0, (row.price - row.discount) * row.quantity))}
@@ -1031,10 +1039,20 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
                             потом итог. Раньше скидки в карточке не было вовсе —
                             итог показывался без неё и расходился с CRM. */}
                         {(() => {
-                            const itemsGross = draftItems.reduce((sum, row) => sum + Math.max(0, row.price * row.quantity), 0);
-                            const discountTotal = draftItems.reduce((sum, row) => sum + Math.max(0, row.discount * row.quantity), 0);
-                            const delivery = Number(logisticCost) || 0;
-                            const ourTotal = itemsGross - discountTotal + delivery;
+                            // Скидки считает общий модуль (lib/own-crm/discount.ts) —
+                            // тем же счётом, что уходит в базу, КП и счёт.
+                            const totals = orderTotals(
+                                draftItems.map((row) => ({ price: row.price, quantity: row.quantity, discountAmount: row.discount })),
+                                {
+                                    discountAmount: draftOrderDiscount.amount,
+                                    discountPercent: draftOrderDiscount.percent,
+                                    deliveryCost: Number(logisticCost) || 0,
+                                },
+                            );
+                            const itemsGross = totals.itemsGross;
+                            const discountTotal = totals.discountTotal;
+                            const delivery = totals.deliveryCost;
+                            const ourTotal = totals.total;
                             // Итог, который знает RetailCRM: колонку обновляет синхронизация,
                             // а снимок состава (raw_payload) бывает старее её. Расхождение не
                             // прячем — иначе «скидка исчезла» выглядит как ошибка счёта.
@@ -1043,6 +1061,29 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
 
                             return (
                                 <div className="flex flex-wrap items-center justify-end gap-6 px-6 py-4 bg-gray-50 border-t text-sm text-gray-600">
+                                    {/* Разовая скидка на заказ — третий вид скидки в RetailCRM:
+                                        рублями и процентом от стоимости товаров. */}
+                                    <div className="flex items-center gap-2">
+                                        <span>Разовая скидка:</span>
+                                        <NumberInput
+                                            value={draftOrderDiscount.amount}
+                                            onChange={(v: number | null) => {
+                                                setDraftOrderDiscount((prev) => ({ ...prev, amount: Math.max(0, Number(v) || 0) }));
+                                                setDirty(true);
+                                            }}
+                                            className="w-24 border border-gray-300 px-2 py-1 text-right"
+                                        />
+                                        <span>₽</span>
+                                        <NumberInput
+                                            value={draftOrderDiscount.percent}
+                                            onChange={(v: number | null) => {
+                                                setDraftOrderDiscount((prev) => ({ ...prev, percent: Math.min(100, Math.max(0, Number(v) || 0)) }));
+                                                setDirty(true);
+                                            }}
+                                            className="w-16 border border-gray-300 px-2 py-1 text-right"
+                                        />
+                                        <span>%</span>
+                                    </div>
                                     <div>Стоимость товаров: {formatCurrency(itemsGross)}</div>
                                     <div className={discountTotal > 0 ? 'text-gray-900' : undefined}>
                                         Сумма скидок по заказу: {discountTotal > 0 ? `−${formatCurrency(discountTotal)}` : formatCurrency(0)}

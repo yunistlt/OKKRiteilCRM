@@ -21,6 +21,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { orderTotal, validateNewOrder, type NewOrder, type NewOrderItem, type CreatedOrder } from './create-order';
+import { itemDiscountPerUnit, itemPriceWithDiscount, orderTotals } from './discount';
 import { OWN_ID_BASE, OWN_SITE, isOwnCrmManager, nextOwnOrderNumber, ownItemIds } from './own-order-insert';
 
 export { isOwnCrmManager, nextOwnOrderNumber };
@@ -59,8 +60,10 @@ function buildPayload(order: NewOrder, params: { id: number; number: string; sit
         ...(order.customerId ? { customer: { id: order.customerId, type: 'customer_corporate' } } : {}),
         orderMethod: 'crm-manager',
         currency: 'RUB',
-        totalSumm: orderTotal(order.items),
-        summ: orderTotal(order.items),
+        totalSumm: orderTotal(order.items, { discountAmount: order.discountAmount, discountPercent: order.discountPercent }),
+        summ: orderTotal(order.items, { discountAmount: order.discountAmount, discountPercent: order.discountPercent }),
+        ...(order.discountAmount ? { discountManualAmount: Number(order.discountAmount) } : {}),
+        ...(order.discountPercent ? { discountManualPercent: Number(order.discountPercent) } : {}),
         items: order.items.map((item, index) => itemPayload(item, params.itemIds[index])),
         customFields: {},
     };
@@ -68,6 +71,10 @@ function buildPayload(order: NewOrder, params: { id: number; number: string; sit
 
 function itemPayload(item: NewOrderItem, id: number) {
     const price = Number(item.price) || 0;
+    // Скидку раскладываем теми же полями, что RetailCRM: базовая цена в
+    // initialPrice, цена со скидкой в price, скидка на единицу в discountTotal.
+    // Так одинаково читают и карточка, и КП, и счёт.
+    const discount = itemDiscountPerUnit(item);
     return {
         id,
         productName: item.name.trim(),
@@ -78,11 +85,11 @@ function itemPayload(item: NewOrderItem, id: number) {
             ...(item.article ? { article: item.article } : {}),
         },
         initialPrice: price,
-        price,
+        price: itemPriceWithDiscount(item),
         quantity: Number(item.quantity),
-        ...(item.xmlId || item.article
-            ? { offer: { ...(item.xmlId ? { xmlId: item.xmlId } : {}), ...(item.article ? { article: item.article } : {}) } }
-            : {}),
+        ...(discount > 0 ? { discountTotal: discount } : {}),
+        ...(item.discountAmount ? { discountManualAmount: Number(item.discountAmount) } : {}),
+        ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
     };
 }
 
@@ -129,7 +136,15 @@ export async function createOwnOrder(order: NewOrder): Promise<CreatedOrder> {
 export async function editOwnOrder(
     rowId: number,
     edit: {
-        items?: Array<{ id?: number | null; name: string; quantity: number; price: number; xmlId?: string | null }>;
+        items?: Array<{
+            id?: number | null;
+            name: string;
+            quantity: number;
+            price: number;
+            discountAmount?: number | null;
+            discountPercent?: number | null;
+            xmlId?: string | null;
+        }>;
         customerComment?: string | null;
         managerComment?: string | null;
         statusCode?: string | null;
@@ -137,6 +152,9 @@ export async function editOwnOrder(
         customFields?: Record<string, unknown>;
         contact?: Record<string, unknown>;
         delivery?: Record<string, unknown>;
+        /** Разовая скидка на заказ: рублями и процентом, как в RetailCRM. */
+        discountAmount?: number | null;
+        discountPercent?: number | null;
     },
 ): Promise<void> {
     const { data, error } = await supabase
@@ -148,6 +166,16 @@ export async function editOwnOrder(
     if (error) throw new Error(error.message);
     const payload: any = { ...(((data as any)?.raw_payload) || {}) };
 
+    // Разовая скидка на заказ: ставим до пересчёта, иначе итог её не учтёт.
+    if (edit.discountAmount !== undefined) {
+        if (Number(edit.discountAmount)) payload.discountManualAmount = Number(edit.discountAmount);
+        else delete payload.discountManualAmount;
+    }
+    if (edit.discountPercent !== undefined) {
+        if (Number(edit.discountPercent)) payload.discountManualPercent = Number(edit.discountPercent);
+        else delete payload.discountManualPercent;
+    }
+
     if (edit.items) {
         // Номера нужны только новым позициям; у приехавших из RetailCRM они свои.
         const fresh = await ownItemIds(edit.items.filter((item) => !item.id).length);
@@ -155,9 +183,15 @@ export async function editOwnOrder(
         payload.items = edit.items.map((item) =>
             itemPayload(item as NewOrderItem, Number(item.id) || fresh[freshIndex++]),
         );
-        const total = edit.items.reduce((s, i) => s + (Number(i.price) || 0) * (Number(i.quantity) || 0), 0);
-        payload.totalSumm = total;
-        payload.summ = total;
+        // Итог — через общий счёт скидок: позиции со скидками, минус разовая
+        // скидка заказа, плюс доставка (на доставку скидка не идёт).
+        const totals = orderTotals(edit.items as any[], {
+            discountAmount: payload.discountManualAmount,
+            discountPercent: payload.discountManualPercent,
+            deliveryCost: edit.delivery?.cost !== undefined ? Number(edit.delivery.cost) : Number(payload.delivery?.cost ?? 0),
+        });
+        payload.totalSumm = totals.total;
+        payload.summ = totals.total;
     }
     if (edit.customerComment !== undefined) payload.customerComment = edit.customerComment ?? '';
     if (edit.managerComment !== undefined) payload.managerComment = edit.managerComment ?? '';

@@ -14,11 +14,17 @@ const itemSchema = z.object({
     name: z.string().trim().min(1),
     quantity: z.coerce.number().positive(),
     price: z.coerce.number().min(0),
+    // Скидка позиции: рублями на единицу и/или процентом, как в RetailCRM.
+    discountAmount: z.coerce.number().min(0).optional().nullable(),
+    discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
     xmlId: z.string().trim().optional().nullable(),
 });
 
 const bodySchema = z.object({
     items: z.array(itemSchema).optional(),
+    /** Разовая скидка на заказ. */
+    discountAmount: z.coerce.number().min(0).optional().nullable(),
+    discountPercent: z.coerce.number().min(0).max(100).optional().nullable(),
     customerComment: z.string().max(5000).optional().nullable(),
     managerComment: z.string().max(5000).optional().nullable(),
     statusCode: z.string().trim().max(100).optional().nullable(),

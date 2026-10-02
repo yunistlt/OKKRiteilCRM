@@ -14,7 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'okk_consultant_desktop_width';
-const MIN_WIDTH = 300;
+// Минимум ужали на 30% (300 → 210): владельцу нужна максимальная рабочая
+// область, а план и чат читаются и в узкой колонке (просьба 02.10.2026).
+const MIN_WIDTH = 210;
 const MAX_SHARE = 0.6;
 
 function clamp(width: number): number {

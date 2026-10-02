@@ -9,6 +9,7 @@
  * он пропал в RetailCRM — запасной. 30.09.2026 это спасло приём заявок.
  */
 import { supabase } from '@/utils/supabase';
+import { itemTotalWithDiscount, orderTotals } from './discount';
 import { postRetailCrm, ensureCorporateCustomerId } from '@/lib/retailcrm/leads';
 import { resolveLeadSite, reportSiteSubstitution } from '@/lib/retailcrm/lead-site';
 import { isOwnCrmManager, insertOwnOrder } from './own-order-insert';
@@ -19,6 +20,10 @@ export type NewOrderItem = {
     quantity: number;
     /** Цена за единицу до скидки. */
     price: number;
+    /** Скидка рублями на единицу — как `discountManualAmount` в RetailCRM. */
+    discountAmount?: number | null;
+    /** Скидка процентом от цены единицы — как `discountManualPercent`. */
+    discountPercent?: number | null;
     /** Артикул с сайта, если позицию выбрали из каталога. */
     article?: string | null;
     /** Идентификатор товара на сайте — по нему потом сверяем цену. */
@@ -39,6 +44,10 @@ export type NewOrder = {
     statusCode?: string | null;
     customerComment?: string | null;
     managerComment?: string | null;
+    /** Разовая скидка на заказ, рублями. */
+    discountAmount?: number | null;
+    /** Разовая скидка на заказ, процентом. */
+    discountPercent?: number | null;
 };
 
 export type CreatedOrder = { id: number; number: string; site: string };
@@ -69,14 +78,17 @@ export async function usableManagerId(managerId: number | null | undefined): Pro
     return known ? Number(managerId) : null;
 }
 
-/** Сумма позиции с учётом количества — считаем на нашей стороне, чтобы показать человеку. */
+/** Сумма позиции с учётом количества и скидки — считаем сами, чтобы показать человеку. */
 export function itemTotal(item: NewOrderItem): number {
-    return Math.max(0, Number(item.price || 0) * Number(item.quantity || 0));
+    return itemTotalWithDiscount(item);
 }
 
-/** Сумма заказа — сумма позиций. */
-export function orderTotal(items: NewOrderItem[]): number {
-    return items.reduce((sum, item) => sum + itemTotal(item), 0);
+/** Сумма заказа: позиции со скидками, минус разовая скидка, плюс доставка. */
+export function orderTotal(
+    items: NewOrderItem[],
+    options: { discountAmount?: number | null; discountPercent?: number | null; deliveryCost?: number | null } = {},
+): number {
+    return orderTotals(items, options).total;
 }
 
 /** Проверка до отправки: что не так с заказом, человеческим языком. */

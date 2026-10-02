@@ -20,12 +20,20 @@ export type EditableItem = {
     id?: number | null;
     name: string;
     quantity: number;
+    /** Цена за единицу ДО скидки (в RetailCRM это initialPrice). */
     price: number;
+    /** Скидка рублями на единицу. */
+    discountAmount?: number | null;
+    /** Скидка процентом от цены единицы. */
+    discountPercent?: number | null;
     xmlId?: string | null;
 };
 
 export type OrderEdit = {
     items?: EditableItem[];
+    /** Разовая скидка на заказ: рублями и процентом, как в RetailCRM. */
+    discountAmount?: number | null;
+    discountPercent?: number | null;
     customerComment?: string | null;
     managerComment?: string | null;
     statusCode?: string | null;
@@ -45,6 +53,7 @@ export type EditResult =
 export function describeEdit(edit: OrderEdit): string[] {
     const changed: string[] = [];
     if (edit.items) changed.push('состав заказа');
+    if (edit.discountAmount !== undefined || edit.discountPercent !== undefined) changed.push('разовую скидку');
     if (edit.customerComment !== undefined) changed.push('комментарий клиента');
     if (edit.managerComment !== undefined) changed.push('комментарий менеджера');
     if (edit.statusCode) changed.push('статус');
@@ -146,9 +155,16 @@ export async function editOrder(orderKey: number, edit: OrderEdit): Promise<Edit
             productName: item.name.trim(),
             quantity: Number(item.quantity),
             initialPrice: Number(item.price),
+            // Скидку позиции отдаём их же полями — пересчёт цены делает RetailCRM.
+            ...(item.discountAmount ? { discountManualAmount: Number(item.discountAmount) } : {}),
+            ...(item.discountPercent ? { discountManualPercent: Number(item.discountPercent) } : {}),
             ...(item.xmlId ? { offer: { xmlId: item.xmlId } } : {}),
         }));
     }
+
+    // Разовая скидка на заказ. Ноль отправляем тоже: так скидку снимают.
+    if (edit.discountAmount !== undefined) orderData.discountManualAmount = Number(edit.discountAmount) || 0;
+    if (edit.discountPercent !== undefined) orderData.discountManualPercent = Number(edit.discountPercent) || 0;
 
     if (edit.customerComment !== undefined) orderData.customerComment = edit.customerComment ?? '';
     if (edit.managerComment !== undefined) orderData.managerComment = edit.managerComment ?? '';
