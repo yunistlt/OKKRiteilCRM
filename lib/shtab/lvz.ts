@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 // Соседний проект LVZCalc_bot: витрина zmktlt.ru, расчёты стоимости, маркетинг
 // и продажи. Всё это живёт в его Supabase, и туда же смотрит сервис расчётов
@@ -36,11 +37,23 @@ export type CatalogItem = {
     active: boolean;
 };
 
+/**
+ * Название товара человеческим текстом.
+ *
+ * В каталоге сайта кавычки местами записаны кодом HTML («&quot;ШКОЛЬНИК&quot;»),
+ * и в списке товаров он показывался буквами, как есть — так название уезжало
+ * и в состав заказа, и в счёт. Раскодируем у себя; сайт не трогаем (решение
+ * владельца 02.10.2026).
+ */
+function productName(value: unknown): string {
+    return decodeEntities(String(value ?? '')).replace(/\s+/g, ' ').trim();
+}
+
 async function resolveCategories(rows: any[]): Promise<Record<string, string>> {
     const ids = Array.from(new Set(rows.map((r) => r.category_id).filter(Boolean)));
     if (ids.length === 0) return {};
     const { data } = await client().from('webasyst_categories').select('id, name').in('id', ids as any);
-    return Object.fromEntries((data ?? []).map((c: any) => [String(c.id), c.name]));
+    return Object.fromEntries((data ?? []).map((c: any) => [String(c.id), productName(c.name)]));
 }
 
 /**
@@ -154,7 +167,7 @@ export async function catalogSearch(query: string, limit = 15): Promise<Record<s
                 // Артикул — ключ к карточке товара на сайте (по нему состав
                 // заказа строит ссылку, см. lib/own-crm/catalog-links.ts).
                 article: d.sku ? String(d.sku) : null,
-                name: d.name,
+                name: productName(d.name),
                 price: Number(d.price) || 0,
                 url: d.full_url || '',
                 category: cats[String(d.category_id)] || '',
@@ -187,7 +200,7 @@ export async function catalogOverview(): Promise<Record<string, unknown>> {
             // а не мелочь: по ней видно, сколько каталога стоит мёртвым грузом.
             products_with_price: withPrice.count ?? 0,
             categories_total: (cats.data ?? []).length,
-            categories: (cats.data ?? []).map((c: any) => c.name).slice(0, 60),
+            categories: (cats.data ?? []).map((c: any) => productName(c.name)).slice(0, 60),
             note: 'Витрина zmktlt.ru: данные из соседнего проекта, цена — снимок на момент импорта.',
         };
     } catch (e: any) {

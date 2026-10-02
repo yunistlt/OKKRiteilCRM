@@ -15,6 +15,7 @@
  * на сайте нашлось 15. Врать ссылкой в никуда нельзя, поэтому название
  * остаётся обычным текстом.
  */
+import { decodeEntities } from '@/lib/sales-rop/letter-render';
 import { createClient } from '@supabase/supabase-js';
 
 const URL_KEY = 'LVZ_SUPABASE_URL';
@@ -63,7 +64,7 @@ export async function catalogLinks(params: {
                 .in('id', ids);
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
-                if (row.full_url) found.push({ key: `id:${row.id}`, url: String(row.full_url), name: String(row.name ?? '') });
+                if (row.full_url) found.push({ key: `id:${row.id}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')) });
             }
         }
 
@@ -75,7 +76,7 @@ export async function catalogLinks(params: {
             if (error) throw new Error(error.message);
             for (const row of ((data ?? []) as any[])) {
                 if (row.sku && row.full_url) {
-                    found.push({ key: `art:${clean(row.sku)}`, url: String(row.full_url), name: String(row.name ?? '') });
+                    found.push({ key: `art:${clean(row.sku)}`, url: String(row.full_url), name: decodeEntities(String(row.name ?? '')) });
                 }
             }
         }

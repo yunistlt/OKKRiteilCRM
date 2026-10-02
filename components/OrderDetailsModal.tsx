@@ -19,6 +19,7 @@ import { NumberInput } from '@/components/ui/NumberInput';
 import OrderSidePanel, { PanelKind } from '@/components/orders/OrderSidePanel';
 import OrderStatusSwitcher from '@/components/orders/OrderStatusSwitcher';
 import OwnOrderPayments from '@/components/own-crm/OwnOrderPayments';
+import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 interface OrderDetailsModalProps {
     orderId: number;
@@ -469,7 +470,10 @@ export default function OrderDetailsModal({ orderId, isOpen, onClose }: OrderDet
             const rawItems = Array.isArray(payload.items) ? payload.items : [];
             setDraftItems(rawItems.map((item: any) => ({
                 id: item.id ?? null,
-                name: item.offer?.displayName || item.offer?.name || item.productName || 'Позиция',
+                // В каталоге сайта кавычки местами записаны кодом HTML
+                // («&quot;»), и в составе он показывался буквами. Раскодируем
+                // у себя; сайт не трогаем (решение владельца 02.10.2026).
+                name: decodeEntities(String(item.offer?.displayName || item.offer?.name || item.productName || 'Позиция')),
                 quantity: Number(item.quantity || 0),
                 price: Number(item.initialPrice ?? item.price ?? 0),
                 discount: Number(item.discountManualAmount ?? item.discountTotal ?? 0),

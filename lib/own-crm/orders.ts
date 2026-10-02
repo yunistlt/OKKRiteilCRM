@@ -10,6 +10,7 @@
  */
 import { supabase } from '@/utils/supabase';
 import { fieldName, fieldValue, orderFields } from './field-names';
+import { decodeEntities } from '@/lib/sales-rop/letter-render';
 
 /** Стандартные поля заказа RetailCRM. Имена — их, без перевода. */
 export type OwnOrder = {
@@ -203,7 +204,7 @@ export function itemsToText(items: OwnOrderItem[] | undefined): string {
   }
 
   return items
-    .map((item) => `${item.offer?.name || 'Без названия'} (x${item.quantity ?? 1})`)
+    .map((item) => `${decodeEntities(String(item.offer?.name || 'Без названия'))} (x${item.quantity ?? 1})`)
     .join(', ');
 }
 
